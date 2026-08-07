@@ -95,7 +95,54 @@ Typesetting the finished weave is an **export function**, not a view. The in-ord
 
 ## How It's Built
 
-Weaveling is a browser-based client–server app: a Rust modular-monolith backend, PostgreSQL, event-sourcing for structure and CRDTs for prose (so editing is real-time collaborative *and* works offline). See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full picture.
+Weaveling is a browser-based client–server app: a Rust modular-monolith backend, PostgreSQL, event-sourcing for structure and CRDTs for prose (so editing is real-time collaborative *and* works offline). See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full picture, and [ROADMAP.md](./ROADMAP.md) for what's actually being built right now.
+
+## Getting Started
+
+### Prerequisites
+
+- **Rust**, via [rustup](https://rustup.rs). The toolchain, the `rustfmt`/`clippy` components and the `wasm32-unknown-unknown` target are all declared in `rust-toolchain.toml` and installed automatically on first build — nothing to add by hand.
+- **[Trunk](https://trunkrs.dev)**, the WASM bundler for the web client. Cargo can't declare tool dependencies, so this one is manual:
+
+  ```bash
+  cargo install --locked trunk
+  ```
+
+### Running locally
+
+Two processes, two terminals.
+
+**The API:**
+
+```bash
+cargo run -p weaveling-service-api
+```
+
+Serves on `http://127.0.0.1:3000`, health check at `/api/health`.
+
+**The web client:**
+
+```bash
+cd clients/web
+trunk serve
+```
+
+Serves on `http://localhost:8080`, rebuilding and reloading on save. Trunk proxies `/api` through to the API, so there is no CORS to configure in development.
+
+### Common commands
+
+| Command | Does |
+|---|---|
+| `cargo build` | Builds the server-side crates. The web client is excluded from `default-members` — Trunk builds it, for a different target. |
+| `cargo test` | Runs the workspace test suite. |
+| `cargo fmt --all` | Formats everything. |
+| `cargo clippy --workspace --all-targets` | Lints. |
+| `cargo check -p weaveling-client-web --target wasm32-unknown-unknown` | Type-checks the client without invoking Trunk. |
+| `trunk build --release` | Produces the optimised client bundle in `clients/web/dist`. |
+
+### Layout
+
+A Cargo workspace: `clients/`, `services/`, `features/`, `libraries/`. Each feature is an onion — a dependency-free `core`, wrapped in a ring of adapter crates, plus a WASM-safe `contract` crate shared with the client. The rules for what may depend on what are in [ARCHITECTURE.md](./ARCHITECTURE.md#repository-structure).
 
 ## Status
 

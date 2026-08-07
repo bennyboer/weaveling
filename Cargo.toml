@@ -1,0 +1,35 @@
+[workspace]
+resolver = "3"
+members = [
+    "clients/*",
+    "services/*",
+    "features/*/contract",
+    "features/*/core",
+    "features/*/adapters/*",
+]
+default-members = [
+    "services/*",
+    "features/*/contract",
+    "features/*/core",
+    "features/*/adapters/*",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/barny/weaveling"
+
+[workspace.dependencies]
+async-trait = "0.1.91"
+axum = "0.8.9"
+console_error_panic_hook = "0.1.7"
+gloo-net = { version = "0.6.0", features = ["json"] }
+leptos = "0.8.20"
+serde = { version = "1.0.229", features = ["derive"] }
+thiserror = "2.0.19"
+tokio = "1.53.1"
+tower-http = "0.7.0"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+uuid = { version = "1.24.0", features = ["serde"] }

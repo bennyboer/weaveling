@@ -14,6 +14,83 @@ Weaveling is a **client–server application**.
 
 The server is a monolith *for now*, but organised into clean modules so that seams can later become process/service boundaries without a rewrite.
 
+## Repository Structure
+
+A Cargo workspace with four top-level folders. Plural names throughout: each is expected to hold more than one thing eventually, even where it holds exactly one today.
+
+```
+weaveling/
+├── Cargo.toml      [workspace] + [workspace.dependencies]
+├── clients/        one crate per client (web first)
+├── services/       deployable units — exactly one for now
+├── features/       vertical slices of the domain
+└── libraries/      cross-cutting, domain-free technique
+```
+
+**Why many crates:** in Rust a crate boundary *is* an enforced dependency rule. "Persistence must not leak into business logic" stops being a code-review convention and becomes a compile error, because the crate simply doesn't list the dependency. Crates also give parallel compilation and caching.
+
+**Aim for a wide, shallow graph.** Crate count alone doesn't shorten builds — a crate is the unit of both parallelism *and* recompilation, so a deep chain rebuilds serially all the way up. Libraries should be stable leaves; depth is the enemy.
+
+### Feature anatomy — the onion
+
+Each feature is a slice of the domain (project management, structure tree, timeline, …) and is internally an **onion**: a pure core, wrapped in a ring of adapters.
+
+```
+features/
+└── projects/
+    ├── contract/          weaveling-projects-contract   → —      (shared kernel, WASM-safe)
+    ├── core/              weaveling-projects-core       → —      (domain, ports, ProjectService)
+    └── adapters/
+        ├── rest/          weaveling-projects-rest       → core, contract   (inbound)
+        └── store/         weaveling-projects-store      → core             (outbound)
+```
+
+```
+     contract         core
+         ↑           ↑    ↑
+         └── rest ───┘    └── store
+               ↑              ↑
+               └─── service ──┘
+```
+
+- **`core`** — domain types, business logic, the **ports** (traits) it needs, and the application facade (`ProjectService`). Depends on nothing. Plain Rust, no frameworks, no magic.
+- **`adapters/*`** — **one crate per adapter**, named for the foreign system it talks to. All arrows point inward at `core`.
+  - *Outbound (driven)* adapters implement a port declared by core. Named after the port: `ProjectStore` → `store`.
+  - *Inbound (driving)* adapters call core's public API. Named after the transport: `rest`, later `graphql`, `cli`, `messaging`. No inbound port trait — `ProjectService` is already the interface.
+- **`contract`** — the wire types. Deliberately **not** part of the onion: it is a shared kernel between two *processes*, and it exists as its own crate for a hard technical reason — the WASM client cannot depend on `rest`, because `axum` doesn't compile to WASM. Pure serde structs, no dependencies.
+
+There is deliberately **no `boundary` crate**. Once every adapter has its own crate, "boundary" names whatever is left over — which is nothing. Mapping belongs to the adapter that owns the DTOs, the facade lives in core, and wiring is the service's job.
+
+**When *not* to split an adapter out:** the test is *different dependencies, or a different swap story?* REST vs. store: yes to both — split. REST vs. a hypothetical GraphQL adapter over identical DTOs: no to both — one crate. Split on dependency weight and swappability, not on conceptual tidiness.
+
+**Adapters are siblings, never friends.** `rest` must not depend on `store`. Choosing the concrete persistence implementation is the **service's** job as composition root — that is what keeps the in-memory → PostgreSQL swap down to one line in one manifest.
+
+### Dependency rules
+
+| Layer | May depend on | Never |
+|---|---|---|
+| `clients` | contract crates | features, services |
+| `services` | features, libraries | clients |
+| `features` | libraries, own contract | **other features** |
+| `libraries` | libraries (shallowly) | features, services |
+
+The **feature → feature** ban is the load-bearing one. When two features want the same thing there are exactly two legal moves: the *service* composes them, or the shared concept sinks into a `libraries/` crate. (Expected first case: structure tree and timeline sharing a data structure.)
+
+### Naming and conventions
+
+- **Prefix every crate.** Cargo crate names are flat and global; directories only group. `weaveling-projects-core`, not `core`.
+- **Alias dependencies to stay readable.** `projects-core = { package = "weaveling-projects-core", path = "../core" }` gives `use projects_core::Project;` at the call site. Set this up from the first manifest — retrofitting means touching every import.
+- **Shared versions in `[workspace.dependencies]`**, with member crates writing `serde = { workspace = true }`. One place to bump, and it prevents split-version build explosions. Glob members let new crates auto-join, but the patterns must match the crate depth exactly (`"features/*/contract"`, `"features/*/core"`, `"features/*/adapters/*"`) — a greedy `**` also matches intermediate directories that hold no `Cargo.toml`.
+- **`features/` collides with Cargo features** (`[features]`, `--features`, `#[cfg(feature = "…")]`). Accepted knowingly: legibility to any programmer beat avoiding the clash. `modules/` collides with `mod` and `domains/` is more jargon, so there was no clean winner.
+
+### Consequences in Rust
+
+Three practical decisions that follow from the layout:
+
+- **Ports use `Arc<dyn Trait>`, not generics.** A `<S: ProjectStore>` type parameter is infectious — it propagates into every caller and fights axum's `State` extractor. The vtable lookup is noise next to I/O.
+- **Async traits need `async-trait`.** `async fn` in traits is stable but *not* dyn-compatible, so `Arc<dyn ProjectStore>` requires the boxing that `#[async_trait]` provides.
+- **DTO mapping is free functions, not `From` impls.** The orphan rule forbids `impl From<Project> for ProjectResponse` inside `rest`, since neither type is local to it. Plain `fn to_response(p: &Project) -> ProjectResponse` has no such restriction and keeps the arrows correct. Making `core` depend on `contract` to get the impls would leak the wire format into the domain.
+
 ## The Two-Speed Model
 
 The single most important architectural decision. The domain splits into two regimes with very different characteristics, and each gets the tool that fits it.

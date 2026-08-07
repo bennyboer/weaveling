@@ -22,18 +22,23 @@ The point of Phase 1 is as much *getting fluent in Rust again* as it is shipping
 
 ---
 
-## Milestone 0 — Scaffold
+## Milestone 0 — Scaffold ✅
 
 **Goal:** `cargo run` starts a server that answers on a health endpoint.
 
 **Build:**
-- Cargo **workspace** with crates split roughly `weaveling-core` (domain + store traits), `weaveling-server` (HTTP), `weaveling-web` (frontend, added in M4).
+- Cargo **workspace** following the layout settled in [ARCHITECTURE.md](./ARCHITECTURE.md#repository-structure) — `clients/`, `services/`, `features/`, `libraries/`, with the `projects` feature split into `contract`, `core` and `adapters/{rest,store}`.
+- `[workspace.dependencies]` at the root, dependency aliasing in member manifests.
 - Pick the async runtime + web framework. Recommended: **tokio** + **axum**.
-- A `GET /health` returning 200.
+- A `GET /health` returning 200 from `services/api`.
 
 **Rust you'll meet:** workspace layout, `Cargo.toml` and workspace dependencies, crates vs. modules, `mod`/`pub`/`use`, the `async fn main` + `#[tokio::main]` entry point.
 
+Empty crates that just compile are a fine M0 deliverable — the point is the skeleton and the dependency arrows, not behaviour.
+
 **Done when:** the server starts and `curl localhost:PORT/health` answers.
+
+*Done. Six crates, `cargo build` green, `/api/health` returns 200, client type-checks for `wasm32`. See the README for how to run it.*
 
 ## Milestone 1 — The domain: `Project`
 
@@ -56,7 +61,9 @@ The point of Phase 1 is as much *getting fluent in Rust again* as it is shipping
 - A `ProjectStore` trait: create, get, list, rename (or a general update), delete.
 - Its error type — a `StoreError` enum (`NotFound`, `Conflict`, `Backend`), deliberately *not* leaking any storage technology into the signature.
 - An `InMemoryProjectStore` implementing it, holding a `HashMap<ProjectId, Project>`.
-- Tests written **against the trait**, so the same suite can later validate the Postgres impl for free.
+- Tests written **against the trait**, so the same suite can later validate the Postgres impl for free. The conformance suite lives in `core` behind a cargo feature (`testkit`); the store adapter picks it up as a dev-dependency.
+
+**Crate placement:** the `ProjectStore` trait belongs in `core` — a port is declared by the domain that needs it. The `HashMap` impl goes in `adapters/store`. Nothing above the trait knows which impl exists; the service picks.
 
 **Rust you'll meet:** traits and trait bounds, `async` in traits, **shared mutable state** (`Arc` + `RwLock`/`Mutex`, interior mutability), static vs. dynamic dispatch (generics vs. `dyn Trait`), error modelling with `thiserror`, `?` and `From` conversions.
 

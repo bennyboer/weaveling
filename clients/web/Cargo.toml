@@ -1,0 +1,12 @@
+[package]
+name = "weaveling-client-web"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+console_error_panic_hook = { workspace = true }
+gloo-net = { workspace = true }
+leptos = { workspace = true, features = ["csr"] }
+projects-contract = { version = "0.1.0", path = "../../features/projects/contract", package = "weaveling-projects-contract" }
