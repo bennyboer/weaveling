@@ -1,12 +1,13 @@
 # Weaveling — TODO
 
-Scratch roadmap. Not committed order — see [README.md](./README.md) (the dream) and [ARCHITECTURE.md](./ARCHITECTURE.md) (the how) for settled decisions.
+Scratch notes. See [README.md](./README.md) (the dream), [ARCHITECTURE.md](./ARCHITECTURE.md) (the how) and [ROADMAP.md](./ROADMAP.md) (the plan) for settled decisions.
 
-## Next up (start here tomorrow)
+## Next up
 
-- [ ] **Build a proper roadmap.** Gut says do this first — turn the notes below into a sequenced plan before writing code.
+- [x] **Build a proper roadmap.** Done — see [ROADMAP.md](./ROADMAP.md). Phase 1 is a projects-only CRUD prototype: in-memory store behind a trait, no Postgres, no event sourcing.
+- [ ] Start Milestone 0 (scaffold the workspace).
 
-## Candidate first steps (once roadmap exists)
+## Candidate first steps (superseded by ROADMAP.md, kept for context)
 
 1. [ ] **Domain model** — sketch the core aggregates & events: Project, Node, structural events (create / move / split / reorder), the codex entity shape, threads, time relations (before/after + buckets). This is the heart of the ES design.
 2. [ ] **Scaffold the repo** — Cargo workspace, module skeleton for the modular monolith, pick the full-stack Rust framework (Leptos / Dioxus / Yew), stand up a "hello weave" client + server.
