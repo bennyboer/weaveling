@@ -2,15 +2,14 @@
 name = "weaveling-service-api"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
 
 [dependencies]
 axum = { workspace = true }
-projects-core = { version = "0.1.0", path = "../../features/projects/core", package = "weaveling-projects-core" }
-projects-rest = { version = "0.1.0", path = "../../features/projects/adapters/rest", package = "weaveling-projects-rest" }
-projects-store = { version = "0.1.0", path = "../../features/projects/adapters/store", package = "weaveling-projects-store" }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
 tower-http = { workspace = true, features = ["trace", "fs"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+projects-core = { version = "0.1.0", path = "../../features/projects/core", package = "weaveling-projects-core" }
+projects-rest = { version = "0.1.0", path = "../../features/projects/adapters/rest", package = "weaveling-projects-rest" }
+projects-store = { version = "0.1.0", path = "../../features/projects/adapters/store", package = "weaveling-projects-store" }

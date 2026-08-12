@@ -2,10 +2,9 @@
 name = "weaveling-projects-rest"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
-repository.workspace = true
 
 [dependencies]
 axum = { workspace = true }
+
 projects-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-projects-contract" }
 projects-core = { version = "0.1.0", path = "../../core", package = "weaveling-projects-core" }

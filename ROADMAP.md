@@ -38,7 +38,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 **Done when:** the server starts and `curl localhost:PORT/health` answers.
 
-*Done. Six crates, `cargo build` green, `/api/health` returns 200, client type-checks for `wasm32`. See the README for how to run it.*
+*Done. Six crates, `cargo build` green, `/api/health` returns 200, `trunk serve` builds and serves the WASM client, and the dev proxy reaches the API same-origin. See the README for how to run it.*
 
 ## Milestone 1 — The domain: `Project`
 
