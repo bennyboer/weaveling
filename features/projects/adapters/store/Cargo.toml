@@ -9,6 +9,5 @@ async-trait = { workspace = true }
 projects-core = { version = "0.1.0", path = "../../core", package = "weaveling-projects-core" }
 
 [dev-dependencies]
+time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
-
-projects-core = { version = "0.1.0", path = "../../core", package = "weaveling-projects-core", features = ["testkit"] }

@@ -55,7 +55,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 *Done. `ProjectId`, `ProjectName` and `Project` in `features/projects/core`, 20 tests. Validity holds by construction because `Project` stores a `ProjectName`, never a `String`. Wall-clock time is **injected** (`Project::new(name, now)`) rather than read inside the domain — the application service owns the clock, and tests stay deterministic. Ids are sortable UUID v7 built from that same `now`; see [ARCHITECTURE.md](./ARCHITECTURE.md#identifiers).*
 
-## Milestone 2 — The store trait + in-memory impl
+## Milestone 2 — The store trait + in-memory impl ✅
 
 **Goal:** the abstraction that makes Postgres a later, cheap decision. The heart of Phase 1.
 
@@ -63,7 +63,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 - A `ProjectStore` trait: create, get, list, rename (or a general update), delete.
 - Its error type — a `StoreError` enum (`NotFound`, `Conflict`, `Backend`), deliberately *not* leaking any storage technology into the signature.
 - An `InMemoryProjectStore` implementing it, holding a `HashMap<ProjectId, Project>`.
-- Tests written **against the trait**, so the same suite can later validate the Postgres impl for free. The conformance suite lives in `core` behind a cargo feature (`testkit`); the store adapter picks it up as a dev-dependency.
+- Tests written **against the trait**, so the same suite can later validate the Postgres backend. The suite lives in the store adapter crate as a `#[cfg(test)]` module, since every backend of a port shares that crate.
 
 **Crate placement:** the `ProjectStore` trait belongs in `core` — a port is declared by the domain that needs it. The `HashMap` impl goes in `adapters/store`. Nothing above the trait knows which impl exists; the service picks.
 
@@ -72,6 +72,8 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 **This is where the design lives.** Expect to spend real time here and expect me to push back on the trait shape — if it's leaky, everything downstream inherits the leak.
 
 **Done when:** the trait test suite passes against the in-memory impl, and nothing above the trait knows what's behind it.
+
+*Done. `ProjectStore` + `StoreError` in `core`; `adapters/store` holds `memory.rs` (the backend) and `suite.rs` (9 `#[cfg(test)]` conformance cases over `&impl ProjectStore`). Postgres will be a second **module in the same crate** behind an optional feature, not a sibling crate — so it reuses the suite directly and `core` needs no test scaffolding. `list` promises id order, which is creation order thanks to v7. Two known gaps, both fine for a single-user MVP: read-modify-write has no optimistic concurrency, so concurrent renames can lose an update (a version column is the fix); and the store is **single-tenant** — `list` returns every project and `get` will serve any id to anyone, which stops being acceptable the moment accounts exist. See [ARCHITECTURE.md](./ARCHITECTURE.md#supporting-concerns-noted-for-later).*
 
 ## Milestone 3 — HTTP API
 

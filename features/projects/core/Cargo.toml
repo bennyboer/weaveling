@@ -3,9 +3,6 @@ name = "weaveling-projects-core"
 version.workspace = true
 edition.workspace = true
 
-[features]
-testkit = []
-
 [dependencies]
 async-trait = { workspace = true }
 thiserror = { workspace = true }

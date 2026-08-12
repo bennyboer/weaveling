@@ -7,7 +7,8 @@ Scratch notes. See [README.md](./README.md) (the dream), [ARCHITECTURE.md](./ARC
 - [x] **Build a proper roadmap.** Done — see [ROADMAP.md](./ROADMAP.md). Phase 1 is a projects-only CRUD prototype: in-memory store behind a trait, no Postgres, no event sourcing.
 - [x] Milestone 0 — workspace scaffolded, builds green, health endpoint live.
 - [x] Milestone 1 — `ProjectId`, `ProjectName`, `Project` in `features/projects/core`.
-- [ ] Milestone 2 — the `ProjectStore` port in `core` plus the in-memory adapter.
+- [x] Milestone 2 — `ProjectStore` port, `StoreError`, in-memory adapter, conformance suite.
+- [ ] Milestone 3 — `ProjectService` facade in `core`, then the REST adapter and wiring.
 
 ## Candidate first steps (superseded by ROADMAP.md, kept for context)
 
@@ -32,7 +33,7 @@ Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then 
 ## Parked (decided — don't re-litigate)
 
 - Rust, modular monolith, PostgreSQL, no broker yet (option kept open).
-- Two-speed model: ES/CQRS for structure, CRDT (yrs/Yjs) for prose.
+- Two-speed model: ES/CQRS for structure, CRDT (yrs/Yjs) for prose. **Projects stay plain CRUD** — a title carries no history worth sourcing; ES debuts on the structure tree.
 - Local-first-capable client.
 - Full-stack Rust first; Angular as fallback.
 - Export: Typst → PDF, HTML → EPUB.
