@@ -91,6 +91,14 @@ Three practical decisions that follow from the layout:
 - **Async traits need `async-trait`.** `async fn` in traits is stable but *not* dyn-compatible, so `Arc<dyn ProjectStore>` requires the boxing that `#[async_trait]` provides.
 - **DTO mapping is free functions, not `From` impls.** The orphan rule forbids `impl From<Project> for ProjectResponse` inside `rest`, since neither type is local to it. Plain `fn to_response(p: &Project) -> ProjectResponse` has no such restriction and keeps the arrows correct. Making `core` depend on `contract` to get the impls would leak the wire format into the domain.
 
+## Identifiers
+
+**UUID v7** ([RFC 9562](https://www.rfc-editor.org/rfc/rfc9562), 2024) everywhere — not v4. A 48-bit Unix-millisecond prefix followed by 74 random bits, so ids are lexicographically sortable and sort order equals creation order.
+
+- **Why:** monotonic keys append at the right edge of a B-tree instead of scattering inserts across it — fewer page splits, less dirtied cache, less WAL. Postgres uses heap tables rather than a clustered index, so the effect is milder than the MySQL horror stories, but the primary-key index still pays. This is irrelevant for projects (dozens per user) and decisive for **nodes** (thousands per book) and the **event log** (append-only, the most insert-heavy table in the whole design). Setting one convention now beats choosing per entity later. Bonus: `ORDER BY id` *is* creation order, so cursor pagination needs no extra column.
+- **Cost:** an id leaks its creation time to millisecond precision, and entropy drops from 122 random bits to 74 (still far past any collision concern). Acceptable for a login-gated tool; revisit if ids ever land in public share URLs.
+- **The timestamp is injected, never read inside the domain.** Use `Uuid::new_v7(Timestamp::from_unix(…))` fed by the same `now` the aggregate receives — not `Uuid::now_v7()`, which would smuggle a clock read into `core`. This keeps the domain pure, keeps tests deterministic, and makes an id's embedded timestamp agree with its aggregate's `created_at` by construction rather than by luck.
+
 ## The Two-Speed Model
 
 The single most important architectural decision. The domain splits into two regimes with very different characteristics, and each gets the tool that fits it.

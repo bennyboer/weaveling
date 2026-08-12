@@ -40,7 +40,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 *Done. Six crates, `cargo build` green, `/api/health` returns 200, `trunk serve` builds and serves the WASM client, and the dev proxy reaches the API same-origin. See the README for how to run it.*
 
-## Milestone 1 — The domain: `Project`
+## Milestone 1 — The domain: `Project` ✅
 
 **Goal:** a `Project` type you're happy with, plus tests.
 
@@ -52,6 +52,8 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 **Rust you'll meet:** structs and `impl` blocks, derive macros (`Debug`, `Clone`, `PartialEq`), the **newtype pattern**, `Option` vs. `Result`, constructing fallible values, `#[cfg(test)] mod tests`.
 
 **Done when:** `cargo test` passes and creating an invalid project is impossible by construction.
+
+*Done. `ProjectId`, `ProjectName` and `Project` in `features/projects/core`, 20 tests. Validity holds by construction because `Project` stores a `ProjectName`, never a `String`. Wall-clock time is **injected** (`Project::new(name, now)`) rather than read inside the domain — the application service owns the clock, and tests stay deterministic. Ids are sortable UUID v7 built from that same `now`; see [ARCHITECTURE.md](./ARCHITECTURE.md#identifiers).*
 
 ## Milestone 2 — The store trait + in-memory impl
 

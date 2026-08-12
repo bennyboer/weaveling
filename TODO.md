@@ -6,7 +6,8 @@ Scratch notes. See [README.md](./README.md) (the dream), [ARCHITECTURE.md](./ARC
 
 - [x] **Build a proper roadmap.** Done — see [ROADMAP.md](./ROADMAP.md). Phase 1 is a projects-only CRUD prototype: in-memory store behind a trait, no Postgres, no event sourcing.
 - [x] Milestone 0 — workspace scaffolded, builds green, health endpoint live.
-- [ ] Milestone 1 — the `Project` domain type in `features/projects/core`.
+- [x] Milestone 1 — `ProjectId`, `ProjectName`, `Project` in `features/projects/core`.
+- [ ] Milestone 2 — the `ProjectStore` port in `core` plus the in-memory adapter.
 
 ## Candidate first steps (superseded by ROADMAP.md, kept for context)
 
