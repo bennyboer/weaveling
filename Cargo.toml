@@ -2,16 +2,20 @@
 resolver = "3"
 members = [
     "clients/*",
+    "libraries/*",
     "services/*",
     "features/*/contract",
     "features/*/core",
     "features/*/adapters/*",
+    "features/*/tests",
 ]
 default-members = [
+    "libraries/*",
     "services/*",
     "features/*/contract",
     "features/*/core",
     "features/*/adapters/*",
+    "features/*/tests",
 ]
 
 [workspace.package]

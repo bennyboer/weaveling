@@ -1,0 +1,12 @@
+[package]
+name = "weaveling-projects-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+projects-core = { version = "0.1.0", path = "../core", package = "weaveling-projects-core" }
+projects-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-projects-store" }

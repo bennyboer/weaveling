@@ -2155,6 +2155,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-clock"
+version = "0.1.0"
+dependencies = [
+ "time",
+]
+
+[[package]]
 name = "weaveling-projects-contract"
 version = "0.1.0"
 dependencies = [
@@ -2169,6 +2176,7 @@ dependencies = [
  "thiserror",
  "time",
  "uuid",
+ "weaveling-clock",
 ]
 
 [[package]]
@@ -2188,6 +2196,17 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-projects-core",
+]
+
+[[package]]
+name = "weaveling-projects-tests"
+version = "0.1.0"
+dependencies = [
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-projects-core",
+ "weaveling-projects-store",
 ]
 
 [[package]]

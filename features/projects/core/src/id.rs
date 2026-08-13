@@ -1,11 +1,16 @@
 use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
+use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::{NoContext, Timestamp, Uuid};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProjectId(Uuid);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("not a valid project id")]
+pub struct InvalidProjectId;
 
 impl ProjectId {
     pub fn generate(now: OffsetDateTime) -> Self {
@@ -36,10 +41,10 @@ impl Display for ProjectId {
 }
 
 impl FromStr for ProjectId {
-    type Err = uuid::Error;
+    type Err = InvalidProjectId;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Uuid::parse_str(s).map(Self)
+        Uuid::parse_str(s).map(Self).map_err(|_| InvalidProjectId)
     }
 }
 

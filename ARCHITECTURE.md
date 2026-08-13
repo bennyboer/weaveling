@@ -40,9 +40,10 @@ features/
 └── projects/
     ├── contract/          weaveling-projects-contract   → —      (shared kernel, WASM-safe)
     ├── core/              weaveling-projects-core       → —      (domain, ports, ProjectService)
-    └── adapters/
-        ├── rest/          weaveling-projects-rest       → core, contract   (inbound)
-        └── store/         weaveling-projects-store      → core             (outbound)
+    ├── adapters/
+    │   ├── rest/          weaveling-projects-rest       → core, contract   (inbound)
+    │   └── store/         weaveling-projects-store      → core             (outbound)
+    └── tests/             weaveling-projects-tests      → the whole feature (test-only leaf)
 ```
 
 ```
@@ -63,6 +64,21 @@ There is deliberately **no `boundary` crate**. Once every adapter has its own cr
 
 **When *not* to split an adapter out:** the test is *different dependencies, or a different swap story?* REST vs. store: yes to both — split. REST vs. a hypothetical GraphQL adapter over identical DTOs: no to both — one crate. Two backends of the same port are never split: they answer "no" to the swap question by definition, since they are alternatives to each other rather than things that coexist. Split on dependency weight and swappability, not on conceptual tidiness.
 
+**Feature-level tests live in their own crate.** `features/<name>/tests` is **test-only**: an empty library plus `#[cfg(test)]` modules, depending on every crate in the feature and depended on by nothing. It exists because cross-adapter tests have nowhere else legal to live — putting them in `adapters/rest` would need a `rest → store` dev-dependency (the forbidden sibling arrow), and putting them in `core` would need `core → adapters/store`, inverting the onion. A leaf that depends on the whole feature keeps every arrow pointing inward.
+
+The payoff is that feature tests use the **real** adapters. A hand-written fake store is a second, unverified implementation of the port — it cannot run against the conformance suite, so it is free to drift from the contract and let tests pass against behaviour no real backend exhibits. Using `InMemoryProjectStore` removes that hazard entirely. It is deliberately **not** a wiring crate: no composition happens here, because that is still the service's job. Give it a test-only crate's dependency list — everything under `[dev-dependencies]`, nothing under `[dependencies]`.
+
+There are four test scopes, and keeping them apart matters:
+
+| Scope | Asks | Lives in |
+|---|---|---|
+| **Unit** | is this type's logic right? (`ProjectName` validation, id ordering) | the crate that owns the code |
+| **Port conformance** | does every backend honour what the port promises? | `adapters/<port>/src/suite.rs` |
+| **Feature behaviour** | does the feature behave correctly through its facade and router, with real adapters? | `features/<name>/tests` |
+| **App wiring** | is the feature mounted at the right path with the right middleware? | `services/api/tests` — smoke tests only |
+
+Feature tests are written **from a business perspective**: they assert observable outcomes, never collaborations. "The store was not called" is a technical detail invisible to any client, and asserting it couples the test to the current call order. Spy on a collaborator only when the interaction *is* the requirement — don't charge a card twice, don't send two emails — which a read from our own store never is.
+
 **Port conformance is tested once per port, inside the adapter crate.** Because a port's backends share one crate, the suite that defines what the port *means* — `create` conflicts on a duplicate id, `update` is `NotFound` on a missing one, `list` returns creation order — lives in a plain `#[cfg(test)]` module there (`store/src/suite.rs`), taking `&impl ProjectStore`. Every backend runs the same cases; backend-specific behaviour (transaction rollback, connection failures mapping to `StoreError::Backend`) goes in that backend's own tests. `core` stays free of test scaffolding.
 
 **Adapters are siblings, never friends.** `rest` must not depend on `store`. Choosing the concrete persistence implementation is the **service's** job as composition root — that is what keeps the in-memory → PostgreSQL swap down to one line in one manifest.
@@ -78,6 +94,10 @@ There is deliberately **no `boundary` crate**. Once every adapter has its own cr
 
 The **feature → feature** ban is the load-bearing one. When two features want the same thing there are exactly two legal moves: the *service* composes them, or the shared concept sinks into a `libraries/` crate. (Expected first case: structure tree and timeline sharing a data structure.)
 
+**Cross-cutting ports live in `libraries/`, not in a feature's `core`.** The rule that a port is declared by the core needing it holds for domain-specific ports like `ProjectStore`. A port that is *domain-free* and wanted by every feature goes in a library instead — `libraries/clock` is the first, holding the `Clock` trait plus `SystemClock` and `FixedClock`. The reason is stronger than anticipated reuse: per-feature copies of `Clock` would be **incompatible types**, so the composition root would have to build one clock per feature and no test could pin time across the system. This is legal under the table above (`features` → `libraries`) and is an explicit *exception* to port ownership, not a violation of it.
+
+Note that `FixedClock` is plain `pub`, not `#[cfg(test)]` — test scaffolding in a library crate must be, since `cfg(test)` does not cross crate boundaries. That is fine here because a fixed clock is legitimately useful outside tests (replay, backfill).
+
 ### Naming and conventions
 
 - **Prefix every crate.** Cargo crate names are flat and global; directories only group. `weaveling-projects-core`, not `core`.
@@ -91,7 +111,7 @@ Three practical decisions that follow from the layout:
 
 - **Ports use `Arc<dyn Trait>`, not generics.** A `<S: ProjectStore>` type parameter is infectious — it propagates into every caller and fights axum's `State` extractor. The vtable lookup is noise next to I/O.
 - **Async traits need `async-trait`.** `async fn` in traits is stable but *not* dyn-compatible, so `Arc<dyn ProjectStore>` requires the boxing that `#[async_trait]` provides.
-- **DTO mapping is free functions, not `From` impls.** The orphan rule forbids `impl From<Project> for ProjectResponse` inside `rest`, since neither type is local to it. Plain `fn to_response(p: &Project) -> ProjectResponse` has no such restriction and keeps the arrows correct. Making `core` depend on `contract` to get the impls would leak the wire format into the domain.
+- **DTO mapping is free functions, not `From` impls.** The orphan rule forbids `impl From<Project> for ProjectDTO` inside `rest`, since neither type is local to it. Plain `fn to_dto(p: &Project) -> ProjectDTO` has no such restriction and keeps the arrows correct. Making `core` depend on `contract` to get the impls would leak the wire format into the domain.
 
 ## Identifiers
 
@@ -176,6 +196,7 @@ Font bundling/licensing for embedded fonts is a concern for both.
 - **Blobs** (codex and research images) — object storage or filesystem, referenced by ID from events. Not stored as byte columns and not in the event log.
 - **Multi-author** — implies accounts, project membership, and permissions. Real scope, acknowledged early.
 - **Tenancy / ownership scoping** — today every store is **global**: `ProjectStore::list()` returns *every* project, and `get(id)` will hand back any project to anyone who names it. That is correct only while there is exactly one user, which is true for the MVP and false the moment accounts exist. Worth being clear that this is **not a filter to bolt on later**: scoping changes the port itself (`list(owner)` rather than `list()`), and every id-taking method gains an ownership check. Related: **ids are not capabilities**. A v7 id is unguessable in practice (74 random bits), but it leaks its creation time and will end up in logs, URLs and shared links — so authorisation must be explicit, never implied by someone knowing an id.
+- **Idempotent requests** — wanted eventually, deliberately deferred. Only *creation* needs it: `POST /projects` is not idempotent, so a flaky network, a double-click or a client auto-retry produces a duplicate project. `PATCH /projects/{id}` already is idempotent — applying the same rename twice yields the same state, bar a cosmetic `updated_at` bump — so it needs nothing. When we do add it: the key belongs in an **`Idempotency-Key` header, not in the request DTO**, because it is a delivery concern rather than part of the resource representation, and burying it in `contract` would force the concept on every future adapter. It also requires real infrastructure — server-side storage of key → response with a TTL, i.e. a new port — which would be hollow against an in-memory store that loses it on restart. A cheaper alternative exists: let the client generate the `ProjectId` and use `PUT /projects/{id}`, making creation naturally idempotent with no key store at all — but that reverses the *server owns id generation* decision, which is why `contract` carries no `uuid` dependency and ids travel as strings.
 
 ## Status
 

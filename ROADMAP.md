@@ -80,8 +80,9 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 **Goal:** projects are fully manageable over REST.
 
 **Build:**
+- `ProjectService` in `core` — the facade. Takes **primitives** (`&str` for both ids and names) and turns them into domain types, so validation is a business rule every adapter inherits rather than a transport concern. Owns the clock via `libraries/clock`. ✅
+- Request/response DTOs in `contract`, ids and timestamps as strings. ✅
 - `GET /projects`, `POST /projects`, `GET /projects/{id}`, `PATCH /projects/{id}`, `DELETE /projects/{id}`.
-- Request/response DTOs, kept separate from the domain types.
 - Store injected as shared application state.
 - Errors mapped to sensible status codes (404, 400, 409).
 
