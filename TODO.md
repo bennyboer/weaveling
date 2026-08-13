@@ -8,7 +8,8 @@ Scratch notes. See [README.md](./README.md) (the dream), [ARCHITECTURE.md](./ARC
 - [x] Milestone 0 — workspace scaffolded, builds green, health endpoint live.
 - [x] Milestone 1 — `ProjectId`, `ProjectName`, `Project` in `features/projects/core`.
 - [x] Milestone 2 — `ProjectStore` port, `StoreError`, in-memory adapter, conformance suite.
-- [ ] Milestone 3 — `ProjectService` facade in `core`, then the REST adapter and wiring.
+- [x] Milestone 3 — `ProjectService`, `contract` DTOs, REST adapter, composition root.
+- [ ] Milestone 4 — the Leptos client: list projects, create / rename / delete.
 
 ## Candidate first steps (superseded by ROADMAP.md, kept for context)
 

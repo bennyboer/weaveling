@@ -4,9 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "macros"] }
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+projects-contract = { version = "0.1.0", path = "../contract", package = "weaveling-projects-contract" }
 projects-core = { version = "0.1.0", path = "../core", package = "weaveling-projects-core" }
+projects-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-projects-rest" }
 projects-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-projects-store" }

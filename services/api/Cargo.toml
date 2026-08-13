@@ -10,6 +10,10 @@ tower-http = { workspace = true, features = ["trace", "fs"] }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
 projects-core = { version = "0.1.0", path = "../../features/projects/core", package = "weaveling-projects-core" }
 projects-rest = { version = "0.1.0", path = "../../features/projects/adapters/rest", package = "weaveling-projects-rest" }
 projects-store = { version = "0.1.0", path = "../../features/projects/adapters/store", package = "weaveling-projects-store" }
+
+[dev-dependencies]
+tower = { workspace = true }

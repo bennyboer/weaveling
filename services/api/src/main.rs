@@ -1,23 +1,23 @@
-use axum::{Router, routing::get};
+use std::sync::Arc;
+
+use clock::SystemClock;
+use projects_store::InMemoryProjectStore;
 use tokio::net::TcpListener;
-use tower_http::trace::TraceLayer;
+use weaveling_service_api::app;
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let api = Router::new().route("/health", get(health));
+    let app = app(Arc::new(InMemoryProjectStore::new()), Arc::new(SystemClock));
 
-    let app = Router::new()
-        .nest("/api", api)
-        .layer(TraceLayer::new_for_http());
+    let listener = TcpListener::bind("127.0.0.1:3000")
+        .await
+        .expect("should bind the listener");
+    tracing::info!(
+        "listening on http://{}",
+        listener.local_addr().expect("should have a local address")
+    );
 
-    let listener = TcpListener::bind("127.0.0.1:3000").await.unwrap();
-    tracing::info!("listening on http://{}", listener.local_addr().unwrap());
-
-    axum::serve(listener, app).await.unwrap();
-}
-
-async fn health() -> &'static str {
-    "ok"
+    axum::serve(listener, app).await.expect("should serve");
 }
