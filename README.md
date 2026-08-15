@@ -108,26 +108,34 @@ Weaveling is a browser-based client–server app: a Rust modular-monolith backen
   cargo install --locked trunk
   ```
 
-### Running locally
+### Running it for development
 
 Two processes, two terminals.
 
-**The API:**
+**Terminal 1 — the API** on `http://127.0.0.1:3000`:
 
 ```bash
 cargo run -p weaveling-service-api
 ```
 
-Serves on `http://127.0.0.1:3000`, health check at `/api/health`.
+`TraceLayer` emits at DEBUG while `tracing_subscriber` defaults to INFO, so you get no request log unless you ask for one:
 
-**The web client:**
+```bash
+RUST_LOG=info,tower_http=debug cargo run -p weaveling-service-api
+```
+
+**Terminal 2 — the web client** on `http://localhost:8080`:
 
 ```bash
 cd clients/web
 trunk serve
 ```
 
-Serves on `http://localhost:8080`, rebuilding and reloading on save. Trunk proxies `/api` through to the API, so there is no CORS to configure in development.
+Then **open http://localhost:8080** — that's the one you want. Trunk rebuilds and reloads on save, and proxies `/api` through to the API, so everything is same-origin and there is no CORS to configure. Hitting `:3000` directly gives you the API but no UI.
+
+Start the API first if you care about the first paint; otherwise the client shows its error banner until the API answers and a reload picks it up. Rust changes on the server need a manual restart (or `cargo watch -x 'run -p weaveling-service-api'`); client changes are live.
+
+You can create, rename and delete projects. State lives in memory, so restarting the API empties it — see [ROADMAP.md](./ROADMAP.md) for where PostgreSQL comes in.
 
 ### Common commands
 
@@ -136,7 +144,8 @@ Serves on `http://localhost:8080`, rebuilding and reloading on save. Trunk proxi
 | `cargo build` | Builds the server-side crates. The web client is excluded from `default-members` — Trunk builds it, for a different target. |
 | `cargo test` | Runs the workspace test suite. |
 | `cargo fmt --all` | Formats everything. |
-| `cargo clippy --workspace --all-targets` | Lints. |
+| `cargo clippy --workspace --all-targets` | Lints the server side. **Does not cover the client** — `--workspace` doesn't build for `wasm32`. |
+| `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` | Lints the client. Needed as a separate command, per the row above. |
 | `cargo check -p weaveling-client-web --target wasm32-unknown-unknown` | Type-checks the client without invoking Trunk. |
 | `trunk build --release` | Produces the optimised client bundle in `clients/web/dist`. |
 

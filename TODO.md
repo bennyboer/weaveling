@@ -9,7 +9,8 @@ Scratch notes. See [README.md](./README.md) (the dream), [ARCHITECTURE.md](./ARC
 - [x] Milestone 1 — `ProjectId`, `ProjectName`, `Project` in `features/projects/core`.
 - [x] Milestone 2 — `ProjectStore` port, `StoreError`, in-memory adapter, conformance suite.
 - [x] Milestone 3 — `ProjectService`, `contract` DTOs, REST adapter, composition root.
-- [ ] Milestone 4 — the Leptos client: list projects, create / rename / delete.
+- [x] Milestone 4 — the Leptos client: list, create, rename, delete. Verified in a browser.
+- [ ] Milestone 5 — logging config, env config, CI. See ROADMAP for the known gaps.
 
 ## Candidate first steps (superseded by ROADMAP.md, kept for context)
 

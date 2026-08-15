@@ -7,5 +7,14 @@ edition.workspace = true
 console_error_panic_hook = { workspace = true }
 gloo-net = { workspace = true }
 leptos = { workspace = true, features = ["csr"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true, features = [
+    "parsing",
+    "formatting",
+    "macros",
+    "local-offset",
+    "wasm-bindgen",
+] }
 
 projects-contract = { version = "0.1.0", path = "../../features/projects/contract", package = "weaveling-projects-contract" }
