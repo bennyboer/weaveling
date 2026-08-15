@@ -123,16 +123,26 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 **Escape hatch:** if the editor/typography story later proves too painful in Rust/WASM, the frontend switches to Angular against the same API. Phase 1 is small enough that finding this out here is cheap — that's part of the point.
 
-## Milestone 5 — Tidy up
+## Milestone 5 — Tidy up (partly deferred)
 
-Small, worth doing before moving on: structured logging (`tracing`), config via environment, a README section on running it locally, CI that runs `cargo fmt --check`, `cargo clippy` and `cargo test`.
+Originally: structured logging, config via environment, a README section on running it locally, and CI.
 
-Known gaps to close here, found while building M3/M4:
+**Only the bundle measurement was done.** The rest — CI, `ServeDir`, logging and env config — is deployment plumbing, and there is nothing worth deploying yet. Deferred to [TODO.md](./TODO.md) rather than done speculatively. The README section is written.
+
+Known gaps, found while building M3/M4:
 
 - **`TraceLayer` currently logs nothing.** It emits at DEBUG but `tracing_subscriber::fmt::init()` defaults to INFO, so there is no request log at all — which made debugging the client harder than it needed to be. Needs a sensible default filter (e.g. `RUST_LOG` with a fallback of `info,tower_http=debug`).
 - **CI must run `--all-features`**, or feature-gated code (the future Postgres backend) will never be type-checked.
 - **Client lint needs its own step**: `cargo clippy --workspace` does not cover `wasm32`, so the client needs `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` explicitly.
-- **Measure the release bundle.** The debug wasm is ~3.5 MB; `trunk build --release` runs `wasm-opt` and should cut that substantially. Worth a number, since bundle size matters for a browser-first writing tool.
+- **Measure the release bundle.** ✅ Done:
+
+  | | wasm | js |
+  |---|---|---|
+  | debug | 5347 KB | 39 KB |
+  | `trunk build --release` | **401 KB** | 37 KB |
+  | release, gzipped | **151 KB** | 7 KB |
+
+  **~158 KB over the wire**, a 13× reduction from debug. That is competitive with a modest JavaScript SPA, which settles the "is full-stack Rust viable in the browser" worry from ARCHITECTURE's provisional framing. Worth re-measuring once the editor and CRDT land, since `yrs` will not be free.
 - **Serve the client from the API (`ServeDir`).** `services/api` currently mounts only `/api`, so outside `trunk serve` there is nothing serving the app. The single-origin story the client depends on — relative `/api/...` URLs, hence no CORS, no build-time host config, no mixed-content trap — is real in development only because Trunk proxies. Making it true in production means a `tower_http::services::ServeDir` fallback over `clients/web/dist`, with an index fallback so client-side routes still resolve. The `fs` feature is already enabled on `tower-http` in anticipation.
 
 ---
