@@ -1,8 +1,8 @@
+use crdt_spike::projection::{outline, plain_text};
+use crdt_spike::{PROSE, absorb, doc_for, state_vector, whats_missing};
 use leptos::html::Div;
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
-use crdt_spike::projection::{outline, plain_text};
-use crdt_spike::{PROSE, absorb, doc_for, state_vector, whats_missing};
 use yrs::types::xml::XmlOut;
 use yrs::{Doc, Text, Transact, XmlFragment};
 
@@ -61,10 +61,13 @@ pub fn Workbench() -> impl IntoView {
     let queue = StoredValue::new_local(Vec::<(Editor, Vec<u8>)>::new());
 
     let refresh = move || {
-        let (text, blocks) =
-            server.with_value(|doc| (plain_text(doc), outline(doc).join(", ")));
+        let (text, blocks) = server.with_value(|doc| (plain_text(doc), outline(doc).join(", ")));
         let mirrors = [left, right].map(|editor| {
-            editor.with_value(|editor| editor.as_ref().map(|editor| (editor.plain_text(), editor.valid())))
+            editor.with_value(|editor| {
+                editor
+                    .as_ref()
+                    .map(|editor| (editor.plain_text(), editor.valid()))
+            })
         });
 
         agree.set(

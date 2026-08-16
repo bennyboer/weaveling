@@ -61,7 +61,13 @@ fn yrs_can_read_a_prosemirror_document() {
 
     assert_eq!(
         outline(&doc),
-        vec!["heading", "paragraph", "blockquote", "paragraph", "paragraph"],
+        vec![
+            "heading",
+            "paragraph",
+            "blockquote",
+            "paragraph",
+            "paragraph"
+        ],
         "yrs should see the block structure y-prosemirror wrote"
     );
 

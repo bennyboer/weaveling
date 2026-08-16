@@ -14,6 +14,7 @@ default-members = [
     "libraries/*",
     "services/*",
     "spikes/crdt",
+    "spikes/sync",
     "features/*/contract",
     "features/*/core",
     "features/*/adapters/*",
@@ -29,6 +30,7 @@ async-trait = "0.1.91"
 axum = "0.8.9"
 axum-test = "21.0.0"
 console_error_panic_hook = "0.1.7"
+futures-util = "0.3.31"
 gloo-net = { version = "0.7.0", features = ["json"] }
 leptos = "0.9.0-beta"
 serde = { version = "1.0.229", features = ["derive"] }

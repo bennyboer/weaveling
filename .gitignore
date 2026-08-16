@@ -1,2 +1,4 @@
 /target
-/clients/web/dist
+
+node_modules/
+dist/

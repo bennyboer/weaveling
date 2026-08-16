@@ -1,0 +1,19 @@
+[package]
+name = "weaveling-spike-sync"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true, features = ["ws"] }
+futures-util = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "net"] }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+yrs = { workspace = true }
+
+crdt-spike = { version = "0.1.0", path = "../crdt", package = "weaveling-spike-crdt" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "time", "net"] }
+

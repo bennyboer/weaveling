@@ -155,7 +155,7 @@ Cursor position, selection, and who's-online are **ephemeral awareness** state. 
 
 ## Prose — the editing stack
 
-Unlike the rest of this document, these decisions are **backed by a running spike** (`spikes/crdt`, 10 tests) rather than by reasoning alone. Every claim below that says *proven* is a test.
+Unlike the rest of this document, these decisions are **backed by running spikes** (`spikes/crdt`, `spikes/sync`, `spikes/editor`) rather than by reasoning alone. Every claim below that says *proven* is a test or a verified browser session.
 
 **Editor: ProseMirror.** Chosen over Quill for **decorations** — a presentation layer painted *over* the document rather than into it. Spellcheck squiggles, codex mention highlights, thread anchors and later "who wrote this" are all views, not content: they must not end up in the CRDT, in the export, or in another author's replica. Quill's Delta model has no equivalent — highlighting a word means writing a format attribute into the content. ProseMirror also brings a real schema, which is what makes "an author may put a table here" a checkable statement. Licensing: ProseMirror, `y-prosemirror` and Yjs are all MIT, so a proprietary product is fine.
 
@@ -186,7 +186,31 @@ The columns are different documents, so read down, not across: in both cases the
 
 The distinction that matters: `Y.mergeUpdates` is **compaction, and lossless** — it collapses redundant and adjacent items but keeps every `(clientID, clock)` id, so a replica that has been offline for a month still receives a correct diff. **Truncation** — dropping old updates outright — would silently break exactly that replica and is not on the table. Tombstone GC is a separate, also-lossless lever (measured: 5 420 B with GC vs. 9 420 B without), but it is disabled while snapshots/history are in use, so we cannot rely on it.
 
-**Still unproven** (the remaining spike rungs): the sync protocol over WebSocket with awareness, and whether **Leptos can host a ProseMirror editor** through `wasm-bindgen` without the interop becoming the dominant cost. The second one is the live test of the escape hatch under [Frontend](#frontend--full-stack-rust-provisional) — if hosting a JS editor from Rust is miserable, that is the signal to reach for Angular, and it is much cheaper to learn now than after the structure tree exists.
+### The client hosts the editor; Rust never touches the document model
+
+*Proven:* a Leptos component mounts a ProseMirror editor, drives it, and tears it down cleanly. The pattern is an **uncontrolled region** — Leptos renders an empty `<div>` and never looks inside it again; ProseMirror owns that subtree. Mounting happens in an effect once the `NodeRef` resolves, and `on_cleanup` destroys the view, the awareness and the Y.Doc, so a route change leaks nothing.
+
+**The interop boundary is bytes, not structure.** The entire JavaScript surface is a ~20-line `#[wasm_bindgen(module = "…")]` block against a real ES-module import — no globals, no string-keyed dispatch. Rust hands over `&[u8]` and receives `Vec<u8>`; the only richer thing crossing is a plain-text read. This is the load-bearing decision: **Rust never manipulates the ProseMirror model**, so the two sides can evolve independently and the editor could be swapped without touching the server. The `prosemirror` Rust crate stays unnecessary for the same reason.
+
+One wrinkle worth remembering: wasm-bindgen implements `Send`/`Sync` for `JsValue` (absent atomics), so a JS handle can live in a normal `StoredValue`, but a Rust `Closure` cannot — callbacks need `StoredValue::new_local`.
+
+**Cost:** ~**334 KB gzipped** for the whole collaborative editing stack — 239 KB wasm (Leptos + `yrs`), 97 KB JS bundle (ProseMirror + Yjs + `y-prosemirror` + `y-protocols`), 7 KB glue. Against ~158 KB for the projects client, that is roughly **+180 KB** to add collaborative rich text, split about evenly between the wasm and the JS. Acceptable, and lazy-loadable — a reader browsing the project list should never pay it.
+
+### Sync speaks the y-protocols wire format, over WebSocket
+
+*Proven:* real `y-websocket` clients synchronise through a hand-written Rust server. Two clients converge on concurrent edits, a client that joins **after** an edit is caught up, and awareness reaches the other peer.
+
+**We implement the protocol rather than depend on a crate.** It is about 70 lines of codec over the lib0 `Read`/`Write` traits `yrs` already exposes: five message kinds (sync step 1 / step 2 / update, awareness, query-awareness) in a two-varint envelope. Crates exist (`yrs-axum`, `yrs-tokio`), but they are 0.x, they track `yrs` versions on their own schedule, and this is a wire format we cannot afford to be surprised by.
+
+**Wire compatibility is the point.** Speaking the standard format means the client can use `y-websocket` as-is and we inherit reconnect-with-backoff, resync, and awareness timeouts rather than writing them. It also decouples the halves: either side can be replaced independently, which is exactly the optionality the [Frontend](#frontend--full-stack-rust-provisional) escape hatch depends on.
+
+**The server is a participant, not a relay.** Each room holds its own `Doc` and applies every update. That is what lets a peer who was offline for a week be served by the room rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections will attach to. **A room is a node's document** — one `Doc` per room lines up with one CRDT document per node.
+
+**Awareness is relayed, never decoded.** The server treats awareness frames as opaque bytes and forwards them; it holds no presence state at all. Late joiners still get cursors, because on join the server broadcasts *query-awareness* and the connected peers republish themselves — an ordinary y-websocket client answers that automatically. This keeps presence genuinely ephemeral, exactly as [Presence is neither](#presence-is-neither) requires.
+
+The known cost of that choice: **the server cannot retract a departed peer's cursor**, because it does not know which client ids a connection spoke for. Stale cursors linger until the client-side timeout (~30 s). The fix is to decode just the awareness header (client id, clock, state) and broadcast a tombstone on disconnect — small, and deliberately deferred.
+
+Two things to revisit before this is production code: an unreadable frame is currently **logged and skipped**, which means a peer sending an unusable update diverges silently rather than being disconnected; and rooms live in memory for the process lifetime, with no persistence, no eviction, no backpressure and no auth on the socket.
 
 ## Local-First
 
@@ -212,11 +236,11 @@ We start **without** a broker (no RabbitMQ/AMQP yet). Inside a modular monolith,
 
 A broker can be introduced later at a real module boundary — e.g. when there are separately-deployed consumers or cross-service async handoff — **without rearchitecting**, provided the module seams stay clean. Keeping this option open is an explicit goal.
 
-## Frontend — Full-Stack Rust (provisional)
+## Frontend — Full-Stack Rust
 
-We try the **full-stack Rust** path first (e.g. Leptos / Dioxus / Yew compiled to WASM). It's part of the fun and keeps the whole stack in one language.
+We take the **full-stack Rust** path (Leptos, compiled to WASM). It's part of the fun and keeps the whole stack in one language.
 
-**Fallback:** if building a collaborative rich-text editor with strong typography proves too heavy in Rust/WASM, we switch the frontend to something like **Angular** (with a proven editor + Yjs bindings), keeping the Rust backend. This is a known, acceptable escape hatch — not a failure.
+This was provisional until the editor spike settled it. The worry was that a collaborative rich-text editor would be too heavy in Rust/WASM, and the fallback was to switch the frontend to **Angular** with a proven editor plus Yjs bindings, keeping the Rust backend. That escape hatch stays open and costs nothing to keep open — the interop boundary is bytes and the sync protocol is the standard one, so neither half knows what the other is written in. But nothing found so far argues for taking it: hosting ProseMirror from Leptos is a ~20-line boundary, and the bundle cost is ordinary. See [The client hosts the editor](#the-client-hosts-the-editor-rust-never-touches-the-document-model).
 
 ## Export
 
@@ -237,4 +261,4 @@ Font bundling/licensing for embedded fonts is a concern for both.
 
 ## Status
 
-Phase 1 is built — the projects slice runs end to end in a browser (see [ROADMAP.md](./ROADMAP.md)). Everything from the two-speed model onwards is still design, except the prose stack, which is spiked and measured but not yet wired into the app. The solution is still being woven.
+Phase 1 is built — the projects slice runs end to end in a browser (see [ROADMAP.md](./ROADMAP.md)). The structure domain and event sourcing are still design. The prose stack is spiked, measured and proven in all four of its risky places — CRDT semantics, `yrs` ↔ `Yjs` compatibility, the editor in Leptos, and sync over WebSocket — but none of it is wired into the application yet. The solution is still being woven.

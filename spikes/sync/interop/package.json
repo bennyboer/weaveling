@@ -1,0 +1,11 @@
+{
+  "name": "weaveling-spike-sync-interop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ws": "^8.18.3",
+    "y-websocket": "^3.0.0",
+    "yjs": "^13.6.32"
+  }
+}
