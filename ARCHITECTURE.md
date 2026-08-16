@@ -147,9 +147,46 @@ Prose therefore uses a **CRDT**:
 
 CRDT updates *may* still be persisted into the durable log, but they never pass through command-validation or a broker.
 
+The editor, the shared type and the projection are settled in [Prose — the editing stack](#prose--the-editing-stack).
+
 ### Presence is neither
 
 Cursor position, selection, and who's-online are **ephemeral awareness** state. They are **never** event-sourced and **never** persisted — they travel over the WebSocket (Yjs awareness protocol) and are discarded.
+
+## Prose — the editing stack
+
+Unlike the rest of this document, these decisions are **backed by a running spike** (`spikes/crdt`, 10 tests) rather than by reasoning alone. Every claim below that says *proven* is a test.
+
+**Editor: ProseMirror.** Chosen over Quill for **decorations** — a presentation layer painted *over* the document rather than into it. Spellcheck squiggles, codex mention highlights, thread anchors and later "who wrote this" are all views, not content: they must not end up in the CRDT, in the export, or in another author's replica. Quill's Delta model has no equivalent — highlighting a word means writing a format attribute into the content. ProseMirror also brings a real schema, which is what makes "an author may put a table here" a checkable statement. Licensing: ProseMirror, `y-prosemirror` and Yjs are all MIT, so a proprietary product is fine.
+
+**Shared type: `Y.XmlFragment`, not `Y.Text`.** A node holds whatever the author put in it. `Y.Text` models one flat run of characters with marks and cannot express block structure at all. `y-prosemirror` maps a ProseMirror document onto an `XmlFragment` of `XmlElement`s and `XmlText`s — that is the thing we store, sync and persist.
+
+**Node granularity belongs to the author.** A structure-tree node is *not* defined to be a paragraph. One node per chapter is legal; one per paragraph is the likelier default; nothing in the system may assume either. The consequence is that **merge granularity follows node granularity**: two authors inside one node share a CRDT and contend, two authors in sibling nodes never touch. Coarser nodes mean more contention — an author's trade-off, not a constraint we impose.
+
+**One CRDT document per node.** Not one per book. A book-sized document means every reader loads the entire history and every keystroke touches one hot object. Per node keeps updates small, allows lazy loading during an in-order walk, and makes compaction a per-node job that can run incrementally.
+
+**Images are references, not bytes.** An `image` node carries a `src` into blob storage. Bytes embedded in a CRDT are bytes in *every* replica forever — including the tombstoned ones nobody can see. This is the same decision as blobs under [Supporting Concerns](#supporting-concerns-noted-for-later), arrived at from the opposite direction.
+
+**Plain text is a projection, never a second source of truth.** The server derives it by walking the fragment; it is what search indexing (Tantivy), mention detection and the export walk consume. *Proven:* `yrs` reads a fragment written by `y-prosemirror` and extracts prose byte-identical to ProseMirror's own `textBetween`. The rule that makes them agree is narrower than it looks — collect **textblocks** (`paragraph`, `heading`, `code_block`) and join with `\n`; containers (`blockquote`, `bullet_list`, `list_item`) contribute no separator of their own, and an *empty* textblock still contributes one. A paragraph holding only an image is empty prose but a real blank line. Getting this rule wrong is exactly how a projection drifts silently from the editor's own notion of the document, which is why the test asserts against ProseMirror's output rather than a hand-written string.
+
+**Wire compatibility is proven, not assumed.** `yrs` 0.27.3 ↔ Yjs 13.6.32 exchange updates and state vectors in both directions and converge — including the case that actually matters, two clients inserting into the *same gap*, where only matching tie-break rules agree. A `yrs`-authored edit also re-parses into a schema-valid ProseMirror document (`node.check()` passes), so the server can touch prose without corrupting it.
+
+**The `prosemirror` Rust crate is not needed.** [It exists](https://docs.rs/prosemirror/latest/prosemirror/), but `yrs` walks the `XmlFragment` directly. Adopting it would add a third representation — fragment → its JSON → its node tree — to keep in step, in exchange for schema validation and transforms the server does not currently perform. Schema validity is the client's job today. Keep it in the back pocket for the day the server has to *author* structural prose changes (an importer, a bulk find-and-replace) rather than read them.
+
+**Compaction is mandatory, not an optimisation.** 500 rewrites of a single paragraph:
+
+| | `Y.Text` | `Y.XmlFragment` |
+|---|---|---|
+| final text | 490 B | 121 B |
+| append-only log | 110 582 B | 27 638 B |
+| compacted log | 8 566 B | 9 444 B |
+| snapshot | 5 420 B | 10 308 B |
+
+The columns are different documents, so read down, not across: in both cases the naive append-only log is **11–13× larger** than the compacted form, and per edit the `XmlFragment` costs roughly twice what `Y.Text` does — structure is not free. An afternoon of real editing on one paragraph is enough to make storing raw updates untenable.
+
+The distinction that matters: `Y.mergeUpdates` is **compaction, and lossless** — it collapses redundant and adjacent items but keeps every `(clientID, clock)` id, so a replica that has been offline for a month still receives a correct diff. **Truncation** — dropping old updates outright — would silently break exactly that replica and is not on the table. Tombstone GC is a separate, also-lossless lever (measured: 5 420 B with GC vs. 9 420 B without), but it is disabled while snapshots/history are in use, so we cannot rely on it.
+
+**Still unproven** (the remaining spike rungs): the sync protocol over WebSocket with awareness, and whether **Leptos can host a ProseMirror editor** through `wasm-bindgen` without the interop becoming the dominant cost. The second one is the live test of the escape hatch under [Frontend](#frontend--full-stack-rust-provisional) — if hosting a JS editor from Rust is miserable, that is the signal to reach for Angular, and it is much cheaper to learn now than after the structure tree exists.
 
 ## Local-First
 
@@ -200,4 +237,4 @@ Font bundling/licensing for embedded fonts is a concern for both.
 
 ## Status
 
-Design captured; nothing implemented. The solution is still being woven.
+Phase 1 is built — the projects slice runs end to end in a browser (see [ROADMAP.md](./ROADMAP.md)). Everything from the two-speed model onwards is still design, except the prose stack, which is spiked and measured but not yet wired into the app. The solution is still being woven.

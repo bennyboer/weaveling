@@ -152,7 +152,7 @@ Known gaps, found while building M3/M4:
 Not planned in detail — we'll sequence these once Phase 1 lands and we know how the code actually feels.
 
 - **Nodes and the structure tree** — the real domain. Where event sourcing starts to earn its place.
-- **Prose + the yrs ↔ Yjs round-trip** — the highest-risk assumption in the whole design. De-risk early once there's something to hang it on.
+- **Prose + the yrs ↔ Yjs round-trip** — the highest-risk assumption in the whole design. Being de-risked now in `spikes/crdt`, one small rung at a time: CRDT semantics ✅, `yrs` ↔ `Yjs` wire compatibility including insertion ties ✅, reading and re-writing a `y-prosemirror` document from Rust ✅. Remaining: the WebSocket sync protocol, and Leptos hosting a ProseMirror editor. Findings are recorded in [ARCHITECTURE.md](./ARCHITECTURE.md#prose--the-editing-stack).
 - **Postgres** — write the second `ProjectStore` impl and prove the abstraction was worth it.
 - Then, in some order: codex, timeline, threads, export, accounts.
 
