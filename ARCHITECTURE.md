@@ -212,6 +212,54 @@ The known cost of that choice: **the server cannot retract a departed peer's cur
 
 Two things to revisit before this is production code: an unreadable frame is currently **logged and skipped**, which means a peer sending an unusable update diverges silently rather than being disconnected; and rooms live in memory for the process lifetime, with no persistence, no eviction, no backpressure and no auth on the socket.
 
+### The `passages` feature
+
+The spikes proved the technology. This is where it lands in the codebase.
+
+**The feature is `passages`; the aggregate is `Passage`.** It mirrors `projects` / `Project` exactly, so `PassageId`, `PassageStore` and `PassageService` all follow without anyone having to think. `text` was ruled out on collision grounds — `yrs::Text`, `Y.Text` and ProseMirror's text nodes all already exist here, and a `Text` aggregate beside them is a permanent "which one?". `prose` was the runner-up and survives as *vocabulary* (and as the CRDT root key), but it is a mass noun: it does not pluralise like every other feature, and `Prose` makes an awkward type. The word an author would recognise and the word that fits the codebase turned out not to be the same word, and the aggregate name is for us.
+
+**A passage is its own aggregate because it has its own consistency model.** Structure is event-sourced with optimistic concurrency on a version column; a passage is a CRDT that merges without coordination. One cannot be nested inside the other without one of them being wrong. The feature split is not tidiness — it is the two-speed model made structural.
+
+**A passage has its own id; the node links to it.** `PassageId` is a UUID v7 like every other identifier here — generated when the passage is created, derivable from nothing. Which passages a node shows is carried by the node's **event stream**, as `PassageAttached { passage_id }`.
+
+*Considered and rejected: making a passage's id equal its node's id.* It is genuinely tempting — the passage becomes derivable, so bringing one into existence needs no coordinating write at all. Two things sank it:
+
+- **It bakes "one passage per node" into the key.** A node plausibly wants a body, a synopsis and author's notes (the Scrivener arrangement), or two drafts of the same scene. Any of those needs a discriminator, and we would have to guess its shape *now* — is the second axis a **role** or a **variant**? Guess wrong and the key gets reshaped twice. With an opaque id the semantics live in the link instead, and a link is far cheaper to extend than a key.
+- **The risk it avoided was smaller than it looked.** The worry was a two-phase create across two aggregates with no shared transaction. But **ordering** fixes that, not identity: write the passage first, emit the attachment second. A failure between them leaves an **orphan** — unreferenced bytes a sweep collects — not a **dangle**, which is a reference to something that does not exist. Orphans are benign; this is ordinary referential discipline rather than a new class of bug.
+
+What independent ids buy is worth more than the one write they cost: prose can **move between nodes carrying its CRDT history**, which is what makes the open split-node question answerable at all; a passage could exist without a node if free-floating research notes ever want one; and `PassageId` is a plain v7 newtype exactly like `ProjectId`, with no special rule to remember.
+
+**The link lives on the node, not on the passage.** "Which writing this node shows" is a fact about the book's *shape*, so it belongs in the structural history where undo and the audit log can see it. It also keeps the arrows clean: `structure` holds an opaque id string and never names a passage type, while `passages` never learns what a node is. Storing an `owner: NodeId` on the passage instead would drag structure's vocabulary into the passages core and leave attachment out of the audit log.
+
+This is also what makes multiple passages per node cheap when we want them: the discriminator arrives as an **event field** — `PassageAttached { passage_id, role }` — which is the cheapest place in the whole design to add one, given that event versioning and upcasting were planned from day one. No key reshape, no id migration.
+
+- **A node that holds no writing has no passage.** Nothing is allocated until a key is pressed, so grouping nodes ("Part One") cost nothing.
+- **The client never computes a passage id — it asks.** The derivation, the ordering, the link: all of it stays server-side. This is what keeps the scheme changeable without touching a single client.
+
+Cross-aggregate cleanup runs the other way: deleting a node must eventually dispose its passages, across two aggregates with no shared transaction. That is the **first real job for the transactional outbox** — eventually consistent by construction rather than by concession — and it is the same sweep that collects orphans.
+
+**Crate layout**, following the [feature anatomy](#feature-anatomy--the-onion):
+
+```
+features/passages/
+├── contract/          nearly empty — the wire format is y-protocols, not serde
+├── core/              Passage, the plain-text projection, the PassageStore port
+├── adapters/
+│   ├── store/         in-memory now, PostgreSQL later
+│   └── sync/          the y-protocols codec, socket plumbing, the room registry
+└── tests/
+```
+
+Three placements that are not obvious:
+
+**`yrs` belongs in `core`.** This reads like a violation of *core has no frameworks*, and it isn't: the CRDT **is** the domain model of a passage, not an implementation of it. Swap `yrs` for Automerge and the merge semantics change — that is substance, not a swappable detail. The dividing line that matters: `axum` is transport, `sqlx` is persistence, `yrs` is the thing itself.
+
+**The wire protocol stays in `adapters/sync`.** Core exposes intent — *catch up from this state vector*, *apply this update* — and the adapter does the message framing. Same rule as `rest` mapping DTOs with free functions, and for the same reason: a wire format has no business in the domain.
+
+**Core owns a room's semantics; the adapter owns the registry.** The sync spike found this seam without being asked. `room.rs` is a pure function from a message to a reaction, with no tokio, no axum and no sockets — that is core material. `server.rs` is connection bookkeeping, broadcast channels and lifecycle — that is adapter material. Keeping them apart means a second transport could reuse the semantics unchanged.
+
+**Awareness never reaches `core` at all.** It is relayed as opaque bytes and it lives and dies inside `adapters/sync`. Presence is ephemeral by decision; this is that decision expressed as a dependency arrow.
+
 ## Local-First
 
 Because prose is a CRDT, the client keeps a **full replica in the browser (IndexedDB)**. This gives us, almost for free:

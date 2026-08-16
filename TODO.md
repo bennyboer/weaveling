@@ -47,7 +47,8 @@ Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then 
 
 ## Open design threads (not yet resolved)
 
-- [ ] When a node with text is split: exact UX/data for moving ranges into children vs. leaving on parent.
+- [ ] When a node with text is split: exact UX/data for moving ranges into children vs. leaving on parent. Two moves are now available, since [passages carry their own ids](./ARCHITECTURE.md#the-passages-feature): **re-link** the whole passage to the new node (history preserved, trivial) or **move a range** of text between two passages (history preserved only if we can transplant the CRDT items, which Yjs does not offer directly — a range move is likely a delete-plus-insert and loses provenance). Decide what an author actually expects to survive a split.
+- [ ] **Multiple passages per node** — not needed yet, but the shape is known: a `role` or `variant` field on `PassageAttached`, added by event upcasting. Worth designing only once there is a second thing to put on a node (synopsis, author's notes, alternative drafts).
 - [ ] "Present in a scene" vs. "merely mentioned" — do we model both relation types?
 - [ ] Time model details: representing parallel nodes + nested time buckets (year ⊃ month ⊃ day).
 - [x] ~~Frontend framework choice within full-stack Rust~~ — Leptos, and the editor spike confirmed it can host ProseMirror without the interop dominating.

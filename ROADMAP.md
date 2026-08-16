@@ -2,7 +2,7 @@
 
 The sequenced plan. For the *what/why* see [README.md](./README.md), for the *how* see [ARCHITECTURE.md](./ARCHITECTURE.md), for loose notes see [TODO.md](./TODO.md).
 
-This roadmap covers **Phase 1** in detail and only sketches what comes after. Phase 1 is deliberately small: a working client–server loop where you can create, rename, list and delete **projects** — nothing else. No nodes, no prose, no event sourcing, no database.
+**Phase 1** (a projects-only CRUD prototype) and **Phase 2** (spiking the prose stack) are done. **Phase 3** — turning the spikes into the product — is planned below in detail; everything after it is a sketch.
 
 ## How we work
 
@@ -13,7 +13,11 @@ The point of Phase 1 is as much *getting fluent in Rust again* as it is shipping
 - **I review.** After each step I read what you wrote and give feedback: correctness first, then idiom — the "a Rust dev would write this differently, and here's why" pass.
 - **When you're stuck**, ask and I'll explain rather than just patch it.
 
-## Guiding constraints for Phase 1
+## Phase 1 — A projects-only prototype
+
+Deliberately small: a working client–server loop where you can create, rename, list and delete **projects** — nothing else. No nodes, no prose, no event sourcing, no database.
+
+### Guiding constraints for Phase 1
 
 - **In-memory store only.** A `HashMap` behind a lock. Restarting the server loses everything — that's fine for now.
 - **Persistence is abstract from day one.** All storage goes through a trait. Swapping in Postgres later must mean writing one new impl and changing one line of wiring — nothing else.
@@ -22,7 +26,7 @@ The point of Phase 1 is as much *getting fluent in Rust again* as it is shipping
 
 ---
 
-## Milestone 0 — Scaffold ✅
+### Milestone 0 — Scaffold ✅
 
 **Goal:** `cargo run` starts a server that answers on a health endpoint.
 
@@ -40,7 +44,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 *Done. Six crates, `cargo build` green, `/api/health` returns 200, `trunk serve` builds and serves the WASM client, and the dev proxy reaches the API same-origin. See the README for how to run it.*
 
-## Milestone 1 — The domain: `Project` ✅
+### Milestone 1 — The domain: `Project` ✅
 
 **Goal:** a `Project` type you're happy with, plus tests.
 
@@ -55,7 +59,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 *Done. `ProjectId`, `ProjectName` and `Project` in `features/projects/core`, 20 tests. Validity holds by construction because `Project` stores a `ProjectName`, never a `String`. Wall-clock time is **injected** (`Project::new(name, now)`) rather than read inside the domain — the application service owns the clock, and tests stay deterministic. Ids are sortable UUID v7 built from that same `now`; see [ARCHITECTURE.md](./ARCHITECTURE.md#identifiers).*
 
-## Milestone 2 — The store trait + in-memory impl ✅
+### Milestone 2 — The store trait + in-memory impl ✅
 
 **Goal:** the abstraction that makes Postgres a later, cheap decision. The heart of Phase 1.
 
@@ -75,7 +79,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 *Done. `ProjectStore` + `StoreError` in `core`; `adapters/store` holds `memory.rs` (the backend) and `suite.rs` (9 `#[cfg(test)]` conformance cases over `&impl ProjectStore`). Postgres will be a second **module in the same crate** behind an optional feature, not a sibling crate — so it reuses the suite directly and `core` needs no test scaffolding. `list` promises id order, which is creation order thanks to v7. Two known gaps, both fine for a single-user MVP: read-modify-write has no optimistic concurrency, so concurrent renames can lose an update (a version column is the fix); and the store is **single-tenant** — `list` returns every project and `get` will serve any id to anyone, which stops being acceptable the moment accounts exist. See [ARCHITECTURE.md](./ARCHITECTURE.md#supporting-concerns-noted-for-later).*
 
-## Milestone 3 — HTTP API ✅
+### Milestone 3 — HTTP API ✅
 
 **Goal:** projects are fully manageable over REST.
 
@@ -92,7 +96,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 *Done. Five routes under `/api/projects`, 60 tests. `services/api` is now **lib + thin bin** so `fn app(store, clock)` is testable — the bin only picks the backend and serves. `rest` wraps `ProjectError` in a local `ApiError` newtype because the orphan rule forbids `impl IntoResponse for ProjectError`; that newtype owns the status mapping (400 / 404 / 409) and deliberately **does not** leak `StoreError::Backend` detail to clients — it logs the cause and answers a generic 500. Verified over real HTTP with curl: create trims the name, blank name → 400, malformed id → 400, unknown id → 404, delete → 204 then 404.*
 
-## Milestone 4 — Frontend ✅
+### Milestone 4 — Frontend ✅
 
 **Goal:** a browser UI listing projects, with create / rename / delete.
 
@@ -123,7 +127,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 **Escape hatch:** if the editor/typography story later proves too painful in Rust/WASM, the frontend switches to Angular against the same API. Phase 1 is small enough that finding this out here is cheap — that's part of the point.
 
-## Milestone 5 — Tidy up (partly deferred)
+### Milestone 5 — Tidy up (partly deferred)
 
 Originally: structured logging, config via environment, a README section on running it locally, and CI.
 
@@ -145,17 +149,85 @@ Known gaps, found while building M3/M4:
   **~158 KB over the wire**, a 13× reduction from debug. That is competitive with a modest JavaScript SPA, which settles the "is full-stack Rust viable in the browser" worry from ARCHITECTURE's provisional framing. Worth re-measuring once the editor and CRDT land, since `yrs` will not be free.
 - **Serve the client from the API (`ServeDir`).** `services/api` currently mounts only `/api`, so outside `trunk serve` there is nothing serving the app. The single-origin story the client depends on — relative `/api/...` URLs, hence no CORS, no build-time host config, no mixed-content trap — is real in development only because Trunk proxies. Making it true in production means a `tower_http::services::ServeDir` fallback over `clients/web/dist`, with an index fallback so client-side routes still resolve. The `fs` feature is already enabled on `tower-http` in anticipation.
 
----
-
-## After Phase 1 (sketch only)
-
-Not planned in detail — we'll sequence these once Phase 1 lands and we know how the code actually feels.
-
-- **Nodes and the structure tree** — the real domain. Where event sourcing starts to earn its place.
-- **Prose + the yrs ↔ Yjs round-trip** — was the highest-risk assumption in the whole design. **De-risked**, one small rung at a time: CRDT semantics ✅, `yrs` ↔ `Yjs` wire compatibility including insertion ties ✅, reading and re-writing a `y-prosemirror` document from Rust ✅, Leptos hosting ProseMirror with two replicas converging across a simulated partition ✅, and real `y-websocket` clients syncing through our own Rust server ✅. Three spikes — `spikes/crdt`, `spikes/editor`, `spikes/sync` — and the findings are recorded in [ARCHITECTURE.md](./ARCHITECTURE.md#prose--the-editing-stack). What remains is implementation, not discovery: persistence, compaction, auth on the socket, and joining it to the structure tree.
-- **Postgres** — write the second `ProjectStore` impl and prove the abstraction was worth it.
-- Then, in some order: codex, timeline, threads, export, accounts.
-
-## Explicitly not in Phase 1
+### Explicitly not in Phase 1
 
 Postgres · event sourcing · CRDTs · WebSockets · auth · the codex · the timeline · threads · export · offline support.
+
+---
+
+## Phase 2 — De-risk the prose stack ✅
+
+Not application code: five rungs of spike, each one answering a question that could have forced a rewrite. All green.
+
+| Rung | Question | Answer |
+|---|---|---|
+| 1 | Do CRDTs behave the way we think? | Yes — YATA semantics, tombstones, state vectors |
+| 2 | Is `yrs` really wire-compatible with `Yjs`? | Yes, including same-gap insertion ties |
+| 2.5 | Can the server read prose out of a rich document? | Yes — byte-identical to ProseMirror's `textBetween` |
+| 4 | Can Leptos host ProseMirror without misery? | Yes — a ~20-line interop boundary |
+| 3 | Can Rust be the sync server? | Yes — real `y-websocket` clients sync through it |
+
+Three spikes — `spikes/crdt`, `spikes/editor`, `spikes/sync` — kept out of the workspace's default build. Every decision they settled is written up in [ARCHITECTURE.md](./ARCHITECTURE.md#prose--the-editing-stack); every gap they exposed is in [TODO.md](./TODO.md). What remains is implementation, not discovery.
+
+**Read the spikes as proof, not as a starting point.** They are proof-of-concept code: no ports, no error modelling, no persistence. Phase 3 rewrites them into the architecture rather than moving them.
+
+---
+
+## Phase 3 — Making it real
+
+Turning the spikes into the product. The order below is deliberate and the first milestone is the non-obvious one.
+
+### Milestone 6 — The walking skeleton
+
+**Goal:** one project, **one hardcoded node**, real collaborative prose, end to end.
+
+The instinct is to build the structure tree first and attach prose later. Don't. Integration risk is highest right now while the spike knowledge is hot, and a hardcoded node is by far the cheapest place to discover that (say) the room registry belongs somewhere we didn't expect. This milestone exists to force the architecture questions into the open against the smallest possible domain.
+
+**Build:**
+- `features/passages/` in full — `contract`, `core`, `adapters/{store,sync}`, `tests` — following the anatomy settled in [ARCHITECTURE.md](./ARCHITECTURE.md#the-passages-feature).
+- `Passage` wrapping a `yrs::Doc`, the plain-text projection lifted out of `spikes/crdt`, and the `PassageStore` port.
+- An in-memory `PassageStore` plus a **conformance suite**, exactly as `ProjectStore` got one — the suite is what makes Postgres cheap later.
+- `adapters/sync`: the y-protocols codec and room registry rewritten from `spikes/sync`, mounted at `/sync/{passage}`.
+- The client editor from `spikes/editor`, pointed at the real server through `y-websocket` instead of the hand-rolled relay. **The client must never compute a passage id** — it asks what to open and gets an opaque one back, which is what keeps the id scheme a server-side detail.
+
+**Decision to make here:** does `PassageStore` persist **snapshots** or an **update log**? Snapshots are simpler and compaction becomes moot; a log preserves finer history and suits an append-only table, but then compaction has to actually run. Measured evidence is in ARCHITECTURE — the log is 11–13× the compacted form after 500 rewrites of one paragraph. Decide before writing the port, not after.
+
+**Rust you'll meet:** axum WebSocket handlers, `tokio` `broadcast`/`mpsc` and task lifetimes, `wasm-bindgen` ES-module imports, Trunk build hooks (and its watch-ignore trap).
+
+**Done when:** two browser tabs edit the same passage, converge, survive a reload, and `GET /api/passages/{id}/text` returns what both tabs show.
+
+**Explicitly not in M6:** nodes, trees, event sourcing, Postgres, auth, awareness tombstones.
+
+### Milestone 7 — The structure tree, part one: a flat list
+
+**Design before code.** The event catalogue is still an open thread and deserves settling on its own: what exactly is an event, what is a projection, how do we version and upcast. Do that conversation first.
+
+**Goal:** nodes exist, in an order, and their history is real.
+
+**Build:** an event-sourced `Node` aggregate under a project — create, rename, reorder, delete — with an events table, per-aggregate streams, optimistic concurrency on a version column, and a read-model projection. Flat list only: no nesting, no moves, no splits.
+
+**Done when:** the client lists and reorders nodes, undo works off the event stream, and rebuilding the projection from scratch reproduces the same state.
+
+### Milestone 8 — The structure tree, part two: an actual tree
+
+**Goal:** nesting, moves, and the hardcoded node from M6 finally becomes a real one.
+
+**Build:** parent/child, move, and the split-node mechanics that are still an open design thread. Passages get attached by a `PassageAttached { passage_id }` event on the node — write the passage first, emit the attachment second, so a failure between them leaves a collectable orphan rather than a dangling reference. Deleting a node must eventually dispose its passages: the first real use of the transactional outbox, and the same sweep that collects orphans.
+
+**Done when:** a book-shaped tree of chapters and scenes, each openable in the editor, with structural changes in the audit log.
+
+### Milestone 9 — PostgreSQL
+
+**Goal:** prove the abstraction was worth the trouble.
+
+**Build:** a second backend for every port that has one — `ProjectStore`, `PassageStore`, the event store — as modules behind an optional cargo feature, not sibling crates. The existing conformance suites are the judge, and CI must run `--all-features` or none of it is type-checked.
+
+**Done when:** the suites pass unchanged against Postgres, and swapping backends is one line in one manifest.
+
+---
+
+## After Phase 3 (sketch only)
+
+- **Accounts, tenancy and auth** — looming. It changes port shapes (`list(owner)`, not `list()`) and puts auth on the sync socket. Not a filter to bolt on.
+- **Export** — Typst → PDF and HTML → EPUB. Still an **unspiked risk**: embedding Typst means implementing its `World` trait for font and file resolution, plus font licensing. Worth its own rung before it becomes a milestone.
+- Then, in some order: the codex, the timeline, threads, search projections over Tantivy.
