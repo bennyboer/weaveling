@@ -1,0 +1,11 @@
+[package]
+name = "weaveling-passages-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+yrs = { workspace = true }

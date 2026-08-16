@@ -270,11 +270,66 @@ Because prose is a CRDT, the client keeps a **full replica in the browser (Index
 
 The client is designed to be **local-first-capable**, not a thin dumb terminal.
 
+## Transactions and Atomicity
+
+> **Atomicity is a property of a single port method.** If two things must happen atomically, make them **one method** — never introduce a transaction object into a port.
+
+Coarser ports are the price, and it is cheap. Two decisions already made are what let us get away with it.
+
+**The aggregate is the transaction boundary.** The orthodox DDD answer, and the right one. An event store port is one method:
+
+```rust
+async fn append(&self, stream: StreamId, expected: Version, events: &[Event]) -> Result<(), StoreError>;
+```
+
+The version check and the append are atomic *inside* it — PostgreSQL uses a real transaction, the in-memory backend holds its write lock, and a version mismatch is a `Conflict`. The caller never learns which mechanism was used, because it is none of the caller's business.
+
+**The outbox is an adapter detail.** This is where the reach for transactions usually happens, so it is worth being blunt: the port says *append these events*. The PostgreSQL adapter appends them **and** writes the outbox rows in one transaction. An in-memory adapter appends them and pushes onto a queue. Both are atomic in their own world; neither leaks its mechanism upward. Nothing above the port knows an outbox exists.
+
+Everything in this design fits the rule already. Cross-aggregate work — deleting a node disposing its passages — was *chosen* to be eventually consistent through the outbox, and cross-feature work is banned outright.
+
+### No `Tx` in a port signature
+
+The tempting alternative, `async fn create(&self, tx: &mut Tx, project: Project)`, costs three things:
+
+- It puts **persistence vocabulary into a port that `core` declares** — precisely the leak the onion exists to prevent.
+- Rust has **no ambient transaction context**. There is no `@Transactional` and no thread-local that survives `.await` cleanly, so `Tx` has to be threaded through every signature by hand, forever.
+- The in-memory backend would have to **fake** a concept it does not have. A no-op `Tx` is worse than none: it makes tests pass that would fail against a real database.
+
+The closure form (`uow.run(|ports| async { … })`) is conceptually nicer and fights async Rust hard — higher-ranked lifetimes, borrows across `.await`, dyn-compatibility. Not worth it for a problem the aggregate boundary already solves.
+
+### How an in-memory backend is atomic
+
+Take the lock **once**, validate, then mutate, all under the same guard:
+
+```rust
+let mut projects = self.write();
+if projects.contains_key(&project.id()) {
+    return Err(StoreError::Conflict(project.id()));
+}
+projects.insert(project.id(), project);
+```
+
+No caller can observe a half-state, and an in-memory operation has no I/O to fail partway through. One discipline makes it hold: **never hold a `std::sync::RwLock` guard across an `.await`** — it blocks the executor and the guard is not `Send`.
+
+**What in-memory can prove:** observable atomicity — a failed `create` leaves the store unchanged, a version conflict appends nothing. Those belong in the **conformance suite**, so every backend must honour them.
+
+**What it cannot prove:** that a real backend actually wrapped its statements in a transaction. In-memory tests pass happily while PostgreSQL runs two unwrapped statements. There is no clever fix; the mitigation is that such tests live with the backend, which is already [how the test scopes are split](#repository-structure).
+
+### A worked example: `PassageStore::absorb`
+
+`absorb(id, update)` takes a delta and lets the backend choose its representation — and the two choices have genuinely different concurrency needs, entirely inside the method:
+
+- **Snapshot backend:** read bytes, merge the update, write bytes. Two concurrent absorbs both read `S`; one writes `S+A`, the other `S+B`, and **one is lost**. CRDTs do not save you — the loss happens below the merge. This backend needs `SELECT … FOR UPDATE` or a version column.
+- **Append-only log backend:** one insert. Appends commute, so concurrent absorbs need no locking at all.
+
+Today this is masked because the room owns the document, so there is a single writer per passage per process. That assumption dies the moment a second server instance exists. Either way it stays *inside* `absorb`, which is the rule working exactly as intended.
+
 ## Event Sourcing — Discipline
 
 - **Be selective.** Event-source only where history has value (the structural domain, undo/redo). Plain state for settings, presence, search indexes, and blobs. "ES where history has value" — not everything.
 - **Event store:** rolled on **PostgreSQL** — an events table with per-aggregate streams and optimistic concurrency via a version column.
-- **Projections / async work:** a **transactional outbox** + poller for reliable projection updates; PostgreSQL `LISTEN/NOTIFY` (or logical replication) to nudge the WebSocket gateway. No message broker for now (see below).
+- **Projections / async work:** a **transactional outbox** + poller for reliable projection updates; PostgreSQL `LISTEN/NOTIFY` (or logical replication) to nudge the WebSocket gateway. No message broker for now (see below). The outbox lives *inside* the event store adapter and is invisible above the port — see [Transactions and Atomicity](#transactions-and-atomicity).
 - **Versioning / upcasting** is planned from day one — a book project lives for years and events will evolve.
 - **Snapshots** for aggregates to keep rebuilds fast at scale (a paragraph-per-node book is thousands of nodes).
 

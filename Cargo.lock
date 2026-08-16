@@ -2819,6 +2819,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-passages-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "time",
+ "uuid",
+ "yrs",
+]
+
+[[package]]
 name = "weaveling-projects-contract"
 version = "0.1.0"
 dependencies = [

@@ -190,7 +190,7 @@ The instinct is to build the structure tree first and attach prose later. Don't.
 - `adapters/sync`: the y-protocols codec and room registry rewritten from `spikes/sync`, mounted at `/sync/{passage}`.
 - The client editor from `spikes/editor`, pointed at the real server through `y-websocket` instead of the hand-rolled relay. **The client must never compute a passage id** — it asks what to open and gets an opaque one back, which is what keeps the id scheme a server-side detail.
 
-**Decision to make here:** does `PassageStore` persist **snapshots** or an **update log**? Snapshots are simpler and compaction becomes moot; a log preserves finer history and suits an append-only table, but then compaction has to actually run. Measured evidence is in ARCHITECTURE — the log is 11–13× the compacted form after 500 rewrites of one paragraph. Decide before writing the port, not after.
+**Decision made:** the port does **not** choose between snapshots and an update log. `absorb(id, update)` takes a delta, and a full snapshot is just a delta from nothing, so a backend can merge-on-write or append-and-compact without the port caring. The conformance suite tests semantics — what you absorbed, you can load — not storage shape. The real choice moves to M9, with the tiebreakers already gathered: the log is 11–13× the compacted form after 500 rewrites, but a snapshot backend needs row locking for concurrent `absorb` while an append-only one does not. See [Transactions and Atomicity](./ARCHITECTURE.md#transactions-and-atomicity).
 
 **Rust you'll meet:** axum WebSocket handlers, `tokio` `broadcast`/`mpsc` and task lifetimes, `wasm-bindgen` ES-module imports, Trunk build hooks (and its watch-ignore trap).
 
@@ -221,6 +221,8 @@ The instinct is to build the structure tree first and attach prose later. Don't.
 **Goal:** prove the abstraction was worth the trouble.
 
 **Build:** a second backend for every port that has one — `ProjectStore`, `PassageStore`, the event store — as modules behind an optional cargo feature, not sibling crates. The existing conformance suites are the judge, and CI must run `--all-features` or none of it is type-checked.
+
+**This is where storage representation finally gets decided,** and where the transaction tests that in-memory cannot express have to be written: rollback, connection failure mapping to `StoreError::Backend`, and the concurrency guard `absorb` needs if `PassageStore` goes the snapshot route. The event store's `append` must be atomic across the version check, the append **and** the outbox insert — one transaction, invisible above the port.
 
 **Done when:** the suites pass unchanged against Postgres, and swapping backends is one line in one manifest.
 

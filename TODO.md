@@ -26,6 +26,10 @@ Real gaps found while spiking, to settle when prose becomes production code rath
 - [ ] **Auth on the socket.** `/sync/{room}` currently accepts anyone who names a room. Same shape as the tenancy gap in the REST layer — ids are not capabilities.
 - [ ] **Generated assets must be excluded from the Trunk watch list.** The JS bundle is written into the crate by a `pre_build` hook, which retriggers the watcher; without `[watch] ignore` it rebuilds forever (190 rebuilds before it was spotted). This will recur the moment the real client gains a bundling step.
 
+## Carried inside Phase 3
+
+- [ ] **Move the `"prose"` fragment name into `contract`.** `features/passages/core/src/projection.rs` hardcodes the `XmlFragment` root key, and the client hardcodes the same string in `doc.getXmlFragment("prose")`. Nothing enforces the match — a typo on either side yields an empty projection and no error. Staying as-is until `contract` exists in M6 step 3, then both sides import one constant.
+
 ## Deferred until we actually want to deploy
 
 Decided, not forgotten. None of this protects or enables anything today — there is nothing worth shipping yet, so this is work in service of a deployment that does not exist. Pick it up when that changes.
