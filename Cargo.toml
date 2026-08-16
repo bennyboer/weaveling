@@ -4,6 +4,7 @@ members = [
     "clients/*",
     "libraries/*",
     "services/*",
+    "spikes/*",
     "features/*/contract",
     "features/*/core",
     "features/*/adapters/*",
@@ -12,6 +13,7 @@ members = [
 default-members = [
     "libraries/*",
     "services/*",
+    "spikes/*",
     "features/*/contract",
     "features/*/core",
     "features/*/adapters/*",

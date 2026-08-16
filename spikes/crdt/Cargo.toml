@@ -1,0 +1,7 @@
+[package]
+name = "weaveling-spike-crdt"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+yrs = "0.27.3"
