@@ -1,0 +1,15 @@
+[build]
+target = "index.html"
+dist = "dist"
+
+[watch]
+ignore = ["js/editor.bundle.js", "node_modules"]
+
+[serve]
+port = 8081
+open = false
+
+[[hooks]]
+stage = "pre_build"
+command = "node"
+command_arguments = ["js/build.mjs"]

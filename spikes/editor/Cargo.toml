@@ -1,0 +1,13 @@
+[package]
+name = "weaveling-spike-editor"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+console_error_panic_hook = { workspace = true }
+leptos = { workspace = true, features = ["csr"] }
+wasm-bindgen = { workspace = true }
+web-sys = { workspace = true, features = ["HtmlElement"] }
+yrs = { workspace = true }
+
+crdt-spike = { version = "0.1.0", path = "../crdt", package = "weaveling-spike-crdt" }

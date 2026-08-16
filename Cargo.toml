@@ -13,7 +13,7 @@ members = [
 default-members = [
     "libraries/*",
     "services/*",
-    "spikes/*",
+    "spikes/crdt",
     "features/*/contract",
     "features/*/core",
     "features/*/adapters/*",
@@ -41,3 +41,6 @@ tower-http = "0.7.0"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 uuid = "1.24.0"
+wasm-bindgen = "0.2.127"
+web-sys = "0.3.104"
+yrs = "0.27.3"

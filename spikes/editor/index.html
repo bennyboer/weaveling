@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Weaveling — editor spike</title>
+    <link data-trunk rel="rust" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --ink: #1c1917;
+        --muted: #78716c;
+        --line: #e7e5e4;
+        --paper: #fdfcfb;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ink: #f5f5f4;
+          --muted: #a8a29e;
+          --line: #292524;
+          --paper: #1c1917;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+      }
+      main { max-width: 64rem; margin: 0 auto; padding: 3rem 1.5rem; }
+      .pair {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+        gap: 1.25rem;
+        margin-top: 1.5rem;
+      }
+      .agree, .diverged {
+        margin-left: 0.75rem;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font: 500 0.7rem/1.6 system-ui, sans-serif;
+        letter-spacing: 0.02em;
+        vertical-align: middle;
+      }
+      .agree { background: #16653433; color: #4ade80; }
+      .diverged { background: #7f1d1d33; color: #f87171; }
+      .ProseMirror-yjs-cursor {
+        position: relative;
+        margin-left: -1px;
+        margin-right: -1px;
+        border-left: 1px solid black;
+        border-right: 1px solid black;
+        border-color: orange;
+        word-break: normal;
+        pointer-events: none;
+      }
+      .ProseMirror-yjs-cursor > div {
+        position: absolute;
+        top: -1.15em;
+        left: -1px;
+        padding: 0.05rem 0.3rem;
+        border-radius: 0.2rem;
+        font: 500 0.65rem/1.4 system-ui, sans-serif;
+        white-space: nowrap;
+        color: #1c1917;
+        user-select: none;
+      }
+      h1 { font: 400 2rem/1.1 Georgia, serif; margin: 0 0 0.5rem; }
+      h2 { font: 400 1.1rem/1.2 Georgia, serif; margin: 0 0 0.75rem; }
+      .tagline { color: var(--muted); margin: 0 0 2rem; }
+      button {
+        margin-top: 0.75rem;
+        padding: 0.5rem 0.9rem;
+        border: 1px solid var(--line);
+        border-radius: 0.375rem;
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        cursor: pointer;
+      }
+      button:hover { border-color: var(--muted); }
+      .surface {
+        border: 1px solid var(--line);
+        border-radius: 0.5rem;
+        padding: 1rem 1.25rem;
+        background: var(--paper);
+      }
+      .surface blockquote {
+        margin: 0 0 0 0.5rem;
+        padding-left: 1rem;
+        border-left: 3px solid var(--line);
+        color: var(--muted);
+      }
+      .projection { margin-top: 2.5rem; }
+      .projection dl {
+        display: grid;
+        grid-template-columns: 7rem 1fr;
+        gap: 0.25rem 1rem;
+        margin: 0 0 1rem;
+      }
+      .projection dt { color: var(--muted); font-size: 0.85rem; }
+      .projection dd { margin: 0; font-variant-numeric: tabular-nums; }
+      .projection pre {
+        margin: 0;
+        padding: 1rem;
+        border: 1px dashed var(--line);
+        border-radius: 0.5rem;
+        white-space: pre-wrap;
+        font: 0.85rem/1.6 ui-monospace, "Cascadia Code", monospace;
+        color: var(--muted);
+      }
+
+      .ProseMirror {
+        position: relative;
+        word-wrap: break-word;
+        white-space: break-spaces;
+        font-variant-ligatures: none;
+        outline: none;
+      }
+      .ProseMirror pre { white-space: pre-wrap; }
+      .ProseMirror li { position: relative; }
+      .ProseMirror-hideselection *::selection { background: transparent; }
+      .ProseMirror-hideselection { caret-color: transparent; }
+      .ProseMirror [contenteditable="false"] { user-select: text; }
+      img.ProseMirror-separator {
+        display: inline !important;
+        border: none !important;
+        margin: 0 !important;
+      }
+    </style>
+  </head>
+  <body></body>
+</html>

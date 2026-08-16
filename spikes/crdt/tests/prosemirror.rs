@@ -2,14 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use weaveling_spike_crdt::projection::{outline, plain_text};
 use weaveling_spike_crdt::{absorb, doc_for, everything};
 use yrs::types::xml::XmlOut;
-use yrs::{GetString, ReadTxn, Transact, XmlFragment};
-
-/// ProseMirror separates *textblocks* (leaf blocks holding inline content), not
-/// every block node. A blockquote wrapping a list wrapping paragraphs yields one
-/// separator per paragraph, not one per level.
-const TEXTBLOCKS: &[&str] = &["paragraph", "heading", "code_block"];
+use yrs::{Transact, XmlFragment};
 
 fn interop_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("interop")
@@ -50,59 +46,6 @@ fn bytes_at(exchange: &Path, name: &str) -> Vec<u8> {
     fs::read(exchange.join(name)).expect("Yjs should have written this file")
 }
 
-/// Collects the text of a single textblock. Inline nodes carrying no prose, such
-/// as an image reference, contribute nothing.
-fn inline_text<T: ReadTxn>(nodes: impl Iterator<Item = XmlOut>, txn: &T, out: &mut String) {
-    for node in nodes {
-        match node {
-            XmlOut::Text(text) => out.push_str(&text.get_string(txn)),
-            XmlOut::Element(element) => inline_text(element.children(txn), txn, out),
-            XmlOut::Fragment(fragment) => inline_text(fragment.children(txn), txn, out),
-        }
-    }
-}
-
-/// Walks whatever structure ProseMirror produced and gathers one entry per
-/// textblock. Deliberately generic about containers, so deeper nesting such as
-/// tables flows through the same path. An empty textblock still counts, which is
-/// what keeps this in step with ProseMirror's own `textBetween`.
-fn textblocks<T: ReadTxn>(nodes: impl Iterator<Item = XmlOut>, txn: &T, out: &mut Vec<String>) {
-    for node in nodes {
-        match node {
-            XmlOut::Element(element) if TEXTBLOCKS.contains(&element.tag().as_ref()) => {
-                let mut text = String::new();
-                inline_text(element.children(txn), txn, &mut text);
-                out.push(text);
-            }
-            XmlOut::Element(element) => textblocks(element.children(txn), txn, out),
-            XmlOut::Fragment(fragment) => textblocks(fragment.children(txn), txn, out),
-            XmlOut::Text(text) => out.push(text.get_string(txn)),
-        }
-    }
-}
-
-fn plain_text(doc: &yrs::Doc) -> String {
-    let fragment = doc.get_or_insert_xml_fragment("prose");
-    let txn = doc.transact();
-    let mut blocks = Vec::new();
-    textblocks(fragment.children(&txn), &txn, &mut blocks);
-
-    blocks.join("\n")
-}
-
-fn outline(doc: &yrs::Doc) -> Vec<String> {
-    let fragment = doc.get_or_insert_xml_fragment("prose");
-    let txn = doc.transact();
-
-    fragment
-        .children(&txn)
-        .filter_map(|node| match node {
-            XmlOut::Element(element) => Some(element.tag().to_string()),
-            _ => None,
-        })
-        .collect()
-}
-
 #[test]
 fn yrs_can_read_a_prosemirror_document() {
     if !ready() {
@@ -116,15 +59,12 @@ fn yrs_can_read_a_prosemirror_document() {
     let doc = doc_for(1);
     absorb(&doc, &bytes_at(&exchange, "pm-doc.bin"));
 
-    // the server can see the shape ProseMirror authored
     assert_eq!(
         outline(&doc),
         vec!["heading", "paragraph", "blockquote", "paragraph", "paragraph"],
         "yrs should see the block structure y-prosemirror wrote"
     );
 
-    // and can flatten it exactly the way ProseMirror does, for search,
-    // the in-order walk and export
     let extracted = plain_text(&doc);
     assert_eq!(
         extracted,
@@ -159,7 +99,6 @@ fn a_rust_edit_survives_the_trip_back_into_prosemirror() {
     let doc = doc_for(1);
     absorb(&doc, &bytes_at(&exchange, "pm-doc.bin"));
 
-    // edit the prose from Rust, inside the structure ProseMirror created
     {
         let fragment = doc.get_or_insert_xml_fragment("prose");
         let txn = doc.transact();

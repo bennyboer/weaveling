@@ -2783,6 +2783,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-spike-editor"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "leptos",
+ "wasm-bindgen",
+ "weaveling-spike-crdt",
+ "web-sys",
+ "yrs",
+]
+
+[[package]]
 name = "web-sys"
 version = "0.3.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"

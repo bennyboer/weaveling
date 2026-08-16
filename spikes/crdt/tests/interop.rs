@@ -50,7 +50,6 @@ fn bytes_at(exchange: &Path, name: &str) -> Vec<u8> {
     fs::read(exchange.join(name)).expect("Yjs should have written this file")
 }
 
-/// Publishes a starting document plus one concurrent Rust edit, for Yjs to pick up.
 fn stage(exchange: &Path, prefix: &str, start: &str, edit: impl Fn(&yrs::Doc)) -> yrs::Doc {
     let base = doc_for(1);
     insert(&base, 0, start);
@@ -96,14 +95,12 @@ fn yrs_and_yjs_agree_on_the_same_document() {
 
     run_yjs(&exchange);
 
-    // Yjs can read a document yrs authored
     assert_eq!(
         text_at(&exchange, "apart-js-saw-base.txt"),
         "The loom stood silent. ",
         "Yjs should read what yrs wrote"
     );
 
-    // edits in different places
     absorb(&apart, &bytes_at(&exchange, "apart-js.bin"));
     let apart_rust = read(&apart);
     let apart_js = text_at(&exchange, "apart-js-final.txt");
@@ -114,7 +111,6 @@ fn yrs_and_yjs_agree_on_the_same_document() {
     assert!(apart_rust.contains("JS wrote first."));
     assert!(apart_rust.contains("Rust wrote last."));
 
-    // both inserting into the same gap: only matching tie-break rules converge
     absorb(&tie, &bytes_at(&exchange, "tie-js.bin"));
     let tie_rust = read(&tie);
     let tie_js = text_at(&exchange, "tie-js-final.txt");
@@ -124,7 +120,6 @@ fn yrs_and_yjs_agree_on_the_same_document() {
     );
     assert_eq!(tie_rust.len(), 4, "both inserts should survive");
 
-    // state vectors cross the boundary in the other direction too
     let js_state = StateVector::decode_v1(&bytes_at(&exchange, "apart-js-final-sv.bin"))
         .expect("a Yjs state vector should decode in yrs");
     assert!(

@@ -1,3 +1,5 @@
+pub mod projection;
+
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, GetString, Options, ReadTxn, StateVector, Text, TextRef, Transact, Update};
 
