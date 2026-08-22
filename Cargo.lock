@@ -2849,6 +2849,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-passages-sync"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "time",
+ "weaveling-passages-core",
+ "yrs",
+]
+
+[[package]]
 name = "weaveling-passages-tests"
 version = "0.1.0"
 dependencies = [

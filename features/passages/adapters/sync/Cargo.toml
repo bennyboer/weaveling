@@ -1,0 +1,13 @@
+[package]
+name = "weaveling-passages-sync"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+yrs = { workspace = true }
+
+passages-core = { version = "0.1.0", path = "../../core", package = "weaveling-passages-core" }
+
+[dev-dependencies]
+time = { workspace = true }
