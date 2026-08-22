@@ -2819,6 +2819,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-passages-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "weaveling-passages-core"
 version = "0.1.0"
 dependencies = [
@@ -2826,6 +2833,7 @@ dependencies = [
  "thiserror",
  "time",
  "uuid",
+ "weaveling-clock",
  "yrs",
 ]
 
@@ -2837,6 +2845,19 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-passages-core",
+ "yrs",
+]
+
+[[package]]
+name = "weaveling-passages-tests"
+version = "0.1.0"
+dependencies = [
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-passages-contract",
+ "weaveling-passages-core",
+ "weaveling-passages-store",
  "yrs",
 ]
 

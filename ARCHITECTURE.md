@@ -54,11 +54,19 @@ features/
                └─── service ──┘
 ```
 
-- **`core`** — domain types, business logic, the **ports** (traits) it needs, and the application facade (`ProjectService`). Depends on nothing. Plain Rust, no frameworks, no magic.
+- **`core`** — domain types, business logic, the **ports** (traits) it needs, and the application facade (`ProjectService`). Plain Rust, no frameworks, no magic. **Depends on no other crate in its own feature** — in particular not on `contract`, so the wire format can never leak inward. Cross-cutting library ports are the one exception (see [cross-cutting ports](#dependency-rules)); `libraries/clock` is why `core` is a near-leaf rather than a strict one.
 - **`adapters/*`** — **one crate per adapter**, named for the foreign system it talks to. All arrows point inward at `core`.
   - *Outbound (driven)* adapters implement a port declared by core. Named after the port: `ProjectStore` → `store`. A port with several **interchangeable backends** stays **one** crate — `memory` and later `postgres` are modules inside `store`, not sibling crates. They are backends of one adapter, not two adapters. Heavy optional backends go behind a cargo feature (`postgres = ["dep:sqlx"]` with `sqlx` marked `optional`), so a build that never enables it never compiles it. Two consequences: the swap is one feature flag rather than one dependency line, and **CI must run `--all-features`**, because feature-gated code is not type-checked otherwise.
   - *Inbound (driving)* adapters call core's public API. Named after the transport: `rest`, later `graphql`, `cli`, `messaging`. No inbound port trait — `ProjectService` is already the interface.
 - **`contract`** — the wire types. Deliberately **not** part of the onion: it is a shared kernel between two *processes*, and it exists as its own crate for a hard technical reason — the WASM client cannot depend on `rest`, because `axum` doesn't compile to WASM. The constraint is **`serde` and nothing else**. Values travel in their primitive wire representations — ids and timestamps as strings — while the rich domain types (`ProjectId`, time types) stay in `core` and the adapter maps between them. This keeps the crate trivially WASM-safe and gives the domain vocabulary exactly one owner. Note that ids arriving *inbound* come through the URL path, which `rest` parses with its own extractor, so contract is almost entirely an outbound-shape concern.
+
+**A constant both processes must agree on lives in *both*, pinned by a test.** The fragment name a passage's prose lives under (`"prose"`) is needed by `core` to project plain text and by the client to write into the same document — and `core` must not reach into `contract` to get it. So each defines its own, and the feature's tests crate, which can see both, asserts they match:
+
+```rust
+assert_eq!(passages_core::FRAGMENT, passages_contract::FRAGMENT);
+```
+
+A duplicated literal justified by a test is normally a smell. It wins here because the alternative is worse: one `core → contract` arrow "just for a constant" is the crack DTOs leak through later, and the invariant is only worth having while it is absolute. The failure this test prevents is a silent one — mismatched fragment names mean prose that vanishes with no error anywhere.
 
 There is deliberately **no `boundary` crate**. Once every adapter has its own crate, "boundary" names whatever is left over — which is nothing. Mapping belongs to the adapter that owns the DTOs, the facade lives in core, and wiring is the service's job.
 
@@ -89,7 +97,7 @@ Feature tests are written **from a business perspective**: they assert observabl
 |---|---|---|
 | `clients` | contract crates | features, services |
 | `services` | features, libraries | clients |
-| `features` | libraries, own contract | **other features** |
+| `features` | libraries, own contract (adapters only — never `core`) | **other features** |
 | `libraries` | libraries (shallowly) | features, services |
 
 The **feature → feature** ban is the load-bearing one. When two features want the same thing there are exactly two legal moves: the *service* composes them, or the shared concept sinks into a `libraries/` crate. (Expected first case: structure tree and timeline sharing a data structure.)

@@ -1,0 +1,14 @@
+[package]
+name = "weaveling-passages-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "macros"] }
+yrs = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+passages-contract = { version = "0.1.0", path = "../contract", package = "weaveling-passages-contract" }
+passages-core = { version = "0.1.0", path = "../core", package = "weaveling-passages-core" }
+passages-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-passages-store" }
