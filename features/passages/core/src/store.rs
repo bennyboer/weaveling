@@ -9,6 +9,8 @@ pub enum StoreError {
     NotFound(PassageId),
     #[error("passage {0} already exists")]
     Conflict(PassageId),
+    #[error("the update offered to passage {0} could not be applied")]
+    Unusable(PassageId),
     #[error("the passage store failed: {0}")]
     Backend(#[source] Box<dyn std::error::Error + Send + Sync>),
 }

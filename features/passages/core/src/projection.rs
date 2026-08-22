@@ -1,7 +1,7 @@
 use yrs::types::xml::XmlOut;
 use yrs::{Doc, GetString, ReadTxn, Transact, XmlFragment};
 
-pub(crate) const FRAGMENT: &str = "prose";
+pub const FRAGMENT: &str = "prose";
 
 const TEXTBLOCKS: &[&str] = &["paragraph", "heading", "code_block"];
 

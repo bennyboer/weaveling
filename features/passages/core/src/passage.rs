@@ -1,3 +1,5 @@
+use std::fmt::{self, Debug, Formatter};
+
 use thiserror::Error;
 use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
@@ -65,6 +67,15 @@ impl Passage {
 
     pub fn text(&self) -> String {
         plain_text(&self.doc)
+    }
+}
+
+impl Debug for Passage {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Passage")
+            .field("id", &self.id)
+            .field("text", &self.text())
+            .finish()
     }
 }
 

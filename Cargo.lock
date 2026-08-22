@@ -2830,6 +2830,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-passages-store"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "time",
+ "tokio",
+ "weaveling-passages-core",
+ "yrs",
+]
+
+[[package]]
 name = "weaveling-projects-contract"
 version = "0.1.0"
 dependencies = [
