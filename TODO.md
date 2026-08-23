@@ -22,13 +22,29 @@ Real gaps found while spiking, to settle when prose becomes production code rath
 
 - [ ] **Awareness tombstones on disconnect.** The sync server treats awareness as opaque bytes, which is the right default — but it means it cannot retract a departed peer's cursor, so stale cursors linger until the client-side timeout (~30 s). Fix: decode just the awareness header (client id, clock, state), remember which ids a connection spoke for, and broadcast a null state when it drops.
 - [ ] **An unusable frame currently only logs.** A peer that sends an update we cannot apply keeps its connection and diverges silently. Decide the policy: disconnect, or force a full resync.
-- [ ] **Compaction has to actually run.** Measured: an append-only log is 11–13× the compacted form after 500 rewrites of one paragraph. `Y.mergeUpdates` is lossless so this is safe, but nothing schedules it yet, and rooms hold documents in memory for the process lifetime with no persistence, no eviction and no backpressure.
-- [ ] **Auth on the socket.** `/sync/{room}` currently accepts anyone who names a room. Same shape as the tenancy gap in the REST layer — ids are not capabilities.
+- [ ] **Compaction has to actually run.** Measured: an append-only log is 11–13× the compacted form after 500 rewrites of one paragraph. `Y.mergeUpdates` is lossless so this is safe, but nothing schedules it yet. Natural trigger: eviction (below), so a passage is compacted on its way out of memory.
+- [ ] **Live passages are never evicted.** `LivePassages::hydrate` inserts into the `Hydrated` map and *nothing ever removes*. On disconnect `stay()` aborts its tasks and drops its channel; the map is untouched. So a passage stays in memory for the process lifetime whether anyone is connected or not — bounded by the number of distinct passages ever opened, which for a book of thousands of nodes eventually means all of them, at roughly 10 KB of document each.
+
+  **Not a two-line fix.** Refcounting participants and dropping at zero has a real hazard:
+
+  ```
+  peer A disconnects  -> count hits 0 -> entry removed from the map
+  peer B, meanwhile, is mid-hydrate and already holds the Arc
+  peer C joins        -> map is empty -> hydrates a SECOND copy from the store
+  ```
+
+  Two live copies of one passage now exist, and two authors are silently invisible to each other until both persist and someone rehydrates. Worse than the leak. Two related traps: persistence happens *after* relay, so eviction must flush or it discards a relayed-but-unpersisted update; and `Arc::strong_count` looks tempting but is not a synchronisation point.
+
+  **Intended shape:** count participants inside the map's write lock (so `hydrate` cannot interleave with a decrement-to-zero), and have a background sweeper remove entries idle for a grace period (~30 s) — the grace period is what turns the race above into a non-event, since a rejoin inside the window finds the existing entry. A guard returned by `hydrate` that decrements on `Drop` is the more idiomatic way to count (impossible to forget, survives a panic in `stay()`), but it cannot replace the sweeper: `Drop` is not async and eviction needs to await a final persist. So `Drop` marks, the sweeper collects and compacts.
+
+  **The permanent version of the same problem:** across two server instances both can hydrate the same passage, and no amount of eviction or grace period helps. Same failure the snapshot-vs-log `absorb` analysis turned up. Single-instance eviction is tidy-up; multi-instance needs sticky routing by passage id or a shared coordination layer.
+- [ ] **No backpressure on the broadcast channel.** `BACKLOG` is 256 frames; a slow peer that fills it gets a lagged receiver and silently misses frames. Its next sync recovers the prose, but awareness is lost outright.
+- [ ] **Auth on the socket.** `/sync/{passage}` currently accepts anyone who names a passage that exists. Same shape as the tenancy gap in the REST layer — ids are not capabilities.
 - [ ] **Generated assets must be excluded from the Trunk watch list.** The JS bundle is written into the crate by a `pre_build` hook, which retriggers the watcher; without `[watch] ignore` it rebuilds forever (190 rebuilds before it was spotted). This will recur the moment the real client gains a bundling step.
 
 ## Carried inside Phase 3
 
-- [ ] **Move the `"prose"` fragment name into `contract`.** `features/passages/core/src/projection.rs` hardcodes the `XmlFragment` root key, and the client hardcodes the same string in `doc.getXmlFragment("prose")`. Nothing enforces the match — a typo on either side yields an empty projection and no error. Staying as-is until `contract` exists in M6 step 3, then both sides import one constant.
+- [x] ~~**Move the `"prose"` fragment name into `contract`.**~~ Resolved differently than planned. One shared constant would have meant `core -> contract`, and keeping `core` a leaf won — so both crates define `FRAGMENT` and `features/passages/tests/src/shared_kernel.rs` asserts they match. See [the reasoning](./ARCHITECTURE.md#feature-anatomy--the-onion).
 
 ## Deferred until we actually want to deploy
 

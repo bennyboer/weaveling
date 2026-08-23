@@ -4,7 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+axum = { workspace = true, features = ["ws"] }
+futures-util = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt", "sync"] }
+tracing = { workspace = true }
 yrs = { workspace = true }
 
 passages-core = { version = "0.1.0", path = "../../core", package = "weaveling-passages-core" }

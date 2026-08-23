@@ -2852,8 +2852,12 @@ dependencies = [
 name = "weaveling-passages-sync"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "futures-util",
  "thiserror",
  "time",
+ "tokio",
+ "tracing",
  "weaveling-passages-core",
  "yrs",
 ]
@@ -2868,6 +2872,7 @@ dependencies = [
  "weaveling-passages-contract",
  "weaveling-passages-core",
  "weaveling-passages-store",
+ "weaveling-passages-sync",
  "yrs",
 ]
 
