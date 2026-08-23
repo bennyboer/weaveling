@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clock::SystemClock;
+use passages_store::InMemoryPassageStore;
 use projects_store::InMemoryProjectStore;
 use tokio::net::TcpListener;
 use weaveling_service_api::app;
@@ -9,7 +10,11 @@ use weaveling_service_api::app;
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let app = app(Arc::new(InMemoryProjectStore::new()), Arc::new(SystemClock));
+    let app = app(
+        Arc::new(InMemoryProjectStore::new()),
+        Arc::new(InMemoryPassageStore::new()),
+        Arc::new(SystemClock),
+    );
 
     let listener = TcpListener::bind("127.0.0.1:3000")
         .await
