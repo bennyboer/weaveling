@@ -1,0 +1,11 @@
+[package]
+name = "weaveling-passages-rest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+tracing = { workspace = true }
+
+passages-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-passages-contract" }
+passages-core = { version = "0.1.0", path = "../../core", package = "weaveling-passages-core" }

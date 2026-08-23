@@ -5,4 +5,7 @@ mod live_passages;
 mod passage_service;
 
 #[cfg(test)]
+mod passages_api;
+
+#[cfg(test)]
 mod shared_kernel;

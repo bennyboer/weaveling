@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
 yrs = { workspace = true }
@@ -11,5 +13,6 @@ yrs = { workspace = true }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 passages-contract = { version = "0.1.0", path = "../contract", package = "weaveling-passages-contract" }
 passages-core = { version = "0.1.0", path = "../core", package = "weaveling-passages-core" }
+passages-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-passages-rest" }
 passages-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-passages-store" }
 passages-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveling-passages-sync" }

@@ -2838,6 +2838,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-passages-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "tracing",
+ "weaveling-passages-contract",
+ "weaveling-passages-core",
+]
+
+[[package]]
 name = "weaveling-passages-store"
 version = "0.1.0"
 dependencies = [
@@ -2866,11 +2876,14 @@ dependencies = [
 name = "weaveling-passages-tests"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "axum-test",
  "time",
  "tokio",
  "weaveling-clock",
  "weaveling-passages-contract",
  "weaveling-passages-core",
+ "weaveling-passages-rest",
  "weaveling-passages-store",
  "weaveling-passages-sync",
  "yrs",
