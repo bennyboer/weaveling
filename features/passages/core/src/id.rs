@@ -5,11 +5,13 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::{NoContext, Timestamp, Uuid};
 
+pub const PREFIX: &str = "passage_";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PassageId(Uuid);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-#[error("not a valid passage id")]
+#[error("not a valid passage id, expected a `{PREFIX}` prefix")]
 pub struct InvalidPassageId;
 
 impl PassageId {
@@ -36,7 +38,7 @@ impl From<Uuid> for PassageId {
 
 impl Display for PassageId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.0, f)
+        write!(f, "{PREFIX}{}", self.0)
     }
 }
 
@@ -44,7 +46,10 @@ impl FromStr for PassageId {
     type Err = InvalidPassageId;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Uuid::parse_str(s).map(Self).map_err(|_| InvalidPassageId)
+        s.strip_prefix(PREFIX)
+            .and_then(|raw| Uuid::parse_str(raw).ok())
+            .map(Self)
+            .ok_or(InvalidPassageId)
     }
 }
 
@@ -97,5 +102,35 @@ mod tests {
     #[test]
     fn parsing_rejects_non_uuid() {
         assert!("weaveling".parse::<PassageId>().is_err());
+    }
+
+    #[test]
+    fn the_string_form_carries_the_prefix() {
+        let id = PassageId::generate(at(1_000));
+
+        assert!(
+            id.to_string().starts_with("passage_"),
+            "an id should say what it is: {id}"
+        );
+    }
+
+    #[test]
+    fn a_bare_uuid_is_not_accepted() {
+        let bare = PassageId::generate(at(1_000)).as_uuid().to_string();
+
+        assert!(
+            bare.parse::<PassageId>().is_err(),
+            "an unprefixed uuid would parse as any id type"
+        );
+    }
+
+    #[test]
+    fn an_id_of_another_kind_is_not_accepted() {
+        let theirs = format!("project_{}", PassageId::generate(at(1_000)).as_uuid());
+
+        assert!(
+            theirs.parse::<PassageId>().is_err(),
+            "an id of another kind must not pass as this one"
+        );
     }
 }

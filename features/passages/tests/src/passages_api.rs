@@ -9,7 +9,7 @@ use passages_store::InMemoryPassageStore;
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
-const UNKNOWN_ID: &str = "019a4f4a-0000-7000-8000-000000000000";
+const UNKNOWN_ID: &str = "passage_019a4f4a-0000-7000-8000-000000000000";
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)

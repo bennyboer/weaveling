@@ -5,11 +5,13 @@ use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::{NoContext, Timestamp, Uuid};
 
+pub const PREFIX: &str = "project_";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProjectId(Uuid);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-#[error("not a valid project id")]
+#[error("not a valid project id, expected a `{PREFIX}` prefix")]
 pub struct InvalidProjectId;
 
 impl ProjectId {
@@ -36,7 +38,7 @@ impl From<Uuid> for ProjectId {
 
 impl Display for ProjectId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.0, f)
+        write!(f, "{PREFIX}{}", self.0)
     }
 }
 
@@ -44,7 +46,10 @@ impl FromStr for ProjectId {
     type Err = InvalidProjectId;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Uuid::parse_str(s).map(Self).map_err(|_| InvalidProjectId)
+        s.strip_prefix(PREFIX)
+            .and_then(|raw| Uuid::parse_str(raw).ok())
+            .map(Self)
+            .ok_or(InvalidProjectId)
     }
 }
 
@@ -110,5 +115,35 @@ mod tests {
     #[test]
     fn parsing_rejects_non_uuid() {
         assert!("weaveling".parse::<ProjectId>().is_err());
+    }
+
+    #[test]
+    fn the_string_form_carries_the_prefix() {
+        let id = ProjectId::generate(at(1_000));
+
+        assert!(
+            id.to_string().starts_with("project_"),
+            "an id should say what it is: {id}"
+        );
+    }
+
+    #[test]
+    fn a_bare_uuid_is_not_accepted() {
+        let bare = ProjectId::generate(at(1_000)).as_uuid().to_string();
+
+        assert!(
+            bare.parse::<ProjectId>().is_err(),
+            "an unprefixed uuid would parse as any id type"
+        );
+    }
+
+    #[test]
+    fn an_id_of_another_kind_is_not_accepted() {
+        let theirs = format!("passage_{}", ProjectId::generate(at(1_000)).as_uuid());
+
+        assert!(
+            theirs.parse::<ProjectId>().is_err(),
+            "an id of another kind must not pass as this one"
+        );
     }
 }
