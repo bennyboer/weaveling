@@ -1,9 +1,8 @@
 mod live_passages;
+mod peer;
 mod protocol;
-mod room;
 mod socket;
 
-pub use live_passages::{LivePassage, LivePassages, Overheard, PeerId};
+pub use live_passages::{LivePassage, LivePassageError, LivePassages, Overheard, PeerId, Reaction};
 pub use protocol::Message;
-pub use room::{Reaction, Room, RoomError};
 pub use socket::router;

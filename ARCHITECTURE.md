@@ -2,7 +2,7 @@
 
 This document is the *how*. For the *what* and the *why*, see [README.md](./README.md).
 
-Nothing here is built yet — this captures the architectural decisions we've settled on so they aren't lost. Where a decision is provisional, it says so.
+This captures the architectural decisions we've settled on so they aren't lost. Some are built, some are still design, and some were **proven by a spike** — where a claim says *proven*, a test or a verified browser session stands behind it. Where a decision is provisional, it says so.
 
 ## Shape
 
@@ -212,13 +212,15 @@ One wrinkle worth remembering: wasm-bindgen implements `Send`/`Sync` for `JsValu
 
 **Wire compatibility is the point.** Speaking the standard format means the client can use `y-websocket` as-is and we inherit reconnect-with-backoff, resync, and awareness timeouts rather than writing them. It also decouples the halves: either side can be replaced independently, which is exactly the optionality the [Frontend](#frontend--full-stack-rust-provisional) escape hatch depends on.
 
-**The server is a participant, not a relay.** Each room holds its own `Doc` and applies every update. That is what lets a peer who was offline for a week be served by the room rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections will attach to. **A room is a node's document** — one `Doc` per room lines up with one CRDT document per node.
+**The server is a participant, not a relay.** A passage that someone is editing is held in memory as a **`LivePassage`** — its own `Doc`, to which every update is applied. That is what lets a peer who was offline for a week be served by the server rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections attach to. One `LivePassage` per passage, and one passage per node, so the chain from node to CRDT document is 1:1 the whole way down.
+
+The "room" vocabulary the spike borrowed from `y-websocket` is deliberately **not** used: there is no room in this domain, only a passage that happens to have people in it. `LivePassages::join(id)` hands out the one live copy, loading it from the store if nobody has it open.
 
 **Awareness is relayed, never decoded.** The server treats awareness frames as opaque bytes and forwards them; it holds no presence state at all. Late joiners still get cursors, because on join the server broadcasts *query-awareness* and the connected peers republish themselves — an ordinary y-websocket client answers that automatically. This keeps presence genuinely ephemeral, exactly as [Presence is neither](#presence-is-neither) requires.
 
 The known cost of that choice: **the server cannot retract a departed peer's cursor**, because it does not know which client ids a connection spoke for. Stale cursors linger until the client-side timeout (~30 s). The fix is to decode just the awareness header (client id, clock, state) and broadcast a tombstone on disconnect — small, and deliberately deferred.
 
-Two things to revisit before this is production code: an unreadable frame is currently **logged and skipped**, which means a peer sending an unusable update diverges silently rather than being disconnected; and rooms live in memory for the process lifetime, with no persistence, no eviction, no backpressure and no auth on the socket.
+Two things to revisit before this is production code: an unreadable frame is currently **logged and skipped**, which means a peer sending an unusable update diverges silently rather than being disconnected; and a `LivePassage` is never evicted, so it lives for the process lifetime with no backpressure and no auth on the socket. The eviction race and its intended fix are written up in [TODO.md](./TODO.md).
 
 ### The `passages` feature
 
@@ -254,7 +256,7 @@ features/passages/
 ├── core/              Passage, the plain-text projection, the PassageStore port
 ├── adapters/
 │   ├── store/         in-memory now, PostgreSQL later
-│   └── sync/          the y-protocols codec, socket plumbing, the room registry
+│   └── sync/          the y-protocols codec, LivePassage(s), Peer, the socket
 └── tests/
 ```
 
@@ -264,7 +266,11 @@ Three placements that are not obvious:
 
 **The wire protocol stays in `adapters/sync`.** Core exposes intent — *catch up from this state vector*, *apply this update* — and the adapter does the message framing. Same rule as `rest` mapping DTOs with free functions, and for the same reason: a wire format has no business in the domain.
 
-**Core owns a room's semantics; the adapter owns the registry.** The sync spike found this seam without being asked. `room.rs` is a pure function from a message to a reaction, with no tokio, no axum and no sockets — that is core material. `server.rs` is connection bookkeeping, broadcast channels and lifecycle — that is adapter material. Keeping them apart means a second transport could reuse the semantics unchanged.
+**Protocol dispatch belongs to the adapter, not to `core`.** The spike suggested a `Room` in core owning "the room's semantics", and building it showed that was already `core::Passage` — `absorb`, `changes_since`, `state_vector` *are* the document operations. What is left is deciding, per message, who needs to hear about it, and that is wire-shaped: it lives in `adapters/sync` as `LivePassage::receive`, returning a `Reaction`.
+
+`Reaction` names **three destinations** — `to_sender`, `to_others`, `to_store` — which is what keeps two policies honest and testable rather than accidental: a read must not write (catching a newcomer up stores nothing), and presence must never be persisted (awareness relays and nothing more).
+
+**Per-connection state is a `Peer`, and its lifetime is RAII.** A `LivePassage` is shared by every peer; a `Peer` is one connection — its id, its private outbound channel, and its two pump tasks. `Drop` aborts them. That matters because the shutdown ordering is otherwise load-bearing and invisible: the outbound channel closes only when *every* sender is gone, and missing one leaks a task for the process lifetime. Encoding it in `Drop` makes the mistake unavailable rather than merely documented.
 
 **Awareness never reaches `core` at all.** It is relayed as opaque bytes and it lives and dies inside `adapters/sync`. Presence is ephemeral by decision; this is that decision expressed as a dependency arrow.
 
@@ -331,7 +337,7 @@ No caller can observe a half-state, and an in-memory operation has no I/O to fai
 - **Snapshot backend:** read bytes, merge the update, write bytes. Two concurrent absorbs both read `S`; one writes `S+A`, the other `S+B`, and **one is lost**. CRDTs do not save you — the loss happens below the merge. This backend needs `SELECT … FOR UPDATE` or a version column.
 - **Append-only log backend:** one insert. Appends commute, so concurrent absorbs need no locking at all.
 
-Today this is masked because the room owns the document, so there is a single writer per passage per process. That assumption dies the moment a second server instance exists. Either way it stays *inside* `absorb`, which is the rule working exactly as intended.
+Today this is masked because a `LivePassage` is the single holder of the document, so there is one writer per passage per process. That assumption dies the moment a second server instance exists. Either way it stays *inside* `absorb`, which is the rule working exactly as intended.
 
 ## Event Sourcing — Discipline
 
@@ -372,4 +378,8 @@ Font bundling/licensing for embedded fonts is a concern for both.
 
 ## Status
 
-Phase 1 is built — the projects slice runs end to end in a browser (see [ROADMAP.md](./ROADMAP.md)). The structure domain and event sourcing are still design. The prose stack is spiked, measured and proven in all four of its risky places — CRDT semantics, `yrs` ↔ `Yjs` compatibility, the editor in Leptos, and sync over WebSocket — but none of it is wired into the application yet. The solution is still being woven.
+Phase 1 is built — the projects slice runs end to end in a browser (see [ROADMAP.md](./ROADMAP.md)).
+
+The prose stack was spiked, measured and proven in all four of its risky places — CRDT semantics, `yrs` ↔ `Yjs` compatibility, the editor in Leptos, and sync over WebSocket — and is now being built for real as the `passages` feature. `contract`, `core`, `adapters/store` and `adapters/sync` exist; the REST read model, the composition root and the client do not yet, so nothing is reachable from a browser.
+
+The structure domain and event sourcing are still design, which means a passage currently belongs to no node — the link waits on nodes existing at all. The solution is still being woven.
