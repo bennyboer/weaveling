@@ -1,10 +1,10 @@
+use crate::projects::model::{Project, ProjectId};
 use leptos::prelude::*;
-use projects_contract::ProjectDTO;
 
 #[derive(Clone, Copy)]
 pub struct Overlays {
-    open_menu: RwSignal<Option<String>>,
-    confirming: RwSignal<Option<ProjectDTO>>,
+    open_menu: RwSignal<Option<ProjectId>>,
+    confirming: RwSignal<Option<Project>>,
 }
 
 impl Default for Overlays {
@@ -21,11 +21,11 @@ impl Overlays {
         }
     }
 
-    pub fn is_menu_open(self, id: &str) -> bool {
-        self.open_menu.with(|open| open.as_deref() == Some(id))
+    pub fn is_menu_open(self, id: &ProjectId) -> bool {
+        self.open_menu.with(|open| open.as_ref() == Some(id))
     }
 
-    pub fn toggle_menu(self, id: String) {
+    pub fn toggle_menu(self, id: ProjectId) {
         let already_open = self.is_menu_open(&id);
 
         self.open_menu
@@ -36,11 +36,11 @@ impl Overlays {
         self.open_menu.set(None);
     }
 
-    pub fn confirming(self) -> ReadSignal<Option<ProjectDTO>> {
+    pub fn confirming(self) -> ReadSignal<Option<Project>> {
         self.confirming.read_only()
     }
 
-    pub fn ask_to_delete(self, project: ProjectDTO) {
+    pub fn ask_to_delete(self, project: Project) {
         self.confirming.set(Some(project));
     }
 

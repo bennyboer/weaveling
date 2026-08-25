@@ -2808,7 +2808,10 @@ dependencies = [
  "serde",
  "thiserror",
  "time",
+ "wasm-bindgen",
+ "weaveling-passages-contract",
  "weaveling-projects-contract",
+ "web-sys",
 ]
 
 [[package]]

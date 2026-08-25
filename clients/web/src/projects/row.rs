@@ -2,21 +2,20 @@ use leptos::html;
 use leptos::html::Input;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
-use projects_contract::ProjectDTO;
-use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
 
-use crate::overlays::Overlays;
-use crate::workspace::Workspace;
+use crate::projects::model::Project;
+use crate::projects::overlays::Overlays;
+use crate::projects::workspace::Workspace;
 
 #[component]
-pub fn ProjectRow(project: ProjectDTO, workspace: Workspace, overlays: Overlays) -> impl IntoView {
+pub fn ProjectRow(project: Project, workspace: Workspace, overlays: Overlays) -> impl IntoView {
     let (editing, set_editing) = signal(false);
     let (draft, set_draft) = signal(project.name.clone());
 
     let shown_name = StoredValue::new(project.name.clone());
-    let stamp = human_time(&project.updated_at);
+    let stamp = human_time(project.updated_at);
     let row_id = StoredValue::new(project.id.clone());
     let row = StoredValue::new(project);
 
@@ -96,7 +95,7 @@ pub fn ProjectRow(project: ProjectDTO, workspace: Workspace, overlays: Overlays)
 
 #[component]
 fn RowMenu(
-    row: StoredValue<ProjectDTO>,
+    row: StoredValue<Project>,
     overlays: Overlays,
     on_rename: Callback<()>,
 ) -> impl IntoView {
@@ -146,15 +145,12 @@ fn RowMenu(
         ))
 }
 
-fn human_time(raw: &str) -> String {
-    let Ok(moment) = OffsetDateTime::parse(raw, &Rfc3339) else {
-        return raw.to_owned();
-    };
+fn human_time(moment: OffsetDateTime) -> String {
     let here = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
     let shown = format_description!("[day] [month repr:short] [year], [hour]:[minute]");
 
     moment
         .to_offset(here)
         .format(shown)
-        .unwrap_or_else(|_| raw.to_owned())
+        .unwrap_or_else(|_| "an unknown moment".to_owned())
 }

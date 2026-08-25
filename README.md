@@ -83,7 +83,7 @@ Because narrative order and chronological order differ (flashbacks, non-linear s
 
 ### Threads
 
-A **thread** is a coloured strand followed through the manuscript — a subplot, a motif, a mystery and its clues. Overlaid on the structure, a thread shows which scenes carry it, and where it goes quiet for too long. This is the most literally *Weaveling* view: it lets the author see and tend the individual strands running through the weave.
+A **thread** is a colored strand followed through the manuscript — a subplot, a motif, a mystery and its clues. Overlaid on the structure, a thread shows which scenes carry it, and where it goes quiet for too long. This is the most literally *Weaveling* view: it lets the author see and tend the individual strands running through the weave.
 
 ### Research / Sources
 
@@ -145,7 +145,7 @@ You can create, rename and delete projects. State lives in memory, so restarting
 
 ### Testing the client
 
-The client is tested end to end in a real browser, because the two client bugs that actually shipped were browser behaviour rather than logic — see [Client conventions](./ARCHITECTURE.md#client-conventions).
+The client is tested end to end in a real browser, because the two client bugs that actually shipped were browser behavior rather than logic — see [Client conventions](./ARCHITECTURE.md#client-conventions).
 
 ```bash
 cd clients/web

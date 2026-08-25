@@ -55,13 +55,13 @@ const starter = {
 };
 
 export class ProseEditor {
-  constructor(host, clientId, name, colour, seed, onUpdate) {
+  constructor(host, clientId, name, color, seed, onUpdate) {
     this.doc = new Y.Doc();
     this.doc.clientID = clientId;
     this.fragment = this.doc.getXmlFragment(FRAGMENT);
 
     this.awareness = new Awareness(this.doc);
-    this.awareness.setLocalStateField("user", { name, color: colour });
+    this.awareness.setLocalStateField("user", { name, color });
 
     this.doc.on("update", (update, origin) => {
       if (origin !== REMOTE) {

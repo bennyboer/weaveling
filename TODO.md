@@ -65,7 +65,7 @@ Decided, not forgotten. None of this protects or enables anything today — ther
 3. [ ] **Spike the risky bits** — prove the scary assumptions early:
    - [x] yrs ↔ Yjs collaborative editing round-trip (the highest-risk assumption in the whole plan).
    - [ ] embed Typst → compile a `.typ` to PDF.
-4. [ ] **Keep designing** — exact event catalogue, node text split-and-move mechanics, how threads are represented.
+4. [ ] **Keep designing** — exact event catalog, node text split-and-move mechanics, how threads are represented.
 
 Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then de-risk the CRDT round-trip.
 

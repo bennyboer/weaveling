@@ -2,7 +2,7 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
-use crate::workspace::Workspace;
+use crate::projects::workspace::Workspace;
 
 #[component]
 pub fn NewProject(workspace: Workspace) -> impl IntoView {

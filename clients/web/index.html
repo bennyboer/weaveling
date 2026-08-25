@@ -139,6 +139,64 @@
       }
       .dialog p { margin: 0 0 1.5rem; color: var(--muted); }
       .dialog-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+      .prose { margin-top: 2.5rem; }
+      .liveness {
+        margin: 0 0 0.5rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+      }
+      .surface {
+        border: 1px solid var(--line);
+        border-radius: 0.5rem;
+        padding: 1rem 1.25rem;
+        background: var(--paper);
+        min-height: 8rem;
+      }
+      .surface blockquote {
+        margin: 0 0 0 0.5rem;
+        padding-left: 1rem;
+        border-left: 3px solid var(--line);
+        color: var(--muted);
+      }
+      .ProseMirror {
+        position: relative;
+        word-wrap: break-word;
+        white-space: break-spaces;
+        font-variant-ligatures: none;
+        outline: none;
+      }
+      .ProseMirror pre { white-space: pre-wrap; }
+      .ProseMirror li { position: relative; }
+      .ProseMirror-hideselection *::selection { background: transparent; }
+      .ProseMirror-hideselection { caret-color: transparent; }
+      .ProseMirror [contenteditable="false"] { user-select: text; }
+      img.ProseMirror-separator {
+        display: inline !important;
+        border: none !important;
+        margin: 0 !important;
+      }
+      .ProseMirror-yjs-cursor {
+        position: relative;
+        margin-left: -1px;
+        margin-right: -1px;
+        border-left: 1px solid orange;
+        border-right: 1px solid orange;
+        word-break: normal;
+        pointer-events: none;
+      }
+      .ProseMirror-yjs-cursor > div {
+        position: absolute;
+        top: -1.15em;
+        left: -1px;
+        padding: 0.05rem 0.3rem;
+        border-radius: 0.2rem;
+        font: 500 0.65rem/1.4 system-ui, sans-serif;
+        white-space: nowrap;
+        color: #1c1917;
+        user-select: none;
+      }
     </style>
   </head>
   <body></body>

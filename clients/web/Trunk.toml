@@ -9,5 +9,14 @@ ignore = ["e2e", "node_modules", "package.json", "package-lock.json", "playwrigh
 port = 8080
 open = false
 
+[[hooks]]
+stage = "pre_build"
+command = "node"
+command_arguments = ["js/build.mjs"]
+
+[[proxy]]
+backend = "ws://127.0.0.1:3000/api/sync"
+ws = true
+
 [[proxy]]
 backend = "http://127.0.0.1:3000/api"

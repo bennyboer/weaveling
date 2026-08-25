@@ -2,3 +2,5 @@
 
 node_modules/
 dist/
+
+clients/web/js/editor.bundle.js

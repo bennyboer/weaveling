@@ -38,7 +38,7 @@ Deliberately small: a working client–server loop where you can create, rename,
 
 **Rust you'll meet:** workspace layout, `Cargo.toml` and workspace dependencies, crates vs. modules, `mod`/`pub`/`use`, the `async fn main` + `#[tokio::main]` entry point.
 
-Empty crates that just compile are a fine M0 deliverable — the point is the skeleton and the dependency arrows, not behaviour.
+Empty crates that just compile are a fine M0 deliverable — the point is the skeleton and the dependency arrows, not behavior.
 
 **Done when:** the server starts and `curl localhost:PORT/health` answers.
 
@@ -71,7 +71,7 @@ Empty crates that just compile are a fine M0 deliverable — the point is the sk
 
 **Crate placement:** the `ProjectStore` trait belongs in `core` — a port is declared by the domain that needs it. The `HashMap` impl goes in `adapters/store`. Nothing above the trait knows which impl exists; the service picks.
 
-**Rust you'll meet:** traits and trait bounds, `async` in traits, **shared mutable state** (`Arc` + `RwLock`/`Mutex`, interior mutability), static vs. dynamic dispatch (generics vs. `dyn Trait`), error modelling with `thiserror`, `?` and `From` conversions.
+**Rust you'll meet:** traits and trait bounds, `async` in traits, **shared mutable state** (`Arc` + `RwLock`/`Mutex`, interior mutability), static vs. dynamic dispatch (generics vs. `dyn Trait`), error modeling with `thiserror`, `?` and `From` conversions.
 
 **This is where the design lives.** Expect to spend real time here and expect me to push back on the trait shape — if it's leaky, everything downstream inherits the leak.
 
@@ -169,7 +169,7 @@ Not application code: five rungs of spike, each one answering a question that co
 
 Three spikes — `spikes/crdt`, `spikes/editor`, `spikes/sync` — kept out of the workspace's default build. Every decision they settled is written up in [ARCHITECTURE.md](./ARCHITECTURE.md#prose--the-editing-stack); every gap they exposed is in [TODO.md](./TODO.md). What remains is implementation, not discovery.
 
-**Read the spikes as proof, not as a starting point.** They are proof-of-concept code: no ports, no error modelling, no persistence. Phase 3 rewrites them into the architecture rather than moving them.
+**Read the spikes as proof, not as a starting point.** They are proof-of-concept code: no ports, no error modeling, no persistence. Phase 3 rewrites them into the architecture rather than moving them.
 
 ---
 
@@ -200,7 +200,7 @@ The instinct is to build the structure tree first and attach prose later. Don't.
 
 ### Milestone 7 — The structure tree, part one: a flat list
 
-**Design before code.** The event catalogue is still an open thread and deserves settling on its own: what exactly is an event, what is a projection, how do we version and upcast. Do that conversation first.
+**Design before code.** The event catalog is still an open thread and deserves settling on its own: what exactly is an event, what is a projection, how do we version and upcast. Do that conversation first.
 
 **Goal:** nodes exist, in an order, and their history is real.
 

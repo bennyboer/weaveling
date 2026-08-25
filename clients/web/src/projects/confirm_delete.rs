@@ -2,8 +2,8 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
-use crate::overlays::Overlays;
-use crate::workspace::Workspace;
+use crate::projects::overlays::Overlays;
+use crate::projects::workspace::Workspace;
 
 #[component]
 pub fn ConfirmDelete(workspace: Workspace, overlays: Overlays) -> impl IntoView {

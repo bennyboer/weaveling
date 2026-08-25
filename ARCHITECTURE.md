@@ -12,7 +12,7 @@ Weaveling is a **client–server application**.
 - **Client:** a browser. "Write from anywhere with just a browser" is a core goal.
 - **Database:** **PostgreSQL**.
 
-The server is a monolith *for now*, but organised into clean modules so that seams can later become process/service boundaries without a rewrite.
+The server is a monolith *for now*, but organized into clean modules so that seams can later become process/service boundaries without a rewrite.
 
 ## Repository Structure
 
@@ -74,21 +74,21 @@ There is deliberately **no `boundary` crate**. Once every adapter has its own cr
 
 **Feature-level tests live in their own crate.** `features/<name>/tests` is **test-only**: an empty library plus `#[cfg(test)]` modules, depending on every crate in the feature and depended on by nothing. It exists because cross-adapter tests have nowhere else legal to live — putting them in `adapters/rest` would need a `rest → store` dev-dependency (the forbidden sibling arrow), and putting them in `core` would need `core → adapters/store`, inverting the onion. A leaf that depends on the whole feature keeps every arrow pointing inward.
 
-The payoff is that feature tests use the **real** adapters. A hand-written fake store is a second, unverified implementation of the port — it cannot run against the conformance suite, so it is free to drift from the contract and let tests pass against behaviour no real backend exhibits. Using `InMemoryProjectStore` removes that hazard entirely. It is deliberately **not** a wiring crate: no composition happens here, because that is still the service's job. Give it a test-only crate's dependency list — everything under `[dev-dependencies]`, nothing under `[dependencies]`.
+The payoff is that feature tests use the **real** adapters. A hand-written fake store is a second, unverified implementation of the port — it cannot run against the conformance suite, so it is free to drift from the contract and let tests pass against behavior no real backend exhibits. Using `InMemoryProjectStore` removes that hazard entirely. It is deliberately **not** a wiring crate: no composition happens here, because that is still the service's job. Give it a test-only crate's dependency list — everything under `[dev-dependencies]`, nothing under `[dependencies]`.
 
 There are four test scopes, and keeping them apart matters:
 
 | Scope | Asks | Lives in |
 |---|---|---|
 | **Unit** | is this type's logic right? (`ProjectName` validation, id ordering) | the crate that owns the code |
-| **Port conformance** | does every backend honour what the port promises? | `adapters/<port>/src/suite.rs` |
-| **Feature behaviour** | does the feature behave correctly through its facade and router, with real adapters? | `features/<name>/tests` |
+| **Port conformance** | does every backend honor what the port promises? | `adapters/<port>/src/suite.rs` |
+| **Feature behavior** | does the feature behave correctly through its facade and router, with real adapters? | `features/<name>/tests` |
 | **App wiring** | is the feature mounted at the right path with the right middleware? | `services/api/tests` — smoke tests only |
-| **Client behaviour** | does the browser actually do the right thing? | `clients/web/e2e` — Playwright, real browser, real stack |
+| **Client behavior** | does the browser actually do the right thing? | `clients/web/e2e` — Playwright, real browser, real stack |
 
 Feature tests are written **from a business perspective**: they assert observable outcomes, never collaborations. "The store was not called" is a technical detail invisible to any client, and asserting it couples the test to the current call order. Spy on a collaborator only when the interaction *is* the requirement — don't charge a card twice, don't send two emails — which a read from our own store never is.
 
-**Port conformance is tested once per port, inside the adapter crate.** Because a port's backends share one crate, the suite that defines what the port *means* — `create` conflicts on a duplicate id, `update` is `NotFound` on a missing one, `list` returns creation order — lives in a plain `#[cfg(test)]` module there (`store/src/suite.rs`), taking `&impl ProjectStore`. Every backend runs the same cases; backend-specific behaviour (transaction rollback, connection failures mapping to `StoreError::Backend`) goes in that backend's own tests. `core` stays free of test scaffolding.
+**Port conformance is tested once per port, inside the adapter crate.** Because a port's backends share one crate, the suite that defines what the port *means* — `create` conflicts on a duplicate id, `update` is `NotFound` on a missing one, `list` returns creation order — lives in a plain `#[cfg(test)]` module there (`store/src/suite.rs`), taking `&impl ProjectStore`. Every backend runs the same cases; backend-specific behavior (transaction rollback, connection failures mapping to `StoreError::Backend`) goes in that backend's own tests. `core` stays free of test scaffolding.
 
 **Adapters are siblings, never friends.** `rest` must not depend on `store`. Choosing the concrete persistence implementation is the **service's** job as composition root — that is what keeps the in-memory → PostgreSQL swap down to one line in one manifest.
 
@@ -109,6 +109,7 @@ Note that `FixedClock` is plain `pub`, not `#[cfg(test)]` — test scaffolding i
 
 ### Naming and conventions
 
+- **American English throughout** — `color`, not `colour`. Not a preference about English so much as about having one spelling per word: the moment both exist, every identifier and every grep becomes a coin flip. The libraries we sit on (`color` in y-protocols awareness, CSS `color`) are American already, so the alternative was mixing spellings inside a single line.
 - **Prefix every crate.** Cargo crate names are flat and global; directories only group. `weaveling-projects-core`, not `core`.
 - **Alias dependencies to stay readable.** `projects-core = { package = "weaveling-projects-core", path = "../core" }` gives `use projects_core::Project;` at the call site. Set this up from the first manifest — retrofitting means touching every import.
 - **Shared versions in `[workspace.dependencies]`**, with member crates writing `serde = { workspace = true }`. One place to bump, and it prevents split-version build explosions. Glob members let new crates auto-join, but the patterns must match the crate depth exactly (`"features/*/contract"`, `"features/*/core"`, `"features/*/adapters/*"`) — a greedy `**` also matches intermediate directories that hold no `Cargo.toml`.
@@ -219,7 +220,7 @@ One wrinkle worth remembering: wasm-bindgen implements `Send`/`Sync` for `JsValu
 
 **We implement the protocol rather than depend on a crate.** It is about 70 lines of codec over the lib0 `Read`/`Write` traits `yrs` already exposes: five message kinds (sync step 1 / step 2 / update, awareness, query-awareness) in a two-varint envelope. Crates exist (`yrs-axum`, `yrs-tokio`), but they are 0.x, they track `yrs` versions on their own schedule, and this is a wire format we cannot afford to be surprised by.
 
-**Wire compatibility is the point.** Speaking the standard format means the client can use `y-websocket` as-is and we inherit reconnect-with-backoff, resync, and awareness timeouts rather than writing them. It also decouples the halves: either side can be replaced independently, which is exactly the optionality the [Frontend](#frontend--full-stack-rust-provisional) escape hatch depends on.
+**Wire compatibility is the point.** Speaking the standard format means the client can use `y-websocket` as-is and we inherit reconnect-with-backoff, resync, and awareness timeouts rather than writing them. It also decouples the halves: either side can be replaced independently, which is exactly the optionality the [Frontend](#frontend--full-stack-rust) escape hatch depends on.
 
 **The server is a participant, not a relay.** A passage that someone is editing is held in memory as a **`LivePassage`** — its own `Doc`, to which every update is applied. That is what lets a peer who was offline for a week be served by the server rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections attach to. One `LivePassage` per passage, and one passage per node, so the chain from node to CRDT document is 1:1 the whole way down.
 
@@ -235,7 +236,7 @@ Two things to revisit before this is production code: an unreadable frame is cur
 
 The spikes proved the technology. This is where it lands in the codebase.
 
-**The feature is `passages`; the aggregate is `Passage`.** It mirrors `projects` / `Project` exactly, so `PassageId`, `PassageStore` and `PassageService` all follow without anyone having to think. `text` was ruled out on collision grounds — `yrs::Text`, `Y.Text` and ProseMirror's text nodes all already exist here, and a `Text` aggregate beside them is a permanent "which one?". `prose` was the runner-up and survives as *vocabulary* (and as the CRDT root key), but it is a mass noun: it does not pluralise like every other feature, and `Prose` makes an awkward type. The word an author would recognise and the word that fits the codebase turned out not to be the same word, and the aggregate name is for us.
+**The feature is `passages`; the aggregate is `Passage`.** It mirrors `projects` / `Project` exactly, so `PassageId`, `PassageStore` and `PassageService` all follow without anyone having to think. `text` was ruled out on collision grounds — `yrs::Text`, `Y.Text` and ProseMirror's text nodes all already exist here, and a `Text` aggregate beside them is a permanent "which one?". `prose` was the runner-up and survives as *vocabulary* (and as the CRDT root key), but it is a mass noun: it does not pluralise like every other feature, and `Prose` makes an awkward type. The word an author would recognize and the word that fits the codebase turned out not to be the same word, and the aggregate name is for us.
 
 **A passage is its own aggregate because it has its own consistency model.** Structure is event-sourced with optimistic concurrency on a version column; a passage is a CRDT that merges without coordination. One cannot be nested inside the other without one of them being wrong. The feature split is not tidiness — it is the two-speed model made structural.
 
@@ -335,7 +336,7 @@ projects.insert(project.id(), project);
 
 No caller can observe a half-state, and an in-memory operation has no I/O to fail partway through. One discipline makes it hold: **never hold a `std::sync::RwLock` guard across an `.await`** — it blocks the executor and the guard is not `Send`.
 
-**What in-memory can prove:** observable atomicity — a failed `create` leaves the store unchanged, a version conflict appends nothing. Those belong in the **conformance suite**, so every backend must honour them.
+**What in-memory can prove:** observable atomicity — a failed `create` leaves the store unchanged, a version conflict appends nothing. Those belong in the **conformance suite**, so every backend must honor them.
 
 **What it cannot prove:** that a real backend actually wrapped its statements in a transaction. In-memory tests pass happily while PostgreSQL runs two unwrapped statements. There is no clever fix; the mitigation is that such tests live with the backend, which is already [how the test scopes are split](#repository-structure).
 
@@ -388,7 +389,27 @@ A read is a resource keyed on a version signal; a mutation is an action that bum
 
 Error state stays **centralised** rather than per-action. Each action's own `value()` is `Option<Result<..>>`, and picking "the current problem" from several of them needs arbitrary precedence since actions carry no timestamps. So one `problem` signal is written by every action and by the resource, which keeps a single banner honest. Action `pending()` is still used, for what it is actually good at: disabling a control while its own write is in flight, which closes the double-submit gap left by `POST /projects` not being idempotent.
 
-**Client tests are end-to-end, in a real browser.** Playwright against `trunk serve` plus the real API — see `clients/web/e2e`. The alternatives were weighed and rejected on evidence: both client bugs that actually shipped in M4 were *browser behaviour* — a `<form>` submitting natively and resetting every signal, and an error banner cleared by an unconditional reload. Neither a unit test behind an API port nor a mounted-component test would have caught either; clicking through Chrome did. Adopting `LocalResource`/`Action` also shrinks the unit-testable surface, since what remains in the client is declarative wiring.
+**The client is organized by feature, mirroring `features/`.** One folder per backend domain, each with its own `model.rs`, `service.rs`, state holder and components; only genuinely shared plumbing sits at the top.
+
+```
+clients/web/src/
+├── app.rs                  composes features
+├── http.rs                 ApiError + response classification
+├── projects/               model, service, workspace, overlays, components
+└── passages/               model, service, editor, the wasm-bindgen bridge
+```
+
+The alternative — grouping by *kind of thing* — collapses under its own weight quickly. An `ids.rs` holding `ProjectId` and `PassageId` puts two unrelated types together for no reason but that both are ids, and the same instinct would give us `services.rs` and `models.rs` next. Ids live with their feature.
+
+**`contract` stops at `service.rs`.** A DTO may be seen by exactly one file per feature — the service that fetches it — and never by a state holder or a component. Before this rule, `ProjectDTO` reached five of ten client files, and the damage was concrete: `row.rs` parsed RFC 3339 *inside a UI component* and, on a parse failure, rendered the raw wire timestamp to the author. Parsing now happens once in the service, where a malformed response is honestly an `Unexpected`. This is the same reasoning that keeps `contract` out of `core` on the server, applied to the other side of the wire.
+
+**A client model must differ from its DTO, or don't create one.** Otherwise every feature accretes a renamed mirror of its wire type, which is pure ceremony and one more thing to keep in step. `Project` earns its place three times over — a typed `ProjectId` instead of a `String`, an `OffsetDateTime` instead of unparsed text, and no `created_at` at all, since the wire sends it and nothing renders it. The model carries what the UI needs, not what the server happens to say. `passages` has **no** model: a `Passage { id, text }` would have been a no-op mirror, so its service returns a bare `PassageId`.
+
+**Ids are newtypes, and they do not validate.** `ProjectId(String)` and `PassageId(String)` are tags, not parsers. The point is that `rename(id, name)` — two `String`s in the old signature — becomes a compile error when transposed, which an alias (`type ProjectId = String`) would not have caught, since an alias is documentation rather than a type. They deliberately do *not* check the `passage_` prefix: [the client never computes an id](#the-passages-feature), it echoes back what it was given, and a validating constructor would quietly make the client depend on a format the server should be free to change.
+
+**A type is not prefixed with its own module's name.** `passages::prose::ProseEditor` already says "passage" once, through the path; `PassageEditor` there would say it twice while claiming more than the type does. The `passages` folder holds two editor-ish things, and the useful distinction between them is what each *owns* rather than which language it is written in: `PassageEditor` is the Leptos component — liveness indicator, host element, focus control, and the lifecycle that creates and destroys what sits inside it — while `ProseEditor` is that surface, ProseMirror plus Yjs plus the socket, reached through `wasm-bindgen`. Naming them so that one visibly contains the other matches how the code nests, and it keeps "prose" meaning exactly one thing at every layer: the rich-text content, which is also the `Y.XmlFragment` key and the `class="prose"` section that wraps it. An editor that handled prose *and* a passage's title would need a new name; this one would not.
+
+**Client tests are end-to-end, in a real browser.** Playwright against `trunk serve` plus the real API — see `clients/web/e2e`. The alternatives were weighed and rejected on evidence: both client bugs that actually shipped in M4 were *browser behavior* — a `<form>` submitting natively and resetting every signal, and an error banner cleared by an unconditional reload. Neither a unit test behind an API port nor a mounted-component test would have caught either; clicking through Chrome did. Adopting `LocalResource`/`Action` also shrinks the unit-testable surface, since what remains in the client is declarative wiring.
 
 What keeps such tests from rotting is the selector discipline: **role plus accessible name, never a CSS class, an index or XPath**. Restyling cannot break a test; breaking `aria-label="More actions"` can, and should, because a screen-reader user just lost that button. The accessibility work done in M4 turned out to double as the test surface. Playwright's auto-retrying locators remove the other classic flake source, so the suite contains no sleeps.
 

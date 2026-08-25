@@ -1,12 +1,13 @@
 use leptos::prelude::*;
-use projects_contract::ProjectDTO;
 
-use crate::api::{self, ApiError};
+use crate::http::ApiError;
+use crate::projects::model::{Project, ProjectId};
+use crate::projects::service;
 
-type ProjectListResource = LocalResource<Result<Vec<ProjectDTO>, ApiError>>;
-type CreateAction = Action<String, Result<ProjectDTO, ApiError>>;
-type RenameAction = Action<(String, String), Result<ProjectDTO, ApiError>>;
-type DeleteAction = Action<String, Result<(), ApiError>>;
+type ProjectListResource = LocalResource<Result<Vec<Project>, ApiError>>;
+type CreateAction = Action<String, Result<Project, ApiError>>;
+type RenameAction = Action<(ProjectId, String), Result<Project, ApiError>>;
+type DeleteAction = Action<ProjectId, Result<(), ApiError>>;
 
 #[derive(Clone, Copy)]
 pub struct Workspace {
@@ -31,25 +32,27 @@ impl Workspace {
         Self {
             project_list: LocalResource::new(move || {
                 refetch_projects.track();
-                async move { api::list().await }
+                async move { service::list().await }
             }),
             problem,
             creating: Action::new_local(move |name: &String| {
                 let name = name.clone();
-                async move { remember_outcome(problem, refetch_projects, api::create(&name).await) }
+                async move { remember_outcome(problem, refetch_projects, service::create(&name).await) }
             }),
-            renaming: Action::new_local(move |(id, name): &(String, String)| {
+            renaming: Action::new_local(move |(id, name): &(ProjectId, String)| {
                 let (id, name) = (id.clone(), name.clone());
-                async move { remember_outcome(problem, refetch_projects, api::rename(&id, &name).await) }
+                async move {
+                    remember_outcome(problem, refetch_projects, service::rename(&id, &name).await)
+                }
             }),
-            deleting: Action::new_local(move |id: &String| {
+            deleting: Action::new_local(move |id: &ProjectId| {
                 let id = id.clone();
-                async move { remember_outcome(problem, refetch_projects, api::delete(&id).await) }
+                async move { remember_outcome(problem, refetch_projects, service::delete(&id).await) }
             }),
         }
     }
 
-    pub fn projects(self) -> Vec<ProjectDTO> {
+    pub fn projects(self) -> Vec<Project> {
         self.project_list
             .get()
             .and_then(|listed| listed.ok())
@@ -68,7 +71,7 @@ impl Workspace {
         pending(self.creating)
     }
 
-    pub fn created(self) -> Signal<Option<ProjectDTO>> {
+    pub fn created(self) -> Signal<Option<Project>> {
         let creating = self.creating;
 
         Signal::derive(move || creating.value().get().and_then(Result::ok))
@@ -82,7 +85,7 @@ impl Workspace {
         pending(self.renaming)
     }
 
-    pub fn rename(self, id: String, name: String) {
+    pub fn rename(self, id: ProjectId, name: String) {
         self.renaming.dispatch((id, name));
     }
 
@@ -90,7 +93,7 @@ impl Workspace {
         pending(self.deleting)
     }
 
-    pub fn delete(self, id: String) {
+    pub fn delete(self, id: ProjectId) {
         self.deleting.dispatch(id);
     }
 }

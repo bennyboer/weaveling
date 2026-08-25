@@ -1,10 +1,7 @@
-mod api;
 mod app;
-mod confirm_delete;
-mod new_project;
-mod overlays;
-mod project_row;
-mod workspace;
+mod http;
+mod passages;
+mod projects;
 
 use leptos::prelude::*;
 

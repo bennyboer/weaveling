@@ -2,16 +2,25 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
-use crate::confirm_delete::{ConfirmDelete, ConfirmDeleteProps};
-use crate::new_project::{NewProject, NewProjectProps};
-use crate::overlays::Overlays;
-use crate::project_row::{ProjectRow, ProjectRowProps};
-use crate::workspace::Workspace;
+use crate::passages::editor::{PassageEditor, PassageEditorProps};
+use crate::passages::model::PassageId;
+use crate::passages::service as passages;
+use crate::projects::confirm_delete::{ConfirmDelete, ConfirmDeleteProps};
+use crate::projects::new_project::{NewProject, NewProjectProps};
+use crate::projects::overlays::Overlays;
+use crate::projects::row::{ProjectRow, ProjectRowProps};
+use crate::projects::workspace::Workspace;
 
 #[component]
 pub fn App() -> impl IntoView {
     let workspace = Workspace::new();
     let overlays = Overlays::new();
+    let open_passage = RwSignal::new(None::<PassageId>);
+    let starting = Action::new_local(move |()| async move {
+        if let Ok(started) = passages::create().await {
+            open_passage.set(Some(started));
+        }
+    });
 
     window_event_listener(ev::click, move |_| overlays.close_menu());
     window_event_listener(ev::keydown, move |event| {
@@ -54,6 +63,16 @@ pub fn App() -> impl IntoView {
             workspace,
             overlays,
         }),
+        move || match open_passage.get() {
+            Some(passage) => PassageEditor(PassageEditorProps { passage }).into_any(),
+            None => html::button()
+                .disabled(move || starting.pending().get())
+                .on(ev::click, move |_| {
+                    starting.dispatch(());
+                })
+                .child("Start writing")
+                .into_any(),
+        },
     ))
 }
 

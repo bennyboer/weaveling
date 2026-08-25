@@ -9,15 +9,11 @@ extern "C" {
     #[wasm_bindgen(constructor)]
     pub fn new(
         host: &HtmlElement,
-        client_id: f64,
-        name: &str,
+        passage: &str,
+        author: &str,
         color: &str,
-        seed: bool,
-        on_update: &Closure<dyn Fn(Vec<u8>)>,
+        on_connected: &Closure<dyn Fn(bool)>,
     ) -> ProseEditor;
-
-    #[wasm_bindgen(method)]
-    pub fn absorb(this: &ProseEditor, update: &[u8]);
 
     #[wasm_bindgen(method)]
     pub fn destroy(this: &ProseEditor);
@@ -27,7 +23,4 @@ extern "C" {
 
     #[wasm_bindgen(method, js_name = plainText)]
     pub fn plain_text(this: &ProseEditor) -> String;
-
-    #[wasm_bindgen(method)]
-    pub fn valid(this: &ProseEditor) -> bool;
 }
