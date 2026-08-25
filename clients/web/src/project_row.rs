@@ -1,5 +1,7 @@
+use leptos::html;
 use leptos::html::Input;
 use leptos::prelude::*;
+use leptos::{IntoView, ev};
 use projects_contract::ProjectDTO;
 use time::format_description::well_known::Rfc3339;
 use time::macros::format_description;
@@ -13,18 +15,18 @@ pub fn ProjectRow(project: ProjectDTO, workspace: Workspace, overlays: Overlays)
     let (editing, set_editing) = signal(false);
     let (draft, set_draft) = signal(project.name.clone());
 
-    let shown_name = project.name.clone();
+    let shown_name = StoredValue::new(project.name.clone());
     let stamp = human_time(&project.updated_at);
     let row_id = StoredValue::new(project.id.clone());
     let row = StoredValue::new(project);
 
-    let editor: NodeRef<Input> = NodeRef::new();
+    let field: NodeRef<Input> = NodeRef::new();
 
     Effect::new(move |_| {
-        if let Some(field) = editor.get() {
-            field.set_value(&draft.get_untracked());
-            let _ = field.focus();
-            field.select();
+        if let Some(input) = field.get() {
+            input.set_value(&draft.get_untracked());
+            let _ = input.focus();
+            input.select();
         }
     });
 
@@ -40,48 +42,56 @@ pub fn ProjectRow(project: ProjectDTO, workspace: Workspace, overlays: Overlays)
         workspace.rename(row_id.get_value(), next);
     });
 
-    view! {
-        <li>
-            <Show
-                when=move || editing.get()
-                fallback=move || {
-                    let name = shown_name.clone();
-                    view! { <span class="name">{name}</span> }
-                }
-            >
-                <input
-                    type="text"
-                    node_ref=editor
-                    prop:value=move || draft.get()
-                    on:input=move |event| set_draft.set(event_target_value(&event))
-                    on:keydown=move |event| {
+    html::li().child((
+        move || {
+            if editing.get() {
+                html::input()
+                    .r#type("text")
+                    .node_ref(field)
+                    .prop("value", move || draft.get())
+                    .on(ev::input, move |event| {
+                        set_draft.set(event_target_value(&event))
+                    })
+                    .on(ev::keydown, move |event| {
                         if event.key() == "Enter" {
                             commit.run(());
                         }
-                    }
-                />
-            </Show>
-
-            <span class="stamp">{stamp}</span>
-
-            <Show
-                when=move || editing.get()
-                fallback=move || {
-                    view! { <RowMenu row=row overlays=overlays on_rename=start_editing /> }
-                }
-            >
-                <div class="actions">
-                    <button
-                        disabled=move || draft.get().trim().is_empty()
-                        on:click=move |_| commit.run(())
-                    >
-                        "Save"
-                    </button>
-                    <button on:click=move |_| set_editing.set(false)>"Cancel"</button>
-                </div>
-            </Show>
-        </li>
-    }
+                    })
+                    .into_any()
+            } else {
+                html::span()
+                    .class("name")
+                    .child(shown_name.get_value())
+                    .into_any()
+            }
+        },
+        html::span().class("stamp").child(stamp),
+        move || {
+            if editing.get() {
+                html::div()
+                    .class("actions")
+                    .child((
+                        html::button()
+                            .disabled(move || {
+                                draft.get().trim().is_empty() || workspace.renaming().get()
+                            })
+                            .on(ev::click, move |_| commit.run(()))
+                            .child("Save"),
+                        html::button()
+                            .on(ev::click, move |_| set_editing.set(false))
+                            .child("Cancel"),
+                    ))
+                    .into_any()
+            } else {
+                RowMenu(RowMenuProps {
+                    row,
+                    overlays,
+                    on_rename: start_editing,
+                })
+                .into_any()
+            }
+        },
+    ))
 }
 
 #[component]
@@ -93,47 +103,47 @@ fn RowMenu(
     let row_id = StoredValue::new(row.get_value().id);
     let open = move || overlays.is_menu_open(&row_id.get_value());
 
-    view! {
-        <div class="actions" on:click=move |event| event.stop_propagation()>
-            <button
-                class="menu-button"
-                aria-label="More actions"
-                aria-haspopup="menu"
-                aria-expanded=move || open().to_string()
-                on:click=move |_| overlays.toggle_menu(row_id.get_value())
-            >
-                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-                    <circle cx="8" cy="3" r="1.5" fill="currentColor" />
-                    <circle cx="8" cy="8" r="1.5" fill="currentColor" />
-                    <circle cx="8" cy="13" r="1.5" fill="currentColor" />
-                </svg>
-            </button>
+    let kebab = view! {
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+            <circle cx="8" cy="3" r="1.5" fill="currentColor" />
+            <circle cx="8" cy="8" r="1.5" fill="currentColor" />
+            <circle cx="8" cy="13" r="1.5" fill="currentColor" />
+        </svg>
+    };
 
-            <Show when=open fallback=|| ()>
-                <div class="menu" role="menu">
-                    <button
-                        role="menuitem"
-                        on:click=move |_| {
-                            overlays.close_menu();
-                            on_rename.run(());
-                        }
-                    >
-                        "Rename"
-                    </button>
-                    <button
-                        class="danger"
-                        role="menuitem"
-                        on:click=move |_| {
-                            overlays.close_menu();
-                            overlays.ask_to_delete(row.get_value());
-                        }
-                    >
-                        "Delete"
-                    </button>
-                </div>
-            </Show>
-        </div>
-    }
+    html::div()
+        .class("actions")
+        .on(ev::click, |event| event.stop_propagation())
+        .child((
+            html::button()
+                .class("menu-button")
+                .attr("aria-label", "More actions")
+                .attr("aria-haspopup", "menu")
+                .attr("aria-expanded", move || open().to_string())
+                .on(ev::click, move |_| overlays.toggle_menu(row_id.get_value()))
+                .child(kebab),
+            move || {
+                open().then(|| {
+                    html::div().class("menu").role("menu").child((
+                        html::button()
+                            .role("menuitem")
+                            .on(ev::click, move |_| {
+                                overlays.close_menu();
+                                on_rename.run(());
+                            })
+                            .child("Rename"),
+                        html::button()
+                            .class("danger")
+                            .role("menuitem")
+                            .on(ev::click, move |_| {
+                                overlays.close_menu();
+                                overlays.ask_to_delete(row.get_value());
+                            })
+                            .child("Delete"),
+                    ))
+                })
+            },
+        ))
 }
 
 fn human_time(raw: &str) -> String {

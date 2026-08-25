@@ -40,11 +40,15 @@ Real gaps found while spiking, to settle when prose becomes production code rath
   **The permanent version of the same problem:** across two server instances both can hydrate the same passage, and no amount of eviction or grace period helps. Same failure the snapshot-vs-log `absorb` analysis turned up. Single-instance eviction is tidy-up; multi-instance needs sticky routing by passage id or a shared coordination layer.
 - [ ] **No backpressure on the broadcast channel.** `BACKLOG` is 256 frames; a slow peer that fills it gets a lagged receiver and silently misses frames. Its next sync recovers the prose, but awareness is lost outright.
 - [ ] **Auth on the socket.** `/sync/{passage}` currently accepts anyone who names a passage that exists. Same shape as the tenancy gap in the REST layer — ids are not capabilities.
-- [ ] **Generated assets must be excluded from the Trunk watch list.** The JS bundle is written into the crate by a `pre_build` hook, which retriggers the watcher; without `[watch] ignore` it rebuilds forever (190 rebuilds before it was spotted). This will recur the moment the real client gains a bundling step.
+- [ ] **Generated assets must be excluded from the Trunk watch list.** The JS bundle is written into the crate by a `pre_build` hook, which retriggers the watcher; without `[watch] ignore` it rebuilds forever (190 rebuilds before it was spotted). **This already recurred once** — Playwright writing `test-results/` into `clients/web` caused 257 spurious rebuilds and a one-in-five flake, since the page reloaded mid-test. Fixed by pointing `outputDir` at `target/` and adding `e2e`/`node_modules`/the JS manifests to `[watch] ignore`. It will recur again the moment the real client gains a bundling step.
 
 ## Carried inside Phase 3
 
 - [x] ~~**Move the `"prose"` fragment name into `contract`.**~~ Resolved differently than planned. One shared constant would have meant `core -> contract`, and keeping `core` a leaf won — so both crates define `FRAGMENT` and `features/passages/tests/src/shared_kernel.rs` asserts they match. See [the reasoning](./ARCHITECTURE.md#feature-anatomy--the-onion).
+
+## Revisit later
+
+- [ ] **A UI component library (thaw).** Considered and deferred, not rejected. Blocked today on versions: `thaw 0.5.0-beta` wants `leptos ^0.8.0` and we are on `0.9.0-beta`. Two reasons to still want a specific justification once that clears, rather than adopting by default: a component library is *all* components, so calling it from builder syntax means `Button(ButtonProps::builder()…)` everywhere — it largely un-decides [the builder choice](./ARCHITECTURE.md#client-conventions); and thaw is Fluent-flavoured, which fights the deliberately bookish palette (Georgia serif, warm paper) that is part of what Weaveling *is*. It also would not help with the hard part, since the prose editor is ProseMirror through interop. **Revisit when** the UI grows tables, date pickers or complex forms — the timeline and codex are where a library starts genuinely paying. The one real gap it would close today (our delete dialog has no focus trap) is answered more cheaply by native `<dialog>` + `showModal()`.
 
 ## Deferred until we actually want to deploy
 

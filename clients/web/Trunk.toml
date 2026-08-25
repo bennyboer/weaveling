@@ -2,6 +2,9 @@
 target = "index.html"
 dist = "dist"
 
+[watch]
+ignore = ["e2e", "node_modules", "package.json", "package-lock.json", "playwright.config.ts"]
+
 [serve]
 port = 8080
 open = false

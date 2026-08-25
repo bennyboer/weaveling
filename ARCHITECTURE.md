@@ -84,6 +84,7 @@ There are four test scopes, and keeping them apart matters:
 | **Port conformance** | does every backend honour what the port promises? | `adapters/<port>/src/suite.rs` |
 | **Feature behaviour** | does the feature behave correctly through its facade and router, with real adapters? | `features/<name>/tests` |
 | **App wiring** | is the feature mounted at the right path with the right middleware? | `services/api/tests` — smoke tests only |
+| **Client behaviour** | does the browser actually do the right thing? | `clients/web/e2e` — Playwright, real browser, real stack |
 
 Feature tests are written **from a business perspective**: they assert observable outcomes, never collaborations. "The store was not called" is a technical detail invisible to any client, and asserting it couples the test to the current call order. Spy on a collaborator only when the interaction *is* the requirement — don't charge a card twice, don't send two emails — which a read from our own store never is.
 
@@ -366,6 +367,32 @@ A broker can be introduced later at a real module boundary — e.g. when there a
 We take the **full-stack Rust** path (Leptos, compiled to WASM). It's part of the fun and keeps the whole stack in one language.
 
 This was provisional until the editor spike settled it. The worry was that a collaborative rich-text editor would be too heavy in Rust/WASM, and the fallback was to switch the frontend to **Angular** with a proven editor plus Yjs bindings, keeping the Rust backend. That escape hatch stays open and costs nothing to keep open — the interop boundary is bytes and the sync protocol is the standard one, so neither half knows what the other is written in. But nothing found so far argues for taking it: hosting ProseMirror from Leptos is a ~20-line boundary, and the bundle cost is ordinary. See [The client hosts the editor](#the-client-hosts-the-editor-rust-never-touches-the-document-model).
+
+### Client conventions
+
+**The builder, not the `view!` macro.** Leptos offers both; we default to the builder (`html::div().class(..).child(..)`) and reach for `view!` only where markup genuinely dominates — an inline SVG is the one current case.
+
+The reason is not tooling first, it is honesty about what the code *is*: counting a representative component, roughly a third of a `view!` body was markup and two thirds were Rust closures wearing angle brackets. It is an embedded DSL that mostly contains the host language, which is the YAML-with-bash-inside failure mode. The concrete harms follow from that:
+
+- **`cargo fmt` ignores `view!` bodies entirely.** Verified by mangling one and watching `cargo fmt --all -- --check` pass. Every macro body in the client was unformatted and unchecked; under the builder they are ordinary Rust.
+- **Attributes become typed methods.** `.r#type("text")`, `.placeholder(..)`, `.disabled(..)` — a misspelled attribute is a compile error, where `view!` accepts it silently.
+- **rust-analyzer and compiler spans work properly** outside a proc macro.
+
+Two consequences worth knowing. `#[component]` stays — it is independent of the syntax choice and buys named props, called as `Foo(FooProps { .. })`. And **`<Show>` largely stops being necessary**: it exists mostly because `if` is awkward inside `view!`, so in builder form a plain `if` with `.into_any()` on both arms replaces it. `<For>` is *not* in that category — it does keyed reconciliation that a plain `map` does not, so it keeps earning its place.
+
+`leptosfmt` was considered and skipped: with `view!` this rare, another tool in the chain costs more than it returns.
+
+**`LocalResource` for reads, `Action` for writes — the `_local` variants.** `gloo-net`'s futures are not `Send`, so plain `Resource`/`Action` do not apply; `LocalResource::new` and `Action::new_local` do.
+
+A read is a resource keyed on a version signal; a mutation is an action that bumps that version **only on success**. That last clause is why an error banner can no longer be wiped by the reload that follows a failed write — the bug shipped in M4 was three call sites each having to remember to reload conditionally, and it is now one invariant in one place.
+
+Error state stays **centralised** rather than per-action. Each action's own `value()` is `Option<Result<..>>`, and picking "the current problem" from several of them needs arbitrary precedence since actions carry no timestamps. So one `problem` signal is written by every action and by the resource, which keeps a single banner honest. Action `pending()` is still used, for what it is actually good at: disabling a control while its own write is in flight, which closes the double-submit gap left by `POST /projects` not being idempotent.
+
+**Client tests are end-to-end, in a real browser.** Playwright against `trunk serve` plus the real API — see `clients/web/e2e`. The alternatives were weighed and rejected on evidence: both client bugs that actually shipped in M4 were *browser behaviour* — a `<form>` submitting natively and resetting every signal, and an error banner cleared by an unconditional reload. Neither a unit test behind an API port nor a mounted-component test would have caught either; clicking through Chrome did. Adopting `LocalResource`/`Action` also shrinks the unit-testable surface, since what remains in the client is declarative wiring.
+
+What keeps such tests from rotting is the selector discipline: **role plus accessible name, never a CSS class, an index or XPath**. Restyling cannot break a test; breaking `aria-label="More actions"` can, and should, because a screen-reader user just lost that button. The accessibility work done in M4 turned out to double as the test surface. Playwright's auto-retrying locators remove the other classic flake source, so the suite contains no sleeps.
+
+Two traps found while setting it up, both worth remembering. **Playwright must write its output outside the Trunk watch root** (`outputDir` points at `target/`), and `e2e/`, `node_modules/` and the JS manifests must be in `[watch] ignore` — otherwise a test run triggers a rebuild, the page reloads mid-test, and elements detach under the cursor. That produced a one-in-five flake in a different test each time, and 257 spurious rebuilds; it is the same class of mistake as the spike's rebuild loop. And **`hasText` matches substrings**, so a renamed-to value must not contain the original or the "old name is gone" assertion silently passes against the new row.
 
 ## Export
 

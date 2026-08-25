@@ -108,6 +108,12 @@ Weaveling is a browser-based client–server app: a Rust modular-monolith backen
   cargo install --locked trunk
   ```
 
+- **Node**, only for the client's end-to-end tests. Not needed to build or run anything:
+
+  ```bash
+  cd clients/web && npm install && npx playwright install chromium
+  ```
+
 ### Running it for development
 
 Two processes, two terminals.
@@ -137,6 +143,19 @@ Start the API first if you care about the first paint; otherwise the client show
 
 You can create, rename and delete projects. State lives in memory, so restarting the API empties it — see [ROADMAP.md](./ROADMAP.md) for where PostgreSQL comes in.
 
+### Testing the client
+
+The client is tested end to end in a real browser, because the two client bugs that actually shipped were browser behaviour rather than logic — see [Client conventions](./ARCHITECTURE.md#client-conventions).
+
+```bash
+cd clients/web
+npm test
+```
+
+Playwright starts the API and Trunk if they aren't running and reuses them if they are, so this works whether or not you already have the dev servers up. The suite takes a few seconds.
+
+Two things to know before writing more of these. Selectors are **role plus accessible name** only — never a CSS class or an index — so restyling can't break a test. And the API is in memory and shared for the whole run, so no test may assume an empty list; each one makes its own uniquely-named project.
+
 ### Common commands
 
 | Command | Does |
@@ -148,6 +167,7 @@ You can create, rename and delete projects. State lives in memory, so restarting
 | `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` | Lints the client. Needed as a separate command, per the row above. |
 | `cargo check -p weaveling-client-web --target wasm32-unknown-unknown` | Type-checks the client without invoking Trunk. |
 | `trunk build --release` | Produces the optimised client bundle in `clients/web/dist`. |
+| `cd clients/web && npm test` | Runs the client's end-to-end tests in a real browser. Starts the API and Trunk itself if they aren't already up, and reuses them if they are. |
 
 ### Layout
 
