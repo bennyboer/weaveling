@@ -1,0 +1,18 @@
+:root {
+  color-scheme: light dark;
+  --ink: #1c1917;
+  --muted: #78716c;
+  --line: #e7e5e4;
+  --paper: #fdfcfb;
+  --alarm: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #f5f5f4;
+    --muted: #a8a29e;
+    --line: #292524;
+    --paper: #1c1917;
+    --alarm: #f87171;
+  }
+}

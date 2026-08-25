@@ -1,0 +1,80 @@
+.new-project {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.projects {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+}
+
+.name {
+  flex: 1;
+  font-size: 1.05rem;
+}
+
+.stamp {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.actions {
+  position: relative;
+  display: flex;
+  gap: 0.375rem;
+
+  button {
+    padding: 0.35rem 0.6rem;
+    font-size: 0.85rem;
+  }
+}
+
+.menu-button {
+  display: grid;
+  place-items: center;
+  padding: 0.35rem;
+  border-color: transparent;
+  color: var(--muted);
+
+  &:hover {
+    color: var(--ink);
+    border-color: var(--line);
+  }
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 9rem;
+  padding: 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--paper);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+
+  button {
+    border: none;
+    border-radius: 0.25rem;
+    text-align: left;
+    padding: 0.45rem 0.6rem;
+
+    &:hover {
+      background: color-mix(in srgb, var(--ink) 8%, transparent);
+    }
+  }
+}
