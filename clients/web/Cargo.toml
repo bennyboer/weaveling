@@ -10,7 +10,13 @@ leptos = { workspace = true, features = ["csr"] }
 serde = { workspace = true }
 thiserror = { workspace = true }
 wasm-bindgen = { workspace = true }
-web-sys = { workspace = true, features = ["HtmlElement"] }
+web-sys = { workspace = true, features = [
+    "History",
+    "HtmlElement",
+    "Location",
+    "UrlSearchParams",
+    "Window",
+] }
 time = { workspace = true, features = [
     "parsing",
     "formatting",

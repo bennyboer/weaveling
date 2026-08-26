@@ -10,6 +10,9 @@ use crate::projects::new_project::{NewProject, NewProjectProps};
 use crate::projects::overlays::Overlays;
 use crate::projects::row::{ProjectRow, ProjectRowProps};
 use crate::projects::workspace::Workspace;
+use crate::url;
+
+const PASSAGE: &str = "passage";
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -18,9 +21,24 @@ pub fn App() -> impl IntoView {
     let open_passage = RwSignal::new(None::<PassageId>);
     let starting = Action::new_local(move |()| async move {
         if let Ok(started) = passages::create().await {
+            url::remember(PASSAGE, started.as_str());
             open_passage.set(Some(started));
         }
     });
+    let reopening = Action::new_local(move |remembered: &PassageId| {
+        let remembered = remembered.clone();
+        async move {
+            if passages::confirm(&remembered).await.is_ok() {
+                open_passage.set(Some(remembered));
+            } else {
+                url::forget(PASSAGE);
+            }
+        }
+    });
+
+    if let Some(remembered) = url::query(PASSAGE) {
+        reopening.dispatch(PassageId::from(remembered));
+    }
 
     window_event_listener(ev::click, move |_| overlays.close_menu());
     window_event_listener(ev::keydown, move |event| {
@@ -63,9 +81,22 @@ pub fn App() -> impl IntoView {
             workspace,
             overlays,
         }),
-        move || match open_passage.get() {
-            Some(passage) => PassageEditor(PassageEditorProps { passage }).into_any(),
-            None => html::button()
+        move || match (open_passage.get(), reopening.pending().get()) {
+            (Some(passage), _) => (
+                PassageEditor(PassageEditorProps { passage }),
+                html::button()
+                    .on(ev::click, move |_| {
+                        url::forget(PASSAGE);
+                        open_passage.set(None);
+                    })
+                    .child("Stop writing"),
+            )
+                .into_any(),
+            (None, true) => html::p()
+                .class("empty")
+                .child("Reopening your passage…")
+                .into_any(),
+            (None, false) => html::button()
                 .disabled(move || starting.pending().get())
                 .on(ev::click, move |_| {
                     starting.dispatch(());

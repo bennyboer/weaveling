@@ -196,6 +196,10 @@ The instinct is to build the structure tree first and attach prose later. Don't.
 
 **Done when:** two browser tabs edit the same passage, converge, survive a reload, and `GET /api/passages/{id}/text` returns what both tabs show.
 
+**Done.** All four conditions are covered by `clients/web/e2e/passages.spec.ts`: two tabs on one passage converge in both directions, prose survives a reload, and the server's own projection returns what the tabs show. One deviation from the plan above — the projection is read from `GET /api/passages/{id}`, which returns `PassageDTO { id, text }`, rather than a separate `/text` route; a passage has exactly one representation to fetch, so a second route would have earned nothing.
+
+The open passage is carried in the URL as `?passage=<id>`, which is what makes both the reload and the second tab work at all — see [Client conventions](./ARCHITECTURE.md#client-conventions).
+
 **Explicitly not in M6:** nodes, trees, event sourcing, Postgres, auth, awareness tombstones.
 
 ### Milestone 7 — The structure tree, part one: a flat list

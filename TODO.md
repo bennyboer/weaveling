@@ -12,6 +12,8 @@ Scratch notes. See [README.md](./README.md) (the dream), [ARCHITECTURE.md](./ARC
 - [x] Milestone 4 — the Leptos client: list, create, rename, delete. Verified in a browser.
 - [x] Milestone 5 — release bundle measured. Everything else in M5 deferred, see below.
 
+- [x] Milestone 6 — the walking skeleton: `features/passages` end to end, two browser tabs converging on one passage through our own sync server.
+
 **Phase 1 is done.** A projects-only CRUD prototype runs end to end: Leptos client → REST → service → in-memory store. 61 tests.
 
 **Phase 2 spikes are done.** The prose stack is de-risked across three spikes — `spikes/crdt` (CRDT semantics, `yrs` ↔ `Yjs`, reading a `y-prosemirror` document), `spikes/editor` (Leptos hosting ProseMirror, two replicas converging across a partition), `spikes/sync` (real `y-websocket` clients through our own Rust server). Findings live in [ARCHITECTURE.md](./ARCHITECTURE.md#prose--the-editing-stack).
@@ -80,7 +82,7 @@ Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then 
 - [x] ~~Frontend framework choice within full-stack Rust~~ — Leptos, and the editor spike confirmed it can host ProseMirror without the interop dominating.
 - [ ] Event versioning/upcasting strategy.
 - [ ] Auth / accounts / project membership / permissions (deferred, but looming for multi-author).
-- [ ] **How to test the web client.** It has no automated tests — `Workspace`, the `ApiError` classification and `human_time` are verified only by clicking through a browser. Deliberately postponed while the client is this small. The obstacle when we do tackle it: `Workspace` calls `api` directly and `api` is gloo-net, which is wasm-only, so native unit tests would need the API behind a port (the `ProjectStore` move, applied client-side). The alternative is `wasm-bindgen-test` against headless Chrome, which tests the real thing but needs chromedriver. Decide once the frontend has enough complexity to justify one.
+- [x] ~~**How to test the web client.**~~ Settled: Playwright end-to-end against `trunk serve` plus the real API, `clients/web/e2e`, 14 tests. The obstacle recorded here — that `Workspace` called gloo-net directly, so native unit tests would need the API behind a port — turned out to argue *for* the end-to-end choice rather than against it. See [Client conventions](./ARCHITECTURE.md#client-conventions).
 
 ## Parked (decided — don't re-litigate)
 
