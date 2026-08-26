@@ -33,7 +33,7 @@ weaveling/
 
 ### Feature anatomy — the onion
 
-Each feature is a slice of the domain (project management, structure tree, timeline, …) and is internally an **onion**: a pure core, wrapped in a ring of adapters.
+Each feature is a slice of the domain (project management, pieces, board, timeline, …) and is internally an **onion**: a pure core, wrapped in a ring of adapters.
 
 ```
 features/
@@ -101,7 +101,7 @@ Feature tests are written **from a business perspective**: they assert observabl
 | `features` | libraries, own contract (adapters only — never `core`) | **other features** |
 | `libraries` | libraries (shallowly) | features, services |
 
-The **feature → feature** ban is the load-bearing one. When two features want the same thing there are exactly two legal moves: the *service* composes them, or the shared concept sinks into a `libraries/` crate. (Expected first case: structure tree and timeline sharing a data structure.)
+The **feature → feature** ban is the load-bearing one. When two features want the same thing there are exactly two legal moves: the *service* composes them, or the shared concept sinks into a `libraries/` crate. (First real case: `pieces` and `boards`, resolved by neither move — the client joins them, which is legal because `clients` may depend on contract crates. See [the board join](#the-board-renders-through-a-frontend-join).)
 
 **Cross-cutting ports live in `libraries/`, not in a feature's `core`.** The rule that a port is declared by the core needing it holds for domain-specific ports like `ProjectStore`. A port that is *domain-free* and wanted by every feature goes in a library instead — `libraries/clock` is the first, holding the `Clock` trait plus `SystemClock` and `FixedClock`. The reason is stronger than anticipated reuse: per-feature copies of `Clock` would be **incompatible types**, so the composition root would have to build one clock per feature and no test could pin time across the system. This is legal under the table above (`features` → `libraries`) and is an explicit *exception* to port ownership, not a violation of it.
 
@@ -127,11 +127,11 @@ Three practical decisions that follow from the layout:
 
 **UUID v7** ([RFC 9562](https://www.rfc-editor.org/rfc/rfc9562), 2024) everywhere — not v4. A 48-bit Unix-millisecond prefix followed by 74 random bits, so ids are lexicographically sortable and sort order equals creation order.
 
-- **Why:** monotonic keys append at the right edge of a B-tree instead of scattering inserts across it — fewer page splits, less dirtied cache, less WAL. Postgres uses heap tables rather than a clustered index, so the effect is milder than the MySQL horror stories, but the primary-key index still pays. This is irrelevant for projects (dozens per user) and decisive for **nodes** (thousands per book) and the **event log** (append-only, the most insert-heavy table in the whole design). Setting one convention now beats choosing per entity later. Bonus: `ORDER BY id` *is* creation order, so cursor pagination needs no extra column.
+- **Why:** monotonic keys append at the right edge of a B-tree instead of scattering inserts across it — fewer page splits, less dirtied cache, less WAL. Postgres uses heap tables rather than a clustered index, so the effect is milder than the MySQL horror stories, but the primary-key index still pays. This is irrelevant for projects (dozens per user) and decisive for **pieces** (thousands per book) and the **event log** (append-only, the most insert-heavy table in the whole design). Setting one convention now beats choosing per entity later. Bonus: `ORDER BY id` *is* creation order, so cursor pagination needs no extra column.
 - **Cost:** an id leaks its creation time to millisecond precision, and entropy drops from 122 random bits to 74 (still far past any collision concern). Acceptable for a login-gated tool; revisit if ids ever land in public share URLs.
 - **The timestamp is injected, never read inside the domain.** Use `Uuid::new_v7(Timestamp::from_unix(…))` fed by the same `now` the aggregate receives — not `Uuid::now_v7()`, which would smuggle a clock read into `core`. This keeps the domain pure, keeps tests deterministic, and makes an id's embedded timestamp agree with its aggregate's `created_at` by construction rather than by luck.
 
-**Ids are prefixed on the wire and in logs: `project_019a4f…`, `passage_019a4f…`.** The prefix is mechanical — the aggregate's type name, lowercased and singular, plus an underscore — so `node_`, `thread_` and `codex_` need no decision when they arrive. Inside the server `ProjectId` and `PassageId` are distinct newtypes, so the compiler already prevents mixing them — but the moment an id becomes a string (a URL, a JSON field, a log line, a bug report) that protection is gone. The prefix restores it exactly where it was missing.
+**Ids are prefixed on the wire and in logs: `project_019a4f…`, `passage_019a4f…`.** The prefix is mechanical — the aggregate's type name, lowercased and singular, plus an underscore — so `piece_`, `thread_` and `codex_` need no decision when they arrive. Inside the server `ProjectId` and `PassageId` are distinct newtypes, so the compiler already prevents mixing them — but the moment an id becomes a string (a URL, a JSON field, a log line, a bug report) that protection is gone. The prefix restores it exactly where it was missing.
 
 - **Where it lives: `core`, on `Display`/`FromStr`.** The layering argument says a prefix is a wire concern belonging in `to_dto`; that is overruled because the biggest benefit is *logs*, and `StoreError::NotFound(PassageId)` formats through `Display`. Put the prefix in the adapter and every internal log line still shows a bare UUID.
 - **`FromStr` requires the prefix** rather than accepting either form, in HTTP routes included. Leniency would defeat the point: a bare UUID parses as *any* id type, which is the confusion being eliminated. Sending a project id to `GET /passages/{id}` is now a **400 saying so**, not a 404 indistinguishable from "deleted". Accepting both forms was considered and rejected — it re-opens that hole for bare ids, and strict-then-lenient is a harmless relaxation while lenient-then-strict is a breaking change. The friction it would have saved (pasting a bare id from psql into curl) is answered by the error message instead, which names the prefix it wanted.
@@ -147,16 +147,20 @@ The single most important architectural decision. The domain splits into two reg
 
 Coarse-grained, relatively low-frequency changes where history has real value:
 
-- create / move / split / reorder nodes
-- attach a codex entity to a node
+- capture, retitle and discard pieces
+- pin, move and unpin them on a board
+- place pieces in the outline, or reorder what is already there
+- attach a codex entity to a piece
 - add or route a thread
 - set time buckets and before/after relations
 
-This regime uses **event-sourcing + CQRS**. It buys us undo/redo, time-travel, a full audit ("who changed what"), and a natural basis for merging structural changes between collaborators.
+The vocabulary is settled in [Pieces and views](#pieces-and-views--the-non-linear-model): pieces are the pool, and each view owns its own arrangement of them.
+
+This regime uses **event-sourcing + CQRS**. It buys us a full audit ("who changed what"), time-travel, a natural basis for merging structural changes between collaborators, and undo/redo whenever we want it. Note the ordering: the audit log is what we are actually building for, and **undo/redo is deliberately not on the roadmap yet** — event sourcing keeps the option free, which is different from the feature being in scope.
 
 ### 2. Prose — CRDT
 
-The actual typing inside a node is character-level, high-frequency, and needs **intention-preserving merge** when multiple authors edit the same paragraph at once. Event-sourcing does **not** solve this on its own, and routing keystrokes through command validation + projections would make typing laggy.
+The actual typing inside a piece is character-level, high-frequency, and needs **intention-preserving merge** when multiple authors edit the same paragraph at once. Event-sourcing does **not** solve this on its own, and routing keystrokes through command validation + projections would make typing laggy.
 
 Prose therefore uses a **CRDT**:
 
@@ -177,11 +181,11 @@ Unlike the rest of this document, these decisions are **backed by running spikes
 
 **Editor: ProseMirror.** Chosen over Quill for **decorations** — a presentation layer painted *over* the document rather than into it. Spellcheck squiggles, codex mention highlights, thread anchors and later "who wrote this" are all views, not content: they must not end up in the CRDT, in the export, or in another author's replica. Quill's Delta model has no equivalent — highlighting a word means writing a format attribute into the content. ProseMirror also brings a real schema, which is what makes "an author may put a table here" a checkable statement. Licensing: ProseMirror, `y-prosemirror` and Yjs are all MIT, so a proprietary product is fine.
 
-**Shared type: `Y.XmlFragment`, not `Y.Text`.** A node holds whatever the author put in it. `Y.Text` models one flat run of characters with marks and cannot express block structure at all. `y-prosemirror` maps a ProseMirror document onto an `XmlFragment` of `XmlElement`s and `XmlText`s — that is the thing we store, sync and persist.
+**Shared type: `Y.XmlFragment`, not `Y.Text`.** A piece holds whatever the author put in it. `Y.Text` models one flat run of characters with marks and cannot express block structure at all. `y-prosemirror` maps a ProseMirror document onto an `XmlFragment` of `XmlElement`s and `XmlText`s — that is the thing we store, sync and persist.
 
-**Node granularity belongs to the author.** A structure-tree node is *not* defined to be a paragraph. One node per chapter is legal; one per paragraph is the likelier default; nothing in the system may assume either. The consequence is that **merge granularity follows node granularity**: two authors inside one node share a CRDT and contend, two authors in sibling nodes never touch. Coarser nodes mean more contention — an author's trade-off, not a constraint we impose.
+**Piece granularity belongs to the author.** A piece is *not* defined to be a paragraph. One piece per chapter is legal; one per paragraph is the likelier default; nothing in the system may assume either. The consequence is that **merge granularity follows piece granularity**: two authors inside one piece share a CRDT and contend, two authors in sibling pieces never touch. Coarser pieces mean more contention — an author's trade-off, not a constraint we impose.
 
-**One CRDT document per node.** Not one per book. A book-sized document means every reader loads the entire history and every keystroke touches one hot object. Per node keeps updates small, allows lazy loading during an in-order walk, and makes compaction a per-node job that can run incrementally.
+**One CRDT document per piece.** Not one per book. A book-sized document means every reader loads the entire history and every keystroke touches one hot object. Per piece keeps updates small, allows lazy loading during an in-order walk, and makes compaction a per-piece job that can run incrementally.
 
 **Images are references, not bytes.** An `image` node carries a `src` into blob storage. Bytes embedded in a CRDT are bytes in *every* replica forever — including the tombstoned ones nobody can see. This is the same decision as blobs under [Supporting Concerns](#supporting-concerns-noted-for-later), arrived at from the opposite direction.
 
@@ -222,7 +226,7 @@ One wrinkle worth remembering: wasm-bindgen implements `Send`/`Sync` for `JsValu
 
 **Wire compatibility is the point.** Speaking the standard format means the client can use `y-websocket` as-is and we inherit reconnect-with-backoff, resync, and awareness timeouts rather than writing them. It also decouples the halves: either side can be replaced independently, which is exactly the optionality the [Frontend](#frontend--full-stack-rust) escape hatch depends on.
 
-**The server is a participant, not a relay.** A passage that someone is editing is held in memory as a **`LivePassage`** — its own `Doc`, to which every update is applied. That is what lets a peer who was offline for a week be served by the server rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections attach to. One `LivePassage` per passage, and one passage per node, so the chain from node to CRDT document is 1:1 the whole way down.
+**The server is a participant, not a relay.** A passage that someone is editing is held in memory as a **`LivePassage`** — its own `Doc`, to which every update is applied. That is what lets a peer who was offline for a week be served by the server rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections attach to. One `LivePassage` per passage, and one passage per piece, so the chain from piece to CRDT document is 1:1 the whole way down.
 
 The "room" vocabulary the spike borrowed from `y-websocket` is deliberately **not** used: there is no room in this domain, only a passage that happens to have people in it. `LivePassages::join(id)` hands out the one live copy, loading it from the store if nobody has it open.
 
@@ -240,23 +244,23 @@ The spikes proved the technology. This is where it lands in the codebase.
 
 **A passage is its own aggregate because it has its own consistency model.** Structure is event-sourced with optimistic concurrency on a version column; a passage is a CRDT that merges without coordination. One cannot be nested inside the other without one of them being wrong. The feature split is not tidiness — it is the two-speed model made structural.
 
-**A passage has its own id; the node links to it.** `PassageId` is a UUID v7 like every other identifier here — generated when the passage is created, derivable from nothing. Which passages a node shows is carried by the node's **event stream**, as `PassageAttached { passage_id }`.
+**A passage has its own id; the piece links to it.** `PassageId` is a UUID v7 like every other identifier here — generated when the passage is created, derivable from nothing. Which passages a piece shows is carried by the piece's **event stream**, as `PassageAttached { passage }`.
 
-*Considered and rejected: making a passage's id equal its node's id.* It is genuinely tempting — the passage becomes derivable, so bringing one into existence needs no coordinating write at all. Two things sank it:
+*Considered and rejected: making a passage's id equal its piece's id.* It is genuinely tempting — the passage becomes derivable, so bringing one into existence needs no coordinating write at all. Two things sank it:
 
-- **It bakes "one passage per node" into the key.** A node plausibly wants a body, a synopsis and author's notes (the Scrivener arrangement), or two drafts of the same scene. Any of those needs a discriminator, and we would have to guess its shape *now* — is the second axis a **role** or a **variant**? Guess wrong and the key gets reshaped twice. With an opaque id the semantics live in the link instead, and a link is far cheaper to extend than a key.
+- **It bakes "one passage per piece" into the key.** A piece plausibly wants a body, a synopsis and author's notes (the Scrivener arrangement), or two drafts of the same scene. Any of those needs a discriminator, and we would have to guess its shape *now* — is the second axis a **role** or a **variant**? Guess wrong and the key gets reshaped twice. With an opaque id the semantics live in the link instead, and a link is far cheaper to extend than a key.
 - **The risk it avoided was smaller than it looked.** The worry was a two-phase create across two aggregates with no shared transaction. But **ordering** fixes that, not identity: write the passage first, emit the attachment second. A failure between them leaves an **orphan** — unreferenced bytes a sweep collects — not a **dangle**, which is a reference to something that does not exist. Orphans are benign; this is ordinary referential discipline rather than a new class of bug.
 
-What independent ids buy is worth more than the one write they cost: prose can **move between nodes carrying its CRDT history**, which is what makes the open split-node question answerable at all; a passage could exist without a node if free-floating research notes ever want one; and `PassageId` is a plain v7 newtype exactly like `ProjectId`, with no special rule to remember.
+What independent ids buy is worth more than the one write they cost: prose can **move between pieces carrying its CRDT history**, which is what makes the open split-piece question answerable at all; a passage could exist without a piece if free-floating research notes ever want one; and `PassageId` is a plain v7 newtype exactly like `ProjectId`, with no special rule to remember.
 
-**The link lives on the node, not on the passage.** "Which writing this node shows" is a fact about the book's *shape*, so it belongs in the structural history where undo and the audit log can see it. It also keeps the arrows clean: `structure` holds an opaque id string and never names a passage type, while `passages` never learns what a node is. Storing an `owner: NodeId` on the passage instead would drag structure's vocabulary into the passages core and leave attachment out of the audit log.
+**The link lives on the piece, not on the passage.** "Which writing this piece shows" is a fact about the book's *shape*, so it belongs in the structural history where the audit log can see it. It also keeps the arrows clean: `pieces` holds an opaque id string and never names a passage type, while `passages` never learns what a piece is. Storing an `owner: PieceId` on the passage instead would drag the pool's vocabulary into the passages core and leave attachment out of the audit log.
 
-This is also what makes multiple passages per node cheap when we want them: the discriminator arrives as an **event field** — `PassageAttached { passage_id, role }` — which is the cheapest place in the whole design to add one, given that event versioning and upcasting were planned from day one. No key reshape, no id migration.
+This is also what makes multiple passages per piece cheap when we want them: the discriminator arrives as an **event field** — `PassageAttached { passage, role }` — which is the cheapest place in the whole design to add one, given that event versioning and upcasting were planned from day one. No key reshape, no id migration.
 
-- **A node that holds no writing has no passage.** Nothing is allocated until a key is pressed, so grouping nodes ("Part One") cost nothing.
+- **A piece that holds no writing has no passage.** Nothing is allocated until a key is pressed, so grouping pieces ("Part One") cost nothing.
 - **The client never computes a passage id — it asks.** The derivation, the ordering, the link: all of it stays server-side. This is what keeps the scheme changeable without touching a single client.
 
-Cross-aggregate cleanup runs the other way: deleting a node must eventually dispose its passages, across two aggregates with no shared transaction. That is the **first real job for the transactional outbox** — eventually consistent by construction rather than by concession — and it is the same sweep that collects orphans.
+Cross-aggregate cleanup runs the other way: deleting a piece must eventually dispose its passages, across two aggregates with no shared transaction. That is the **first real job for the transactional outbox** — eventually consistent by construction rather than by concession — and it is the same sweep that collects orphans.
 
 **Crate layout**, following the [feature anatomy](#feature-anatomy--the-onion):
 
@@ -284,6 +288,102 @@ Three placements that are not obvious:
 
 **Awareness never reaches `core` at all.** It is relayed as opaque bytes and it lives and dies inside `adapters/sync`. Presence is ephemeral by decision; this is that decision expressed as a dependency arrow.
 
+## Pieces and views — the non-linear model
+
+Weaveling is text in many views, not one hierarchy with prose hanging off it. This section settles what a piece is, why the outline is a view rather than the model, and what each view is allowed to own.
+
+### The tree is a view, not the model
+
+The obvious model is a tree of nodes with prose attached, and it is wrong here. An earlier, abandoned implementation of this same idea built exactly that, and the shape of its failure is what argues against it:
+
+- Every node needed a parent at the moment of creation — the aggregate held a mandatory root and the add command required a parent id. There was **no place to put an unplaced idea**. Top-down planning was not the default; it was the only option.
+- The node carried `expanded`, with a `NodeToggled` event in the stream. Whether a twisty is open — per-user, ephemeral, view-local — was recorded in the book's permanent history. That is the structural consequence of the tree being both model and view: one aggregate, so everything lands in it.
+- The only reordering primitive was "swap two nodes", guarded so a parent could not be swapped with its child. No author thinks *swap these two scenes*; they think *move this after that*, or *promote this scene to a chapter*. Swap is what is cheap when children are a list and one aggregate owns the whole map — mechanism dictating domain vocabulary.
+- Its structure module was ~3,300 lines. Its timeline was an empty page. There was no prose anywhere. It built the container thoroughly and never reached either the content or the second view.
+
+The fix is a single move: **position is not a property of a piece.** Parent, order, timeline placement and board coordinates all belong to the *view* that arranges pieces, never to the thing arranged.
+
+### Pieces are the pool; views arrange them
+
+A **piece** is a unit of the book: an id, a title, and a link to its passage. It begins as an idea shot onto a board and may end as a chapter. That is all it is — it does not know where it sits.
+
+Each view is its own feature, with its own aggregate and its own invariants:
+
+| view | arranges pieces by | invariants |
+|---|---|---|
+| `board` | free 2D placement | none — an infinite surface |
+| `outline` | ordered nesting | acyclic, one parent per piece |
+| `timeline` | temporal relation | orderable, nestable buckets |
+| `threads` | named sequences | a piece may be in many |
+| `cast` | character presence | many-to-many |
+
+**Not a generic graph with typed edges.** That is the tempting generalisation, and it destroys the thing that makes each view useful: an outline that cannot express "acyclic" is not an outline, and no schema can help a traversal whose meaning lives only in the UI. Five modest features that each answer one question well beat one abstraction that answers none.
+
+**A piece needs no view at all.** It can sit in the pool, unplaced, with prose already written. The board is the workshop; the outline is the manuscript.
+
+**Arrangement is shared, viewport is personal.** Where a piece sits in the outline is part of the book and belongs in an event stream. Whether *your* twisty is open, or where your board is scrolled, never is. That is the direct lesson of the `expanded` field above.
+
+**One view is privileged.** A book is ultimately linear and export needs an order, so the outline — not the board — is what "the manuscript" means. Better accepted deliberately now than discovered at export time.
+
+### Naming
+
+Boring nouns for data, place-names for views. A **piece** is a piece wherever it appears; `board`, `outline`, `timeline`, `threads` and `cast` are places an author goes. Rejected: `card`, because a card is how the *board* draws a piece and a row is how the outline draws it — the name would describe one view's rendering. `node` and `graph` are both mechanism words, the same mistake as `tree` one level more abstract.
+
+### The event catalogue
+
+**`pieces`** — one aggregate per piece:
+
+```
+PieceCaptured   { project, title }
+PieceRetitled   { from, to }
+PassageAttached { passage }
+PieceDiscarded  { }
+```
+
+**`boards`** — one aggregate per board:
+
+```
+BoardStarted  { project }
+PiecePinned   { piece, at }
+PieceMoved    { piece, from, to }
+PieceUnpinned { piece }
+```
+
+Pin, move and unpin are corkboard words, and they keep *the board's arrangement* clearly separate from *the piece exists*.
+
+**A title may be empty, and that is a value rather than a missing one.** A piece captured on the board starts as `""` and the author types into it. So `PieceTitle` mirrors [`ProjectName`](#identifiers) in every rule but one — it trims, rejects control characters and caps length, and it **permits the empty string**. The asymmetry is deliberate and worth knowing before someone tidies it away: a project is named by an author who has already decided to start one, while a piece exists precisely so that an idea can land *before* it has a name.
+
+Untitled is stored as `""`, never as `Option<PieceTitle>`. Two representations of the same absence would force every reader to handle both `None` and `Some("")`, and trimming already collapses a whitespace-only title into that one form.
+
+**"Untitled" is a rendering, never a value.** A view draws a placeholder for an empty title; it does not store one. Storing the word would make an author who actually typed "Untitled" indistinguishable from one who typed nothing at all.
+
+**`PassageAttached` is lazy.** A passage is created when the author first opens a piece to write, not when the idea is captured — a fifty-idea brainstorm should not spawn fifty `yrs::Doc`s, particularly while [live passages are never evicted](./TODO.md). This also answers who emits the attachment: the piece, on first write.
+
+**Moves commit on drop, not during the drag.** Free placement means dragging, and a drag that emits events writes thousands of records per session, which would make the audit log unreadable — defeating the reason for event-sourcing pieces in the first place. In-flight positions travel as **awareness**: ephemeral by construction, timed out on disconnect. The same division as prose, one level up:
+
+| | ephemeral | durable |
+|---|---|---|
+| prose | cursors (awareness) | text (CRDT) |
+| board | drag in flight (awareness) | placement (events) |
+
+The cost is honest: the board needs its own live channel, since awareness in our stack is bound to `/sync/{passage}` and a board is not a passage. Two live channels carrying different things, unable to share a protocol.
+
+**Moves must not conflict.** Moves of *different* pieces commute, so `PieceMoved` takes no strict version check, and concurrent drags of the *same* piece are last-drop-wins. Rejecting a move with "someone else moved it, reload" is the wrong answer for a position — no work is lost, the piece simply lands where the last author dropped it. Optimistic concurrency is reserved for the commands where a conflict means the author's intent no longer applies: pinning and unpinning.
+
+### The board renders through a frontend join
+
+The board stores `piece -> point`; a corkboard shows words. Because `pieces` and `boards` are separate features and [features may not depend on each other](#dependency-rules), titles arrive by the client fetching both and joining them — the legal move the dependency table already names.
+
+This has a property worth stating outright: **the join is the tolerant read model.** A placement whose piece is gone has nothing to draw. Discarding a piece leaves a dangling placement, and no compensating event or cross-aggregate choreography is needed to collect it — it resolves at render time. The price is that the board may briefly disagree with the pool, which is acceptable for an arrangement and would not be for prose.
+
+### Board creation: find-or-start
+
+Multiple boards per project are supported by the model from the first event; the first version ships one. The rule that keeps that cheap: **a `BoardId` exists from the start, and every board event is addressed to it.** The query is "which boards does this project have?" — a list that happens to hold one element, never a `boardFor(project)` singleton. Keying placements by project id is the shortcut that turns a second board into a migration of every event ever written.
+
+A project cannot create its own board: `projects` is plain CRUD and cannot emit an event, and a feature may not call another feature. So a board is started **on first open** — find-or-start, inside `boards`, under one write guard exactly as [the in-memory passage store does it](#how-an-in-memory-backend-is-atomic). The invariant "a project has a board" is enforced nowhere; it is simply true by the time anyone reads.
+
+The consequence to remember: **a project may legitimately have no board yet.** Anything sweeping a project — deletion above all — must tolerate its absence rather than assume it.
+
 ## Local-First
 
 Because prose is a CRDT, the client keeps a **full replica in the browser (IndexedDB)**. This gives us, almost for free:
@@ -310,7 +410,7 @@ The version check and the append are atomic *inside* it — PostgreSQL uses a re
 
 **The outbox is an adapter detail.** This is where the reach for transactions usually happens, so it is worth being blunt: the port says *append these events*. The PostgreSQL adapter appends them **and** writes the outbox rows in one transaction. An in-memory adapter appends them and pushes onto a queue. Both are atomic in their own world; neither leaks its mechanism upward. Nothing above the port knows an outbox exists.
 
-Everything in this design fits the rule already. Cross-aggregate work — deleting a node disposing its passages — was *chosen* to be eventually consistent through the outbox, and cross-feature work is banned outright.
+Everything in this design fits the rule already. Cross-aggregate work — deleting a piece disposing its passages — was *chosen* to be eventually consistent through the outbox, and cross-feature work is banned outright.
 
 ### No `Tx` in a port signature
 
@@ -351,17 +451,31 @@ Today this is masked because a `LivePassage` is the single holder of the documen
 
 ## Event Sourcing — Discipline
 
-- **Be selective.** Event-source only where history has value (the structural domain, undo/redo). Plain state for settings, presence, search indexes, and blobs. "ES where history has value" — not everything.
-- **Event store:** rolled on **PostgreSQL** — an events table with per-aggregate streams and optimistic concurrency via a version column.
+- **Be selective.** Event-source only where history has value (the structural domain, the audit log). Plain state for settings, presence, search indexes, and blobs. "ES where history has value" — not everything.
+- **Event store:** an events table with per-aggregate streams and optimistic concurrency via a version column. *Which* database backs it is no longer settled — PostgreSQL was parked, MongoDB is back under consideration, and the choice changes the outbox mechanics (`LISTEN/NOTIFY` versus change streams) but nothing above the port. See [the store milestone](./ROADMAP.md).
+- **Every event carries its agent.** "Who did this" is part of the record, and the slot has to exist from the very first event because it cannot be backfilled: anything written before the field exists is anonymous forever. Until accounts land it holds a placeholder agent, which is cheap now and impossible later.
+- **State-changing events carry both old and new.** `PieceRetitled { from, to }`, `PieceMoved { piece, from, to }`. This is redundant — both are derivable by replay — but it is what makes an audit entry readable: *"The Loom" -> "The Silent Loom"* rather than *"retitled to The Silent Loom"*. The audit log is the reason on its own; that it also turns a future undo into a local inversion instead of a replay-and-diff is a bonus, not the justification.
 - **Projections / async work:** a **transactional outbox** + poller for reliable projection updates; PostgreSQL `LISTEN/NOTIFY` (or logical replication) to nudge the WebSocket gateway. No message broker for now (see below). The outbox lives *inside* the event store adapter and is invisible above the port — see [Transactions and Atomicity](#transactions-and-atomicity).
-- **Versioning / upcasting** is planned from day one — a book project lives for years and events will evolve.
-- **Snapshots** for aggregates to keep rebuilds fast at scale (a paragraph-per-node book is thousands of nodes).
+- **Versioning / upcasting** is planned from day one — a book project lives for years and events will evolve. The mechanism is settled: **every event carries its own version**, and upcasting is a set of pure `from -> to` patch functions applied on read, so stored events are never rewritten in place. Adopted from the earlier implementation, where this design existed and was sound but was never exercised — every real event there sat at version zero, and the only patch lived in the library's own tests.
+- **Snapshots** for aggregates to keep rebuilds fast at scale (a paragraph-per-piece book is thousands of pieces).
 
-## Messaging Broker — Deferred (option kept open)
+## Messaging — the seam now, the transport later
 
-We start **without** a broker (no RabbitMQ/AMQP yet). Inside a modular monolith, in-process dispatch + the Postgres-backed outbox goes a long way and avoids dual-write/ordering complexity before it pays off.
+Features may not call each other, so cross-feature work travels as messages. `libraries/messaging` owns the port, the envelope and an in-process dispatcher; a broker, when one is wanted, is an adapter behind that same port.
 
-A broker can be introduced later at a real module boundary — e.g. when there are separately-deployed consumers or cross-service async handoff — **without rearchitecting**, provided the module seams stay clean. Keeping this option open is an explicit goal.
+**A broker does not solve the dual-write problem — it creates it.** Committing an event to the store and then publishing to a broker are two systems with no shared transaction: if the publish fails after the commit, the event happened and nobody hears about it; if the publish succeeds while the commit rolls back, we have published a lie. The fix is the **outbox** — event row and outbox row in one transaction, with a relay publishing from it — and that is needed *whether or not* a broker exists. The outbox is the load-bearing part; a broker is a transport hanging off it.
+
+Which settles the order of work. The outbox's entire value is atomicity with the event write, and the store is in-memory today, so a broker now would relay from nothing durable and lose messages on a crash — **weaker guarantees than a direct function call** — while adding connection lifecycle, dead-letter and poison-message policy, and containers in CI.
+
+So what gets built now is the seam, because the seam is the part that is expensive to retrofit:
+
+- the **port** — publish and subscribe, which features depend on and a transport implements
+- the **envelope** — message id, correlation id, causation id, occurred-at, agent
+- an **in-process dispatcher**
+
+The envelope is the urgent half. **Correlation and causation ids cannot be backfilled**, and messages written without them are permanently untraceable — the same argument as the agent slot in [Event Sourcing](#event-sourcing--discipline). The first real consumer is the project-deletion saga, whose whole job is answering "which of these deletes belonged to my request".
+
+A broker earns its place at the boundary this section always named: a separately-deployed consumer, or async handoff across a real service edge. RabbitMQ is the likely pick then — its routing model beats anything hand-rolled once fan-out gets complicated — and deferring it is cheap precisely *because* it is already familiar. Nothing above the port changes when it arrives.
 
 ## Frontend — Full-Stack Rust
 
@@ -439,7 +553,7 @@ Font bundling/licensing for embedded fonts is a concern for both.
 
 ## Supporting Concerns (noted for later)
 
-- **Search & mention detection** — projections built with **Tantivy** (Rust-native, Lucene-like): full-text search over prose, plus codex alias/mention indexing (the "which nodes does this character appear in" back-links).
+- **Search & mention detection** — projections built with **Tantivy** (Rust-native, Lucene-like): full-text search over prose, plus codex alias/mention indexing (the "which pieces does this character appear in" back-links).
 - **Blobs** (codex and research images) — object storage or filesystem, referenced by ID from events. Not stored as byte columns and not in the event log.
 - **Multi-author** — implies accounts, project membership, and permissions. Real scope, acknowledged early.
 - **Tenancy / ownership scoping** — today every store is **global**: `ProjectStore::list()` returns *every* project, and `get(id)` will hand back any project to anyone who names it. That is correct only while there is exactly one user, which is true for the MVP and false the moment accounts exist. Worth being clear that this is **not a filter to bolt on later**: scoping changes the port itself (`list(owner)` rather than `list()`), and every id-taking method gains an ownership check. Related: **ids are not capabilities**. A v7 id is unguessable in practice (74 random bits), but it leaks its creation time and will end up in logs, URLs and shared links — so authorisation must be explicit, never implied by someone knowing an id.
@@ -451,4 +565,4 @@ Phase 1 is built — the projects slice runs end to end in a browser (see [ROADM
 
 The prose stack was spiked, measured and proven in all four of its risky places — CRDT semantics, `yrs` ↔ `Yjs` compatibility, the editor in Leptos, and sync over WebSocket — and is now being built for real as the `passages` feature. `contract`, `core`, `adapters/store` and `adapters/sync` exist; the REST read model, the composition root and the client do not yet, so nothing is reachable from a browser.
 
-The structure domain and event sourcing are still design, which means a passage currently belongs to no node — the link waits on nodes existing at all. The solution is still being woven.
+The structure domain and event sourcing are still design, which means a passage currently belongs to no piece — the link waits on pieces existing at all. The solution is still being woven.

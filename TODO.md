@@ -75,19 +75,24 @@ Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then 
 
 ## Open design threads (not yet resolved)
 
-- [ ] When a node with text is split: exact UX/data for moving ranges into children vs. leaving on parent. Two moves are now available, since [passages carry their own ids](./ARCHITECTURE.md#the-passages-feature): **re-link** the whole passage to the new node (history preserved, trivial) or **move a range** of text between two passages (history preserved only if we can transplant the CRDT items, which Yjs does not offer directly — a range move is likely a delete-plus-insert and loses provenance). Decide what an author actually expects to survive a split.
-- [ ] **Multiple passages per node** — not needed yet, but the shape is known: a `role` or `variant` field on `PassageAttached`, added by event upcasting. Worth designing only once there is a second thing to put on a node (synopsis, author's notes, alternative drafts).
-- [ ] "Present in a scene" vs. "merely mentioned" — do we model both relation types?
-- [ ] Time model details: representing parallel nodes + nested time buckets (year ⊃ month ⊃ day).
+- [ ] When a piece with text is split: exact UX/data for moving ranges into children vs. leaving on the parent. Two moves are available, since [passages carry their own ids](./ARCHITECTURE.md#the-passages-feature): **re-link** the whole passage to a new piece (history preserved, trivial) or **move a range** of text between two passages (history preserved only if the CRDT items can be transplanted, which Yjs does not offer directly — a range move is likely delete-plus-insert and loses provenance). Decide what an author actually expects to survive a split.
+- [ ] **Multiple passages per piece** — not needed yet, but the shape is known: a `role` or `variant` field on `PassageAttached`, added by event upcasting. Worth designing only once there is a second thing to hang on a piece (synopsis, author's notes, alternative drafts).
+- [ ] "Present in a scene" vs. "merely mentioned" — do we model both relation types? Belongs to the `cast` view.
+- [ ] Time model details: representing parallel pieces + nested time buckets (year ⊃ month ⊃ day). Belongs to the `timeline` view.
 - [x] ~~Frontend framework choice within full-stack Rust~~ — Leptos, and the editor spike confirmed it can host ProseMirror without the interop dominating.
-- [ ] Event versioning/upcasting strategy.
+- [x] ~~Event versioning/upcasting strategy.~~ Settled: **every event carries its own version**, and upcasting is pure `from -> to` patch functions applied on read, so stored events are never rewritten. Taken from the earlier implementation, which had the design but never exercised it — every real event there sat at version zero. M7 must ship one real patch so ours does not go the same way.
+- [ ] **Undo/redo — deferred, not designed.** Decided to leave it off the roadmap entirely for now; event sourcing keeps the option free, so there is no cost to waiting. The question to answer *when* it is picked up: per-aggregate (undo the last thing that happened to this piece) or per-author (undo the last thing *I* did, wherever it happened)? The second is what Ctrl+Z means to an author and needs the agent slot plus a cross-aggregate ordering — meaningfully more work than the first. Events already carry `from`/`to`, so whichever is chosen, the inversion is local.
+- [x] ~~**Must a piece have a title?**~~ Settled: normally yes, but the empty string is a legal value — a piece captured on the board starts at `""` and is typed into. `PieceTitle` matches `ProjectName` in every rule except that it permits empty. Untitled is `""` and never `Option<PieceTitle>`, and "Untitled" is something a view draws, never something stored. See [Pieces and views](./ARCHITECTURE.md#pieces-and-views--the-non-linear-model).
+- [ ] **A live channel for the board.** Awareness is bound to `/sync/{passage}` today, and a board is not a passage. M8 needs a second live surface that carries committed events plus in-flight drags. The earlier implementation had precedent worth copying: a WebSocket pushing event messages, with per-event handlers patching a local store on the client.
 - [ ] Auth / accounts / project membership / permissions (deferred, but looming for multi-author).
 - [x] ~~**How to test the web client.**~~ Settled: Playwright end-to-end against `trunk serve` plus the real API, `clients/web/e2e`, 14 tests. The obstacle recorded here — that `Workspace` called gloo-net directly, so native unit tests would need the API behind a port — turned out to argue *for* the end-to-end choice rather than against it. See [Client conventions](./ARCHITECTURE.md#client-conventions).
 
 ## Parked (decided — don't re-litigate)
 
-- Rust, modular monolith, PostgreSQL, no broker yet (option kept open).
-- Two-speed model: ES/CQRS for structure, CRDT (yrs/Yjs) for prose. **Projects stay plain CRUD** — a title carries no history worth sourcing; ES debuts on the structure tree.
+- Rust, modular monolith. **No broker** — `libraries/messaging` owns the port, the envelope and an in-process dispatcher; a broker is an adapter for when a second deployable exists. See [Messaging](./ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
+- ~~PostgreSQL~~ **reopened.** MongoDB is back under consideration; the decision moved to M11, judged by the conformance suites. Everything above a port is unaffected either way, which is the whole reason the choice can wait.
+- Two-speed model: ES/CQRS for structure, CRDT (yrs/Yjs) for prose. **Projects stay plain CRUD** — a title carries no history worth sourcing; ES debuts on `pieces`.
+- **The tree is a view, not the model.** Pieces are a pool; `board`, `outline`, `timeline`, `threads` and `cast` each own their own arrangement of them. Position is never a property of a piece. See [Pieces and views](./ARCHITECTURE.md#pieces-and-views--the-non-linear-model).
 - Local-first-capable client.
 - Full-stack Rust first; Angular as fallback.
 - Export: Typst → PDF, HTML → EPUB.

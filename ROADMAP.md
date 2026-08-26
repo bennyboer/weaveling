@@ -15,7 +15,7 @@ The point of Phase 1 is as much *getting fluent in Rust again* as it is shipping
 
 ## Phase 1 — A projects-only prototype
 
-Deliberately small: a working client–server loop where you can create, rename, list and delete **projects** — nothing else. No nodes, no prose, no event sourcing, no database.
+Deliberately small: a working client–server loop where you can create, rename, list and delete **projects** — nothing else. No pieces, no prose, no event sourcing, no database.
 
 ### Guiding constraints for Phase 1
 
@@ -179,9 +179,9 @@ Turning the spikes into the product. The order below is deliberate and the first
 
 ### Milestone 6 — The walking skeleton
 
-**Goal:** one project, **one hardcoded node**, real collaborative prose, end to end.
+**Goal:** one project, **one passage with nothing above it**, real collaborative prose, end to end.
 
-The instinct is to build the structure tree first and attach prose later. Don't. Integration risk is highest right now while the spike knowledge is hot, and a hardcoded node is by far the cheapest place to discover that (say) the room registry belongs somewhere we didn't expect. This milestone exists to force the architecture questions into the open against the smallest possible domain.
+The instinct is to build the structure first and attach prose later. Don't. Integration risk is highest right now while the spike knowledge is hot, and a passage standing alone is by far the cheapest place to discover that (say) the room registry belongs somewhere we didn't expect. This milestone exists to force the architecture questions into the open against the smallest possible domain.
 
 **Build:**
 - `features/passages/` in full — `contract`, `core`, `adapters/{store,sync}`, `tests` — following the anatomy settled in [ARCHITECTURE.md](./ARCHITECTURE.md#the-passages-feature).
@@ -200,35 +200,79 @@ The instinct is to build the structure tree first and attach prose later. Don't.
 
 The open passage is carried in the URL as `?passage=<id>`, which is what makes both the reload and the second tab work at all — see [Client conventions](./ARCHITECTURE.md#client-conventions).
 
-**Explicitly not in M6:** nodes, trees, event sourcing, Postgres, auth, awareness tombstones.
+**Explicitly not in M6:** pieces, any arrangement of them, event sourcing, a database, auth, awareness tombstones.
 
-### Milestone 7 — The structure tree, part one: a flat list
+### Milestone 7 — Event sourcing, for real: the pool of pieces
 
-**Design before code.** The event catalog is still an open thread and deserves settling on its own: what exactly is an event, what is a projection, how do we version and upcast. Do that conversation first.
+**Goal:** the event-sourcing machinery exists and earns its keep, proven against the smallest domain that needs it.
 
-**Goal:** nodes exist, in an order, and their history is real.
+The design is settled in [Pieces and views](./ARCHITECTURE.md#pieces-and-views--the-non-linear-model). A piece is an id, a title and a link to its passage — it does not know where it sits. The tree that used to be milestones 7 and 8 is now one view among several, and it moved to M10.
 
-**Build:** an event-sourced `Node` aggregate under a project — create, rename, reorder, delete — with an events table, per-aggregate streams, optimistic concurrency on a version column, and a read-model projection. Flat list only: no nesting, no moves, no splits.
+**Build:**
+- `libraries/eventsourcing` — the aggregate trait (command -> events, event -> state), an `EventStore` port with per-aggregate streams and optimistic concurrency on a version column, an in-memory backend, and a **conformance suite**, exactly as `ProjectStore` and `PassageStore` each got one.
+- Event metadata carrying **agent, occurred-at and aggregate version** from the very first event written. The agent holds a placeholder until accounts exist, and cannot be backfilled later.
+- **Per-event versions plus a patcher** — pure `from -> to` functions applied on read. Write one real patch, however trivial, so the mechanism is exercised rather than merely present: the earlier implementation had this exact design and never once ran it.
+- **Snapshots**, since replaying thousands of pieces on every load is the failure they exist to prevent.
+- `features/pieces` — `PieceCaptured`, `PieceRetitled`, `PassageAttached`, `PieceDiscarded`, with the passage attached **lazily on first write**.
+- A minimal client: capture a piece, retitle it, open it in the M6 editor. A plain list — not a board.
 
-**Done when:** the client lists and reorders nodes, undo works off the event stream, and rebuilding the projection from scratch reproduces the same state.
+**Reviewable steps:** the library plus its conformance suite; then the `pieces` aggregate against it; then the REST adapter; then the client list. Each stands on its own for review.
 
-### Milestone 8 — The structure tree, part two: an actual tree
+**Rust you'll meet:** trait objects for aggregates, `serde` tagging for event payloads, and the ownership question of who holds the reconstructed state.
 
-**Goal:** nesting, moves, and the hardcoded node from M6 finally becomes a real one.
+**Done when:** capture, retitle and discard all land in an event stream; a piece opened for writing gets a passage and the M6 editor works inside it; rebuilding from the stream reproduces state exactly; and at least one event has been through a patch.
 
-**Build:** parent/child, move, and the split-node mechanics that are still an open design thread. Passages get attached by a `PassageAttached { passage_id }` event on the node — write the passage first, emit the attachment second, so a failure between them leaves a collectable orphan rather than a dangling reference. Deleting a node must eventually dispose its passages: the first real use of the transactional outbox, and the same sweep that collects orphans.
+**Explicitly not in M7:** the board, placement, messaging, the outline, any durable store.
 
-**Done when:** a book-shaped tree of chapters and scenes, each openable in the editor, with structural changes in the audit log.
+### Milestone 8 — The board
 
-### Milestone 9 — PostgreSQL
+**Goal:** an infinite corkboard — the non-linear feel that is the point of Weaveling.
 
-**Goal:** prove the abstraction was worth the trouble.
+**Build:** `features/boards` — `BoardStarted`, `PiecePinned`, `PieceMoved`, `PieceUnpinned`, placement owned by the board, and **find-or-start on first open**. Free 2D placement, with moves committing **on drop** and in-flight drags travelling as awareness over the board's own live channel. The client joins pool and placements itself, which is also what makes a dangling placement harmless.
 
-**Build:** a second backend for every port that has one — `ProjectStore`, `PassageStore`, the event store — as modules behind an optional cargo feature, not sibling crates. The existing conformance suites are the judge, and CI must run `--all-features` or none of it is type-checked.
+**Rust you'll meet:** pointer events and transforms for a pannable infinite surface, a second WebSocket surface that is *not* a CRDT, and awareness carrying something other than a cursor.
+
+**Done when:** two browsers drag pieces on one board and see each other live; the durable record holds one event per drop rather than per frame; a piece discarded from the pool vanishes from the board with no compensating event; and a project that never had a board gets one on first open.
+
+**Explicitly not in M8:** the outline, grouping, board naming or switching — multiple boards are modelled, one is shipped.
+
+### Milestone 9 — Messaging and the cascade
+
+**Goal:** the seam features talk across, plus the first thing that genuinely needs it.
+
+**Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **correlation and causation ids**, occurred-at, agent) and an in-process dispatcher. Then the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+
+**Why here rather than earlier:** with an in-memory store, orphans die at process restart, so the cascade is theoretical until the store is durable. Building it now means the saga is proven *before* it becomes load-bearing, instead of being written under pressure next to a new database.
+
+**Done when:** deleting a project leaves nothing behind; a saga that fails midway is recoverable and observable; and every message in a run traces back to the request that caused it.
+
+**Explicitly not in M9:** a broker. Transport stays in-process — RabbitMQ is an adapter for when a second deployable exists. See [Messaging](./ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
+
+### Milestone 10 — The outline
+
+**Goal:** manuscript order, as a view over the pool rather than a property of it.
+
+**Build:** `features/outline` — ordered nesting over pieces, acyclic, one parent per piece. Moves shaped like an author's intent (*move after*, *promote*, *demote*) rather than the "swap two nodes" primitive the earlier implementation was cornered into by its data structure.
+
+This is the privileged view: export needs a linear order, so the outline is what "the manuscript" means. A piece may sit on the board and be absent from the outline — it simply is not in the book yet.
+
+**Still open:** the split-piece mechanics — see the design threads in [TODO.md](./TODO.md).
+
+**Not in M10:** undo/redo. The event stream makes it available whenever it is wanted, which is exactly why it does not need to be built alongside the outline.
+
+**Done when:** a book-shaped outline of chapters and scenes, each openable in the editor, structural changes visible in the audit log, and rebuilding the projection from scratch reproducing the same order.
+
+### Milestone 11 — The real store
+
+**Goal:** prove the abstractions were worth the trouble.
+
+**The database choice is reopened.** PostgreSQL was parked early; MongoDB is under consideration again. The decision belongs here, judged by the conformance suites rather than by preference, and it changes the outbox mechanics (`LISTEN/NOTIFY` versus change streams) without touching anything above a port.
+
+**Build:** a second backend for every port that has one — `ProjectStore`, `PassageStore`, the event store — as modules behind an optional cargo feature, not sibling crates. CI must run `--all-features` or none of it is type-checked.
 
 **This is where storage representation finally gets decided,** and where the transaction tests that in-memory cannot express have to be written: rollback, connection failure mapping to `StoreError::Backend`, and the concurrency guard `absorb` needs if `PassageStore` goes the snapshot route. The event store's `append` must be atomic across the version check, the append **and** the outbox insert — one transaction, invisible above the port.
 
-**Done when:** the suites pass unchanged against Postgres, and swapping backends is one line in one manifest.
+**Done when:** the suites pass unchanged against the real store, and swapping backends is one line in one manifest.
 
 ---
 
