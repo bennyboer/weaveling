@@ -29,6 +29,8 @@ pub trait Aggregate: Sized {
 
     fn absorb(&mut self, event: &Self::Event, metadata: &EventMetadata);
 
+    fn snapshot(&self) -> Self::Event;
+
     fn snapshot_after(&self) -> Option<u32> {
         Some(100)
     }
@@ -88,6 +90,7 @@ mod tests {
     const TITLE_UPDATED: EventName = EventName::of("TITLE_UPDATED");
     const DESCRIPTION_UPDATED: EventName = EventName::of("DESCRIPTION_UPDATED");
     const DELETED: EventName = EventName::of("DELETED");
+    const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
     enum SampleCommand {
         Create { title: String, description: String },
@@ -99,10 +102,18 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum SampleEvent {
-        Created { title: String, description: String },
+        Created {
+            title: String,
+            description: String,
+        },
         TitleUpdated(String),
         DescriptionUpdated(String),
         Deleted,
+        Snapshotted {
+            title: String,
+            description: String,
+            deleted: bool,
+        },
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,11 +140,16 @@ mod tests {
                 Self::TitleUpdated(_) => TITLE_UPDATED,
                 Self::DescriptionUpdated(_) => DESCRIPTION_UPDATED,
                 Self::Deleted => DELETED,
+                Self::Snapshotted { .. } => SNAPSHOTTED,
             }
         }
 
         fn version(&self) -> Version {
             Version::ZERO
+        }
+
+        fn is_snapshot(&self) -> bool {
+            matches!(self, Self::Snapshotted { .. })
         }
     }
 
@@ -159,6 +175,15 @@ mod tests {
                     title: title.clone(),
                     description: description.clone(),
                     deleted: false,
+                }),
+                SampleEvent::Snapshotted {
+                    title,
+                    description,
+                    deleted,
+                } => Some(Self {
+                    title: title.clone(),
+                    description: description.clone(),
+                    deleted: *deleted,
                 }),
                 _ => None,
             }
@@ -195,6 +220,23 @@ mod tests {
                     self.description = description.clone()
                 }
                 SampleEvent::Deleted => self.deleted = true,
+                SampleEvent::Snapshotted {
+                    title,
+                    description,
+                    deleted,
+                } => {
+                    self.title = title.clone();
+                    self.description = description.clone();
+                    self.deleted = *deleted;
+                }
+            }
+        }
+
+        fn snapshot(&self) -> SampleEvent {
+            SampleEvent::Snapshotted {
+                title: self.title.clone(),
+                description: self.description.clone(),
+                deleted: self.deleted,
             }
         }
     }
@@ -391,6 +433,44 @@ mod tests {
             sample.decide(SampleCommand::Delete, &Agent::System),
             Err(SampleError::Deleted)
         );
+    }
+
+    #[test]
+    fn a_snapshot_event_declares_itself_a_snapshot() {
+        assert!(a_created_sample().snapshot().is_snapshot());
+        assert_eq!(a_created_sample().snapshot().name(), SNAPSHOTTED);
+    }
+
+    #[test]
+    fn a_snapshot_replays_into_exactly_the_state_it_came_from() {
+        let mut sample = a_created_sample();
+        sample.absorb(
+            &SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
+            &stamped(1),
+        );
+        sample.absorb(&SampleEvent::Deleted, &stamped(2));
+
+        let snapshot = sample.snapshot();
+        let restored = Sample::born(&snapshot, &stamped(3)).expect("a snapshot gives birth");
+
+        assert_eq!(restored, sample);
+    }
+
+    #[test]
+    fn a_snapshot_found_mid_stream_replaces_whatever_came_before() {
+        let mut sample = a_created_sample();
+        sample.absorb(
+            &SampleEvent::Snapshotted {
+                title: "Elsewhere".to_owned(),
+                description: "Entirely".to_owned(),
+                deleted: true,
+            },
+            &stamped(1),
+        );
+
+        assert_eq!(sample.title, "Elsewhere");
+        assert_eq!(sample.description, "Entirely");
+        assert!(sample.deleted);
     }
 
     #[test]
