@@ -76,7 +76,22 @@ Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then 
 ## Open design threads (not yet resolved)
 
 - [ ] When a piece with text is split: exact UX/data for moving ranges into children vs. leaving on the parent. Two moves are available, since [passages carry their own ids](./ARCHITECTURE.md#the-passages-feature): **re-link** the whole passage to a new piece (history preserved, trivial) or **move a range** of text between two passages (history preserved only if the CRDT items can be transplanted, which Yjs does not offer directly — a range move is likely delete-plus-insert and loses provenance). Decide what an author actually expects to survive a split.
-- [ ] **Multiple passages per piece** — not needed yet, but the shape is known: a `role` or `variant` field on `PassageAttached`, added by event upcasting. Worth designing only once there is a second thing to hang on a piece (synopsis, author's notes, alternative drafts).
+- [ ] **Multiple passages per piece** — considered during M7 and deliberately deferred, not forgotten. **Deferring is safe here**, unlike the dropped `from` field: the upcast is `PassageAttached { passage }` -> `{ passage, role: Body }`, which is correct for *every* attachment that can exist before the feature lands, because until there is a synopsis every passage is the body. Lossless, one-line patch — exactly what the patcher exists for. The bill for waiting is two event version bumps (`PassageAttached` and `Snapshotted`) with a trivial patch each; the aggregate's internal `Option<PassageLink>` -> map costs nothing, since state is rebuilt from events and never stored in its own right.
+
+  **The multiplicity is not the feature — the axis is.** A bare `Vec<PassageLink>` buys nothing usable, because the client has to know *which* passage to open in the editor, so the discriminator is load-bearing on day one rather than metadata added later. And the axis is the thing we cannot guess well: **role** (what this passage *is* to the piece — body, synopsis, author's notes; a closed set, presumably one of each) is a different question from **variant** (alternative drafts of the same role). Model `role` and later want variants, and it reshapes twice — the same failure that sank deriving a passage id from its piece id.
+
+  **Pick it up when** a second thing genuinely wants hanging on a piece. If the answer is *role, closed set, at most one passage per role*, the shape is settled and the guess is no longer a guess:
+
+  ```rust
+  pub enum PassageRole { Body, Synopsis, Notes }
+
+  PieceCommand::AttachPassage { passage: PassageLink, role: PassageRole }
+  PieceEvent::PassageAttached { passage: PassageLink, role: PassageRole }
+
+  struct Piece { passages: BTreeMap<PassageRole, PassageLink>, .. }
+  ```
+
+  `AlreadyHoldsPassage` becomes role-scoped, `passage()` becomes `passage(role)` with a `body()` shorthand. What to avoid is arriving there *implicitly* — a `Vec` that quietly decides the axis the first time someone needs a synopsis and picks whatever is easiest.
 - [ ] "Present in a scene" vs. "merely mentioned" — do we model both relation types? Belongs to the `cast` view.
 - [ ] Time model details: representing parallel pieces + nested time buckets (year ⊃ month ⊃ day). Belongs to the `timeline` view.
 - [x] ~~Frontend framework choice within full-stack Rust~~ — Leptos, and the editor spike confirmed it can host ProseMirror without the interop dominating.

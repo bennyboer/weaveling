@@ -335,7 +335,7 @@ Boring nouns for data, place-names for views. A **piece** is a piece wherever it
 
 ```
 PieceCaptured   { project, title }
-PieceRetitled   { from, to }
+PieceRetitled   { title }
 PassageAttached { passage }
 PieceDiscarded  { }
 ```
@@ -345,7 +345,7 @@ PieceDiscarded  { }
 ```
 BoardStarted  { project }
 PiecePinned   { piece, at }
-PieceMoved    { piece, from, to }
+PieceMoved    { piece, to }
 PieceUnpinned { piece }
 ```
 
@@ -454,7 +454,7 @@ Today this is masked because a `LivePassage` is the single holder of the documen
 - **Be selective.** Event-source only where history has value (the structural domain, the audit log). Plain state for settings, presence, search indexes, and blobs. "ES where history has value" — not everything.
 - **Event store:** an events table with per-aggregate streams and optimistic concurrency via a version column. *Which* database backs it is no longer settled — PostgreSQL was parked, MongoDB is back under consideration, and the choice changes the outbox mechanics (`LISTEN/NOTIFY` versus change streams) but nothing above the port. See [the store milestone](./ROADMAP.md).
 - **Every event carries its agent.** "Who did this" is part of the record, and the slot has to exist from the very first event because it cannot be backfilled: anything written before the field exists is anonymous forever. Until accounts land it holds a placeholder agent, which is cheap now and impossible later.
-- **State-changing events carry both old and new.** `PieceRetitled { from, to }`, `PieceMoved { piece, from, to }`. This is redundant — both are derivable by replay — but it is what makes an audit entry readable: *"The Loom" -> "The Silent Loom"* rather than *"retitled to The Silent Loom"*. The audit log is the reason on its own; that it also turns a future undo into a local inversion instead of a replay-and-diff is a bonus, not the justification.
+- **An event carries what changed, not what it replaced.** `PieceRetitled { title }`, not `{ from, to }`. The previous value is always recoverable by replay, and anything rendering a piece's history is replaying that stream anyway, so it already knows the old title at the moment it needs it. Storing it twice puts a second, uncorrectable copy of one fact into an immutable log, and shapes one event unlike its siblings for a reason that comes from rendering rather than from the domain. The case that would overturn this is a *cross-aggregate* feed — "everything that happened in this project today" — which cannot afford to replay every stream it touches; if that arrives, the prior value is added through an ordinary event version bump and a patch.
 - **Projections / async work:** a **transactional outbox** + poller for reliable projection updates; PostgreSQL `LISTEN/NOTIFY` (or logical replication) to nudge the WebSocket gateway. No message broker for now (see below). The outbox *model* — entry, claim lock, repo port, relay — belongs to `libraries/messaging` rather than here, because it serves every published message and a saga publishes commands, not events. What belongs to the event store is the **atomic insert**: appending events and inserting the outbox rows happen in one transaction, so the event store *adapter* depends on messaging while `libraries/eventsourcing`'s core does not — the core declares an `EventPublisher` port and ships a default that needs no transport. Either way it stays invisible above the port — see [Transactions and Atomicity](#transactions-and-atomicity).
 - **An inbox is the dual of the outbox**, and will be wanted for the same reason: a redelivered message must not be handled twice. Deferred alongside the broker, but the shape is known — remember the message id, reject what has already been seen.
 - **Versioning / upcasting** is planned from day one — a book project lives for years and events will evolve. The mechanism is settled: **every event carries its own version**, and upcasting is a set of pure `from -> to` patch functions applied on read, so stored events are never rewritten in place. Adopted from the earlier implementation, where this design existed and was sound but was never exercised — every real event there sat at version zero, and the only patch lived in the library's own tests.

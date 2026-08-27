@@ -2904,6 +2904,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-pieces-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "time",
+ "uuid",
+ "weaveling-eventsourcing",
+]
+
+[[package]]
 name = "weaveling-projects-contract"
 version = "0.1.0"
 dependencies = [

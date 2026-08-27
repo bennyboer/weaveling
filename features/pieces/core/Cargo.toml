@@ -1,0 +1,11 @@
+[package]
+name = "weaveling-pieces-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+time = { workspace = true }
+uuid = { workspace = true, features = ["v7"] }
+
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
