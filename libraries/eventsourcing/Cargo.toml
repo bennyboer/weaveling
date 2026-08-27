@@ -8,5 +8,7 @@ async-trait = { workspace = true }
 thiserror = { workspace = true }
 time = { workspace = true }
 
+clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt"] }

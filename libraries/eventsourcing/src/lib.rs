@@ -3,6 +3,7 @@ mod aggregate;
 mod event;
 mod memory;
 mod metadata;
+mod service;
 mod store;
 mod version;
 
@@ -13,5 +14,6 @@ pub use aggregate::{Aggregate, AggregateId, AggregateType};
 pub use event::{Event, EventName, Recorded};
 pub use memory::InMemoryEventStore;
 pub use metadata::EventMetadata;
+pub use service::{EventSourcingService, ServiceError};
 pub use store::{EventStore, StoreError};
 pub use version::Version;
