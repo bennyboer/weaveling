@@ -2822,6 +2822,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-eventsourcing"
+version = "0.1.0"
+dependencies = [
+ "time",
+]
+
+[[package]]
 name = "weaveling-passages-contract"
 version = "0.1.0"
 dependencies = [
