@@ -8,4 +8,8 @@ thiserror = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

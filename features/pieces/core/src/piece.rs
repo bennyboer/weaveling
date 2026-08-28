@@ -1,11 +1,20 @@
 use std::fmt::{self, Display, Formatter};
 
-use eventsourcing::{Agent, Aggregate, AggregateType, Event, EventMetadata, EventName, Version};
+use eventsourcing::{
+    Agent, Aggregate, AggregateId, AggregateType, Event, EventMetadata, EventName, Version,
+};
 use thiserror::Error;
 
+use crate::id::PieceId;
 use crate::title::PieceTitle;
 
 pub const KIND: AggregateType = AggregateType::of("piece");
+
+impl From<&PieceId> for AggregateId {
+    fn from(id: &PieceId) -> Self {
+        AggregateId::from(id.to_string())
+    }
+}
 
 const CAPTURED: EventName = EventName::of("CAPTURED");
 const RETITLED: EventName = EventName::of("RETITLED");
