@@ -1,0 +1,16 @@
+[package]
+name = "weaveling-pieces-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+pieces-contract = { version = "0.1.0", path = "../contract", package = "weaveling-pieces-contract" }
+pieces-core = { version = "0.1.0", path = "../core", package = "weaveling-pieces-core" }
+pieces-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-pieces-rest" }

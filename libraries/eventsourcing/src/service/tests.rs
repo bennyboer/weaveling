@@ -36,7 +36,7 @@ fn retitled(to: &str) -> SampleCommand {
 async fn a_created_sample(service: &EventSourcingService<Sample>) -> AggregateId {
     let id = AggregateId::from("sample_1");
     service
-        .execute(&id, a_creation(), &an_author())
+        .begin(&id, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
 
@@ -49,13 +49,18 @@ async fn creating_lands_the_first_version() {
     let id = AggregateId::from("sample_1");
 
     let landed = service
-        .execute(&id, a_creation(), &an_author())
+        .begin(&id, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
 
     assert_eq!(landed, Version::of(1));
     assert_eq!(
-        service.latest(&id).await.expect("it exists now").title,
+        service
+            .latest(&id)
+            .await
+            .expect("it exists now")
+            .state
+            .title,
         "The Loom"
     );
 }
@@ -72,7 +77,7 @@ async fn a_further_command_lands_the_next_version() {
 
     assert_eq!(landed, Version::of(2));
     assert_eq!(
-        service.latest(&id).await.expect("it exists").title,
+        service.latest(&id).await.expect("it exists").state.title,
         "The Silent Loom"
     );
 }
@@ -95,19 +100,55 @@ async fn asking_for_what_was_never_created_is_not_found() {
 }
 
 #[tokio::test]
-async fn a_command_before_creation_is_refused_by_the_aggregate() {
+async fn a_command_on_something_that_does_not_exist_is_not_found() {
+    let service = a_workbench();
+    let missing = AggregateId::from("sample_early");
+
+    let refused = service
+        .execute(&missing, retitled("Too soon"), &an_author())
+        .await
+        .expect_err("nothing exists to update");
+
+    assert_eq!(
+        refused,
+        ServiceError::NotFound {
+            aggregate: missing,
+            kind: Sample::KIND,
+        },
+        "an update to something absent is a missing aggregate, not a domain refusal"
+    );
+}
+
+#[tokio::test]
+async fn beginning_with_a_command_that_does_not_create_is_refused_by_the_aggregate() {
     let service = a_workbench();
 
     let refused = service
-        .execute(
+        .begin(
             &AggregateId::from("sample_early"),
             retitled("Too soon"),
             &an_author(),
         )
         .await
-        .expect_err("nothing exists to update");
+        .expect_err("only a creation command can start a stream");
 
     assert_eq!(refused, ServiceError::Refused(SampleError::NotCreatedYet));
+}
+
+#[tokio::test]
+async fn beginning_something_that_already_exists_is_a_conflict() {
+    let service = a_workbench();
+    let id = a_created_sample(&service).await;
+
+    let refused = service
+        .begin(&id, a_creation(), &an_author())
+        .await
+        .expect_err("it is already there");
+
+    assert!(matches!(
+        refused,
+        ServiceError::Store(StoreError::Outdated { .. })
+    ));
 }
 
 #[tokio::test]
@@ -129,7 +170,7 @@ async fn a_command_at_a_stale_version_is_refused() {
         ServiceError::Store(StoreError::Outdated { .. })
     ));
     assert_eq!(
-        service.latest(&id).await.expect("it exists").title,
+        service.latest(&id).await.expect("it exists").state.title,
         "Second",
         "a refused command must not change the aggregate"
     );
@@ -185,8 +226,9 @@ async fn an_older_version_can_still_be_read() {
         .expect("version 1 existed");
     let now = service.latest(&id).await.expect("it exists");
 
-    assert_eq!(then.title, "The Loom");
-    assert_eq!(now.title, "The Silent Loom");
+    assert_eq!(then.state.title, "The Loom");
+    assert_eq!(then.version, Version::of(1));
+    assert_eq!(now.state.title, "The Silent Loom");
 }
 
 #[tokio::test]
@@ -196,11 +238,11 @@ async fn many_aggregates_do_not_interfere() {
     let other = AggregateId::from("sample_other");
 
     service
-        .execute(&one, a_creation(), &an_author())
+        .begin(&one, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
     service
-        .execute(&other, a_creation(), &an_author())
+        .begin(&other, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
     service
@@ -209,10 +251,13 @@ async fn many_aggregates_do_not_interfere() {
         .expect("updating should succeed");
 
     assert_eq!(
-        service.latest(&one).await.expect("exists").title,
+        service.latest(&one).await.expect("exists").state.title,
         "The Loom"
     );
-    assert_eq!(service.latest(&other).await.expect("exists").title, "Apart");
+    assert_eq!(
+        service.latest(&other).await.expect("exists").state.title,
+        "Apart"
+    );
 }
 
 #[tokio::test]
@@ -233,7 +278,7 @@ async fn one_command_may_land_several_events_at_once() {
         .expect("rewriting should succeed");
 
     assert_eq!(landed, Version::of(3), "two events land two versions");
-    let state = service.latest(&id).await.expect("exists");
+    let state = service.latest(&id).await.expect("exists").state;
     assert_eq!(state.title, "The Silent Loom");
     assert_eq!(state.description, "It remembers.");
 }
@@ -281,7 +326,7 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
         Version::of(101)
     );
     assert_eq!(
-        service.latest(&id).await.expect("exists").title,
+        service.latest(&id).await.expect("exists").state.title,
         "Title 100",
         "a snapshot must not change what the aggregate says"
     );
@@ -310,7 +355,7 @@ async fn collapsing_leaves_only_a_snapshot_behind() {
     assert_eq!(stream.len(), 1, "everything the snapshot replaced is gone");
     assert!(stream[0].metadata.is_snapshot);
     assert_eq!(
-        service.latest(&id).await.expect("exists").title,
+        service.latest(&id).await.expect("exists").state.title,
         "The Silent Loom",
         "a collapsed stream must still describe the same aggregate"
     );
@@ -332,7 +377,7 @@ async fn a_collapsed_aggregate_carries_on_from_the_snapshot() {
 
     assert_eq!(landed, Version::of(3));
     assert_eq!(
-        service.latest(&id).await.expect("exists").title,
+        service.latest(&id).await.expect("exists").state.title,
         "After the collapse"
     );
 }
@@ -352,4 +397,28 @@ async fn who_acted_and_when_is_recorded() {
     assert_eq!(stream[0].metadata.occurred_at, OffsetDateTime::UNIX_EPOCH);
     assert_eq!(stream[0].metadata.kind, Sample::KIND);
     assert_eq!(stream[0].metadata.aggregate, id);
+}
+
+#[tokio::test]
+async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
+    let service = a_workbench();
+    let id = a_created_sample(&service).await;
+    service
+        .execute(&id, retitled("Second"), &an_author())
+        .await
+        .expect("updating should succeed");
+    service
+        .collapse(&id, &an_author())
+        .await
+        .expect("collapsing should succeed");
+
+    let refused = service
+        .execute_at(&id, Version::of(1), retitled("Stale"), &an_author())
+        .await
+        .expect_err("version 1 was pruned away, but the aggregate is very much there");
+
+    assert!(
+        matches!(refused, ServiceError::Store(StoreError::Outdated { .. })),
+        "a version the snapshot swallowed must not read as a missing aggregate, got {refused:?}"
+    );
 }

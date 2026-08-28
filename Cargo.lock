@@ -2904,6 +2904,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-pieces-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "weaveling-pieces-core"
 version = "0.1.0"
 dependencies = [
@@ -2913,6 +2920,32 @@ dependencies = [
  "uuid",
  "weaveling-clock",
  "weaveling-eventsourcing",
+]
+
+[[package]]
+name = "weaveling-pieces-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "tracing",
+ "weaveling-eventsourcing",
+ "weaveling-pieces-contract",
+ "weaveling-pieces-core",
+]
+
+[[package]]
+name = "weaveling-pieces-tests"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-test",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-pieces-contract",
+ "weaveling-pieces-core",
+ "weaveling-pieces-rest",
 ]
 
 [[package]]

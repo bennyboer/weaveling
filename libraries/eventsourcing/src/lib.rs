@@ -14,6 +14,6 @@ pub use aggregate::{Aggregate, AggregateId, AggregateType};
 pub use event::{Event, EventName, Recorded};
 pub use memory::InMemoryEventStore;
 pub use metadata::EventMetadata;
-pub use service::{EventSourcingService, ServiceError};
+pub use service::{EventSourcingService, ServiceError, Standing};
 pub use store::{EventStore, StoreError};
 pub use version::Version;

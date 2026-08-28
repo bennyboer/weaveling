@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Version};
+use eventsourcing::{
+    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
+};
 use thiserror::Error;
 
 use crate::id::{InvalidPieceId, PieceId};
@@ -41,7 +43,7 @@ impl PieceService {
         let id = PieceId::generate(self.clock.now());
 
         self.events
-            .execute(
+            .begin(
                 &AggregateId::from(&id),
                 PieceCommand::Capture {
                     project: ProjectLink::from(project),
@@ -54,7 +56,7 @@ impl PieceService {
         Ok(id)
     }
 
-    pub async fn get(&self, id: &str) -> Result<Piece, PieceServiceError> {
+    pub async fn get(&self, id: &str) -> Result<Standing<Piece>, PieceServiceError> {
         let id: PieceId = id.parse()?;
 
         Ok(self.events.latest(&AggregateId::from(&id)).await?)
@@ -64,41 +66,61 @@ impl PieceService {
         &self,
         id: &str,
         title: &str,
+        expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, PieceServiceError> {
-        self.carry_out(id, PieceCommand::Retitle(PieceTitle::new(title)?), agent)
-            .await
+        self.carry_out(
+            id,
+            PieceCommand::Retitle(PieceTitle::new(title)?),
+            expected,
+            agent,
+        )
+        .await
     }
 
     pub async fn attach_passage(
         &self,
         id: &str,
         passage: &str,
+        expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, PieceServiceError> {
         self.carry_out(
             id,
             PieceCommand::AttachPassage(PassageLink::from(passage)),
+            expected,
             agent,
         )
         .await
     }
 
-    pub async fn discard(&self, id: &str, agent: &Agent) -> Result<Version, PieceServiceError> {
-        self.carry_out(id, PieceCommand::Discard, agent).await
+    pub async fn discard(
+        &self,
+        id: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Version, PieceServiceError> {
+        self.carry_out(id, PieceCommand::Discard, expected, agent)
+            .await
     }
 
     async fn carry_out(
         &self,
         id: &str,
         command: PieceCommand,
+        expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, PieceServiceError> {
         let id: PieceId = id.parse()?;
+        let key = AggregateId::from(&id);
 
-        Ok(self
-            .events
-            .execute(&AggregateId::from(&id), command, agent)
-            .await?)
+        Ok(match expected {
+            Some(expected) => {
+                self.events
+                    .execute_at(&key, expected, command, agent)
+                    .await?
+            }
+            None => self.events.execute(&key, command, agent).await?,
+        })
     }
 }

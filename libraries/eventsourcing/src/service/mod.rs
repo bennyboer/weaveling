@@ -41,7 +41,12 @@ pub struct EventSourcingService<A: Aggregate> {
 }
 
 type Outcome<A> = Result<Version, ServiceError<<A as Aggregate>::Error>>;
-type Standing<A> = Option<(A, Version)>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Standing<A> {
+    pub state: A,
+    pub version: Version,
+}
 
 impl<A> EventSourcingService<A>
 where
@@ -52,10 +57,12 @@ where
         Self { store, clock }
     }
 
-    pub async fn latest(&self, aggregate: &AggregateId) -> Result<A, ServiceError<A::Error>> {
+    pub async fn latest(
+        &self,
+        aggregate: &AggregateId,
+    ) -> Result<Standing<A>, ServiceError<A::Error>> {
         self.standing(aggregate, None)
             .await?
-            .map(|(state, _)| state)
             .ok_or_else(|| self.nothing_there(aggregate))
     }
 
@@ -63,11 +70,20 @@ where
         &self,
         aggregate: &AggregateId,
         version: Version,
-    ) -> Result<A, ServiceError<A::Error>> {
+    ) -> Result<Standing<A>, ServiceError<A::Error>> {
         self.standing(aggregate, Some(version))
             .await?
-            .map(|(state, _)| state)
             .ok_or_else(|| self.nothing_there(aggregate))
+    }
+
+    pub async fn begin(
+        &self,
+        aggregate: &AggregateId,
+        command: A::Command,
+        agent: &Agent,
+    ) -> Outcome<A> {
+        self.carry_out(aggregate, None, Version::ZERO, command, agent)
+            .await
     }
 
     pub async fn execute(
@@ -76,14 +92,15 @@ where
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        let standing = self.standing(aggregate, None).await?;
-        let expected = standing
-            .as_ref()
-            .map(|(_, reached)| *reached)
-            .unwrap_or(Version::ZERO);
+        match self.standing(aggregate, None).await? {
+            None => Err(self.nothing_there(aggregate)),
+            Some(standing) => {
+                let reached = standing.version;
 
-        self.carry_out(aggregate, standing, expected, command, agent)
-            .await
+                self.carry_out(aggregate, Some(standing), reached, command, agent)
+                    .await
+            }
+        }
     }
 
     pub async fn execute_at(
@@ -93,26 +110,32 @@ where
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        let standing = self.standing(aggregate, Some(expected)).await?;
-
-        if standing.is_none() {
-            return Err(self.nothing_there(aggregate));
+        match self.standing(aggregate, None).await? {
+            None => Err(self.nothing_there(aggregate)),
+            Some(standing) if standing.version != expected => {
+                Err(ServiceError::Store(StoreError::Outdated {
+                    aggregate: aggregate.clone(),
+                    kind: A::KIND,
+                    expected,
+                }))
+            }
+            Some(standing) => {
+                self.carry_out(aggregate, Some(standing), expected, command, agent)
+                    .await
+            }
         }
-
-        self.carry_out(aggregate, standing, expected, command, agent)
-            .await
     }
 
     async fn carry_out(
         &self,
         aggregate: &AggregateId,
-        standing: Standing<A>,
+        standing: Option<Standing<A>>,
         expected: Version,
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
         let events = match &standing {
-            Some((state, _)) => state.decide(command, agent),
+            Some(standing) => standing.state.decide(command, agent),
             None => A::begin(command, agent),
         }
         .map_err(ServiceError::Refused)?;
@@ -131,19 +154,21 @@ where
             .expect("a non-empty batch was just stamped")
             .metadata
             .version;
-        let state = grown(standing.map(|(state, _)| state), &stream)
+        let state = grown(standing.map(|standing| standing.state), &stream)
             .ok_or_else(|| self.unusable(aggregate))?;
 
         self.snapshot_if_due(aggregate, &state, landed, agent).await
     }
 
     pub async fn collapse(&self, aggregate: &AggregateId, agent: &Agent) -> Outcome<A> {
-        let (state, reached) = self
+        let standing = self
             .standing(aggregate, None)
             .await?
             .ok_or_else(|| self.nothing_there(aggregate))?;
 
-        let taken = self.snapshot(aggregate, &state, reached, agent).await?;
+        let taken = self
+            .snapshot(aggregate, &standing.state, standing.version, agent)
+            .await?;
         if let Some(replaced) = taken.previous() {
             self.store
                 .prune_through(aggregate, A::KIND, replaced)
@@ -157,7 +182,7 @@ where
         &self,
         aggregate: &AggregateId,
         through: Option<Version>,
-    ) -> Result<Standing<A>, ServiceError<A::Error>> {
+    ) -> Result<Option<Standing<A>>, ServiceError<A::Error>> {
         let resume = match through {
             Some(version) => {
                 self.store
@@ -189,7 +214,10 @@ where
             .version;
         let state = grown(None, &stream).ok_or_else(|| self.unusable(aggregate))?;
 
-        Ok(Some((state, reached)))
+        Ok(Some(Standing {
+            state,
+            version: reached,
+        }))
     }
 
     fn stamp(

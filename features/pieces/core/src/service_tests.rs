@@ -46,9 +46,10 @@ async fn capturing_yields_an_id_the_piece_can_be_fetched_with() {
         .await
         .expect("the piece exists");
 
-    assert_eq!(piece.title().as_str(), "The Loom");
-    assert_eq!(piece.project(), &ProjectLink::from("project_1"));
-    assert_eq!(piece.passage(), None);
+    assert_eq!(piece.state.title().as_str(), "The Loom");
+    assert_eq!(piece.state.project(), &ProjectLink::from("project_1"));
+    assert_eq!(piece.state.passage(), None);
+    assert_eq!(piece.version, Version::of(1));
 }
 
 #[tokio::test]
@@ -87,6 +88,7 @@ async fn a_piece_may_be_captured_with_no_title() {
             .get(&id.to_string())
             .await
             .expect("it exists")
+            .state
             .title()
             .is_untitled()
     );
@@ -114,7 +116,7 @@ async fn retitling_changes_what_the_piece_is_called() {
     let id = a_captured_piece(&service).await;
 
     let landed = service
-        .retitle(&id.to_string(), "The Silent Loom", &an_author())
+        .retitle(&id.to_string(), "The Silent Loom", None, &an_author())
         .await
         .expect("retitling should succeed");
 
@@ -124,6 +126,7 @@ async fn retitling_changes_what_the_piece_is_called() {
             .get(&id.to_string())
             .await
             .expect("it exists")
+            .state
             .title()
             .as_str(),
         "The Silent Loom"
@@ -136,7 +139,7 @@ async fn retitling_to_the_same_title_is_accepted_and_records_nothing() {
     let id = a_captured_piece(&service).await;
 
     let landed = service
-        .retitle(&id.to_string(), "The Loom", &an_author())
+        .retitle(&id.to_string(), "The Loom", None, &an_author())
         .await
         .expect("an unchanged title is not an error");
 
@@ -153,7 +156,7 @@ async fn a_passage_can_be_attached_once() {
     let id = a_captured_piece(&service).await;
 
     service
-        .attach_passage(&id.to_string(), "passage_9", &an_author())
+        .attach_passage(&id.to_string(), "passage_9", None, &an_author())
         .await
         .expect("attaching should succeed");
 
@@ -162,6 +165,7 @@ async fn a_passage_can_be_attached_once() {
             .get(&id.to_string())
             .await
             .expect("it exists")
+            .state
             .passage(),
         Some(&PassageLink::from("passage_9"))
     );
@@ -172,12 +176,12 @@ async fn a_second_passage_is_refused() {
     let (service, _) = a_workbench();
     let id = a_captured_piece(&service).await;
     service
-        .attach_passage(&id.to_string(), "passage_9", &an_author())
+        .attach_passage(&id.to_string(), "passage_9", None, &an_author())
         .await
         .expect("the first attaches");
 
     let refused = service
-        .attach_passage(&id.to_string(), "passage_10", &an_author())
+        .attach_passage(&id.to_string(), "passage_10", None, &an_author())
         .await
         .expect_err("the second must not");
 
@@ -192,12 +196,12 @@ async fn a_discarded_piece_refuses_further_changes() {
     let (service, _) = a_workbench();
     let id = a_captured_piece(&service).await;
     service
-        .discard(&id.to_string(), &an_author())
+        .discard(&id.to_string(), None, &an_author())
         .await
         .expect("discarding should succeed");
 
     let refused = service
-        .retitle(&id.to_string(), "Too late", &an_author())
+        .retitle(&id.to_string(), "Too late", None, &an_author())
         .await
         .expect_err("a discarded piece accepts nothing");
 
@@ -234,7 +238,7 @@ async fn an_id_of_another_kind_is_refused_before_the_store_is_touched() {
     ));
     assert!(matches!(
         service
-            .retitle(&theirs, "Nowhere", &an_author())
+            .retitle(&theirs, "Nowhere", None, &an_author())
             .await
             .expect_err("wrong kind of id"),
         PieceServiceError::InvalidId(_)
@@ -264,13 +268,18 @@ async fn a_piece_is_snapshotted_once_the_threshold_is_reached() {
         .await
         .expect("capturing should succeed");
     service
-        .attach_passage(&id.to_string(), "passage_9", &an_author())
+        .attach_passage(&id.to_string(), "passage_9", None, &an_author())
         .await
         .expect("attaching should succeed");
 
     for counted in 3..100 {
         service
-            .retitle(&id.to_string(), &format!("Title {counted}"), &an_author())
+            .retitle(
+                &id.to_string(),
+                &format!("Title {counted}"),
+                None,
+                &an_author(),
+            )
             .await
             .expect("retitling should succeed");
     }
@@ -285,7 +294,7 @@ async fn a_piece_is_snapshotted_once_the_threshold_is_reached() {
     );
 
     let landed = service
-        .retitle(&id.to_string(), "Title 100", &an_author())
+        .retitle(&id.to_string(), "Title 100", None, &an_author())
         .await
         .expect("retitling should succeed");
 
@@ -305,13 +314,18 @@ async fn a_piece_survives_on_its_snapshot_alone() {
         .await
         .expect("capturing should succeed");
     service
-        .attach_passage(&id.to_string(), "passage_9", &an_author())
+        .attach_passage(&id.to_string(), "passage_9", None, &an_author())
         .await
         .expect("attaching should succeed");
 
     for counted in 3..=100 {
         service
-            .retitle(&id.to_string(), &format!("Title {counted}"), &an_author())
+            .retitle(
+                &id.to_string(),
+                &format!("Title {counted}"),
+                None,
+                &an_author(),
+            )
             .await
             .expect("retitling should succeed");
     }
@@ -348,7 +362,8 @@ async fn a_piece_survives_on_its_snapshot_alone() {
     let piece = service
         .get(&id.to_string())
         .await
-        .expect("the snapshot alone should be enough to rebuild the piece");
+        .expect("the snapshot alone should be enough to rebuild the piece")
+        .state;
 
     assert_eq!(piece.title().as_str(), "Title 100");
     assert_eq!(piece.passage(), Some(&PassageLink::from("passage_9")));
