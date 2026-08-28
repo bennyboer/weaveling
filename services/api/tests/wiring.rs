@@ -4,7 +4,9 @@ use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
 use clock::SystemClock;
+use eventsourcing::InMemoryEventStore;
 use passages_store::InMemoryPassageStore;
+use pieces_catalog::InMemoryPieceCatalog;
 use projects_store::InMemoryProjectStore;
 use tower::ServiceExt;
 use weaveling_service_api::app;
@@ -13,6 +15,8 @@ fn new_app() -> Router {
     app(
         Arc::new(InMemoryProjectStore::new()),
         Arc::new(InMemoryPassageStore::new()),
+        Arc::new(InMemoryEventStore::new()),
+        Arc::new(InMemoryPieceCatalog::new()),
         Arc::new(SystemClock),
     )
 }
@@ -33,6 +37,18 @@ async fn post(path: &str) -> (StatusCode, String) {
             .method("POST")
             .uri(path)
             .body(Body::empty())
+            .expect("should build the request"),
+    )
+    .await
+}
+
+async fn post_json(path: &str, body: &str) -> (StatusCode, String) {
+    reply(
+        Request::builder()
+            .method("POST")
+            .uri(path)
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_owned()))
             .expect("should build the request"),
     )
     .await
@@ -107,4 +123,35 @@ async fn the_two_features_do_not_shadow_each_other() {
 
     assert_eq!(projects, StatusCode::OK);
     assert_eq!(passages, StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn the_pieces_feature_is_mounted_under_api() {
+    let (status, body) = post_json(
+        "/api/pieces",
+        r#"{"project":"project_1","title":"The Loom"}"#,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::CREATED, "body was {body}");
+    assert!(body.contains("piece_"), "body was {body}");
+}
+
+#[tokio::test]
+async fn the_pieces_listing_is_mounted_under_api() {
+    let (status, body) = get("/api/pieces?project=project_1").await;
+
+    assert_eq!(status, StatusCode::OK, "body was {body}");
+    assert_eq!(body, "[]");
+}
+
+#[tokio::test]
+async fn every_feature_answers_without_shadowing_the_others() {
+    let (projects, _) = get("/api/projects").await;
+    let (passages, _) = post("/api/passages").await;
+    let (pieces, _) = get("/api/pieces?project=project_1").await;
+
+    assert_eq!(projects, StatusCode::OK);
+    assert_eq!(passages, StatusCode::CREATED);
+    assert_eq!(pieces, StatusCode::OK);
 }

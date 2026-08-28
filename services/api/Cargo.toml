@@ -11,10 +11,14 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 passages-core = { version = "0.1.0", path = "../../features/passages/core", package = "weaveling-passages-core" }
 passages-rest = { version = "0.1.0", path = "../../features/passages/adapters/rest", package = "weaveling-passages-rest" }
 passages-store = { version = "0.1.0", path = "../../features/passages/adapters/store", package = "weaveling-passages-store" }
 passages-sync = { version = "0.1.0", path = "../../features/passages/adapters/sync", package = "weaveling-passages-sync" }
+pieces-catalog = { version = "0.1.0", path = "../../features/pieces/adapters/catalog", package = "weaveling-pieces-catalog" }
+pieces-core = { version = "0.1.0", path = "../../features/pieces/core", package = "weaveling-pieces-core" }
+pieces-rest = { version = "0.1.0", path = "../../features/pieces/adapters/rest", package = "weaveling-pieces-rest" }
 projects-core = { version = "0.1.0", path = "../../features/projects/core", package = "weaveling-projects-core" }
 projects-rest = { version = "0.1.0", path = "../../features/projects/adapters/rest", package = "weaveling-projects-rest" }
 projects-store = { version = "0.1.0", path = "../../features/projects/adapters/store", package = "weaveling-projects-store" }
