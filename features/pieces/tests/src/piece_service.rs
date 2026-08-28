@@ -4,12 +4,13 @@ use clock::FixedClock;
 use eventsourcing::{
     Agent, AgentId, AggregateId, EventStore, InMemoryEventStore, ServiceError, Version,
 };
+use pieces_catalog::InMemoryPieceCatalog;
 use time::{Duration, OffsetDateTime};
 
-use crate::id::PieceId;
-use crate::piece::{KIND, PassageLink, PieceError, PieceEvent, ProjectLink};
-use crate::service::{PieceService, PieceServiceError};
-use crate::title::PieceTitle;
+use pieces_core::{
+    KIND, PassageLink, PieceError, PieceEvent, PieceId, PieceService, PieceServiceError,
+    PieceTitle, ProjectLink,
+};
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -19,6 +20,7 @@ fn a_workbench() -> (PieceService, Arc<FixedClock>) {
     let clock = Arc::new(FixedClock::new(at(1_000)));
     let service = PieceService::new(
         Arc::new(InMemoryEventStore::<PieceEvent>::new()),
+        Arc::new(InMemoryPieceCatalog::new()),
         clock.clone(),
     );
 
@@ -262,7 +264,11 @@ async fn a_piece_captured_later_sorts_after_one_captured_earlier() {
 #[tokio::test]
 async fn a_piece_is_snapshotted_once_the_threshold_is_reached() {
     let store = Arc::new(InMemoryEventStore::<PieceEvent>::new());
-    let service = PieceService::new(store.clone(), Arc::new(FixedClock::new(at(1_000))));
+    let service = PieceService::new(
+        store.clone(),
+        Arc::new(InMemoryPieceCatalog::new()),
+        Arc::new(FixedClock::new(at(1_000))),
+    );
     let id = service
         .capture("project_1", "The Loom", &an_author())
         .await
@@ -308,7 +314,11 @@ async fn a_piece_is_snapshotted_once_the_threshold_is_reached() {
 #[tokio::test]
 async fn a_piece_survives_on_its_snapshot_alone() {
     let store = Arc::new(InMemoryEventStore::<PieceEvent>::new());
-    let service = PieceService::new(store.clone(), Arc::new(FixedClock::new(at(1_000))));
+    let service = PieceService::new(
+        store.clone(),
+        Arc::new(InMemoryPieceCatalog::new()),
+        Arc::new(FixedClock::new(at(1_000))),
+    );
     let id = service
         .capture("project_1", "The Loom", &an_author())
         .await

@@ -6,6 +6,7 @@ use eventsourcing::{
 };
 use thiserror::Error;
 
+use crate::catalog::{CatalogError, PieceCatalog, PieceSummary};
 use crate::id::{InvalidPieceId, PieceId};
 use crate::piece::{PassageLink, Piece, PieceCommand, PieceError, PieceEvent, ProjectLink};
 use crate::title::{InvalidPieceTitle, PieceTitle};
@@ -18,20 +19,32 @@ pub enum PieceServiceError {
     InvalidTitle(#[from] InvalidPieceTitle),
     #[error(transparent)]
     Events(#[from] ServiceError<PieceError>),
+    #[error(transparent)]
+    Catalog(#[from] CatalogError),
 }
 
 #[derive(Clone)]
 pub struct PieceService {
     events: Arc<EventSourcingService<Piece>>,
+    catalog: Arc<dyn PieceCatalog>,
     clock: Arc<dyn Clock>,
 }
 
 impl PieceService {
-    pub fn new(store: Arc<dyn EventStore<PieceEvent>>, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        store: Arc<dyn EventStore<PieceEvent>>,
+        catalog: Arc<dyn PieceCatalog>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            catalog,
             clock,
         }
+    }
+
+    pub async fn list(&self, project: &str) -> Result<Vec<PieceSummary>, PieceServiceError> {
+        Ok(self.catalog.in_project(&ProjectLink::from(project)).await?)
     }
 
     pub async fn capture(
@@ -52,6 +65,7 @@ impl PieceService {
                 agent,
             )
             .await?;
+        self.catalogue(&id).await?;
 
         Ok(id)
     }
@@ -114,13 +128,31 @@ impl PieceService {
         let id: PieceId = id.parse()?;
         let key = AggregateId::from(&id);
 
-        Ok(match expected {
+        let discarding = matches!(command, PieceCommand::Discard);
+        let landed = match expected {
             Some(expected) => {
                 self.events
                     .execute_at(&key, expected, command, agent)
                     .await?
             }
             None => self.events.execute(&key, command, agent).await?,
-        })
+        };
+
+        if discarding {
+            self.catalog.forget(&id).await?;
+        } else {
+            self.catalogue(&id).await?;
+        }
+
+        Ok(landed)
+    }
+
+    async fn catalogue(&self, id: &PieceId) -> Result<(), PieceServiceError> {
+        let standing = self.events.latest(&AggregateId::from(id)).await?;
+
+        Ok(self
+            .catalog
+            .remember(&PieceSummary::of(*id, standing.version, &standing.state))
+            .await?)
     }
 }

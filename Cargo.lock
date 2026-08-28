@@ -2904,6 +2904,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-pieces-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "time",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-pieces-core",
+]
+
+[[package]]
 name = "weaveling-pieces-contract"
 version = "0.1.0"
 dependencies = [
@@ -2914,6 +2925,7 @@ dependencies = [
 name = "weaveling-pieces-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "thiserror",
  "time",
  "tokio",
@@ -2927,6 +2939,7 @@ name = "weaveling-pieces-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
  "tracing",
  "weaveling-eventsourcing",
  "weaveling-pieces-contract",
@@ -2943,6 +2956,7 @@ dependencies = [
  "tokio",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-pieces-catalog",
  "weaveling-pieces-contract",
  "weaveling-pieces-core",
  "weaveling-pieces-rest",

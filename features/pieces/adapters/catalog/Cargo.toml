@@ -1,13 +1,15 @@
 [package]
-name = "weaveling-pieces-rest"
+name = "weaveling-pieces-catalog"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
-axum = { workspace = true }
-serde = { workspace = true }
-tracing = { workspace = true }
+async-trait = { workspace = true }
+time = { workspace = true }
 
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
-pieces-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-pieces-contract" }
+
 pieces-core = { version = "0.1.0", path = "../../core", package = "weaveling-pieces-core" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

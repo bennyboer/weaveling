@@ -12,5 +12,6 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 pieces-contract = { version = "0.1.0", path = "../contract", package = "weaveling-pieces-contract" }
+pieces-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-pieces-catalog" }
 pieces-core = { version = "0.1.0", path = "../core", package = "weaveling-pieces-core" }
 pieces-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-pieces-rest" }

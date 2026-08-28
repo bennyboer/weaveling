@@ -4,6 +4,7 @@ use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::InMemoryEventStore;
+use pieces_catalog::InMemoryPieceCatalog;
 use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO, RetitlePieceRequest};
 use pieces_core::{PieceEvent, PieceService, PieceTitle};
 use time::{Duration, OffsetDateTime};
@@ -17,6 +18,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 fn a_server() -> TestServer {
     let service = PieceService::new(
         Arc::new(InMemoryEventStore::<PieceEvent>::new()),
+        Arc::new(InMemoryPieceCatalog::new()),
         Arc::new(FixedClock::new(at(1_700_000_000))),
     );
 
@@ -394,4 +396,129 @@ async fn a_precondition_on_a_piece_nobody_captured_is_still_not_found() {
         })
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_project_nobody_wrote_in_lists_nothing() {
+    let server = a_server();
+
+    let response = server.get("/pieces?project=project_empty").await;
+
+    response.assert_status_ok();
+    assert!(response.json::<Vec<PieceDTO>>().is_empty());
+}
+
+#[tokio::test]
+async fn captured_pieces_are_listed_for_their_project() {
+    let server = a_server();
+    let one = a_piece(&server, "The Loom").await;
+    let other = a_piece(&server, "The Shuttle").await;
+
+    let listed = server
+        .get("/pieces?project=project_1")
+        .await
+        .json::<Vec<PieceDTO>>();
+
+    assert_eq!(listed.len(), 2);
+    assert!(listed.iter().any(|piece| piece.id == one.id));
+    assert!(listed.iter().any(|piece| piece.id == other.id));
+}
+
+#[tokio::test]
+async fn listing_asks_for_a_project() {
+    let server = a_server();
+
+    server
+        .get("/pieces")
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn a_retitled_piece_is_listed_under_its_new_title() {
+    let server = a_server();
+    let captured = a_piece(&server, "The Loom").await;
+
+    server
+        .patch(&format!("/pieces/{}", captured.id))
+        .json(&RetitlePieceRequest {
+            title: "The Silent Loom".to_owned(),
+        })
+        .await
+        .assert_status_ok();
+
+    let listed = server
+        .get("/pieces?project=project_1")
+        .await
+        .json::<Vec<PieceDTO>>();
+
+    assert_eq!(listed[0].title, "The Silent Loom");
+    assert_eq!(listed[0].version, 2, "the listing must not go stale");
+}
+
+#[tokio::test]
+async fn an_attached_passage_shows_up_in_the_listing() {
+    let server = a_server();
+    let captured = a_piece(&server, "The Loom").await;
+
+    server
+        .put(&format!("/pieces/{}/passage", captured.id))
+        .json(&AttachPassageRequest {
+            passage: "passage_9".to_owned(),
+        })
+        .await
+        .assert_status_ok();
+
+    let listed = server
+        .get("/pieces?project=project_1")
+        .await
+        .json::<Vec<PieceDTO>>();
+
+    assert_eq!(listed[0].passage, Some("passage_9".to_owned()));
+}
+
+#[tokio::test]
+async fn a_discarded_piece_leaves_the_listing() {
+    let server = a_server();
+    let kept = a_piece(&server, "The Loom").await;
+    let discarded = a_piece(&server, "A false start").await;
+
+    server
+        .delete(&format!("/pieces/{}", discarded.id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let listed = server
+        .get("/pieces?project=project_1")
+        .await
+        .json::<Vec<PieceDTO>>();
+
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, kept.id);
+}
+
+#[tokio::test]
+async fn a_refused_change_leaves_the_listing_alone() {
+    let server = a_server();
+    let captured = a_piece(&server, "The Loom").await;
+
+    server
+        .patch(&format!("/pieces/{}", captured.id))
+        .add_header("if-match", "\"99\"")
+        .json(&RetitlePieceRequest {
+            title: "Never happened".to_owned(),
+        })
+        .await
+        .assert_status(StatusCode::PRECONDITION_FAILED);
+
+    let listed = server
+        .get("/pieces?project=project_1")
+        .await
+        .json::<Vec<PieceDTO>>();
+
+    assert_eq!(
+        listed[0].title, "The Loom",
+        "a change that never landed must not reach the listing either"
+    );
+    assert_eq!(listed[0].version, 1);
 }

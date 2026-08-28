@@ -1,20 +1,45 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header::{ETAG, IF_MATCH};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
+use axum::routing::{get, put};
 use eventsourcing::{Agent, ServiceError, Standing, StoreError, Version};
 use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO, RetitlePieceRequest};
-use pieces_core::{Piece, PieceService, PieceServiceError};
+use pieces_core::{Piece, PieceService, PieceServiceError, PieceSummary};
+use serde::Deserialize;
 
 pub fn router(pieces: PieceService) -> Router {
     Router::new()
-        .route("/pieces", post(capture))
+        .route("/pieces", get(list).post(capture))
         .route("/pieces/{id}", get(find).patch(retitle).delete(discard))
         .route("/pieces/{id}/passage", put(attach_passage))
         .with_state(pieces)
+}
+
+#[derive(Deserialize)]
+struct InProject {
+    project: String,
+}
+
+async fn list(
+    State(pieces): State<PieceService>,
+    Query(asked): Query<InProject>,
+) -> Result<Json<Vec<PieceDTO>>, ApiError> {
+    let found = pieces.list(&asked.project).await?;
+
+    Ok(Json(found.iter().map(listed).collect()))
+}
+
+fn listed(summary: &PieceSummary) -> PieceDTO {
+    PieceDTO {
+        id: summary.id.to_string(),
+        version: summary.version.count(),
+        project: summary.project.to_string(),
+        title: summary.title.to_string(),
+        passage: summary.passage.as_ref().map(ToString::to_string),
+    }
 }
 
 async fn capture(
