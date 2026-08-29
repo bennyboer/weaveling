@@ -220,6 +220,8 @@ The design is settled in [Pieces and views](./ARCHITECTURE.md#pieces-and-views--
 
 **Rust you'll meet:** trait objects for aggregates, `serde` tagging for event payloads, and the ownership question of who holds the reconstructed state.
 
+**Done.** Capture, retitle and discard land in an event stream; a piece opened for writing is given a passage and the M6 editor works inside it; a stream rebuilds exactly, including from a snapshot alone once the events it replaced are pruned; and one event really goes through a patch — the sample aggregate carries a `CreatedBeforeKinds` variant at version 0 that the aggregate deliberately **cannot** read, so a stream written in the old shape rebuilding at all is proof the patch ran. Removing the patch fails two tests.
+
 **Done when:** capture, retitle and discard all land in an event stream; a piece opened for writing gets a passage and the M6 editor works inside it; rebuilding from the stream reproduces state exactly; and at least one event has been through a patch.
 
 **Explicitly not in M7:** the board, placement, messaging, the outline, any durable store.

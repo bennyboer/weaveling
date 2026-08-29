@@ -4,7 +4,9 @@ use time::OffsetDateTime;
 use super::*;
 use crate::agent::AgentId;
 use crate::memory::InMemoryEventStore;
+use crate::patch::Patcher;
 use crate::testing::sample::{Sample, SampleCommand, SampleError, SampleEvent};
+use crate::testing::sample::{SampleKind, a_sample, recorded, stamped};
 
 fn a_store() -> Arc<InMemoryEventStore<SampleEvent>> {
     Arc::new(InMemoryEventStore::new())
@@ -420,5 +422,163 @@ async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
     assert!(
         matches!(refused, ServiceError::Store(StoreError::Outdated { .. })),
         "a version the snapshot swallowed must not read as a missing aggregate, got {refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_event_stored_at_an_older_version_is_upgraded_before_the_aggregate_sees_it() {
+    let store = a_store();
+    let service = a_service(store.clone());
+    let id = AggregateId::from("sample_ancient");
+
+    store
+        .append(
+            &id,
+            Sample::KIND,
+            Version::ZERO,
+            &recorded(
+                &id,
+                vec![SampleEvent::CreatedBeforeKinds {
+                    title: "The Loom".to_owned(),
+                    description: "A silent machine.".to_owned(),
+                }],
+            ),
+        )
+        .await
+        .expect("an old event should still be storable");
+
+    let standing = service
+        .latest(&id)
+        .await
+        .expect("a stream written before kinds existed must still rebuild");
+
+    assert_eq!(standing.state.title, "The Loom");
+    assert_eq!(
+        standing.state.kind,
+        SampleKind::Ordinary,
+        "the patch supplies what the old event never carried"
+    );
+}
+
+#[tokio::test]
+async fn an_unpatched_old_event_would_not_rebuild_at_all() {
+    let patcher = Patcher::holding(Vec::new());
+    let ancient = SampleEvent::CreatedBeforeKinds {
+        title: "The Loom".to_owned(),
+        description: "A silent machine.".to_owned(),
+    };
+
+    let untouched = patcher.patch(ancient.clone());
+
+    assert_eq!(untouched, ancient);
+    assert!(
+        Sample::born(&untouched, &stamped(&a_sample(), 1)).is_none(),
+        "the previous test only means something because the aggregate cannot read the old shape"
+    );
+}
+
+#[tokio::test]
+async fn a_current_event_is_left_alone_by_the_patcher() {
+    let patcher = Patcher::holding(Sample::patches());
+    let current = SampleEvent::Created {
+        title: "The Loom".to_owned(),
+        description: "A silent machine.".to_owned(),
+        kind: SampleKind::Remarkable,
+    };
+
+    assert_eq!(
+        patcher.patch(current.clone()),
+        current,
+        "a patch must not fire on the version it produces, or it would loop"
+    );
+}
+
+#[tokio::test]
+async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
+    let store = a_store();
+    let service = a_service(store.clone());
+    let id = AggregateId::from("sample_ancient_collapsed");
+
+    store
+        .append(
+            &id,
+            Sample::KIND,
+            Version::ZERO,
+            &recorded(
+                &id,
+                vec![SampleEvent::CreatedBeforeKinds {
+                    title: "The Loom".to_owned(),
+                    description: "A silent machine.".to_owned(),
+                }],
+            ),
+        )
+        .await
+        .expect("an old event should still be storable");
+
+    service
+        .collapse(&id, &an_author())
+        .await
+        .expect("collapsing a patched stream should succeed");
+
+    assert_eq!(
+        service
+            .latest(&id)
+            .await
+            .expect("it still exists")
+            .state
+            .kind,
+        SampleKind::Ordinary,
+        "a snapshot taken of a patched aggregate must carry the patched state"
+    );
+}
+
+#[tokio::test]
+async fn an_event_two_versions_old_climbs_the_whole_chain() {
+    let store = a_store();
+    let service = a_service(store.clone());
+    let id = AggregateId::from("sample_very_ancient");
+
+    store
+        .append(
+            &id,
+            Sample::KIND,
+            Version::ZERO,
+            &recorded(
+                &id,
+                vec![SampleEvent::CreatedBeforeDescriptions {
+                    title: "The Loom".to_owned(),
+                }],
+            ),
+        )
+        .await
+        .expect("an event from two versions ago should still be storable");
+
+    let standing = service
+        .latest(&id)
+        .await
+        .expect("two patches in a row must carry it all the way to the current shape");
+
+    assert_eq!(standing.state.title, "The Loom");
+    assert_eq!(standing.state.description, "");
+    assert_eq!(standing.state.kind, SampleKind::Ordinary);
+}
+
+#[tokio::test]
+async fn patches_are_applied_in_version_order_however_they_were_registered() {
+    let backwards = Patcher::holding(Sample::patches());
+    let ancient = SampleEvent::CreatedBeforeDescriptions {
+        title: "The Loom".to_owned(),
+    };
+
+    let climbed = backwards.patch(ancient);
+
+    assert_eq!(
+        climbed,
+        SampleEvent::Created {
+            title: "The Loom".to_owned(),
+            description: String::new(),
+            kind: SampleKind::Ordinary,
+        },
+        "the sample registers the newer patch first on purpose, so only sorting gets this right"
     );
 }

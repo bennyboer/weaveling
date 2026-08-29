@@ -7,6 +7,7 @@ use crate::agent::Agent;
 use crate::aggregate::{Aggregate, AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
+use crate::patch::Patcher;
 use crate::store::{EventStore, StoreError};
 use crate::version::Version;
 
@@ -37,6 +38,7 @@ pub enum ServiceError<E> {
 
 pub struct EventSourcingService<A: Aggregate> {
     store: Arc<dyn EventStore<A::Event>>,
+    patcher: Patcher<A::Event>,
     clock: Arc<dyn Clock>,
 }
 
@@ -54,7 +56,11 @@ where
     A::Event: Clone + Send + Sync,
 {
     pub fn new(store: Arc<dyn EventStore<A::Event>>, clock: Arc<dyn Clock>) -> Self {
-        Self { store, clock }
+        Self {
+            store,
+            patcher: Patcher::holding(A::patches()),
+            clock,
+        }
     }
 
     pub async fn latest(
@@ -202,6 +208,13 @@ where
             }
             None => self.store.read_from(aggregate, A::KIND, resume).await?,
         };
+        let stream: Vec<_> = stream
+            .into_iter()
+            .map(|entry| Recorded {
+                event: self.patcher.patch(entry.event),
+                metadata: entry.metadata,
+            })
+            .collect();
 
         if stream.is_empty() {
             return Ok(None);

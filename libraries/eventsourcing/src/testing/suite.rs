@@ -1,13 +1,14 @@
 use crate::aggregate::AggregateId;
 use crate::event::Recorded;
 use crate::store::{EventStore, StoreError};
-use crate::testing::sample::{SAMPLE, SampleEvent, recorded, stamped};
+use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind, recorded, stamped};
 use crate::version::Version;
 
 fn a_creation() -> SampleEvent {
     SampleEvent::Created {
         title: "The Loom".to_owned(),
         description: "A silent machine.".to_owned(),
+        kind: SampleKind::Ordinary,
     }
 }
 

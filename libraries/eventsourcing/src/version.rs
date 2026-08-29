@@ -6,7 +6,7 @@ pub struct Version(u64);
 impl Version {
     pub const ZERO: Self = Self(0);
 
-    pub fn of(counted: u64) -> Self {
+    pub const fn of(counted: u64) -> Self {
         Self(counted)
     }
 

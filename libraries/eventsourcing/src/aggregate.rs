@@ -3,6 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use crate::agent::Agent;
 use crate::event::Event;
 use crate::metadata::EventMetadata;
+use crate::patch::Patch;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct AggregateId(String);
@@ -33,6 +34,10 @@ pub trait Aggregate: Sized {
 
     fn snapshot_after(&self) -> Option<u32> {
         Some(100)
+    }
+
+    fn patches() -> Vec<Patch<Self::Event>> {
+        Vec::new()
     }
 }
 

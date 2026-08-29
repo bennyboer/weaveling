@@ -5,10 +5,14 @@ use crate::agent::Agent;
 use crate::aggregate::{Aggregate, AggregateId, AggregateType};
 use crate::event::{Event, EventName, Recorded};
 use crate::metadata::EventMetadata;
+use crate::patch::Patch;
 use crate::version::Version;
 
 pub const SAMPLE: AggregateType = AggregateType::of("sample");
 pub const CREATED: EventName = EventName::of("CREATED");
+
+pub const BEFORE_DESCRIPTIONS: Version = Version::ZERO;
+pub const BEFORE_KINDS: Version = Version::of(1);
 pub const TITLE_UPDATED: EventName = EventName::of("TITLE_UPDATED");
 pub const DESCRIPTION_UPDATED: EventName = EventName::of("DESCRIPTION_UPDATED");
 pub const DELETED: EventName = EventName::of("DELETED");
@@ -22,11 +26,25 @@ pub enum SampleCommand {
     Delete,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SampleKind {
+    Ordinary,
+    Remarkable,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SampleEvent {
+    CreatedBeforeDescriptions {
+        title: String,
+    },
+    CreatedBeforeKinds {
+        title: String,
+        description: String,
+    },
     Created {
         title: String,
         description: String,
+        kind: SampleKind,
     },
     TitleUpdated(String),
     DescriptionUpdated(String),
@@ -42,6 +60,7 @@ pub enum SampleEvent {
 pub struct Sample {
     pub title: String,
     pub description: String,
+    pub kind: SampleKind,
     pub deleted: bool,
 }
 
@@ -58,7 +77,9 @@ pub enum SampleError {
 impl Event for SampleEvent {
     fn name(&self) -> EventName {
         match self {
-            Self::Created { .. } => CREATED,
+            Self::CreatedBeforeDescriptions { .. }
+            | Self::CreatedBeforeKinds { .. }
+            | Self::Created { .. } => CREATED,
             Self::TitleUpdated(_) => TITLE_UPDATED,
             Self::DescriptionUpdated(_) => DESCRIPTION_UPDATED,
             Self::Deleted => DELETED,
@@ -67,7 +88,11 @@ impl Event for SampleEvent {
     }
 
     fn version(&self) -> Version {
-        Version::ZERO
+        match self {
+            Self::CreatedBeforeDescriptions { .. } => BEFORE_DESCRIPTIONS,
+            Self::CreatedBeforeKinds { .. } => BEFORE_KINDS,
+            _ => BEFORE_KINDS.next(),
+        }
     }
 
     fn is_snapshot(&self) -> bool {
@@ -84,18 +109,25 @@ impl Aggregate for Sample {
 
     fn begin(command: SampleCommand, _agent: &Agent) -> Result<Vec<SampleEvent>, SampleError> {
         match command {
-            SampleCommand::Create { title, description } => {
-                Ok(vec![SampleEvent::Created { title, description }])
-            }
+            SampleCommand::Create { title, description } => Ok(vec![SampleEvent::Created {
+                title,
+                description,
+                kind: SampleKind::Ordinary,
+            }]),
             _ => Err(SampleError::NotCreatedYet),
         }
     }
 
     fn born(event: &SampleEvent, _metadata: &EventMetadata) -> Option<Self> {
         match event {
-            SampleEvent::Created { title, description } => Some(Self {
+            SampleEvent::Created {
+                title,
+                description,
+                kind,
+            } => Some(Self {
                 title: title.clone(),
                 description: description.clone(),
+                kind: *kind,
                 deleted: false,
             }),
             SampleEvent::Snapshotted {
@@ -105,6 +137,7 @@ impl Aggregate for Sample {
             } => Some(Self {
                 title: title.clone(),
                 description: description.clone(),
+                kind: SampleKind::Ordinary,
                 deleted: *deleted,
             }),
             _ => None,
@@ -136,7 +169,9 @@ impl Aggregate for Sample {
 
     fn absorb(&mut self, event: &SampleEvent, _metadata: &EventMetadata) {
         match event {
-            SampleEvent::Created { .. } => {}
+            SampleEvent::CreatedBeforeDescriptions { .. }
+            | SampleEvent::CreatedBeforeKinds { .. }
+            | SampleEvent::Created { .. } => {}
             SampleEvent::TitleUpdated(title) => self.title = title.clone(),
             SampleEvent::DescriptionUpdated(description) => self.description = description.clone(),
             SampleEvent::Deleted => self.deleted = true,
@@ -150,6 +185,28 @@ impl Aggregate for Sample {
                 self.deleted = *deleted;
             }
         }
+    }
+
+    fn patches() -> Vec<Patch<SampleEvent>> {
+        vec![
+            Patch::from(CREATED, BEFORE_KINDS, |event| match event {
+                SampleEvent::CreatedBeforeKinds { title, description } => SampleEvent::Created {
+                    title,
+                    description,
+                    kind: SampleKind::Ordinary,
+                },
+                already => already,
+            }),
+            Patch::from(CREATED, BEFORE_DESCRIPTIONS, |event| match event {
+                SampleEvent::CreatedBeforeDescriptions { title } => {
+                    SampleEvent::CreatedBeforeKinds {
+                        title,
+                        description: String::new(),
+                    }
+                }
+                already => already,
+            }),
+        ]
     }
 
     fn snapshot(&self) -> SampleEvent {
@@ -210,6 +267,7 @@ mod tests {
             vec![SampleEvent::Created {
                 title: "The Loom".to_owned(),
                 description: "A silent machine.".to_owned(),
+                kind: SampleKind::Ordinary,
             }],
         ))
         .expect("the creation event gives birth")
@@ -230,6 +288,7 @@ mod tests {
             Ok(vec![SampleEvent::Created {
                 title: "The Loom".to_owned(),
                 description: "A silent machine.".to_owned(),
+                kind: SampleKind::Ordinary,
             }])
         );
     }
@@ -266,6 +325,7 @@ mod tests {
                 SampleEvent::Created {
                     title: "The Loom".to_owned(),
                     description: "A silent machine.".to_owned(),
+                    kind: SampleKind::Ordinary,
                 },
                 SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
             ],
@@ -421,6 +481,7 @@ mod tests {
                 SampleEvent::Created {
                     title: "The Loom".to_owned(),
                     description: "A silent machine.".to_owned(),
+                    kind: SampleKind::Ordinary,
                 },
                 SampleEvent::Snapshotted {
                     title: "The Loom".to_owned(),
