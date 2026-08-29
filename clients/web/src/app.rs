@@ -1,6 +1,9 @@
 use leptos::html;
 use leptos::prelude::*;
-use leptos::{IntoView, ev};
+use leptos::{IntoView, ev, view};
+use leptos_router::components::{A, Route, Router, Routes};
+use leptos_router::hooks::use_params_map;
+use leptos_router::path;
 
 use crate::passages::editor::{PassageEditor, PassageEditorProps};
 use crate::passages::model::PassageId;
@@ -12,7 +15,7 @@ use crate::projects::new_project::{NewProject, NewProjectProps};
 use crate::projects::overlays::Overlays;
 use crate::projects::row::{ProjectRow, ProjectRowProps};
 use crate::projects::workspace::Workspace;
-use crate::route::{self, Route};
+use crate::route;
 use crate::url;
 
 const PASSAGE: &str = "passage";
@@ -21,14 +24,7 @@ const PASSAGE: &str = "passage";
 pub fn App() -> impl IntoView {
     let workspace = Workspace::new();
     let overlays = Overlays::new();
-    let here = RwSignal::new(route::current());
 
-    let travel = Callback::new(move |route: Route| {
-        route::go(&route);
-        here.set(route);
-    });
-
-    window_event_listener(ev::popstate, move |_| here.set(route::current()));
     window_event_listener(ev::click, move |_| overlays.close_menu());
     window_event_listener(ev::keydown, move |event| {
         if event.key() == "Escape" {
@@ -43,28 +39,22 @@ pub fn App() -> impl IntoView {
             .child(
                 "Bring us your tiny, fragile story ideas, and we will help you weave them into a full epic.",
             ),
-        move || match here.get() {
-            Route::Workspace => TheWorkspace(TheWorkspaceProps {
-                workspace,
-                overlays,
-                travel,
-            })
-            .into_any(),
-            Route::Project(project) => {
-                OneProject(OneProjectProps { project, travel }).into_any()
-            }
+        view! {
+            <Router>
+                <Routes fallback=Missing>
+                    <Route
+                        path=path!("/")
+                        view=move || TheWorkspace(TheWorkspaceProps { workspace, overlays })
+                    />
+                    <Route path=path!("/projects/:project") view=OneProject />
+                </Routes>
+            </Router>
         },
     ))
 }
 
 #[component]
-fn TheWorkspace(
-    workspace: Workspace,
-    overlays: Overlays,
-    travel: Callback<Route>,
-) -> impl IntoView {
-    let open = Callback::new(move |project: ProjectId| travel.run(Route::Project(project)));
-
+fn TheWorkspace(workspace: Workspace, overlays: Overlays) -> impl IntoView {
     (
         NewProject(NewProjectProps { workspace }),
         move || {
@@ -85,7 +75,6 @@ fn TheWorkspace(
                         project,
                         workspace,
                         overlays,
-                        on_open: open,
                     })
                 })
                 .collect_view()
@@ -99,13 +88,36 @@ fn TheWorkspace(
 }
 
 #[component]
-fn OneProject(project: ProjectId, travel: Callback<Route>) -> impl IntoView {
+fn OneProject() -> impl IntoView {
+    let params = use_params_map();
+
+    move || {
+        params.read().get("project").map(|project| {
+            (
+                view! {
+                    <A href=route::WORKSPACE attr:class="back">
+                        "All projects"
+                    </A>
+                },
+                Pool(PoolProps {
+                    project: ProjectId::from(project),
+                }),
+            )
+        })
+    }
+}
+
+#[component]
+fn Missing() -> impl IntoView {
     (
-        html::button()
-            .class("back")
-            .on(ev::click, move |_| travel.run(Route::Workspace))
-            .child("All projects"),
-        Pool(PoolProps { project }),
+        html::p()
+            .class("empty")
+            .child("There is nothing woven at this address."),
+        view! {
+            <A href=route::WORKSPACE attr:class="back">
+                "All projects"
+            </A>
+        },
     )
 }
 

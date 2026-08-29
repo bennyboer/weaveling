@@ -1260,6 +1260,42 @@ dependencies = [
 ]
 
 [[package]]
+name = "leptos_router"
+version = "0.9.0-beta1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a70040adf1df0412d7c42d2e67d538c51a77d21ac3d3a89f7b21acab621f007"
+dependencies = [
+ "any_spawner",
+ "either_of",
+ "futures",
+ "gloo-net",
+ "js-sys",
+ "leptos",
+ "leptos_router_macro",
+ "or_poisoned",
+ "reactive_graph",
+ "rustc_version",
+ "send_wrapper",
+ "tachys",
+ "thiserror",
+ "url",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "leptos_router_macro"
+version = "0.9.0-beta"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4ebbb118eda1104a6b8335adee945aec4f8b4d05b5f4c2d2468dfbf894c89952"
+dependencies = [
+ "proc-macro-error2",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "leptos_server"
 version = "0.9.0-beta2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2805,6 +2841,7 @@ dependencies = [
  "console_error_panic_hook",
  "gloo-net",
  "leptos",
+ "leptos_router",
  "serde",
  "thiserror",
  "time",

@@ -13,7 +13,7 @@ async function anOpenProject(page: Page, named: string): Promise<string> {
   await page.goto("/");
   await page.getByPlaceholder("A working title…").fill(title);
   await page.getByRole("button", { name: "Create", exact: true }).click();
-  await page.getByRole("button", { name: title }).click();
+  await page.getByRole("link", { name: title }).click();
 
   await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
 
@@ -129,7 +129,7 @@ test("the browser forward button returns to the project", async ({ page }) => {
 test("all projects returns to the workspace", async ({ page }) => {
   await anOpenProject(page, "AllProjects");
 
-  await page.getByRole("button", { name: "All projects" }).click();
+  await page.getByRole("link", { name: "All projects" }).click();
 
   await expect(page.getByRole("heading", { name: "Pieces" })).toHaveCount(0);
   await expect(page).toHaveURL(/\/$/);
@@ -146,4 +146,26 @@ test("a project url opened cold shows that project", async ({ page }) => {
 
   await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
   await expect(pieces(page).getByText("The loom remembers")).toBeVisible();
+});
+
+test("a project can be opened in a new tab", async ({ page, context }) => {
+  const title = await anOpenProject(page, "NewTab");
+  await page.getByRole("link", { name: "All projects" }).click();
+
+  const opened = context.waitForEvent("page");
+  await page.getByRole("link", { name: title }).click({ modifiers: ["ControlOrMeta"] });
+  const tab = await opened;
+
+  await expect(tab).toHaveURL(/\/projects\/project_/);
+  await expect(tab.getByRole("heading", { name: "Pieces" })).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  await tab.close();
+});
+
+test("an address that leads nowhere says so", async ({ page }) => {
+  await page.goto("/nowhere-in-particular");
+
+  await expect(page.getByText("There is nothing woven at this address.")).toBeVisible();
+  await page.getByRole("link", { name: "All projects" }).click();
+  await expect(page.getByPlaceholder("A working title…")).toBeVisible();
 });

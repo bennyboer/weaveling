@@ -2,16 +2,6 @@ use leptos::prelude::window;
 use wasm_bindgen::JsValue;
 use web_sys::UrlSearchParams;
 
-pub fn path() -> String {
-    window().location().pathname().unwrap_or_default()
-}
-
-pub fn go(path: &str) {
-    if let Ok(history) = window().history() {
-        let _ = history.push_state_with_url(&JsValue::NULL, "", Some(path));
-    }
-}
-
 pub fn query(name: &str) -> Option<String> {
     let search = window().location().search().ok()?;
     let params = UrlSearchParams::new_with_str(&search).ok()?;

@@ -1,21 +1,18 @@
 use leptos::html;
 use leptos::html::Input;
 use leptos::prelude::*;
-use leptos::{IntoView, ev};
+use leptos::{IntoView, ev, view};
+use leptos_router::components::A;
 use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
 
-use crate::projects::model::{Project, ProjectId};
+use crate::projects::model::Project;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
+use crate::route;
 
 #[component]
-pub fn ProjectRow(
-    project: Project,
-    workspace: Workspace,
-    overlays: Overlays,
-    on_open: Callback<ProjectId>,
-) -> impl IntoView {
+pub fn ProjectRow(project: Project, workspace: Workspace, overlays: Overlays) -> impl IntoView {
     let (editing, set_editing) = signal(false);
     let (draft, set_draft) = signal(project.name.clone());
 
@@ -63,11 +60,17 @@ pub fn ProjectRow(
                     })
                     .into_any()
             } else {
-                html::button()
-                    .class("name")
-                    .on(ev::click, move |_| on_open.run(row_id.get_value()))
-                    .child(shown_name.get_value())
+                {
+                    let href = route::project(&row_id.get_value());
+                    let name = shown_name.get_value();
+
+                    view! {
+                        <A href=href attr:class="name">
+                            {name}
+                        </A>
+                    }
                     .into_any()
+                }
             }
         },
         html::span().class("stamp").child(stamp),
