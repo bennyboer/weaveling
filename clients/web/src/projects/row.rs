@@ -61,8 +61,8 @@ pub fn ProjectRow(project: Project, workspace: Workspace, overlays: Overlays) ->
                     .into_any()
             } else {
                 {
-                    let href = route::project(&row_id.get_value());
                     let name = shown_name.get_value();
+                    let href = route::project(&row_id.get_value(), &name);
 
                     view! {
                         <A href=href attr:class="name">

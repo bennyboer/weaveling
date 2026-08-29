@@ -1,0 +1,7 @@
+[package]
+name = "weaveling-ids"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+uuid = { workspace = true }

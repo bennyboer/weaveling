@@ -2871,6 +2871,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-ids"
+version = "0.1.0"
+dependencies = [
+ "uuid",
+]
+
+[[package]]
 name = "weaveling-passages-contract"
 version = "0.1.0"
 dependencies = [
@@ -2886,6 +2893,7 @@ dependencies = [
  "time",
  "uuid",
  "weaveling-clock",
+ "weaveling-ids",
  "yrs",
 ]
 
@@ -2970,6 +2978,7 @@ dependencies = [
  "uuid",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-ids",
 ]
 
 [[package]]
@@ -3016,6 +3025,7 @@ dependencies = [
  "time",
  "uuid",
  "weaveling-clock",
+ "weaveling-ids",
 ]
 
 [[package]]

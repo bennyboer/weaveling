@@ -10,7 +10,6 @@ use crate::passages::model::PassageId;
 use crate::passages::service as passages;
 use crate::pieces::pool::{Pool, PoolProps};
 use crate::projects::confirm_delete::{ConfirmDelete, ConfirmDeleteProps};
-use crate::projects::model::ProjectId;
 use crate::projects::new_project::{NewProject, NewProjectProps};
 use crate::projects::overlays::Overlays;
 use crate::projects::row::{ProjectRow, ProjectRowProps};
@@ -100,7 +99,7 @@ fn OneProject() -> impl IntoView {
                     </A>
                 },
                 Pool(PoolProps {
-                    project: ProjectId::from(project),
+                    project: route::project_id(&project),
                 }),
             )
         })

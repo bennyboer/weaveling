@@ -9,7 +9,7 @@ use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO, Retit
 use pieces_core::{PieceEvent, PieceService, PieceTitle};
 use time::{Duration, OffsetDateTime};
 
-const UNKNOWN_ID: &str = "piece_019a4f4a-0000-7000-8000-000000000000";
+const UNKNOWN_ID: &str = "piece_031VkO0hnpeQZUiAB7nDma";
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -100,17 +100,17 @@ async fn an_id_of_another_kind_is_a_bad_request() {
     let server = a_server();
 
     server
-        .get("/pieces/passage_019a4f4a-0000-7000-8000-000000000000")
+        .get("/pieces/passage_031VkO0hnpeQZUiAB7nDma")
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
-async fn a_bare_uuid_is_a_bad_request() {
+async fn an_id_without_its_prefix_is_a_bad_request() {
     let server = a_server();
 
     server
-        .get("/pieces/019a4f4a-0000-7000-8000-000000000000")
+        .get("/pieces/031VkO0hnpeQZUiAB7nDma")
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }

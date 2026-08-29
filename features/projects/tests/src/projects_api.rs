@@ -8,7 +8,7 @@ use projects_core::ProjectService;
 use projects_store::InMemoryProjectStore;
 use time::{Duration, OffsetDateTime};
 
-const UNKNOWN_ID: &str = "project_019a4f4a-0000-7000-8000-000000000000";
+const UNKNOWN_ID: &str = "project_031VkO0hnpeQZUiAB7nDma";
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)

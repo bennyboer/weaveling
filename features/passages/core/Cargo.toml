@@ -10,4 +10,5 @@ time = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
 yrs = { workspace = true }
 
+ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }

@@ -38,7 +38,7 @@ impl From<Uuid> for ProjectId {
 
 impl Display for ProjectId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{PREFIX}{}", self.0)
+        write!(f, "{PREFIX}{}", ids::encode(self.0))
     }
 }
 
@@ -47,7 +47,7 @@ impl FromStr for ProjectId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         s.strip_prefix(PREFIX)
-            .and_then(|raw| Uuid::parse_str(raw).ok())
+            .and_then(ids::decode)
             .map(Self)
             .ok_or(InvalidProjectId)
     }
@@ -139,7 +139,10 @@ mod tests {
 
     #[test]
     fn an_id_of_another_kind_is_not_accepted() {
-        let theirs = format!("passage_{}", ProjectId::generate(at(1_000)).as_uuid());
+        let theirs = format!(
+            "passage_{}",
+            ids::encode(ProjectId::generate(at(1_000)).as_uuid())
+        );
 
         assert!(
             theirs.parse::<ProjectId>().is_err(),

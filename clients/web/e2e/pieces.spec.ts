@@ -29,7 +29,7 @@ test("opening a project shows its pool of pieces", async ({ page }) => {
   await anOpenProject(page, "Pool");
 
   await expect(nothingYet(page)).toBeVisible();
-  await expect(page).toHaveURL(/\/projects\/project_/);
+  await expect(page).toHaveURL(/\/projects\/project-[a-z0-9-]+-project_/);
 });
 
 test("a captured piece appears in the pool", async ({ page }) => {
@@ -123,7 +123,7 @@ test("the browser forward button returns to the project", async ({ page }) => {
   await page.goForward();
 
   await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
-  await expect(page).toHaveURL(/\/projects\/project_/);
+  await expect(page).toHaveURL(/\/projects\/project-[a-z0-9-]+-project_/);
 });
 
 test("all projects returns to the workspace", async ({ page }) => {
@@ -156,7 +156,7 @@ test("a project can be opened in a new tab", async ({ page, context }) => {
   await page.getByRole("link", { name: title }).click({ modifiers: ["ControlOrMeta"] });
   const tab = await opened;
 
-  await expect(tab).toHaveURL(/\/projects\/project_/);
+  await expect(tab).toHaveURL(/\/projects\/project-[a-z0-9-]+-project_/);
   await expect(tab.getByRole("heading", { name: "Pieces" })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   await tab.close();
@@ -168,4 +168,35 @@ test("an address that leads nowhere says so", async ({ page }) => {
   await expect(page.getByText("There is nothing woven at this address.")).toBeVisible();
   await page.getByRole("link", { name: "All projects" }).click();
   await expect(page.getByPlaceholder("A working title…")).toBeVisible();
+});
+
+test("the address carries a readable slug in front of the id", async ({ page }) => {
+  await anOpenProject(page, "The Silent Loom");
+
+  const address = new URL(page.url()).pathname;
+
+  expect(address).toMatch(/^\/projects\/project-the-silent-loom-[0-9a-f]{8}-project_[0-9A-Za-z]{22}$/);
+});
+
+test("a stale slug still reaches the project", async ({ page }) => {
+  await anOpenProject(page, "Stale");
+  await capture(page, "The loom remembers");
+  await expect(pieces(page).getByText("The loom remembers")).toBeVisible();
+  const id = new URL(page.url()).pathname.split("-").pop();
+
+  await page.goto(`/projects/something-else-entirely-${id}`);
+
+  await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
+  await expect(pieces(page).getByText("The loom remembers")).toBeVisible();
+});
+
+test("an address with no slug at all still reaches the project", async ({ page }) => {
+  await anOpenProject(page, "NoSlug");
+  await capture(page, "The loom remembers");
+  await expect(pieces(page).getByText("The loom remembers")).toBeVisible();
+  const id = new URL(page.url()).pathname.split("-").pop();
+
+  await page.goto(`/projects/${id}`);
+
+  await expect(pieces(page).getByText("The loom remembers")).toBeVisible();
 });
