@@ -18,9 +18,20 @@
   }
 }
 
-.name {
+.projects .name {
   flex: 1;
   font-size: 1.05rem;
+  text-align: left;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  color: var(--ink);
+  cursor: pointer;
+
+  &:hover {
+    text-decoration: underline;
+  }
 }
 
 .stamp {

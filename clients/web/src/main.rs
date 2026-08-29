@@ -1,7 +1,9 @@
 mod app;
 mod http;
 mod passages;
+mod pieces;
 mod projects;
+mod route;
 mod url;
 
 use leptos::prelude::*;

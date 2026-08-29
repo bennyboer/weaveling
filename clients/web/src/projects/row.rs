@@ -5,12 +5,17 @@ use leptos::{IntoView, ev};
 use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
 
-use crate::projects::model::Project;
+use crate::projects::model::{Project, ProjectId};
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
 
 #[component]
-pub fn ProjectRow(project: Project, workspace: Workspace, overlays: Overlays) -> impl IntoView {
+pub fn ProjectRow(
+    project: Project,
+    workspace: Workspace,
+    overlays: Overlays,
+    on_open: Callback<ProjectId>,
+) -> impl IntoView {
     let (editing, set_editing) = signal(false);
     let (draft, set_draft) = signal(project.name.clone());
 
@@ -58,8 +63,9 @@ pub fn ProjectRow(project: Project, workspace: Workspace, overlays: Overlays) ->
                     })
                     .into_any()
             } else {
-                html::span()
+                html::button()
                     .class("name")
+                    .on(ev::click, move |_| on_open.run(row_id.get_value()))
                     .child(shown_name.get_value())
                     .into_any()
             }

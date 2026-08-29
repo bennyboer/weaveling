@@ -30,7 +30,7 @@ pub fn ConfirmDelete(workspace: Workspace, overlays: Overlays) -> impl IntoView 
                                     .child("Cancel"),
                                 html::button()
                                     .class("danger")
-                                    .disabled(move || workspace.deleting().get())
+                                    .disabled(workspace.deleting())
                                     .on(ev::click, move |_| {
                                         overlays.dismiss();
                                         workspace.delete(id.clone());

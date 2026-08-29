@@ -25,5 +25,6 @@ time = { workspace = true, features = [
     "wasm-bindgen",
 ] }
 
+pieces-contract = { version = "0.1.0", path = "../../features/pieces/contract", package = "weaveling-pieces-contract" }
 passages-contract = { version = "0.1.0", path = "../../features/passages/contract", package = "weaveling-passages-contract" }
 projects-contract = { version = "0.1.0", path = "../../features/projects/contract", package = "weaveling-projects-contract" }

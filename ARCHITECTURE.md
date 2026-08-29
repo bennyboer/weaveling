@@ -504,6 +504,10 @@ A read is a resource keyed on a version signal; a mutation is an action that bum
 
 Error state stays **centralised** rather than per-action. Each action's own `value()` is `Option<Result<..>>`, and picking "the current problem" from several of them needs arbitrary precedence since actions carry no timestamps. So one `problem` signal is written by every action and by the resource, which keeps a single banner honest. Action `pending()` is still used, for what it is actually good at: disabling a control while its own write is in flight, which closes the double-submit gap left by `POST /projects` not being idempotent.
 
+**Pass the signal, do not wrap it in a closure.** `.disabled(action.pending())` rather than `.disabled(move || action.pending().get())`. Leptos accepts a signal, a closure returning a value, or a closure returning a signal, and all three are reactive — but the bare signal is the one where the mistake is unrepresentable. `.disabled(action.pending().get())` also compiles and is **silently static**: it reads once while the view is built and never updates again, which is the same trap as `.child(count.get())` versus `.child(count)`. Written as a bare signal there is no closure to forget, and switching to a snapshot takes a deliberate, visible `.get()`.
+
+A closure still earns its place when the value is *computed* — `move || draft.get().trim().is_empty() || workspace.renaming().get()` combines two sources and could not be a bare signal. The rule is about not wrapping a single signal in ceremony, not about avoiding closures.
+
 **The client is organized by feature, mirroring `features/`.** One folder per backend domain, each with its own `model.rs`, `service.rs`, state holder and components; only genuinely shared plumbing sits at the top.
 
 ```
@@ -532,6 +536,10 @@ Two rules that are not obvious from the files:
 - **Third-party class names stay flat and literal.** `.ProseMirror`, `.ProseMirror-hideselection` and `.ProseMirror-yjs-cursor` could be folded together with `&-` interpolation, which would make them un-greppable against the library that defines them. Nesting is for our own descendants (`.dialog h2`, `.surface blockquote`), never for manufacturing a name.
 
 The port was verified rather than eyeballed: 163 declarations before and 163 after, the only difference being dart-sass unquoting `[contenteditable="false"]`.
+
+**Routes are paths, and the URL is the state.** `/` is the workspace and `/projects/{id}` is one project's pool; the route is parsed in `route.rs` into a small `Route` enum, and the app renders from it. Paths rather than query parameters because they *nest* — `?project=x&passage=y` says nothing about how the two relate, while `/projects/{id}/pieces/{id}` states it, and that is the shape the outline and board will need.
+
+This is written with `history.pushState` **and** a `popstate` listener, which is the pair that makes Back and Forward honest. It is a deliberate reversal of the `replaceState` choice below, and the reason is exactly the one recorded there: `pushState` without `popstate` handling gives a Back button that rewinds the address bar while leaving the view alone. With real routes the answer is to handle `popstate`, not to avoid history entries. **Ids stay in the path, never slugs** — a slug is derived and mutable, and project names are neither unique nor stable; see [TODO.md](./TODO.md) for the decorative-slug pattern that gives readable URLs without making a name into an identity.
 
 **The open passage lives in the URL.** `?passage=<id>` is the whole of that state: a reload reopens the same document, and a second tab pointed at the same address joins it rather than a copy — which is exactly what makes the collaboration testable at all. It is written with `history.replaceState`, not `pushState`, because nothing listens for `popstate` yet, so a Back entry would rewind the address bar while leaving the editor open — a lie about where you are.
 
