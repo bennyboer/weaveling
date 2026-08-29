@@ -1,5 +1,5 @@
 use gloo_net::http::Request;
-use pieces_contract::{CapturePieceRequest, PieceDTO};
+use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO};
 
 use crate::http::{ApiError, parsed};
 use crate::passages::model::PassageId;
@@ -41,4 +41,27 @@ fn as_piece(dto: PieceDTO) -> Piece {
         title: dto.title,
         passage: dto.passage.map(PassageId::from),
     }
+}
+
+pub async fn get(id: &PieceId) -> Result<Piece, ApiError> {
+    let response = Request::get(&format!("{PIECES}/{id}"))
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
+
+    Ok(as_piece(parsed(response, SUBJECT).await?))
+}
+
+pub async fn attach_passage(id: &PieceId, passage: &PassageId) -> Result<Piece, ApiError> {
+    let payload = AttachPassageRequest {
+        passage: passage.to_string(),
+    };
+    let response = Request::put(&format!("{PIECES}/{id}/passage"))
+        .json(&payload)
+        .map_err(|_| ApiError::Unexpected)?
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
+
+    Ok(as_piece(parsed(response, SUBJECT).await?))
 }

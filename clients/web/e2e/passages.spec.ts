@@ -11,72 +11,62 @@ const prose = (target: Page) =>
     return copy.textContent ?? "";
   });
 
-async function anOpenPassage(page: Page): Promise<string> {
+const idIn = (segment: string) => segment.split("-").pop() ?? segment;
+
+async function aPieceBeingWritten(page: Page, named: string) {
+  const title = `Project ${named} ${crypto.randomUUID().slice(0, 8)}`;
+
   await page.goto("/");
-  const created = page.waitForResponse(
-    (response) =>
-      response.url().endsWith("/api/passages") && response.request().method() === "POST",
-  );
-  await page.getByRole("button", { name: "Start writing" }).click();
-  const response = await created;
-  const { id } = await response.json();
+  await page.getByPlaceholder("A working title…").fill(title);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page.getByRole("link", { name: title }).click();
+
+  await page.getByRole("textbox", { name: "What is the idea?" }).fill("The loom");
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+  await page.getByRole("list", { name: "Pieces" }).getByRole("link", { name: "The loom" }).click();
 
   await expect(surface(page)).toBeVisible();
   await expect(page.getByText("Synced")).toBeVisible();
 
-  return id;
+  const segments = new URL(page.url()).pathname.split("/");
+
+  return { address: page.url(), piece: idIn(segments[segments.length - 1]) };
 }
 
-test("the editor connects to the sync socket", async ({ page }) => {
-  const passage = await anOpenPassage(page);
+test("opening a piece connects the editor to the sync socket", async ({ page }) => {
+  await aPieceBeingWritten(page, "Connects");
 
-  expect(passage).toMatch(/^passage_/);
   await expect(page.getByText("Synced")).toBeVisible();
 });
 
+test("a piece is given its passage the first time it is opened", async ({ page, request }) => {
+  const { piece } = await aPieceBeingWritten(page, "Attached");
+
+  const found = await (await request.get(`${API}/pieces/${piece}`)).json();
+
+  expect(found.passage).toMatch(/^passage_/);
+});
+
 test("typed prose reaches the server's own projection", async ({ page, request }) => {
-  const passage = await anOpenPassage(page);
+  const { piece } = await aPieceBeingWritten(page, "Projection");
+  const { passage } = await (await request.get(`${API}/pieces/${piece}`)).json();
 
   await surface(page).click();
   await page.keyboard.type("The loom stood silent.");
 
   await expect
     .poll(
-      async () => {
-        const response = await request.get(`${API}/passages/${passage}`);
-        return (await response.json()).text;
-      },
+      async () => (await (await request.get(`${API}/passages/${passage}`)).json()).text,
       { timeout: 10_000 },
     )
     .toContain("The loom stood silent.");
 });
 
-test("prose survives a reload", async ({ page, request }) => {
-  const passage = await anOpenPassage(page);
-
-  await surface(page).click();
-  await page.keyboard.type("The warp was already strung.");
-  await expect
-    .poll(
-      async () => {
-        const response = await request.get(`${API}/passages/${passage}`);
-        return (await response.json()).text;
-      },
-      { timeout: 10_000 },
-    )
-    .toContain("The warp was already strung.");
-
-  await page.reload();
-
-  await expect(page).toHaveURL(new RegExp(`passage=${passage}`));
-  await expect(surface(page)).toContainText("The warp was already strung.");
-});
-
-test("two tabs on one passage converge", async ({ page, context }) => {
-  const passage = await anOpenPassage(page);
+test("two tabs on one piece converge", async ({ page, context }) => {
+  const { address } = await aPieceBeingWritten(page, "Converge");
 
   const second = await context.newPage();
-  await second.goto(`/?passage=${passage}`);
+  await second.goto(address);
   await expect(surface(second)).toBeVisible();
   await expect(second.getByText("Synced")).toBeVisible();
 
@@ -96,14 +86,7 @@ test("two tabs on one passage converge", async ({ page, context }) => {
   await second.close();
 });
 
-test("a passage the server does not know is dropped from the url", async ({ page }) => {
-  await page.goto("/?passage=passage_00000000-0000-7000-8000-000000000000");
-
-  await expect(page.getByRole("button", { name: "Start writing" })).toBeVisible();
-  await expect(page).not.toHaveURL(/passage=/);
-});
-
-test("closing the passage tears down the editor and its socket", async ({ page }) => {
+test("leaving a piece tears down the editor and its socket", async ({ page }) => {
   const sockets: WebSocket[] = [];
   page.on("websocket", (socket) => {
     if (socket.url().includes("/api/sync/")) {
@@ -111,13 +94,22 @@ test("closing the passage tears down the editor and its socket", async ({ page }
     }
   });
 
-  await anOpenPassage(page);
+  await aPieceBeingWritten(page, "TearDown");
   expect(sockets).toHaveLength(1);
 
-  await page.getByRole("button", { name: "Stop writing" }).click();
+  await page.getByRole("link", { name: "Back to the pool" }).click();
 
   await expect.poll(() => sockets[0].isClosed(), { timeout: 10_000 }).toBe(true);
   await expect(surface(page)).toHaveCount(0);
-  await expect(page).not.toHaveURL(/passage=/);
-  await expect(page.getByRole("button", { name: "Start writing" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
+});
+
+test("a piece the server does not know says so", async ({ page }) => {
+  const { address } = await aPieceBeingWritten(page, "Missing");
+  const elsewhere = address.replace(/piece_[0-9A-Za-z]{22}$/, "piece_0000000000000000000000");
+
+  await page.goto(elsewhere);
+
+  await expect(page.getByRole("alert")).toBeVisible();
+  await expect(surface(page)).toHaveCount(0);
 });

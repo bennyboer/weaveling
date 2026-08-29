@@ -1,3 +1,4 @@
+use crate::pieces::model::PieceId;
 use crate::projects::model::ProjectId;
 
 pub const WORKSPACE: &str = "/";
@@ -14,10 +15,28 @@ pub fn project(id: &ProjectId, named: &str) -> String {
     }
 }
 
+pub fn piece_segment(id: &PieceId, named: &str) -> String {
+    let slug = slugify(named);
+
+    if slug.is_empty() {
+        id.to_string()
+    } else {
+        format!("{slug}-{id}")
+    }
+}
+
+pub fn piece_id(segment: &str) -> PieceId {
+    PieceId::from(trailing_id(segment))
+}
+
 pub fn project_id(segment: &str) -> ProjectId {
+    ProjectId::from(trailing_id(segment))
+}
+
+fn trailing_id(segment: &str) -> String {
     match segment.rsplit_once('-') {
-        Some((_, trailing)) if trailing.contains('_') => ProjectId::from(trailing.to_owned()),
-        _ => ProjectId::from(segment.to_owned()),
+        Some((_, trailing)) if trailing.contains('_') => trailing.to_owned(),
+        _ => segment.to_owned(),
     }
 }
 

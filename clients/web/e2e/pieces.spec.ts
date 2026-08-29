@@ -200,3 +200,64 @@ test("an address with no slug at all still reaches the project", async ({ page }
 
   await expect(pieces(page).getByText("The loom remembers")).toBeVisible();
 });
+
+test("clicking a piece opens it for writing", async ({ page }) => {
+  await anOpenProject(page, "Writing");
+  await capture(page, "The loom remembers");
+
+  await pieces(page).getByRole("link", { name: "The loom remembers" }).click();
+
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page.getByText("Synced")).toBeVisible();
+  await expect(page).toHaveURL(/\/pieces\/the-loom-remembers-piece_/);
+});
+
+test("prose written in a piece survives a reload", async ({ page }) => {
+  await anOpenProject(page, "Survives");
+  await capture(page, "The loom remembers");
+  await pieces(page).getByRole("link", { name: "The loom remembers" }).click();
+  await expect(page.getByText("Synced")).toBeVisible();
+
+  await page.locator(".surface .ProseMirror").click();
+  await page.keyboard.type("She had not touched it since spring.");
+  await expect(page.locator(".surface .ProseMirror")).toContainText("since spring");
+
+  await page.reload();
+
+  await expect(page.locator(".surface .ProseMirror")).toContainText("since spring");
+});
+
+test("a piece that has been opened is marked in the pool", async ({ page }) => {
+  await anOpenProject(page, "Marked");
+  await capture(page, "The loom remembers");
+  await pieces(page).getByRole("link", { name: "The loom remembers" }).click();
+  await expect(page.getByText("Synced")).toBeVisible();
+
+  await page.getByRole("link", { name: "Back to the pool" }).click();
+
+  await expect(pieces(page).getByRole("img", { name: "Opened for writing" })).toBeVisible();
+});
+
+test("opening a piece twice keeps the same prose", async ({ page }) => {
+  await anOpenProject(page, "Twice");
+  await capture(page, "The loom remembers");
+  await pieces(page).getByRole("link", { name: "The loom remembers" }).click();
+  await expect(page.getByText("Synced")).toBeVisible();
+  await page.locator(".surface .ProseMirror").click();
+  await page.keyboard.type("Written once.");
+  await expect(page.locator(".surface .ProseMirror")).toContainText("Written once.");
+
+  await page.getByRole("link", { name: "Back to the pool" }).click();
+  await pieces(page).getByRole("link", { name: "The loom remembers" }).click();
+
+  await expect(page.locator(".surface .ProseMirror")).toContainText("Written once.");
+});
+
+test("an untitled piece can still be opened for writing", async ({ page }) => {
+  await anOpenProject(page, "Nameless");
+  await page.getByRole("button", { name: "Capture", exact: true }).click();
+
+  await pieces(page).getByRole("link", { name: "Untitled" }).click();
+
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+});

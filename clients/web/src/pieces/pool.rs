@@ -1,12 +1,14 @@
 use leptos::html;
 use leptos::html::Input;
 use leptos::prelude::*;
-use leptos::{IntoView, ev};
+use leptos::{IntoView, ev, view};
+use leptos_router::components::A;
 
 use crate::http::ApiError;
 use crate::pieces::model::Piece;
 use crate::pieces::service;
 use crate::projects::model::ProjectId;
+use crate::route;
 
 #[component]
 pub fn Pool(project: ProjectId) -> impl IntoView {
@@ -99,13 +101,35 @@ fn nothing_yet(listed: LocalResource<Result<Vec<Piece>, ApiError>>) -> &'static 
 }
 
 fn row(piece: Piece) -> impl IntoView {
+    let href = format!("pieces/{}", route::piece_segment(&piece.id, &piece.title));
+    let shown = piece.shown_as().to_owned();
+
     html::li().child((
-        html::span()
-            .class("name")
-            .child(piece.shown_as().to_owned()),
-        piece
-            .passage
-            .is_some()
-            .then(|| html::span().class("stamp").child("has prose")),
+        view! {
+            <A href=href attr:class="name">
+                {shown}
+            </A>
+        },
+        piece.passage.is_some().then(opened_for_writing),
     ))
+}
+
+fn opened_for_writing() -> impl IntoView {
+    let quill = view! {
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+            <path
+                d="M11.5 1.5 14.5 4.5 5.5 13.5 1.5 14.5 2.5 10.5z"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.3"
+                stroke-linejoin="round"
+            />
+        </svg>
+    };
+
+    html::span()
+        .class("stamp")
+        .role("img")
+        .attr("aria-label", "Opened for writing")
+        .child(quill)
 }

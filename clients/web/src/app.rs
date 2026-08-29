@@ -5,19 +5,19 @@ use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::hooks::use_params_map;
 use leptos_router::path;
 
+use crate::http::ApiError;
 use crate::passages::editor::{PassageEditor, PassageEditorProps};
 use crate::passages::model::PassageId;
 use crate::passages::service as passages;
+use crate::pieces::model::PieceId;
 use crate::pieces::pool::{Pool, PoolProps};
+use crate::pieces::service as pieces;
 use crate::projects::confirm_delete::{ConfirmDelete, ConfirmDeleteProps};
 use crate::projects::new_project::{NewProject, NewProjectProps};
 use crate::projects::overlays::Overlays;
 use crate::projects::row::{ProjectRow, ProjectRowProps};
 use crate::projects::workspace::Workspace;
 use crate::route;
-use crate::url;
-
-const PASSAGE: &str = "passage";
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -46,6 +46,7 @@ pub fn App() -> impl IntoView {
                         view=move || TheWorkspace(TheWorkspaceProps { workspace, overlays })
                     />
                     <Route path=path!("/projects/:project") view=OneProject />
+                    <Route path=path!("/projects/:project/pieces/:piece") view=OnePiece />
                 </Routes>
             </Router>
         },
@@ -82,7 +83,6 @@ fn TheWorkspace(workspace: Workspace, overlays: Overlays) -> impl IntoView {
             workspace,
             overlays,
         }),
-        TheLegacyEditor(),
     )
 }
 
@@ -121,52 +121,76 @@ fn Missing() -> impl IntoView {
 }
 
 #[component]
-fn TheLegacyEditor() -> impl IntoView {
-    let open_passage = RwSignal::new(None::<PassageId>);
+fn OnePiece() -> impl IntoView {
+    let params = use_params_map();
+    let problem = RwSignal::new(None::<ApiError>);
+    let passage = RwSignal::new(None::<PassageId>);
 
-    let starting = Action::new_local(move |()| async move {
-        if let Ok(started) = passages::create().await {
-            url::remember(PASSAGE, started.as_str());
-            open_passage.set(Some(started));
-        }
-    });
-    let reopening = Action::new_local(move |remembered: &PassageId| {
-        let remembered = remembered.clone();
+    let opening = Action::new_local(move |piece: &PieceId| {
+        let piece = piece.clone();
+
         async move {
-            if passages::confirm(&remembered).await.is_ok() {
-                open_passage.set(Some(remembered));
-            } else {
-                url::forget(PASSAGE);
+            match writing_in(&piece).await {
+                Ok(found) => {
+                    problem.set(None);
+                    passage.set(Some(found));
+                }
+                Err(failure) => problem.set(Some(failure)),
             }
         }
     });
 
-    if let Some(remembered) = url::query(PASSAGE) {
-        reopening.dispatch(PassageId::from(remembered));
-    }
+    Effect::new(move || {
+        if let Some(piece) = params.read().get("piece") {
+            opening.dispatch(route::piece_id(&piece));
+        }
+    });
 
-    move || match (open_passage.get(), reopening.pending().get()) {
-        (Some(passage), _) => (
-            PassageEditor(PassageEditorProps { passage }),
-            html::button()
-                .on(ev::click, move |_| {
-                    url::forget(PASSAGE);
-                    open_passage.set(None);
-                })
-                .child("Stop writing"),
-        )
-            .into_any(),
-        (None, true) => html::p()
-            .class("empty")
-            .child("Reopening your passage…")
-            .into_any(),
-        (None, false) => html::button()
-            .disabled(starting.pending())
-            .on(ev::click, move |_| {
-                starting.dispatch(());
+    let pool = move || {
+        params
+            .read()
+            .get("project")
+            .map(|project| format!("/projects/{project}"))
+            .unwrap_or_else(|| route::WORKSPACE.to_owned())
+    };
+
+    (
+        view! {
+            <A href=pool attr:class="back">
+                "Back to the pool"
+            </A>
+        },
+        move || {
+            problem.get().map(|failure| {
+                html::p()
+                    .class("problem")
+                    .role("alert")
+                    .child(failure.to_string())
             })
-            .child("Start writing")
-            .into_any(),
+        },
+        move || match passage.get() {
+            Some(passage) => PassageEditor(PassageEditorProps { passage }).into_any(),
+            None => html::p()
+                .class("empty")
+                .child("Opening the piece…")
+                .into_any(),
+        },
+    )
+}
+
+async fn writing_in(piece: &PieceId) -> Result<PassageId, ApiError> {
+    let found = pieces::get(piece).await?;
+
+    match found.passage {
+        Some(passage) => Ok(passage),
+        None => {
+            let started = passages::create().await?;
+
+            pieces::attach_passage(piece, &started)
+                .await?
+                .passage
+                .ok_or(ApiError::Unexpected)
+        }
     }
 }
 

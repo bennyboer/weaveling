@@ -52,7 +52,10 @@ async fn a_captured_piece_comes_back_with_a_prefixed_id() {
     );
     assert_eq!(captured.title, "The Loom");
     assert_eq!(captured.project, "project_1");
-    assert_eq!(captured.passage, None, "prose is attached on first write");
+    assert_eq!(
+        captured.passage, None,
+        "a passage is attached on first open"
+    );
 }
 
 #[tokio::test]
