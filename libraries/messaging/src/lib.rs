@@ -4,6 +4,9 @@ mod message;
 mod routing;
 
 pub use in_process::InProcessDispatcher;
-pub use listening::{DeadLetters, Listener, Logged, Publisher, Undelivered, Unheard};
+pub use listening::{
+    DeadLetters, Delivery, InvalidListenerName, Listener, ListenerName, Logged, Publisher,
+    Undelivered, Unheard,
+};
 pub use message::{Conversation, Message, MessageId};
 pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};

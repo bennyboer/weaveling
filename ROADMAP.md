@@ -230,7 +230,7 @@ The design is settled in [Pieces and views](./ARCHITECTURE.md#pieces-and-views--
 
 **Goal:** the seam features talk across, plus the first thing that genuinely needs it.
 
-**Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **correlation and causation ids**, occurred-at, agent) and an in-process dispatcher. Then the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+**Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **the conversation and what caused it**, occurred-at) and an in-process dispatcher. A listener names itself and declares its `Delivery` — `Kept` or `Fleeting` — which are the two things [only a feature knows](./ARCHITECTURE.md#no-exchanges-but-a-named-listener) and the exact inputs a RabbitMQ adapter later needs. **Exchanges are deliberately not modelled.** Then the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
 
 **Why before the board:** the board needs a live channel pushing events to browsers, and that *is* event fan-out — a far better first consumer for the seam than the deletion saga, which stays theoretical while everything is in memory (orphans die at process restart, so a cascade cannot fail in a way anyone would notice — an excuse [M12](#milestone-12--local-mode) takes back, since there in-memory *is* the store). Built the other way round, the board would grow a bespoke fan-out that a later milestone has to reconcile. The honest caveat: `LivePassages` broadcasts CRDT frames while a board broadcasts events, so the two may share less than it first appears.
 

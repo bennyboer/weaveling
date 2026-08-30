@@ -499,10 +499,33 @@ Which settles the order of work. The outbox's entire value is atomicity with the
 So what gets built now is the seam, because the seam is the part that is expensive to retrofit:
 
 - the **port** — publish and subscribe, which features depend on and a transport implements
-- the **envelope** — message id, correlation id, causation id, occurred-at, agent
+- the **envelope** — message id, the conversation it belongs to, what caused it, occurred-at
 - an **in-process dispatcher**
 
 The envelope is the urgent half. **Correlation and causation ids cannot be backfilled**, and messages written without them are permanently untraceable — the same argument as the agent slot in [Event Sourcing](#event-sourcing--discipline). The first real consumer is the project-deletion saga, whose whole job is answering "which of these deletes belonged to my request".
+
+### No exchanges, but a named listener
+
+RabbitMQ's routing has four moving parts — exchange, routing key, binding, queue — and only two of them earn a place in the port.
+
+**Exchanges do not.** The reference implementation models `ExchangeTarget`, and its `MessageTargetType` enum has exactly one variant after years in production. More decisive: nothing ever *chooses* an exchange name there. The only call site derives it — `ExchangeTarget.of(aggregateType.toLowerCase())` — one exchange per aggregate type. We already carry the aggregate type as the first segment of the routing key, so an exchange here would be a **second encoding of a fact the routing key already holds**, and two encodings can disagree. One durable topic exchange, its name deployment configuration, and `Publisher` never sees it. A topic exchange bound with `#` is a fanout and bound with an exact key is a direct, so the other exchange types buy nothing either.
+
+**The queue is what we were missing**, and its identity there is `{exchange}-{routingKey}-{listenerName}`. We have every part but the last, which is why `Listener` now names itself. That name is not decoration: the inbox that makes redelivery safe is keyed by `listenerName + messageId`, so **idempotency is per listener**. Only the feature knows the right value, and once a broker exists the name is durable deployment state — renaming a queue either strands what it held or reprocesses it. `ListenerName` therefore refuses anything that would not survive as a queue name: lowercase, digits and hyphens.
+
+**`Delivery` is the second thing only a feature knows.** The reference implementation declares queues two ways, and our two coming consumers want one each:
+
+| | queue | a missed message | ours |
+|---|---|---|---|
+| `Delivery::Kept` | durable, shared, dead-lettered | redelivered, then set aside | the piece catalog projector, the deletion saga — a miss corrupts the read model |
+| `Delivery::Fleeting` | non-durable, auto-delete, one per instance | gone | the board's live channel — a browser that missed one refetches |
+
+So the in-process dispatcher dead-letters a refused `Kept` message and merely logs a refused `Fleeting` one, because nothing will ever replay the latter and a pile nobody drains is worse than a log line. `Kept` is the default: **losing a message has to be chosen, never inherited**. This also settles the local-mode question — `Fleeting` never dead-letters under either transport, so the board needs no mode branch at all.
+
+### At-least-once is the trap this design has to survive
+
+The in-process dispatcher delivers each message exactly once, synchronously, in order. **RabbitMQ delivers at least once** — on nack, on a dropped connection, on a consumer restart. Nothing we build before a broker exists will ever force a listener to be idempotent, so every listener written in between will pass its tests and be quietly wrong.
+
+This is the mirror of the mistake already avoided on the publishing side, where an in-process dispatcher *could* report which listeners coped and a broker cannot. Both directions are the same rule: **a feature must behave identically under either transport**, so the port may promise only what both can keep. Here the in-process side promises too *much*, and the fix is the inbox — dedupe on `(listener name, message id)` inside the handler's transaction — plus a dispatcher that redelivers in tests, so idempotency is exercised long before RabbitMQ can punish its absence. Both are [recorded, not built](./TODO.md).
 
 A broker earns its place at the boundary this section always named: a separately-deployed consumer, or async handoff across a real service edge. RabbitMQ is the likely pick then — its routing model beats anything hand-rolled once fan-out gets complicated — and deferring it is cheap precisely *because* it is already familiar. Nothing above the port changes when it arrives.
 

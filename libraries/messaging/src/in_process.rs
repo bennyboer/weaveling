@@ -2,7 +2,7 @@ use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 
-use crate::listening::{DeadLetters, Listener, Logged, Publisher, Undelivered};
+use crate::listening::{DeadLetters, Delivery, Listener, Logged, Publisher, Undelivered};
 use crate::message::Message;
 
 pub struct InProcessDispatcher {
@@ -50,10 +50,18 @@ impl InProcessDispatcher {
 impl Publisher for InProcessDispatcher {
     async fn publish(&self, message: Message) -> Result<(), Undelivered> {
         for listener in self.interested_in(&message) {
-            // TODO local mode must not dead letter: there is nobody to retry it,
-            // so a refusal has to reach the author instead of being set aside
             if let Err(refused) = listener.hear(&message).await {
-                self.dead_letters.refused(&message, refused).await;
+                match listener.delivery() {
+                    // TODO local mode must not dead letter a Kept refusal either:
+                    // there is nobody to retry it, so it has to reach the author
+                    Delivery::Kept => self.dead_letters.refused(&message, refused).await,
+                    Delivery::Fleeting => tracing::debug!(
+                        listener = %refused.listener,
+                        routing = %message.routing,
+                        error = %refused,
+                        "a fleeting listener let a message go by"
+                    ),
+                }
             }
         }
 
@@ -70,7 +78,7 @@ mod tests {
     use time::{Duration, OffsetDateTime};
 
     use super::*;
-    use crate::listening::Unheard;
+    use crate::listening::{ListenerName, Unheard};
     use crate::routing::{RoutingKey, Subscription};
 
     #[derive(Debug, Error)]
@@ -78,15 +86,25 @@ mod tests {
     struct Refused;
 
     struct Overheard {
+        name: ListenerName,
         subscription: Subscription,
+        delivery: Delivery,
         heard: Mutex<Vec<RoutingKey>>,
         refuses: bool,
     }
 
     #[async_trait]
     impl Listener for Overheard {
+        fn named(&self) -> ListenerName {
+            self.name.clone()
+        }
+
         fn listens_to(&self) -> Subscription {
             self.subscription.clone()
+        }
+
+        fn delivery(&self) -> Delivery {
+            self.delivery
         }
 
         async fn hear(&self, message: &Message) -> Result<(), Unheard> {
@@ -96,7 +114,11 @@ mod tests {
                 .push(message.routing.clone());
 
             if self.refuses {
-                return Err(Unheard::because(message.routing.clone(), Refused));
+                return Err(Unheard::because(
+                    self.named(),
+                    message.routing.clone(),
+                    Refused,
+                ));
             }
 
             Ok(())
@@ -104,20 +126,26 @@ mod tests {
     }
 
     impl Overheard {
-        fn listening(to: &str) -> Arc<Self> {
+        fn named(name: &str, to: &str, delivery: Delivery, refuses: bool) -> Arc<Self> {
             Arc::new(Self {
+                name: ListenerName::parse(name).expect("a plain name is fine"),
                 subscription: Subscription::parse(to).expect("a plain pattern is fine"),
+                delivery,
                 heard: Mutex::new(Vec::new()),
-                refuses: false,
+                refuses,
             })
         }
 
+        fn listening(to: &str) -> Arc<Self> {
+            Self::named("listening", to, Delivery::Kept, false)
+        }
+
         fn refusing(to: &str) -> Arc<Self> {
-            Arc::new(Self {
-                subscription: Subscription::parse(to).expect("a plain pattern is fine"),
-                heard: Mutex::new(Vec::new()),
-                refuses: true,
-            })
+            Self::named("refusing", to, Delivery::Kept, true)
+        }
+
+        fn refusing_fleetingly(to: &str) -> Arc<Self> {
+            Self::named("fleeting", to, Delivery::Fleeting, true)
         }
 
         fn what_it_heard(&self) -> Vec<String> {
@@ -202,16 +230,25 @@ mod tests {
 
     #[derive(Default)]
     struct Kept {
-        refused: Mutex<Vec<String>>,
+        refused: Mutex<Vec<(String, String)>>,
     }
 
     #[async_trait]
     impl DeadLetters for Kept {
-        async fn refused(&self, message: &Message, _why: Unheard) {
+        async fn refused(&self, message: &Message, why: Unheard) {
             self.refused
                 .lock()
                 .expect("dead letters lock poisoned")
-                .push(message.routing.to_string());
+                .push((why.listener.to_string(), message.routing.to_string()));
+        }
+    }
+
+    impl Kept {
+        fn what_it_kept(&self) -> Vec<(String, String)> {
+            self.refused
+                .lock()
+                .expect("dead letters lock poisoned")
+                .clone()
         }
     }
 
@@ -235,13 +272,87 @@ mod tests {
             "the second still heard it"
         );
         assert_eq!(
-            dead_letters
-                .refused
-                .lock()
-                .expect("dead letters lock poisoned")
-                .as_slice(),
-            ["piece.captured"],
+            dead_letters.what_it_kept(),
+            [("refusing".to_owned(), "piece.captured".to_owned())],
             "the refusal is not lost, it is set aside for whoever retries later"
+        );
+    }
+
+    #[tokio::test]
+    async fn dead_letters_learn_which_listener_refused() {
+        let dead_letters = Arc::new(Kept::default());
+        let dispatcher = InProcessDispatcher::dead_lettering_to(dead_letters.clone());
+        dispatcher.listen(Overheard::named(
+            "pieces-catalog",
+            "piece.captured",
+            Delivery::Kept,
+            true,
+        ));
+        dispatcher.listen(Overheard::named(
+            "deletion-saga",
+            "piece.captured",
+            Delivery::Kept,
+            true,
+        ));
+
+        dispatcher
+            .publish(saying("piece.captured"))
+            .await
+            .expect("publishing should succeed");
+
+        assert_eq!(
+            dead_letters
+                .what_it_kept()
+                .into_iter()
+                .map(|(listener, _)| listener)
+                .collect::<Vec<_>>(),
+            ["pieces-catalog", "deletion-saga"],
+            "over a broker each listener has its own dead queue, so in process the sink must be told"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_fleeting_listener_refusing_is_not_dead_lettered() {
+        let dead_letters = Arc::new(Kept::default());
+        let dispatcher = InProcessDispatcher::dead_lettering_to(dead_letters.clone());
+        let fleeting = Overheard::refusing_fleetingly("piece.captured");
+        dispatcher.listen(fleeting.clone());
+
+        dispatcher
+            .publish(saying("piece.captured"))
+            .await
+            .expect("publishing should succeed");
+
+        assert_eq!(fleeting.what_it_heard().len(), 1, "it was still offered");
+        assert!(
+            dead_letters.what_it_kept().is_empty(),
+            "nothing will replay it, so setting it aside would only grow a pile nobody drains"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_listener_is_kept_unless_it_says_otherwise() {
+        struct Quiet;
+
+        #[async_trait]
+        impl Listener for Quiet {
+            fn named(&self) -> ListenerName {
+                ListenerName::parse("quiet").expect("a plain name is fine")
+            }
+
+            fn listens_to(&self) -> Subscription {
+                Subscription::parse("#").expect("a plain pattern is fine")
+            }
+
+            async fn hear(&self, _message: &Message) -> Result<(), Unheard> {
+                Ok(())
+            }
+        }
+
+        assert_eq!(
+            Quiet.delivery(),
+            Delivery::Kept,
+            "losing a message must be chosen, never inherited"
         );
     }
 
@@ -256,13 +367,7 @@ mod tests {
             .await
             .expect("publishing should succeed");
 
-        assert!(
-            dead_letters
-                .refused
-                .lock()
-                .expect("dead letters lock poisoned")
-                .is_empty()
-        );
+        assert!(dead_letters.what_it_kept().is_empty());
     }
 
     #[tokio::test]
@@ -273,6 +378,10 @@ mod tests {
 
         #[async_trait]
         impl Listener for Echoing {
+            fn named(&self) -> ListenerName {
+                ListenerName::parse("echoing").expect("a plain name is fine")
+            }
+
             fn listens_to(&self) -> Subscription {
                 Subscription::parse("piece.captured").expect("a plain pattern is fine")
             }
@@ -312,6 +421,10 @@ mod tests {
 
         #[async_trait]
         impl Listener for Remembering {
+            fn named(&self) -> ListenerName {
+                ListenerName::parse("remembering").expect("a plain name is fine")
+            }
+
             fn listens_to(&self) -> Subscription {
                 Subscription::parse("#").expect("a plain pattern is fine")
             }
