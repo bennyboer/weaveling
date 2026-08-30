@@ -2878,6 +2878,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "time",
+ "uuid",
+ "weaveling-ids",
+]
+
+[[package]]
 name = "weaveling-passages-contract"
 version = "0.1.0"
 dependencies = [

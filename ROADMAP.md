@@ -226,29 +226,31 @@ The design is settled in [Pieces and views](./ARCHITECTURE.md#pieces-and-views--
 
 **Explicitly not in M7:** the board, placement, messaging, the outline, any durable store.
 
-### Milestone 8 — The board
+### Milestone 8 — Messaging and the cascade
+
+**Goal:** the seam features talk across, plus the first thing that genuinely needs it.
+
+**Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **correlation and causation ids**, occurred-at, agent) and an in-process dispatcher. Then the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+
+**Why before the board:** the board needs a live channel pushing events to browsers, and that *is* event fan-out — a far better first consumer for the seam than the deletion saga, which stays theoretical while everything is in memory (orphans die at process restart, so a cascade cannot fail in a way anyone would notice). Built the other way round, the board would grow a bespoke fan-out that a later milestone has to reconcile. The honest caveat: `LivePassages` broadcasts CRDT frames while a board broadcasts events, so the two may share less than it first appears.
+
+**Done when:** deleting a project leaves nothing behind; a saga that fails midway is recoverable and observable; and every message in a run traces back to the request that caused it.
+
+**Explicitly not in M9:** a broker. Transport stays in-process — RabbitMQ is an adapter for when a second deployable exists. See [Messaging](./ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
+
+### Milestone 9 — The board
 
 **Goal:** an infinite corkboard — the non-linear feel that is the point of Weaveling.
 
 **Build:** `features/boards` — `BoardStarted`, `PiecePinned`, `PieceMoved`, `PieceUnpinned`, placement owned by the board, and **find-or-start on first open**. Free 2D placement, with moves committing **on drop** and in-flight drags travelling as awareness over the board's own live channel. The client joins pool and placements itself, which is also what makes a dangling placement harmless.
+
+**On top of the seam:** the board's socket is a subscriber rather than a bespoke broadcast, and the piece catalog's synchronous dual write becomes a projector at the same time.
 
 **Rust you'll meet:** pointer events and transforms for a pannable infinite surface, a second WebSocket surface that is *not* a CRDT, and awareness carrying something other than a cursor.
 
 **Done when:** two browsers drag pieces on one board and see each other live; the durable record holds one event per drop rather than per frame; a piece discarded from the pool vanishes from the board with no compensating event; and a project that never had a board gets one on first open.
 
 **Explicitly not in M8:** the outline, grouping, board naming or switching — multiple boards are modelled, one is shipped.
-
-### Milestone 9 — Messaging and the cascade
-
-**Goal:** the seam features talk across, plus the first thing that genuinely needs it.
-
-**Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **correlation and causation ids**, occurred-at, agent) and an in-process dispatcher. Then the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
-
-**Why here rather than earlier:** with an in-memory store, orphans die at process restart, so the cascade is theoretical until the store is durable. Building it now means the saga is proven *before* it becomes load-bearing, instead of being written under pressure next to a new database.
-
-**Done when:** deleting a project leaves nothing behind; a saga that fails midway is recoverable and observable; and every message in a run traces back to the request that caused it.
-
-**Explicitly not in M9:** a broker. Transport stays in-process — RabbitMQ is an adapter for when a second deployable exists. See [Messaging](./ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
 
 ### Milestone 10 — The outline
 
