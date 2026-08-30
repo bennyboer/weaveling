@@ -394,6 +394,34 @@ Because prose is a CRDT, the client keeps a **full replica in the browser (Index
 
 The client is designed to be **local-first-capable**, not a thin dumb terminal.
 
+## Two Ways to Run It
+
+Weaveling ships in two shapes, and the difference is not a build flag on one product — it is which adapters the composition root reaches for.
+
+**Served** is the shape everything above assumes: a durable store, a broker once there is a second deployable, several authors on one project.
+
+**Local** is a single author on their own machine with **no database and no broker**. Every port takes its in-memory adapter, and a project survives by being **exported to a file** and imported at the next start. That is a *project* export — a project made portable — and has nothing to do with [manuscript export](#export), which makes a project readable.
+
+**Local is single-user by definition.** No accounts, no authors on other machines. Two browser tabs on the same computer still collaborate, because the sync socket and awareness are running locally and know nothing about deployment — that falls out of the design rather than being a feature to build, and it is worth keeping rather than suppressing: an author with a manuscript open beside a research window is the same person twice.
+
+### What this does to the in-memory adapters
+
+They stop being scaffolding. `InMemoryEventStore`, `InMemoryPieceCatalog`, `InMemoryPassageStore` and `InProcessDispatcher` become **production code for one of two modes**, which is why every one of them is judged by the same conformance suite as its durable counterpart. The suites were written as a hedge against a database swap; they turn out to be the thing that lets a mode ship without one.
+
+It also **withdraws an argument used repeatedly to defer work**: *"it is in-memory, so it dies at process restart"*. That is true of a test run and false of an author who works all afternoon and exports at the end. The [dual write in the piece catalog](./TODO.md), the deletion cascade, and passages that are never evicted all stop being free the moment a session is expected to last, and each is recorded with that consequence noted.
+
+### Export is what makes it persistent, and it proves the events
+
+An export carries the projects, every aggregate's **event streams with their metadata**, and each passage's CRDT state — the last of which `Passage::everything()` already produces, since a `yrs` update from nothing is exactly a full document.
+
+It deliberately does **not** carry the piece catalog. A catalog is a projection, so import rebuilds it from the streams. That turns "a projection can be rebuilt from events" from a maintenance script we keep promising into a feature the mode depends on, which is the honest test of whether the event log really is the source of truth.
+
+### The messaging policy differs, the port does not
+
+In served mode a refused message goes to [dead letters](#messaging--the-seam-now-the-transport-later) for something to retry. In local mode there is no ops team and no retry loop, and the person who caused the failure is sitting right there — so a strict dispatcher that surfaces the refusal is the better answer.
+
+That is a **deployment policy, never something a feature reads**. `Publisher` keeps the one error a broker can honestly report, because a feature must behave identically in both modes: publisher confirms say only that the *broker* accepted a message, and consumer acks go to the broker rather than back. Anything richer would be an in-process-only guarantee, and the mode existing makes that stricter rather than looser — code has to survive both.
+
 ## Transactions and Atomicity
 
 > **Atomicity is a property of a single port method.** If two things must happen atomically, make them **one method** — never introduce a transaction object into a port.
@@ -556,6 +584,8 @@ What keeps such tests from rotting is the selector discipline: **role plus acces
 Two traps found while setting it up, both worth remembering. **Playwright must write its output outside the Trunk watch root** (`outputDir` points at `target/`), and `e2e/`, `node_modules/` and the JS manifests must be in `[watch] ignore` — otherwise a test run triggers a rebuild, the page reloads mid-test, and elements detach under the cursor. That produced a one-in-five flake in a different test each time, and 257 spurious rebuilds; it is the same class of mistake as the spike's rebuild loop. And **`hasText` matches substrings**, so a renamed-to value must not contain the original or the "old name is gone" assertion silently passes against the new row.
 
 ## Export
+
+This is **manuscript export** — turning a project into something a reader can read. It is unrelated to the **project export** in [Two Ways to Run It](#two-ways-to-run-it), which turns a project into a file its author can carry.
 
 Two distinct export pipelines, driven by an in-order walk of the structure:
 

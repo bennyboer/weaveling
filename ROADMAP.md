@@ -232,7 +232,7 @@ The design is settled in [Pieces and views](./ARCHITECTURE.md#pieces-and-views--
 
 **Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **correlation and causation ids**, occurred-at, agent) and an in-process dispatcher. Then the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
 
-**Why before the board:** the board needs a live channel pushing events to browsers, and that *is* event fan-out — a far better first consumer for the seam than the deletion saga, which stays theoretical while everything is in memory (orphans die at process restart, so a cascade cannot fail in a way anyone would notice). Built the other way round, the board would grow a bespoke fan-out that a later milestone has to reconcile. The honest caveat: `LivePassages` broadcasts CRDT frames while a board broadcasts events, so the two may share less than it first appears.
+**Why before the board:** the board needs a live channel pushing events to browsers, and that *is* event fan-out — a far better first consumer for the seam than the deletion saga, which stays theoretical while everything is in memory (orphans die at process restart, so a cascade cannot fail in a way anyone would notice — an excuse [M12](#milestone-12--local-mode) takes back, since there in-memory *is* the store). Built the other way round, the board would grow a bespoke fan-out that a later milestone has to reconcile. The honest caveat: `LivePassages` broadcasts CRDT frames while a board broadcasts events, so the two may share less than it first appears.
 
 **Done when:** deleting a project leaves nothing behind; a saga that fails midway is recoverable and observable; and every message in a run traces back to the request that caused it.
 
@@ -277,6 +277,20 @@ This is the privileged view: export needs a linear order, so the outline is what
 **This is where storage representation finally gets decided,** and where the transaction tests that in-memory cannot express have to be written: rollback, connection failure mapping to `StoreError::Backend`, and the concurrency guard `absorb` needs if `PassageStore` goes the snapshot route. The event store's `append` must be atomic across the version check, the append **and** the outbox insert — one transaction, invisible above the port.
 
 **Done when:** the suites pass unchanged against the real store, and swapping backends is one line in one manifest.
+
+### Milestone 12 — Local mode
+
+**Goal:** an author runs Weaveling on their own machine with no database and no broker, and their project is a file they own.
+
+Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two answers to the same question, and the ports mean neither has to win.
+
+**Build:** export a project — the projects rows, every aggregate's event stream with metadata, and each passage's CRDT state via `Passage::everything()` — and import it at startup. The **piece catalog is not exported**; import rebuilds it from the streams, which is how the mode proves the event log is really the source of truth. Plus a strict `InProcessDispatcher` that surfaces a refused message to the author instead of dead-lettering it for an ops team that does not exist.
+
+**Local is single-user by definition** — no accounts, no authors on other machines. Two tabs on the same computer still collaborate, because the sync socket is local and knows nothing about deployment.
+
+**Depends on** the deferrals that in-memory made free being closed first, since a session now lasts an afternoon rather than a test run: the catalog's dual write, passages never being evicted, and the deletion cascade. See [TODO.md](./TODO.md).
+
+**Done when:** an author can work with no database running, export the project, restart with an empty process, import, and find their pieces and prose exactly as they left them — with the catalog rebuilt rather than restored.
 
 ---
 
