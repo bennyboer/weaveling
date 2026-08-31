@@ -15,7 +15,7 @@ pub enum InvalidListenerName {
     #[error("a listener must be named")]
     Empty,
     #[error("a listener name may hold only lowercase letters, digits and hyphens")]
-    Unspeakable,
+    Malformed,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -26,7 +26,7 @@ pub enum Delivery {
 
 #[derive(Debug, Error)]
 #[error("{listener} could not take in {routing}")]
-pub struct Unheard {
+pub struct NotHandled {
     pub listener: ListenerName,
     pub routing: RoutingKey,
     #[source]
@@ -51,7 +51,7 @@ pub trait Listener: Send + Sync {
         Delivery::Kept
     }
 
-    async fn hear(&self, message: &Message) -> Result<(), Unheard>;
+    async fn handle(&self, message: &Message) -> Result<(), NotHandled>;
 }
 
 #[async_trait]
@@ -61,7 +61,7 @@ pub trait Publisher: Send + Sync {
 
 #[async_trait]
 pub trait DeadLetters: Send + Sync {
-    async fn refused(&self, message: &Message, why: Unheard);
+    async fn refused(&self, message: &Message, why: NotHandled);
 }
 
 impl ListenerName {
@@ -71,7 +71,7 @@ impl ListenerName {
         }
 
         if !name.chars().all(speakable) {
-            return Err(InvalidListenerName::Unspeakable);
+            return Err(InvalidListenerName::Malformed);
         }
 
         Ok(Self(name.to_owned()))
@@ -92,7 +92,7 @@ impl Display for ListenerName {
     }
 }
 
-impl Unheard {
+impl NotHandled {
     pub fn because(
         listener: ListenerName,
         routing: RoutingKey,
@@ -119,7 +119,7 @@ pub struct Logged;
 
 #[async_trait]
 impl DeadLetters for Logged {
-    async fn refused(&self, message: &Message, why: Unheard) {
+    async fn refused(&self, message: &Message, why: NotHandled) {
         tracing::error!(
             listener = %why.listener,
             message = %message.id,
@@ -158,7 +158,7 @@ mod tests {
         ] {
             assert_eq!(
                 ListenerName::parse(unspeakable),
-                Err(InvalidListenerName::Unspeakable),
+                Err(InvalidListenerName::Malformed),
                 "{unspeakable} should not become a queue name"
             );
         }

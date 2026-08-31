@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{
-    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
+    Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
 use thiserror::Error;
 
 use crate::catalog::{CatalogError, PieceCatalog, PieceSummary};
 use crate::id::{InvalidPieceId, PieceId};
 use crate::piece::{PassageLink, Piece, PieceCommand, PieceError, PieceEvent, ProjectLink};
+use crate::publishing::{PieceEventPublisher, PublishError};
 use crate::title::{InvalidPieceTitle, PieceTitle};
 
 #[derive(Debug, Error)]
@@ -21,12 +22,15 @@ pub enum PieceServiceError {
     Events(#[from] ServiceError<PieceError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    Unpublished(#[from] PublishError),
 }
 
 #[derive(Clone)]
 pub struct PieceService {
     events: Arc<EventSourcingService<Piece>>,
     catalog: Arc<dyn PieceCatalog>,
+    publishing: Arc<dyn PieceEventPublisher>,
     clock: Arc<dyn Clock>,
 }
 
@@ -34,11 +38,13 @@ impl PieceService {
     pub fn new(
         store: Arc<dyn EventStore<PieceEvent>>,
         catalog: Arc<dyn PieceCatalog>,
+        publishing: Arc<dyn PieceEventPublisher>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             catalog,
+            publishing,
             clock,
         }
     }
@@ -55,7 +61,8 @@ impl PieceService {
     ) -> Result<PieceId, PieceServiceError> {
         let id = PieceId::generate(self.clock.now());
 
-        self.events
+        let landed = self
+            .events
             .begin(
                 &AggregateId::from(&id),
                 PieceCommand::Capture {
@@ -65,7 +72,7 @@ impl PieceService {
                 agent,
             )
             .await?;
-        self.catalogue(&id).await?;
+        self.publish(&landed).await?;
 
         Ok(id)
     }
@@ -128,7 +135,6 @@ impl PieceService {
         let id: PieceId = id.parse()?;
         let key = AggregateId::from(&id);
 
-        let discarding = matches!(command, PieceCommand::Discard);
         let landed = match expected {
             Some(expected) => {
                 self.events
@@ -137,22 +143,16 @@ impl PieceService {
             }
             None => self.events.execute(&key, command, agent).await?,
         };
+        self.publish(&landed).await?;
 
-        if discarding {
-            self.catalog.forget(&id).await?;
-        } else {
-            self.catalogue(&id).await?;
-        }
-
-        Ok(landed)
+        Ok(landed.version)
     }
 
-    async fn catalogue(&self, id: &PieceId) -> Result<(), PieceServiceError> {
-        let standing = self.events.latest(&AggregateId::from(id)).await?;
+    async fn publish(&self, landed: &Appended<PieceEvent>) -> Result<(), PieceServiceError> {
+        for happened in &landed.events {
+            self.publishing.publish(happened).await?;
+        }
 
-        Ok(self
-            .catalog
-            .remember(&PieceSummary::of(*id, standing.version, &standing.state))
-            .await?)
+        Ok(())
     }
 }

@@ -78,9 +78,9 @@ async fn writing_prose_is_visible_when_the_passage_is_opened_again() {
     let id = passage.id().to_string();
 
     service
-        .absorb(&id, &a_paragraph("The loom stood silent."))
+        .apply(&id, &a_paragraph("The loom stood silent."))
         .await
-        .expect("should absorb");
+        .expect("should apply");
 
     let reopened = service.open(&id).await.expect("should open");
     assert_eq!(reopened.text(), "The loom stood silent.");
@@ -124,9 +124,9 @@ async fn a_deleted_passage_takes_its_prose_with_it() {
     let passage = service.create().await.expect("should create");
     let id = passage.id().to_string();
     service
-        .absorb(&id, &a_paragraph("The loom stood silent."))
+        .apply(&id, &a_paragraph("The loom stood silent."))
         .await
-        .expect("should absorb");
+        .expect("should apply");
 
     service.delete(&id).await.expect("should delete");
 
@@ -143,12 +143,12 @@ async fn an_unusable_update_leaves_the_prose_as_it_was() {
     let passage = service.create().await.expect("should create");
     let id = passage.id().to_string();
     service
-        .absorb(&id, &a_paragraph("The loom stood silent."))
+        .apply(&id, &a_paragraph("The loom stood silent."))
         .await
-        .expect("should absorb");
+        .expect("should apply");
 
     let error = service
-        .absorb(&id, &[255, 255, 255, 255])
+        .apply(&id, &[255, 255, 255, 255])
         .await
         .expect_err("garbage should be refused");
 
@@ -167,11 +167,11 @@ async fn a_passage_written_by_two_authors_holds_both_contributions() {
     let id = passage.id().to_string();
 
     service
-        .absorb(&id, &a_paragraph("Ada wrote this."))
+        .apply(&id, &a_paragraph("Ada wrote this."))
         .await
         .expect("ada should write");
     service
-        .absorb(&id, &a_paragraph("Bo wrote this."))
+        .apply(&id, &a_paragraph("Bo wrote this."))
         .await
         .expect("bo should write");
 

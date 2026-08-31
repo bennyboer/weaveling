@@ -42,12 +42,19 @@ pub struct EventSourcingService<A: Aggregate> {
     clock: Arc<dyn Clock>,
 }
 
-type Outcome<A> = Result<Version, ServiceError<<A as Aggregate>::Error>>;
+type Outcome<A> = Result<Appended<<A as Aggregate>::Event>, ServiceError<<A as Aggregate>::Error>>;
+type Reached<A> = Result<Version, ServiceError<<A as Aggregate>::Error>>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Standing<A> {
     pub state: A,
     pub version: Version,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Appended<E> {
+    pub version: Version,
+    pub events: Vec<Recorded<E>>,
 }
 
 impl<A> EventSourcingService<A>
@@ -147,7 +154,7 @@ where
         .map_err(ServiceError::Refused)?;
 
         if events.is_empty() {
-            return Ok(expected);
+            return Ok(Appended::nothing_at(expected));
         }
 
         let stream = self.stamp(aggregate, expected, events, agent);
@@ -162,11 +169,17 @@ where
             .version;
         let state = grown(standing.map(|standing| standing.state), &stream)
             .ok_or_else(|| self.unusable(aggregate))?;
+        let version = self
+            .snapshot_if_due(aggregate, &state, landed, agent)
+            .await?;
 
-        self.snapshot_if_due(aggregate, &state, landed, agent).await
+        Ok(Appended {
+            version,
+            events: stream,
+        })
     }
 
-    pub async fn collapse(&self, aggregate: &AggregateId, agent: &Agent) -> Outcome<A> {
+    pub async fn compact(&self, aggregate: &AggregateId, agent: &Agent) -> Reached<A> {
         let standing = self
             .standing(aggregate, None)
             .await?
@@ -269,7 +282,7 @@ where
         state: &A,
         landed: Version,
         agent: &Agent,
-    ) -> Outcome<A> {
+    ) -> Reached<A> {
         let Some(every) = state.snapshot_after() else {
             return Ok(landed);
         };
@@ -294,7 +307,7 @@ where
         state: &A,
         reached: Version,
         agent: &Agent,
-    ) -> Outcome<A> {
+    ) -> Reached<A> {
         let snapshot = state.snapshot();
 
         if !snapshot.is_snapshot() {
@@ -331,6 +344,19 @@ where
     }
 }
 
+impl<E> Appended<E> {
+    fn nothing_at(version: Version) -> Self {
+        Self {
+            version,
+            events: Vec::new(),
+        }
+    }
+
+    pub fn changed_nothing(&self) -> bool {
+        self.events.is_empty()
+    }
+}
+
 fn grown<A>(from: Option<A>, stream: &[Recorded<A::Event>]) -> Option<A>
 where
     A: Aggregate,
@@ -340,10 +366,10 @@ where
     for entry in stream {
         state = match state {
             Some(mut standing) => {
-                standing.absorb(&entry.event, &entry.metadata);
+                standing.apply(&entry.event, &entry.metadata);
                 Some(standing)
             }
-            None => A::born(&entry.event, &entry.metadata),
+            None => A::from_first(&entry.event, &entry.metadata),
         };
     }
 

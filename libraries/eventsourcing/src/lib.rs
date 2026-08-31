@@ -16,6 +16,6 @@ pub use event::{Event, EventName, Recorded};
 pub use memory::InMemoryEventStore;
 pub use metadata::EventMetadata;
 pub use patch::{Patch, Patcher};
-pub use service::{EventSourcingService, ServiceError, Standing};
+pub use service::{Appended, EventSourcingService, ServiceError, Standing};
 pub use store::{EventStore, StoreError};
 pub use version::Version;

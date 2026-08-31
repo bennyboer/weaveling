@@ -1,0 +1,17 @@
+[package]
+name = "weaveling-pieces-messaging"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true, features = ["formatting"] }
+
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+pieces-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-pieces-contract" }
+pieces-core = { version = "0.1.0", path = "../../core", package = "weaveling-pieces-core" }

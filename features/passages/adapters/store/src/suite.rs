@@ -26,7 +26,7 @@ pub fn a_paragraph(saying: &str) -> Vec<u8> {
 pub fn a_passage(id: PassageId, saying: &str) -> Passage {
     let passage = Passage::empty(id);
     passage
-        .absorb(&a_paragraph(saying))
+        .apply(&a_paragraph(saying))
         .expect("sample prose should apply");
 
     passage
@@ -108,9 +108,9 @@ pub async fn absorb_missing_passage_is_not_found(store: &impl PassageStore) {
     let missing = an_id(1_000);
 
     let error = store
-        .absorb(missing, &a_paragraph("into the void"))
+        .apply(missing, &a_paragraph("into the void"))
         .await
-        .expect_err("absorb should not find the passage");
+        .expect_err("apply should not find the passage");
 
     assert!(
         matches!(&error, StoreError::NotFound(id) if *id == missing),
@@ -126,9 +126,9 @@ pub async fn absorbed_updates_are_visible_on_load(store: &impl PassageStore) {
         .expect("create should succeed");
 
     store
-        .absorb(id, &a_paragraph("The loom stood silent."))
+        .apply(id, &a_paragraph("The loom stood silent."))
         .await
-        .expect("absorb should succeed");
+        .expect("apply should succeed");
 
     let found = store.load(id).await.expect("load should find the passage");
     assert_eq!(found.text(), "The loom stood silent.");
@@ -142,8 +142,8 @@ pub async fn absorbing_the_same_update_twice_changes_nothing(store: &impl Passag
         .expect("create should succeed");
     let update = a_paragraph("The loom stood silent.");
 
-    store.absorb(id, &update).await.expect("first absorb");
-    store.absorb(id, &update).await.expect("second absorb");
+    store.apply(id, &update).await.expect("first apply");
+    store.apply(id, &update).await.expect("second apply");
 
     let found = store.load(id).await.expect("load should find the passage");
     assert_eq!(
@@ -165,14 +165,14 @@ pub async fn updates_absorbed_in_either_order_converge(store: &impl PassageStore
             .expect("create should succeed");
     }
 
-    store.absorb(one, &ada).await.expect("absorb ada");
-    store.absorb(one, &bo).await.expect("absorb bo");
-    store.absorb(other, &bo).await.expect("absorb bo");
-    store.absorb(other, &ada).await.expect("absorb ada");
+    store.apply(one, &ada).await.expect("apply ada");
+    store.apply(one, &bo).await.expect("apply bo");
+    store.apply(other, &bo).await.expect("apply bo");
+    store.apply(other, &ada).await.expect("apply ada");
 
     let first = store.load(one).await.expect("load one").text();
     let second = store.load(other).await.expect("load other").text();
-    assert_eq!(first, second, "absorb order must not matter");
+    assert_eq!(first, second, "apply order must not matter");
     assert!(first.contains("Ada wrote this."));
     assert!(first.contains("Bo wrote this."));
 }
@@ -185,7 +185,7 @@ pub async fn an_unusable_update_is_refused_and_changes_nothing(store: &impl Pass
         .expect("create should succeed");
 
     let error = store
-        .absorb(id, &[255, 255, 255, 255])
+        .apply(id, &[255, 255, 255, 255])
         .await
         .expect_err("garbage must not be accepted");
 

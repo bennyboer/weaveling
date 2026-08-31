@@ -47,7 +47,7 @@ async fn capture(
     Json(request): Json<CapturePieceRequest>,
 ) -> Result<Response, ApiError> {
     let id = pieces
-        .capture(&request.project, &request.title, &whoever())
+        .capture(&request.project, &request.title, &nobody_yet())
         .await?
         .to_string();
     let captured = pieces.get(&id).await?;
@@ -71,7 +71,7 @@ async fn retitle(
     Json(request): Json<RetitlePieceRequest>,
 ) -> Result<Response, ApiError> {
     pieces
-        .retitle(&id, &request.title, expected(&headers)?, &whoever())
+        .retitle(&id, &request.title, expected(&headers)?, &nobody_yet())
         .await?;
 
     Ok(reported(StatusCode::OK, &id, &pieces.get(&id).await?))
@@ -84,7 +84,7 @@ async fn attach_passage(
     Json(request): Json<AttachPassageRequest>,
 ) -> Result<Response, ApiError> {
     pieces
-        .attach_passage(&id, &request.passage, expected(&headers)?, &whoever())
+        .attach_passage(&id, &request.passage, expected(&headers)?, &nobody_yet())
         .await?;
 
     Ok(reported(StatusCode::OK, &id, &pieces.get(&id).await?))
@@ -95,12 +95,14 @@ async fn discard(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    pieces.discard(&id, expected(&headers)?, &whoever()).await?;
+    pieces
+        .discard(&id, expected(&headers)?, &nobody_yet())
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn whoever() -> Agent {
+fn nobody_yet() -> Agent {
     Agent::Anonymous
 }
 

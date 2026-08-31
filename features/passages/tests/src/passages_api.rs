@@ -83,9 +83,9 @@ async fn the_read_model_reports_the_prose_that_was_written() {
     let server = new_server_with(service.clone());
     let created = a_passage(&server).await;
     service
-        .absorb(&created.id, &a_paragraph("The loom stood silent."))
+        .apply(&created.id, &a_paragraph("The loom stood silent."))
         .await
-        .expect("should absorb");
+        .expect("should apply");
 
     let response = server.get(&format!("/passages/{}", created.id)).await;
 

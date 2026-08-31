@@ -4,6 +4,7 @@ use axum::Router;
 use axum::routing::get;
 use clock::Clock;
 use eventsourcing::EventStore;
+use messaging::InProcessDispatcher;
 use passages_core::{PassageService, PassageStore};
 use passages_sync::LivePassages;
 use pieces_core::{PieceCatalog, PieceEvent, PieceService};
@@ -18,6 +19,13 @@ pub fn app(
     clock: Arc<dyn Clock>,
 ) -> Router {
     let passages = PassageService::new(passages, clock.clone());
+    let dispatcher = Arc::new(InProcessDispatcher::new());
+
+    dispatcher.listen(Arc::new(pieces_messaging::PieceCatalogProjector::new(
+        pieces_events.clone(),
+        pieces_catalog.clone(),
+        clock.clone(),
+    )));
 
     let api = Router::new()
         .route("/health", get(health))
@@ -30,6 +38,7 @@ pub fn app(
         .merge(pieces_rest::router(PieceService::new(
             pieces_events,
             pieces_catalog,
+            Arc::new(pieces_messaging::Publishing::new(dispatcher)),
             clock,
         )));
 

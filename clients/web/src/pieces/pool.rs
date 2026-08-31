@@ -12,15 +12,14 @@ use crate::route;
 
 #[component]
 pub fn Pool(project: ProjectId) -> impl IntoView {
-    let refetch = Trigger::new();
     let problem = RwSignal::new(None::<ApiError>);
+    let captured = RwSignal::new(Vec::<Piece>::new());
     let title: NodeRef<Input> = NodeRef::new();
 
     let listed = {
         let project = project.clone();
 
         LocalResource::new(move || {
-            refetch.track();
             let project = project.clone();
 
             async move { service::list(&project).await }
@@ -36,9 +35,9 @@ pub fn Pool(project: ProjectId) -> impl IntoView {
 
             async move {
                 match service::capture(&project, &saying).await {
-                    Ok(_) => {
+                    Ok(piece) => {
                         problem.set(None);
-                        refetch.notify();
+                        captured.update(|held| held.push(piece));
                     }
                     Err(failure) => problem.set(Some(failure)),
                 }
@@ -52,9 +51,19 @@ pub fn Pool(project: ProjectId) -> impl IntoView {
         field.set_value("");
     };
 
-    let pieces = move || match listed.get() {
-        Some(found) => found.as_ref().cloned().unwrap_or_default(),
-        None => Vec::new(),
+    let pieces = move || {
+        let mut shown = match listed.get() {
+            Some(found) => found.as_ref().cloned().unwrap_or_default(),
+            None => Vec::new(),
+        };
+
+        for piece in captured.get() {
+            if !shown.iter().any(|already| already.id == piece.id) {
+                shown.push(piece);
+            }
+        }
+
+        shown
     };
 
     html::section().class("pool").child((

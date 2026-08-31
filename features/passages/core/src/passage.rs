@@ -32,7 +32,7 @@ impl Passage {
 
     pub fn rehydrate(id: PassageId, stored: &[u8]) -> Result<Self, PassageError> {
         let passage = Passage::empty(id);
-        passage.absorb(stored)?;
+        passage.apply(stored)?;
 
         Ok(passage)
     }
@@ -41,7 +41,7 @@ impl Passage {
         self.id
     }
 
-    pub fn absorb(&self, update: &[u8]) -> Result<(), PassageError> {
+    pub fn apply(&self, update: &[u8]) -> Result<(), PassageError> {
         self.doc
             .transact_mut()
             .apply_update(Update::decode_v1(update)?)?;
@@ -153,9 +153,8 @@ mod tests {
 
         append(&ada, 0, " Ada wrote this.");
         append(&bo, 0, " Bo wrote this.");
-        ada.absorb(&bo.everything())
-            .expect("bo's edit should apply");
-        bo.absorb(&ada.everything())
+        ada.apply(&bo.everything()).expect("bo's edit should apply");
+        bo.apply(&ada.everything())
             .expect("ada's edit should apply");
 
         assert_eq!(ada.text(), bo.text(), "replicas must agree");
@@ -170,8 +169,8 @@ mod tests {
         let update = passage.everything();
 
         let replica = Passage::empty(an_id());
-        replica.absorb(&update).expect("first apply");
-        replica.absorb(&update).expect("second apply");
+        replica.apply(&update).expect("first apply");
+        replica.apply(&update).expect("second apply");
 
         assert_eq!(replica.text(), "The loom stood silent.");
     }
@@ -213,7 +212,7 @@ mod tests {
         let passage = Passage::empty(an_id());
         write(&passage, 0, "The loom stood silent.");
 
-        let outcome = passage.absorb(&[255, 255, 255, 255]);
+        let outcome = passage.apply(&[255, 255, 255, 255]);
 
         assert!(outcome.is_err(), "garbage must not be accepted");
         assert_eq!(

@@ -39,9 +39,9 @@ async fn joining_a_passage_brings_its_stored_prose_back() {
     let passage = service.create().await.expect("should create");
     let id = passage.id().to_string();
     service
-        .absorb(&id, &a_paragraph("The loom stood silent."))
+        .apply(&id, &a_paragraph("The loom stood silent."))
         .await
-        .expect("should absorb");
+        .expect("should apply");
 
     let joined = live.join(passage.id()).await.expect("should join");
 
@@ -165,7 +165,7 @@ async fn an_edit_made_in_a_live_passage_is_handed_to_the_store() {
         .receive(Message::JustHappened(a_paragraph("The loom stood silent.")))
         .expect("should write");
     let update = reaction.to_store.expect("an edit must be durable");
-    service.absorb(&id, &update).await.expect("should persist");
+    service.apply(&id, &update).await.expect("should persist");
 
     let reopened = service.open(&id).await.expect("should reopen");
     assert_eq!(
@@ -186,7 +186,7 @@ async fn a_passage_rejoined_after_everyone_left_still_has_the_prose() {
             .receive(Message::JustHappened(a_paragraph("The loom stood silent.")))
             .expect("should write");
         let update = reaction.to_store.expect("an edit must be durable");
-        service.absorb(&id, &update).await.expect("should persist");
+        service.apply(&id, &update).await.expect("should persist");
     }
 
     let afresh = LivePassages::new(service);

@@ -38,10 +38,10 @@ impl PassageService {
         Ok(self.store.load(id).await?)
     }
 
-    pub async fn absorb(&self, id: &str, update: &[u8]) -> Result<(), PassageServiceError> {
+    pub async fn apply(&self, id: &str, update: &[u8]) -> Result<(), PassageServiceError> {
         let id: PassageId = id.parse()?;
 
-        Ok(self.store.absorb(id, update).await?)
+        Ok(self.store.apply(id, update).await?)
     }
 
     pub async fn delete(&self, id: &str) -> Result<(), PassageServiceError> {

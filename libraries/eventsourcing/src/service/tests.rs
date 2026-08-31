@@ -31,6 +31,14 @@ fn an_author() -> Agent {
     Agent::User(AgentId::from("author-7"))
 }
 
+fn happenings(landed: &Appended<SampleEvent>) -> Vec<SampleEvent> {
+    landed
+        .events
+        .iter()
+        .map(|entry| entry.event.clone())
+        .collect()
+}
+
 fn retitled(to: &str) -> SampleCommand {
     SampleCommand::UpdateTitle(to.to_owned())
 }
@@ -55,7 +63,7 @@ async fn creating_lands_the_first_version() {
         .await
         .expect("creating should succeed");
 
-    assert_eq!(landed, Version::of(1));
+    assert_eq!(landed.version, Version::of(1));
     assert_eq!(
         service
             .latest(&id)
@@ -77,7 +85,7 @@ async fn a_further_command_lands_the_next_version() {
         .await
         .expect("updating should succeed");
 
-    assert_eq!(landed, Version::of(2));
+    assert_eq!(landed.version, Version::of(2));
     assert_eq!(
         service.latest(&id).await.expect("it exists").state.title,
         "The Silent Loom"
@@ -193,7 +201,7 @@ async fn a_command_at_the_current_version_is_accepted() {
         .await
         .expect("the caller was up to date");
 
-    assert_eq!(landed, Version::of(2));
+    assert_eq!(landed.version, Version::of(2));
 }
 
 #[tokio::test]
@@ -279,10 +287,87 @@ async fn one_command_may_land_several_events_at_once() {
         .await
         .expect("rewriting should succeed");
 
-    assert_eq!(landed, Version::of(3), "two events land two versions");
+    assert_eq!(
+        landed.version,
+        Version::of(3),
+        "two events land two versions"
+    );
     let state = service.latest(&id).await.expect("exists").state;
     assert_eq!(state.title, "The Silent Loom");
     assert_eq!(state.description, "It remembers.");
+}
+
+#[tokio::test]
+async fn what_landed_carries_the_events_that_were_appended() {
+    let service = a_workbench();
+    let id = a_created_sample(&service).await;
+
+    let landed = service
+        .execute(
+            &id,
+            SampleCommand::Rewrite {
+                title: "The Silent Loom".to_owned(),
+                description: "It remembers.".to_owned(),
+            },
+            &an_author(),
+        )
+        .await
+        .expect("rewriting should succeed");
+
+    assert_eq!(
+        happenings(&landed),
+        vec![
+            SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
+            SampleEvent::DescriptionUpdated("It remembers.".to_owned()),
+        ],
+        "a caller that has to publish what happened cannot work it out from a version alone"
+    );
+    assert_eq!(
+        landed
+            .events
+            .iter()
+            .map(|entry| entry.metadata.version)
+            .collect::<Vec<_>>(),
+        vec![Version::of(2), Version::of(3)],
+        "each event has its own version, and the last one alone cannot say so"
+    );
+    assert!(!landed.changed_nothing());
+}
+
+#[tokio::test]
+async fn a_snapshot_is_not_something_that_happened() {
+    let service = a_workbench();
+    let id = a_created_sample(&service).await;
+
+    for counted in 2..100 {
+        service
+            .execute(&id, retitled(&format!("Title {counted}")), &an_author())
+            .await
+            .expect("updating should succeed");
+    }
+
+    let landed = service
+        .execute(&id, retitled("Title 100"), &an_author())
+        .await
+        .expect("updating should succeed");
+
+    assert_eq!(
+        landed.version,
+        Version::of(101),
+        "the snapshot still moved the version along"
+    );
+    assert_eq!(
+        happenings(&landed),
+        vec![SampleEvent::TitleUpdated("Title 100".to_owned())],
+        "one command happened once, and collapsing the log is not news"
+    );
+    assert!(
+        landed
+            .events
+            .iter()
+            .all(|entry| !entry.metadata.is_snapshot),
+        "and the snapshot is not among what was published"
+    );
 }
 
 #[tokio::test]
@@ -313,7 +398,7 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
         .expect("updating should succeed");
 
     assert_eq!(
-        landed,
+        landed.version,
         Version::of(101),
         "the hundredth event should be followed by a snapshot"
     );
@@ -345,7 +430,7 @@ async fn collapsing_leaves_only_a_snapshot_behind() {
         .expect("updating should succeed");
 
     let taken = service
-        .collapse(&id, &an_author())
+        .compact(&id, &an_author())
         .await
         .expect("collapsing should succeed");
 
@@ -368,19 +453,19 @@ async fn a_collapsed_aggregate_carries_on_from_the_snapshot() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .collapse(&id, &an_author())
+        .compact(&id, &an_author())
         .await
         .expect("collapsing should succeed");
 
     let landed = service
-        .execute(&id, retitled("After the collapse"), &an_author())
+        .execute(&id, retitled("After the compact"), &an_author())
         .await
         .expect("a collapsed aggregate still accepts commands");
 
-    assert_eq!(landed, Version::of(3));
+    assert_eq!(landed.version, Version::of(3));
     assert_eq!(
         service.latest(&id).await.expect("exists").state.title,
-        "After the collapse"
+        "After the compact"
     );
 }
 
@@ -410,7 +495,7 @@ async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
         .await
         .expect("updating should succeed");
     service
-        .collapse(&id, &an_author())
+        .compact(&id, &an_author())
         .await
         .expect("collapsing should succeed");
 
@@ -472,7 +557,7 @@ async fn an_unpatched_old_event_would_not_rebuild_at_all() {
 
     assert_eq!(untouched, ancient);
     assert!(
-        Sample::born(&untouched, &stamped(&a_sample(), 1)).is_none(),
+        Sample::from_first(&untouched, &stamped(&a_sample(), 1)).is_none(),
         "the previous test only means something because the aggregate cannot read the old shape"
     );
 }
@@ -516,7 +601,7 @@ async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
         .expect("an old event should still be storable");
 
     service
-        .collapse(&id, &an_author())
+        .compact(&id, &an_author())
         .await
         .expect("collapsing a patched stream should succeed");
 

@@ -3,10 +3,10 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
-use eventsourcing::InMemoryEventStore;
-use pieces_catalog::InMemoryPieceCatalog;
 use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO, RetitlePieceRequest};
-use pieces_core::{PieceEvent, PieceService, PieceTitle};
+use pieces_core::PieceTitle;
+
+use crate::wiring::wired;
 use time::{Duration, OffsetDateTime};
 
 const UNKNOWN_ID: &str = "piece_031VkO0hnpeQZUiAB7nDma";
@@ -16,13 +16,9 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn a_server() -> TestServer {
-    let service = PieceService::new(
-        Arc::new(InMemoryEventStore::<PieceEvent>::new()),
-        Arc::new(InMemoryPieceCatalog::new()),
-        Arc::new(FixedClock::new(at(1_700_000_000))),
-    );
+    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
 
-    TestServer::new(pieces_rest::router(service))
+    TestServer::new(pieces_rest::router(wired.pieces))
 }
 
 fn a_capture(title: &str) -> CapturePieceRequest {

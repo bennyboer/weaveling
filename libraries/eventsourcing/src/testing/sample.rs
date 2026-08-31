@@ -118,7 +118,7 @@ impl Aggregate for Sample {
         }
     }
 
-    fn born(event: &SampleEvent, _metadata: &EventMetadata) -> Option<Self> {
+    fn from_first(event: &SampleEvent, _metadata: &EventMetadata) -> Option<Self> {
         match event {
             SampleEvent::Created {
                 title,
@@ -167,7 +167,7 @@ impl Aggregate for Sample {
         }
     }
 
-    fn absorb(&mut self, event: &SampleEvent, _metadata: &EventMetadata) {
+    fn apply(&mut self, event: &SampleEvent, _metadata: &EventMetadata) {
         match event {
             SampleEvent::CreatedBeforeDescriptions { .. }
             | SampleEvent::CreatedBeforeKinds { .. }
@@ -248,10 +248,10 @@ pub fn recorded(aggregate: &AggregateId, events: Vec<SampleEvent>) -> Vec<Record
 
 pub fn replay(stream: &[Recorded<SampleEvent>]) -> Option<Sample> {
     let (first, rest) = stream.split_first()?;
-    let mut sample = Sample::born(&first.event, &first.metadata)?;
+    let mut sample = Sample::from_first(&first.event, &first.metadata)?;
 
     for entry in rest {
-        sample.absorb(&entry.event, &entry.metadata);
+        sample.apply(&entry.event, &entry.metadata);
     }
 
     Some(sample)
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn nothing_becomes_something_only_through_a_creation_command() {
-        let born = Sample::begin(
+        let from_first = Sample::begin(
             SampleCommand::Create {
                 title: "The Loom".to_owned(),
                 description: "A silent machine.".to_owned(),
@@ -284,7 +284,7 @@ mod tests {
         );
 
         assert_eq!(
-            born,
+            from_first,
             Ok(vec![SampleEvent::Created {
                 title: "The Loom".to_owned(),
                 description: "A silent machine.".to_owned(),
@@ -307,9 +307,9 @@ mod tests {
     fn only_a_creation_or_snapshot_event_gives_birth() {
         let metadata = stamped(&a_sample(), 0);
 
-        assert!(Sample::born(&SampleEvent::Deleted, &metadata).is_none());
+        assert!(Sample::from_first(&SampleEvent::Deleted, &metadata).is_none());
         assert!(
-            Sample::born(
+            Sample::from_first(
                 &SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
                 &metadata
             )
@@ -377,7 +377,7 @@ mod tests {
             .expect("a live sample accepts a new description");
 
         for event in &decided {
-            sample.absorb(event, &stamped(&a_sample(), 1));
+            sample.apply(event, &stamped(&a_sample(), 1));
         }
 
         assert_eq!(sample.description, "It remembers.");
@@ -400,7 +400,7 @@ mod tests {
     #[test]
     fn a_deleted_aggregate_refuses_every_command() {
         let mut sample = a_created_sample();
-        sample.absorb(&SampleEvent::Deleted, &stamped(&a_sample(), 1));
+        sample.apply(&SampleEvent::Deleted, &stamped(&a_sample(), 1));
 
         assert_eq!(
             sample.decide(
@@ -424,15 +424,15 @@ mod tests {
     #[test]
     fn a_snapshot_replays_into_exactly_the_state_it_came_from() {
         let mut sample = a_created_sample();
-        sample.absorb(
+        sample.apply(
             &SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
             &stamped(&a_sample(), 1),
         );
-        sample.absorb(&SampleEvent::Deleted, &stamped(&a_sample(), 2));
+        sample.apply(&SampleEvent::Deleted, &stamped(&a_sample(), 2));
 
         let snapshot = sample.snapshot();
-        let restored =
-            Sample::born(&snapshot, &stamped(&a_sample(), 3)).expect("a snapshot gives birth");
+        let restored = Sample::from_first(&snapshot, &stamped(&a_sample(), 3))
+            .expect("a snapshot gives birth");
 
         assert_eq!(restored, sample);
     }
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn a_snapshot_found_mid_stream_replaces_whatever_came_before() {
         let mut sample = a_created_sample();
-        sample.absorb(
+        sample.apply(
             &SampleEvent::Snapshotted {
                 title: "Elsewhere".to_owned(),
                 description: "Entirely".to_owned(),

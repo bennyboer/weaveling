@@ -21,7 +21,7 @@ pub trait PassageStore: Send + Sync {
 
     async fn load(&self, id: PassageId) -> Result<Passage, StoreError>;
 
-    async fn absorb(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError>;
+    async fn apply(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError>;
 
     async fn delete(&self, id: PassageId) -> Result<(), StoreError>;
 }

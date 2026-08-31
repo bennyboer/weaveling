@@ -180,7 +180,7 @@ impl Aggregate for Piece {
         }
     }
 
-    fn born(event: &PieceEvent, _metadata: &EventMetadata) -> Option<Self> {
+    fn from_first(event: &PieceEvent, _metadata: &EventMetadata) -> Option<Self> {
         match event {
             PieceEvent::Captured { project, title } => Some(Self {
                 project: project.clone(),
@@ -228,7 +228,7 @@ impl Aggregate for Piece {
         }
     }
 
-    fn absorb(&mut self, event: &PieceEvent, _metadata: &EventMetadata) {
+    fn apply(&mut self, event: &PieceEvent, _metadata: &EventMetadata) {
         match event {
             PieceEvent::Captured { .. } => {}
             PieceEvent::Retitled(to) => self.title = to.clone(),

@@ -1,0 +1,17 @@
+[package]
+name = "weaveling-eventpublishing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true, features = ["formatting"] }
+
+eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

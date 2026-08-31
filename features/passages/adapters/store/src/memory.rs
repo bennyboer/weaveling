@@ -53,13 +53,13 @@ impl PassageStore for InMemoryPassageStore {
         rehydrate(id, &stored)
     }
 
-    async fn absorb(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError> {
+    async fn apply(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError> {
         let mut passages = self.write();
 
         let stored = passages.get(&id).cloned().ok_or(StoreError::NotFound(id))?;
         let passage = rehydrate(id, &stored)?;
         passage
-            .absorb(update)
+            .apply(update)
             .map_err(|_| StoreError::Unusable(id))?;
 
         passages.insert(id, passage.everything());

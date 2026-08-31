@@ -2860,6 +2860,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-eventpublishing"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "time",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
+]
+
+[[package]]
 name = "weaveling-eventsourcing"
 version = "0.1.0"
 dependencies = [
@@ -2996,6 +3010,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-pieces-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "time",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
+ "weaveling-pieces-contract",
+ "weaveling-pieces-core",
+]
+
+[[package]]
 name = "weaveling-pieces-rest"
 version = "0.1.0"
 dependencies = [
@@ -3013,13 +3043,16 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "axum-test",
+ "serde_json",
  "time",
  "tokio",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-messaging",
  "weaveling-pieces-catalog",
  "weaveling-pieces-contract",
  "weaveling-pieces-core",
+ "weaveling-pieces-messaging",
  "weaveling-pieces-rest",
 ]
 
@@ -3090,12 +3123,14 @@ dependencies = [
  "tracing-subscriber",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-messaging",
  "weaveling-passages-core",
  "weaveling-passages-rest",
  "weaveling-passages-store",
  "weaveling-passages-sync",
  "weaveling-pieces-catalog",
  "weaveling-pieces-core",
+ "weaveling-pieces-messaging",
  "weaveling-pieces-rest",
  "weaveling-projects-core",
  "weaveling-projects-rest",

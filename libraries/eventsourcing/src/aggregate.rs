@@ -20,7 +20,7 @@ pub trait Aggregate: Sized {
 
     fn begin(command: Self::Command, agent: &Agent) -> Result<Vec<Self::Event>, Self::Error>;
 
-    fn born(event: &Self::Event, metadata: &EventMetadata) -> Option<Self>;
+    fn from_first(event: &Self::Event, metadata: &EventMetadata) -> Option<Self>;
 
     fn decide(
         &self,
@@ -28,7 +28,7 @@ pub trait Aggregate: Sized {
         agent: &Agent,
     ) -> Result<Vec<Self::Event>, Self::Error>;
 
-    fn absorb(&mut self, event: &Self::Event, metadata: &EventMetadata);
+    fn apply(&mut self, event: &Self::Event, metadata: &EventMetadata);
 
     fn snapshot(&self) -> Self::Event;
 

@@ -190,7 +190,7 @@ The instinct is to build the structure first and attach prose later. Don't. Inte
 - `adapters/sync`: the y-protocols codec and room registry rewritten from `spikes/sync`, mounted at `/sync/{passage}`.
 - The client editor from `spikes/editor`, pointed at the real server through `y-websocket` instead of the hand-rolled relay. **The client must never compute a passage id** — it asks what to open and gets an opaque one back, which is what keeps the id scheme a server-side detail.
 
-**Decision made:** the port does **not** choose between snapshots and an update log. `absorb(id, update)` takes a delta, and a full snapshot is just a delta from nothing, so a backend can merge-on-write or append-and-compact without the port caring. The conformance suite tests semantics — what you absorbed, you can load — not storage shape. The real choice moves to M9, with the tiebreakers already gathered: the log is 11–13× the compacted form after 500 rewrites, but a snapshot backend needs row locking for concurrent `absorb` while an append-only one does not. See [Transactions and Atomicity](./ARCHITECTURE.md#transactions-and-atomicity).
+**Decision made:** the port does **not** choose between snapshots and an update log. `apply(id, update)` takes a delta, and a full snapshot is just a delta from nothing, so a backend can merge-on-write or append-and-compact without the port caring. The conformance suite tests semantics — what you applied, you can load — not storage shape. The real choice moves to M9, with the tiebreakers already gathered: the log is 11–13× the compacted form after 500 rewrites, but a snapshot backend needs row locking for concurrent `apply` while an append-only one does not. See [Transactions and Atomicity](./ARCHITECTURE.md#transactions-and-atomicity).
 
 **Rust you'll meet:** axum WebSocket handlers, `tokio` `broadcast`/`mpsc` and task lifetimes, `wasm-bindgen` ES-module imports, Trunk build hooks (and its watch-ignore trap).
 
@@ -230,13 +230,13 @@ The design is settled in [Pieces and views](./ARCHITECTURE.md#pieces-and-views--
 
 **Goal:** the seam features talk across, plus the first thing that genuinely needs it.
 
-**Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **the conversation and what caused it**, occurred-at) and an in-process dispatcher. A listener names itself and declares its `Delivery` — `Kept` or `Fleeting` — which are the two things [only a feature knows](./ARCHITECTURE.md#no-exchanges-but-a-named-listener) and the exact inputs a RabbitMQ adapter later needs. **Exchanges are deliberately not modelled.** Then the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+**Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **the conversation and what caused it**, occurred-at) and an in-process dispatcher. A listener names itself and declares its `Delivery` — `Kept` or `Fleeting` — which are the two things [only a feature knows](./ARCHITECTURE.md#no-exchanges-but-a-named-listener) and the exact inputs a RabbitMQ adapter later needs. **Exchanges are deliberately not modelled.** Then the **piece catalog as a projection** — the first real consumer, which retires the dual write — and the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
 
 **Why before the board:** the board needs a live channel pushing events to browsers, and that *is* event fan-out — a far better first consumer for the seam than the deletion saga, which stays theoretical while everything is in memory (orphans die at process restart, so a cascade cannot fail in a way anyone would notice — an excuse [M12](#milestone-12--local-mode) takes back, since there in-memory *is* the store). Built the other way round, the board would grow a bespoke fan-out that a later milestone has to reconcile. The honest caveat: `LivePassages` broadcasts CRDT frames while a board broadcasts events, so the two may share less than it first appears.
 
 **Done when:** deleting a project leaves nothing behind; a saga that fails midway is recoverable and observable; and every message in a run traces back to the request that caused it.
 
-**Explicitly not in M9:** a broker. Transport stays in-process — RabbitMQ is an adapter for when a second deployable exists. See [Messaging](./ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
+**Explicitly not in M8:** a broker. Transport stays in-process — RabbitMQ is an adapter for when a second deployable exists. See [Messaging](./ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
 
 ### Milestone 9 — The board
 
@@ -274,7 +274,7 @@ This is the privileged view: export needs a linear order, so the outline is what
 
 **Build:** a second backend for every port that has one — `ProjectStore`, `PassageStore`, the event store — as modules behind an optional cargo feature, not sibling crates. CI must run `--all-features` or none of it is type-checked.
 
-**This is where storage representation finally gets decided,** and where the transaction tests that in-memory cannot express have to be written: rollback, connection failure mapping to `StoreError::Backend`, and the concurrency guard `absorb` needs if `PassageStore` goes the snapshot route. The event store's `append` must be atomic across the version check, the append **and** the outbox insert — one transaction, invisible above the port.
+**This is where storage representation finally gets decided,** and where the transaction tests that in-memory cannot express have to be written: rollback, connection failure mapping to `StoreError::Backend`, and the concurrency guard `apply` needs if `PassageStore` goes the snapshot route. The event store's `append` must be atomic across the version check, the append **and** the outbox insert — one transaction, invisible above the port.
 
 **Done when:** the suites pass unchanged against the real store, and swapping backends is one line in one manifest.
 
@@ -284,7 +284,7 @@ This is the privileged view: export needs a linear order, so the outline is what
 
 Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two answers to the same question, and the ports mean neither has to win.
 
-**Build:** export a project — the projects rows, every aggregate's event stream with metadata, and each passage's CRDT state via `Passage::everything()` — and import it at startup. The **piece catalog is not exported**; import rebuilds it from the streams, which is how the mode proves the event log is really the source of truth. Plus a strict `InProcessDispatcher` that surfaces a refused message to the author instead of dead-lettering it for an ops team that does not exist.
+**Build:** export a project — the projects rows, every aggregate's event stream with metadata, and each passage's CRDT state via `Passage::everything()` — and import it at startup. The **piece catalog is not exported** — a deliberate choice, not a constraint — so import replays each stream in the file through the projector. That needs no new store capability: the enumeration is the file's contents. Plus a strict `InProcessDispatcher` that surfaces a refused message to the author instead of dead-lettering it for an ops team that does not exist.
 
 **Local is single-user by definition** — no accounts, no authors on other machines. Two tabs on the same computer still collaborate, because the sync socket is local and knows nothing about deployment.
 

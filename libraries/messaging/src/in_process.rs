@@ -50,7 +50,7 @@ impl InProcessDispatcher {
 impl Publisher for InProcessDispatcher {
     async fn publish(&self, message: Message) -> Result<(), Undelivered> {
         for listener in self.interested_in(&message) {
-            if let Err(refused) = listener.hear(&message).await {
+            if let Err(refused) = listener.handle(&message).await {
                 match listener.delivery() {
                     // TODO local mode must not dead letter a Kept refusal either:
                     // there is nobody to retry it, so it has to reach the author
@@ -78,7 +78,7 @@ mod tests {
     use time::{Duration, OffsetDateTime};
 
     use super::*;
-    use crate::listening::{ListenerName, Unheard};
+    use crate::listening::{ListenerName, NotHandled};
     use crate::routing::{RoutingKey, Subscription};
 
     #[derive(Debug, Error)]
@@ -107,14 +107,14 @@ mod tests {
             self.delivery
         }
 
-        async fn hear(&self, message: &Message) -> Result<(), Unheard> {
+        async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
             self.heard
                 .lock()
                 .expect("heard lock poisoned")
                 .push(message.routing.clone());
 
             if self.refuses {
-                return Err(Unheard::because(
+                return Err(NotHandled::because(
                     self.named(),
                     message.routing.clone(),
                     Refused,
@@ -235,7 +235,7 @@ mod tests {
 
     #[async_trait]
     impl DeadLetters for Kept {
-        async fn refused(&self, message: &Message, why: Unheard) {
+        async fn refused(&self, message: &Message, why: NotHandled) {
             self.refused
                 .lock()
                 .expect("dead letters lock poisoned")
@@ -274,7 +274,7 @@ mod tests {
         assert_eq!(
             dead_letters.what_it_kept(),
             [("refusing".to_owned(), "piece.captured".to_owned())],
-            "the refusal is not lost, it is set aside for whoever retries later"
+            "the refusal is not lost, it is set aside for nobody_yet retries later"
         );
     }
 
@@ -344,7 +344,7 @@ mod tests {
                 Subscription::parse("#").expect("a plain pattern is fine")
             }
 
-            async fn hear(&self, _message: &Message) -> Result<(), Unheard> {
+            async fn handle(&self, _message: &Message) -> Result<(), NotHandled> {
                 Ok(())
             }
         }
@@ -386,7 +386,7 @@ mod tests {
                 Subscription::parse("piece.captured").expect("a plain pattern is fine")
             }
 
-            async fn hear(&self, message: &Message) -> Result<(), Unheard> {
+            async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
                 let answer = message.answering(
                     RoutingKey::parse("board.pinned").expect("a plain key is fine"),
                     json!({}),
@@ -429,7 +429,7 @@ mod tests {
                 Subscription::parse("#").expect("a plain pattern is fine")
             }
 
-            async fn hear(&self, message: &Message) -> Result<(), Unheard> {
+            async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
                 self.seen
                     .lock()
                     .expect("seen lock poisoned")

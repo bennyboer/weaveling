@@ -38,10 +38,10 @@ fn a_captured_piece() -> Piece {
 
 fn grown(events: &[PieceEvent]) -> Piece {
     let (first, rest) = events.split_first().expect("at least one event");
-    let mut piece = Piece::born(first, &stamped(1)).expect("the first event gives birth");
+    let mut piece = Piece::from_first(first, &stamped(1)).expect("the first event gives birth");
 
     for (counted, event) in rest.iter().enumerate() {
-        piece.absorb(event, &stamped(counted as u64 + 2));
+        piece.apply(event, &stamped(counted as u64 + 2));
     }
 
     piece
@@ -134,7 +134,7 @@ fn a_piece_can_be_given_a_title_it_never_had() {
         .expect("clearing a title is a legal change");
 
     for event in &decided {
-        piece.absorb(event, &stamped(2));
+        piece.apply(event, &stamped(2));
     }
 
     assert!(piece.title().is_untitled());
@@ -151,7 +151,7 @@ fn a_piece_remembers_the_passage_attached_to_it() {
         .expect("attaching should succeed");
 
     for event in &decided {
-        piece.absorb(event, &stamped(2));
+        piece.apply(event, &stamped(2));
     }
 
     assert_eq!(piece.passage(), Some(&PassageLink::from("passage_9")));
@@ -160,7 +160,7 @@ fn a_piece_remembers_the_passage_attached_to_it() {
 #[test]
 fn a_piece_will_not_take_a_second_passage() {
     let mut piece = a_captured_piece();
-    piece.absorb(
+    piece.apply(
         &PieceEvent::PassageAttached {
             passage: PassageLink::from("passage_9"),
         },
@@ -188,7 +188,7 @@ fn what_exists_cannot_be_captured_again() {
 #[test]
 fn a_discarded_piece_accepts_nothing_further() {
     let mut piece = a_captured_piece();
-    piece.absorb(&PieceEvent::Discarded, &stamped(2));
+    piece.apply(&PieceEvent::Discarded, &stamped(2));
 
     assert_eq!(
         piece.decide(PieceCommand::Retitle(a_title("Too late")), &an_author()),
@@ -210,20 +210,20 @@ fn a_discarded_piece_accepts_nothing_further() {
 #[test]
 fn a_snapshot_replays_into_exactly_the_piece_it_came_from() {
     let mut piece = a_captured_piece();
-    piece.absorb(
+    piece.apply(
         &PieceEvent::Retitled(a_title("The Silent Loom")),
         &stamped(2),
     );
-    piece.absorb(
+    piece.apply(
         &PieceEvent::PassageAttached {
             passage: PassageLink::from("passage_9"),
         },
         &stamped(3),
     );
-    piece.absorb(&PieceEvent::Discarded, &stamped(4));
+    piece.apply(&PieceEvent::Discarded, &stamped(4));
 
     let snapshot = piece.snapshot();
-    let restored = Piece::born(&snapshot, &stamped(5)).expect("a snapshot gives birth");
+    let restored = Piece::from_first(&snapshot, &stamped(5)).expect("a snapshot gives birth");
 
     assert_eq!(restored, piece);
 }
@@ -236,9 +236,9 @@ fn a_snapshot_declares_itself_a_snapshot() {
 
 #[test]
 fn a_stream_that_does_not_start_with_a_capture_gives_birth_to_nothing() {
-    assert!(Piece::born(&PieceEvent::Discarded, &stamped(1)).is_none());
+    assert!(Piece::from_first(&PieceEvent::Discarded, &stamped(1)).is_none());
     assert!(
-        Piece::born(
+        Piece::from_first(
             &PieceEvent::PassageAttached {
                 passage: PassageLink::from("passage_9")
             },

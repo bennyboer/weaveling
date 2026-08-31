@@ -86,7 +86,7 @@ impl LivePassage {
                 ..Reaction::default()
             }),
             Message::HereIsWhatYouMissed(update) | Message::JustHappened(update) => {
-                self.passage.absorb(&update)?;
+                self.passage.apply(&update)?;
 
                 Ok(Reaction {
                     to_others: Some(Message::JustHappened(update.clone())),
@@ -133,7 +133,7 @@ impl LivePassages {
     }
 
     pub async fn persist(&self, id: PassageId, update: &[u8]) -> Result<(), PassageServiceError> {
-        self.service.absorb(&id.to_string(), update).await
+        self.service.apply(&id.to_string(), update).await
     }
 
     pub fn next_peer(&self) -> PeerId {
@@ -238,7 +238,7 @@ mod tests {
         let Some(Message::HereIsWhatYouMissed(catch_up)) = reaction.to_sender else {
             panic!("expected a catch-up update, got {:?}", reaction.to_sender);
         };
-        newcomer.absorb(&catch_up).expect("catch-up should apply");
+        newcomer.apply(&catch_up).expect("catch-up should apply");
         assert_eq!(newcomer.text(), "The loom stood silent.");
     }
 
