@@ -426,6 +426,24 @@ In served mode a refused message goes to [dead letters](#messaging--the-seam-now
 
 That is a **deployment policy, never something a feature reads**. `Publisher` keeps the one error a broker can honestly report, because a feature must behave identically in both modes: publisher confirms say only that the *broker* accepted a message, and consumer acks go to the broker rather than back. Anything richer would be an in-process-only guarantee, and the mode existing makes that stricter rather than looser — code has to survive both.
 
+## Wiring — each feature assembles itself
+
+`app()` used to build every service by hand: which ports each takes, which listener to register, which routers to merge. Three features made it thirty-five lines and it named `ProjectService`, `PassageService`, `LivePassages`, `PieceService`, `Publishing` and the catalog projector — so adding a feature meant editing the composition root and knowing the feature's insides.
+
+Every feature now has a **`wiring` crate**, a sibling of `contract`, `core`, `adapters` and `tests`. It takes the feature's ports and returns what the feature contributes to the application. `app()` names no service and no adapter.
+
+**Not a `Feature` trait, and not yet.** A trait returning routes plus listeners only pays off when something iterates over features *generically*, and nothing does — the root calls each by name either way. It would also drag `axum` into a shared library, where today only `rest` adapters, `wiring` crates and `services/api` see it. The reference implementation lands in the same place: per-feature `*-starter` modules, assembled by the application.
+
+**Every wiring returns a `Wired`, holding exactly what that feature contributes.** `projects` and `passages` carry only `routes`; `pieces` carries `routes`, its `listeners`, and its service. A struct beats a bare `Router` because the call site reads the same for every feature and a feature that later grows listeners adds a field rather than changing its signature. What is deliberately *not* uniform is the field set: giving `projects` and `passages` an empty `listeners` would pull `libraries/messaging` into two features that publish nothing, to say nothing.
+
+**Listeners are returned, not registered.** A feature could take the dispatcher and call `listen` itself, but that would tie the feature crate to `InProcessDispatcher`, a concrete type it has no business knowing. Handing the listeners back leaves the root to decide what they are attached to, which is the same reason `Publisher` arrives as a port rather than a dispatcher.
+
+**The composition root keeps the joins.** Cross-feature work — the deletion saga, and eventually the board reading the pool — cannot come out of a list of independent modules. Wiring covers the routine assembly; anything spanning features stays in `app()` on purpose.
+
+**What this did not fix:** the *signature*. Every port still arrives as an argument, so `app()`'s parameter list grows with each feature even though its body does not. That wants a registry or a config type, and neither earns its place yet.
+
+The [pieces test harness](../features/pieces/tests/src/wiring.rs) calls the real `pieces_wiring::wire`, so the API tests exercise production wiring instead of a parallel copy that could drift from it.
+
 ## Transactions and Atomicity
 
 > **Atomicity is a property of a single port method.** If two things must happen atomically, make them **one method** — never introduce a transaction object into a port.

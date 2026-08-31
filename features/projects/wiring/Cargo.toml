@@ -1,0 +1,12 @@
+[package]
+name = "weaveling-projects-wiring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+
+projects-core = { version = "0.1.0", path = "../core", package = "weaveling-projects-core" }
+projects-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-projects-rest" }

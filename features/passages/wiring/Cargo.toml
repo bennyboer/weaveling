@@ -1,0 +1,13 @@
+[package]
+name = "weaveling-passages-wiring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+
+passages-core = { version = "0.1.0", path = "../core", package = "weaveling-passages-core" }
+passages-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-passages-rest" }
+passages-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveling-passages-sync" }

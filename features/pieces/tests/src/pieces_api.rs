@@ -18,7 +18,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 fn a_server() -> TestServer {
     let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
 
-    TestServer::new(pieces_rest::router(wired.pieces))
+    TestServer::new(wired.routes)
 }
 
 fn a_capture(title: &str) -> CapturePieceRequest {

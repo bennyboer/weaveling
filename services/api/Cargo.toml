@@ -23,18 +23,16 @@ messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "
 ################
 
 passages-core = { version = "0.1.0", path = "../../features/passages/core", package = "weaveling-passages-core" }
-passages-rest = { version = "0.1.0", path = "../../features/passages/adapters/rest", package = "weaveling-passages-rest" }
 passages-store = { version = "0.1.0", path = "../../features/passages/adapters/store", package = "weaveling-passages-store" }
-passages-sync = { version = "0.1.0", path = "../../features/passages/adapters/sync", package = "weaveling-passages-sync" }
+passages-wiring = { version = "0.1.0", path = "../../features/passages/wiring", package = "weaveling-passages-wiring" }
 
 pieces-catalog = { version = "0.1.0", path = "../../features/pieces/adapters/catalog", package = "weaveling-pieces-catalog" }
 pieces-core = { version = "0.1.0", path = "../../features/pieces/core", package = "weaveling-pieces-core" }
-pieces-messaging = { version = "0.1.0", path = "../../features/pieces/adapters/messaging", package = "weaveling-pieces-messaging" }
-pieces-rest = { version = "0.1.0", path = "../../features/pieces/adapters/rest", package = "weaveling-pieces-rest" }
+pieces-wiring = { version = "0.1.0", path = "../../features/pieces/wiring", package = "weaveling-pieces-wiring" }
 
 projects-core = { version = "0.1.0", path = "../../features/projects/core", package = "weaveling-projects-core" }
-projects-rest = { version = "0.1.0", path = "../../features/projects/adapters/rest", package = "weaveling-projects-rest" }
 projects-store = { version = "0.1.0", path = "../../features/projects/adapters/store", package = "weaveling-projects-store" }
+projects-wiring = { version = "0.1.0", path = "../../features/projects/wiring", package = "weaveling-projects-wiring" }
 
 [dev-dependencies]
 tower = { workspace = true }

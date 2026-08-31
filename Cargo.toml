@@ -9,6 +9,7 @@ members = [
     "features/*/core",
     "features/*/adapters/*",
     "features/*/tests",
+    "features/*/wiring",
 ]
 default-members = [
     "libraries/*",
@@ -19,6 +20,7 @@ default-members = [
     "features/*/core",
     "features/*/adapters/*",
     "features/*/tests",
+    "features/*/wiring",
 ]
 
 [workspace.package]

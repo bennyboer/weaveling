@@ -5,10 +5,9 @@ use axum::routing::get;
 use clock::Clock;
 use eventsourcing::EventStore;
 use messaging::InProcessDispatcher;
-use passages_core::{PassageService, PassageStore};
-use passages_sync::LivePassages;
-use pieces_core::{PieceCatalog, PieceEvent, PieceService};
-use projects_core::{ProjectService, ProjectStore};
+use passages_core::PassageStore;
+use pieces_core::{PieceCatalog, PieceEvent};
+use projects_core::ProjectStore;
 use tower_http::trace::TraceLayer;
 
 pub fn app(
@@ -18,29 +17,28 @@ pub fn app(
     pieces_catalog: Arc<dyn PieceCatalog>,
     clock: Arc<dyn Clock>,
 ) -> Router {
-    let passages = PassageService::new(passages, clock.clone());
     let dispatcher = Arc::new(InProcessDispatcher::new());
 
-    dispatcher.listen(Arc::new(pieces_messaging::PieceCatalogProjector::new(
-        pieces_events.clone(),
-        pieces_catalog.clone(),
+    let projects = projects_wiring::wire(projects, clock.clone());
+    let pieces = pieces_wiring::wire(
+        pieces_events,
+        pieces_catalog,
+        dispatcher.clone(),
         clock.clone(),
-    )));
+    );
+    let passages = passages_wiring::wire(passages, clock);
 
+    // Register msg listeners
+    for listener in pieces.listeners {
+        dispatcher.listen(listener);
+    }
+
+    // Register HTTP routing
     let api = Router::new()
         .route("/health", get(health))
-        .merge(projects_rest::router(ProjectService::new(
-            projects,
-            clock.clone(),
-        )))
-        .merge(passages_rest::router(passages.clone()))
-        .merge(passages_sync::router(LivePassages::new(passages)))
-        .merge(pieces_rest::router(PieceService::new(
-            pieces_events,
-            pieces_catalog,
-            Arc::new(pieces_messaging::Publishing::new(dispatcher)),
-            clock,
-        )));
+        .merge(projects.routes)
+        .merge(passages.routes)
+        .merge(pieces.routes);
 
     Router::new()
         .nest("/api", api)

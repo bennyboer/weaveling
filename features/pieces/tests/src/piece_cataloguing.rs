@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clock::FixedClock;
 use eventsourcing::{Agent, AggregateId, EventMetadata, Recorded, Version};
-use messaging::{Listener, Message, RoutingKey};
+use messaging::{Message, RoutingKey};
 use pieces_core::{KIND, PieceCatalog, PieceEvent, PieceId, PieceTitle, ProjectLink};
 use pieces_messaging::message_for;
 use serde_json::json;
@@ -86,7 +86,7 @@ async fn hearing_the_same_message_twice_leaves_one_piece() {
     let id = a_captured_piece(&wired).await;
 
     wired
-        .cataloguing
+        .projector
         .handle(&a_captured_piece_told_of(&id))
         .await
         .expect("a redelivery is not a failure");
@@ -110,7 +110,7 @@ async fn a_stale_message_cannot_resurrect_a_discarded_piece() {
     assert!(listed(&wired).await.is_empty(), "the discard was projected");
 
     wired
-        .cataloguing
+        .projector
         .handle(&a_captured_piece_told_of(&id))
         .await
         .expect("hearing a stale message is not a failure");
@@ -132,7 +132,7 @@ async fn the_listing_follows_the_latest_title_however_messages_arrive() {
         .expect("retitling should succeed");
 
     wired
-        .cataloguing
+        .projector
         .handle(&a_captured_piece_told_of(&id))
         .await
         .expect("hearing a stale message is not a failure");
@@ -153,7 +153,7 @@ async fn a_message_about_no_piece_at_all_is_refused() {
         at(1_000),
     );
 
-    let refused = wired.cataloguing.handle(&nonsense).await;
+    let refused = wired.projector.handle(&nonsense).await;
 
     assert!(
         refused.is_err(),
@@ -167,7 +167,7 @@ async fn a_message_about_a_piece_that_was_never_stored_is_refused() {
     let never_stored = PieceId::generate(at(1_000));
 
     let refused = wired
-        .cataloguing
+        .projector
         .handle(&a_captured_piece_told_of(&never_stored))
         .await;
 

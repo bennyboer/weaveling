@@ -2978,6 +2978,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-passages-wiring"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "weaveling-clock",
+ "weaveling-passages-core",
+ "weaveling-passages-rest",
+ "weaveling-passages-sync",
+]
+
+[[package]]
 name = "weaveling-pieces-catalog"
 version = "0.1.0"
 dependencies = [
@@ -3053,6 +3064,19 @@ dependencies = [
  "weaveling-pieces-contract",
  "weaveling-pieces-core",
  "weaveling-pieces-messaging",
+ "weaveling-pieces-wiring",
+]
+
+[[package]]
+name = "weaveling-pieces-wiring"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
+ "weaveling-pieces-core",
+ "weaveling-pieces-messaging",
  "weaveling-pieces-rest",
 ]
 
@@ -3112,6 +3136,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-projects-wiring"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "weaveling-clock",
+ "weaveling-projects-core",
+ "weaveling-projects-rest",
+]
+
+[[package]]
 name = "weaveling-service-api"
 version = "0.1.0"
 dependencies = [
@@ -3125,16 +3159,14 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-messaging",
  "weaveling-passages-core",
- "weaveling-passages-rest",
  "weaveling-passages-store",
- "weaveling-passages-sync",
+ "weaveling-passages-wiring",
  "weaveling-pieces-catalog",
  "weaveling-pieces-core",
- "weaveling-pieces-messaging",
- "weaveling-pieces-rest",
+ "weaveling-pieces-wiring",
  "weaveling-projects-core",
- "weaveling-projects-rest",
  "weaveling-projects-store",
+ "weaveling-projects-wiring",
 ]
 
 [[package]]
