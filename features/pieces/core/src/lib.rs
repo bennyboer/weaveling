@@ -9,7 +9,7 @@ mod title;
 mod piece_tests;
 
 pub use catalog::{CatalogError, PieceCatalog, PieceSummary};
-pub use id::{InvalidPieceId, PieceId};
+pub use id::PieceId;
 pub use piece::{KIND, PassageLink, Piece, PieceCommand, PieceError, PieceEvent, ProjectLink};
 pub use publishing::{PieceEventPublisher, PublishError};
 pub use service::{PieceService, PieceServiceError};

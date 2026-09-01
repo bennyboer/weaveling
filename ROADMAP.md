@@ -226,17 +226,23 @@ The design is settled in [Pieces and views](./ARCHITECTURE.md#pieces-and-views--
 
 **Explicitly not in M7:** the board, placement, messaging, the outline, any durable store.
 
-### Milestone 8 — Messaging and the cascade
+### Milestone 8 — Messaging ✅
 
 **Goal:** the seam features talk across, plus the first thing that genuinely needs it.
 
-**Build:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **the conversation and what caused it**, occurred-at) and an in-process dispatcher. A listener names itself and declares its `Delivery` — `Kept` or `Fleeting` — which are the two things [only a feature knows](./ARCHITECTURE.md#no-exchanges-but-a-named-listener) and the exact inputs a RabbitMQ adapter later needs. **Exchanges are deliberately not modelled.** Then the **piece catalog as a projection** — the first real consumer, which retires the dual write — and the **project-deletion saga**: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+**Built:** `libraries/messaging` — the publish/subscribe port, the envelope (message id, **the conversation and what caused it**, occurred-at) and an in-process dispatcher. A listener names itself and declares its `Delivery` — `Kept` or `Fleeting` — which are the two things [only a feature knows](./ARCHITECTURE.md#no-exchanges-but-a-named-listener) and the exact inputs a RabbitMQ adapter later needs. **Exchanges are deliberately not modelled.** Then `libraries/eventpublishing`, which turns an aggregate's events into messages so a feature supplies only the body; and the **piece catalog as a projection**, the first real consumer, retiring the dual write.
 
-**Why before the board:** the board needs a live channel pushing events to browsers, and that *is* event fan-out — a far better first consumer for the seam than the deletion saga, which stays theoretical while everything is in memory (orphans die at process restart, so a cascade cannot fail in a way anyone would notice — an excuse [M12](#milestone-12--local-mode) takes back, since there in-memory *is* the store). Built the other way round, the board would grow a bespoke fan-out that a later milestone has to reconcile. The honest caveat: `LivePassages` broadcasts CRDT frames while a board broadcasts events, so the two may share less than it first appears.
+Two things arrived that were not planned: every feature grew a [`wiring` crate](./ARCHITECTURE.md#wiring--each-feature-assembles-itself) so the composition root stopped knowing feature internals, and a [naming sweep](./ARCHITECTURE.md#client-conventions) replaced invented words with the terms the field already has.
 
-**Done when:** deleting a project leaves nothing behind; a saga that fails midway is recoverable and observable; and every message in a run traces back to the request that caused it.
+**Done:** the catalog is fed by a listener, the listing survives redelivery and out-of-order messages, and every message traces back to the request that caused it.
 
 **Explicitly not in M8:** a broker. Transport stays in-process — RabbitMQ is an adapter for when a second deployable exists. See [Messaging](./ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
+
+**Deferred out of M8: the project-deletion saga.** It was scoped here and pulled, for two reasons found while building.
+
+**It is blocked on a decision, not on effort.** `projects` is the last feature that is not event-sourced — it is Phase 1 CRUD over a `ProjectStore` — so there is no `project.deleted` on the wire to listen to. Getting one means either event-sourcing `projects` properly (aggregate, catalog, projector, `If-Match` — the whole M7 treatment) or hand-rolling a publish inside `ProjectService::delete`, which would be a second publishing path bypassing `eventpublishing` that we would delete again later.
+
+**And its payoff is still theoretical.** An orphaned piece from a deleted project is unreachable — you cannot navigate to a project that no longer exists — and dies at process restart. It becomes real at [M12](#milestone-12--local-mode), where in-memory *is* the store, which is also about when event-sourcing `projects` starts paying for itself: **deletion is exactly where an author wants an audit log.** The two belong together, so they now live together in [M11a](#milestone-11a--projects-event-sourced-and-the-deletion-cascade).
 
 ### Milestone 9 — The board
 
@@ -277,6 +283,20 @@ This is the privileged view: export needs a linear order, so the outline is what
 **This is where storage representation finally gets decided,** and where the transaction tests that in-memory cannot express have to be written: rollback, connection failure mapping to `StoreError::Backend`, and the concurrency guard `apply` needs if `PassageStore` goes the snapshot route. The event store's `append` must be atomic across the version check, the append **and** the outbox insert — one transaction, invisible above the port.
 
 **Done when:** the suites pass unchanged against the real store, and swapping backends is one line in one manifest.
+
+### Milestone 11a — Projects event-sourced, and the deletion cascade
+
+**Goal:** the last CRUD feature joins the rest, and deleting a project actually leaves nothing behind.
+
+Deferred out of [M8](#milestone-8--messaging-), where the cascade was originally scoped. Sits here because both halves start paying at the same moment: with a durable store — and certainly in [local mode](#milestone-12--local-mode) — an orphan outlives the session, and **deletion is exactly where an author wants an audit log**.
+
+**Build:** `Project` as an aggregate — `Started`, `Renamed`, `Deleted` — with the catalog, projector and `If-Match` handling that `pieces` already has, so the codebase stops carrying two shapes of feature. Then the cascade itself: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+
+**The open question is choreography or orchestration.** Each feature listening for `project.deleted` and disposing its own is far simpler and is the right default; a saga with its own state earns its place only if the cascade needs ordering, compensation, or a completion signal an author can see. Decide it against the real requirement rather than in advance — but note that "recoverable and observable when it fails midway" leans toward orchestration, and that a saga that entails another (a `BoardDeletion` inside a `ProjectDeletion`) is a question the `Conversation` id was designed to answer.
+
+**Done when:** deleting a project leaves nothing behind; a cascade that fails midway is recoverable and observable; the project's own history says who deleted it and when; and `projects` looks like every other feature.
+
+---
 
 ### Milestone 12 — Local mode
 

@@ -4,10 +4,11 @@ use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
+use ids::InvalidId;
 use thiserror::Error;
 
 use crate::catalog::{CatalogError, PieceCatalog, PieceSummary};
-use crate::id::{InvalidPieceId, PieceId};
+use crate::id::PieceId;
 use crate::piece::{PassageLink, Piece, PieceCommand, PieceError, PieceEvent, ProjectLink};
 use crate::publishing::{PieceEventPublisher, PublishError};
 use crate::title::{InvalidPieceTitle, PieceTitle};
@@ -15,7 +16,7 @@ use crate::title::{InvalidPieceTitle, PieceTitle};
 #[derive(Debug, Error)]
 pub enum PieceServiceError {
     #[error(transparent)]
-    InvalidId(#[from] InvalidPieceId),
+    InvalidId(#[from] InvalidId),
     #[error(transparent)]
     InvalidTitle(#[from] InvalidPieceTitle),
     #[error(transparent)]

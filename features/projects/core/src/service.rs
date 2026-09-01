@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
 use clock::Clock;
+use ids::InvalidId;
 use thiserror::Error;
 
-use crate::{
-    InvalidProjectId, InvalidProjectName, Project, ProjectId, ProjectName, ProjectStore, StoreError,
-};
+use crate::{InvalidProjectName, Project, ProjectId, ProjectName, ProjectStore, StoreError};
 
 #[derive(Debug, Error)]
 pub enum ProjectError {
     #[error(transparent)]
-    InvalidId(#[from] InvalidProjectId),
+    InvalidId(#[from] InvalidId),
     #[error(transparent)]
     InvalidName(#[from] InvalidProjectName),
     #[error(transparent)]

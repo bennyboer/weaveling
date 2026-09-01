@@ -4,7 +4,7 @@ mod projection;
 mod service;
 mod store;
 
-pub use id::{InvalidPassageId, PassageId};
+pub use id::PassageId;
 pub use passage::{Passage, PassageError};
 pub use projection::FRAGMENT;
 pub use service::{PassageService, PassageServiceError};

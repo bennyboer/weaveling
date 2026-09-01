@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
 use clock::Clock;
+use ids::InvalidId;
 use thiserror::Error;
 
-use crate::{InvalidPassageId, Passage, PassageId, PassageStore, StoreError};
+use crate::{Passage, PassageId, PassageStore, StoreError};
 
 #[derive(Debug, Error)]
 pub enum PassageServiceError {
     #[error(transparent)]
-    InvalidId(#[from] InvalidPassageId),
+    InvalidId(#[from] InvalidId),
     #[error(transparent)]
     Store(#[from] StoreError),
 }

@@ -4,7 +4,7 @@ mod project;
 mod service;
 mod store;
 
-pub use id::{InvalidProjectId, ProjectId};
+pub use id::ProjectId;
 pub use name::{InvalidProjectName, ProjectName};
 pub use project::Project;
 pub use service::{ProjectError, ProjectService};

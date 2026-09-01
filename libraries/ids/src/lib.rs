@@ -1,4 +1,16 @@
-use uuid::Uuid;
+mod prefixed;
+
+pub use prefixed::InvalidId;
+pub use time::{Duration, OffsetDateTime};
+pub use uuid::Uuid;
+
+use uuid::{NoContext, Timestamp};
+
+pub fn sortable(now: OffsetDateTime) -> Uuid {
+    let seconds = u64::try_from(now.unix_timestamp()).unwrap_or(0);
+
+    Uuid::new_v7(Timestamp::from_unix(NoContext, seconds, now.nanosecond()))
+}
 
 const ALPHABET: &[u8; 62] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const WIDTH: usize = 22;

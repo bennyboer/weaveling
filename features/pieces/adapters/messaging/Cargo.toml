@@ -10,6 +10,7 @@ thiserror = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
 
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+ids = { version = "0.1.0", path = "../../../../libraries/ids", package = "weaveling-ids" }
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }

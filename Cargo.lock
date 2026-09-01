@@ -2835,6 +2835,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-boards-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "indexmap",
+ "thiserror",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+]
+
+[[package]]
 name = "weaveling-client-web"
 version = "0.1.0"
 dependencies = [
@@ -2888,6 +2902,8 @@ dependencies = [
 name = "weaveling-ids"
 version = "0.1.0"
 dependencies = [
+ "thiserror",
+ "time",
  "uuid",
 ]
 
@@ -2919,7 +2935,6 @@ dependencies = [
  "async-trait",
  "thiserror",
  "time",
- "uuid",
  "weaveling-clock",
  "weaveling-ids",
  "yrs",
@@ -3014,7 +3029,6 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
- "uuid",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
@@ -3031,6 +3045,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-ids",
  "weaveling-messaging",
  "weaveling-pieces-contract",
  "weaveling-pieces-core",

@@ -6,9 +6,10 @@ use eventpublishing::{
     published_in,
 };
 use eventsourcing::Recorded;
+use ids::InvalidId;
 use messaging::{Message, Publisher, Subscription};
 use pieces_contract::{EVERY_PIECE, PieceEventDTO};
-use pieces_core::{InvalidPieceId, PieceEvent, PieceEventPublisher, PieceId, PublishError};
+use pieces_core::{PieceEvent, PieceEventPublisher, PieceId, PublishError};
 use thiserror::Error;
 
 pub struct Publishing {
@@ -20,7 +21,7 @@ pub enum UnreadablePieceEvent {
     #[error(transparent)]
     NotAPieceEvent(#[from] UnreadableMessage),
     #[error("this message names something that is not a piece")]
-    NotAPieceId(#[source] InvalidPieceId),
+    NotAPieceId(#[source] InvalidId),
 }
 
 pub fn every_piece() -> Subscription {

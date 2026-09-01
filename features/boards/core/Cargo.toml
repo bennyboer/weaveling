@@ -1,13 +1,17 @@
 [package]
-name = "weaveling-passages-core"
+name = "weaveling-boards-core"
 version.workspace = true
 edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+indexmap = { workspace = true }
 thiserror = { workspace = true }
-time = { workspace = true }
-yrs = { workspace = true }
 
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+[dev-dependencies]
+time = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
