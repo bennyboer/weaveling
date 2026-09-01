@@ -1,4 +1,5 @@
 mod board;
+mod catalog;
 mod id;
 mod spot;
 
@@ -8,5 +9,6 @@ mod board_tests;
 pub use board::{
     Board, BoardCommand, BoardError, BoardEvent, KIND, PieceLink, PositionedPiece, ProjectLink,
 };
+pub use catalog::{BoardCatalog, BoardSummary, CatalogError};
 pub use id::BoardId;
 pub use spot::Spot;

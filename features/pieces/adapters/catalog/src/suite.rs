@@ -120,13 +120,13 @@ pub async fn forgetting_something_never_remembered_is_harmless(catalog: &impl Pi
 }
 
 pub async fn the_newest_piece_is_listed_first(catalog: &impl PieceCatalog) {
-    let earliest = PieceId::generate(at(1_000));
-    let middle = PieceId::generate(at(2_000));
-    let latest = PieceId::generate(at(3_000));
+    let captured: Vec<PieceId> = (1..=6)
+        .map(|nth| PieceId::generate(at(nth * 1_000)))
+        .collect();
 
-    for id in [middle, latest, earliest] {
+    for id in &captured {
         catalog
-            .remember(&a_summary(id, "project_1", "A piece"))
+            .remember(&a_summary(*id, "project_1", "A piece"))
             .await
             .expect("remembering should succeed");
     }
@@ -138,7 +138,7 @@ pub async fn the_newest_piece_is_listed_first(catalog: &impl PieceCatalog) {
 
     assert_eq!(
         found.iter().map(|summary| summary.id).collect::<Vec<_>>(),
-        vec![latest, middle, earliest],
+        captured.into_iter().rev().collect::<Vec<_>>(),
         "the idea an author had most recently should be the first they see"
     );
 }

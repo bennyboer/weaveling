@@ -1,0 +1,15 @@
+[package]
+name = "weaveling-boards-catalog"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+time = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+boards-core = { version = "0.1.0", path = "../../core", package = "weaveling-boards-core" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
