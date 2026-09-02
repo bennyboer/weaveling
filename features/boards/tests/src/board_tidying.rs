@@ -182,32 +182,40 @@ async fn a_discard_that_is_not_a_published_event_is_refused() {
 }
 
 #[tokio::test]
-async fn the_index_hears_every_pinning_and_nothing_else() {
+async fn the_index_hears_pinning_and_unpinning_and_nothing_else() {
     let wired = a_workbench();
 
-    let listening = wired.indexer.listens_to();
-
-    for pinning in [PIECE_PINNED, PIECE_MOVED, PIECE_UNPINNED] {
+    for pinning in [PIECE_PINNED, PIECE_UNPINNED] {
         assert!(
-            listening.covers(&RoutingKey::parse(pinning).expect("a declared key is fine")),
+            wired
+                .indexer
+                .hears(&RoutingKey::parse(pinning).expect("a declared key is fine")),
             "{pinning} changes what a board holds, so the index must hear it"
         );
     }
-    assert!(
-        !listening.covers(&RoutingKey::parse(STARTED).expect("a declared key is fine")),
-        "a board with nothing on it puts nothing in the index"
-    );
+    for quiet in [STARTED, PIECE_MOVED] {
+        assert!(
+            !wired
+                .indexer
+                .hears(&RoutingKey::parse(quiet).expect("a declared key is fine")),
+            "{quiet} leaves the set of pieces alone, so it must not cost a projection write"
+        );
+    }
 }
 
 #[tokio::test]
 async fn the_discard_listener_hears_only_discards() {
     let wired = a_workbench();
 
-    let listening = wired.tidier.listens_to();
-
-    assert!(listening.covers(&RoutingKey::parse(DISCARDED).expect("a plain key is fine")));
     assert!(
-        !listening.covers(&RoutingKey::parse("piece.retitled").expect("a plain key is fine")),
+        wired
+            .tidier
+            .hears(&RoutingKey::parse(DISCARDED).expect("a plain key is fine"))
+    );
+    assert!(
+        !wired
+            .tidier
+            .hears(&RoutingKey::parse("piece.retitled").expect("a plain key is fine")),
         "nothing else a piece does should move it off a board"
     );
 }

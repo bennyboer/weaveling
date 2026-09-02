@@ -317,12 +317,13 @@ async fn a_move_against_a_stale_version_is_refused() {
 async fn the_catalog_projector_is_woken_only_by_a_board_being_started() {
     let (wired, _) = a_workbench();
 
-    let listening = wired.projector.listens_to();
-
-    assert!(listening.covers(&a_key(STARTED)), "it has to hear a start");
+    assert!(
+        wired.projector.hears(&a_key(STARTED)),
+        "it has to hear a start"
+    );
     for quiet in [PIECE_PINNED, PIECE_MOVED, PIECE_UNPINNED] {
         assert!(
-            !listening.covers(&a_key(quiet)),
+            !wired.projector.hears(&a_key(quiet)),
             "which board a project has cannot change on a drop, so {quiet} must not cost a projection write"
         );
     }

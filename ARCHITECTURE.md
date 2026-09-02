@@ -563,6 +563,8 @@ RabbitMQ's routing has four moving parts — exchange, routing key, binding, que
 
 **The queue is what we were missing**, and its identity there is `{exchange}-{routingKey}-{listenerName}`. We have every part but the last, which is why `Listener` now names itself. That name is not decoration: the inbox that makes redelivery safe is keyed by `listenerName + messageId`, so **idempotency is per listener**. Only the feature knows the right value, and once a broker exists the name is durable deployment state — renaming a queue either strands what it held or reprocesses it. `ListenerName` therefore refuses anything that would not survive as a queue name: lowercase, digits and hyphens.
 
+**A listener binds as many routing keys as it needs.** `listens_to` returns a `Vec<Subscription>`, because a RabbitMQ queue carries several bindings and one pattern is often the wrong shape: the pin index wants `board.piece.pinned` and `board.piece.unpinned` but *not* `board.piece.moved`, and no single pattern expresses that — `board.piece.*` swallows the move, which cost a projection write per drag until it was fixed. The provided `Listener::hears` folds the bindings with `any`, so a message matching two of them still arrives **once**, which is what a queue bound twice does.
+
 **`Delivery` is the second thing only a feature knows.** The reference implementation declares queues two ways, and our two coming consumers want one each:
 
 | | queue | a missed message | ours |

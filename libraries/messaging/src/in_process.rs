@@ -136,6 +136,19 @@ mod tests {
             })
         }
 
+        fn listening_to_both(first: &str, second: &str) -> Arc<Self> {
+            Arc::new(Self {
+                name: ListenerName::parse("both").expect("a plain name is fine"),
+                subscriptions: vec![
+                    Subscription::parse(first).expect("a plain pattern is fine"),
+                    Subscription::parse(second).expect("a plain pattern is fine"),
+                ],
+                delivery: Delivery::Kept,
+                heard: Mutex::new(Vec::new()),
+                refuses: false,
+            })
+        }
+
         fn listening(to: &str) -> Arc<Self> {
             Self::named("listening", to, Delivery::Kept, false)
         }
@@ -216,6 +229,48 @@ mod tests {
         assert_eq!(exact.what_it_heard().len(), 1);
         assert_eq!(wildcard.what_it_heard().len(), 1);
         assert_eq!(everything.what_it_heard().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_listener_may_bind_more_than_one_key() {
+        let dispatcher = InProcessDispatcher::new();
+        let listener = Overheard::listening_to_both("board.piece.pinned", "board.piece.unpinned");
+        dispatcher.listen(listener.clone());
+
+        for routing in [
+            "board.piece.pinned",
+            "board.piece.unpinned",
+            "board.piece.moved",
+        ] {
+            dispatcher
+                .publish(saying(routing))
+                .await
+                .expect("publishing should succeed");
+        }
+
+        assert_eq!(
+            listener.what_it_heard(),
+            vec!["board.piece.pinned", "board.piece.unpinned"],
+            "several bindings on one queue is what a broker does, and the key between them is left out"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_message_matching_two_bindings_arrives_once() {
+        let dispatcher = InProcessDispatcher::new();
+        let listener = Overheard::listening_to_both("board.#", "board.piece.pinned");
+        dispatcher.listen(listener.clone());
+
+        dispatcher
+            .publish(saying("board.piece.pinned"))
+            .await
+            .expect("publishing should succeed");
+
+        assert_eq!(
+            listener.what_it_heard().len(),
+            1,
+            "a queue bound twice still receives a message once, and so must a listener"
+        );
     }
 
     #[tokio::test]
