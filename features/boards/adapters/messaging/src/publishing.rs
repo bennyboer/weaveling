@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use boards_contract::{BoardEventDTO, EVERY_BOARD, STARTED, SpotDTO};
+use boards_contract::{BoardEventDTO, EVERY_BOARD, PIECE_PINNED, PIECE_UNPINNED, STARTED, SpotDTO};
 use boards_core::{BoardEvent, BoardId, Spot};
 use eventpublishing::{
     MessagingEventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
@@ -26,6 +26,14 @@ pub enum UnreadableBoardEvent {
 
 pub fn every_event() -> Subscription {
     Subscription::parse(EVERY_BOARD).expect("the board pattern is written at compile time")
+}
+
+pub fn when_pinned() -> Subscription {
+    Subscription::parse(PIECE_PINNED).expect("a declared routing key holds no wildcards")
+}
+
+pub fn when_unpinned() -> Subscription {
+    Subscription::parse(PIECE_UNPINNED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_started() -> Subscription {

@@ -45,7 +45,11 @@ pub struct Undelivered {
 pub trait Listener: Send + Sync {
     fn named(&self) -> ListenerName;
 
-    fn listens_to(&self) -> Subscription;
+    fn listens_to(&self) -> Vec<Subscription>;
+
+    fn hears(&self, routing: &RoutingKey) -> bool {
+        self.listens_to().iter().any(|to| to.covers(routing))
+    }
 
     fn delivery(&self) -> Delivery {
         Delivery::Kept

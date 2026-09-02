@@ -6,6 +6,7 @@ edition.workspace = true
 [dev-dependencies]
 axum = { workspace = true }
 axum-test = { workspace = true }
+serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
 
@@ -19,3 +20,4 @@ boards-contract = { version = "0.1.0", path = "../contract", package = "weavelin
 boards-core = { version = "0.1.0", path = "../core", package = "weaveling-boards-core" }
 boards-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-boards-messaging" }
 boards-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-boards-wiring" }
+pieces-contract = { version = "0.1.0", path = "../../pieces/contract", package = "weaveling-pieces-contract" }

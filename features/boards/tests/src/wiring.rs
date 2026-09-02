@@ -9,6 +9,8 @@ use messaging::{InProcessDispatcher, Listener};
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-board";
+const INDEXING: &str = "index-pinned-pieces";
+const TIDYING: &str = "unpin-discarded-piece";
 
 pub struct Wired {
     pub boards: BoardService,
@@ -16,6 +18,8 @@ pub struct Wired {
     pub store: Arc<InMemoryEventStore<BoardEvent>>,
     pub catalog: Arc<InMemoryBoardCatalog>,
     pub projector: Arc<dyn Listener>,
+    pub indexer: Arc<dyn Listener>,
+    pub tidier: Arc<dyn Listener>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
@@ -36,12 +40,17 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         dispatcher.listen(listener.clone());
     }
 
-    let projector = wired
-        .listeners
-        .iter()
-        .find(|listener| listener.named().as_str() == CATALOGUING)
-        .cloned()
-        .expect("the feature should wire a catalog projector");
+    let named = |wanted: &str| {
+        wired
+            .listeners
+            .iter()
+            .find(|listener| listener.named().as_str() == wanted)
+            .cloned()
+            .unwrap_or_else(|| panic!("the feature should wire a {wanted} listener"))
+    };
+    let projector = named(CATALOGUING);
+    let indexer = named(INDEXING);
+    let tidier = named(TIDYING);
 
     Wired {
         boards: boards_wiring::service(&ports, &context),
@@ -49,5 +58,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         store,
         catalog,
         projector,
+        indexer,
+        tidier,
     }
 }

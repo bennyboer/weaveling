@@ -13,8 +13,10 @@ eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublis
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 ids = { version = "0.1.0", path = "../../../../libraries/ids", package = "weaveling-ids" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+
 boards-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-boards-contract" }
 boards-core = { version = "0.1.0", path = "../../core", package = "weaveling-boards-core" }
+pieces-contract = { version = "0.1.0", path = "../../../pieces/contract", package = "weaveling-pieces-contract" }
 
 [dev-dependencies]
 time = { workspace = true }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
-use boards_messaging::{BoardCatalogProjector, Publishing};
+use boards_messaging::{BoardCatalogProjector, PinnedPiecesProjector, Publishing, UnpinOnDiscard};
 use eventsourcing::{EventStore, InMemoryEventStore};
 use wiring::{Context, Wired};
 
@@ -30,12 +30,22 @@ pub fn service(ports: &Ports, context: &Context) -> BoardService {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    let projector = BoardCatalogProjector::new(
+    let boards = service(ports, context);
+    let catalogue = BoardCatalogProjector::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),
     );
+    let index = PinnedPiecesProjector::new(
+        ports.events.clone(),
+        ports.catalog.clone(),
+        context.clock.clone(),
+    );
+    let tidy = UnpinOnDiscard::new(boards.clone(), ports.catalog.clone());
 
-    Wired::serving(boards_rest::router(service(ports, context)))
-        .listening(vec![Arc::new(projector)])
+    Wired::serving(boards_rest::router(boards)).listening(vec![
+        Arc::new(catalogue),
+        Arc::new(index),
+        Arc::new(tidy),
+    ])
 }

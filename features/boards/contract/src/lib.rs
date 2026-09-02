@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 pub const STARTED: &str = "board.started";
-pub const PIECE_PINNED: &str = "board.piece-pinned";
-pub const PIECE_MOVED: &str = "board.piece-moved";
-pub const PIECE_UNPINNED: &str = "board.piece-unpinned";
+pub const PIECE_PINNED: &str = "board.piece.pinned";
+pub const PIECE_MOVED: &str = "board.piece.moved";
+pub const PIECE_UNPINNED: &str = "board.piece.unpinned";
 pub const EVERY_BOARD: &str = "board.#";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]

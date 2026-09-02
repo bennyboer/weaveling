@@ -10,7 +10,7 @@ use crate::published::{
     PublishedAgent, PublishedAggregate, PublishedBody, PublishedEvent, as_rfc3339,
 };
 
-const SEPARATOR: char = '.';
+const SEPARATOR: &str = ".";
 
 pub struct MessagingEventPublisher<E, B> {
     publisher: Arc<dyn Publisher>,
@@ -24,9 +24,9 @@ pub enum UnreadableMessage {
 }
 
 pub fn routing_for(kind: AggregateType, name: EventName) -> RoutingKey {
-    let as_rfc3339 = name.as_str().to_ascii_lowercase().replace('_', "-");
+    let parts = name.as_str().to_ascii_lowercase().replace('_', SEPARATOR);
 
-    RoutingKey::parse(&format!("{}{SEPARATOR}{as_rfc3339}", kind.as_str()))
+    RoutingKey::parse(&format!("{}{SEPARATOR}{parts}", kind.as_str()))
         .expect("an aggregate kind and an event name hold no wildcards")
 }
 

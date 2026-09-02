@@ -69,8 +69,8 @@ impl Listener for PieceCatalogProjector {
         ListenerName::parse(NAME).expect("the catalog listener is named at compile time")
     }
 
-    fn listens_to(&self) -> Subscription {
-        every_event()
+    fn listens_to(&self) -> Vec<Subscription> {
+        vec![every_event()]
     }
 
     fn delivery(&self) -> Delivery {

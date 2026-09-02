@@ -27,7 +27,7 @@ pub struct PieceDTO {
 
 pub const CAPTURED: &str = "piece.captured";
 pub const RETITLED: &str = "piece.retitled";
-pub const PASSAGE_ATTACHED: &str = "piece.passage-attached";
+pub const PASSAGE_ATTACHED: &str = "piece.passage.attached";
 pub const DISCARDED: &str = "piece.discarded";
 pub const EVERY_PIECE: &str = "piece.#";
 

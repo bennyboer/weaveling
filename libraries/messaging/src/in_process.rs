@@ -40,7 +40,7 @@ impl InProcessDispatcher {
             .read()
             .expect("messaging lock poisoned")
             .iter()
-            .filter(|listener| listener.listens_to().covers(&message.routing))
+            .filter(|listener| listener.hears(&message.routing))
             .cloned()
             .collect()
     }
@@ -87,7 +87,7 @@ mod tests {
 
     struct Overheard {
         name: ListenerName,
-        subscription: Subscription,
+        subscriptions: Vec<Subscription>,
         delivery: Delivery,
         heard: Mutex<Vec<RoutingKey>>,
         refuses: bool,
@@ -99,8 +99,8 @@ mod tests {
             self.name.clone()
         }
 
-        fn listens_to(&self) -> Subscription {
-            self.subscription.clone()
+        fn listens_to(&self) -> Vec<Subscription> {
+            self.subscriptions.clone()
         }
 
         fn delivery(&self) -> Delivery {
@@ -129,7 +129,7 @@ mod tests {
         fn named(name: &str, to: &str, delivery: Delivery, refuses: bool) -> Arc<Self> {
             Arc::new(Self {
                 name: ListenerName::parse(name).expect("a plain name is fine"),
-                subscription: Subscription::parse(to).expect("a plain pattern is fine"),
+                subscriptions: vec![Subscription::parse(to).expect("a plain pattern is fine")],
                 delivery,
                 heard: Mutex::new(Vec::new()),
                 refuses,
@@ -340,8 +340,8 @@ mod tests {
                 ListenerName::parse("quiet").expect("a plain name is fine")
             }
 
-            fn listens_to(&self) -> Subscription {
-                Subscription::parse("#").expect("a plain pattern is fine")
+            fn listens_to(&self) -> Vec<Subscription> {
+                vec![Subscription::parse("#").expect("a plain pattern is fine")]
             }
 
             async fn handle(&self, _message: &Message) -> Result<(), NotHandled> {
@@ -382,8 +382,8 @@ mod tests {
                 ListenerName::parse("echoing").expect("a plain name is fine")
             }
 
-            fn listens_to(&self) -> Subscription {
-                Subscription::parse("piece.captured").expect("a plain pattern is fine")
+            fn listens_to(&self) -> Vec<Subscription> {
+                vec![Subscription::parse("piece.captured").expect("a plain pattern is fine")]
             }
 
             async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
@@ -425,8 +425,8 @@ mod tests {
                 ListenerName::parse("remembering").expect("a plain name is fine")
             }
 
-            fn listens_to(&self) -> Subscription {
-                Subscription::parse("#").expect("a plain pattern is fine")
+            fn listens_to(&self) -> Vec<Subscription> {
+                vec![Subscription::parse("#").expect("a plain pattern is fine")]
             }
 
             async fn handle(&self, message: &Message) -> Result<(), NotHandled> {

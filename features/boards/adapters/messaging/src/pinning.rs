@@ -1,35 +1,22 @@
-mod discarding;
-mod pinning;
-mod publishing;
-
-pub use discarding::{UnpinOnDiscard, when_discarded};
-pub use pinning::PinnedPiecesProjector;
-
-pub use publishing::{
-    Publishing, UnreadableBoardEvent, board_in, event_in, every_event, message_for, when_pinned,
-    when_started, when_unpinned,
-};
-
 use std::sync::Arc;
 
-use async_trait::async_trait;
-use boards_core::{
-    Board, BoardCatalog, BoardError, BoardEvent, BoardId, BoardSummary, CatalogError,
-};
+use boards_core::{Board, BoardCatalog, BoardError, BoardEvent, BoardId, CatalogError, PieceLink};
 use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use thiserror::Error;
 
-const NAME: &str = "catalogue-board";
+use crate::publishing::{UnreadableBoardEvent, board_in, when_pinned, when_unpinned};
 
-pub struct BoardCatalogProjector {
+const NAME: &str = "index-pinned-pieces";
+
+pub struct PinnedPiecesProjector {
     events: EventSourcingService<Board>,
     catalog: Arc<dyn BoardCatalog>,
 }
 
 #[derive(Debug, Error)]
-enum NotCatalogued {
+enum NotIndexed {
     #[error(transparent)]
     Unreadable(#[from] UnreadableBoardEvent),
     #[error(transparent)]
@@ -38,7 +25,7 @@ enum NotCatalogued {
     Catalog(#[from] CatalogError),
 }
 
-impl BoardCatalogProjector {
+impl PinnedPiecesProjector {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
         catalog: Arc<dyn BoardCatalog>,
@@ -50,29 +37,33 @@ impl BoardCatalogProjector {
         }
     }
 
-    async fn catalogue(&self, id: &BoardId) -> Result<(), NotCatalogued> {
-        let standing = self.events.latest(&AggregateId::from(id)).await?;
+    async fn index(&self, board: &BoardId) -> Result<(), NotIndexed> {
+        let standing = self.events.latest(&AggregateId::from(board)).await?;
+        let holding: Vec<PieceLink> = standing
+            .state
+            .pieces()
+            .into_iter()
+            .map(|positioned| positioned.piece)
+            .collect();
 
-        self.catalog
-            .remember(&BoardSummary::of(*id, &standing.state))
-            .await?;
+        self.catalog.holds(*board, &holding).await?;
 
         Ok(())
     }
 
-    async fn work_through(&self, message: &Message) -> Result<(), NotCatalogued> {
-        self.catalogue(&board_in(message)?).await
+    async fn work_through(&self, message: &Message) -> Result<(), NotIndexed> {
+        self.index(&board_in(message)?).await
     }
 }
 
-#[async_trait]
-impl Listener for BoardCatalogProjector {
+#[async_trait::async_trait]
+impl Listener for PinnedPiecesProjector {
     fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the catalog listener is named at compile time")
+        ListenerName::parse(NAME).expect("the pin index listener is named at compile time")
     }
 
     fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_started()]
+        vec![when_pinned(), when_unpinned()]
     }
 
     fn delivery(&self) -> Delivery {

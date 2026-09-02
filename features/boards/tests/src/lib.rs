@@ -5,6 +5,9 @@ mod board_cataloguing;
 mod board_service;
 
 #[cfg(test)]
+mod board_tidying;
+
+#[cfg(test)]
 mod boards_api;
 
 #[cfg(test)]

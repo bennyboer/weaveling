@@ -121,8 +121,8 @@ fn a_routing_key_is_the_kind_and_the_event_name() {
     assert_eq!(routing_for(KIND, CAPTURED).to_string(), "piece.captured");
     assert_eq!(
         routing_for(KIND, PASSAGE_ATTACHED).to_string(),
-        "piece.passage-attached",
-        "an underscore is not a routing separator, so it becomes a hyphen"
+        "piece.passage.attached",
+        "an underscore becomes a separator, so a wildcard can select a subtree"
     );
 }
 
@@ -211,7 +211,7 @@ fn an_event_with_nothing_to_say_still_says_its_name() {
         .message_for(&recorded(Happened::PassageAttached, 2, an_author()))
         .expect("an attachment should be published");
 
-    assert_eq!(published.routing.to_string(), "piece.passage-attached");
+    assert_eq!(published.routing.to_string(), "piece.passage.attached");
     assert_eq!(
         published.payload["event"],
         json!({ "version": 0, "name": "PASSAGE_ATTACHED" }),
