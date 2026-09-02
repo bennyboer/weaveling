@@ -3,25 +3,12 @@ use std::sync::Arc;
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
-use boards_catalog::InMemoryBoardCatalog;
 use clock::SystemClock;
-use eventsourcing::InMemoryEventStore;
-use passages_store::InMemoryPassageStore;
-use pieces_catalog::InMemoryPieceCatalog;
-use projects_store::InMemoryProjectStore;
 use tower::ServiceExt;
-use weaveling_service_api::app;
+use weaveling_service_api::{Adapters, app};
 
 fn new_app() -> Router {
-    app(
-        Arc::new(InMemoryProjectStore::new()),
-        Arc::new(InMemoryPassageStore::new()),
-        Arc::new(InMemoryEventStore::new()),
-        Arc::new(InMemoryPieceCatalog::new()),
-        Arc::new(InMemoryEventStore::new()),
-        Arc::new(InMemoryBoardCatalog::new()),
-        Arc::new(SystemClock),
-    )
+    app(Adapters::in_memory(Arc::new(SystemClock)))
 }
 
 async fn get(path: &str) -> (StatusCode, String) {

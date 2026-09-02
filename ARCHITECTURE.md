@@ -442,7 +442,15 @@ Every feature now has a **`wiring` crate**, a sibling of `contract`, `core`, `ad
 
 **The composition root keeps the joins.** Cross-feature work — the deletion saga, and eventually the board reading the pool — cannot come out of a list of independent modules. Wiring covers the routine assembly; anything spanning features stays in `app()` on purpose.
 
-**What this did not fix:** the *signature*. Every port still arrives as an argument, so `app()`'s parameter list grows with each feature even though its body does not. That wants a registry or a config type, and neither earns its place yet.
+**Each feature declares what it needs, so the signature stops growing too.** A `wiring` crate exposes `Ports` — `boards` needs an event store and a catalog, `projects` needs one store — and `app()` takes a single `Adapters` holding one named field per feature. That fixes a real cliff rather than a smell: clippy's `too_many_arguments` fires at eight, we build with `-D warnings`, and the seventh port was already in place, so the next feature to need one would have **failed the build**.
+
+The point beyond the arity is that `app()` no longer knows *what* a feature needs, only that it needs its ports — the same knowledge move as the `wiring` crate itself. And because every adapter today needs nothing but its own constructor, `Ports::in_memory()` collapses the composition root's two call sites to a manifest:
+
+```rust
+app(Adapters::in_memory(Arc::new(SystemClock)))
+```
+
+At M11 that becomes a per-feature `Ports::backed_by(&pool)`, chosen feature by feature rather than in one god-function. It does put the in-memory adapters in the production dependency graph, which is correct: [local mode](#two-ways-to-run-it) ships them as production.
 
 The [pieces test harness](../features/pieces/tests/src/wiring.rs) calls the real `pieces_wiring::wire`, so the API tests exercise production wiring instead of a parallel copy that could drift from it.
 

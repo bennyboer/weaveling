@@ -21,7 +21,14 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let store = Arc::new(InMemoryEventStore::<PieceEvent>::new());
     let catalog = Arc::new(InMemoryPieceCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
-    let wired = pieces_wiring::wire(store.clone(), catalog.clone(), dispatcher.clone(), clock);
+    let wired = pieces_wiring::wire(
+        pieces_wiring::Ports {
+            events: store.clone(),
+            catalog: catalog.clone(),
+        },
+        dispatcher.clone(),
+        clock,
+    );
 
     for listener in &wired.listeners {
         dispatcher.listen(listener.clone());

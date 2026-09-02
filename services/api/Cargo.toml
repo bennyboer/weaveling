@@ -15,27 +15,18 @@ tracing-subscriber = { workspace = true }
 #################
 
 clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
-eventsourcing = { version = "0.1.0", path = "../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "weaveling-messaging" }
 
 ################
 ### FEATURES ###
 ################
 
-boards-catalog = { version = "0.1.0", path = "../../features/boards/adapters/catalog", package = "weaveling-boards-catalog" }
-boards-core = { version = "0.1.0", path = "../../features/boards/core", package = "weaveling-boards-core" }
 boards-wiring = { version = "0.1.0", path = "../../features/boards/wiring", package = "weaveling-boards-wiring" }
 
-passages-core = { version = "0.1.0", path = "../../features/passages/core", package = "weaveling-passages-core" }
-passages-store = { version = "0.1.0", path = "../../features/passages/adapters/store", package = "weaveling-passages-store" }
 passages-wiring = { version = "0.1.0", path = "../../features/passages/wiring", package = "weaveling-passages-wiring" }
 
-pieces-catalog = { version = "0.1.0", path = "../../features/pieces/adapters/catalog", package = "weaveling-pieces-catalog" }
-pieces-core = { version = "0.1.0", path = "../../features/pieces/core", package = "weaveling-pieces-core" }
 pieces-wiring = { version = "0.1.0", path = "../../features/pieces/wiring", package = "weaveling-pieces-wiring" }
 
-projects-core = { version = "0.1.0", path = "../../features/projects/core", package = "weaveling-projects-core" }
-projects-store = { version = "0.1.0", path = "../../features/projects/adapters/store", package = "weaveling-projects-store" }
 projects-wiring = { version = "0.1.0", path = "../../features/projects/wiring", package = "weaveling-projects-wiring" }
 
 [dev-dependencies]

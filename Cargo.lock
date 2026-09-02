@@ -2920,6 +2920,7 @@ name = "weaveling-boards-wiring"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "weaveling-boards-catalog",
  "weaveling-boards-core",
  "weaveling-boards-messaging",
  "weaveling-boards-rest",
@@ -3080,6 +3081,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-passages-core",
  "weaveling-passages-rest",
+ "weaveling-passages-store",
  "weaveling-passages-sync",
 ]
 
@@ -3171,6 +3173,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-pieces-catalog",
  "weaveling-pieces-core",
  "weaveling-pieces-messaging",
  "weaveling-pieces-rest",
@@ -3239,6 +3242,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-projects-core",
  "weaveling-projects-rest",
+ "weaveling-projects-store",
 ]
 
 [[package]]
@@ -3251,20 +3255,11 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
- "weaveling-boards-catalog",
- "weaveling-boards-core",
  "weaveling-boards-wiring",
  "weaveling-clock",
- "weaveling-eventsourcing",
  "weaveling-messaging",
- "weaveling-passages-core",
- "weaveling-passages-store",
  "weaveling-passages-wiring",
- "weaveling-pieces-catalog",
- "weaveling-pieces-core",
  "weaveling-pieces-wiring",
- "weaveling-projects-core",
- "weaveling-projects-store",
  "weaveling-projects-wiring",
 ]
 

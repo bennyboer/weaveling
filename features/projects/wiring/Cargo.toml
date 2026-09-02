@@ -10,3 +10,4 @@ clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weave
 
 projects-core = { version = "0.1.0", path = "../core", package = "weaveling-projects-core" }
 projects-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-projects-rest" }
+projects-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-projects-store" }

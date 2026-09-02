@@ -13,3 +13,4 @@ messaging = { version = "0.1.0", path = "../../../libraries/messaging", package 
 boards-core = { version = "0.1.0", path = "../core", package = "weaveling-boards-core" }
 boards-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-boards-rest" }
 boards-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-boards-messaging" }
+boards-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-boards-catalog" }
