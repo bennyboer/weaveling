@@ -15,6 +15,7 @@ tracing-subscriber = { workspace = true }
 #################
 
 clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
+wiring = { version = "0.1.0", path = "../../libraries/wiring", package = "weaveling-wiring" }
 messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "weaveling-messaging" }
 
 ################
@@ -22,11 +23,8 @@ messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "
 ################
 
 boards-wiring = { version = "0.1.0", path = "../../features/boards/wiring", package = "weaveling-boards-wiring" }
-
 passages-wiring = { version = "0.1.0", path = "../../features/passages/wiring", package = "weaveling-passages-wiring" }
-
 pieces-wiring = { version = "0.1.0", path = "../../features/pieces/wiring", package = "weaveling-pieces-wiring" }
-
 projects-wiring = { version = "0.1.0", path = "../../features/projects/wiring", package = "weaveling-projects-wiring" }
 
 [dev-dependencies]

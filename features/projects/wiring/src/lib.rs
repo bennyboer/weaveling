@@ -1,16 +1,11 @@
 use std::sync::Arc;
 
-use axum::Router;
-use clock::Clock;
 use projects_core::{ProjectService, ProjectStore};
 use projects_store::InMemoryProjectStore;
+use wiring::{Context, Wired};
 
 pub struct Ports {
     pub store: Arc<dyn ProjectStore>,
-}
-
-pub struct Wired {
-    pub routes: Router,
 }
 
 impl Ports {
@@ -21,8 +16,8 @@ impl Ports {
     }
 }
 
-pub fn wire(ports: Ports, clock: Arc<dyn Clock>) -> Wired {
-    Wired {
-        routes: projects_rest::router(ProjectService::new(ports.store, clock)),
-    }
+pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let projects = ProjectService::new(ports.store.clone(), context.clock.clone());
+
+    Wired::serving(projects_rest::router(projects))
 }

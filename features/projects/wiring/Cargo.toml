@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-axum = { workspace = true }
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 

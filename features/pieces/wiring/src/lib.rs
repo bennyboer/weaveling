@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use axum::Router;
-use clock::Clock;
 use eventsourcing::{EventStore, InMemoryEventStore};
-use messaging::{Listener, Publisher};
 use pieces_catalog::InMemoryPieceCatalog;
 use pieces_core::{PieceCatalog, PieceEvent, PieceService};
 use pieces_messaging::{PieceCatalogProjector, Publishing};
+use wiring::{Context, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<PieceEvent>>,
@@ -22,25 +20,22 @@ impl Ports {
     }
 }
 
-pub struct Wired {
-    pub pieces: PieceService,
-    pub routes: Router,
-    pub listeners: Vec<Arc<dyn Listener>>,
+pub fn service(ports: &Ports, context: &Context) -> PieceService {
+    PieceService::new(
+        ports.events.clone(),
+        ports.catalog.clone(),
+        Arc::new(Publishing::new(context.publisher.clone())),
+        context.clock.clone(),
+    )
 }
 
-pub fn wire(ports: Ports, publisher: Arc<dyn Publisher>, clock: Arc<dyn Clock>) -> Wired {
-    let Ports { events, catalog } = ports;
-    let pieces = PieceService::new(
-        events.clone(),
-        catalog.clone(),
-        Arc::new(Publishing::new(publisher)),
-        clock.clone(),
+pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let projector = PieceCatalogProjector::new(
+        ports.events.clone(),
+        ports.catalog.clone(),
+        context.clock.clone(),
     );
-    let projector = PieceCatalogProjector::new(events, catalog, clock);
 
-    Wired {
-        routes: pieces_rest::router(pieces.clone()),
-        listeners: vec![Arc::new(projector)],
-        pieces,
-    }
+    Wired::serving(pieces_rest::router(service(ports, context)))
+        .listening(vec![Arc::new(projector)])
 }

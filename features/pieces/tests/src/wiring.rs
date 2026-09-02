@@ -6,6 +6,7 @@ use eventsourcing::InMemoryEventStore;
 use messaging::{InProcessDispatcher, Listener};
 use pieces_catalog::InMemoryPieceCatalog;
 use pieces_core::{PieceEvent, PieceService};
+use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-piece";
 
@@ -21,14 +22,15 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let store = Arc::new(InMemoryEventStore::<PieceEvent>::new());
     let catalog = Arc::new(InMemoryPieceCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
-    let wired = pieces_wiring::wire(
-        pieces_wiring::Ports {
-            events: store.clone(),
-            catalog: catalog.clone(),
-        },
-        dispatcher.clone(),
+    let ports = pieces_wiring::Ports {
+        events: store.clone(),
+        catalog: catalog.clone(),
+    };
+    let context = Context {
         clock,
-    );
+        publisher: dispatcher.clone(),
+    };
+    let wired = pieces_wiring::wire(&ports, &context);
 
     for listener in &wired.listeners {
         dispatcher.listen(listener.clone());
@@ -42,7 +44,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         .expect("the feature should wire a catalog projector");
 
     Wired {
-        pieces: wired.pieces,
+        pieces: pieces_wiring::service(&ports, &context),
         routes: wired.routes,
         store,
         catalog,

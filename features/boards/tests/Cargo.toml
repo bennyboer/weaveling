@@ -12,8 +12,10 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
-boards-contract = { version = "0.1.0", path = "../contract", package = "weaveling-boards-contract" }
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+
 boards-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-boards-catalog" }
+boards-contract = { version = "0.1.0", path = "../contract", package = "weaveling-boards-contract" }
 boards-core = { version = "0.1.0", path = "../core", package = "weaveling-boards-core" }
 boards-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-boards-messaging" }
 boards-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-boards-wiring" }

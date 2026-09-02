@@ -4,11 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-axum = { workspace = true }
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
-messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 
 boards-core = { version = "0.1.0", path = "../core", package = "weaveling-boards-core" }
 boards-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-boards-rest" }

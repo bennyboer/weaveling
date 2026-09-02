@@ -6,6 +6,7 @@ use boards_core::{BoardEvent, BoardService};
 use clock::Clock;
 use eventsourcing::InMemoryEventStore;
 use messaging::{InProcessDispatcher, Listener};
+use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-board";
 
@@ -21,14 +22,15 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let store = Arc::new(InMemoryEventStore::<BoardEvent>::new());
     let catalog = Arc::new(InMemoryBoardCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
-    let wired = boards_wiring::wire(
-        boards_wiring::Ports {
-            events: store.clone(),
-            catalog: catalog.clone(),
-        },
-        dispatcher.clone(),
+    let ports = boards_wiring::Ports {
+        events: store.clone(),
+        catalog: catalog.clone(),
+    };
+    let context = Context {
         clock,
-    );
+        publisher: dispatcher.clone(),
+    };
+    let wired = boards_wiring::wire(&ports, &context);
 
     for listener in &wired.listeners {
         dispatcher.listen(listener.clone());
@@ -42,7 +44,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         .expect("the feature should wire a catalog projector");
 
     Wired {
-        boards: wired.boards,
+        boards: boards_wiring::service(&ports, &context),
         routes: wired.routes,
         store,
         catalog,

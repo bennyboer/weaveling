@@ -434,7 +434,22 @@ That is a **deployment policy, never something a feature reads**. `Publisher` ke
 
 Every feature now has a **`wiring` crate**, a sibling of `contract`, `core`, `adapters` and `tests`. It takes the feature's ports and returns what the feature contributes to the application. `app()` names no service and no adapter.
 
-**Not a `Feature` trait, and not yet.** A trait returning routes plus listeners only pays off when something iterates over features *generically*, and nothing does — the root calls each by name either way. It would also drag `axum` into a shared library, where today only `rest` adapters, `wiring` crates and `services/api` see it. The reference implementation lands in the same place: per-feature `*-starter` modules, assembled by the application.
+**Every feature is wired to the same shape, so the root can loop.** `libraries/wiring` holds two plain structs — `Context { clock, publisher }`, the infrastructure every feature is handed, and `Wired { routes, listeners }`, what every feature gives back. Each feature's `wire(&Ports, &Context) -> Wired`, and `app()` names each feature exactly **once**:
+
+```rust
+let features = vec![
+    projects_wiring::wire(&adapters.projects, &context),
+    passages_wiring::wire(&adapters.passages, &context),
+    pieces_wiring::wire(&adapters.pieces, &context),
+    boards_wiring::wire(&adapters.boards, &context),
+];
+```
+
+Merging routes and registering listeners are then loops over that list. Before this, a feature was named three times — once to wire, once in the listener chain, once in the router merge — so adding one meant three edits in three places, and forgetting the middle one would have silently dropped its projections.
+
+**This is deliberately not a `Feature` trait.** A trait would buy dynamic dispatch we have no use for; a shared struct gives the same uniformity with no `dyn`. It is a third *join* library for the same reason as [`eventpublishing`](#the-first-consumer-the-piece-catalog-as-a-projection) and `serving`: `wiring` is where `axum` meets `messaging`, and only wiring crates and the composition root live at that meeting point. The reference implementation lands in the same place — per-feature `*-starter` modules, assembled by the application.
+
+Two features publish nothing, and carry an empty `listeners` rather than a different return type. That is the trade the loop is bought with, and it costs one `Wired::serving(routes)` call: **uniformity is the point**, and a feature that later grows a listener adds `.listening(…)` without changing its signature.
 
 **Every wiring returns a `Wired`, holding exactly what that feature contributes.** `projects` and `passages` carry only `routes`; `pieces` carries `routes`, its `listeners`, and its service. A struct beats a bare `Router` because the call site reads the same for every feature and a feature that later grows listeners adds a field rather than changing its signature. What is deliberately *not* uniform is the field set: giving `projects` and `passages` an empty `listeners` would pull `libraries/messaging` into two features that publish nothing, to say nothing.
 
