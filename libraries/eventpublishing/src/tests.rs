@@ -108,8 +108,8 @@ fn a_capture() -> Happened {
     }
 }
 
-fn publishing() -> EventPublisher<Happened, Body> {
-    EventPublisher::new(Arc::new(Overheard::default()), body)
+fn publishing() -> MessagingEventPublisher<Happened, Body> {
+    MessagingEventPublisher::new(Arc::new(Overheard::default()), body)
 }
 
 fn read(message: &Message) -> PublishedEvent<Body> {
@@ -245,8 +245,8 @@ fn an_event_the_feature_keeps_to_itself_is_not_published() {
         None
     }
 
-    let publishing: EventPublisher<Happened, Body> =
-        EventPublisher::new(Arc::new(Overheard::default()), nothing_ever);
+    let publishing: MessagingEventPublisher<Happened, Body> =
+        MessagingEventPublisher::new(Arc::new(Overheard::default()), nothing_ever);
 
     assert!(
         publishing
@@ -259,7 +259,7 @@ fn an_event_the_feature_keeps_to_itself_is_not_published() {
 #[tokio::test]
 async fn publishing_hands_the_message_to_the_transport() {
     let overheard = Arc::new(Overheard::default());
-    let publishing = EventPublisher::new(overheard.clone(), body);
+    let publishing = MessagingEventPublisher::new(overheard.clone(), body);
 
     publishing
         .publish(&recorded(a_capture(), 1, an_author()))
@@ -274,7 +274,7 @@ async fn publishing_hands_the_message_to_the_transport() {
 #[tokio::test]
 async fn nothing_reaches_the_transport_for_a_snapshot() {
     let overheard = Arc::new(Overheard::default());
-    let publishing = EventPublisher::new(overheard.clone(), body);
+    let publishing = MessagingEventPublisher::new(overheard.clone(), body);
 
     publishing
         .publish(&recorded(Happened::Snapshotted, 101, an_author()))

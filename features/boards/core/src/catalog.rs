@@ -1,7 +1,6 @@
 use std::error::Error;
 
 use async_trait::async_trait;
-use eventsourcing::Version;
 use thiserror::Error;
 
 use crate::board::{Board, ProjectLink};
@@ -10,7 +9,6 @@ use crate::id::BoardId;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoardSummary {
     pub id: BoardId,
-    pub version: Version,
     pub project: ProjectLink,
 }
 
@@ -28,10 +26,9 @@ pub trait BoardCatalog: Send + Sync {
 }
 
 impl BoardSummary {
-    pub fn of(id: BoardId, version: Version, board: &Board) -> Self {
+    pub fn of(id: BoardId, board: &Board) -> Self {
         Self {
             id,
-            version,
             project: board.project().clone(),
         }
     }

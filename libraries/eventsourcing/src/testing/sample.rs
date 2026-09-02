@@ -16,6 +16,7 @@ pub const BEFORE_KINDS: Version = Version::of(1);
 pub const TITLE_UPDATED: EventName = EventName::of("TITLE_UPDATED");
 pub const DESCRIPTION_UPDATED: EventName = EventName::of("DESCRIPTION_UPDATED");
 pub const DELETED: EventName = EventName::of("DELETED");
+pub const CORRECTED: EventName = EventName::of("CORRECTED");
 pub const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 pub enum SampleCommand {
@@ -23,6 +24,7 @@ pub enum SampleCommand {
     UpdateTitle(String),
     UpdateDescription(String),
     Rewrite { title: String, description: String },
+    Correct(String),
     Delete,
 }
 
@@ -48,6 +50,7 @@ pub enum SampleEvent {
     },
     TitleUpdated(String),
     DescriptionUpdated(String),
+    Corrected(String),
     Deleted,
     Snapshotted {
         title: String,
@@ -82,6 +85,7 @@ impl Event for SampleEvent {
             | Self::Created { .. } => CREATED,
             Self::TitleUpdated(_) => TITLE_UPDATED,
             Self::DescriptionUpdated(_) => DESCRIPTION_UPDATED,
+            Self::Corrected(_) => CORRECTED,
             Self::Deleted => DELETED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -97,6 +101,10 @@ impl Event for SampleEvent {
 
     fn is_snapshot(&self) -> bool {
         matches!(self, Self::Snapshotted { .. })
+    }
+
+    fn is_publishable(&self) -> bool {
+        !self.is_snapshot() && !matches!(self, Self::Corrected(_))
     }
 }
 
@@ -163,6 +171,7 @@ impl Aggregate for Sample {
                 SampleEvent::TitleUpdated(title),
                 SampleEvent::DescriptionUpdated(description),
             ]),
+            SampleCommand::Correct(title) => Ok(vec![SampleEvent::Corrected(title)]),
             SampleCommand::Delete => Ok(vec![SampleEvent::Deleted]),
         }
     }
@@ -174,6 +183,7 @@ impl Aggregate for Sample {
             | SampleEvent::Created { .. } => {}
             SampleEvent::TitleUpdated(title) => self.title = title.clone(),
             SampleEvent::DescriptionUpdated(description) => self.description = description.clone(),
+            SampleEvent::Corrected(title) => self.title = title.clone(),
             SampleEvent::Deleted => self.deleted = true,
             SampleEvent::Snapshotted {
                 title,

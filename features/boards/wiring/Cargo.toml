@@ -1,0 +1,12 @@
+[package]
+name = "weaveling-boards-wiring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+
+boards-core = { version = "0.1.0", path = "../core", package = "weaveling-boards-core" }
+boards-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-boards-messaging" }

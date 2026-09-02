@@ -6,5 +6,6 @@ mod tests;
 
 pub use published::{PublishedAgent, PublishedAggregate, PublishedBody, PublishedEvent};
 pub use publisher::{
-    EventPublisher, UnreadableMessage, everything_from, message_for, published_in, routing_for,
+    MessagingEventPublisher, UnreadableMessage, everything_from, message_for, published_in,
+    routing_for,
 };

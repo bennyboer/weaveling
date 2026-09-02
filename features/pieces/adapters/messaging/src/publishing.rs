@@ -2,18 +2,18 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use eventpublishing::{
-    EventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
+    MessagingEventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
     published_in,
 };
-use eventsourcing::Recorded;
+use eventsourcing::{EventPublisher, PublishError, Recorded};
 use ids::InvalidId;
 use messaging::{Message, Publisher, Subscription};
 use pieces_contract::{EVERY_PIECE, PieceEventDTO};
-use pieces_core::{PieceEvent, PieceEventPublisher, PieceId, PublishError};
+use pieces_core::{PieceEvent, PieceId};
 use thiserror::Error;
 
 pub struct Publishing {
-    publishing: EventPublisher<PieceEvent, PieceEventDTO>,
+    publishing: MessagingEventPublisher<PieceEvent, PieceEventDTO>,
 }
 
 #[derive(Debug, Error)]
@@ -24,7 +24,7 @@ pub enum UnreadablePieceEvent {
     NotAPieceId(#[source] InvalidId),
 }
 
-pub fn every_piece() -> Subscription {
+pub fn every_event() -> Subscription {
     Subscription::parse(EVERY_PIECE).expect("the piece pattern is written at compile time")
 }
 
@@ -47,13 +47,13 @@ pub fn message_for(happened: &Recorded<PieceEvent>) -> Option<Message> {
 impl Publishing {
     pub fn new(publisher: Arc<dyn Publisher>) -> Self {
         Self {
-            publishing: EventPublisher::new(publisher, body),
+            publishing: MessagingEventPublisher::new(publisher, body),
         }
     }
 }
 
 #[async_trait]
-impl PieceEventPublisher for Publishing {
+impl EventPublisher<PieceEvent> for Publishing {
     async fn publish(&self, happened: &Recorded<PieceEvent>) -> Result<(), PublishError> {
         self.publishing
             .publish(happened)
@@ -164,7 +164,7 @@ mod tests {
         assert!(
             everything_worth_publishing()
                 .into_iter()
-                .all(|(event, _)| { every_piece().covers(&routing_for(KIND, event.name())) }),
+                .all(|(event, _)| { every_event().covers(&routing_for(KIND, event.name())) }),
             "a listener asking for every piece must handle all of them"
         );
     }

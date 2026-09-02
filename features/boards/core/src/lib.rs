@@ -1,6 +1,7 @@
 mod board;
 mod catalog;
 mod id;
+mod service;
 mod spot;
 
 #[cfg(test)]
@@ -11,4 +12,5 @@ pub use board::{
 };
 pub use catalog::{BoardCatalog, BoardSummary, CatalogError};
 pub use id::BoardId;
+pub use service::{BoardService, BoardServiceError, Open};
 pub use spot::Spot;

@@ -14,6 +14,10 @@ pub trait Event {
     fn is_snapshot(&self) -> bool {
         false
     }
+
+    fn is_publishable(&self) -> bool {
+        !self.is_snapshot()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

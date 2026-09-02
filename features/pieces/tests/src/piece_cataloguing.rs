@@ -173,6 +173,6 @@ async fn a_message_about_a_piece_that_was_never_stored_is_refused() {
 
     assert!(
         refused.is_err(),
-        "the event is appended before it is published, so this can only mean something is wrong"
+        "a refusal reaches dead letters and can be retried, while acknowledging it would          drop the piece from the listing for good"
     );
 }

@@ -1,0 +1,21 @@
+[package]
+name = "weaveling-boards-messaging"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+ids = { version = "0.1.0", path = "../../../../libraries/ids", package = "weaveling-ids" }
+messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+boards-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-boards-contract" }
+boards-core = { version = "0.1.0", path = "../../core", package = "weaveling-boards-core" }
+
+[dev-dependencies]
+time = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

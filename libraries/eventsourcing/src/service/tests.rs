@@ -53,6 +53,198 @@ async fn a_created_sample(service: &EventSourcingService<Sample>) -> AggregateId
     id
 }
 
+#[derive(Default)]
+struct Overheard {
+    published: std::sync::Mutex<Vec<Recorded<SampleEvent>>>,
+}
+
+#[async_trait::async_trait]
+impl crate::publish::EventPublisher<SampleEvent> for Overheard {
+    async fn publish(&self, happened: &Recorded<SampleEvent>) -> Result<(), PublishError> {
+        self.published
+            .lock()
+            .expect("published lock poisoned")
+            .push(happened.clone());
+
+        Ok(())
+    }
+}
+
+impl Overheard {
+    fn what_it_heard(&self) -> Vec<SampleEvent> {
+        self.published
+            .lock()
+            .expect("published lock poisoned")
+            .iter()
+            .map(|entry| entry.event.clone())
+            .collect()
+    }
+
+    fn snapshots(&self) -> usize {
+        self.published
+            .lock()
+            .expect("published lock poisoned")
+            .iter()
+            .filter(|entry| entry.metadata.is_snapshot)
+            .count()
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("this publisher always refuses")]
+struct Refused;
+
+struct Refusing;
+
+#[async_trait::async_trait]
+impl crate::publish::EventPublisher<SampleEvent> for Refusing {
+    async fn publish(&self, _happened: &Recorded<SampleEvent>) -> Result<(), PublishError> {
+        Err(PublishError::because(Refused))
+    }
+}
+
+fn publishing_to(
+    overheard: Arc<dyn crate::publish::EventPublisher<SampleEvent>>,
+) -> EventSourcingService<Sample> {
+    EventSourcingService::publishing_to(
+        a_store(),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+        overheard,
+    )
+}
+
+#[tokio::test]
+async fn everything_appended_is_published() {
+    let overheard = Arc::new(Overheard::default());
+    let service = publishing_to(overheard.clone());
+    let id = AggregateId::from("sample_1");
+
+    service
+        .begin(&id, a_creation(), &an_author())
+        .await
+        .expect("creating should succeed");
+    service
+        .execute(
+            &id,
+            SampleCommand::Rewrite {
+                title: "The Silent Loom".to_owned(),
+                description: "It remembers.".to_owned(),
+            },
+            &an_author(),
+        )
+        .await
+        .expect("rewriting should succeed");
+
+    assert_eq!(
+        overheard.what_it_heard(),
+        vec![
+            SampleEvent::Created {
+                title: "The Loom".to_owned(),
+                description: "A silent machine.".to_owned(),
+                kind: SampleKind::Ordinary,
+            },
+            SampleEvent::TitleUpdated("The Silent Loom".to_owned()),
+            SampleEvent::DescriptionUpdated("It remembers.".to_owned()),
+        ],
+        "a feature must not be able to forget to publish, so the service does it"
+    );
+}
+
+#[tokio::test]
+async fn a_command_that_changes_nothing_publishes_nothing() {
+    let overheard = Arc::new(Overheard::default());
+    let service = publishing_to(overheard.clone());
+    let id = AggregateId::from("sample_1");
+    service
+        .begin(&id, a_creation(), &an_author())
+        .await
+        .expect("creating should succeed");
+
+    service
+        .execute(&id, a_creation(), &an_author())
+        .await
+        .expect_err("creating twice is refused");
+
+    assert_eq!(
+        overheard.what_it_heard().len(),
+        1,
+        "a refused command appends nothing, so it announces nothing"
+    );
+}
+
+#[tokio::test]
+async fn collapsing_the_log_is_not_published() {
+    let overheard = Arc::new(Overheard::default());
+    let service = publishing_to(overheard.clone());
+    let id = AggregateId::from("sample_1");
+    service
+        .begin(&id, a_creation(), &an_author())
+        .await
+        .expect("creating should succeed");
+
+    for counted in 2..=100 {
+        service
+            .execute(&id, retitled(&format!("Title {counted}")), &an_author())
+            .await
+            .expect("updating should succeed");
+    }
+
+    assert_eq!(
+        overheard.what_it_heard().len(),
+        100,
+        "one message per command, and the snapshot is not one"
+    );
+    assert_eq!(
+        overheard.snapshots(),
+        0,
+        "collapsing the log is our own housekeeping and no subscriber's business"
+    );
+}
+
+#[tokio::test]
+async fn an_event_that_declines_to_be_published_is_kept_to_ourselves() {
+    let overheard = Arc::new(Overheard::default());
+    let service = publishing_to(overheard.clone());
+    let id = AggregateId::from("sample_1");
+    service
+        .begin(&id, a_creation(), &an_author())
+        .await
+        .expect("creating should succeed");
+
+    service
+        .execute(
+            &id,
+            SampleCommand::Correct("Quietly fixed".to_owned()),
+            &an_author(),
+        )
+        .await
+        .expect("correcting should succeed");
+
+    assert_eq!(
+        service.latest(&id).await.expect("exists").state.title,
+        "Quietly fixed",
+        "it still happened and it still shaped the aggregate"
+    );
+    assert_eq!(
+        overheard.what_it_heard().len(),
+        1,
+        "an event may declare itself internal, and then nobody outside hears of it"
+    );
+}
+
+#[tokio::test]
+async fn a_command_fails_if_what_happened_cannot_be_published() {
+    let service = publishing_to(Arc::new(Refusing));
+    let id = AggregateId::from("sample_1");
+
+    let refused = service
+        .begin(&id, a_creation(), &an_author())
+        .await
+        .expect_err("an unpublishable event should not be reported as success");
+
+    assert!(matches!(refused, ServiceError::Unpublished(_)));
+}
+
 #[tokio::test]
 async fn creating_lands_the_first_version() {
     let service = a_workbench();
@@ -97,16 +289,15 @@ async fn asking_for_what_was_never_created_is_not_found() {
     let service = a_workbench();
     let missing = AggregateId::from("sample_nobody");
 
-    assert_eq!(
-        service
-            .latest(&missing)
-            .await
-            .expect_err("nothing is there"),
-        ServiceError::NotFound {
-            aggregate: missing,
-            kind: Sample::KIND,
-        }
-    );
+    let absent = service
+        .latest(&missing)
+        .await
+        .expect_err("nothing is there");
+
+    assert!(matches!(
+        absent,
+        ServiceError::NotFound { aggregate, kind } if aggregate == missing && kind == Sample::KIND
+    ));
 }
 
 #[tokio::test]
@@ -119,12 +310,11 @@ async fn a_command_on_something_that_does_not_exist_is_not_found() {
         .await
         .expect_err("nothing exists to update");
 
-    assert_eq!(
-        refused,
-        ServiceError::NotFound {
-            aggregate: missing,
-            kind: Sample::KIND,
-        },
+    assert!(
+        matches!(
+            refused,
+            ServiceError::NotFound { aggregate, kind } if aggregate == missing && kind == Sample::KIND
+        ),
         "an update to something absent is a missing aggregate, not a domain refusal"
     );
 }
@@ -142,7 +332,10 @@ async fn beginning_with_a_command_that_does_not_create_is_refused_by_the_aggrega
         .await
         .expect_err("only a creation command can start a stream");
 
-    assert_eq!(refused, ServiceError::Refused(SampleError::NotCreatedYet));
+    assert!(matches!(
+        refused,
+        ServiceError::Refused(SampleError::NotCreatedYet)
+    ));
 }
 
 #[tokio::test]
@@ -218,7 +411,10 @@ async fn commands_after_deletion_are_refused() {
         .await
         .expect_err("a deleted sample accepts nothing");
 
-    assert_eq!(refused, ServiceError::Refused(SampleError::Deleted));
+    assert!(matches!(
+        refused,
+        ServiceError::Refused(SampleError::Deleted)
+    ));
 }
 
 #[tokio::test]

@@ -12,7 +12,7 @@ use crate::published::{
 
 const SEPARATOR: char = '.';
 
-pub struct EventPublisher<E, B> {
+pub struct MessagingEventPublisher<E, B> {
     publisher: Arc<dyn Publisher>,
     body: fn(&E) -> Option<B>,
 }
@@ -68,7 +68,7 @@ pub fn published_in<B: DeserializeOwned>(
     serde_json::from_value(message.payload.clone()).map_err(UnreadableMessage::NotAPublishedEvent)
 }
 
-impl<E, B> EventPublisher<E, B>
+impl<E, B> MessagingEventPublisher<E, B>
 where
     E: Event,
     B: Serialize,

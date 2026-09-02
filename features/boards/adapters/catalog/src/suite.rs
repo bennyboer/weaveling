@@ -1,5 +1,4 @@
 use boards_core::{BoardCatalog, BoardId, BoardSummary, ProjectLink};
-use eventsourcing::Version;
 use time::OffsetDateTime;
 
 pub fn at(seconds: i64) -> OffsetDateTime {
@@ -9,7 +8,6 @@ pub fn at(seconds: i64) -> OffsetDateTime {
 pub fn a_summary(id: BoardId, project: &str) -> BoardSummary {
     BoardSummary {
         id,
-        version: Version::of(1),
         project: ProjectLink::from(project),
     }
 }
@@ -64,10 +62,7 @@ pub async fn remembering_the_same_board_again_replaces_what_was_there(catalog: &
         .expect("remembering should succeed");
 
     catalog
-        .remember(&BoardSummary {
-            version: Version::of(9),
-            ..a_summary(id, "project_1")
-        })
+        .remember(&a_summary(id, "project_1"))
         .await
         .expect("remembering again should succeed");
 
@@ -76,8 +71,11 @@ pub async fn remembering_the_same_board_again_replaces_what_was_there(catalog: &
         .await
         .expect("listing should succeed");
 
-    assert_eq!(found.len(), 1, "a projection replaces, it does not accrue");
-    assert_eq!(found[0].version, Version::of(9));
+    assert_eq!(
+        found.len(),
+        1,
+        "a projection is keyed by the board, so a second write replaces rather than accrues"
+    );
 }
 
 pub async fn a_project_lists_its_boards_in_a_settled_order(catalog: &impl BoardCatalog) {

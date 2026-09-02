@@ -1,41 +1,42 @@
 mod publishing;
 
 pub use publishing::{
-    Publishing, UnreadablePieceEvent, event_in, every_event, message_for, piece_in,
+    Publishing, UnreadableBoardEvent, board_in, event_in, every_event, message_for, positioned,
+    spot, when_started,
 };
 
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use boards_core::{
+    Board, BoardCatalog, BoardError, BoardEvent, BoardId, BoardSummary, CatalogError,
+};
 use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use pieces_core::{
-    CatalogError, Piece, PieceCatalog, PieceError, PieceEvent, PieceId, PieceSummary,
-};
 use thiserror::Error;
 
-const NAME: &str = "catalogue-piece";
+const NAME: &str = "catalogue-board";
 
-pub struct PieceCatalogProjector {
-    events: EventSourcingService<Piece>,
-    catalog: Arc<dyn PieceCatalog>,
+pub struct BoardCatalogProjector {
+    events: EventSourcingService<Board>,
+    catalog: Arc<dyn BoardCatalog>,
 }
 
 #[derive(Debug, Error)]
 enum NotCatalogued {
     #[error(transparent)]
-    Unreadable(#[from] UnreadablePieceEvent),
+    Unreadable(#[from] UnreadableBoardEvent),
     #[error(transparent)]
-    Events(#[from] ServiceError<PieceError>),
+    Events(#[from] ServiceError<BoardError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
 }
 
-impl PieceCatalogProjector {
+impl BoardCatalogProjector {
     pub fn new(
-        store: Arc<dyn EventStore<PieceEvent>>,
-        catalog: Arc<dyn PieceCatalog>,
+        store: Arc<dyn EventStore<BoardEvent>>,
+        catalog: Arc<dyn BoardCatalog>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
@@ -44,33 +45,29 @@ impl PieceCatalogProjector {
         }
     }
 
-    async fn catalogue(&self, id: &PieceId) -> Result<(), NotCatalogued> {
+    async fn catalogue(&self, id: &BoardId) -> Result<(), NotCatalogued> {
         let standing = self.events.latest(&AggregateId::from(id)).await?;
 
-        if standing.state.is_discarded() {
-            self.catalog.forget(id).await?;
-        } else {
-            self.catalog
-                .remember(&PieceSummary::of(*id, standing.version, &standing.state))
-                .await?;
-        }
+        self.catalog
+            .remember(&BoardSummary::of(*id, &standing.state))
+            .await?;
 
         Ok(())
     }
 
-    async fn handle(&self, message: &Message) -> Result<(), NotCatalogued> {
-        self.catalogue(&piece_in(message)?).await
+    async fn work_through(&self, message: &Message) -> Result<(), NotCatalogued> {
+        self.catalogue(&board_in(message)?).await
     }
 }
 
 #[async_trait]
-impl Listener for PieceCatalogProjector {
+impl Listener for BoardCatalogProjector {
     fn named(&self) -> ListenerName {
         ListenerName::parse(NAME).expect("the catalog listener is named at compile time")
     }
 
     fn listens_to(&self) -> Subscription {
-        every_event()
+        when_started()
     }
 
     fn delivery(&self) -> Delivery {
@@ -78,7 +75,7 @@ impl Listener for PieceCatalogProjector {
     }
 
     async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.handle(message)
+        self.work_through(message)
             .await
             .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
     }

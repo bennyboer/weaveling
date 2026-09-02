@@ -8,10 +8,11 @@ use crate::aggregate::{Aggregate, AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
 use crate::patch::Patcher;
+use crate::publish::{EventPublisher, NoopEventPublisher, PublishError};
 use crate::store::{EventStore, StoreError};
 use crate::version::Version;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 pub enum ServiceError<E> {
     #[error("there is no {kind} with id {aggregate}")]
     NotFound {
@@ -34,11 +35,14 @@ pub enum ServiceError<E> {
     Refused(E),
     #[error(transparent)]
     Store(#[from] StoreError),
+    #[error(transparent)]
+    Unpublished(#[from] PublishError),
 }
 
 pub struct EventSourcingService<A: Aggregate> {
     store: Arc<dyn EventStore<A::Event>>,
     patcher: Patcher<A::Event>,
+    publishing: Arc<dyn EventPublisher<A::Event>>,
     clock: Arc<dyn Clock>,
 }
 
@@ -60,12 +64,21 @@ pub struct Appended<E> {
 impl<A> EventSourcingService<A>
 where
     A: Aggregate,
-    A::Event: Clone + Send + Sync,
+    A::Event: Clone + Send + Sync + 'static,
 {
     pub fn new(store: Arc<dyn EventStore<A::Event>>, clock: Arc<dyn Clock>) -> Self {
+        Self::publishing_to(store, clock, NoopEventPublisher::shared())
+    }
+
+    pub fn publishing_to(
+        store: Arc<dyn EventStore<A::Event>>,
+        clock: Arc<dyn Clock>,
+        publishing: Arc<dyn EventPublisher<A::Event>>,
+    ) -> Self {
         Self {
             store,
             patcher: Patcher::holding(A::patches()),
+            publishing,
             clock,
         }
     }
@@ -161,6 +174,7 @@ where
         self.store
             .append(aggregate, A::KIND, expected, &stream)
             .await?;
+        self.publish(&stream).await?;
 
         let landed = stream
             .last()
@@ -195,6 +209,18 @@ where
         }
 
         Ok(taken)
+    }
+
+    async fn publish(&self, stream: &[Recorded<A::Event>]) -> Result<(), ServiceError<A::Error>> {
+        for happened in stream {
+            if !happened.event.is_publishable() {
+                continue;
+            }
+
+            self.publishing.publish(happened).await?;
+        }
+
+        Ok(())
     }
 
     async fn standing(

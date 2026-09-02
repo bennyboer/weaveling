@@ -2846,6 +2846,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-boards-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "weaveling-boards-core"
 version = "0.1.0"
 dependencies = [
@@ -2857,6 +2864,51 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+]
+
+[[package]]
+name = "weaveling-boards-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "time",
+ "tokio",
+ "weaveling-boards-contract",
+ "weaveling-boards-core",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-messaging",
+]
+
+[[package]]
+name = "weaveling-boards-tests"
+version = "0.1.0"
+dependencies = [
+ "time",
+ "tokio",
+ "weaveling-boards-catalog",
+ "weaveling-boards-contract",
+ "weaveling-boards-core",
+ "weaveling-boards-messaging",
+ "weaveling-boards-wiring",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
+]
+
+[[package]]
+name = "weaveling-boards-wiring"
+version = "0.1.0"
+dependencies = [
+ "weaveling-boards-core",
+ "weaveling-boards-messaging",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
 ]
 
 [[package]]
