@@ -5,4 +5,7 @@ mod board_cataloguing;
 mod board_service;
 
 #[cfg(test)]
+mod boards_api;
+
+#[cfg(test)]
 mod wiring;

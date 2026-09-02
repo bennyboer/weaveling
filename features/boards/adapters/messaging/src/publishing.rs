@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use boards_contract::{BoardEventDTO, EVERY_BOARD, PositionedPieceDTO, STARTED, SpotDTO};
-use boards_core::{BoardEvent, BoardId, PositionedPiece, Spot};
+use boards_contract::{BoardEventDTO, EVERY_BOARD, STARTED, SpotDTO};
+use boards_core::{BoardEvent, BoardId, Spot};
 use eventpublishing::{
     MessagingEventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
     published_in,
@@ -86,21 +86,14 @@ fn body(event: &BoardEvent) -> Option<BoardEventDTO> {
     })
 }
 
-pub fn spot(at: Spot) -> SpotDTO {
+fn spot(at: Spot) -> SpotDTO {
     SpotDTO { x: at.x, y: at.y }
-}
-
-pub fn positioned(held: &PositionedPiece) -> PositionedPieceDTO {
-    PositionedPieceDTO {
-        piece: held.piece.to_string(),
-        spot: spot(held.spot),
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_UNPINNED};
-    use boards_core::{KIND, PieceLink, ProjectLink};
+    use boards_core::{KIND, PieceLink, PositionedPiece, ProjectLink};
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
     use serde_json::json;

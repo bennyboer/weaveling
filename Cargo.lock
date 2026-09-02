@@ -2885,9 +2885,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-boards-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "tracing",
+ "weaveling-boards-contract",
+ "weaveling-boards-core",
+ "weaveling-eventsourcing",
+ "weaveling-serving",
+]
+
+[[package]]
 name = "weaveling-boards-tests"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "axum-test",
  "time",
  "tokio",
  "weaveling-boards-catalog",
@@ -2904,8 +2919,10 @@ dependencies = [
 name = "weaveling-boards-wiring"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "weaveling-boards-core",
  "weaveling-boards-messaging",
+ "weaveling-boards-rest",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
@@ -3124,6 +3141,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-pieces-contract",
  "weaveling-pieces-core",
+ "weaveling-serving",
 ]
 
 [[package]]
@@ -3233,6 +3251,9 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "weaveling-boards-catalog",
+ "weaveling-boards-core",
+ "weaveling-boards-wiring",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
@@ -3245,6 +3266,16 @@ dependencies = [
  "weaveling-projects-core",
  "weaveling-projects-store",
  "weaveling-projects-wiring",
+]
+
+[[package]]
+name = "weaveling-serving"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "thiserror",
+ "tracing",
+ "weaveling-eventsourcing",
 ]
 
 [[package]]

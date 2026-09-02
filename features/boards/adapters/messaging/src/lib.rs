@@ -1,8 +1,7 @@
 mod publishing;
 
 pub use publishing::{
-    Publishing, UnreadableBoardEvent, board_in, event_in, every_event, message_for, positioned,
-    spot, when_started,
+    Publishing, UnreadableBoardEvent, board_in, event_in, every_event, message_for, when_started,
 };
 
 use std::sync::Arc;

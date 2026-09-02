@@ -1,5 +1,5 @@
 [package]
-name = "weaveling-pieces-rest"
+name = "weaveling-boards-rest"
 version.workspace = true
 edition.workspace = true
 
@@ -11,5 +11,5 @@ tracing = { workspace = true }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
 
-pieces-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-pieces-contract" }
-pieces-core = { version = "0.1.0", path = "../../core", package = "weaveling-pieces-core" }
+boards-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-boards-contract" }
+boards-core = { version = "0.1.0", path = "../../core", package = "weaveling-boards-core" }

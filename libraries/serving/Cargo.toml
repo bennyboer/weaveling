@@ -1,0 +1,11 @@
+[package]
+name = "weaveling-serving"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }

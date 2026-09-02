@@ -22,6 +22,10 @@ messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "
 ### FEATURES ###
 ################
 
+boards-catalog = { version = "0.1.0", path = "../../features/boards/adapters/catalog", package = "weaveling-boards-catalog" }
+boards-core = { version = "0.1.0", path = "../../features/boards/core", package = "weaveling-boards-core" }
+boards-wiring = { version = "0.1.0", path = "../../features/boards/wiring", package = "weaveling-boards-wiring" }
+
 passages-core = { version = "0.1.0", path = "../../features/passages/core", package = "weaveling-passages-core" }
 passages-store = { version = "0.1.0", path = "../../features/passages/adapters/store", package = "weaveling-passages-store" }
 passages-wiring = { version = "0.1.0", path = "../../features/passages/wiring", package = "weaveling-passages-wiring" }

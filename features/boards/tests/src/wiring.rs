@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axum::Router;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardEvent, BoardService};
 use clock::Clock;
@@ -10,6 +11,7 @@ const CATALOGUING: &str = "catalogue-board";
 
 pub struct Wired {
     pub boards: BoardService,
+    pub routes: Router,
     pub store: Arc<InMemoryEventStore<BoardEvent>>,
     pub catalog: Arc<InMemoryBoardCatalog>,
     pub projector: Arc<dyn Listener>,
@@ -34,6 +36,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
 
     Wired {
         boards: wired.boards,
+        routes: wired.routes,
         store,
         catalog,
         projector,

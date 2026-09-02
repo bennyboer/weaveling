@@ -27,7 +27,9 @@ weaveling/
 └── libraries/      cross-cutting, domain-free technique
 ```
 
-Today's libraries are `clock`, `ids`, `eventsourcing`, `messaging` and `eventpublishing` — the last being the only one that depends on two others, because turning aggregate events into published messages is exactly the join between them.
+Today's libraries are `clock`, `ids`, `eventsourcing`, `messaging`, `eventpublishing` and `serving`. The last two are the only ones that depend on other libraries, and for the same reason: each is a **join**. `eventpublishing` turns aggregate events into published messages; `serving` turns event-sourcing outcomes into HTTP — `If-Match` into a `Version`, a `Version` into an `ETag`, and a `ServiceError` into a status code.
+
+**`serving::refusal` maps a domain refusal to 409, and that is a default a feature may override.** 409 is right when the caller could resolve the conflict and retry — pinning a piece that is already pinned, capturing a piece twice. It is wrong when the refusal means the addressed thing is simply *not there*: `PATCH /boards/{board}/pieces/{piece}` for a piece that was never pinned is refused as `NotPinned`, and the honest answer is **404**, because the URL names a placement that does not exist. So the feature's adapter matches that one refusal before falling through to the library. The rule: the library knows HTTP, the feature knows which of its own refusals mean *absent* rather than *conflicting*.
 
 **Why many crates:** in Rust a crate boundary *is* an enforced dependency rule. "Persistence must not leak into business logic" stops being a code-review convention and becomes a compile error, because the crate simply doesn't list the dependency. Crates also give parallel compilation and caching.
 

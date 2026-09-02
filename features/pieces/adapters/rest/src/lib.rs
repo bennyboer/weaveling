@@ -1,14 +1,15 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, Query, State};
-use axum::http::header::{ETAG, IF_MATCH};
+use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, put};
-use eventsourcing::{Agent, ServiceError, Standing, StoreError, Version};
+use eventsourcing::{Agent, Standing, Version};
 use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO, RetitlePieceRequest};
 use pieces_core::{Piece, PieceService, PieceServiceError, PieceSummary};
 use serde::Deserialize;
+use serving::{Unreadable, demanded, refusal, tag};
 
 pub fn router(pieces: PieceService) -> Router {
     Router::new()
@@ -107,28 +108,13 @@ fn nobody_yet() -> Agent {
 }
 
 fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
-    let Some(demanded) = headers.get(IF_MATCH) else {
-        return Ok(None);
-    };
-    let demanded = demanded.to_str().map_err(|_| ApiError::Unreadable)?.trim();
-
-    if demanded == "*" {
-        return Ok(None);
-    }
-
-    demanded
-        .trim_matches('"')
-        .parse()
-        .map(|counted: u64| Some(Version::of(counted)))
-        .map_err(|_| ApiError::Unreadable)
+    Ok(demanded(headers)?)
 }
 
 fn reported(status: StatusCode, id: &str, standing: &Standing<Piece>) -> Response {
-    let tag = format!("\"{}\"", standing.version);
-
     (
         status,
-        [(ETAG, tag)],
+        [(ETAG, tag(standing.version))],
         Json(as_dto(id, &standing.state, standing.version)),
     )
         .into_response()
@@ -145,7 +131,7 @@ fn as_dto(id: &str, piece: &Piece, version: Version) -> PieceDTO {
 }
 
 enum ApiError {
-    Unreadable,
+    Unreadable(Unreadable),
     Refused(PieceServiceError),
 }
 
@@ -155,35 +141,27 @@ impl From<PieceServiceError> for ApiError {
     }
 }
 
+impl From<Unreadable> for ApiError {
+    fn from(error: Unreadable) -> Self {
+        Self::Unreadable(error)
+    }
+}
+
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let refusal = match self {
-            Self::Unreadable => {
-                return (
-                    StatusCode::BAD_REQUEST,
-                    "If-Match must be a version, in quotes".to_owned(),
-                )
-                    .into_response();
+        let refused = match self {
+            Self::Unreadable(reason) => {
+                return (StatusCode::BAD_REQUEST, reason.to_string()).into_response();
             }
-            Self::Refused(refusal) => refusal,
+            Self::Refused(refused) => refused,
         };
 
-        let (status, message) = match refusal {
+        let (status, message) = match refused {
             PieceServiceError::InvalidId(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
             PieceServiceError::InvalidTitle(reason) => {
                 (StatusCode::BAD_REQUEST, reason.to_string())
             }
-            PieceServiceError::Events(ServiceError::NotFound { aggregate, .. }) => (
-                StatusCode::NOT_FOUND,
-                format!("piece {aggregate} was not found"),
-            ),
-            PieceServiceError::Events(ServiceError::Refused(refusal)) => {
-                (StatusCode::CONFLICT, refusal.to_string())
-            }
-            PieceServiceError::Events(ServiceError::Store(StoreError::Outdated { .. })) => (
-                StatusCode::PRECONDITION_FAILED,
-                "this piece has moved on since the version you asked for".to_owned(),
-            ),
+            PieceServiceError::Events(events) => refusal(&events),
             unserveable => {
                 tracing::error!(error = %unserveable, "a piece request could not be served");
 

@@ -27,6 +27,11 @@ pub struct BoardDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct OpenBoardRequest {
+    pub project: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PinPieceRequest {
     pub piece: String,
     pub spot: SpotDTO,

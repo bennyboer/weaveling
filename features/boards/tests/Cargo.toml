@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
 

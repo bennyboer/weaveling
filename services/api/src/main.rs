@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use boards_catalog::InMemoryBoardCatalog;
 use clock::SystemClock;
 use eventsourcing::InMemoryEventStore;
 use passages_store::InMemoryPassageStore;
@@ -17,6 +18,8 @@ async fn main() {
         Arc::new(InMemoryPassageStore::new()),
         Arc::new(InMemoryEventStore::new()),
         Arc::new(InMemoryPieceCatalog::new()),
+        Arc::new(InMemoryEventStore::new()),
+        Arc::new(InMemoryBoardCatalog::new()),
         Arc::new(SystemClock),
     );
 

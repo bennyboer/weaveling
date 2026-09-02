@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axum::Router;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
 use boards_messaging::{BoardCatalogProjector, Publishing};
 use clock::Clock;
@@ -8,6 +9,7 @@ use messaging::{Listener, Publisher};
 
 pub struct Wired {
     pub boards: BoardService,
+    pub routes: Router,
     pub listeners: Vec<Arc<dyn Listener>>,
 }
 
@@ -26,6 +28,7 @@ pub fn wire(
     let projector = BoardCatalogProjector::new(events, catalog, clock);
 
     Wired {
+        routes: boards_rest::router(boards.clone()),
         boards,
         listeners: vec![Arc::new(projector)],
     }
