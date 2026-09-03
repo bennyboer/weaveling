@@ -15,6 +15,10 @@ pub fn project(id: &ProjectId, named: &str) -> String {
     }
 }
 
+pub fn board(project: &str) -> String {
+    format!("/projects/{project}/board")
+}
+
 pub fn piece_segment(id: &PieceId, named: &str) -> String {
     let slug = slugify(named);
 
@@ -23,6 +27,10 @@ pub fn piece_segment(id: &PieceId, named: &str) -> String {
     } else {
         format!("{slug}-{id}")
     }
+}
+
+pub fn piece(project: &str, id: &PieceId, named: &str) -> String {
+    format!("/projects/{project}/pieces/{}", piece_segment(id, named))
 }
 
 pub fn piece_id(segment: &str) -> PieceId {

@@ -146,6 +146,8 @@ Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then 
   ```
 
   `AlreadyHoldsPassage` becomes role-scoped, `passage()` becomes `passage(role)` with a `body()` shorthand. What to avoid is arriving there *implicitly* — a `Vec` that quietly decides the axis the first time someone needs a synopsis and picks whatever is easiest.
+- [ ] **Does the board keep joining client-side once the pool is too big to fetch whole?** The reasoning is written up under [a board that holds ten thousand pieces](./ROADMAP.md#after-phase-3-sketch-only); the decision is not made. Short version: loading placements per viewport is natural because spots are coordinates, but it buys nothing while the client still fetches every piece in the project to resolve titles. So either both sides get windowed together, or the board's read model carries the title — which denormalises a piece's title into `boards` and needs a `piece.retitled` listener, undoing the [client-side join](./ARCHITECTURE.md#the-board-renders-through-a-frontend-join) we chose on purpose. Worth a conversation before anyone starts, because the cheap-looking change is the one that reshapes the feature.
+
 - [ ] "Present in a scene" vs. "merely mentioned" — do we model both relation types? Belongs to the `cast` view.
 - [ ] Time model details: representing parallel pieces + nested time buckets (year ⊃ month ⊃ day). Belongs to the `timeline` view.
 - [x] ~~Frontend framework choice within full-stack Rust~~ — Leptos, and the editor spike confirmed it can host ProseMirror without the interop dominating.

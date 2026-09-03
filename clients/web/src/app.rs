@@ -5,6 +5,7 @@ use leptos_router::components::{A, Route, Router, Routes};
 use leptos_router::hooks::use_params_map;
 use leptos_router::path;
 
+use crate::boards::board::{TheBoard, TheBoardProps};
 use crate::http::ApiError;
 use crate::passages::editor::{PassageEditor, PassageEditorProps};
 use crate::passages::model::PassageId;
@@ -46,6 +47,7 @@ pub fn App() -> impl IntoView {
                         view=move || TheWorkspace(TheWorkspaceProps { workspace, overlays })
                     />
                     <Route path=path!("/projects/:project") view=OneProject />
+                    <Route path=path!("/projects/:project/board") view=OneBoard />
                     <Route path=path!("/projects/:project/pieces/:piece") view=OnePiece />
                 </Routes>
             </Router>
@@ -98,9 +100,32 @@ fn OneProject() -> impl IntoView {
                         "All projects"
                     </A>
                 },
+                view! {
+                    <A href=route::board(&project) attr:class="to-board">
+                        "Open the board"
+                    </A>
+                },
                 Pool(PoolProps {
                     project: route::project_id(&project),
                 }),
+            )
+        })
+    }
+}
+
+#[component]
+fn OneBoard() -> impl IntoView {
+    let params = use_params_map();
+
+    move || {
+        params.read().get("project").map(|project| {
+            (
+                view! {
+                    <A href=format!("/projects/{project}") attr:class="back">
+                        "Back to the pool"
+                    </A>
+                },
+                TheBoard(TheBoardProps { project }),
             )
         })
     }

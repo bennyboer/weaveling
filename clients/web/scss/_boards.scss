@@ -1,0 +1,60 @@
+.to-board {
+  display: block;
+  width: fit-content;
+  margin-bottom: 1.5rem;
+  color: var(--muted);
+}
+
+.board {
+  margin-top: 2.5rem;
+
+  h2 {
+    font: 400 1.35rem/1.2 Georgia, serif;
+    margin: 0 0 1rem;
+  }
+
+  h3 {
+    font: 400 1.05rem/1.2 Georgia, serif;
+    margin: 0 0 0.75rem;
+    color: var(--muted);
+  }
+}
+
+.corkboard {
+  position: relative;
+  min-height: 26rem;
+  margin-bottom: 2.5rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background-color: var(--surface);
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.pinned {
+  position: absolute;
+  width: 9.5rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--paper);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 14%);
+
+  .name {
+    display: block;
+    line-height: 1.35;
+    color: var(--ink);
+  }
+}
+
+.waiting {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+}

@@ -256,7 +256,11 @@ Two things arrived that were not planned: every feature grew a [`wiring` crate](
 
 **Done when:** two browsers drag pieces on one board and see each other live; the durable record holds one event per drop rather than per frame; a piece discarded from the pool vanishes from the board with no compensating event; and a project that never had a board gets one on first open.
 
-**Explicitly not in M8:** the outline, grouping, board naming or switching — multiple boards are modelled, one is shipped.
+**Explicitly not in M9:** the outline, grouping, board naming or switching — multiple boards are modelled, one is shipped.
+
+**Progress.** The server side is built — aggregate, catalog with a piece-to-boards index, find-or-start, REST, and three listeners including `unpin-discarded-piece`. The client renders the join: cards at their spots, a list of pieces not yet on the board, and pinning from it. Verified by hand that a genuinely dangling placement draws nothing.
+
+**Owed with the drag pass:** a way to **unpin from the board** — the API, aggregate and listener all support it and the page has no button, so an author can pin a piece and never remove it. And a real test for the **tolerant render**: `a_discarded_piece_leaves_the_board` passes whether the listener unpinned the piece or the join hid it, so it cannot tell the two apart — the honest test pins a piece id that was never captured. Also, the piece view's "Back to the pool" ignores that you arrived from the board.
 
 ### Milestone 10 — The outline
 
@@ -318,4 +322,12 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 
 - **Accounts, tenancy and auth** — looming. It changes port shapes (`list(owner)`, not `list()`) and puts auth on the sync socket. Not a filter to bolt on.
 - **Export** — Typst → PDF and HTML → EPUB. Still an **unspiked risk**: embedding Typst means implementing its `World` trait for font and file resolution, plus font licensing. Worth its own rung before it becomes a milestone.
+- **A board that holds ten thousand pieces** — three related changes, and the order matters because the first probably makes the second unnecessary.
+
+  **Cull to the viewport first.** Today every placement becomes an `<article>` with a real `<a>` inside; at ten thousand that is twenty thousand nodes for Leptos to diff and the browser to lay out. But at any zoom where a card is *readable*, only tens of them fit on screen — ten thousand cards at 150px is over a kilometre of board. So rendering only what is in view is both the cheapest fix and very likely the sufficient one.
+
+  **Canvas is the tempting answer and it costs more than it looks.** One element and draw calls would be fast, and it would break two decisions this codebase made deliberately: cards are real anchors, because [`<A>` over a click handler](./ARCHITECTURE.md#frontend--full-stack-rust) is what makes a piece ctrl-clickable and its link copyable; and the E2E suite selects by **role and accessible name**, which a canvas is opaque to. A canvas would take the links, the screen reader and the test strategy with it. The honest split is by zoom: DOM plus culling while cards are readable, and canvas only for a zoomed-out overview where titles cannot be read anyway — and where losing the link therefore costs nothing.
+
+  **Loading per viewport is the interesting one, and it pressures the frontend join.** Spots are coordinates, so `within=x1,y1,x2,y2` is a natural query — but it cannot be served from the board aggregate, which holds every placement in one stream, so it wants a region-keyed projection. Worse, windowing the placements alone buys nothing: the client resolves titles by fetching *the whole pool*, which at ten thousand pieces is the larger payload. Either both sides get windowed together, or the board's read model carries the title — and that second option denormalises a piece's title into `boards` and needs a listener on `piece.retitled`, which is exactly the [client-side join](./ARCHITECTURE.md#the-board-renders-through-a-frontend-join) we chose instead. So the real question is not "add a spatial query" but **whether the board keeps joining client-side once the pool is too big to fetch whole.**
+
 - Then, in some order: the codex, the timeline, threads, search projections over Tantivy.
