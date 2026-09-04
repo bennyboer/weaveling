@@ -1,5 +1,5 @@
 use gloo_net::http::Request;
-use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO};
+use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO, RetitlePieceRequest};
 
 use crate::http::{ApiError, parsed};
 use crate::passages::model::PassageId;
@@ -25,6 +25,20 @@ pub async fn capture(project: &ProjectId, title: &str) -> Result<Piece, ApiError
         title: title.to_owned(),
     };
     let response = Request::post(PIECES)
+        .json(&payload)
+        .map_err(|_| ApiError::Unexpected)?
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
+
+    Ok(as_piece(parsed(response, SUBJECT).await?))
+}
+
+pub async fn retitle(id: &PieceId, title: &str) -> Result<Piece, ApiError> {
+    let payload = RetitlePieceRequest {
+        title: title.to_owned(),
+    };
+    let response = Request::patch(&format!("{PIECES}/{id}"))
         .json(&payload)
         .map_err(|_| ApiError::Unexpected)?
         .send()

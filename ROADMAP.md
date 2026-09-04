@@ -280,7 +280,18 @@ The surface itself is now the Obsidian-style dotted canvas rather than a ruled g
 
 The board's scroll is a stopgap that pan/zoom replaces. Note for whoever writes that test: `overflow: hidden` still reports the full `scrollWidth` and still obeys `scrollLeft` and `scrollIntoView`, so a test built on any of those passes either way. Only a real wheel event tells the two apart — and Playwright's `mouse.wheel` drives the vertical axis but not the horizontal one, and needs polling because the compositor scrolls a frame later.
 
-**Left in M9:** a floating action bar over the selected card, then pan and zoom, then the live channel — a `Delivery::Fleeting` subscriber with in-flight drags travelling as awareness. Cards the author can resize is the one that reaches past the client; see the TODO.
+**The action bar is in**, floating over the selected card the way Obsidian Canvas does: rename, open, unpin. Unpinning moved off the card and onto it, so a card is a title and nothing else again. The bar flips below the card when there is not enough room above, and steps aside entirely while a card is being dragged.
+
+**Renaming settled the question selection was posed to answer.** A rename opens a textarea over the card, commits on Enter or on clicking away, and abandons on Escape — and it is deliberately *not* a child of the card. That mattered more than it sounds: the first version put the editor inside the card and hit two versions of the same bug, both found by pushing cards around rather than by any test.
+
+- Every press rebuilt the card's children, because `pinned()` read `carrying` and so re-ran the whole list on each pointer event. The fix pushes the drag position down into a per-card reactive attribute, so a drag now touches one `style` attribute rather than rebuilding the list — which also retires the per-mousemove join over the pool. Symptoms before that: double click stopped opening a piece, dragging by the title broke, and Escape stopped deselecting, all because the focused node was replaced underneath the gesture.
+- Then the editor, moved out to board-level chrome, was still rebuilt whenever the board changed — so pinning another piece mid-rename reset what had been typed. What the editor needs is captured when it opens (`Renaming { piece, at, was }`), so it now depends on nothing but itself.
+
+There is a lesson in both worth keeping: **a reactive slot that reads a broad signal will replace its DOM on every change to that signal**, and anything living in that DOM — focus, a caret, half-typed text, an in-flight gesture — goes with it. Read narrowly, or capture what you need up front.
+
+The bar also shipped a bug straight onto another page: `.actions` was a bare class in a stylesheet that is concatenated globally, and `_boards.scss` is loaded after `_projects.scss`, so the workspace's project-row menu was absolutely positioned over the page and Save landed on top of Cancel. Board-surface rules are now nested under `.corkboard` and named for it. The second collision of this kind — [the convention is owed](./TODO.md).
+
+**Left in M9:** pan and zoom, then the live channel — a `Delivery::Fleeting` subscriber with in-flight drags travelling as awareness. Cards the author can resize is the one that reaches past the client; see the TODO, along with the note that `board.rs` wants splitting before the live channel arrives.
 
 ### Milestone 10 — The outline
 

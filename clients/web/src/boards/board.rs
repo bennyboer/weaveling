@@ -17,6 +17,14 @@ const LEAP: i64 = 40;
 const DRAG_BEGINS: i64 = 4;
 const STEP: i64 = 40;
 const COLUMNS: i64 = 3;
+const ROOM_ABOVE: i64 = 44;
+
+#[derive(Clone, PartialEq, Eq)]
+struct Renaming {
+    piece: PieceId,
+    at: Spot,
+    was: String,
+}
 
 #[derive(Clone, PartialEq, Eq)]
 struct Carrying {
@@ -29,8 +37,10 @@ struct Carrying {
 struct Handles {
     carrying: RwSignal<Option<Carrying>>,
     selected: RwSignal<Option<PieceId>>,
+    renaming: RwSignal<Option<Renaming>>,
     moving: Action<(PieceId, Spot), ()>,
     unpinning: Action<PieceId, ()>,
+    retitling: Action<(PieceId, String), ()>,
 }
 
 #[component]
@@ -39,17 +49,25 @@ pub fn TheBoard(project: String) -> impl IntoView {
     let board = RwSignal::new(None::<Board>);
     let carrying = RwSignal::new(None::<Carrying>);
     let selected = RwSignal::new(None::<PieceId>);
+    let renaming = RwSignal::new(None::<Renaming>);
+    let pool = RwSignal::new(None::<Vec<Piece>>);
     let id = route::project_id(&project);
 
-    let pool = {
+    let listing = {
         let id = id.clone();
 
-        LocalResource::new(move || {
+        Action::new_local(move |()| {
             let id = id.clone();
 
-            async move { pieces::list(&id).await }
+            async move {
+                match pieces::list(&id).await {
+                    Ok(found) => pool.set(Some(found)),
+                    Err(failure) => problem.set(Some(failure)),
+                }
+            }
         })
     };
+    listing.dispatch(());
 
     let arrived = move |open: Board| {
         let known = board.with_untracked(|held| held.as_ref().map(|held| held.version));
@@ -154,10 +172,7 @@ pub fn TheBoard(project: String) -> impl IntoView {
         }
     });
 
-    let in_pool = move || match pool.get() {
-        Some(found) => found.as_ref().cloned().unwrap_or_default(),
-        None => Vec::new(),
-    };
+    let in_pool = move || pool.get().unwrap_or_default();
 
     let unpinned = move || {
         let Some(held) = board.get() else {
@@ -178,17 +193,50 @@ pub fn TheBoard(project: String) -> impl IntoView {
             .map(|open| {
                 open.pieces
                     .into_iter()
-                    .filter_map(|held| drawn(&held, &pool, carrying.get()))
+                    .filter_map(|held| drawn(&held, &pool))
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default()
     };
 
+    let retitling = Action::new_local(move |(piece, title): &(PieceId, String)| {
+        let piece = piece.clone();
+        let title = title.clone();
+
+        async move {
+            match pieces::retitle(&piece, &title).await {
+                Ok(renamed) => {
+                    problem.set(None);
+                    pool.update(|held| {
+                        if let Some(held) = held
+                            && let Some(known) =
+                                held.iter_mut().find(|known| known.id == renamed.id)
+                        {
+                            *known = renamed;
+                        }
+                    });
+                }
+                Err(failure) => problem.set(Some(failure)),
+            }
+        }
+    });
+
     let handles = Handles {
         carrying,
         selected,
+        renaming,
         moving,
         unpinning,
+        retitling,
+    };
+
+    let chosen = move || {
+        if carrying.get().is_some() {
+            return None;
+        }
+        let held = selected.get()?;
+
+        pinned().into_iter().find(|(piece, _)| piece.id == held)
     };
 
     html::section().class("board").child((
@@ -210,21 +258,38 @@ pub fn TheBoard(project: String) -> impl IntoView {
                     selected.set(None);
                 }
             })
-            .child(move || {
-                let project = project.clone();
+            .child((
+                {
+                    let project = project.clone();
 
-                pinned()
-                    .into_iter()
-                    .map(|(piece, at)| {
-                        card(
-                            route::piece(&project, &piece.id, &piece.title),
-                            piece,
-                            at,
-                            handles,
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            }),
+                    move || {
+                        let project = project.clone();
+
+                        pinned()
+                            .into_iter()
+                            .map(|(piece, at)| {
+                                card(
+                                    route::piece(&project, &piece.id, &piece.title),
+                                    piece,
+                                    at,
+                                    handles,
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                    }
+                },
+                move || {
+                    let (piece, at) = chosen()?;
+
+                    Some(actions(
+                        route::piece(&project, &piece.id, &piece.title),
+                        piece,
+                        at,
+                        handles,
+                    ))
+                },
+                move || renaming.get().map(|held| rename(held, handles)),
+            )),
         html::section().class("unpinned").child((
             html::h3().child("Not on the board"),
             move || {
@@ -247,19 +312,10 @@ pub fn TheBoard(project: String) -> impl IntoView {
     ))
 }
 
-fn drawn(
-    held: &PositionedPiece,
-    pool: &[Piece],
-    carrying: Option<Carrying>,
-) -> Option<(Piece, Spot)> {
-    let at = match carrying {
-        Some(carried) if carried.piece == held.piece => carried.landing(),
-        _ => held.spot,
-    };
-
+fn drawn(held: &PositionedPiece, pool: &[Piece]) -> Option<(Piece, Spot)> {
     pool.iter()
         .find(|piece| piece.id == held.piece)
-        .map(|piece| (piece.clone(), at))
+        .map(|piece| (piece.clone(), held.spot))
 }
 
 fn card(href: String, piece: Piece, at: Spot, handles: Handles) -> impl IntoView {
@@ -274,6 +330,7 @@ fn card(href: String, piece: Piece, at: Spot, handles: Handles) -> impl IntoView
     let borne = id.clone();
     let pressed = id.clone();
     let nudged = id.clone();
+    let placed = id;
 
     html::article()
         .class("pinned")
@@ -288,7 +345,14 @@ fn card(href: String, piece: Piece, at: Spot, handles: Handles) -> impl IntoView
         .attr("tabindex", "0")
         .attr("aria-label", shown.clone())
         .attr("title", shown.clone())
-        .attr("style", format!("left: {}px; top: {}px;", at.x, at.y))
+        .attr("style", move || {
+            let at = handles.carrying.with(|held| match held {
+                Some(held) if held.piece == placed => held.landing(),
+                _ => at,
+            });
+
+            format!("left: {}px; top: {}px;", at.x, at.y)
+        })
         .on(ev::pointerdown, move |event| {
             event.stop_propagation();
 
@@ -362,7 +426,111 @@ fn card(href: String, piece: Piece, at: Spot, handles: Handles) -> impl IntoView
 
             handles.moving.dispatch((nudged.clone(), to));
         })
-        .child((name(href, named), unpin(id, shown, handles)))
+        .child(name(href, named))
+}
+
+fn rename(renaming: Renaming, handles: Handles) -> impl IntoView {
+    let field = NodeRef::<html::Textarea>::new();
+    let Renaming { piece, at, was } = renaming;
+    let asked = was.clone();
+    let shown = was.clone();
+    let leaving = piece.clone();
+
+    Effect::new(move |_| {
+        if let Some(field) = field.get() {
+            let _ = field.focus();
+            field.select();
+        }
+    });
+
+    html::textarea()
+        .class("pinned-rename")
+        .attr("aria-label", format!("Rename {asked}"))
+        .attr("style", format!("left: {}px; top: {}px;", at.x, at.y))
+        .node_ref(field)
+        .prop("value", was.clone())
+        .on(ev::pointerdown, |event| event.stop_propagation())
+        .on(ev::dblclick, |event| event.stop_propagation())
+        .on(ev::keydown, move |event| {
+            event.stop_propagation();
+
+            match event.key().as_str() {
+                "Enter" if !event.shift_key() => {
+                    event.prevent_default();
+                    settle(field, &piece, &was, handles);
+                }
+                "Escape" => {
+                    event.prevent_default();
+                    handles.renaming.set(None);
+                }
+                _ => {}
+            }
+        })
+        .on(ev::focusout, move |_| {
+            settle(field, &leaving, &shown, handles)
+        })
+}
+
+fn settle(field: NodeRef<html::Textarea>, piece: &PieceId, was: &str, handles: Handles) {
+    if handles
+        .renaming
+        .with_untracked(|held| held.as_ref().map(|held| &held.piece) != Some(piece))
+    {
+        return;
+    }
+    handles.renaming.set(None);
+
+    let Some(written) = field.get_untracked().map(|field| field.value()) else {
+        return;
+    };
+
+    if written != was {
+        handles.retitling.dispatch((piece.clone(), written));
+    }
+}
+
+fn actions(href: String, piece: Piece, at: Spot, handles: Handles) -> impl IntoView {
+    let opening = use_navigate();
+    let shown = piece.shown_as().to_owned();
+    let called = shown.clone();
+    let id = piece.id;
+    let renamed = id.clone();
+    let unpinned = id;
+    let cramped = at.y < ROOM_ABOVE;
+
+    html::div()
+        .class("pinned-actions")
+        .class(("below", move || cramped))
+        .attr("role", "toolbar")
+        .attr("aria-label", format!("Actions for {shown}"))
+        .attr("style", format!("left: {}px; top: {}px;", at.x, at.y))
+        .on(ev::pointerdown, |event| event.stop_propagation())
+        .child((
+            deed(format!("Rename {shown}"), "\u{270e}", move || {
+                handles.renaming.set(Some(Renaming {
+                    piece: renamed.clone(),
+                    at,
+                    was: called.clone(),
+                }));
+            }),
+            deed(format!("Open {shown}"), "\u{2197}", move || {
+                opening(&href, Default::default());
+            }),
+            deed(format!("Unpin {shown}"), "\u{00d7}", move || {
+                handles.unpinning.dispatch(unpinned.clone());
+            }),
+        ))
+}
+
+fn deed(what: String, glyph: &'static str, done: impl Fn() + 'static) -> impl IntoView {
+    html::button()
+        .r#type("button")
+        .attr("aria-label", what)
+        .on(ev::click, move |event| {
+            event.stop_propagation();
+            done();
+        })
+        .child(glyph)
 }
 
 fn name(href: String, shown: String) -> impl IntoView {
@@ -381,19 +549,6 @@ fn name(href: String, shown: String) -> impl IntoView {
 
 fn opening_elsewhere(event: &ev::MouseEvent) -> bool {
     event.ctrl_key() || event.meta_key() || event.shift_key()
-}
-
-fn unpin(piece: PieceId, shown: String, handles: Handles) -> impl IntoView {
-    html::button()
-        .r#type("button")
-        .class("unpin")
-        .attr("aria-label", format!("Unpin {shown}"))
-        .on(ev::pointerdown, |event| event.stop_propagation())
-        .on(ev::click, move |event| {
-            event.stop_propagation();
-            handles.unpinning.dispatch(piece.clone());
-        })
-        .child("\u{00d7}")
 }
 
 fn pinnable(piece: Piece, pinning: Action<PieceId, ()>) -> impl IntoView {

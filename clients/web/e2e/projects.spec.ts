@@ -91,3 +91,41 @@ test("confirming a delete removes the project", async ({ page }) => {
 
   await expect(rowFor(page, title)).toHaveCount(0);
 });
+
+test("a project's controls stay inside its row", async ({ page }) => {
+  const title = aTitle();
+  await aProjectCalled(page, title);
+  const row = rowFor(page, title);
+
+  const controls = row.locator(".actions");
+  await expect(controls).toHaveCSS("position", "relative");
+  const inside = await controls.evaluate((it) => {
+    const mine = it.getBoundingClientRect();
+    const around = it.closest("li")!.getBoundingClientRect();
+
+    return mine.top >= around.top - 1 && mine.bottom <= around.bottom + 1;
+  });
+  expect(inside, "board styling must not float these over the page").toBe(true);
+});
+
+test("renaming a project shows Save and Cancel beside the field", async ({ page }) => {
+  const title = aTitle();
+  await aProjectCalled(page, title);
+  const row = rowFor(page, title);
+
+  await row.getByRole("button", { name: "More actions" }).click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+
+  const editing = page.getByRole("listitem").filter({ has: page.getByRole("textbox") });
+  await expect(editing.getByRole("button", { name: "Save" })).toBeVisible();
+  await expect(editing.getByRole("button", { name: "Cancel" })).toBeVisible();
+
+  const apart = await editing.evaluate((it) => {
+    const [first, second] = [...it.querySelectorAll(".actions button")].map((b) =>
+      b.getBoundingClientRect(),
+    );
+
+    return second.left >= first.right - 1;
+  });
+  expect(apart, "Save and Cancel must not sit on top of each other").toBe(true);
+});
