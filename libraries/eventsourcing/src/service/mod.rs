@@ -46,6 +46,8 @@ pub struct EventSourcingService<A: Aggregate> {
     clock: Arc<dyn Clock>,
 }
 
+const ATTEMPTS: u8 = 4;
+
 type Outcome<A> = Result<Appended<<A as Aggregate>::Event>, ServiceError<<A as Aggregate>::Error>>;
 type Reached<A> = Result<Version, ServiceError<<A as Aggregate>::Error>>;
 
@@ -113,6 +115,25 @@ where
     }
 
     pub async fn execute(
+        &self,
+        aggregate: &AggregateId,
+        command: A::Command,
+        agent: &Agent,
+    ) -> Outcome<A>
+    where
+        A::Command: Clone,
+    {
+        for _ in 1..ATTEMPTS {
+            match self.once(aggregate, command.clone(), agent).await {
+                Err(ServiceError::Store(StoreError::Outdated { .. })) => continue,
+                settled => return settled,
+            }
+        }
+
+        self.once(aggregate, command, agent).await
+    }
+
+    async fn once(
         &self,
         aggregate: &AggregateId,
         command: A::Command,

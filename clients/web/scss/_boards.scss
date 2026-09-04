@@ -24,28 +24,97 @@
   position: relative;
   min-height: 26rem;
   margin-bottom: 2.5rem;
-  overflow: hidden;
+  overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 3px;
+  border-radius: 6px;
   background-color: var(--surface);
-  background-image:
-    linear-gradient(var(--line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--line) 1px, transparent 1px);
-  background-size: 40px 40px;
+  background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 0);
+  background-size: 20px 20px;
 }
 
 .pinned {
   position: absolute;
-  width: 9.5rem;
-  padding: 0.6rem 0.7rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.35rem;
+  width: 10.5rem;
+  height: 5.25rem;
+  padding: 0.5rem 0.6rem;
   border: 1px solid var(--line);
-  border-radius: 2px;
+  border-radius: 6px;
   background: var(--paper);
   box-shadow: 0 1px 3px rgb(0 0 0 / 14%);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+
+  &:active {
+    cursor: grabbing;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--muted);
+    outline-offset: 2px;
+  }
+
+  &.carried {
+    z-index: 1;
+  }
+
+  &.selected {
+    border-color: var(--muted);
+    box-shadow:
+      0 0 0 2px var(--muted),
+      0 1px 3px rgb(0 0 0 / 14%);
+  }
 
   .name {
-    display: block;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
     line-height: 1.35;
+    color: var(--ink);
+    text-decoration: none;
+    cursor: inherit;
+    outline: none;
+  }
+
+  .name::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .name::-webkit-scrollbar-thumb {
+    border-radius: 3px;
+    background: transparent;
+  }
+
+  &:hover .name,
+  &:focus-within .name {
+    scrollbar-color: var(--muted) transparent;
+  }
+
+  &:hover .name::-webkit-scrollbar-thumb,
+  &:focus-within .name::-webkit-scrollbar-thumb {
+    background: var(--muted);
+  }
+
+  .unpin {
+    align-self: start;
+    padding: 0;
+    border: none;
+    background: transparent;
+    font: inherit;
+    font-size: 1.1rem;
+    line-height: 1;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .unpin:hover,
+  .unpin:focus-visible {
     color: var(--ink);
   }
 }

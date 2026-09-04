@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use clock::FixedClock;
 use time::OffsetDateTime;
 
@@ -861,5 +863,184 @@ async fn patches_are_applied_in_version_order_however_they_were_registered() {
             kind: SampleKind::Ordinary,
         },
         "the sample registers the newer patch first on purpose, so only sorting gets this right"
+    );
+}
+
+struct BalksOnce {
+    inner: Arc<InMemoryEventStore<SampleEvent>>,
+    balks: Mutex<u8>,
+}
+
+impl BalksOnce {
+    fn wrapping(inner: Arc<InMemoryEventStore<SampleEvent>>, times: u8) -> Arc<Self> {
+        Arc::new(Self {
+            inner,
+            balks: Mutex::new(times),
+        })
+    }
+
+    fn balked(&self) -> bool {
+        let mut left = self.balks.lock().expect("nothing panics holding this");
+
+        if *left == 0 {
+            return false;
+        }
+        *left -= 1;
+
+        true
+    }
+}
+
+#[async_trait::async_trait]
+impl EventStore<SampleEvent> for BalksOnce {
+    async fn append(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        expected: Version,
+        stream: &[Recorded<SampleEvent>],
+    ) -> Result<(), StoreError> {
+        if self.balked() {
+            return Err(StoreError::Outdated {
+                aggregate: aggregate.clone(),
+                kind,
+                expected,
+            });
+        }
+
+        self.inner.append(aggregate, kind, expected, stream).await
+    }
+
+    async fn read_from(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        self.inner.read_from(aggregate, kind, from).await
+    }
+
+    async fn read_through(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+        through: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .read_through(aggregate, kind, from, through)
+            .await
+    }
+
+    async fn latest_snapshot(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn snapshot_at_or_before(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        version: Version,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .snapshot_at_or_before(aggregate, kind, version)
+            .await
+    }
+
+    async fn prune_through(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        through: Version,
+    ) -> Result<(), StoreError> {
+        self.inner.prune_through(aggregate, kind, through).await
+    }
+}
+
+#[tokio::test]
+async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
+    let store = a_store();
+    a_service(store.clone())
+        .begin(&a_sample(), a_creation(), &an_author())
+        .await
+        .expect("the sample is created");
+    let balking = BalksOnce::wrapping(store, 2);
+    let service = EventSourcingService::<Sample>::new(
+        balking.clone(),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    );
+
+    let landed = service
+        .execute(
+            &a_sample(),
+            SampleCommand::UpdateTitle("Rewoven".to_owned()),
+            &an_author(),
+        )
+        .await
+        .expect("two refusals are ridden out");
+
+    assert_eq!(
+        happenings(&landed),
+        vec![SampleEvent::TitleUpdated("Rewoven".to_owned())]
+    );
+}
+
+#[tokio::test]
+async fn a_command_gives_up_once_it_has_run_out_of_tries() {
+    let store = a_store();
+    a_service(store.clone())
+        .begin(&a_sample(), a_creation(), &an_author())
+        .await
+        .expect("the sample is created");
+    let service = EventSourcingService::<Sample>::new(
+        BalksOnce::wrapping(store, ATTEMPTS),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    );
+
+    let refused = service
+        .execute(
+            &a_sample(),
+            SampleCommand::UpdateTitle("Rewoven".to_owned()),
+            &an_author(),
+        )
+        .await;
+
+    assert!(matches!(
+        refused,
+        Err(ServiceError::Store(StoreError::Outdated { .. }))
+    ));
+}
+
+#[tokio::test]
+async fn a_command_aimed_at_one_version_is_never_tried_again() {
+    let store = a_store();
+    a_service(store.clone())
+        .begin(&a_sample(), a_creation(), &an_author())
+        .await
+        .expect("the sample is created");
+    let service = EventSourcingService::<Sample>::new(
+        BalksOnce::wrapping(store, 1),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    );
+
+    let refused = service
+        .execute_at(
+            &a_sample(),
+            Version::of(1),
+            SampleCommand::UpdateTitle("Rewoven".to_owned()),
+            &an_author(),
+        )
+        .await;
+
+    assert!(
+        matches!(
+            refused,
+            Err(ServiceError::Store(StoreError::Outdated { .. }))
+        ),
+        "a caller who named a version must hear that it moved on, not have it papered over"
     );
 }

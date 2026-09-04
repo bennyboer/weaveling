@@ -19,6 +19,7 @@ pub const DELETED: EventName = EventName::of("DELETED");
 pub const CORRECTED: EventName = EventName::of("CORRECTED");
 pub const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
+#[derive(Clone)]
 pub enum SampleCommand {
     Create { title: String, description: String },
     UpdateTitle(String),

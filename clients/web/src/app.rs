@@ -178,11 +178,21 @@ fn OnePiece() -> impl IntoView {
             .map(|project| format!("/projects/{project}"))
             .unwrap_or_else(|| route::WORKSPACE.to_owned())
     };
+    let board = move || {
+        params
+            .read()
+            .get("project")
+            .map(|project| route::board(&project))
+            .unwrap_or_else(|| route::WORKSPACE.to_owned())
+    };
 
     (
         view! {
             <A href=pool attr:class="back">
                 "Back to the pool"
+            </A>
+            <A href=board attr:class="to-board">
+                "Back to the board"
             </A>
         },
         move || {
