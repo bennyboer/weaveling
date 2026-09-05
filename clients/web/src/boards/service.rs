@@ -29,8 +29,8 @@ pub async fn open(project: &ProjectId) -> Result<Board, ApiError> {
 pub async fn pin(board: &BoardId, piece: &PieceId, at: Placement) -> Result<Board, ApiError> {
     let payload = PinPieceRequest {
         piece: piece.to_string(),
-        spot: spot(at.spot),
-        size: extent(at.size),
+        spot: to_spot_dto(at.spot),
+        size: to_size_dto(at.size),
     };
     let response = Request::post(&format!("{BOARDS}/{board}/pieces"))
         .json(&payload)
@@ -49,8 +49,8 @@ pub async fn reshape(
     size: Option<Size>,
 ) -> Result<Board, ApiError> {
     let payload = ReshapePieceRequest {
-        spot: to.map(spot),
-        size: size.map(extent),
+        spot: to.map(to_spot_dto),
+        size: size.map(to_size_dto),
     };
     let response = Request::patch(&format!("{BOARDS}/{board}/pieces/{piece}"))
         .json(&payload)
@@ -97,12 +97,11 @@ fn as_positioned(dto: &PositionedPieceDTO) -> PositionedPiece {
     }
 }
 
-fn spot(at: Spot) -> SpotDTO {
-    // TODO [REVIEW] Maybe we should have some dedicated mapping transformer file (with to_contract and to_internal for everything?) or at least call it to_contract_spot? Same for extent and the other DTO mappings in this or other files
+fn to_spot_dto(at: Spot) -> SpotDTO {
     SpotDTO { x: at.x, y: at.y }
 }
 
-fn extent(size: Size) -> SizeDTO {
+fn to_size_dto(size: Size) -> SizeDTO {
     SizeDTO {
         width: size.width,
         height: size.height,

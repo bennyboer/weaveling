@@ -59,8 +59,8 @@ async fn pin(
         .pin(
             &board,
             PieceLink::from(request.piece.as_str()),
-            spot(request.spot),
-            extent(request.size),
+            as_spot(request.spot),
+            as_size(request.size),
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -79,8 +79,8 @@ async fn reshape(
         .reshape(
             &board,
             PieceLink::from(piece.as_str()),
-            request.spot.map(spot),
-            request.size.map(extent),
+            request.spot.map(as_spot),
+            request.size.map(as_size),
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -110,11 +110,11 @@ fn nobody_yet() -> Agent {
     Agent::Anonymous
 }
 
-fn spot(at: SpotDTO) -> Spot {
+fn as_spot(at: SpotDTO) -> Spot {
     Spot::at(at.x, at.y)
 }
 
-fn extent(size: SizeDTO) -> Size {
+fn as_size(size: SizeDTO) -> Size {
     Size::of(size.width, size.height)
 }
 
@@ -126,21 +126,21 @@ fn reported(status: StatusCode, board: &str, standing: &Standing<Board>) -> Resp
     (
         status,
         [(ETAG, tag(standing.version))],
-        Json(as_dto(board, &standing.state, standing.version)),
+        Json(to_dto(board, &standing.state, standing.version)),
     )
         .into_response()
 }
 
-fn as_dto(board: &str, held: &Board, version: Version) -> BoardDTO {
+fn to_dto(board: &str, held: &Board, version: Version) -> BoardDTO {
     BoardDTO {
         id: board.to_owned(),
         version: version.count(),
         project: held.project().to_string(),
-        pieces: held.pieces().iter().map(positioned).collect(),
+        pieces: held.pieces().iter().map(to_positioned_dto).collect(),
     }
 }
 
-fn positioned(held: &PositionedPiece) -> PositionedPieceDTO {
+fn to_positioned_dto(held: &PositionedPiece) -> PositionedPieceDTO {
     PositionedPieceDTO {
         piece: held.piece.to_string(),
         spot: SpotDTO {

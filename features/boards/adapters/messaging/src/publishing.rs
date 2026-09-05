@@ -83,16 +83,16 @@ fn body(event: &BoardEvent) -> Option<BoardEventDTO> {
         },
         BoardEvent::PiecePinned { piece, at, size } => BoardEventDTO::PiecePinned {
             piece: piece.to_string(),
-            at: spot(*at),
-            size: extent(*size),
+            at: to_spot_dto(*at),
+            size: to_size_dto(*size),
         },
         BoardEvent::PieceMoved { piece, to } => BoardEventDTO::PieceMoved {
             piece: piece.to_string(),
-            to: spot(*to),
+            to: to_spot_dto(*to),
         },
         BoardEvent::PieceResized { piece, to } => BoardEventDTO::PieceResized {
             piece: piece.to_string(),
-            to: extent(*to),
+            to: to_size_dto(*to),
         },
         BoardEvent::PieceUnpinned { piece } => BoardEventDTO::PieceUnpinned {
             piece: piece.to_string(),
@@ -101,11 +101,11 @@ fn body(event: &BoardEvent) -> Option<BoardEventDTO> {
     })
 }
 
-fn spot(at: Spot) -> SpotDTO {
+fn to_spot_dto(at: Spot) -> SpotDTO {
     SpotDTO { x: at.x, y: at.y }
 }
 
-fn extent(size: Size) -> SizeDTO {
+fn to_size_dto(size: Size) -> SizeDTO {
     SizeDTO {
         width: size.width,
         height: size.height,

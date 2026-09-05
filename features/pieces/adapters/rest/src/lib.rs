@@ -115,12 +115,12 @@ fn reported(status: StatusCode, id: &str, standing: &Standing<Piece>) -> Respons
     (
         status,
         [(ETAG, tag(standing.version))],
-        Json(as_dto(id, &standing.state, standing.version)),
+        Json(to_dto(id, &standing.state, standing.version)),
     )
         .into_response()
 }
 
-fn as_dto(id: &str, piece: &Piece, version: Version) -> PieceDTO {
+fn to_dto(id: &str, piece: &Piece, version: Version) -> PieceDTO {
     PieceDTO {
         id: id.to_owned(),
         version: version.count(),

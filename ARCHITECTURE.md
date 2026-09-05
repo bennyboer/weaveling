@@ -640,6 +640,10 @@ Two consequences worth knowing. `#[component]` stays — it is independent of th
 
 `leptosfmt` was considered and skipped: with `view!` this rare, another tool in the chain costs more than it returns.
 
+**A mapping function's name says which way it goes: `as_*` reads a DTO, `to_*_dto` writes one.** Both sides of the contract translate, and the types on either side share a noun — so a function called `spot` is unreadable without opening it. That was not hypothetical: `fn spot` meant `SpotDTO -> Spot` in the boards REST adapter and `Spot -> SpotDTO` in the boards publisher, the same name for opposite directions in one feature.
+
+Deliberately *not* a dedicated mapping module. On the client, `service.rs` is the only file that touches the contract at all, so the mapping already sits on the seam; on the server, translating is the whole job of an adapter, and moving it out would hollow out the thing it defines. Rust's orphan rule settles the other tempting option: neither the DTO nor the domain type is local to an adapter, so `impl From<SpotDTO> for Spot` is not available there and free functions are what is left.
+
 **`LocalResource` for reads, `Action` for writes — the `_local` variants.** `gloo-net`'s futures are not `Send`, so plain `Resource`/`Action` do not apply; `LocalResource::new` and `Action::new_local` do.
 
 A read is a resource keyed on a version signal; a mutation is an action that bumps that version **only on success**. That last clause is why an error banner can no longer be wiped by the reload that follows a failed write — the bug shipped in M4 was three call sites each having to remember to reload conditionally, and it is now one invariant in one place.
