@@ -1,5 +1,7 @@
 import { test, expect, type Page, type WebSocket } from "@playwright/test";
 
+import { openThePool } from "./support/shell";
+
 const API = "http://127.0.0.1:3000/api";
 
 const surface = (page: Page) => page.locator(".surface .ProseMirror");
@@ -7,7 +9,9 @@ const surface = (page: Page) => page.locator(".surface .ProseMirror");
 const prose = (target: Page) =>
   surface(target).evaluate((node) => {
     const copy = node.cloneNode(true) as HTMLElement;
-    copy.querySelectorAll(".ProseMirror-yjs-cursor").forEach((cursor) => cursor.remove());
+    copy
+      .querySelectorAll(".ProseMirror-yjs-cursor")
+      .forEach((cursor) => cursor.remove());
     return copy.textContent ?? "";
   });
 
@@ -20,10 +24,16 @@ async function aPieceBeingWritten(page: Page, named: string) {
   await page.getByPlaceholder("A working title…").fill(title);
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await page.getByRole("link", { name: title }).click();
+  await openThePool(page);
 
-  await page.getByRole("textbox", { name: "What is the idea?" }).fill("The loom");
+  await page
+    .getByRole("textbox", { name: "What is the idea?" })
+    .fill("The loom");
   await page.getByRole("button", { name: "Capture", exact: true }).click();
-  await page.getByRole("list", { name: "Pieces" }).getByRole("link", { name: "The loom" }).click();
+  await page
+    .getByRole("list", { name: "Pieces" })
+    .getByRole("link", { name: "The loom" })
+    .click();
 
   await expect(surface(page)).toBeVisible();
   await expect(page.getByText("Synced")).toBeVisible();
@@ -33,13 +43,18 @@ async function aPieceBeingWritten(page: Page, named: string) {
   return { address: page.url(), piece: idIn(segments[segments.length - 1]) };
 }
 
-test("opening a piece connects the editor to the sync socket", async ({ page }) => {
+test("opening a piece connects the editor to the sync socket", async ({
+  page,
+}) => {
   await aPieceBeingWritten(page, "Connects");
 
   await expect(page.getByText("Synced")).toBeVisible();
 });
 
-test("a piece is given its passage the first time it is opened", async ({ page, request }) => {
+test("a piece is given its passage the first time it is opened", async ({
+  page,
+  request,
+}) => {
   const { piece } = await aPieceBeingWritten(page, "Attached");
 
   const found = await (await request.get(`${API}/pieces/${piece}`)).json();
@@ -47,16 +62,22 @@ test("a piece is given its passage the first time it is opened", async ({ page, 
   expect(found.passage).toMatch(/^passage_/);
 });
 
-test("typed prose reaches the server's own projection", async ({ page, request }) => {
+test("typed prose reaches the server's own projection", async ({
+  page,
+  request,
+}) => {
   const { piece } = await aPieceBeingWritten(page, "Projection");
-  const { passage } = await (await request.get(`${API}/pieces/${piece}`)).json();
+  const { passage } = await (
+    await request.get(`${API}/pieces/${piece}`)
+  ).json();
 
   await surface(page).click();
   await page.keyboard.type("The loom stood silent.");
 
   await expect
     .poll(
-      async () => (await (await request.get(`${API}/passages/${passage}`)).json()).text,
+      async () =>
+        (await (await request.get(`${API}/passages/${passage}`)).json()).text,
       { timeout: 10_000 },
     )
     .toContain("The loom stood silent.");
@@ -72,7 +93,9 @@ test("two tabs on one piece converge", async ({ page, context }) => {
 
   await surface(page).click();
   await page.keyboard.type("She threaded the shuttle.");
-  await expect(surface(second)).toContainText("She threaded the shuttle.", { timeout: 10_000 });
+  await expect(surface(second)).toContainText("She threaded the shuttle.", {
+    timeout: 10_000,
+  });
 
   await surface(second).click();
   await second.keyboard.press("Control+End");
@@ -80,13 +103,17 @@ test("two tabs on one piece converge", async ({ page, context }) => {
 
   const woven = "She threaded the shuttle. The loom answered.";
   await expect
-    .poll(async () => [await prose(page), await prose(second)], { timeout: 10_000 })
+    .poll(async () => [await prose(page), await prose(second)], {
+      timeout: 10_000,
+    })
     .toEqual([woven, woven]);
 
   await second.close();
 });
 
-test("leaving a piece tears down the editor and its socket", async ({ page }) => {
+test("leaving a piece tears down the editor and its socket", async ({
+  page,
+}) => {
   const sockets: WebSocket[] = [];
   page.on("websocket", (socket) => {
     if (socket.url().includes("/api/sync/")) {
@@ -97,16 +124,21 @@ test("leaving a piece tears down the editor and its socket", async ({ page }) =>
   await aPieceBeingWritten(page, "TearDown");
   expect(sockets).toHaveLength(1);
 
-  await page.getByRole("link", { name: "Back to the pool" }).click();
+  await openThePool(page);
 
-  await expect.poll(() => sockets[0].isClosed(), { timeout: 10_000 }).toBe(true);
+  await expect
+    .poll(() => sockets[0].isClosed(), { timeout: 10_000 })
+    .toBe(true);
   await expect(surface(page)).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
 });
 
 test("a piece the server does not know says so", async ({ page }) => {
   const { address } = await aPieceBeingWritten(page, "Missing");
-  const elsewhere = address.replace(/piece_[0-9A-Za-z]{22}$/, "piece_0000000000000000000000");
+  const elsewhere = address.replace(
+    /piece_[0-9A-Za-z]{22}$/,
+    "piece_0000000000000000000000",
+  );
 
   await page.goto(elsewhere);
 

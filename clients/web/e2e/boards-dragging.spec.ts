@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-import { anOpenProject, capture, corkboard, dragBy, openTheBoard } from "./support/board";
+import { corkboard, dragBy } from "./support/board";
+import {
+  anOpenProject,
+  capture,
+  onTheBoard,
+  openTheBoard,
+} from "./support/shell";
 
 test("a card can be nudged with the arrow keys", async ({ page }) => {
   await anOpenProject(page, "Nudging");
@@ -13,11 +19,17 @@ test("a card can be nudged with the arrow keys", async ({ page }) => {
   await card.focus();
   await page.keyboard.press("ArrowDown");
 
-  await expect(card, "one arrow press moves one grid cell").toHaveAttribute("style", /top: 45px/);
+  await expect(card, "one arrow press moves one grid cell").toHaveAttribute(
+    "style",
+    /top: 45px/,
+  );
 
   await page.keyboard.press("Shift+ArrowDown");
 
-  await expect(card, "shift leaps eight cells").toHaveAttribute("style", /top: 85px/);
+  await expect(card, "shift leaps eight cells").toHaveAttribute(
+    "style",
+    /top: 85px/,
+  );
 });
 
 test("a nudge survives a reload", async ({ page }) => {
@@ -27,12 +39,18 @@ test("a nudge survives a reload", async ({ page }) => {
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await corkboard(page).locator(".pinned").focus();
   await page.keyboard.press("ArrowRight");
-  await expect(corkboard(page).locator(".pinned")).toHaveAttribute("style", /left: 45px/);
+  await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
+    "style",
+    /left: 45px/,
+  );
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
 
-  await expect(corkboard(page).locator(".pinned")).toHaveAttribute("style", /left: 45px/);
+  await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
+    "style",
+    /left: 45px/,
+  );
 });
 
 test("a card dragged anywhere on its body lands where it was dropped and stays there", async ({
@@ -50,7 +68,7 @@ test("a card dragged anywhere on its body lands where it was dropped and stays t
     /left: 160px; top: 130px;/,
   );
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
   await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
     "style",
     /left: 160px; top: 130px;/,
@@ -68,8 +86,11 @@ test("a cancelled drag puts the card back where it was", async ({ page }) => {
   const carried = await page.evaluate(async () => {
     const card = document.querySelector(".pinned")!;
     const fire = (type: string, extra: PointerEventInit = {}) =>
-      card.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 7, ...extra }));
-    const style = () => document.querySelector(".pinned")!.getAttribute("style");
+      card.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, pointerId: 7, ...extra }),
+      );
+    const style = () =>
+      document.querySelector(".pinned")!.getAttribute("style");
 
     fire("pointerdown");
     fire("pointermove", { movementX: 30, movementY: 20 });
@@ -89,7 +110,9 @@ test("a cancelled drag puts the card back where it was", async ({ page }) => {
   await expect(card).toHaveAttribute("style", /left: 40px; top: 40px;/);
 });
 
-test("a card lands on the grid, however sloppily it is dropped", async ({ page }) => {
+test("a card lands on the grid, however sloppily it is dropped", async ({
+  page,
+}) => {
   await anOpenProject(page, "Snapping");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -103,7 +126,9 @@ test("a card lands on the grid, however sloppily it is dropped", async ({ page }
   ).toHaveAttribute("style", /left: 85px; top: 65px;/);
 });
 
-test("a slip too small to be a drag leaves the card where it was", async ({ page }) => {
+test("a slip too small to be a drag leaves the card where it was", async ({
+  page,
+}) => {
   await anOpenProject(page, "Slipping");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -130,14 +155,18 @@ test("a card stays selected all the way through a drag", async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(from.x + 60, from.y + 45, { steps: 6 });
 
-  await expect(card, "the outline must not blink off mid-drag").toHaveClass(/selected/);
+  await expect(card, "the outline must not blink off mid-drag").toHaveClass(
+    /selected/,
+  );
 
   await page.mouse.up();
 
   await expect(card).toHaveClass(/selected/);
 });
 
-test("a dropped card does not flash back to where it came from", async ({ page }) => {
+test("a dropped card does not flash back to where it came from", async ({
+  page,
+}) => {
   await anOpenProject(page, "NoFlash");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -152,7 +181,9 @@ test("a dropped card does not flash back to where it came from", async ({ page }
   await page.mouse.up();
 
   const rightAway = await card.getAttribute("style");
-  expect(rightAway, "the drop must not wait on the server").toMatch(/left: 140px; top: 90px;/);
+  expect(rightAway, "the drop must not wait on the server").toMatch(
+    /left: 140px; top: 90px;/,
+  );
   await expect(card).toHaveAttribute("style", /left: 140px; top: 90px;/);
 });
 
@@ -165,14 +196,18 @@ test("a card can be dragged by its title", async ({ page }) => {
 
   await dragBy(page, corkboard(page).locator(".name"), 60, 40);
 
-  await expect(page, "dragging the title must not follow the link").toHaveURL(board);
+  await expect(page, "dragging the title must not follow the link").toHaveURL(
+    board,
+  );
   await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
     "style",
     /left: 100px; top: 80px;/,
   );
 });
 
-test("a card being dragged rides above the ones pinned after it", async ({ page }) => {
+test("a card being dragged rides above the ones pinned after it", async ({
+  page,
+}) => {
   await anOpenProject(page, "OnTop");
   await capture(page, "The loom remembers");
   await capture(page, "She never returned");
@@ -191,11 +226,16 @@ test("a card being dragged rides above the ones pinned after it", async ({ page 
   const onTop = await page.evaluate(() => {
     const carried = document.querySelector(".pinned.carried")!;
     const box = carried.getBoundingClientRect();
-    const middle = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+    const middle = document.elementFromPoint(
+      box.left + box.width / 2,
+      box.top + box.height / 2,
+    );
 
     return carried.contains(middle);
   });
-  expect(onTop, "the card under the cursor must be the one being dragged").toBe(true);
+  expect(onTop, "the card under the cursor must be the one being dragged").toBe(
+    true,
+  );
 
   await page.mouse.up();
   await expect(first).not.toHaveClass(/carried/);
@@ -220,16 +260,19 @@ test("a dragged card stays in front after it is dropped", async ({ page }) => {
 
     return last.querySelector(".name")!.textContent;
   });
-  expect(onTop, "the card you just moved should be drawn last, so it sits in front").toBe(
-    "The loom remembers",
-  );
+  expect(
+    onTop,
+    "the card you just moved should be drawn last, so it sits in front",
+  ).toBe("The loom remembers");
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
   const afterwards = await page.evaluate(() => {
     const drawn = [...document.querySelectorAll(".pinned")];
 
     return drawn[drawn.length - 1].querySelector(".name")!.textContent;
   });
-  expect(afterwards, "the stacking is the board's, not the browser's").toBe("The loom remembers");
+  expect(afterwards, "the stacking is the board's, not the browser's").toBe(
+    "The loom remembers",
+  );
 });

@@ -5,6 +5,7 @@ mod passages;
 mod pieces;
 mod projects;
 mod route;
+mod shell;
 
 use leptos::prelude::*;
 

@@ -1,14 +1,12 @@
 import { test, expect } from "@playwright/test";
 
+import { bar, cardNamed, corkboard, select } from "./support/board";
 import {
   anOpenProject,
-  bar,
   capture,
-  cardNamed,
-  corkboard,
+  onTheBoard,
   openTheBoard,
-  select,
-} from "./support/board";
+} from "./support/shell";
 
 test("a pinned piece opens for writing from the board", async ({ page }) => {
   await anOpenProject(page, "Writing");
@@ -30,13 +28,14 @@ test("the writing view leads back to the board", async ({ page }) => {
   await corkboard(page).locator(".pinned").dblclick();
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
 
-  await page.getByRole("link", { name: "Back to the board" }).click();
+  await openTheBoard(page);
 
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
 });
 
-test("a single click selects a card, and the bare board deselects it", async ({ page }) => {
+test("a single click selects a card, and the bare board deselects it", async ({
+  page,
+}) => {
   await anOpenProject(page, "Selecting");
   await capture(page, "The loom remembers");
   await capture(page, "She never returned");
@@ -74,7 +73,9 @@ test("escape lets go of a selected card", async ({ page }) => {
   await expect(corkboard(page).locator(".pinned.selected")).toHaveCount(0);
 });
 
-test("clicking a card's title selects it rather than opening it", async ({ page }) => {
+test("clicking a card's title selects it rather than opening it", async ({
+  page,
+}) => {
   await anOpenProject(page, "TitleClick");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -96,9 +97,14 @@ test("selecting a card raises an action bar over it", async ({ page }) => {
 
   await cardNamed(page, "The loom remembers").click();
 
-  await expect(bar(page)).toHaveAttribute("aria-label", "Actions for The loom remembers");
+  await expect(bar(page)).toHaveAttribute(
+    "aria-label",
+    "Actions for The loom remembers",
+  );
   for (const deed of ["Rename", "Open", "Unpin"]) {
-    await expect(bar(page).getByRole("button", { name: `${deed} The loom remembers` })).toBeVisible();
+    await expect(
+      bar(page).getByRole("button", { name: `${deed} The loom remembers` }),
+    ).toBeVisible();
   }
 
   await page.keyboard.press("Escape");
@@ -106,7 +112,9 @@ test("selecting a card raises an action bar over it", async ({ page }) => {
   await expect(bar(page)).toHaveCount(0);
 });
 
-test("the bar drops below a card that is too near the top edge", async ({ page }) => {
+test("the bar drops below a card that is too near the top edge", async ({
+  page,
+}) => {
   await anOpenProject(page, "BarFlip");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -116,7 +124,9 @@ test("the bar drops below a card that is too near the top edge", async ({ page }
 
   await select(page, "The loom remembers");
 
-  await expect(bar(page), "40px is not enough room for a 42px bar").toHaveClass(/below/);
+  await expect(bar(page), "40px is not enough room for a 42px bar").toHaveClass(
+    /below/,
+  );
 
   await card.focus();
   await page.keyboard.press("Shift+ArrowDown");
@@ -146,7 +156,9 @@ test("the bar steps aside while a card is being dragged", async ({ page }) => {
   await expect(bar(page)).toHaveCount(1);
 });
 
-test("a card can be renamed from its bar, and the new title sticks", async ({ page }) => {
+test("a card can be renamed from its bar, and the new title sticks", async ({
+  page,
+}) => {
   await anOpenProject(page, "Renaming");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -154,7 +166,9 @@ test("a card can be renamed from its bar, and the new title sticks", async ({ pa
   await select(page, "The loom remembers");
 
   await page.getByRole("button", { name: "Rename The loom remembers" }).click();
-  const field = page.getByRole("textbox", { name: "Rename The loom remembers" });
+  const field = page.getByRole("textbox", {
+    name: "Rename The loom remembers",
+  });
   await expect(field).toBeFocused();
   await expect(field).toHaveValue("The loom remembers");
 
@@ -165,7 +179,7 @@ test("a card can be renamed from its bar, and the new title sticks", async ({ pa
   await expect(corkboard(page).locator(".name")).toHaveText("The loom forgets");
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
   await expect(corkboard(page).locator(".name")).toHaveText("The loom forgets");
 });
 
@@ -176,20 +190,28 @@ test("escape abandons a rename and keeps the old title", async ({ page }) => {
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
   await page.getByRole("button", { name: "Rename The loom remembers" }).click();
-  const field = page.getByRole("textbox", { name: "Rename The loom remembers" });
+  const field = page.getByRole("textbox", {
+    name: "Rename The loom remembers",
+  });
 
   await field.fill("Thrown away");
   await field.press("Escape");
 
   await expect(corkboard(page).locator(".pinned-rename")).toHaveCount(0);
-  await expect(corkboard(page).locator(".name")).toHaveText("The loom remembers");
+  await expect(corkboard(page).locator(".name")).toHaveText(
+    "The loom remembers",
+  );
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
-  await expect(corkboard(page).locator(".name")).toHaveText("The loom remembers");
+  await onTheBoard(page);
+  await expect(corkboard(page).locator(".name")).toHaveText(
+    "The loom remembers",
+  );
 });
 
-test("arrow keys write into a title being renamed instead of moving the card", async ({ page }) => {
+test("arrow keys write into a title being renamed instead of moving the card", async ({
+  page,
+}) => {
   await anOpenProject(page, "RenameKeys");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -202,10 +224,10 @@ test("arrow keys write into a title being renamed instead of moving the card", a
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowDown");
 
-  await expect(card, "the card must stay put while its title is being edited").toHaveAttribute(
-    "style",
-    /left: 40px; top: 40px;/,
-  );
+  await expect(
+    card,
+    "the card must stay put while its title is being edited",
+  ).toHaveAttribute("style", /left: 40px; top: 40px;/);
 });
 
 test("the bar's open button opens the piece for writing", async ({ page }) => {
@@ -229,14 +251,16 @@ test("clicking away from a rename keeps what was typed", async ({ page }) => {
   await select(page, "The loom remembers");
   await page.getByRole("button", { name: "Rename The loom remembers" }).click();
 
-  await page.getByRole("textbox", { name: "Rename The loom remembers" }).fill("The loom forgets");
+  await page
+    .getByRole("textbox", { name: "Rename The loom remembers" })
+    .fill("The loom forgets");
   await corkboard(page).click({ position: { x: 12, y: 320 } });
 
   await expect(corkboard(page).locator(".pinned-rename")).toHaveCount(0);
   await expect(corkboard(page).locator(".name")).toHaveText("The loom forgets");
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
   await expect(corkboard(page).locator(".name")).toHaveText("The loom forgets");
 });
 
@@ -248,7 +272,9 @@ test("a rename survives the board changing underneath it", async ({ page }) => {
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
   await page.getByRole("button", { name: "Rename The loom remembers" }).click();
-  const field = page.getByRole("textbox", { name: "Rename The loom remembers" });
+  const field = page.getByRole("textbox", {
+    name: "Rename The loom remembers",
+  });
   await field.fill("Half typed");
 
   await page.evaluate(() => {
@@ -256,9 +282,14 @@ test("a rename survives the board changing underneath it", async ({ page }) => {
   });
   await expect(corkboard(page).locator(".pinned")).toHaveCount(2);
 
-  await expect(field, "pinning another piece must not wipe the editor").toHaveValue("Half typed");
+  await expect(
+    field,
+    "pinning another piece must not wipe the editor",
+  ).toHaveValue("Half typed");
   await field.press("Enter");
-  await expect(corkboard(page).locator(".name").first()).toHaveText("Half typed");
+  await expect(corkboard(page).locator(".name").first()).toHaveText(
+    "Half typed",
+  );
 });
 
 test("a failure stays on screen until it is dismissed", async ({ page }) => {

@@ -1,24 +1,16 @@
 import { test, expect, type Page } from "@playwright/test";
 
-const aName = (of: string) => `Project ${of} ${crypto.randomUUID().slice(0, 8)}`;
+import {
+  aNewProject,
+  anOpenProject,
+  onTheBoard,
+  openThePool,
+} from "./support/shell";
 
 const pieces = (page: Page) => page.getByRole("list", { name: "Pieces" });
 
 const nothingYet = (page: Page) =>
   page.getByText("No pieces yet. Shoot an idea in and see where it goes.");
-
-async function anOpenProject(page: Page, named: string): Promise<string> {
-  const title = aName(named);
-
-  await page.goto("/");
-  await page.getByPlaceholder("A working title…").fill(title);
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  await page.getByRole("link", { name: title }).click();
-
-  await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
-
-  return title;
-}
 
 async function capture(page: Page, idea: string) {
   await page.getByRole("textbox", { name: "What is the idea?" }).fill(idea);
@@ -41,7 +33,9 @@ test("a captured piece appears in the pool", async ({ page }) => {
   await expect(nothingYet(page)).toHaveCount(0);
 });
 
-test("the idea field is emptied once the piece is captured", async ({ page }) => {
+test("the idea field is emptied once the piece is captured", async ({
+  page,
+}) => {
   await anOpenProject(page, "Emptied");
   const field = page.getByRole("textbox", { name: "What is the idea?" });
 
@@ -58,10 +52,14 @@ test("a piece captured with no title still appears", async ({ page }) => {
   await expect(pieces(page).getByText("Untitled")).toBeVisible();
 });
 
-test("Enter captures the piece instead of reloading the page", async ({ page }) => {
+test("Enter captures the piece instead of reloading the page", async ({
+  page,
+}) => {
   await anOpenProject(page, "Enter");
 
-  await page.getByRole("textbox", { name: "What is the idea?" }).fill("The shuttle");
+  await page
+    .getByRole("textbox", { name: "What is the idea?" })
+    .fill("The shuttle");
   await page.getByRole("textbox", { name: "What is the idea?" }).press("Enter");
 
   await expect(pieces(page).getByText("The shuttle")).toBeVisible();
@@ -107,7 +105,7 @@ test("the pool is hidden until a project is opened", async ({ page }) => {
 });
 
 test("the browser back button leaves the project", async ({ page }) => {
-  await anOpenProject(page, "Back");
+  await aNewProject(page, "Back");
 
   await page.goBack();
 
@@ -149,15 +147,17 @@ test("a project url opened cold shows that project", async ({ page }) => {
 });
 
 test("a project can be opened in a new tab", async ({ page, context }) => {
-  const title = await anOpenProject(page, "NewTab");
+  const title = await aNewProject(page, "NewTab");
   await page.getByRole("link", { name: "All projects" }).click();
 
   const opened = context.waitForEvent("page");
-  await page.getByRole("link", { name: title }).click({ modifiers: ["ControlOrMeta"] });
+  await page
+    .getByRole("link", { name: title })
+    .click({ modifiers: ["ControlOrMeta"] });
   const tab = await opened;
 
   await expect(tab).toHaveURL(/\/projects\/project-[a-z0-9-]+-project_/);
-  await expect(tab.getByRole("heading", { name: "Pieces" })).toBeVisible();
+  await onTheBoard(tab);
   await expect(page).toHaveURL(/\/$/);
   await tab.close();
 });
@@ -165,17 +165,23 @@ test("a project can be opened in a new tab", async ({ page, context }) => {
 test("an address that leads nowhere says so", async ({ page }) => {
   await page.goto("/nowhere-in-particular");
 
-  await expect(page.getByText("There is nothing woven at this address.")).toBeVisible();
+  await expect(
+    page.getByText("There is nothing woven at this address."),
+  ).toBeVisible();
   await page.getByRole("link", { name: "All projects" }).click();
   await expect(page.getByPlaceholder("A working title…")).toBeVisible();
 });
 
-test("the address carries a readable slug in front of the id", async ({ page }) => {
-  await anOpenProject(page, "The Silent Loom");
+test("the address carries a readable slug in front of the id", async ({
+  page,
+}) => {
+  await aNewProject(page, "The Silent Loom");
 
   const address = new URL(page.url()).pathname;
 
-  expect(address).toMatch(/^\/projects\/project-the-silent-loom-[0-9a-f]{8}-project_[0-9A-Za-z]{22}$/);
+  expect(address).toMatch(
+    /^\/projects\/project-the-silent-loom-[0-9a-f]{8}-project_[0-9A-Za-z]{22}$/,
+  );
 });
 
 test("a stale slug still reaches the project", async ({ page }) => {
@@ -190,7 +196,9 @@ test("a stale slug still reaches the project", async ({ page }) => {
   await expect(pieces(page).getByText("The loom remembers")).toBeVisible();
 });
 
-test("an address with no slug at all still reaches the project", async ({ page }) => {
+test("an address with no slug at all still reaches the project", async ({
+  page,
+}) => {
   await anOpenProject(page, "NoSlug");
   await capture(page, "The loom remembers");
   await expect(pieces(page).getByText("The loom remembers")).toBeVisible();
@@ -220,11 +228,15 @@ test("prose written in a piece survives a reload", async ({ page }) => {
 
   await page.locator(".surface .ProseMirror").click();
   await page.keyboard.type("She had not touched it since spring.");
-  await expect(page.locator(".surface .ProseMirror")).toContainText("since spring");
+  await expect(page.locator(".surface .ProseMirror")).toContainText(
+    "since spring",
+  );
 
   await page.reload();
 
-  await expect(page.locator(".surface .ProseMirror")).toContainText("since spring");
+  await expect(page.locator(".surface .ProseMirror")).toContainText(
+    "since spring",
+  );
 });
 
 test("a piece that has been opened is marked in the pool", async ({ page }) => {
@@ -233,9 +245,11 @@ test("a piece that has been opened is marked in the pool", async ({ page }) => {
   await pieces(page).getByRole("link", { name: "The loom remembers" }).click();
   await expect(page.getByText("Synced")).toBeVisible();
 
-  await page.getByRole("link", { name: "Back to the pool" }).click();
+  await openThePool(page);
 
-  await expect(pieces(page).getByRole("img", { name: "Opened for writing" })).toBeVisible();
+  await expect(
+    pieces(page).getByRole("img", { name: "Opened for writing" }),
+  ).toBeVisible();
 });
 
 test("opening a piece twice keeps the same prose", async ({ page }) => {
@@ -245,12 +259,16 @@ test("opening a piece twice keeps the same prose", async ({ page }) => {
   await expect(page.getByText("Synced")).toBeVisible();
   await page.locator(".surface .ProseMirror").click();
   await page.keyboard.type("Written once.");
-  await expect(page.locator(".surface .ProseMirror")).toContainText("Written once.");
+  await expect(page.locator(".surface .ProseMirror")).toContainText(
+    "Written once.",
+  );
 
-  await page.getByRole("link", { name: "Back to the pool" }).click();
+  await openThePool(page);
   await pieces(page).getByRole("link", { name: "The loom remembers" }).click();
 
-  await expect(page.locator(".surface .ProseMirror")).toContainText("Written once.");
+  await expect(page.locator(".surface .ProseMirror")).toContainText(
+    "Written once.",
+  );
 });
 
 test("an untitled piece can still be opened for writing", async ({ page }) => {

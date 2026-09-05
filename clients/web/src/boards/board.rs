@@ -28,7 +28,6 @@ pub fn TheBoard(project: String) -> impl IntoView {
     };
 
     html::section().class("board").child((
-        html::h2().child("Board"),
         move || {
             open.problem().map(|failure| {
                 html::p().class("problem").role("alert").child((
@@ -44,7 +43,7 @@ pub fn TheBoard(project: String) -> impl IntoView {
         },
         corkboard(project, handles),
         html::section().class("unpinned").child((
-            html::h3().child("Not on the board"),
+            html::h2().child("Not on the board"),
             move || {
                 (open.ready() && open.unpinned().is_empty()).then(|| {
                     html::p()

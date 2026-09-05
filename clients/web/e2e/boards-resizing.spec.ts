@@ -1,18 +1,16 @@
 import { test, expect } from "@playwright/test";
 
+import { bar, boxOf, corkboard, dragBy, pullBy, select } from "./support/board";
 import {
   anOpenProject,
-  bar,
-  boxOf,
   capture,
-  corkboard,
-  dragBy,
+  onTheBoard,
   openTheBoard,
-  pullBy,
-  select,
-} from "./support/board";
+} from "./support/shell";
 
-test("a very long title scrolls inside its card instead of stretching it", async ({ page }) => {
+test("a very long title scrolls inside its card instead of stretching it", async ({
+  page,
+}) => {
   await anOpenProject(page, "LongTitle");
   await capture(
     page,
@@ -34,12 +32,15 @@ test("a very long title scrolls inside its card instead of stretching it", async
   });
 
   expect(shape.cardHeight, "the card keeps its size").toBeLessThan(120);
-  expect(shape.nameScroll, "the whole title is still there to scroll to").toBeGreaterThan(
-    shape.nameClient,
-  );
+  expect(
+    shape.nameScroll,
+    "the whole title is still there to scroll to",
+  ).toBeGreaterThan(shape.nameClient);
 });
 
-test("a freshly pinned card is drawn at the size the board was told", async ({ page }) => {
+test("a freshly pinned card is drawn at the size the board was told", async ({
+  page,
+}) => {
   await anOpenProject(page, "Sized");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -51,7 +52,9 @@ test("a freshly pinned card is drawn at the size the board was told", async ({ p
   );
 });
 
-test("dragging the right edge widens a card without moving it", async ({ page }) => {
+test("dragging the right edge widens a card without moving it", async ({
+  page,
+}) => {
   await anOpenProject(page, "Widen");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -66,7 +69,7 @@ test("dragging the right edge widens a card without moving it", async ({ page })
   );
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
   await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
     "style",
     /left: 40px; top: 40px; width: 230px; height: 84px;/,
@@ -88,7 +91,9 @@ test("dragging the bottom edge makes a card taller", async ({ page }) => {
   );
 });
 
-test("dragging the top-left corner moves and resizes in one gesture", async ({ page }) => {
+test("dragging the top-left corner moves and resizes in one gesture", async ({
+  page,
+}) => {
   await anOpenProject(page, "Corner");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -100,17 +105,22 @@ test("dragging the top-left corner moves and resizes in one gesture", async ({ p
   await expect(
     corkboard(page).locator(".pinned"),
     "40-23 snaps to 15 and 40-18 snaps to 20, so the far corner stays put",
-  ).toHaveAttribute("style", /left: 15px; top: 20px; width: 193px; height: 104px;/);
+  ).toHaveAttribute(
+    "style",
+    /left: 15px; top: 20px; width: 193px; height: 104px;/,
+  );
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
   await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
     "style",
     /left: 15px; top: 20px; width: 193px; height: 104px;/,
   );
 });
 
-test("a card cannot be dragged smaller than it is allowed to be", async ({ page }) => {
+test("a card cannot be dragged smaller than it is allowed to be", async ({
+  page,
+}) => {
   await anOpenProject(page, "Smallest");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -140,14 +150,19 @@ test("a resize lands on the grid like everything else", async ({ page }) => {
   expect(width % 5, `a card ${width}px wide is off the grid`).toBe(0);
 });
 
-test("a resized card keeps its size while it is dragged around", async ({ page }) => {
+test("a resized card keeps its size while it is dragged around", async ({
+  page,
+}) => {
   await anOpenProject(page, "KeepsSize");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
   await pullBy(page, "right", "The loom remembers", 62, 0);
-  await expect(corkboard(page).locator(".pinned")).toHaveAttribute("style", /width: 230px/);
+  await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
+    "style",
+    /width: 230px/,
+  );
 
   await dragBy(page, corkboard(page).locator(".pinned"), 100, 50);
 
@@ -157,7 +172,9 @@ test("a resized card keeps its size while it is dragged around", async ({ page }
   );
 });
 
-test("the action bar follows the bottom of a card that has grown", async ({ page }) => {
+test("the action bar follows the bottom of a card that has grown", async ({
+  page,
+}) => {
   await anOpenProject(page, "BarFollows");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -167,7 +184,10 @@ test("the action bar follows the bottom of a card that has grown", async ({ page
   const first = await bar(page).boundingBox();
 
   await pullBy(page, "bottom", "The loom remembers", 0, 80);
-  await expect(corkboard(page).locator(".pinned")).toHaveAttribute("style", /height: 165px/);
+  await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
+    "style",
+    /height: 165px/,
+  );
 
   const after = await bar(page).boundingBox();
   expect(

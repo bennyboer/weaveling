@@ -321,10 +321,10 @@ That conversion is now its own module, `boards/viewport.rs`, holding `Viewport {
 
 **Build:**
 
-- **The project's home becomes the board**, not the pool. Every project has one, and it is the surface the whole tool is built around.
-- **A view switcher.** Board today, the outline next, timeline and threads and cast eventually. This is the thing M10 plugs into, which is the whole reason it comes first — build the outline before the switcher exists and it gets built twice.
-- **Width becomes a property of the view.** One rule governs everything today: `main { max-width: 42rem }`. The board wants the whole window, a passage wants a column, the workspace wants a column. So the shell stops deciding and each view says what it needs.
-- **A theme the author can override.** The system preference is honoured through `prefers-color-scheme`, but there is no way to disagree with it. Three states — light, dark, follow the system — remembered across visits.
+- ~~**The project's home becomes the board**, not the pool.~~ **Done.** `/projects/{p}` is the board; the pool moved to `/projects/{p}/pieces`.
+- ~~**A view switcher.**~~ **Done.** A masthead carrying the wordmark, the project's name and text tabs for the views that exist. M10 adds a tab and nothing else.
+- ~~**Width becomes a property of the view.**~~ **Done.** `main` is now a flex column filling the window; the board grows into it, and the pool, the workspace and a passage each opt into `.column`.
+- **A theme the author can override.** The system preference is honoured through `prefers-color-scheme`, but there is no way to disagree with it. Three states — light, dark, follow the system — remembered across visits. *Still to build* — the CSS side already answers to `data-theme` on the root; what is missing is the control and the remembering.
 
 **Capture moves onto the board.** Double-click bare board and a card appears there, already in editing mode; type a title and it is captured and pinned in one gesture; cancel and nothing was ever recorded. That last clause is the design: the card is local until it is committed, so a cancelled capture leaves no piece behind and no event in the log. It also needs no new machinery — the rename editor is already a textarea floating over a card at a spot, and [`PieceTitle` was made to permit the empty string](./ARCHITECTURE.md#pieces-and-views--the-non-linear-model) for exactly this, back in M7.
 
@@ -349,6 +349,8 @@ The one thing capture needs is care about *order*: capturing writes to `pieces` 
 **The switcher lists only views that exist.** Timeline, Threads and Cast are not drawn until they are built — a permanently dead tab is clutter in a tool used daily, and it was also two of the six contrast failures, since ghost text is unreadable by construction.
 
 **Two things noted and deliberately not taken.** The chosen direction puts the view switcher in the top bar as text tabs; a left icon rail scales better once Timeline, Threads and Cast arrive, so revisit it at the fourth view rather than pre-building it. And monospace for anything countable — word counts, piece counts, the zoom reading — was the strongest single idea in the direction that lost, and it costs nothing here if it is ever wanted.
+
+**Optical centring, not box centring.** The masthead's boxes were centred and its lettering still sat three pixels high, because a font reserves descender space that words like "Board" never use. The fix is `text-box: cap alphabetic`, which trims each line box to its cap band so flex centring lands where the eye reads it. Chrome and Safari honour it; Firefox has not shipped it yet and falls back to the old, slightly high text rather than to anything broken. The lesson generalises past this one bar: a suite that asserts on roles and text passes happily while the layout is wrong, so `shell.spec.ts` measures — the board's box against the window's, the column's margins against each other, the cap bands against the bar's middle.
 
 **Done when:** clicking a project lands on a full-width board; you can move between a project's views without going back through the pool; a passage still reads in a column; and the theme can be set against the system's wishes and survives a reload.
 

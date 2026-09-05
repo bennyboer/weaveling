@@ -19,6 +19,7 @@ use crate::projects::overlays::Overlays;
 use crate::projects::row::{ProjectRow, ProjectRowProps};
 use crate::projects::workspace::Workspace;
 use crate::route;
+use crate::shell::{Viewing, masthead};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -32,32 +33,28 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    html::main().child((
-        html::h1().child("Weaveling"),
-        html::p()
-            .class("tagline")
-            .child(
-                "Bring us your tiny, fragile story ideas, and we will help you weave them into a full epic.",
-            ),
-        view! {
-            <Router>
-                <Routes fallback=Missing>
-                    <Route
-                        path=path!("/")
-                        view=move || TheWorkspace(TheWorkspaceProps { workspace, overlays })
-                    />
-                    <Route path=path!("/projects/:project") view=OneProject />
-                    <Route path=path!("/projects/:project/board") view=OneBoard />
-                    <Route path=path!("/projects/:project/pieces/:piece") view=OnePiece />
-                </Routes>
-            </Router>
-        },
-    ))
+    html::main().child(view! {
+        <Router>
+            <Routes fallback=Missing>
+                <Route
+                    path=path!("/")
+                    view=move || TheWorkspace(TheWorkspaceProps { workspace, overlays })
+                />
+                <Route path=path!("/projects/:project") view=OneBoard />
+                <Route path=path!("/projects/:project/pieces") view=OneProject />
+                <Route path=path!("/projects/:project/pieces/:piece") view=OnePiece />
+            </Routes>
+        </Router>
+    })
 }
 
 #[component]
 fn TheWorkspace(workspace: Workspace, overlays: Overlays) -> impl IntoView {
-    (
+    html::div().class("column").child((
+        html::h1().child("Weaveling"),
+        html::p().class("tagline").child(
+            "Bring us your tiny, fragile story ideas, and we will help you weave them into a full epic.",
+        ),
         NewProject(NewProjectProps { workspace }),
         move || {
             workspace.problem().map(|failure| {
@@ -85,7 +82,7 @@ fn TheWorkspace(workspace: Workspace, overlays: Overlays) -> impl IntoView {
             workspace,
             overlays,
         }),
-    )
+    ))
 }
 
 #[component]
@@ -95,19 +92,10 @@ fn OneProject() -> impl IntoView {
     move || {
         params.read().get("project").map(|project| {
             (
-                view! {
-                    <A href=route::WORKSPACE attr:class="back">
-                        "All projects"
-                    </A>
-                },
-                view! {
-                    <A href=route::board(&project) attr:class="to-board">
-                        "Open the board"
-                    </A>
-                },
-                Pool(PoolProps {
-                    project: route::project_id(&project),
-                }),
+                masthead(project.clone(), named(&project), Some(Viewing::Pieces)),
+                html::div()
+                    .class("column")
+                    .child(Pool(PoolProps { project })),
             )
         })
     }
@@ -120,20 +108,34 @@ fn OneBoard() -> impl IntoView {
     move || {
         params.read().get("project").map(|project| {
             (
-                view! {
-                    <A href=format!("/projects/{project}") attr:class="back">
-                        "Back to the pool"
-                    </A>
-                },
+                masthead(project.clone(), named(&project), Some(Viewing::Board)),
                 TheBoard(TheBoardProps { project }),
             )
         })
     }
 }
 
+fn named(project: &str) -> String {
+    match project.rsplit_once('-') {
+        Some((slug, trailing)) if trailing.contains('_') && !slug.is_empty() => slug
+            .split('-')
+            .map(|word| {
+                let mut letters = word.chars();
+
+                match letters.next() {
+                    Some(first) => first.to_uppercase().collect::<String>() + letters.as_str(),
+                    None => String::new(),
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" "),
+        _ => "Untitled".to_owned(),
+    }
+}
+
 #[component]
 fn Missing() -> impl IntoView {
-    (
+    html::div().class("column").child((
         html::p()
             .class("empty")
             .child("There is nothing woven at this address."),
@@ -142,7 +144,7 @@ fn Missing() -> impl IntoView {
                 "All projects"
             </A>
         },
-    )
+    ))
 }
 
 #[component]
@@ -171,45 +173,27 @@ fn OnePiece() -> impl IntoView {
         }
     });
 
-    let pool = move || {
-        params
-            .read()
-            .get("project")
-            .map(|project| format!("/projects/{project}"))
-            .unwrap_or_else(|| route::WORKSPACE.to_owned())
-    };
-    let board = move || {
-        params
-            .read()
-            .get("project")
-            .map(|project| route::board(&project))
-            .unwrap_or_else(|| route::WORKSPACE.to_owned())
-    };
+    let whose = move || params.read().get("project").unwrap_or_default();
 
     (
-        view! {
-            <A href=pool attr:class="back">
-                "Back to the pool"
-            </A>
-            <A href=board attr:class="to-board">
-                "Back to the board"
-            </A>
-        },
-        move || {
-            problem.get().map(|failure| {
-                html::p()
-                    .class("problem")
-                    .role("alert")
-                    .child(failure.to_string())
-            })
-        },
-        move || match passage.get() {
-            Some(passage) => PassageEditor(PassageEditorProps { passage }).into_any(),
-            None => html::p()
-                .class("empty")
-                .child("Opening the piece…")
-                .into_any(),
-        },
+        move || masthead(whose(), named(&whose()), None),
+        html::div().class("column").child((
+            move || {
+                problem.get().map(|failure| {
+                    html::p()
+                        .class("problem")
+                        .role("alert")
+                        .child(failure.to_string())
+                })
+            },
+            move || match passage.get() {
+                Some(passage) => PassageEditor(PassageEditorProps { passage }).into_any(),
+                None => html::p()
+                    .class("empty")
+                    .child("Opening the piece…")
+                    .into_any(),
+            },
+        )),
     )
 }
 

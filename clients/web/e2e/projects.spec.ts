@@ -25,7 +25,9 @@ test("a project can be created and appears in the list", async ({ page }) => {
   await expect(rowFor(page, title)).toBeVisible();
 });
 
-test("Enter creates the project instead of reloading the page", async ({ page }) => {
+test("Enter creates the project instead of reloading the page", async ({
+  page,
+}) => {
   const title = aTitle();
 
   await titleField(page).fill(title);
@@ -34,7 +36,9 @@ test("Enter creates the project instead of reloading the page", async ({ page })
   await expect(rowFor(page, title)).toBeVisible();
 });
 
-test("the title field is emptied once the project is created", async ({ page }) => {
+test("the title field is emptied once the project is created", async ({
+  page,
+}) => {
   const title = aTitle();
 
   await aProjectCalled(page, title);
@@ -42,7 +46,9 @@ test("the title field is emptied once the project is created", async ({ page }) 
   await expect(titleField(page)).toHaveValue("");
 });
 
-test("a name the server rejects leaves the problem on screen", async ({ page }) => {
+test("a name the server rejects leaves the problem on screen", async ({
+  page,
+}) => {
   await titleField(page).fill("a".repeat(201));
   await page.getByRole("button", { name: "Create" }).click();
 
@@ -60,7 +66,9 @@ test("a project can be renamed", async ({ page }) => {
   const rewoven = `Rewoven ${crypto.randomUUID().slice(0, 8)}`;
   await aProjectCalled(page, title);
 
-  await rowFor(page, title).getByRole("button", { name: "More actions" }).click();
+  await rowFor(page, title)
+    .getByRole("button", { name: "More actions" })
+    .click();
   await page.getByRole("menuitem", { name: "Rename" }).click();
   await page.getByRole("listitem").getByRole("textbox").fill(rewoven);
   await page.getByRole("button", { name: "Save" }).click();
@@ -69,11 +77,15 @@ test("a project can be renamed", async ({ page }) => {
   await expect(rowFor(page, title)).toHaveCount(0);
 });
 
-test("deleting asks first, and cancelling keeps the project", async ({ page }) => {
+test("deleting asks first, and cancelling keeps the project", async ({
+  page,
+}) => {
   const title = aTitle();
   await aProjectCalled(page, title);
 
-  await rowFor(page, title).getByRole("button", { name: "More actions" }).click();
+  await rowFor(page, title)
+    .getByRole("button", { name: "More actions" })
+    .click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await expect(page.getByRole("dialog")).toContainText("cannot be undone");
   await page.getByRole("button", { name: "Cancel" }).click();
@@ -85,9 +97,14 @@ test("confirming a delete removes the project", async ({ page }) => {
   const title = aTitle();
   await aProjectCalled(page, title);
 
-  await rowFor(page, title).getByRole("button", { name: "More actions" }).click();
+  await rowFor(page, title)
+    .getByRole("button", { name: "More actions" })
+    .click();
   await page.getByRole("menuitem", { name: "Delete" }).click();
-  await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Delete" })
+    .click();
 
   await expect(rowFor(page, title)).toHaveCount(0);
 });
@@ -108,7 +125,9 @@ test("a project's controls stay inside its row", async ({ page }) => {
   expect(inside, "board styling must not float these over the page").toBe(true);
 });
 
-test("renaming a project shows Save and Cancel beside the field", async ({ page }) => {
+test("renaming a project shows Save and Cancel beside the field", async ({
+  page,
+}) => {
   const title = aTitle();
   await aProjectCalled(page, title);
   const row = rowFor(page, title);
@@ -116,13 +135,15 @@ test("renaming a project shows Save and Cancel beside the field", async ({ page 
   await row.getByRole("button", { name: "More actions" }).click();
   await page.getByRole("menuitem", { name: "Rename" }).click();
 
-  const editing = page.getByRole("listitem").filter({ has: page.getByRole("textbox") });
+  const editing = page
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("textbox") });
   await expect(editing.getByRole("button", { name: "Save" })).toBeVisible();
   await expect(editing.getByRole("button", { name: "Cancel" })).toBeVisible();
 
   const apart = await editing.evaluate((it) => {
-    const [first, second] = [...it.querySelectorAll(".actions button")].map((b) =>
-      b.getBoundingClientRect(),
+    const [first, second] = [...it.querySelectorAll(".actions button")].map(
+      (b) => b.getBoundingClientRect(),
     );
 
     return second.left >= first.right - 1;
@@ -130,7 +151,9 @@ test("renaming a project shows Save and Cancel beside the field", async ({ page 
   expect(apart, "Save and Cancel must not sit on top of each other").toBe(true);
 });
 
-test("a project row spreads its title, stamp and menu across the width", async ({ page }) => {
+test("a project row spreads its title, stamp and menu across the width", async ({
+  page,
+}) => {
   const title = aTitle();
   await aProjectCalled(page, title);
   const row = rowFor(page, title);
@@ -150,5 +173,8 @@ test("a project row spreads its title, stamp and menu across the width", async (
 
   expect(laid.stampAfterTitle, "the stamp follows the title").toBe(true);
   expect(laid.menuLast, "the menu sits at the far end of the row").toBe(true);
-  expect(laid.titleSpans, "the title takes the room the other two leave").toBeGreaterThan(0);
+  expect(
+    laid.titleSpans,
+    "the title takes the room the other two leave",
+  ).toBeGreaterThan(0);
 });

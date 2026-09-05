@@ -7,11 +7,12 @@ use leptos_router::components::A;
 use crate::http::ApiError;
 use crate::pieces::model::Piece;
 use crate::pieces::service;
-use crate::projects::model::ProjectId;
 use crate::route;
 
 #[component]
-pub fn Pool(project: ProjectId) -> impl IntoView {
+pub fn Pool(project: String) -> impl IntoView {
+    let whose = project;
+    let project = route::project_id(&whose);
     let problem = RwSignal::new(None::<ApiError>);
     let captured = RwSignal::new(Vec::<Piece>::new());
     let title: NodeRef<Input> = NodeRef::new();
@@ -97,7 +98,12 @@ pub fn Pool(project: ProjectId) -> impl IntoView {
         html::ul()
             .class("pieces")
             .attr("aria-label", "Pieces")
-            .child(move || pieces().into_iter().map(row).collect_view()),
+            .child(move || {
+                pieces()
+                    .into_iter()
+                    .map(|piece| row(whose.clone(), piece))
+                    .collect_view()
+            }),
     ))
 }
 
@@ -109,8 +115,8 @@ fn nothing_yet(listed: LocalResource<Result<Vec<Piece>, ApiError>>) -> &'static 
     }
 }
 
-fn row(piece: Piece) -> impl IntoView {
-    let href = format!("pieces/{}", route::piece_segment(&piece.id, &piece.title));
+fn row(project: String, piece: Piece) -> impl IntoView {
+    let href = route::piece(&project, &piece.id, &piece.title);
     let shown = piece.shown_as().to_owned();
 
     html::li().child((

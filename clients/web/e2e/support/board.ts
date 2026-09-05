@@ -1,10 +1,10 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
-const aName = (of: string) => `Project ${of} ${crypto.randomUUID().slice(0, 8)}`;
+export const corkboard = (page: Page) =>
+  page.getByRole("region", { name: "Board" });
 
-export const corkboard = (page: Page) => page.getByRole("region", { name: "Board" });
-
-export const waiting = (page: Page) => page.getByRole("list", { name: "Pieces not on the board" });
+export const waiting = (page: Page) =>
+  page.getByRole("list", { name: "Pieces not on the board" });
 
 export const bar = (page: Page) => corkboard(page).locator(".pinned-actions");
 
@@ -14,30 +14,6 @@ export const cardNamed = (page: Page, named: string) =>
 export async function select(page: Page, named: string) {
   await cardNamed(page, named).click();
   await expect(bar(page)).toHaveAttribute("aria-label", `Actions for ${named}`);
-}
-
-export async function anOpenProject(page: Page, named: string): Promise<string> {
-  const title = aName(named);
-
-  await page.goto("/");
-  await page.getByPlaceholder("A working title…").fill(title);
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  await page.getByRole("link", { name: title }).click();
-
-  await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
-
-  return title;
-}
-
-export async function capture(page: Page, idea: string) {
-  await page.getByRole("textbox", { name: "What is the idea?" }).fill(idea);
-  await page.getByRole("button", { name: "Capture", exact: true }).click();
-  await expect(page.getByRole("list", { name: "Pieces" }).getByText(idea)).toBeVisible();
-}
-
-export async function openTheBoard(page: Page) {
-  await page.getByRole("link", { name: "Open the board" }).click();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
 }
 
 export async function dragBy(page: Page, held: Locator, x: number, y: number) {
@@ -73,7 +49,8 @@ export const laidOut = (page: Page) =>
 
 export const surface = (page: Page) => corkboard(page).locator(".surface");
 
-export const zooming = (page: Page) => corkboard(page).getByRole("toolbar", { name: "Zoom" });
+export const zooming = (page: Page) =>
+  corkboard(page).getByRole("toolbar", { name: "Zoom" });
 
 export const seenAt = async (page: Page, named: string) => {
   const box = await cardNamed(page, named).boundingBox();
@@ -89,7 +66,10 @@ export const seenAt = async (page: Page, named: string) => {
 
 export async function panBy(page: Page, x: number, y: number) {
   const board = await corkboard(page).boundingBox();
-  const from = { x: board!.x + board!.width - 40, y: board!.y + board!.height - 60 };
+  const from = {
+    x: board!.x + board!.width - 40,
+    y: board!.y + board!.height - 60,
+  };
 
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
@@ -103,7 +83,13 @@ export const boxOf = (page: Page) =>
     .first()
     .evaluate((it) => it.getAttribute("style"));
 
-export async function pullBy(page: Page, side: string, named: string, x: number, y: number) {
+export async function pullBy(
+  page: Page,
+  side: string,
+  named: string,
+  x: number,
+  y: number,
+) {
   const grip = cardNamed(page, named).locator(`.grip.${side}`);
   const box = await grip.boundingBox();
   expect(box, `the ${side} grip should be there to grab`).not.toBeNull();

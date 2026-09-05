@@ -16,7 +16,11 @@ pub fn project(id: &ProjectId, named: &str) -> String {
 }
 
 pub fn board(project: &str) -> String {
-    format!("/projects/{project}/board")
+    format!("/projects/{project}")
+}
+
+pub fn pool(project: &str) -> String {
+    format!("/projects/{project}/pieces")
 }
 
 pub fn piece_segment(id: &PieceId, named: &str) -> String {

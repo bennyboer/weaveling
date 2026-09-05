@@ -1,19 +1,22 @@
 import { test, expect } from "@playwright/test";
 
 import {
-  anOpenProject,
   bar,
-  capture,
   cardNamed,
   corkboard,
   dragBy,
-  openTheBoard,
   panBy,
   seenAt,
   select,
   surface,
   zooming,
 } from "./support/board";
+import {
+  anOpenProject,
+  capture,
+  onTheBoard,
+  openTheBoard,
+} from "./support/shell";
 
 const spotOf = (page: Page, named: string) =>
   cardNamed(page, named).evaluate((it) => it.getAttribute("style"));
@@ -60,10 +63,13 @@ test("a piece pinned beyond the edge can be panned to", async ({ page }) => {
     });
   });
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
 
   const away = await seenAt(page, "Far away");
-  expect(away.y, "the piece starts far below the visible board").toBeGreaterThan(500);
+  expect(
+    away.y,
+    "the piece starts far below the visible board",
+  ).toBeGreaterThan(500);
 
   await panBy(page, 0, -400);
   await panBy(page, 0, -400);
@@ -72,7 +78,9 @@ test("a piece pinned beyond the edge can be panned to", async ({ page }) => {
   expect(reached.y, "panning should bring it into view").toBeLessThan(300);
 });
 
-test("a plain wheel leaves the board alone and scrolls the page", async ({ page }) => {
+test("a plain wheel leaves the board alone and scrolls the page", async ({
+  page,
+}) => {
   await anOpenProject(page, "Wheeling");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -80,7 +88,10 @@ test("a plain wheel leaves the board alone and scrolls the page", async ({ page 
   const before = await seenAt(page, "The loom remembers");
   const middle = await corkboard(page).boundingBox();
 
-  await page.mouse.move(middle!.x + middle!.width / 2, middle!.y + middle!.height / 2);
+  await page.mouse.move(
+    middle!.x + middle!.width / 2,
+    middle!.y + middle!.height / 2,
+  );
   await page.mouse.wheel(0, 200);
   await page.waitForTimeout(200);
 
@@ -100,7 +111,10 @@ test("holding ctrl turns the wheel into a zoom", async ({ page }) => {
   const middle = await corkboard(page).boundingBox();
 
   await page.keyboard.down("Control");
-  await page.mouse.move(middle!.x + middle!.width / 2, middle!.y + middle!.height / 2);
+  await page.mouse.move(
+    middle!.x + middle!.width / 2,
+    middle!.y + middle!.height / 2,
+  );
   await page.mouse.wheel(0, -200);
   await page.keyboard.up("Control");
 
@@ -127,7 +141,9 @@ test("the zoom controls take the board in and out and back to where it started",
   await zooming(page).getByRole("button", { name: "Zoom in" }).click();
 
   await expect(reading).toHaveText("110%");
-  expect((await seenAt(page, "The loom remembers")).width).toBeGreaterThan(before.width);
+  expect((await seenAt(page, "The loom remembers")).width).toBeGreaterThan(
+    before.width,
+  );
 
   await zooming(page).getByRole("button", { name: "Zoom out" }).click();
   await zooming(page).getByRole("button", { name: "Zoom out" }).click();
@@ -140,14 +156,19 @@ test("the zoom controls take the board in and out and back to where it started",
   expect(await seenAt(page, "The loom remembers")).toEqual(before);
 });
 
-test("resetting the zoom keeps the board where it was panned to", async ({ page }) => {
+test("resetting the zoom keeps the board where it was panned to", async ({
+  page,
+}) => {
   await anOpenProject(page, "ResetKeepsPan");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
   await panBy(page, -180, -90);
-  await expect(surface(page)).toHaveAttribute("style", /translate\(-180px, -90px\)/);
+  await expect(surface(page)).toHaveAttribute(
+    "style",
+    /translate\(-180px, -90px\)/,
+  );
   await zooming(page).getByRole("button", { name: "Zoom in" }).click();
   await zooming(page).getByRole("button", { name: "Zoom in" }).click();
   const reading = zooming(page).getByRole("button", { name: "Reset the zoom" });
@@ -162,7 +183,9 @@ test("resetting the zoom keeps the board where it was panned to", async ({ page 
   );
 });
 
-test("the zoom buttons hold the middle of the board still", async ({ page }) => {
+test("the zoom buttons hold the middle of the board still", async ({
+  page,
+}) => {
   await anOpenProject(page, "ZoomFromMiddle");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -172,7 +195,10 @@ test("the zoom buttons hold the middle of the board still", async ({ page }) => 
 
   const underTheMiddle = async () => {
     const drawn = (await surface(page).getAttribute("style")) ?? "";
-    const [x, y] = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(drawn)!.slice(1).map(Number);
+    const [x, y] = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/
+      .exec(drawn)!
+      .slice(1)
+      .map(Number);
     const [zoom] = /scale\(([\d.]+)\)/.exec(drawn)!.slice(1).map(Number);
 
     return {
@@ -186,14 +212,16 @@ test("the zoom buttons hold the middle of the board still", async ({ page }) => 
   await zooming(page).getByRole("button", { name: "Zoom in" }).click();
 
   const after = await underTheMiddle();
-  expect(after.x, "zooming in should not slide the board towards a corner").toBeCloseTo(
-    before.x,
-    -1,
-  );
+  expect(
+    after.x,
+    "zooming in should not slide the board towards a corner",
+  ).toBeCloseTo(before.x, -1);
   expect(after.y).toBeCloseTo(before.y, -1);
 });
 
-test("a card dragged on a zoomed board still lands under the pointer", async ({ page }) => {
+test("a card dragged on a zoomed board still lands under the pointer", async ({
+  page,
+}) => {
   await anOpenProject(page, "ZoomedDrag");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -202,20 +230,24 @@ test("a card dragged on a zoomed board still lands under the pointer", async ({ 
   for (const _ of [1, 2, 3, 4, 5, 6, 7]) {
     await zooming(page).getByRole("button", { name: "Zoom out" }).click();
   }
-  await expect(zooming(page).getByRole("button", { name: "Reset the zoom" })).toHaveText("51%");
+  await expect(
+    zooming(page).getByRole("button", { name: "Reset the zoom" }),
+  ).toHaveText("51%");
   const before = await seenAt(page, "The loom remembers");
 
   await dragBy(page, cardNamed(page, "The loom remembers"), 100, 50);
 
   const after = await seenAt(page, "The loom remembers");
-  expect(after.x - before.x, "the card should follow the pointer, not half of it").toBeCloseTo(
-    100,
-    -1,
-  );
+  expect(
+    after.x - before.x,
+    "the card should follow the pointer, not half of it",
+  ).toBeCloseTo(100, -1);
   expect(after.y - before.y).toBeCloseTo(50, -1);
 });
 
-test("the action bar keeps its size however far the board is zoomed out", async ({ page }) => {
+test("the action bar keeps its size however far the board is zoomed out", async ({
+  page,
+}) => {
   await anOpenProject(page, "BarSize");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -250,9 +282,14 @@ test("a piece is pinned where the author is looking, not at the board's origin",
   await expect(corkboard(page).locator(".pinned")).toHaveCount(2);
 
   const landed = await seenAt(page, "She never returned");
-  expect(landed.x, "a fresh pin must not land off the visible board").toBeGreaterThan(0);
+  expect(
+    landed.x,
+    "a fresh pin must not land off the visible board",
+  ).toBeGreaterThan(0);
   expect(landed.y).toBeGreaterThan(0);
-  expect(await spotOf(page, "She never returned")).toMatch(/left: 340px; top: 240px;/);
+  expect(await spotOf(page, "She never returned")).toMatch(
+    /left: 340px; top: 240px;/,
+  );
 });
 
 test("the board itself does not scroll any more", async ({ page }) => {
@@ -269,10 +306,15 @@ test("the board itself does not scroll any more", async ({ page }) => {
   }));
   expect(held.overflow, "panning replaced the scroll stopgap").toBe("hidden");
   expect(held.scrolled).toBe(0);
-  await expect(surface(page)).toHaveAttribute("style", /translate\(-400px, -300px\)/);
+  await expect(surface(page)).toHaveAttribute(
+    "style",
+    /translate\(-400px, -300px\)/,
+  );
 });
 
-test("the action bar follows its card when the board is zoomed", async ({ page }) => {
+test("the action bar follows its card when the board is zoomed", async ({
+  page,
+}) => {
   await anOpenProject(page, "BarFollowsZoom");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -294,7 +336,9 @@ test("the action bar follows its card when the board is zoomed", async ({ page }
   expect(after!.y).not.toBe(before!.y);
 });
 
-test("pressing the bare board to pan lets go of the selected card", async ({ page }) => {
+test("pressing the bare board to pan lets go of the selected card", async ({
+  page,
+}) => {
   await anOpenProject(page, "PanDeselects");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -303,10 +347,15 @@ test("pressing the bare board to pan lets go of the selected card", async ({ pag
 
   await panBy(page, -120, -60);
 
-  await expect(bar(page), "a press on bare board means nothing is chosen").toHaveCount(0);
+  await expect(
+    bar(page),
+    "a press on bare board means nothing is chosen",
+  ).toHaveCount(0);
 });
 
-test("the surface the board is drawn on carries no styling of its own", async ({ page }) => {
+test("the surface the board is drawn on carries no styling of its own", async ({
+  page,
+}) => {
   await anOpenProject(page, "BareSurface");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -325,7 +374,10 @@ test("the surface the board is drawn on carries no styling of its own", async ({
     };
   });
 
-  expect(drawn, "the surface is an origin to hang cards off, not a box").toEqual({
+  expect(
+    drawn,
+    "the surface is an origin to hang cards off, not a box",
+  ).toEqual({
     width: 0,
     height: 0,
     border: "0px",
@@ -334,7 +386,9 @@ test("the surface the board is drawn on carries no styling of its own", async ({
   });
 });
 
-test("a card can be dragged past the origin onto negative ground", async ({ page }) => {
+test("a card can be dragged past the origin onto negative ground", async ({
+  page,
+}) => {
   await anOpenProject(page, "BehindOrigin");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -352,14 +406,16 @@ test("a card can be dragged past the origin onto negative ground", async ({ page
   ).toHaveAttribute("style", /left: -55px; top: -30px;/);
 
   await page.reload();
-  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  await onTheBoard(page);
   await expect(cardNamed(page, "The loom remembers")).toHaveAttribute(
     "style",
     /left: -55px; top: -30px;/,
   );
 });
 
-test("panning the board does not drag a text selection along with it", async ({ page }) => {
+test("panning the board does not drag a text selection along with it", async ({
+  page,
+}) => {
   await anOpenProject(page, "NoSelection");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -371,10 +427,15 @@ test("panning the board does not drag a text selection along with it", async ({ 
     await page.evaluate(() => String(window.getSelection())),
     "a pan that grabs text gets cancelled by the browser halfway through",
   ).toBe("");
-  await expect(surface(page)).toHaveAttribute("style", /translate\(-200px, -120px\)/);
+  await expect(surface(page)).toHaveAttribute(
+    "style",
+    /translate\(-200px, -120px\)/,
+  );
 });
 
-test("clicking a selected card never takes its action bar away", async ({ page }) => {
+test("clicking a selected card never takes its action bar away", async ({
+  page,
+}) => {
   await anOpenProject(page, "NoFlash");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -384,20 +445,25 @@ test("clicking a selected card never takes its action bar away", async ({ page }
   await page.evaluate(() => {
     const card = document.querySelector(".pinned")!;
     const fire = (type: string, extra: PointerEventInit = {}) =>
-      card.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerId: 4, ...extra }));
+      card.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, pointerId: 4, ...extra }),
+      );
 
     fire("pointerdown");
     fire("pointermove", { movementX: 2, movementY: 1 });
   });
 
-  await expect(bar(page), "a press that has not become a drag must leave the bar alone").toHaveCount(
-    1,
-  );
+  await expect(
+    bar(page),
+    "a press that has not become a drag must leave the bar alone",
+  ).toHaveCount(1);
 
   await page.evaluate(() => {
     document
       .querySelector(".pinned")!
-      .dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 4 }));
+      .dispatchEvent(
+        new PointerEvent("pointerup", { bubbles: true, pointerId: 4 }),
+      );
   });
 
   await expect(bar(page)).toHaveCount(1);
