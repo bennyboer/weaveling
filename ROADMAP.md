@@ -291,6 +291,14 @@ There is a lesson in both worth keeping: **a reactive slot that reads a broad si
 
 The bar also shipped a bug straight onto another page: `.actions` was a bare class in a stylesheet that is concatenated globally, and `_boards.scss` is loaded after `_projects.scss`, so the workspace's project-row menu was absolutely positioned over the page and Save landed on top of Cancel. Board-surface rules are now nested under `.corkboard` and named for it. The second collision of this kind — [the convention is owed](./TODO.md).
 
+**Cards the author can resize** was the first thing in this milestone to reach past the client. A placement is now a box: `PositionedPiece` carries a `Size`, board state is an `IndexMap<PieceLink, Placement>`, and eight handles on each card drag any side or corner, snapped to the same 5px grid with a floor of 80×40 so a card cannot be shrunk into nothing.
+
+Two decisions worth keeping. **A size is stored in pixels**, for the same reason a spot is: store it in grid cells and the day the grid changes, every card in history silently means something else. And **`PieceResized` is a sibling of `PieceMoved` rather than a wider `PieceMoved`**, because dragging the left edge changes the origin *and* the extent — two facts, so two events. What made that awkward is that they are one *gesture*, and splitting it across two requests would be neither atomic nor honest. So `BoardCommand::Move` became `Reshape { piece, to: Option<Spot>, size: Option<Size> }`: one command per gesture, carrying only the parts that changed, emitting only the events that are true. Dragging a corner writes both and the board's version moves by two.
+
+The optional parts are what keeps the write small — a body drag never sends a size, so it cannot clobber someone else's resize. That mattered enough to prefer it over the tidier "always send the whole box", which would have been last-write-wins across both.
+
+**No upcast, deliberately.** `PIECE_PINNED` gained a field, which is exactly the shape `patches()` exists for — but nothing is durable yet, so there are no old events to patch and the ceremony would have been for its own sake. The debt of shipping one real patch stays open, and the first persistent store is when it comes due.
+
 **Left in M9:** pan and zoom, then the live channel — a `Delivery::Fleeting` subscriber with in-flight drags travelling as awareness. Cards the author can resize is the one that reaches past the client; see the TODO, along with the note that `board.rs` wants splitting before the live channel arrives.
 
 ### Milestone 10 — The outline

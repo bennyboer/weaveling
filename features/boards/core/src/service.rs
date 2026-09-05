@@ -11,6 +11,7 @@ use thiserror::Error;
 use crate::board::{Board, BoardCommand, BoardError, BoardEvent, PieceLink, ProjectLink};
 use crate::catalog::{BoardCatalog, CatalogError};
 use crate::id::BoardId;
+use crate::size::Size;
 use crate::spot::Spot;
 
 #[derive(Debug, Error)]
@@ -76,23 +77,35 @@ impl BoardService {
         board: &str,
         piece: PieceLink,
         at: Spot,
+        size: Size,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, BoardServiceError> {
-        self.carry_out(board, BoardCommand::Pin { piece, at }, expected, agent)
-            .await
+        self.carry_out(
+            board,
+            BoardCommand::Pin { piece, at, size },
+            expected,
+            agent,
+        )
+        .await
     }
 
-    pub async fn move_piece(
+    pub async fn reshape(
         &self,
         board: &str,
         piece: PieceLink,
-        to: Spot,
+        to: Option<Spot>,
+        size: Option<Size>,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, BoardServiceError> {
-        self.carry_out(board, BoardCommand::Move { piece, to }, expected, agent)
-            .await
+        self.carry_out(
+            board,
+            BoardCommand::Reshape { piece, to, size },
+            expected,
+            agent,
+        )
+        .await
     }
 
     pub async fn unpin(

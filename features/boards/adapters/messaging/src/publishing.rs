@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use boards_contract::{BoardEventDTO, EVERY_BOARD, PIECE_PINNED, PIECE_UNPINNED, STARTED, SpotDTO};
-use boards_core::{BoardEvent, BoardId, Spot};
+use boards_contract::{
+    BoardEventDTO, EVERY_BOARD, PIECE_PINNED, PIECE_UNPINNED, STARTED, SizeDTO, SpotDTO,
+};
+use boards_core::{BoardEvent, BoardId, Size, Spot};
 use eventpublishing::{
     MessagingEventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
     published_in,
@@ -79,13 +81,18 @@ fn body(event: &BoardEvent) -> Option<BoardEventDTO> {
         BoardEvent::Started { project } => BoardEventDTO::Started {
             project: project.to_string(),
         },
-        BoardEvent::PiecePinned { piece, at } => BoardEventDTO::PiecePinned {
+        BoardEvent::PiecePinned { piece, at, size } => BoardEventDTO::PiecePinned {
             piece: piece.to_string(),
             at: spot(*at),
+            size: extent(*size),
         },
         BoardEvent::PieceMoved { piece, to } => BoardEventDTO::PieceMoved {
             piece: piece.to_string(),
             to: spot(*to),
+        },
+        BoardEvent::PieceResized { piece, to } => BoardEventDTO::PieceResized {
+            piece: piece.to_string(),
+            to: extent(*to),
         },
         BoardEvent::PieceUnpinned { piece } => BoardEventDTO::PieceUnpinned {
             piece: piece.to_string(),
@@ -98,9 +105,16 @@ fn spot(at: Spot) -> SpotDTO {
     SpotDTO { x: at.x, y: at.y }
 }
 
+fn extent(size: Size) -> SizeDTO {
+    SizeDTO {
+        width: size.width,
+        height: size.height,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_UNPINNED};
+    use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_RESIZED, PIECE_UNPINNED};
     use boards_core::{KIND, PieceLink, PositionedPiece, ProjectLink};
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
@@ -135,6 +149,7 @@ mod tests {
         BoardEvent::PiecePinned {
             piece: PieceLink::from("piece_1"),
             at: Spot::at(120, -40),
+            size: Size::of(400, 90),
         }
     }
 
@@ -153,6 +168,13 @@ mod tests {
                     to: Spot::at(7, 8),
                 },
                 PIECE_MOVED,
+            ),
+            (
+                BoardEvent::PieceResized {
+                    piece: PieceLink::from("piece_1"),
+                    to: Size::of(400, 90),
+                },
+                PIECE_RESIZED,
             ),
             (
                 BoardEvent::PieceUnpinned {
@@ -233,6 +255,32 @@ mod tests {
             BoardEventDTO::PiecePinned {
                 piece: "piece_1".to_owned(),
                 at: SpotDTO { x: 120, y: -40 },
+                size: SizeDTO {
+                    width: 400,
+                    height: 90,
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn a_resize_carries_the_piece_and_its_new_extent() {
+        let id = a_board();
+        let stretched = BoardEvent::PieceResized {
+            piece: PieceLink::from("piece_1"),
+            to: Size::of(400, 90),
+        };
+
+        let told = event_in(&published(&id, stretched)).expect("what we wrote must be readable");
+
+        assert_eq!(
+            told.event.body,
+            BoardEventDTO::PieceResized {
+                piece: "piece_1".to_owned(),
+                to: SizeDTO {
+                    width: 400,
+                    height: 90,
+                },
             }
         );
     }
@@ -260,6 +308,7 @@ mod tests {
             pieces: vec![PositionedPiece {
                 piece: PieceLink::from("piece_1"),
                 spot: Spot::ORIGIN,
+                size: Size::CARD,
             }],
         };
 

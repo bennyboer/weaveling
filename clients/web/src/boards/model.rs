@@ -11,10 +11,23 @@ pub struct Spot {
     pub y: i64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Size {
+    pub width: i64,
+    pub height: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Placement {
+    pub spot: Spot,
+    pub size: Size,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PositionedPiece {
     pub piece: PieceId,
     pub spot: Spot,
+    pub size: Size,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

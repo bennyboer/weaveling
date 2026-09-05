@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 pub const STARTED: &str = "board.started";
 pub const PIECE_PINNED: &str = "board.piece.pinned";
 pub const PIECE_MOVED: &str = "board.piece.moved";
+pub const PIECE_RESIZED: &str = "board.piece.resized";
 pub const PIECE_UNPINNED: &str = "board.piece.unpinned";
 pub const EVERY_BOARD: &str = "board.#";
 
@@ -12,10 +13,17 @@ pub struct SpotDTO {
     pub y: i64,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SizeDTO {
+    pub width: i64,
+    pub height: i64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PositionedPieceDTO {
     pub piece: String,
     pub spot: SpotDTO,
+    pub size: SizeDTO,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -35,11 +43,15 @@ pub struct OpenBoardRequest {
 pub struct PinPieceRequest {
     pub piece: String,
     pub spot: SpotDTO,
+    pub size: SizeDTO,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct MovePieceRequest {
-    pub spot: SpotDTO,
+pub struct ReshapePieceRequest {
+    #[serde(default)]
+    pub spot: Option<SpotDTO>,
+    #[serde(default)]
+    pub size: Option<SizeDTO>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -48,9 +60,15 @@ pub enum BoardEventDTO {
     #[serde(rename = "STARTED")]
     Started { project: String },
     #[serde(rename = "PIECE_PINNED")]
-    PiecePinned { piece: String, at: SpotDTO },
+    PiecePinned {
+        piece: String,
+        at: SpotDTO,
+        size: SizeDTO,
+    },
     #[serde(rename = "PIECE_MOVED")]
     PieceMoved { piece: String, to: SpotDTO },
+    #[serde(rename = "PIECE_RESIZED")]
+    PieceResized { piece: String, to: SizeDTO },
     #[serde(rename = "PIECE_UNPINNED")]
     PieceUnpinned { piece: String },
 }

@@ -8,6 +8,7 @@ use eventsourcing::{
 use thiserror::Error;
 
 use crate::id::BoardId;
+use crate::size::Size;
 use crate::spot::Spot;
 
 pub const KIND: AggregateType = AggregateType::of("board");
@@ -21,6 +22,7 @@ impl From<&BoardId> for AggregateId {
 const STARTED: EventName = EventName::of("STARTED");
 const PIECE_PINNED: EventName = EventName::of("PIECE_PINNED");
 const PIECE_MOVED: EventName = EventName::of("PIECE_MOVED");
+const PIECE_RESIZED: EventName = EventName::of("PIECE_RESIZED");
 const PIECE_UNPINNED: EventName = EventName::of("PIECE_UNPINNED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
@@ -30,18 +32,37 @@ pub struct ProjectLink(String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct PieceLink(String);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Placement {
+    pub spot: Spot,
+    pub size: Size,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PositionedPiece {
     pub piece: PieceLink,
     pub spot: Spot,
+    pub size: Size,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BoardCommand {
-    Start { project: ProjectLink },
-    Pin { piece: PieceLink, at: Spot },
-    Move { piece: PieceLink, to: Spot },
-    Unpin { piece: PieceLink },
+    Start {
+        project: ProjectLink,
+    },
+    Pin {
+        piece: PieceLink,
+        at: Spot,
+        size: Size,
+    },
+    Reshape {
+        piece: PieceLink,
+        to: Option<Spot>,
+        size: Option<Size>,
+    },
+    Unpin {
+        piece: PieceLink,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,10 +73,15 @@ pub enum BoardEvent {
     PiecePinned {
         piece: PieceLink,
         at: Spot,
+        size: Size,
     },
     PieceMoved {
         piece: PieceLink,
         to: Spot,
+    },
+    PieceResized {
+        piece: PieceLink,
+        to: Size,
     },
     PieceUnpinned {
         piece: PieceLink,
@@ -69,7 +95,7 @@ pub enum BoardEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board {
     project: ProjectLink,
-    pieces: IndexMap<PieceLink, Spot>,
+    pieces: IndexMap<PieceLink, Placement>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -82,6 +108,8 @@ pub enum BoardError {
     AlreadyPinned,
     #[error("this piece is not on the board")]
     NotPinned,
+    #[error("a card must have width and height")]
+    Shapeless,
 }
 
 impl ProjectLink {
@@ -140,24 +168,40 @@ impl Board {
     pub fn pieces(&self) -> Vec<PositionedPiece> {
         self.pieces
             .iter()
-            .map(|(piece, spot)| PositionedPiece {
+            .map(|(piece, placement)| PositionedPiece {
                 piece: piece.clone(),
-                spot: *spot,
+                spot: placement.spot,
+                size: placement.size,
             })
             .collect()
     }
 
-    pub fn spot_of(&self, piece: &PieceLink) -> Option<Spot> {
+    pub fn placement_of(&self, piece: &PieceLink) -> Option<Placement> {
         self.pieces.get(piece).copied()
     }
 
-    fn pin(&mut self, piece: &PieceLink, at: Spot) {
-        self.pieces.insert(piece.clone(), at);
+    pub fn spot_of(&self, piece: &PieceLink) -> Option<Spot> {
+        self.placement_of(piece).map(|placement| placement.spot)
+    }
+
+    pub fn size_of(&self, piece: &PieceLink) -> Option<Size> {
+        self.placement_of(piece).map(|placement| placement.size)
+    }
+
+    fn pin(&mut self, piece: &PieceLink, at: Spot, size: Size) {
+        self.pieces
+            .insert(piece.clone(), Placement { spot: at, size });
     }
 
     fn shift(&mut self, piece: &PieceLink, to: Spot) {
-        if let Some(spot) = self.pieces.get_mut(piece) {
-            *spot = to;
+        if let Some(placement) = self.pieces.get_mut(piece) {
+            placement.spot = to;
+        }
+    }
+
+    fn resize(&mut self, piece: &PieceLink, to: Size) {
+        if let Some(placement) = self.pieces.get_mut(piece) {
+            placement.size = to;
         }
     }
 
@@ -165,10 +209,18 @@ impl Board {
         self.pieces.shift_remove(piece);
     }
 
-    fn holding(pieces: &[PositionedPiece]) -> IndexMap<PieceLink, Spot> {
+    fn holding(pieces: &[PositionedPiece]) -> IndexMap<PieceLink, Placement> {
         pieces
             .iter()
-            .map(|positioned| (positioned.piece.clone(), positioned.spot))
+            .map(|positioned| {
+                (
+                    positioned.piece.clone(),
+                    Placement {
+                        spot: positioned.spot,
+                        size: positioned.size,
+                    },
+                )
+            })
             .collect()
     }
 }
@@ -179,6 +231,7 @@ impl Event for BoardEvent {
             Self::Started { .. } => STARTED,
             Self::PiecePinned { .. } => PIECE_PINNED,
             Self::PieceMoved { .. } => PIECE_MOVED,
+            Self::PieceResized { .. } => PIECE_RESIZED,
             Self::PieceUnpinned { .. } => PIECE_UNPINNED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -224,20 +277,43 @@ impl Aggregate for Board {
     fn decide(&self, command: BoardCommand, _agent: &Agent) -> Result<Vec<BoardEvent>, BoardError> {
         match command {
             BoardCommand::Start { .. } => Err(BoardError::AlreadyStarted),
-            BoardCommand::Pin { piece, at } => {
-                if self.spot_of(&piece).is_some() {
+            BoardCommand::Pin { piece, at, size } => {
+                if self.placement_of(&piece).is_some() {
                     return Err(BoardError::AlreadyPinned);
                 }
 
-                Ok(vec![BoardEvent::PiecePinned { piece, at }])
+                if !size.has_extent() {
+                    return Err(BoardError::Shapeless);
+                }
+
+                Ok(vec![BoardEvent::PiecePinned { piece, at, size }])
             }
-            BoardCommand::Move { piece, to } => match self.spot_of(&piece) {
-                None => Err(BoardError::NotPinned),
-                Some(already) if already == to => Ok(vec![]),
-                Some(_) => Ok(vec![BoardEvent::PieceMoved { piece, to }]),
-            },
+            BoardCommand::Reshape { piece, to, size } => {
+                let Some(already) = self.placement_of(&piece) else {
+                    return Err(BoardError::NotPinned);
+                };
+
+                if size.is_some_and(|size| !size.has_extent()) {
+                    return Err(BoardError::Shapeless);
+                }
+
+                let mut happened = Vec::new();
+
+                if let Some(to) = to.filter(|to| *to != already.spot) {
+                    happened.push(BoardEvent::PieceMoved {
+                        piece: piece.clone(),
+                        to,
+                    });
+                }
+
+                if let Some(to) = size.filter(|size| *size != already.size) {
+                    happened.push(BoardEvent::PieceResized { piece, to });
+                }
+
+                Ok(happened)
+            }
             BoardCommand::Unpin { piece } => {
-                if self.spot_of(&piece).is_none() {
+                if self.placement_of(&piece).is_none() {
                     return Err(BoardError::NotPinned);
                 }
 
@@ -249,8 +325,9 @@ impl Aggregate for Board {
     fn apply(&mut self, event: &BoardEvent, _metadata: &EventMetadata) {
         match event {
             BoardEvent::Started { .. } => {}
-            BoardEvent::PiecePinned { piece, at } => self.pin(piece, *at),
+            BoardEvent::PiecePinned { piece, at, size } => self.pin(piece, *at, *size),
             BoardEvent::PieceMoved { piece, to } => self.shift(piece, *to),
+            BoardEvent::PieceResized { piece, to } => self.resize(piece, *to),
             BoardEvent::PieceUnpinned { piece } => self.unpin(piece),
             BoardEvent::Snapshotted { project, pieces } => {
                 self.project = project.clone();

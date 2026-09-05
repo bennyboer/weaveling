@@ -3,7 +3,7 @@ use std::sync::Arc;
 use eventsourcing::{Agent, AgentId};
 
 use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_UNPINNED, STARTED};
-use boards_core::{BoardCatalog, BoardId, PieceLink, Spot};
+use boards_core::{BoardCatalog, BoardId, PieceLink, Size, Spot};
 use clock::FixedClock;
 use messaging::{Message, RoutingKey};
 use pieces_contract::{DISCARDED, PieceEventDTO};
@@ -56,6 +56,7 @@ async fn a_board_holding(wired: &Wired, pieces: &[&str]) -> BoardId {
                 &id.to_string(),
                 a_piece(piece),
                 Spot::at(nth as i64 * 10, 0),
+                Size::CARD,
                 None,
                 &an_author(),
             )

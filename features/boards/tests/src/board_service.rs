@@ -3,7 +3,7 @@ use std::sync::Arc;
 use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_UNPINNED, STARTED};
 use boards_core::{
     BoardCatalog, BoardError, BoardEvent, BoardId, BoardServiceError, BoardSummary, KIND,
-    PieceLink, ProjectLink, Spot,
+    PieceLink, ProjectLink, Size, Spot,
 };
 use clock::FixedClock;
 use eventsourcing::{
@@ -159,6 +159,7 @@ async fn a_pinned_piece_is_there_when_the_board_is_read_again() {
             &id.to_string(),
             a_piece(),
             Spot::at(120, -40),
+            Size::CARD,
             None,
             &an_author(),
         )
@@ -187,6 +188,7 @@ async fn a_moved_piece_keeps_its_new_spot() {
             &id.to_string(),
             a_piece(),
             Spot::at(10, 10),
+            Size::CARD,
             None,
             &an_author(),
         )
@@ -195,10 +197,11 @@ async fn a_moved_piece_keeps_its_new_spot() {
 
     wired
         .boards
-        .move_piece(
+        .reshape(
             &id.to_string(),
             a_piece(),
-            Spot::at(300, 20),
+            Some(Spot::at(300, 20)),
+            None,
             None,
             &an_author(),
         )
@@ -226,6 +229,7 @@ async fn an_unpinned_piece_leaves_the_board() {
             &id.to_string(),
             a_piece(),
             Spot::at(10, 10),
+            Size::CARD,
             None,
             &an_author(),
         )
@@ -252,7 +256,14 @@ async fn pinning_the_same_piece_twice_is_refused() {
     let id = an_open_board(&wired).await;
     wired
         .boards
-        .pin(&id.to_string(), a_piece(), Spot::ORIGIN, None, &an_author())
+        .pin(
+            &id.to_string(),
+            a_piece(),
+            Spot::ORIGIN,
+            Size::CARD,
+            None,
+            &an_author(),
+        )
         .await
         .expect("pinning should succeed");
 
@@ -262,6 +273,7 @@ async fn pinning_the_same_piece_twice_is_refused() {
             &id.to_string(),
             a_piece(),
             Spot::at(9, 9),
+            Size::CARD,
             None,
             &an_author(),
         )
@@ -285,6 +297,7 @@ async fn a_move_against_a_stale_version_is_refused() {
             &id.to_string(),
             a_piece(),
             Spot::at(10, 10),
+            Size::CARD,
             None,
             &an_author(),
         )
@@ -293,10 +306,11 @@ async fn a_move_against_a_stale_version_is_refused() {
 
     let refused = wired
         .boards
-        .move_piece(
+        .reshape(
             &id.to_string(),
             a_piece(),
-            Spot::at(20, 20),
+            Some(Spot::at(20, 20)),
+            None,
             Some(Version::of(1)),
             &an_author(),
         )

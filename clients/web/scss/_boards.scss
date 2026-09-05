@@ -1,5 +1,4 @@
-$card-high: 5.25rem;
-$bar-gap: 0.5rem;
+$grip: 7px;
 
 .to-board {
   display: block;
@@ -38,8 +37,7 @@ $bar-gap: 0.5rem;
     position: absolute;
     display: grid;
     grid-template-rows: minmax(0, 1fr);
-    width: 10.5rem;
-    height: $card-high;
+    box-sizing: border-box;
     padding: 0.5rem 0.6rem;
     border: 1px solid var(--line);
     border-radius: 6px;
@@ -71,7 +69,9 @@ $bar-gap: 0.5rem;
 
     .name {
       min-height: 0;
+      overflow-x: hidden;
       overflow-y: auto;
+      overflow-wrap: anywhere;
       overscroll-behavior: contain;
       scrollbar-width: thin;
       scrollbar-color: transparent transparent;
@@ -100,14 +100,76 @@ $bar-gap: 0.5rem;
     &:focus-within .name::-webkit-scrollbar-thumb {
       background: var(--muted);
     }
+
+    .grip {
+      position: absolute;
+      touch-action: none;
+    }
+
+    .grip.top,
+    .grip.bottom {
+      left: $grip;
+      right: $grip;
+      height: $grip;
+      cursor: ns-resize;
+    }
+
+    .grip.left,
+    .grip.right {
+      top: $grip;
+      bottom: $grip;
+      width: $grip;
+      cursor: ew-resize;
+    }
+
+    .grip.top-left,
+    .grip.top-right,
+    .grip.bottom-left,
+    .grip.bottom-right {
+      width: $grip;
+      height: $grip;
+    }
+
+    .grip.top,
+    .grip.top-left,
+    .grip.top-right {
+      top: calc(#{$grip} / -2);
+    }
+
+    .grip.bottom,
+    .grip.bottom-left,
+    .grip.bottom-right {
+      bottom: calc(#{$grip} / -2);
+    }
+
+    .grip.left,
+    .grip.top-left,
+    .grip.bottom-left {
+      left: calc(#{$grip} / -2);
+    }
+
+    .grip.right,
+    .grip.top-right,
+    .grip.bottom-right {
+      right: calc(#{$grip} / -2);
+    }
+
+    .grip.top-left,
+    .grip.bottom-right {
+      cursor: nwse-resize;
+    }
+
+    .grip.top-right,
+    .grip.bottom-left {
+      cursor: nesw-resize;
+    }
   }
 
   .pinned-rename {
     position: absolute;
     z-index: 2;
     box-sizing: border-box;
-    width: 10.5rem;
-    height: $card-high;
+    overflow-wrap: anywhere;
     margin: 0;
     padding: 0.5rem 0.6rem;
     border: 1px solid var(--muted);
@@ -129,16 +191,11 @@ $bar-gap: 0.5rem;
     display: flex;
     gap: 0.1rem;
     padding: 0.2rem;
-    transform: translateY(calc(-100% - #{$bar-gap}));
     border: 1px solid var(--line);
     border-radius: 7px;
     background: var(--raised);
     box-shadow: 0 3px 10px rgb(0 0 0 / 32%);
     cursor: default;
-
-    &.below {
-      transform: translateY(calc(#{$card-high} + #{$bar-gap}));
-    }
 
     button {
       display: grid;

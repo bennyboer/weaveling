@@ -1,9 +1,10 @@
 use boards_contract::{
-    BoardDTO, MovePieceRequest, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, SpotDTO,
+    BoardDTO, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, ReshapePieceRequest, SizeDTO,
+    SpotDTO,
 };
 use gloo_net::http::Request;
 
-use crate::boards::model::{Board, BoardId, PositionedPiece, Spot};
+use crate::boards::model::{Board, BoardId, Placement, PositionedPiece, Size, Spot};
 use crate::http::{ApiError, parsed};
 use crate::pieces::model::PieceId;
 use crate::projects::model::ProjectId;
@@ -25,10 +26,11 @@ pub async fn open(project: &ProjectId) -> Result<Board, ApiError> {
     Ok(as_board(parsed(response, SUBJECT).await?))
 }
 
-pub async fn pin(board: &BoardId, piece: &PieceId, at: Spot) -> Result<Board, ApiError> {
+pub async fn pin(board: &BoardId, piece: &PieceId, at: Placement) -> Result<Board, ApiError> {
     let payload = PinPieceRequest {
         piece: piece.to_string(),
-        spot: SpotDTO { x: at.x, y: at.y },
+        spot: spot(at.spot),
+        size: extent(at.size),
     };
     let response = Request::post(&format!("{BOARDS}/{board}/pieces"))
         .json(&payload)
@@ -40,9 +42,15 @@ pub async fn pin(board: &BoardId, piece: &PieceId, at: Spot) -> Result<Board, Ap
     Ok(as_board(parsed(response, SUBJECT).await?))
 }
 
-pub async fn move_piece(board: &BoardId, piece: &PieceId, to: Spot) -> Result<Board, ApiError> {
-    let payload = MovePieceRequest {
-        spot: SpotDTO { x: to.x, y: to.y },
+pub async fn reshape(
+    board: &BoardId,
+    piece: &PieceId,
+    to: Option<Spot>,
+    size: Option<Size>,
+) -> Result<Board, ApiError> {
+    let payload = ReshapePieceRequest {
+        spot: to.map(spot),
+        size: size.map(extent),
     };
     let response = Request::patch(&format!("{BOARDS}/{board}/pieces/{piece}"))
         .json(&payload)
@@ -82,5 +90,21 @@ fn as_positioned(dto: &PositionedPieceDTO) -> PositionedPiece {
             x: dto.spot.x,
             y: dto.spot.y,
         },
+        size: Size {
+            width: dto.size.width,
+            height: dto.size.height,
+        },
+    }
+}
+
+fn spot(at: Spot) -> SpotDTO {
+    // TODO [REVIEW] Maybe we should have some dedicated mapping transformer file (with to_contract and to_internal for everything?) or at least call it to_contract_spot? Same for extent and the other DTO mappings in this or other files
+    SpotDTO { x: at.x, y: at.y }
+}
+
+fn extent(size: Size) -> SizeDTO {
+    SizeDTO {
+        width: size.width,
+        height: size.height,
     }
 }

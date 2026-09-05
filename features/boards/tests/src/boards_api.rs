@@ -3,7 +3,8 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use boards_contract::{
-    BoardDTO, MovePieceRequest, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, SpotDTO,
+    BoardDTO, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, ReshapePieceRequest, SizeDTO,
+    SpotDTO,
 };
 use clock::FixedClock;
 use time::{Duration, OffsetDateTime};
@@ -30,6 +31,13 @@ fn a_spot(x: i64, y: i64) -> SpotDTO {
     SpotDTO { x, y }
 }
 
+fn a_size() -> SizeDTO {
+    SizeDTO {
+        width: 168,
+        height: 84,
+    }
+}
+
 async fn an_open_board(server: &TestServer) -> BoardDTO {
     let response = server.post("/boards").json(&opening("project_1")).await;
     response.assert_status(StatusCode::OK);
@@ -48,6 +56,7 @@ async fn a_pinned_piece(
         .json(&PinPieceRequest {
             piece: piece.to_owned(),
             spot: at,
+            size: a_size(),
         })
         .await;
     response.assert_status(StatusCode::OK);
@@ -137,6 +146,7 @@ async fn a_pinned_piece_comes_back_where_it_was_dropped() {
         vec![PositionedPieceDTO {
             piece: "piece_1".to_owned(),
             spot: a_spot(120, -40),
+            size: a_size(),
         }]
     );
     assert_eq!(pinned.version, 2);
@@ -153,6 +163,7 @@ async fn pinning_the_same_piece_twice_is_a_conflict() {
         .json(&PinPieceRequest {
             piece: "piece_1".to_owned(),
             spot: a_spot(9, 9),
+            size: a_size(),
         })
         .await
         .assert_status(StatusCode::CONFLICT);
@@ -166,8 +177,9 @@ async fn a_moved_piece_comes_back_at_its_new_spot() {
 
     let response = server
         .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
-        .json(&MovePieceRequest {
-            spot: a_spot(300, 20),
+        .json(&ReshapePieceRequest {
+            spot: Some(a_spot(300, 20)),
+            size: None,
         })
         .await;
     response.assert_status(StatusCode::OK);
@@ -177,6 +189,7 @@ async fn a_moved_piece_comes_back_at_its_new_spot() {
         vec![PositionedPieceDTO {
             piece: "piece_1".to_owned(),
             spot: a_spot(300, 20),
+            size: a_size(),
         }]
     );
 }
@@ -188,7 +201,10 @@ async fn moving_a_piece_that_is_not_on_the_board_is_not_found() {
 
     server
         .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
-        .json(&MovePieceRequest { spot: a_spot(1, 1) })
+        .json(&ReshapePieceRequest {
+            spot: Some(a_spot(1, 1)),
+            size: None,
+        })
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
@@ -228,8 +244,9 @@ async fn a_move_against_a_stale_version_is_refused() {
     server
         .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
         .add_header("if-match", "\"1\"")
-        .json(&MovePieceRequest {
-            spot: a_spot(20, 20),
+        .json(&ReshapePieceRequest {
+            spot: Some(a_spot(20, 20)),
+            size: None,
         })
         .await
         .assert_status(StatusCode::PRECONDITION_FAILED);
@@ -244,8 +261,9 @@ async fn a_move_against_the_current_version_is_allowed() {
     server
         .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
         .add_header("if-match", format!("\"{}\"", pinned.version))
-        .json(&MovePieceRequest {
-            spot: a_spot(20, 20),
+        .json(&ReshapePieceRequest {
+            spot: Some(a_spot(20, 20)),
+            size: None,
         })
         .await
         .assert_status(StatusCode::OK);
@@ -272,4 +290,90 @@ async fn boards_of_other_projects_are_left_alone() {
     response.assert_status(StatusCode::OK);
 
     assert_ne!(response.json::<BoardDTO>().id, mine.id);
+}
+
+#[tokio::test]
+async fn a_resized_piece_comes_back_at_its_new_extent() {
+    let server = a_server();
+    let opened = an_open_board(&server).await;
+    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+
+    let response = server
+        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .json(&ReshapePieceRequest {
+            spot: None,
+            size: Some(SizeDTO {
+                width: 400,
+                height: 90,
+            }),
+        })
+        .await;
+    response.assert_status(StatusCode::OK);
+
+    assert_eq!(
+        response.json::<BoardDTO>().pieces,
+        vec![PositionedPieceDTO {
+            piece: "piece_1".to_owned(),
+            spot: a_spot(10, 10),
+            size: SizeDTO {
+                width: 400,
+                height: 90,
+            },
+        }]
+    );
+}
+
+#[tokio::test]
+async fn dragging_an_edge_moves_and_resizes_in_one_request() {
+    let server = a_server();
+    let opened = an_open_board(&server).await;
+    a_pinned_piece(&server, &opened, "piece_1", a_spot(100, 100)).await;
+
+    let response = server
+        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .json(&ReshapePieceRequest {
+            spot: Some(a_spot(60, 100)),
+            size: Some(SizeDTO {
+                width: 208,
+                height: 84,
+            }),
+        })
+        .await;
+    response.assert_status(StatusCode::OK);
+
+    let board = response.json::<BoardDTO>();
+    assert_eq!(
+        board.pieces,
+        vec![PositionedPieceDTO {
+            piece: "piece_1".to_owned(),
+            spot: a_spot(60, 100),
+            size: SizeDTO {
+                width: 208,
+                height: 84,
+            },
+        }]
+    );
+    assert_eq!(
+        board.version, 4,
+        "one gesture, but the log holds both what moved and what stretched"
+    );
+}
+
+#[tokio::test]
+async fn a_card_cannot_be_resized_into_nothing() {
+    let server = a_server();
+    let opened = an_open_board(&server).await;
+    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+
+    server
+        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .json(&ReshapePieceRequest {
+            spot: None,
+            size: Some(SizeDTO {
+                width: 0,
+                height: 84,
+            }),
+        })
+        .await
+        .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
 }

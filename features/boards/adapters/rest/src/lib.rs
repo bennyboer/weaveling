@@ -6,10 +6,11 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use boards_contract::{
-    BoardDTO, MovePieceRequest, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, SpotDTO,
+    BoardDTO, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, ReshapePieceRequest, SizeDTO,
+    SpotDTO,
 };
 use boards_core::{
-    Board, BoardError, BoardService, BoardServiceError, PieceLink, PositionedPiece, Spot,
+    Board, BoardError, BoardService, BoardServiceError, PieceLink, PositionedPiece, Size, Spot,
 };
 use eventsourcing::{Agent, ServiceError, Standing, Version};
 use serving::{Unreadable, demanded, refusal, tag};
@@ -21,7 +22,7 @@ pub fn router(boards: BoardService) -> Router {
         .route("/boards/{board}/pieces", post(pin))
         .route(
             "/boards/{board}/pieces/{piece}",
-            delete(unpin).patch(move_piece),
+            delete(unpin).patch(reshape),
         )
         .with_state(boards)
 }
@@ -59,6 +60,7 @@ async fn pin(
             &board,
             PieceLink::from(request.piece.as_str()),
             spot(request.spot),
+            extent(request.size),
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -67,17 +69,18 @@ async fn pin(
     Ok(reported(StatusCode::OK, &board, &boards.get(&board).await?))
 }
 
-async fn move_piece(
+async fn reshape(
     State(boards): State<BoardService>,
     Path((board, piece)): Path<(String, String)>,
     headers: HeaderMap,
-    Json(request): Json<MovePieceRequest>,
+    Json(request): Json<ReshapePieceRequest>,
 ) -> Result<Response, ApiError> {
     boards
-        .move_piece(
+        .reshape(
             &board,
             PieceLink::from(piece.as_str()),
-            spot(request.spot),
+            request.spot.map(spot),
+            request.size.map(extent),
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -111,6 +114,10 @@ fn spot(at: SpotDTO) -> Spot {
     Spot::at(at.x, at.y)
 }
 
+fn extent(size: SizeDTO) -> Size {
+    Size::of(size.width, size.height)
+}
+
 fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
     Ok(demanded(headers)?)
 }
@@ -139,6 +146,10 @@ fn positioned(held: &PositionedPiece) -> PositionedPieceDTO {
         spot: SpotDTO {
             x: held.spot.x,
             y: held.spot.y,
+        },
+        size: SizeDTO {
+            width: held.size.width,
+            height: held.size.height,
         },
     }
 }
@@ -174,6 +185,10 @@ impl IntoResponse for ApiError {
             BoardServiceError::Events(ServiceError::Refused(BoardError::NotPinned)) => {
                 (StatusCode::NOT_FOUND, BoardError::NotPinned.to_string())
             }
+            BoardServiceError::Events(ServiceError::Refused(BoardError::Shapeless)) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                BoardError::Shapeless.to_string(),
+            ),
             BoardServiceError::Events(events) => refusal(&events),
             unserveable => {
                 tracing::error!(error = %unserveable, "a board request could not be served");
