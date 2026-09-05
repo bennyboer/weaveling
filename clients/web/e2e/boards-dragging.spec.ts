@@ -200,3 +200,36 @@ test("a card being dragged rides above the ones pinned after it", async ({ page 
   await page.mouse.up();
   await expect(first).not.toHaveClass(/carried/);
 });
+
+test("a dragged card stays in front after it is dropped", async ({ page }) => {
+  await anOpenProject(page, "StaysInFront");
+  await capture(page, "The loom remembers");
+  await capture(page, "She never returned");
+  await openTheBoard(page);
+  await page.getByRole("button", { name: "Pin The loom remembers" }).click();
+  await page.getByRole("button", { name: "Pin She never returned" }).click();
+  const cards = corkboard(page).locator(".pinned");
+  await expect(cards).toHaveCount(2);
+  const under = cards.first();
+
+  await dragBy(page, under, 160, 0);
+
+  const onTop = await page.evaluate(() => {
+    const drawn = [...document.querySelectorAll(".pinned")];
+    const last = drawn[drawn.length - 1];
+
+    return last.querySelector(".name")!.textContent;
+  });
+  expect(onTop, "the card you just moved should be drawn last, so it sits in front").toBe(
+    "The loom remembers",
+  );
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Board", exact: true })).toBeVisible();
+  const afterwards = await page.evaluate(() => {
+    const drawn = [...document.querySelectorAll(".pinned")];
+
+    return drawn[drawn.length - 1].querySelector(".name")!.textContent;
+  });
+  expect(afterwards, "the stacking is the board's, not the browser's").toBe("The loom remembers");
+});

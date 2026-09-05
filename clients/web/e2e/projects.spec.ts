@@ -129,3 +129,26 @@ test("renaming a project shows Save and Cancel beside the field", async ({ page 
   });
   expect(apart, "Save and Cancel must not sit on top of each other").toBe(true);
 });
+
+test("a project row spreads its title, stamp and menu across the width", async ({ page }) => {
+  const title = aTitle();
+  await aProjectCalled(page, title);
+  const row = rowFor(page, title);
+
+  const laid = await row.evaluate((it) => {
+    const around = it.getBoundingClientRect();
+    const name = it.querySelector(".name")!.getBoundingClientRect();
+    const stamp = it.querySelector(".stamp")!.getBoundingClientRect();
+    const menu = it.querySelector(".actions")!.getBoundingClientRect();
+
+    return {
+      titleSpans: Math.round(name.width / around.width),
+      stampAfterTitle: Math.round(stamp.left - name.right) >= 0,
+      menuLast: Math.round(around.right - menu.right) < 8,
+    };
+  });
+
+  expect(laid.stampAfterTitle, "the stamp follows the title").toBe(true);
+  expect(laid.menuLast, "the menu sits at the far end of the row").toBe(true);
+  expect(laid.titleSpans, "the title takes the room the other two leave").toBeGreaterThan(0);
+});

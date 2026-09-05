@@ -11,6 +11,7 @@ members = [
     "features/*/tests",
     "features/*/wiring",
 ]
+exclude = ["spikes/logo"]
 default-members = [
     "libraries/*",
     "services/*",

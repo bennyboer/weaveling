@@ -299,7 +299,17 @@ The optional parts are what keeps the write small — a body drag never sends a 
 
 **No upcast, deliberately.** `PIECE_PINNED` gained a field, which is exactly the shape `patches()` exists for — but nothing is durable yet, so there are no old events to patch and the ceremony would have been for its own sake. The debt of shipping one real patch stays open, and the first persistent store is when it comes due.
 
-**Left in M9:** pan and zoom, then the live channel — a `Delivery::Fleeting` subscriber with in-flight drags travelling as awareness. Cards the author can resize is the one that reaches past the client; see the TODO, along with the note that `board.rs` wants splitting before the live channel arrives.
+**The board pans and zooms**, so it is finally the infinite surface the milestone promised rather than a 620px box with a scrollbar. Drag the bare board to pan, ctrl and the wheel zoom at the pointer, and a small cluster in the corner reads the zoom and resets it. A plain wheel is deliberately left alone: the board sits inside a scrollable page, and a surface that swallows the page's scroll to move itself reads as the page being broken rather than as panning. Resetting the zoom undoes the zoom and nothing else — going back to 100% is not the same as going home, so the board stays where it was panned to — and every zoom control anchors on the middle of the view rather than the top-left corner.
+
+The viewport's pan is a float even though a spot is an integer, which is not fussiness: rounding it meant `on_board` quantised the anchor before the pan was recomputed, so zooming in and back out crept a couple of pixels each time. Zoom now round-trips exactly, and a test asserts that by checking a board point lands on the same screen pixel before and after six zooms.
+
+**Chrome does not scale.** Cards live inside the transform, the action bar lives outside it in screen coordinates. Zoom out and the cards shrink while the buttons stay the size a finger expects — Obsidian's behaviour, and the decision that fixes where the coordinate conversion sits. The rename editor deliberately goes the other way: it *replaces* a card visually, so it scales with one.
+
+That conversion is now its own module, `boards/viewport.rs`, holding `Viewport { pan, zoom }` and the screen↔board arithmetic. It arrived with a discovery worth more than the module: **the client's unit tests run natively.** `cargo test --workspace` builds the client for the host and runs anything under `#[cfg(test)]` — the whole codebase had been excluding it and testing the client only through a browser. Pure logic like a viewport transform does not need one, and eight tests now cover round-tripping, zoom-at-the-pointer and the zoom limits without Playwright ever starting.
+
+**Moving a card brings it to the front, and that is a fact the log records.** `PieceRaised` is a sibling of `PieceMoved`, emitted by `Reshape` when the spot changed and the card is not already topmost — the aggregate's `IndexMap` insertion order *is* the z-order, so raising is a re-insert. Resizing deliberately does not raise: stretching a card is not reaching for it. The alternative, folding the reorder into `apply(PieceMoved)`, was rejected for hiding a board rule inside a projection function where replay correctness would quietly depend on it.
+
+**Left in M9:** the live channel — a `Delivery::Fleeting` subscriber with in-flight drags travelling as awareness. Cards the author can resize is the one that reaches past the client; see the TODO, along with the note that `board.rs` wants splitting before the live channel arrives.
 
 ### Milestone 10 — The outline
 

@@ -1,12 +1,5 @@
 $grip: 7px;
 
-.to-board {
-  display: block;
-  width: fit-content;
-  margin-bottom: 1.5rem;
-  color: var(--muted);
-}
-
 .board {
   margin-top: 2.5rem;
 
@@ -20,211 +13,293 @@ $grip: 7px;
     margin: 0 0 0.75rem;
     color: var(--muted);
   }
-}
 
-.corkboard {
-  position: relative;
-  min-height: 26rem;
-  margin-bottom: 2.5rem;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background-color: var(--surface);
-  background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 0);
-  background-size: 20px 20px;
-
-  .pinned {
-    position: absolute;
-    display: grid;
-    grid-template-rows: minmax(0, 1fr);
-    box-sizing: border-box;
-    padding: 0.5rem 0.6rem;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    background: var(--paper);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 14%);
+  .corkboard {
+    position: relative;
+    min-height: 26rem;
+    margin-bottom: 2.5rem;
+    overflow: hidden;
     cursor: grab;
     touch-action: none;
     user-select: none;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background-color: var(--surface);
+    background-image: radial-gradient(circle at 1px 1px, var(--dot) 1px, transparent 0);
+    background-size: 20px 20px;
 
     &:active {
       cursor: grabbing;
     }
 
-    &:focus-visible {
-      outline: 2px solid var(--muted);
-      outline-offset: 2px;
+    .surface {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 0;
+      height: 0;
+      transform-origin: 0 0;
     }
 
-    &.carried {
-      z-index: 1;
+    .zooming {
+      position: absolute;
+      right: 0.6rem;
+      bottom: 0.6rem;
+      display: flex;
+      align-items: center;
+      gap: 0.1rem;
+      padding: 0.2rem;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--raised);
+      box-shadow: 0 3px 10px rgb(0 0 0 / 32%);
+      cursor: default;
+
+      button {
+        display: grid;
+        place-items: center;
+        min-width: 1.65rem;
+        height: 1.65rem;
+        padding: 0 0.3rem;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        font: inherit;
+        font-size: 0.85rem;
+        line-height: 1;
+        color: var(--ink);
+        cursor: pointer;
+      }
+
+      button:hover,
+      button:focus-visible {
+        background: var(--surface);
+      }
+
+      .reading {
+        font-variant-numeric: tabular-nums;
+        color: var(--muted);
+      }
     }
 
-    &.selected {
-      border-color: var(--muted);
-      box-shadow:
-        0 0 0 2px var(--muted),
-        0 1px 3px rgb(0 0 0 / 14%);
+    .pinned {
+      position: absolute;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr);
+      box-sizing: border-box;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--paper);
+      box-shadow: 0 1px 3px rgb(0 0 0 / 14%);
+      cursor: grab;
+      touch-action: none;
+      user-select: none;
+
+      &:active {
+        cursor: grabbing;
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--muted);
+        outline-offset: 2px;
+      }
+
+      &.carried {
+        z-index: 1;
+      }
+
+      &.selected {
+        border-color: var(--muted);
+        box-shadow:
+          0 0 0 2px var(--muted),
+          0 1px 3px rgb(0 0 0 / 14%);
+      }
+
+      .name {
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        overflow-wrap: anywhere;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        scrollbar-color: transparent transparent;
+        line-height: 1.35;
+        color: var(--ink);
+        text-decoration: none;
+        cursor: inherit;
+        outline: none;
+      }
+
+      .name::-webkit-scrollbar {
+        width: 6px;
+      }
+
+      .name::-webkit-scrollbar-thumb {
+        border-radius: 3px;
+        background: transparent;
+      }
+
+      &:hover .name,
+      &:focus-within .name {
+        scrollbar-color: var(--muted) transparent;
+      }
+
+      &:hover .name::-webkit-scrollbar-thumb,
+      &:focus-within .name::-webkit-scrollbar-thumb {
+        background: var(--muted);
+      }
+
+      .grip {
+        position: absolute;
+        touch-action: none;
+      }
+
+      .grip.top,
+      .grip.bottom {
+        left: $grip;
+        right: $grip;
+        height: $grip;
+        cursor: ns-resize;
+      }
+
+      .grip.left,
+      .grip.right {
+        top: $grip;
+        bottom: $grip;
+        width: $grip;
+        cursor: ew-resize;
+      }
+
+      .grip.top-left,
+      .grip.top-right,
+      .grip.bottom-left,
+      .grip.bottom-right {
+        width: $grip;
+        height: $grip;
+      }
+
+      .grip.top,
+      .grip.top-left,
+      .grip.top-right {
+        top: calc(#{$grip} / -2);
+      }
+
+      .grip.bottom,
+      .grip.bottom-left,
+      .grip.bottom-right {
+        bottom: calc(#{$grip} / -2);
+      }
+
+      .grip.left,
+      .grip.top-left,
+      .grip.bottom-left {
+        left: calc(#{$grip} / -2);
+      }
+
+      .grip.right,
+      .grip.top-right,
+      .grip.bottom-right {
+        right: calc(#{$grip} / -2);
+      }
+
+      .grip.top-left,
+      .grip.bottom-right {
+        cursor: nwse-resize;
+      }
+
+      .grip.top-right,
+      .grip.bottom-left {
+        cursor: nesw-resize;
+      }
     }
 
-    .name {
-      min-height: 0;
-      overflow-x: hidden;
-      overflow-y: auto;
+    .pinned-rename {
+      position: absolute;
+      user-select: text;
+      z-index: 2;
+      box-sizing: border-box;
       overflow-wrap: anywhere;
-      overscroll-behavior: contain;
-      scrollbar-width: thin;
-      scrollbar-color: transparent transparent;
+      margin: 0;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid var(--muted);
+      border-radius: 6px;
+      outline: none;
+      resize: none;
+      overflow-y: auto;
+      font: inherit;
       line-height: 1.35;
       color: var(--ink);
-      text-decoration: none;
-      cursor: inherit;
-      outline: none;
+      background: var(--paper);
+      box-shadow: 0 1px 3px rgb(0 0 0 / 14%);
+      cursor: text;
     }
 
-    .name::-webkit-scrollbar {
-      width: 6px;
-    }
-
-    .name::-webkit-scrollbar-thumb {
-      border-radius: 3px;
-      background: transparent;
-    }
-
-    &:hover .name,
-    &:focus-within .name {
-      scrollbar-color: var(--muted) transparent;
-    }
-
-    &:hover .name::-webkit-scrollbar-thumb,
-    &:focus-within .name::-webkit-scrollbar-thumb {
-      background: var(--muted);
-    }
-
-    .grip {
+    .pinned-actions {
       position: absolute;
-      touch-action: none;
-    }
+      z-index: 2;
+      display: flex;
+      gap: 0.1rem;
+      padding: 0.2rem;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--raised);
+      box-shadow: 0 3px 10px rgb(0 0 0 / 32%);
+      cursor: default;
 
-    .grip.top,
-    .grip.bottom {
-      left: $grip;
-      right: $grip;
-      height: $grip;
-      cursor: ns-resize;
-    }
+      button {
+        display: grid;
+        place-items: center;
+        width: 1.65rem;
+        height: 1.65rem;
+        padding: 0;
+        border: none;
+        border-radius: 4px;
+        background: transparent;
+        font: inherit;
+        font-size: 1.05rem;
+        line-height: 1;
+        color: var(--ink);
+        cursor: pointer;
+      }
 
-    .grip.left,
-    .grip.right {
-      top: $grip;
-      bottom: $grip;
-      width: $grip;
-      cursor: ew-resize;
-    }
-
-    .grip.top-left,
-    .grip.top-right,
-    .grip.bottom-left,
-    .grip.bottom-right {
-      width: $grip;
-      height: $grip;
-    }
-
-    .grip.top,
-    .grip.top-left,
-    .grip.top-right {
-      top: calc(#{$grip} / -2);
-    }
-
-    .grip.bottom,
-    .grip.bottom-left,
-    .grip.bottom-right {
-      bottom: calc(#{$grip} / -2);
-    }
-
-    .grip.left,
-    .grip.top-left,
-    .grip.bottom-left {
-      left: calc(#{$grip} / -2);
-    }
-
-    .grip.right,
-    .grip.top-right,
-    .grip.bottom-right {
-      right: calc(#{$grip} / -2);
-    }
-
-    .grip.top-left,
-    .grip.bottom-right {
-      cursor: nwse-resize;
-    }
-
-    .grip.top-right,
-    .grip.bottom-left {
-      cursor: nesw-resize;
+      button:hover,
+      button:focus-visible {
+        background: var(--surface);
+      }
     }
   }
 
-  .pinned-rename {
-    position: absolute;
-    z-index: 2;
-    box-sizing: border-box;
-    overflow-wrap: anywhere;
-    margin: 0;
-    padding: 0.5rem 0.6rem;
-    border: 1px solid var(--muted);
-    border-radius: 6px;
-    outline: none;
-    resize: none;
-    overflow-y: auto;
-    font: inherit;
-    line-height: 1.35;
-    color: var(--ink);
-    background: var(--paper);
-    box-shadow: 0 1px 3px rgb(0 0 0 / 14%);
-    cursor: text;
-  }
-
-  .pinned-actions {
-    position: absolute;
-    z-index: 2;
+  .problem {
     display: flex;
-    gap: 0.1rem;
-    padding: 0.2rem;
-    border: 1px solid var(--line);
-    border-radius: 7px;
-    background: var(--raised);
-    box-shadow: 0 3px 10px rgb(0 0 0 / 32%);
-    cursor: default;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
 
-    button {
-      display: grid;
-      place-items: center;
-      width: 1.65rem;
-      height: 1.65rem;
+    .dismiss {
       padding: 0;
       border: none;
-      border-radius: 4px;
       background: transparent;
       font: inherit;
-      font-size: 1.05rem;
+      font-size: 1.1rem;
       line-height: 1;
-      color: var(--ink);
+      color: inherit;
       cursor: pointer;
+      opacity: 0.7;
     }
 
-    button:hover,
-    button:focus-visible {
-      background: var(--surface);
+    .dismiss:hover,
+    .dismiss:focus-visible {
+      opacity: 1;
     }
   }
-}
 
-.waiting {
-  list-style: none;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0;
-  padding: 0;
+  .waiting {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+  }
 }

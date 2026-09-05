@@ -4,6 +4,7 @@ pub const STARTED: &str = "board.started";
 pub const PIECE_PINNED: &str = "board.piece.pinned";
 pub const PIECE_MOVED: &str = "board.piece.moved";
 pub const PIECE_RESIZED: &str = "board.piece.resized";
+pub const PIECE_RAISED: &str = "board.piece.raised";
 pub const PIECE_UNPINNED: &str = "board.piece.unpinned";
 pub const EVERY_BOARD: &str = "board.#";
 
@@ -69,6 +70,8 @@ pub enum BoardEventDTO {
     PieceMoved { piece: String, to: SpotDTO },
     #[serde(rename = "PIECE_RESIZED")]
     PieceResized { piece: String, to: SizeDTO },
+    #[serde(rename = "PIECE_RAISED")]
+    PieceRaised { piece: String },
     #[serde(rename = "PIECE_UNPINNED")]
     PieceUnpinned { piece: String },
 }

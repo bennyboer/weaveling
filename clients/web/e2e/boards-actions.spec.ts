@@ -260,3 +260,30 @@ test("a rename survives the board changing underneath it", async ({ page }) => {
   await field.press("Enter");
   await expect(corkboard(page).locator(".name").first()).toHaveText("Half typed");
 });
+
+test("a failure stays on screen until it is dismissed", async ({ page }) => {
+  await anOpenProject(page, "Alarm");
+  await capture(page, "The loom remembers");
+  await capture(page, "She never returned");
+  await openTheBoard(page);
+  await page.getByRole("button", { name: "Pin The loom remembers" }).click();
+  await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
+
+  await page.route("**/api/boards/*/pieces/*", (route) => route.abort());
+  await corkboard(page).locator(".pinned").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("alert")).toBeVisible();
+  await page.unroute("**/api/boards/*/pieces/*");
+
+  await page.getByRole("button", { name: "Pin She never returned" }).click();
+  await expect(corkboard(page).locator(".pinned")).toHaveCount(2);
+
+  await expect(
+    page.getByRole("alert"),
+    "something else working does not un-break what broke",
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Dismiss" }).click();
+
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

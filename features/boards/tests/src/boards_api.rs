@@ -377,3 +377,32 @@ async fn a_card_cannot_be_resized_into_nothing() {
         .await
         .assert_status(StatusCode::UNPROCESSABLE_ENTITY);
 }
+
+#[tokio::test]
+async fn a_moved_piece_comes_back_at_the_front_of_the_stack() {
+    let server = a_server();
+    let opened = an_open_board(&server).await;
+    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+    a_pinned_piece(&server, &opened, "piece_2", a_spot(20, 20)).await;
+
+    let response = server
+        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .json(&ReshapePieceRequest {
+            spot: Some(a_spot(300, 20)),
+            size: None,
+        })
+        .await;
+    response.assert_status(StatusCode::OK);
+
+    let order: Vec<String> = response
+        .json::<BoardDTO>()
+        .pieces
+        .into_iter()
+        .map(|held| held.piece)
+        .collect();
+    assert_eq!(
+        order,
+        vec!["piece_2".to_owned(), "piece_1".to_owned()],
+        "the board lists its pieces bottom to top, and the moved one is now on top"
+    );
+}

@@ -248,45 +248,6 @@ test("freshly pinned pieces land inside the board as it is first shown", async (
   }
 });
 
-test("a piece pinned beyond the edge can still be scrolled to", async ({ page }) => {
-  await anOpenProject(page, "FarAway");
-  await capture(page, "Far away");
-  await openTheBoard(page);
-  await page.getByRole("button", { name: "Pin Far away" }).click();
-  await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
-
-  await page.evaluate(async () => {
-    const project = window.location.pathname.split("/")[2].split("-").pop();
-    const board = await fetch("/api/boards", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project }),
-    }).then((it) => it.json());
-    const piece = board.pieces[0].piece;
-
-    await fetch(`/api/boards/${board.id}/pieces/${piece}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ spot: { x: 40, y: 3000 } }),
-    });
-  });
-  await page.reload();
-  await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
-
-  const board = await laidOut(page);
-  expect(board.scroll.height).toBeGreaterThan(board.client.height);
-
-  const middle = await corkboard(page).boundingBox();
-  await page.mouse.move(middle!.x + middle!.width / 2, middle!.y + middle!.height / 2);
-  await page.mouse.wheel(0, 400);
-
-  await expect
-    .poll(() => corkboard(page).evaluate((it) => it.scrollTop), {
-      message: "the wheel should carry the board towards the far piece",
-    })
-    .toBeGreaterThan(0);
-});
-
 test("nothing can be pinned until the board has actually arrived", async ({ page }) => {
   await anOpenProject(page, "Loading");
   await capture(page, "The loom remembers");

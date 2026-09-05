@@ -23,6 +23,7 @@ const STARTED: EventName = EventName::of("STARTED");
 const PIECE_PINNED: EventName = EventName::of("PIECE_PINNED");
 const PIECE_MOVED: EventName = EventName::of("PIECE_MOVED");
 const PIECE_RESIZED: EventName = EventName::of("PIECE_RESIZED");
+const PIECE_RAISED: EventName = EventName::of("PIECE_RAISED");
 const PIECE_UNPINNED: EventName = EventName::of("PIECE_UNPINNED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
@@ -82,6 +83,9 @@ pub enum BoardEvent {
     PieceResized {
         piece: PieceLink,
         to: Size,
+    },
+    PieceRaised {
+        piece: PieceLink,
     },
     PieceUnpinned {
         piece: PieceLink,
@@ -205,6 +209,16 @@ impl Board {
         }
     }
 
+    fn raise(&mut self, piece: &PieceLink) {
+        if let Some(placement) = self.pieces.shift_remove(piece) {
+            self.pieces.insert(piece.clone(), placement);
+        }
+    }
+
+    fn is_topmost(&self, piece: &PieceLink) -> bool {
+        self.pieces.last().map(|(held, _)| held) == Some(piece)
+    }
+
     fn unpin(&mut self, piece: &PieceLink) {
         self.pieces.shift_remove(piece);
     }
@@ -232,6 +246,7 @@ impl Event for BoardEvent {
             Self::PiecePinned { .. } => PIECE_PINNED,
             Self::PieceMoved { .. } => PIECE_MOVED,
             Self::PieceResized { .. } => PIECE_RESIZED,
+            Self::PieceRaised { .. } => PIECE_RAISED,
             Self::PieceUnpinned { .. } => PIECE_UNPINNED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -304,6 +319,12 @@ impl Aggregate for Board {
                         piece: piece.clone(),
                         to,
                     });
+
+                    if !self.is_topmost(&piece) {
+                        happened.push(BoardEvent::PieceRaised {
+                            piece: piece.clone(),
+                        });
+                    }
                 }
 
                 if let Some(to) = size.filter(|size| *size != already.size) {
@@ -328,6 +349,7 @@ impl Aggregate for Board {
             BoardEvent::PiecePinned { piece, at, size } => self.pin(piece, *at, *size),
             BoardEvent::PieceMoved { piece, to } => self.shift(piece, *to),
             BoardEvent::PieceResized { piece, to } => self.resize(piece, *to),
+            BoardEvent::PieceRaised { piece } => self.raise(piece),
             BoardEvent::PieceUnpinned { piece } => self.unpin(piece),
             BoardEvent::Snapshotted { project, pieces } => {
                 self.project = project.clone();

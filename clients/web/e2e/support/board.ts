@@ -71,6 +71,32 @@ export const laidOut = (page: Page) =>
     };
   });
 
+export const surface = (page: Page) => corkboard(page).locator(".surface");
+
+export const zooming = (page: Page) => corkboard(page).getByRole("toolbar", { name: "Zoom" });
+
+export const seenAt = async (page: Page, named: string) => {
+  const box = await cardNamed(page, named).boundingBox();
+  const board = await corkboard(page).boundingBox();
+
+  return {
+    x: Math.round(box!.x - board!.x),
+    y: Math.round(box!.y - board!.y),
+    width: Math.round(box!.width),
+    height: Math.round(box!.height),
+  };
+};
+
+export async function panBy(page: Page, x: number, y: number) {
+  const board = await corkboard(page).boundingBox();
+  const from = { x: board!.x + board!.width - 40, y: board!.y + board!.height - 60 };
+
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(from.x + x, from.y + y, { steps: 8 });
+  await page.mouse.up();
+}
+
 export const boxOf = (page: Page) =>
   corkboard(page)
     .locator(".pinned")

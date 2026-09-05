@@ -94,6 +94,9 @@ fn body(event: &BoardEvent) -> Option<BoardEventDTO> {
             piece: piece.to_string(),
             to: to_size_dto(*to),
         },
+        BoardEvent::PieceRaised { piece } => BoardEventDTO::PieceRaised {
+            piece: piece.to_string(),
+        },
         BoardEvent::PieceUnpinned { piece } => BoardEventDTO::PieceUnpinned {
             piece: piece.to_string(),
         },
@@ -114,7 +117,7 @@ fn to_size_dto(size: Size) -> SizeDTO {
 
 #[cfg(test)]
 mod tests {
-    use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_RESIZED, PIECE_UNPINNED};
+    use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_RAISED, PIECE_RESIZED, PIECE_UNPINNED};
     use boards_core::{KIND, PieceLink, PositionedPiece, ProjectLink};
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
@@ -175,6 +178,12 @@ mod tests {
                     to: Size::of(400, 90),
                 },
                 PIECE_RESIZED,
+            ),
+            (
+                BoardEvent::PieceRaised {
+                    piece: PieceLink::from("piece_1"),
+                },
+                PIECE_RAISED,
             ),
             (
                 BoardEvent::PieceUnpinned {

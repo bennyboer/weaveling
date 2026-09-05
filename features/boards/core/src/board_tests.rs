@@ -591,3 +591,145 @@ fn a_snapshot_remembers_how_big_each_card_was() {
     assert_eq!(regrown.size_of(&piece), Some(Size::of(400, 90)));
     assert_eq!(regrown.spot_of(&piece), Some(Spot::at(10, 10)));
 }
+
+#[test]
+fn moving_a_piece_brings_it_to_the_front() {
+    let under = a_piece("piece_1");
+    let over = a_piece("piece_2");
+    let mut board = a_board_holding(&under, Spot::at(10, 10));
+    board.apply(
+        &BoardEvent::PiecePinned {
+            piece: over.clone(),
+            at: Spot::at(20, 20),
+            size: Size::CARD,
+        },
+        &a_metadata(3),
+    );
+    assert_eq!(pinned_order(&board), vec![under.clone(), over.clone()]);
+
+    let events = board
+        .decide(
+            BoardCommand::Reshape {
+                piece: under.clone(),
+                to: Some(Spot::at(30, 30)),
+                size: None,
+            },
+            &an_author(),
+        )
+        .expect("moving should succeed");
+    for (nth, event) in events.iter().enumerate() {
+        board.apply(event, &a_metadata(4 + nth as u64));
+    }
+
+    assert_eq!(
+        events,
+        vec![
+            BoardEvent::PieceMoved {
+                piece: under.clone(),
+                to: Spot::at(30, 30),
+            },
+            BoardEvent::PieceRaised {
+                piece: under.clone(),
+            },
+        ]
+    );
+    assert_eq!(
+        pinned_order(&board),
+        vec![over, under],
+        "the card you just touched should not hide behind one pinned later"
+    );
+}
+
+#[test]
+fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
+    let under = a_piece("piece_1");
+    let over = a_piece("piece_2");
+    let mut board = a_board_holding(&under, Spot::at(10, 10));
+    board.apply(
+        &BoardEvent::PiecePinned {
+            piece: over.clone(),
+            at: Spot::at(20, 20),
+            size: Size::CARD,
+        },
+        &a_metadata(3),
+    );
+
+    let events = board
+        .decide(
+            BoardCommand::Reshape {
+                piece: over,
+                to: Some(Spot::at(40, 40)),
+                size: None,
+            },
+            &an_author(),
+        )
+        .expect("moving should succeed");
+
+    assert_eq!(
+        events.len(),
+        1,
+        "raising what is already on top says nothing"
+    );
+    assert!(matches!(events[0], BoardEvent::PieceMoved { .. }));
+}
+
+#[test]
+fn resizing_a_piece_leaves_the_stack_alone() {
+    let under = a_piece("piece_1");
+    let over = a_piece("piece_2");
+    let mut board = a_board_holding(&under, Spot::at(10, 10));
+    board.apply(
+        &BoardEvent::PiecePinned {
+            piece: over.clone(),
+            at: Spot::at(20, 20),
+            size: Size::CARD,
+        },
+        &a_metadata(3),
+    );
+
+    let events = board
+        .decide(
+            BoardCommand::Reshape {
+                piece: under.clone(),
+                to: None,
+                size: Some(Size::of(400, 90)),
+            },
+            &an_author(),
+        )
+        .expect("resizing should succeed");
+    for (nth, event) in events.iter().enumerate() {
+        board.apply(event, &a_metadata(4 + nth as u64));
+    }
+
+    assert_eq!(
+        pinned_order(&board),
+        vec![under, over],
+        "stretching a card is not the same as reaching for it"
+    );
+}
+
+#[test]
+fn a_snapshot_remembers_the_order_the_cards_are_stacked_in() {
+    let under = a_piece("piece_1");
+    let over = a_piece("piece_2");
+    let mut board = a_board_holding(&under, Spot::at(10, 10));
+    board.apply(
+        &BoardEvent::PiecePinned {
+            piece: over.clone(),
+            at: Spot::at(20, 20),
+            size: Size::CARD,
+        },
+        &a_metadata(3),
+    );
+    board.apply(
+        &BoardEvent::PieceRaised {
+            piece: under.clone(),
+        },
+        &a_metadata(4),
+    );
+
+    let regrown = Board::from_first(&board.snapshot(), &a_metadata(5))
+        .expect("a snapshot should raise a board");
+
+    assert_eq!(pinned_order(&regrown), vec![over, under]);
+}
