@@ -1,4 +1,9 @@
 pub mod board;
+pub mod card;
+pub mod carrying;
+pub mod chrome;
+pub mod handles;
 pub mod model;
+pub mod open_board;
 pub mod service;
 pub mod viewport;

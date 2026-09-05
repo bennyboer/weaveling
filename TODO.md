@@ -157,9 +157,26 @@ Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then 
 - [x] ~~**One flat stylesheet, and class names that collide across features.**~~ Settled: every feature partial nests under its own root, `_base`/`_controls`/`_overlays` stay global because sharing is their job, and the rule is written down under [Client conventions](./ARCHITECTURE.md#client-conventions). Two layout assertions now guard it, since the previous three collisions all passed a green suite.
 
   **The sweep itself bit.** A script that lifted top-level blocks into their root silently dropped `.projects .name { flex: 1 }` — it matched neither the move list nor the keep list, so it vanished, and the workspace rows unpacked while 101 tests stayed green. Caught by looking at the page. If this is ever done again: diff the leaf declarations before and after, which is what found it.
-- [ ] **`board.rs` is past 500 lines and still growing.** The E2E side of the same feature was split up — `boards.spec.ts` became `boards-pinning`, `boards-dragging`, `boards-actions` and `boards-resizing` over a shared `e2e/support/board.ts` — which is worth copying in shape when the client file is finally cut up: the seams that worked were *what the author is doing*, not *which function is involved*. One file now holds the page, the pool/board join, every action with its optimistic write and rollback, the whole pointer-and-keyboard interaction model, the card, and the action bar. The action bar, resizing and pan/zoom all landed since that was written and each added state every other part can see, with only the live channel left to come — which is the actual cost, not the line count. `app.rs` [has the same complaint](#) for a different reason, and the two want different cures: `app.rs` is a composition root holding pages that should live apart, while `board.rs` is one feature whose *layers* have grown together.
+- [x] ~~**`board.rs` is past 500 lines and still growing.**~~ Split. 983 lines in one file became six, none over 350, and the largest function went from **334 lines to 90**.
 
-  Rough shape when it is time: the join and the actions are a view model that knows nothing about pointers; the card and the bar are dumb renderers over it; the drag is a small state machine that could be tested on its own. Do it before the live channel rather than after — awareness adds a second writer to the same state, and that is much easier to reason about once the writers are in one place.
+  | module | holds | lines |
+  |---|---|---|
+  | `board.rs` | the page and the corkboard's own gestures | 213 |
+  | `open_board.rs` | the board, pool and problem; pin/reshape/unpin/retitle | 320 |
+  | `card.rs` | the card, its eight grips, the pointer handlers | 206 |
+  | `chrome.rs` | action bar, rename editor, zoom controls | 173 |
+  | `carrying.rs` | `Carrying`, `Held`, the landing geometry | 344 |
+  | `viewport.rs` | the coordinate transform | 227 |
+  | `handles.rs` | the state every part of the view shares | 23 |
+
+  **The seam that mattered was `Handles`, not the line count.** It used to be seven signals threaded into every renderer — the "each part adds state every other part can see" complaint. It is now five, and one of them is an `OpenBoard` that owns the data and the only four ways to change it. A reader asking *who can change the board?* has one answer; *what is the author in the middle of?* has another.
+
+  **`carrying.rs` was the real prize.** `Carrying::landing()` — nine handle directions, the minimum size, snapping, the drag threshold — is pure arithmetic that never touches the DOM, and every one of those behaviours used to be reachable only through Playwright. It has **13 native unit tests** now, which run in microseconds. Client unit tests went 10 → 23.
+
+  **One behaviour nuance the split surfaced**, worth knowing: `unpin` used to reach into `selected` to clear it. That coupling is gone, because `chosen()` already looks the piece up among the pinned ones and finds nothing — a stale selection is simply never rendered rather than eagerly cleared. Re-pinning a piece that was selected when it was unpinned will show it selected again, which is the only observable difference.
+
+  Two things deliberately left: `Handles` is still a vague name for what is now "everything a renderer needs", and `corkboard()` at 90 lines is the largest thing left standing.
+
 - [x] ~~**A floating action bar over the selected card.**~~ Built: rename, open, unpin, floating over the selected card, flipping below when the card sits too near the top and stepping aside during a drag. Unpin moved onto it, so the card is a single-column grid holding a title again.
 
   **One rough edge left, and it is now reachable.** The bar still only flips *vertically*, so a card panned near the right edge pushes it past the board — theoretical when it was written, real since pan landed. The other edge closed itself: the card's height became data when resizing arrived, so the bar computes its own offset and the Rust-constant-versus-CSS drift is gone; `ROOM_ABOVE` is the bar's own height, which is the one thing it is entitled to know.

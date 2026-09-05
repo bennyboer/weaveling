@@ -1,392 +1,52 @@
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
-use leptos_router::hooks::use_navigate;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 
-use crate::boards::model::{Board, Placement, PositionedPiece, Size, Spot};
-use crate::boards::service;
-use crate::boards::viewport::Viewport;
-use crate::http::ApiError;
+use crate::boards::card::card;
+use crate::boards::carrying::Carrying;
+use crate::boards::chrome::{actions, rename, zooming};
+use crate::boards::handles::{Handles, Renaming};
+use crate::boards::model::Spot;
+use crate::boards::open_board::OpenBoard;
+use crate::boards::viewport::{NEARER, Viewport};
 use crate::pieces::model::{Piece, PieceId};
-use crate::pieces::service as pieces;
 use crate::route;
 
-const GRID: i64 = 5;
-const LEAP: i64 = 40;
-const DRAG_BEGINS: i64 = 4;
-const STEP: i64 = 40;
-const COLUMNS: i64 = 3;
-const ROOM_ABOVE: i64 = 42;
-const BAR_GAP: i64 = 8;
 const DOTS: i64 = 20;
-const NEARER: f64 = 1.1;
-const CARD: Size = Size {
-    width: 168,
-    height: 84,
-};
-const SMALLEST: Size = Size {
-    width: 80,
-    height: 40,
-};
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Held {
-    Whole,
-    Top,
-    Bottom,
-    Left,
-    Right,
-    TopLeft,
-    TopRight,
-    BottomLeft,
-    BottomRight,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct Renaming {
-    piece: PieceId,
-    at: Placement,
-    was: String,
-}
-
-#[derive(Clone, PartialEq, Eq)]
-struct Carrying {
-    piece: PieceId,
-    held: Held,
-    from: Placement,
-    by: Spot,
-}
-
-#[derive(Clone, Copy)]
-struct Handles {
-    viewport: RwSignal<Viewport>,
-    carrying: RwSignal<Option<Carrying>>,
-    selected: RwSignal<Option<PieceId>>,
-    renaming: RwSignal<Option<Renaming>>,
-    reshaping: Action<(PieceId, Option<Spot>, Option<Size>), ()>,
-    unpinning: Action<PieceId, ()>,
-    retitling: Action<(PieceId, String), ()>,
-}
 
 #[component]
 pub fn TheBoard(project: String) -> impl IntoView {
-    let problem = RwSignal::new(None::<ApiError>);
-    let board = RwSignal::new(None::<Board>);
-    let viewport = RwSignal::new(Viewport::RESTING);
-    let board_ref = NodeRef::<html::Section>::new();
-    let panning = RwSignal::new(false);
-    let carrying = RwSignal::new(None::<Carrying>);
-    let selected = RwSignal::new(None::<PieceId>);
-    let renaming = RwSignal::new(None::<Renaming>);
-    let pool = RwSignal::new(None::<Vec<Piece>>);
-    let id = route::project_id(&project);
-
-    let listing = {
-        let id = id.clone();
-
-        Action::new_local(move |()| {
-            let id = id.clone();
-
-            async move {
-                match pieces::list(&id).await {
-                    Ok(found) => pool.set(Some(found)),
-                    Err(failure) => problem.set(Some(failure)),
-                }
-            }
-        })
-    };
-    listing.dispatch(());
-
-    let arrived = move |open: Board| {
-        let known = board.with_untracked(|held| held.as_ref().map(|held| held.version));
-
-        if known.is_none_or(|known| open.version >= known) {
-            board.set(Some(open));
-        }
-    };
-
-    let settled = move |answer: Result<Board, ApiError>| match answer {
-        Ok(open) => {
-            arrived(open);
-        }
-        Err(failure) => problem.set(Some(failure)),
-    };
-
-    let opening = Action::new_local(move |()| {
-        let id = id.clone();
-
-        async move { settled(service::open(&id).await) }
-    });
-    opening.dispatch(());
-
-    let pinning = Action::new_local(move |piece: &PieceId| {
-        let piece = piece.clone();
-        let at = Placement {
-            spot: next_spot(board.get_untracked().as_ref(), viewport.get_untracked()),
-            size: CARD,
-        };
-        held(board, &piece, at);
-
-        async move {
-            let Some(open) = board.get_untracked() else {
-                return;
-            };
-
-            match service::pin(&open.id, &piece, at).await {
-                Ok(pinned) => {
-                    arrived(pinned);
-                }
-                Err(failure) => {
-                    problem.set(Some(failure));
-                    board.update(|open| {
-                        if let Some(open) = open {
-                            open.pieces.retain(|holds| holds.piece != piece);
-                        }
-                    });
-                }
-            }
-        }
-    });
-
-    let reshaping = Action::new_local(
-        move |(piece, to, size): &(PieceId, Option<Spot>, Option<Size>)| {
-            let piece = piece.clone();
-            let to = *to;
-            let size = *size;
-            let was = reshaped(board, &piece, to, size);
-
-            async move {
-                let Some(open) = board.get_untracked() else {
-                    return;
-                };
-
-                match service::reshape(&open.id, &piece, to, size).await {
-                    Ok(moved) => {
-                        arrived(moved);
-                    }
-                    Err(failure) => {
-                        problem.set(Some(failure));
-
-                        if let Some(back) = was {
-                            reshaped(board, &piece, Some(back.spot), Some(back.size));
-                        }
-                    }
-                }
-            }
-        },
-    );
-
-    let unpinning = Action::new_local(move |piece: &PieceId| {
-        let piece = piece.clone();
-
-        async move {
-            let Some(open) = board.get_untracked() else {
-                return;
-            };
-
-            match service::unpin(&open.id, &piece).await {
-                Ok(()) => {
-                    selected.update(|held| {
-                        if held.as_ref() == Some(&piece) {
-                            *held = None;
-                        }
-                    });
-                    board.update(|open| {
-                        if let Some(open) = open {
-                            open.pieces.retain(|held| held.piece != piece);
-                        }
-                    });
-                }
-                Err(failure) => problem.set(Some(failure)),
-            }
-        }
-    });
-
-    let in_pool = move || pool.get().unwrap_or_default();
-
-    let unpinned = move || {
-        let Some(held) = board.get() else {
-            return Vec::new();
-        };
-
-        in_pool()
-            .into_iter()
-            .filter(|piece| !held.holds(&piece.id))
-            .collect::<Vec<_>>()
-    };
-
-    let pinned = move || {
-        let pool = in_pool();
-
-        board
-            .get()
-            .map(|open| {
-                open.pieces
-                    .into_iter()
-                    .filter_map(|held| drawn(&held, &pool))
-                    .collect::<Vec<_>>()
-            })
-            .unwrap_or_default()
-    };
-
-    let retitling = Action::new_local(move |(piece, title): &(PieceId, String)| {
-        let piece = piece.clone();
-        let title = title.clone();
-
-        async move {
-            match pieces::retitle(&piece, &title).await {
-                Ok(renamed) => {
-                    pool.update(|held| {
-                        if let Some(held) = held
-                            && let Some(known) =
-                                held.iter_mut().find(|known| known.id == renamed.id)
-                        {
-                            *known = renamed;
-                        }
-                    });
-                }
-                Err(failure) => problem.set(Some(failure)),
-            }
-        }
-    });
-
+    let open = OpenBoard::open(&route::project_id(&project));
     let handles = Handles {
-        viewport,
-        carrying,
-        selected,
-        renaming,
-        reshaping,
-        unpinning,
-        retitling,
-    };
-
-    let chosen = move || {
-        if carrying.with(|held| held.as_ref().is_some_and(Carrying::dragging)) {
-            return None;
-        }
-        let held = selected.get()?;
-
-        pinned().into_iter().find(|(piece, _)| piece.id == held)
+        viewport: RwSignal::new(Viewport::RESTING),
+        carrying: RwSignal::new(None::<Carrying>),
+        selected: RwSignal::new(None::<PieceId>),
+        renaming: RwSignal::new(None::<Renaming>),
+        open,
     };
 
     html::section().class("board").child((
         html::h2().child("Board"),
         move || {
-            problem.get().map(|failure| {
+            open.problem().map(|failure| {
                 html::p().class("problem").role("alert").child((
                     failure.to_string(),
                     html::button()
                         .r#type("button")
                         .class("dismiss")
                         .attr("aria-label", "Dismiss")
-                        .on(ev::click, move |_| problem.set(None))
+                        .on(ev::click, move |_| open.dismiss())
                         .child("\u{00d7}"),
                 ))
             })
         },
-        html::section()
-            .class("corkboard")
-            .node_ref(board_ref)
-            .attr("aria-label", "Board")
-            .attr("style", move || viewport.get().grid(DOTS))
-            .on(ev::pointerdown, move |event| {
-                selected.set(None);
-                panning.set(true);
-
-                if let Some(board) = event
-                    .current_target()
-                    .and_then(|it| it.dyn_into::<HtmlElement>().ok())
-                {
-                    let _ = board.set_pointer_capture(event.pointer_id());
-                }
-            })
-            .on(ev::pointermove, move |event| {
-                if !panning.get_untracked() {
-                    return;
-                }
-
-                viewport.update(|it| {
-                    *it = it.panned(Spot {
-                        x: event.movement_x() as i64,
-                        y: event.movement_y() as i64,
-                    })
-                });
-            })
-            .on(ev::pointerup, move |_| panning.set(false))
-            .on(ev::pointercancel, move |_| panning.set(false))
-            .on(ev::wheel, move |event| {
-                if !event.ctrl_key() && !event.meta_key() {
-                    return;
-                }
-                event.prevent_default();
-
-                let Some(within) = event
-                    .current_target()
-                    .and_then(|it| it.dyn_into::<HtmlElement>().ok())
-                else {
-                    return;
-                };
-                let edge = within.get_bounding_client_rect();
-                let towards = Spot {
-                    x: event.client_x() as i64 - edge.left() as i64,
-                    y: event.client_y() as i64 - edge.top() as i64,
-                };
-                let by = match event.delta_y() < 0.0 {
-                    true => NEARER,
-                    false => 1.0 / NEARER,
-                };
-
-                viewport.update(|it| *it = it.zoomed(towards, by));
-            })
-            .on(ev::keydown, move |event| {
-                if event.key() == "Escape" {
-                    selected.set(None);
-                }
-            })
-            .child((
-                html::div()
-                    .class("surface")
-                    .attr("style", move || viewport.get().surface())
-                    .child((
-                        {
-                            let project = project.clone();
-
-                            move || {
-                                let project = project.clone();
-
-                                pinned()
-                                    .into_iter()
-                                    .map(|(piece, at)| {
-                                        card(
-                                            route::piece(&project, &piece.id, &piece.title),
-                                            piece,
-                                            at,
-                                            handles,
-                                        )
-                                    })
-                                    .collect::<Vec<_>>()
-                            }
-                        },
-                        move || renaming.get().map(|held| rename(held, handles)),
-                    )),
-                move || {
-                    let (piece, at) = chosen()?;
-
-                    Some(actions(
-                        route::piece(&project, &piece.id, &piece.title),
-                        piece,
-                        at,
-                        handles,
-                    ))
-                },
-                zooming(viewport, board_ref),
-            )),
+        corkboard(project, handles),
         html::section().class("unpinned").child((
             html::h3().child("Not on the board"),
             move || {
-                (board.get().is_some() && unpinned().is_empty()).then(|| {
+                (open.ready() && open.unpinned().is_empty()).then(|| {
                     html::p()
                         .class("empty")
                         .child("Every piece is on the board.")
@@ -396,353 +56,146 @@ pub fn TheBoard(project: String) -> impl IntoView {
                 .class("waiting")
                 .attr("aria-label", "Pieces not on the board")
                 .child(move || {
-                    unpinned()
+                    open.unpinned()
                         .into_iter()
-                        .map(|piece| pinnable(piece, pinning))
+                        .map(|piece| pinnable(piece, handles))
                         .collect::<Vec<_>>()
                 }),
         )),
     ))
 }
 
-fn drawn(held: &PositionedPiece, pool: &[Piece]) -> Option<(Piece, Placement)> {
-    pool.iter()
-        .find(|piece| piece.id == held.piece)
-        .map(|piece| {
-            (
-                piece.clone(),
-                Placement {
-                    spot: held.spot,
-                    size: held.size,
-                },
-            )
-        })
-}
+fn corkboard(project: String, handles: Handles) -> impl IntoView {
+    let Handles {
+        viewport,
+        carrying,
+        selected,
+        renaming,
+        open,
+    } = handles;
+    let board_ref = NodeRef::<html::Section>::new();
+    let panning = RwSignal::new(false);
 
-fn card(href: String, piece: Piece, at: Placement, handles: Handles) -> impl IntoView {
-    let opening = use_navigate();
-    let reopening = opening.clone();
-    let shown = piece.shown_as().to_owned();
-    let named = shown.clone();
-    let opened = href.clone();
-    let reopened = href.clone();
-    let id = piece.id;
-    let mine = id.clone();
-    let borne = id.clone();
-    let nudged = id.clone();
-    let placed = id.clone();
-    let gripped = id.clone();
+    let chosen = move || {
+        if carrying.with(|held| held.as_ref().is_some_and(Carrying::dragging)) {
+            return None;
+        }
+        let held = selected.get()?;
 
-    html::article()
-        .class("pinned")
-        .class(("selected", move || {
-            handles.selected.with(|held| held.as_ref() == Some(&mine))
-        }))
-        .class(("carried", move || {
-            handles
-                .carrying
-                .with(|held| held.as_ref().is_some_and(|held| held.piece == borne))
-        }))
-        .attr("tabindex", "0")
-        .attr("aria-label", shown.clone())
-        .attr("title", shown.clone())
-        .attr("style", move || boxed(drawn_at(handles, &placed, at)))
+        open.pinned()
+            .into_iter()
+            .find(|(piece, _)| piece.id == held)
+    };
+
+    html::section()
+        .class("corkboard")
+        .node_ref(board_ref)
+        .attr("aria-label", "Board")
+        .attr("style", move || viewport.get().grid(DOTS))
         .on(ev::pointerdown, move |event| {
-            grab(&event, id.clone(), Held::Whole, at, handles);
-        })
-        .on(ev::pointermove, move |event| carry(&event, handles))
-        .on(ev::pointerup, move |_| drop_it(handles))
-        .on(ev::pointercancel, move |_| handles.carrying.set(None))
-        .on(ev::dblclick, move |_| {
-            opening(&opened, Default::default());
-        })
-        .on(ev::keydown, move |event| {
-            if event.key() == "Enter" {
-                event.prevent_default();
-                reopening(&reopened, Default::default());
-
-                return;
-            }
-
-            let Some(to) = nudge(&event.key(), event.shift_key(), at.spot) else {
-                return;
-            };
-            event.prevent_default();
-
-            handles.reshaping.dispatch((nudged.clone(), Some(to), None));
-        })
-        .child((
-            name(href, named),
-            EVERY_HANDLE
-                .iter()
-                .map(|held| grip(gripped.clone(), *held, at, shown.clone(), handles))
-                .collect::<Vec<_>>(),
-        ))
-}
-
-const EVERY_HANDLE: [Held; 8] = [
-    Held::Top,
-    Held::Bottom,
-    Held::Left,
-    Held::Right,
-    Held::TopLeft,
-    Held::TopRight,
-    Held::BottomLeft,
-    Held::BottomRight,
-];
-
-fn grip(
-    piece: PieceId,
-    held: Held,
-    at: Placement,
-    shown: String,
-    handles: Handles,
-) -> impl IntoView {
-    html::div()
-        .class(format!("grip {}", held.side()))
-        .attr("role", "separator")
-        .attr(
-            "aria-label",
-            format!("Resize {shown} from the {}", held.side()),
-        )
-        .on(ev::pointerdown, move |event| {
-            grab(&event, piece.clone(), held, at, handles);
+            selected.set(None);
+            panning.set(true);
+            grabbed(&event);
         })
         .on(ev::pointermove, move |event| {
-            event.stop_propagation();
-            carry(&event, handles);
-        })
-        .on(ev::pointerup, move |event| {
-            event.stop_propagation();
-            drop_it(handles);
-        })
-        .on(ev::pointercancel, move |event| {
-            event.stop_propagation();
-            handles.carrying.set(None);
-        })
-}
-
-fn grab(event: &ev::PointerEvent, piece: PieceId, held: Held, at: Placement, handles: Handles) {
-    event.stop_propagation();
-
-    if let Some(under) = event
-        .current_target()
-        .and_then(|it| it.dyn_into::<HtmlElement>().ok())
-    {
-        let _ = under.focus();
-
-        if held != Held::Whole {
-            let _ = under.set_pointer_capture(event.pointer_id());
-        }
-    }
-
-    handles.selected.set(Some(piece.clone()));
-    handles.carrying.set(Some(Carrying {
-        piece,
-        held,
-        from: at,
-        by: Spot { x: 0, y: 0 },
-    }));
-}
-
-fn carry(event: &ev::PointerEvent, handles: Handles) {
-    let Some(mut carried) = handles.carrying.get_untracked() else {
-        return;
-    };
-    let already = carried.dragging();
-
-    let across = handles.viewport.with_untracked(|it| {
-        it.across(Spot {
-            x: event.movement_x() as i64,
-            y: event.movement_y() as i64,
-        })
-    });
-    carried.by = Spot {
-        x: carried.by.x + across.x,
-        y: carried.by.y + across.y,
-    };
-    let now = carried.dragging();
-    handles.carrying.set(Some(carried));
-
-    if already || !now {
-        return;
-    }
-
-    if let Some(under) = event
-        .current_target()
-        .and_then(|it| it.dyn_into::<HtmlElement>().ok())
-    {
-        let _ = under.set_pointer_capture(event.pointer_id());
-    }
-}
-
-fn drop_it(handles: Handles) {
-    let Some(carried) = handles.carrying.get_untracked() else {
-        return;
-    };
-    let landed = carried.landing();
-
-    if landed != carried.from {
-        handles.reshaping.dispatch((
-            carried.piece,
-            (landed.spot != carried.from.spot).then_some(landed.spot),
-            (landed.size != carried.from.size).then_some(landed.size),
-        ));
-    }
-
-    handles.carrying.set(None);
-}
-
-fn drawn_at(handles: Handles, piece: &PieceId, at: Placement) -> Placement {
-    handles.carrying.with(|held| match held {
-        Some(held) if &held.piece == piece => held.landing(),
-        _ => at,
-    })
-}
-
-fn boxed(at: Placement) -> String {
-    format!(
-        "left: {}px; top: {}px; width: {}px; height: {}px;",
-        at.spot.x, at.spot.y, at.size.width, at.size.height
-    )
-}
-
-fn rename(renaming: Renaming, handles: Handles) -> impl IntoView {
-    let field = NodeRef::<html::Textarea>::new();
-    let Renaming { piece, at, was } = renaming;
-    let asked = was.clone();
-    let shown = was.clone();
-    let leaving = piece.clone();
-
-    Effect::new(move |_| {
-        if let Some(field) = field.get() {
-            let _ = field.focus();
-            field.select();
-        }
-    });
-
-    html::textarea()
-        .class("pinned-rename")
-        .attr("aria-label", format!("Rename {asked}"))
-        .attr("style", boxed(at))
-        .node_ref(field)
-        .prop("value", was.clone())
-        .on(ev::pointerdown, |event| event.stop_propagation())
-        .on(ev::dblclick, |event| event.stop_propagation())
-        .on(ev::keydown, move |event| {
-            event.stop_propagation();
-
-            match event.key().as_str() {
-                "Enter" if !event.shift_key() => {
-                    event.prevent_default();
-                    settle(field, &piece, &was, handles);
-                }
-                "Escape" => {
-                    event.prevent_default();
-                    handles.renaming.set(None);
-                }
-                _ => {}
+            if panning.get_untracked() {
+                viewport.update(|it| *it = it.panned(dragged(&event)));
             }
         })
-        .on(ev::focusout, move |_| {
-            settle(field, &leaving, &shown, handles)
-        })
-}
-
-fn settle(field: NodeRef<html::Textarea>, piece: &PieceId, was: &str, handles: Handles) {
-    if handles
-        .renaming
-        .with_untracked(|held| held.as_ref().map(|held| &held.piece) != Some(piece))
-    {
-        return;
-    }
-    handles.renaming.set(None);
-
-    let Some(written) = field.get_untracked().map(|field| field.value()) else {
-        return;
-    };
-
-    if written != was {
-        handles.retitling.dispatch((piece.clone(), written));
-    }
-}
-
-fn actions(href: String, piece: Piece, at: Placement, handles: Handles) -> impl IntoView {
-    let opening = use_navigate();
-    let shown = piece.shown_as().to_owned();
-    let called = shown.clone();
-    let id = piece.id;
-    let renamed = id.clone();
-    let unpinned = id;
-    let alongside = move || {
-        let seen = handles.viewport.get();
-        let corner = seen.on_screen(at.spot);
-
-        (corner, corner.y < ROOM_ABOVE, seen.tall(at.size))
-    };
-
-    html::div()
-        .class("pinned-actions")
-        .class(("below", move || alongside().1))
-        .attr("role", "toolbar")
-        .attr("aria-label", format!("Actions for {shown}"))
-        .attr("style", move || {
-            let (corner, cramped, tall) = alongside();
-            let top = match cramped {
-                true => corner.y + tall + BAR_GAP,
-                false => corner.y - ROOM_ABOVE,
+        .on(ev::pointerup, move |_| panning.set(false))
+        .on(ev::pointercancel, move |_| panning.set(false))
+        .on(ev::wheel, move |event| {
+            let Some((towards, by)) = zoom_asked(&event) else {
+                return;
             };
 
-            format!("left: {}px; top: {}px;", corner.x, top)
+            viewport.update(|it| *it = it.zoomed(towards, by));
         })
-        .on(ev::pointerdown, |event| event.stop_propagation())
+        .on(ev::keydown, move |event| {
+            if event.key() == "Escape" {
+                selected.set(None);
+            }
+        })
         .child((
-            deed(format!("Rename {shown}"), "\u{270e}", move || {
-                handles.renaming.set(Some(Renaming {
-                    piece: renamed.clone(),
+            html::div()
+                .class("surface")
+                .attr("style", move || viewport.get().surface())
+                .child((
+                    {
+                        let project = project.clone();
+
+                        move || {
+                            let project = project.clone();
+
+                            open.pinned()
+                                .into_iter()
+                                .map(|(piece, at)| {
+                                    card(
+                                        route::piece(&project, &piece.id, &piece.title),
+                                        piece,
+                                        at,
+                                        handles,
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        }
+                    },
+                    move || renaming.get().map(|held| rename(held, handles)),
+                )),
+            move || {
+                let (piece, at) = chosen()?;
+
+                Some(actions(
+                    route::piece(&project, &piece.id, &piece.title),
+                    piece,
                     at,
-                    was: called.clone(),
-                }));
-            }),
-            deed(format!("Open {shown}"), "\u{2197}", move || {
-                opening(&href, Default::default());
-            }),
-            deed(format!("Unpin {shown}"), "\u{00d7}", move || {
-                handles.unpinning.dispatch(unpinned.clone());
-            }),
+                    handles,
+                ))
+            },
+            zooming(viewport, board_ref),
         ))
 }
 
-fn deed(what: String, glyph: &'static str, done: impl Fn() + 'static) -> impl IntoView {
-    html::button()
-        .r#type("button")
-        .attr("aria-label", what)
-        .on(ev::click, move |event| {
-            event.stop_propagation();
-            done();
-        })
-        .child(glyph)
+fn grabbed(event: &ev::PointerEvent) {
+    if let Some(board) = event
+        .current_target()
+        .and_then(|it| it.dyn_into::<HtmlElement>().ok())
+    {
+        let _ = board.set_pointer_capture(event.pointer_id());
+    }
 }
 
-fn name(href: String, shown: String) -> impl IntoView {
-    html::a()
-        .href(href)
-        .class("name")
-        .attr("tabindex", "-1")
-        .attr("draggable", "false")
-        .on(ev::click, |event| {
-            if !opening_elsewhere(&event) {
-                event.prevent_default();
-            }
-        })
-        .child(shown)
+fn dragged(event: &ev::PointerEvent) -> Spot {
+    Spot {
+        x: event.movement_x() as i64,
+        y: event.movement_y() as i64,
+    }
 }
 
-fn opening_elsewhere(event: &ev::MouseEvent) -> bool {
-    event.ctrl_key() || event.meta_key() || event.shift_key()
+fn zoom_asked(event: &ev::WheelEvent) -> Option<(Spot, f64)> {
+    if !event.ctrl_key() && !event.meta_key() {
+        return None;
+    }
+    event.prevent_default();
+
+    let within = event
+        .current_target()
+        .and_then(|it| it.dyn_into::<HtmlElement>().ok())?;
+    let edge = within.get_bounding_client_rect();
+
+    Some((
+        Spot {
+            x: event.client_x() as i64 - edge.left() as i64,
+            y: event.client_y() as i64 - edge.top() as i64,
+        },
+        match event.delta_y() < 0.0 {
+            true => NEARER,
+            false => 1.0 / NEARER,
+        },
+    ))
 }
 
-fn pinnable(piece: Piece, pinning: Action<PieceId, ()>) -> impl IntoView {
+fn pinnable(piece: Piece, handles: Handles) -> impl IntoView {
     let shown = piece.shown_as().to_owned();
     let id = piece.id;
 
@@ -751,233 +204,10 @@ fn pinnable(piece: Piece, pinning: Action<PieceId, ()>) -> impl IntoView {
             .r#type("button")
             .attr("aria-label", format!("Pin {shown}"))
             .on(ev::click, move |_| {
-                pinning.dispatch(id.clone());
+                handles
+                    .open
+                    .pin(id.clone(), handles.viewport.get_untracked());
             })
             .child(shown),
     )
-}
-
-fn nudge(key: &str, leaping: bool, from: Spot) -> Option<Spot> {
-    let by = if leaping { LEAP } else { GRID };
-    let (x, y) = match key {
-        "ArrowLeft" => (-by, 0),
-        "ArrowRight" => (by, 0),
-        "ArrowUp" => (0, -by),
-        "ArrowDown" => (0, by),
-        _ => return None,
-    };
-
-    Some(snapped(Spot {
-        x: from.x + x,
-        y: from.y + y,
-    }))
-}
-
-fn held(board: RwSignal<Option<Board>>, piece: &PieceId, at: Placement) {
-    board.update(|open| {
-        if let Some(open) = open {
-            open.pieces.push(PositionedPiece {
-                piece: piece.clone(),
-                spot: at.spot,
-                size: at.size,
-            });
-        }
-    });
-}
-
-fn reshaped(
-    board: RwSignal<Option<Board>>,
-    piece: &PieceId,
-    to: Option<Spot>,
-    size: Option<Size>,
-) -> Option<Placement> {
-    let mut was = None;
-
-    board.update(|open| {
-        let Some(open) = open else {
-            return;
-        };
-        let Some(nth) = open.pieces.iter().position(|held| &held.piece == piece) else {
-            return;
-        };
-        let held = &mut open.pieces[nth];
-
-        was = Some(Placement {
-            spot: held.spot,
-            size: held.size,
-        });
-
-        if let Some(to) = to {
-            held.spot = to;
-        }
-
-        if let Some(size) = size {
-            held.size = size;
-        }
-
-        if to.is_some() {
-            let raised = open.pieces.remove(nth);
-            open.pieces.push(raised);
-        }
-    });
-
-    was
-}
-
-fn snapped(loose: Spot) -> Spot {
-    Spot {
-        x: onto_grid(loose.x),
-        y: onto_grid(loose.y),
-    }
-}
-
-fn onto_grid(loose: i64) -> i64 {
-    (loose + GRID / 2).div_euclid(GRID) * GRID
-}
-
-fn next_spot(board: Option<&Board>, seen: Viewport) -> Spot {
-    let taken = board
-        .map(|open| open.pieces.iter().map(|held| held.spot).collect::<Vec<_>>())
-        .unwrap_or_default();
-    let from = seen.on_board(Spot { x: 0, y: 0 });
-    let mut nth = 0;
-
-    while taken.contains(&slot(nth, from)) {
-        nth += 1;
-    }
-
-    slot(nth, from)
-}
-
-fn slot(nth: i64, from: Spot) -> Spot {
-    snapped(Spot {
-        x: from.x + STEP + (nth % COLUMNS) * (STEP * 5),
-        y: from.y + STEP + (nth / COLUMNS) * (STEP * 3),
-    })
-}
-
-fn zooming(viewport: RwSignal<Viewport>, board: NodeRef<html::Section>) -> impl IntoView {
-    html::div()
-        .class("zooming")
-        .attr("role", "toolbar")
-        .attr("aria-label", "Zoom")
-        .on(ev::pointerdown, |event| event.stop_propagation())
-        .on(ev::wheel, |event| event.stop_propagation())
-        .child((
-            deed("Zoom out".to_owned(), "\u{2212}", move || {
-                let middle = middle_of(board);
-                viewport.update(|it| *it = it.zoomed(middle, 1.0 / NEARER));
-            }),
-            html::button()
-                .r#type("button")
-                .class("reading")
-                .attr("aria-label", "Reset the zoom")
-                .on(ev::click, move |event| {
-                    event.stop_propagation();
-                    let middle = middle_of(board);
-                    viewport.update(|it| *it = it.unzoomed(middle));
-                })
-                .child(move || viewport.get().as_percent()),
-            deed("Zoom in".to_owned(), "+", move || {
-                let middle = middle_of(board);
-                viewport.update(|it| *it = it.zoomed(middle, NEARER));
-            }),
-        ))
-}
-
-fn middle_of(board: NodeRef<html::Section>) -> Spot {
-    board
-        .get_untracked()
-        .map(|it| {
-            let edge = it.get_bounding_client_rect();
-
-            Spot {
-                x: (edge.width() / 2.0) as i64,
-                y: (edge.height() / 2.0) as i64,
-            }
-        })
-        .unwrap_or(Spot { x: 0, y: 0 })
-}
-
-impl Held {
-    fn side(&self) -> &'static str {
-        match self {
-            Self::Whole => "whole",
-            Self::Top => "top",
-            Self::Bottom => "bottom",
-            Self::Left => "left",
-            Self::Right => "right",
-            Self::TopLeft => "top-left",
-            Self::TopRight => "top-right",
-            Self::BottomLeft => "bottom-left",
-            Self::BottomRight => "bottom-right",
-        }
-    }
-
-    fn pulls_left(&self) -> bool {
-        matches!(self, Self::Left | Self::TopLeft | Self::BottomLeft)
-    }
-
-    fn pulls_right(&self) -> bool {
-        matches!(self, Self::Right | Self::TopRight | Self::BottomRight)
-    }
-
-    fn pulls_top(&self) -> bool {
-        matches!(self, Self::Top | Self::TopLeft | Self::TopRight)
-    }
-
-    fn pulls_bottom(&self) -> bool {
-        matches!(self, Self::Bottom | Self::BottomLeft | Self::BottomRight)
-    }
-}
-
-impl Carrying {
-    fn dragging(&self) -> bool {
-        self.by.x.abs().max(self.by.y.abs()) >= DRAG_BEGINS
-    }
-
-    fn landing(&self) -> Placement {
-        if !self.dragging() {
-            return self.from;
-        }
-
-        if self.held == Held::Whole {
-            return Placement {
-                spot: snapped(Spot {
-                    x: self.from.spot.x + self.by.x,
-                    y: self.from.spot.y + self.by.y,
-                }),
-                size: self.from.size,
-            };
-        }
-
-        let far = Spot {
-            x: self.from.spot.x + self.from.size.width,
-            y: self.from.spot.y + self.from.size.height,
-        };
-        let left = match self.held.pulls_left() {
-            true => onto_grid(self.from.spot.x + self.by.x).min(far.x - SMALLEST.width),
-            false => self.from.spot.x,
-        };
-        let top = match self.held.pulls_top() {
-            true => onto_grid(self.from.spot.y + self.by.y).min(far.y - SMALLEST.height),
-            false => self.from.spot.y,
-        };
-        let right = match self.held.pulls_right() {
-            true => onto_grid(far.x + self.by.x).max(left + SMALLEST.width),
-            false => far.x,
-        };
-        let bottom = match self.held.pulls_bottom() {
-            true => onto_grid(far.y + self.by.y).max(top + SMALLEST.height),
-            false => far.y,
-        };
-
-        Placement {
-            spot: Spot { x: left, y: top },
-            size: Size {
-                width: right - left,
-                height: bottom - top,
-            },
-        }
-    }
 }

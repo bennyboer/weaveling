@@ -1,5 +1,6 @@
 use crate::boards::model::{Size, Spot};
 
+pub const NEARER: f64 = 1.1;
 const CLOSEST: f64 = 3.0;
 const FURTHEST: f64 = 0.2;
 
