@@ -4,6 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Weaveling</title>
+    <script>
+      try {
+        var said = localStorage.getItem("weaveling.theme");
+        if (said === "light" || said === "dark") {
+          document.documentElement.setAttribute("data-theme", said);
+        }
+      } catch (beyondReach) {}
+    </script>
     <link data-trunk rel="rust" />
     <link data-trunk rel="copy-dir" href="fonts" />
     <link data-trunk rel="scss" href="scss/main.scss" />

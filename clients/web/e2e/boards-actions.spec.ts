@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-import { bar, cardNamed, corkboard, select } from "./support/board";
+import {
+  bar,
+  cardNamed,
+  corkboard,
+  openForWriting,
+  select,
+} from "./support/board";
 import {
   anOpenProject,
   capture,
@@ -14,7 +20,7 @@ test("a pinned piece opens for writing from the board", async ({ page }) => {
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
-  await corkboard(page).locator(".pinned").dblclick();
+  await openForWriting(page, "The loom remembers");
 
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
   await expect(page).toHaveURL(/\/pieces\/the-loom-remembers-piece_/);
@@ -25,7 +31,7 @@ test("the writing view leads back to the board", async ({ page }) => {
   await capture(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
-  await corkboard(page).locator(".pinned").dblclick();
+  await openForWriting(page, "The loom remembers");
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
 
   await openTheBoard(page);

@@ -6,6 +6,7 @@ mod pieces;
 mod projects;
 mod route;
 mod shell;
+mod theme;
 
 use leptos::prelude::*;
 

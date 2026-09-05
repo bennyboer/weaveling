@@ -101,6 +101,24 @@ test("the masthead centres its lettering, not just its boxes", async ({
   }
 });
 
+test("the masthead is there whether or not a project is open", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  await expect(page.getByRole("banner")).toBeVisible();
+  await expect(page.getByRole("link", { name: "All projects" })).toBeVisible();
+  await expect(views(page)).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Your projects" }),
+  ).toBeVisible();
+
+  await aNewProject(page, "Everywhere");
+
+  await expect(page.getByRole("banner")).toBeVisible();
+  await expect(views(page)).toBeVisible();
+});
+
 test("the wordmark leads back to every project", async ({ page }) => {
   await aNewProject(page, "Wordmark");
 

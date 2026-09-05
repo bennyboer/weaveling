@@ -12,11 +12,13 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true, features = [
+    "Document",
     "DomRect",
     "Element",
     "History",
     "HtmlElement",
     "Location",
+    "Storage",
     "UrlSearchParams",
     "Window",
 ] }

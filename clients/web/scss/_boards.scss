@@ -225,6 +225,10 @@ $grip: 7px;
       cursor: text;
     }
 
+    .fresh {
+      border: 1px dashed var(--accent);
+    }
+
     .pinned-actions {
       position: absolute;
       z-index: 2;

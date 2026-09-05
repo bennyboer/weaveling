@@ -315,7 +315,7 @@ That conversion is now its own module, `boards/viewport.rs`, holding `Viewport {
 
 ### Milestone 9a — The shell
 
-**Next.** Built in whichever direction the design pass settles on, because rebuilding the shell is exactly when the visual language gets set.
+**Done.** Built in the direction the design pass settled on, because rebuilding the shell is exactly when the visual language gets set.
 
 **Goal:** an app that uses the room it has, and a way between the views a project will accumulate.
 
@@ -324,9 +324,15 @@ That conversion is now its own module, `boards/viewport.rs`, holding `Viewport {
 - ~~**The project's home becomes the board**, not the pool.~~ **Done.** `/projects/{p}` is the board; the pool moved to `/projects/{p}/pieces`.
 - ~~**A view switcher.**~~ **Done.** A masthead carrying the wordmark, the project's name and text tabs for the views that exist. M10 adds a tab and nothing else.
 - ~~**Width becomes a property of the view.**~~ **Done.** `main` is now a flex column filling the window; the board grows into it, and the pool, the workspace and a passage each opt into `.column`.
-- **A theme the author can override.** The system preference is honoured through `prefers-color-scheme`, but there is no way to disagree with it. Three states — light, dark, follow the system — remembered across visits. *Still to build* — the CSS side already answers to `data-theme` on the root; what is missing is the control and the remembering.
+- ~~**A theme the author can override.**~~ **Done.** Three states — light, dark, follow the system — as a segmented control in the masthead, remembered in `localStorage`. *Follow the system* is the absence of `data-theme` rather than a third palette, so the media query keeps working and there is exactly one place a theme is decided.
 
-**Capture moves onto the board.** Double-click bare board and a card appears there, already in editing mode; type a title and it is captured and pinned in one gesture; cancel and nothing was ever recorded. That last clause is the design: the card is local until it is committed, so a cancelled capture leaves no piece behind and no event in the log. It also needs no new machinery — the rename editor is already a textarea floating over a card at a spot, and [`PieceTitle` was made to permit the empty string](./ARCHITECTURE.md#pieces-and-views--the-non-linear-model) for exactly this, back in M7.
+~~**Capture moves onto the board.**~~ **Done.** Double-click bare board and a card appears there, already in editing mode; type a title and it is captured and pinned in one gesture; cancel and nothing was ever recorded. That last clause is the design: the card is local until it is committed, so a cancelled capture leaves no piece behind and no event in the log. It needed no new machinery, as predicted — the rename editor was already a textarea floating over a card at a spot, so the two became one `Naming` with two shapes: `Capturing { at }` for a card that does not exist yet, `Renaming { piece, at, was }` for one that does. What differs is only what committing means.
+
+**The gesture had to be told apart from every other double-click.** Cards, the action bar, the zoom control and the editor itself all live inside the corkboard, so a naive handler would have made a card whenever you double-clicked any of them. The test is `event.target() == event.current_target()`, which works precisely because `.surface` is a zero-size origin element and therefore has no hit area of its own — bare board really does mean the corkboard element itself.
+
+**The ordering care named above turned out to be the real design.** Capture writes `pieces`, pinning writes `boards`: two aggregates, two commands, no transaction between them. If the pin fails the piece is already captured, and the decision is to *keep* it — it appears in the waiting tray, where the author can pin it by hand. The alternative, deleting the piece to make the pair atomic, would throw away the idea to tidy up the board, which is exactly backwards for a tool whose whole promise is that ideas do not get lost.
+
+**Double-click on a card now edits its title**, replacing double-click-to-open, and **Enter on a focused card follows it** rather than diverging. That leaves the action bar's Open as the only way into a passage — which was fine for the mouse and broken for the keyboard, because the bar only appeared on pointer selection. So focus now selects: Tab to a card and its actions appear. Without that, making Enter rename would have removed the keyboard's only way to open a piece.
 
 **Double-click means edit, everywhere.** On bare board it makes a new card; on a card it edits that card's title in place. Opening the passage moves entirely to the action bar's Open button. This replaces the current double-click-to-open, and it leaves one sub-question for the build: Enter on a focused card opens today, and it should probably follow the double-click rather than diverge from it — which would leave the bar as the only way in, reachable by Tab.
 
@@ -350,9 +356,13 @@ The one thing capture needs is care about *order*: capturing writes to `pieces` 
 
 **Two things noted and deliberately not taken.** The chosen direction puts the view switcher in the top bar as text tabs; a left icon rail scales better once Timeline, Threads and Cast arrive, so revisit it at the fourth view rather than pre-building it. And monospace for anything countable — word counts, piece counts, the zoom reading — was the strongest single idea in the direction that lost, and it costs nothing here if it is ever wanted.
 
+**The masthead had to become universal for the theme control to have a home.** It was built inside a project — wordmark, project name, tabs — and the workspace had no chrome at all, so a *global* preference had nowhere to live that did not vanish when you left a project. So the bar is now on every page: wordmark and theme always, project name and tabs only inside a project. Two things fell out of that, neither optional. The workspace said "Weaveling" twice, once in the wordmark and once as a 2.9rem hero forty pixels below it, so **the hero became "Your projects"** — the masthead names the app, the page names the page, the same split the project views already had. And the 404's escape hatch was a second link reading "All projects" beside a wordmark labelled the same, so it is now "Back to your projects".
+
+**`<main>` was holding the site chrome.** The masthead is a `<header>`, which only maps to the `banner` landmark when it is *not* inside `<main>` — and `App` wrapped every route in one. The test asking for `getByRole("banner")` failed and was right to: the bar was not a landmark, and `<main>` claimed the chrome as page content. `App` now renders the router bare, each page emits `<header>` then `<main>`, and the flex column that fills the window moved up to `body`.
+
 **Optical centring, not box centring.** The masthead's boxes were centred and its lettering still sat three pixels high, because a font reserves descender space that words like "Board" never use. The fix is `text-box: cap alphabetic`, which trims each line box to its cap band so flex centring lands where the eye reads it. Chrome and Safari honour it; Firefox has not shipped it yet and falls back to the old, slightly high text rather than to anything broken. The lesson generalises past this one bar: a suite that asserts on roles and text passes happily while the layout is wrong, so `shell.spec.ts` measures — the board's box against the window's, the column's margins against each other, the cap bands against the bar's middle.
 
-**Done when:** clicking a project lands on a full-width board; you can move between a project's views without going back through the pool; a passage still reads in a column; and the theme can be set against the system's wishes and survives a reload.
+**Done when:** ~~clicking a project lands on a full-width board; you can move between a project's views without going back through the pool; a passage still reads in a column; and the theme can be set against the system's wishes and survives a reload.~~ **All four hold.** 125 browser tests, 544 unit tests.
 
 **Explicitly not in M9a:** translation, touch, and the outline itself.
 
@@ -373,6 +383,8 @@ The one thing capture needs is care about *order*: capturing writes to `pieces` 
 **Explicitly not in M9a:** presence beyond the board, cursors in prose (that is the passage socket's job, already built), and any attempt to make drags durable.
 
 ### Milestone 10 — The outline
+
+**Next.**
 
 **Goal:** manuscript order, as a view over the pool rather than a property of it.
 

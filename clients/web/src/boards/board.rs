@@ -6,9 +6,10 @@ use web_sys::HtmlElement;
 
 use crate::boards::card::card;
 use crate::boards::carrying::Carrying;
-use crate::boards::chrome::{actions, rename, zooming};
-use crate::boards::handles::{Handles, Renaming};
-use crate::boards::model::Spot;
+use crate::boards::carrying::{CARD, snapped};
+use crate::boards::chrome::{actions, naming, zooming};
+use crate::boards::handles::{Handles, Naming};
+use crate::boards::model::{Placement, Size, Spot};
 use crate::boards::open_board::OpenBoard;
 use crate::boards::viewport::{NEARER, Viewport};
 use crate::pieces::model::{Piece, PieceId};
@@ -23,7 +24,7 @@ pub fn TheBoard(project: String) -> impl IntoView {
         viewport: RwSignal::new(Viewport::RESTING),
         carrying: RwSignal::new(None::<Carrying>),
         selected: RwSignal::new(None::<PieceId>),
-        renaming: RwSignal::new(None::<Renaming>),
+        naming: RwSignal::new(None::<Naming>),
         open,
     };
 
@@ -69,7 +70,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
         viewport,
         carrying,
         selected,
-        renaming,
+        naming: held,
         open,
     } = handles;
     let board_ref = NodeRef::<html::Section>::new();
@@ -110,6 +111,20 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
 
             viewport.update(|it| *it = it.zoomed(towards, by));
         })
+        .on(ev::dblclick, move |event| {
+            if event.target() != event.current_target() {
+                return;
+            }
+
+            let Some(pointed) = pointed_at(&event) else {
+                return;
+            };
+            let at = viewport.get_untracked().on_board(pointed);
+
+            held.set(Some(Naming::Capturing {
+                at: around(at, CARD),
+            }));
+        })
         .on(ev::keydown, move |event| {
             if event.key() == "Escape" {
                 selected.set(None);
@@ -139,7 +154,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
                                 .collect::<Vec<_>>()
                         }
                     },
-                    move || renaming.get().map(|held| rename(held, handles)),
+                    move || held.get().map(|open| naming(open, handles)),
                 )),
             move || {
                 let (piece, at) = chosen()?;
@@ -153,6 +168,28 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
             },
             zooming(viewport, board_ref),
         ))
+}
+
+fn pointed_at(event: &ev::MouseEvent) -> Option<Spot> {
+    let within = event
+        .current_target()
+        .and_then(|it| it.dyn_into::<HtmlElement>().ok())?;
+    let edge = within.get_bounding_client_rect();
+
+    Some(Spot {
+        x: event.client_x() as i64 - edge.left() as i64,
+        y: event.client_y() as i64 - edge.top() as i64,
+    })
+}
+
+fn around(middle: Spot, size: Size) -> Placement {
+    Placement {
+        spot: snapped(Spot {
+            x: middle.x - size.width / 2,
+            y: middle.y - size.height / 2,
+        }),
+        size,
+    }
 }
 
 fn grabbed(event: &ev::PointerEvent) {

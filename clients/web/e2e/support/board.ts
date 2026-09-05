@@ -16,6 +16,13 @@ export async function select(page: Page, named: string) {
   await expect(bar(page)).toHaveAttribute("aria-label", `Actions for ${named}`);
 }
 
+export async function openForWriting(page: Page, named: string) {
+  await select(page, named);
+  await bar(page)
+    .getByRole("button", { name: `Open ${named}` })
+    .click();
+}
+
 export async function dragBy(page: Page, held: Locator, x: number, y: number) {
   const box = await held.boundingBox();
   expect(box).not.toBeNull();

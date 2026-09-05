@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-use crate::boards::carrying::snapped;
+use crate::boards::carrying::{CARD, snapped};
 use crate::boards::model::{Board, Placement, PositionedPiece, Size, Spot};
 use crate::boards::service;
 use crate::boards::viewport::Viewport;
@@ -11,16 +11,13 @@ use crate::projects::model::ProjectId;
 
 const STEP: i64 = 40;
 const COLUMNS: i64 = 3;
-const CARD: Size = Size {
-    width: 168,
-    height: 84,
-};
 
 #[derive(Clone, Copy)]
 pub struct OpenBoard {
     problem: RwSignal<Option<ApiError>>,
     board: RwSignal<Option<Board>>,
     pool: RwSignal<Option<Vec<Piece>>>,
+    capturing: Action<(String, Placement), ()>,
     pinning: Action<(PieceId, Viewport), ()>,
     reshaping: Action<(PieceId, Option<Spot>, Option<Size>), ()>,
     unpinning: Action<PieceId, ()>,
@@ -72,6 +69,38 @@ impl OpenBoard {
             })
         };
         opening.dispatch(());
+
+        let capturing = {
+            let id = project.clone();
+
+            Action::new_local(move |(title, at): &(String, Placement)| {
+                let project = id.clone();
+                let title = title.clone();
+                let at = *at;
+
+                async move {
+                    let Some(open) = board.get_untracked() else {
+                        return;
+                    };
+
+                    let caught = match pieces::capture(&project, &title).await {
+                        Ok(caught) => caught,
+                        Err(failure) => return problem.set(Some(failure)),
+                    };
+                    let piece = caught.id.clone();
+                    pool.update(|held| {
+                        if let Some(held) = held {
+                            held.push(caught);
+                        }
+                    });
+
+                    match service::pin(&open.id, &piece, at).await {
+                        Ok(pinned) => arrived(pinned),
+                        Err(failure) => problem.set(Some(failure)),
+                    }
+                }
+            })
+        };
 
         let pinning = Action::new_local(move |(piece, seen): &(PieceId, Viewport)| {
             let piece = piece.clone();
@@ -160,6 +189,7 @@ impl OpenBoard {
             problem,
             board,
             pool,
+            capturing,
             pinning,
             reshaping,
             unpinning,
@@ -202,6 +232,10 @@ impl OpenBoard {
             .into_iter()
             .filter(|piece| !held.holds(&piece.id))
             .collect()
+    }
+
+    pub fn capture(&self, title: String, at: Placement) {
+        self.capturing.dispatch((title, at));
     }
 
     pub fn pin(&self, piece: PieceId, seen: Viewport) {

@@ -168,7 +168,7 @@ test("an address that leads nowhere says so", async ({ page }) => {
   await expect(
     page.getByText("There is nothing woven at this address."),
   ).toBeVisible();
-  await page.getByRole("link", { name: "All projects" }).click();
+  await page.getByRole("link", { name: "Back to your projects" }).click();
   await expect(page.getByPlaceholder("A working title…")).toBeVisible();
 });
 

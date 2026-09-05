@@ -1,33 +1,33 @@
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
-use leptos_router::hooks::use_navigate;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 
 use crate::boards::carrying::{Carrying, EVERY_HANDLE, Held, nudge};
-use crate::boards::handles::Handles;
+use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Spot};
 use crate::pieces::model::{Piece, PieceId};
 
 pub fn card(href: String, piece: Piece, at: Placement, handles: Handles) -> impl IntoView {
-    let opening = use_navigate();
-    let reopening = opening.clone();
     let shown = piece.shown_as().to_owned();
     let named = shown.clone();
-    let opened = href.clone();
-    let reopened = href.clone();
     let id = piece.id;
     let mine = id.clone();
+    let chosen = id.clone();
     let borne = id.clone();
     let nudged = id.clone();
     let placed = id.clone();
     let gripped = id.clone();
+    let renamed = id.clone();
+    let retyped = id.clone();
+    let called = shown.clone();
+    let recalled = shown.clone();
 
     html::article()
         .class("pinned")
         .class(("selected", move || {
-            handles.selected.with(|held| held.as_ref() == Some(&mine))
+            handles.selected.with(|held| held.as_ref() == Some(&chosen))
         }))
         .class(("carried", move || {
             handles
@@ -44,13 +44,25 @@ pub fn card(href: String, piece: Piece, at: Placement, handles: Handles) -> impl
         .on(ev::pointermove, move |event| carry(&event, handles))
         .on(ev::pointerup, move |_| drop_it(handles))
         .on(ev::pointercancel, move |_| handles.carrying.set(None))
-        .on(ev::dblclick, move |_| {
-            opening(&opened, Default::default());
+        .on(ev::focusin, move |_| {
+            handles.selected.set(Some(mine.clone()))
+        })
+        .on(ev::dblclick, move |event| {
+            event.stop_propagation();
+            handles.naming.set(Some(Naming::Renaming {
+                piece: renamed.clone(),
+                at,
+                was: called.clone(),
+            }));
         })
         .on(ev::keydown, move |event| {
             if event.key() == "Enter" {
                 event.prevent_default();
-                reopening(&reopened, Default::default());
+                handles.naming.set(Some(Naming::Renaming {
+                    piece: retyped.clone(),
+                    at,
+                    was: recalled.clone(),
+                }));
 
                 return;
             }

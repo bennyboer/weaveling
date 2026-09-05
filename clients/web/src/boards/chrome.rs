@@ -4,10 +4,10 @@ use leptos::{IntoView, ev};
 use leptos_router::hooks::use_navigate;
 
 use crate::boards::card::boxed;
-use crate::boards::handles::{Handles, Renaming};
+use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Spot};
 use crate::boards::viewport::{NEARER, Viewport};
-use crate::pieces::model::{Piece, PieceId};
+use crate::pieces::model::Piece;
 
 const ROOM_ABOVE: i64 = 42;
 const BAR_GAP: i64 = 8;
@@ -43,7 +43,7 @@ pub fn actions(href: String, piece: Piece, at: Placement, handles: Handles) -> i
         .on(ev::pointerdown, |event| event.stop_propagation())
         .child((
             deed(format!("Rename {shown}"), "\u{270e}", move || {
-                handles.renaming.set(Some(Renaming {
+                handles.naming.set(Some(Naming::Renaming {
                     piece: renamed.clone(),
                     at,
                     was: called.clone(),
@@ -69,12 +69,13 @@ fn deed(what: String, glyph: &'static str, done: impl Fn() + 'static) -> impl In
         .child(glyph)
 }
 
-pub fn rename(renaming: Renaming, handles: Handles) -> impl IntoView {
+pub fn naming(held: Naming, handles: Handles) -> impl IntoView {
     let field = NodeRef::<html::Textarea>::new();
-    let Renaming { piece, at, was } = renaming;
-    let asked = was.clone();
-    let shown = was.clone();
-    let leaving = piece.clone();
+    let at = held.at();
+    let asked = held.asked();
+    let fresh = matches!(held, Naming::Capturing { .. });
+    let typed = held.clone();
+    let left = held.clone();
 
     Effect::new(move |_| {
         if let Some(field) = field.get() {
@@ -84,11 +85,14 @@ pub fn rename(renaming: Renaming, handles: Handles) -> impl IntoView {
     });
 
     html::textarea()
-        .class("pinned-rename")
-        .attr("aria-label", format!("Rename {asked}"))
+        .class(match fresh {
+            true => "pinned-rename fresh",
+            false => "pinned-rename",
+        })
+        .attr("aria-label", asked)
         .attr("style", boxed(at))
         .node_ref(field)
-        .prop("value", was.clone())
+        .prop("value", held.was().to_owned())
         .on(ev::pointerdown, |event| event.stop_propagation())
         .on(ev::dblclick, |event| event.stop_propagation())
         .on(ev::keydown, move |event| {
@@ -97,35 +101,39 @@ pub fn rename(renaming: Renaming, handles: Handles) -> impl IntoView {
             match event.key().as_str() {
                 "Enter" if !event.shift_key() => {
                     event.prevent_default();
-                    settle(field, &piece, &was, handles);
+                    settle(field, &typed, handles);
                 }
                 "Escape" => {
                     event.prevent_default();
-                    handles.renaming.set(None);
+                    handles.naming.set(None);
                 }
                 _ => {}
             }
         })
-        .on(ev::focusout, move |_| {
-            settle(field, &leaving, &shown, handles)
-        })
+        .on(ev::focusout, move |_| settle(field, &left, handles))
 }
 
-fn settle(field: NodeRef<html::Textarea>, piece: &PieceId, was: &str, handles: Handles) {
+fn settle(field: NodeRef<html::Textarea>, held: &Naming, handles: Handles) {
     if handles
-        .renaming
-        .with_untracked(|held| held.as_ref().map(|held| &held.piece) != Some(piece))
+        .naming
+        .with_untracked(|open| !open.as_ref().is_some_and(|open| open.is(held)))
     {
         return;
     }
-    handles.renaming.set(None);
+    handles.naming.set(None);
 
     let Some(written) = field.get_untracked().map(|field| field.value()) else {
         return;
     };
 
-    if written != was {
-        handles.open.retitle(piece.clone(), written);
+    match held {
+        Naming::Renaming { piece, was, .. } if &written != was => {
+            handles.open.retitle(piece.clone(), written);
+        }
+        Naming::Capturing { at } if !written.trim().is_empty() => {
+            handles.open.capture(written, *at);
+        }
+        _ => {}
     }
 }
 

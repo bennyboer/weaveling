@@ -19,7 +19,7 @@ use crate::projects::overlays::Overlays;
 use crate::projects::row::{ProjectRow, ProjectRowProps};
 use crate::projects::workspace::Workspace;
 use crate::route;
-use crate::shell::{Viewing, masthead};
+use crate::shell::{Inside, Viewing, masthead};
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -33,7 +33,7 @@ pub fn App() -> impl IntoView {
         }
     });
 
-    html::main().child(view! {
+    view! {
         <Router>
             <Routes fallback=Missing>
                 <Route
@@ -45,13 +45,15 @@ pub fn App() -> impl IntoView {
                 <Route path=path!("/projects/:project/pieces/:piece") view=OnePiece />
             </Routes>
         </Router>
-    })
+    }
 }
 
 #[component]
 fn TheWorkspace(workspace: Workspace, overlays: Overlays) -> impl IntoView {
-    html::div().class("column").child((
-        html::h1().child("Weaveling"),
+    (
+        masthead(None),
+        html::main().child(html::div().class("column").child((
+        html::h1().child("Your projects"),
         html::p().class("tagline").child(
             "Bring us your tiny, fragile story ideas, and we will help you weave them into a full epic.",
         ),
@@ -78,11 +80,12 @@ fn TheWorkspace(workspace: Workspace, overlays: Overlays) -> impl IntoView {
                 })
                 .collect_view()
         }),
-        ConfirmDelete(ConfirmDeleteProps {
-            workspace,
-            overlays,
-        }),
-    ))
+            ConfirmDelete(ConfirmDeleteProps {
+                workspace,
+                overlays,
+            }),
+        ))),
+    )
 }
 
 #[component]
@@ -92,10 +95,16 @@ fn OneProject() -> impl IntoView {
     move || {
         params.read().get("project").map(|project| {
             (
-                masthead(project.clone(), named(&project), Some(Viewing::Pieces)),
-                html::div()
-                    .class("column")
-                    .child(Pool(PoolProps { project })),
+                masthead(Some(Inside {
+                    named: named(&project),
+                    project: project.clone(),
+                    here: Some(Viewing::Pieces),
+                })),
+                html::main().child(
+                    html::div()
+                        .class("column")
+                        .child(Pool(PoolProps { project })),
+                ),
             )
         })
     }
@@ -108,8 +117,12 @@ fn OneBoard() -> impl IntoView {
     move || {
         params.read().get("project").map(|project| {
             (
-                masthead(project.clone(), named(&project), Some(Viewing::Board)),
-                TheBoard(TheBoardProps { project }),
+                masthead(Some(Inside {
+                    named: named(&project),
+                    project: project.clone(),
+                    here: Some(Viewing::Board),
+                })),
+                html::main().child(TheBoard(TheBoardProps { project })),
             )
         })
     }
@@ -135,16 +148,21 @@ fn named(project: &str) -> String {
 
 #[component]
 fn Missing() -> impl IntoView {
-    html::div().class("column").child((
-        html::p()
-            .class("empty")
-            .child("There is nothing woven at this address."),
-        view! {
-            <A href=route::WORKSPACE attr:class="back">
-                "All projects"
-            </A>
-        },
-    ))
+    (
+        masthead(None),
+        html::main().child(
+            html::div().class("column").child((
+                html::p()
+                    .class("empty")
+                    .child("There is nothing woven at this address."),
+                view! {
+                    <A href=route::WORKSPACE attr:class="back">
+                        "Back to your projects"
+                    </A>
+                },
+            )),
+        ),
+    )
 }
 
 #[component]
@@ -176,8 +194,14 @@ fn OnePiece() -> impl IntoView {
     let whose = move || params.read().get("project").unwrap_or_default();
 
     (
-        move || masthead(whose(), named(&whose()), None),
-        html::div().class("column").child((
+        move || {
+            masthead(Some(Inside {
+                named: named(&whose()),
+                project: whose(),
+                here: None,
+            }))
+        },
+        html::main().child(html::div().class("column").child((
             move || {
                 problem.get().map(|failure| {
                     html::p()
@@ -186,14 +210,16 @@ fn OnePiece() -> impl IntoView {
                         .child(failure.to_string())
                 })
             },
-            move || match passage.get() {
-                Some(passage) => PassageEditor(PassageEditorProps { passage }).into_any(),
-                None => html::p()
-                    .class("empty")
-                    .child("Opening the piece…")
-                    .into_any(),
+            move || {
+                match passage.get() {
+                    Some(passage) => PassageEditor(PassageEditorProps { passage }).into_any(),
+                    None => html::p()
+                        .class("empty")
+                        .child("Opening the piece…")
+                        .into_any(),
+                }
             },
-        )),
+        ))),
     )
 }
 

@@ -4,6 +4,10 @@ use crate::pieces::model::PieceId;
 pub const GRID: i64 = 5;
 const LEAP: i64 = 40;
 const DRAG_BEGINS: i64 = 4;
+pub const CARD: Size = Size {
+    width: 168,
+    height: 84,
+};
 const SMALLEST: Size = Size {
     width: 80,
     height: 40,

@@ -4,6 +4,7 @@ use leptos::{IntoView, view};
 use leptos_router::components::A;
 
 use crate::route;
+use crate::theme;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Viewing {
@@ -48,7 +49,13 @@ pub fn mark() -> impl IntoView {
     }
 }
 
-pub fn masthead(project: String, named: String, here: Option<Viewing>) -> impl IntoView {
+pub struct Inside {
+    pub project: String,
+    pub named: String,
+    pub here: Option<Viewing>,
+}
+
+pub fn masthead(inside: Option<Inside>) -> impl IntoView {
     html::header().class("masthead").child((
         view! {
             <A href=route::WORKSPACE attr:class="wordmark" attr:aria-label="All projects">
@@ -56,6 +63,19 @@ pub fn masthead(project: String, named: String, here: Option<Viewing>) -> impl I
                 <span>"Weaveling"</span>
             </A>
         },
+        inside.map(whereabouts),
+        theme::picker(),
+    ))
+}
+
+fn whereabouts(inside: Inside) -> impl IntoView {
+    let Inside {
+        project,
+        named,
+        here,
+    } = inside;
+
+    (
         html::h1().class("whose").child(html::span().child(named)),
         html::nav()
             .class("views")
@@ -66,7 +86,7 @@ pub fn masthead(project: String, named: String, here: Option<Viewing>) -> impl I
                     .map(|view| tab(view, project.clone(), here))
                     .collect::<Vec<_>>(),
             ),
-    ))
+    )
 }
 
 fn tab(view: Viewing, project: String, here: Option<Viewing>) -> impl IntoView {
