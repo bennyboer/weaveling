@@ -50,9 +50,19 @@ pub fn mark() -> impl IntoView {
 }
 
 pub struct Inside {
-    pub project: String,
-    pub named: String,
-    pub here: Option<Viewing>,
+    project: String,
+    named: String,
+    here: Option<Viewing>,
+}
+
+impl Inside {
+    pub fn of(project: &str, here: Option<Viewing>) -> Self {
+        Self {
+            project: project.to_owned(),
+            named: route::named(project),
+            here,
+        }
+    }
 }
 
 pub fn masthead(inside: Option<Inside>) -> impl IntoView {
