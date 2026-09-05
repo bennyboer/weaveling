@@ -81,6 +81,7 @@ test("the theme control is a control, not a full-height panel", async ({
   page,
 }) => {
   await page.goto("/");
+  await expect(theming(page)).toBeVisible();
 
   const seen = await page.evaluate(() => {
     const box = (of: string) => {
