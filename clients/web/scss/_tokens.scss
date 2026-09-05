@@ -1,24 +1,41 @@
 :root {
   color-scheme: light dark;
-  --ink: #1c1917;
-  --muted: #78716c;
-  --line: #e7e5e4;
-  --paper: #fdfcfb;
-  --surface: #f4f2f0;
-  --raised: #ffffff;
-  --dot: #d6d3d1;
-  --alarm: #b91c1c;
+  --ink: #1d3b47;
+  --muted: #6f6659;
+  --line: #e6ddcf;
+  --surface: #fbf7f0;
+  --paper: #fdfaf5;
+  --raised: #fffdf9;
+  --dot: #ded3c2;
+  --accent: #8c5f27;
+  --alarm: #a3301f;
+
+  --heading: Newsreader, Georgia, serif;
+  --reading: Lexend, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --ink: #f5f5f4;
-    --muted: #a8a29e;
-    --line: #292524;
-    --paper: #1c1917;
-    --surface: #1a1917;
-    --raised: #302c28;
-    --dot: #3a352f;
-    --alarm: #f87171;
+  :root:not([data-theme="light"]) {
+    --ink: #e8e3d9;
+    --muted: #8fa3ac;
+    --line: #263b45;
+    --surface: #14232a;
+    --paper: #182b33;
+    --raised: #1e343d;
+    --dot: #2e4954;
+    --accent: #d3a05c;
+    --alarm: #e88b7a;
   }
+}
+
+:root[data-theme="dark"] {
+  --ink: #e8e3d9;
+  --muted: #8fa3ac;
+  --line: #263b45;
+  --surface: #14232a;
+  --paper: #182b33;
+  --raised: #1e343d;
+  --dot: #2e4954;
+  --accent: #d3a05c;
+  --alarm: #e88b7a;
 }

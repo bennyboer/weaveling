@@ -244,17 +244,17 @@ Two things arrived that were not planned: every feature grew a [`wiring` crate](
 
 **And its payoff is still theoretical.** An orphaned piece from a deleted project is unreachable — you cannot navigate to a project that no longer exists — and dies at process restart. It becomes real at [M12](#milestone-12--local-mode), where in-memory *is* the store, which is also about when event-sourcing `projects` starts paying for itself: **deletion is exactly where an author wants an audit log.** The two belong together, so they now live together in [M11a](#milestone-11a--projects-event-sourced-and-the-deletion-cascade).
 
-### Milestone 9 — The board
+### Milestone 9 — The board ✅
 
 **Goal:** an infinite corkboard — the non-linear feel that is the point of Weaveling.
 
-**Build:** `features/boards` — `BoardStarted`, `PiecePinned`, `PieceMoved`, `PieceUnpinned`, placement owned by the board, and **find-or-start on first open**. Free 2D placement, with moves committing **on drop** and in-flight drags travelling as awareness over the board's own live channel. The client joins pool and placements itself, which is also what makes a dangling placement harmless.
+**Build:** `features/boards` — `BoardStarted`, `PiecePinned`, `PieceMoved`, `PieceResized`, `PieceRaised`, `PieceUnpinned`, placement owned by the board, and **find-or-start on first open**. Free 2D placement, with moves committing **on drop**. The client joins pool and placements itself, which is also what makes a dangling placement harmless.
 
-**On top of the seam:** the board's socket is a subscriber rather than a bespoke broadcast, and the piece catalog's synchronous dual write becomes a projector at the same time.
+**On top of the seam:** the piece catalog's synchronous dual write becomes a projector at the same time.
 
-**Rust you'll meet:** pointer events and transforms for a pannable infinite surface, a second WebSocket surface that is *not* a CRDT, and awareness carrying something other than a cursor.
+**Rust you'll meet:** pointer events and transforms for a pannable infinite surface.
 
-**Done when:** two browsers drag pieces on one board and see each other live; the durable record holds one event per drop rather than per frame; a piece discarded from the pool vanishes from the board with no compensating event; and a project that never had a board gets one on first open.
+**Done when:** the durable record holds one event per drop rather than per frame; a piece discarded from the pool vanishes from the board with no compensating event; and a project that never had a board gets one on first open. **All three are met.** Two browsers seeing each other live was the fourth, and it moved out to [M9b](#milestone-9b--the-boards-live-channel) — it is a second live surface with its own architecture rather than a last item on the board's list, and the board is a finished single-author surface without it.
 
 **Explicitly not in M9:** the outline, grouping, board naming or switching — multiple boards are modelled, one is shipped.
 
@@ -309,7 +309,66 @@ That conversion is now its own module, `boards/viewport.rs`, holding `Viewport {
 
 **Moving a card brings it to the front, and that is a fact the log records.** `PieceRaised` is a sibling of `PieceMoved`, emitted by `Reshape` when the spot changed and the card is not already topmost — the aggregate's `IndexMap` insertion order *is* the z-order, so raising is a re-insert. Resizing deliberately does not raise: stretching a card is not reaching for it. The alternative, folding the reorder into `apply(PieceMoved)`, was rejected for hiding a board rule inside a projection function where replay correctness would quietly depend on it.
 
-**Left in M9:** the live channel — a `Delivery::Fleeting` subscriber with in-flight drags travelling as awareness. Cards the author can resize is the one that reaches past the client; see the TODO, along with the note that `board.rs` wants splitting before the live channel arrives.
+**The client was split before the live channel arrived**, as planned: `board.rs` went from 983 lines to six modules, and the two pure ones — the viewport transform and where a drag or resize lands — carry 23 native unit tests that used to need a browser. See [the TODO](./TODO.md).
+
+**Left in M9:** the live channel, and only that. Three of the four done-when criteria are met — one event per drop rather than per frame, a discarded piece leaving the board with no compensating event, and a project without a board getting one on first open. The fourth, *two browsers dragging pieces on one board and seeing each other live*, is the `Delivery::Fleeting` subscriber that has not been built.
+
+### Milestone 9a — The shell
+
+**Next.** Built in whichever direction the design pass settles on, because rebuilding the shell is exactly when the visual language gets set.
+
+**Goal:** an app that uses the room it has, and a way between the views a project will accumulate.
+
+**Build:**
+
+- **The project's home becomes the board**, not the pool. Every project has one, and it is the surface the whole tool is built around.
+- **A view switcher.** Board today, the outline next, timeline and threads and cast eventually. This is the thing M10 plugs into, which is the whole reason it comes first — build the outline before the switcher exists and it gets built twice.
+- **Width becomes a property of the view.** One rule governs everything today: `main { max-width: 42rem }`. The board wants the whole window, a passage wants a column, the workspace wants a column. So the shell stops deciding and each view says what it needs.
+- **A theme the author can override.** The system preference is honoured through `prefers-color-scheme`, but there is no way to disagree with it. Three states — light, dark, follow the system — remembered across visits.
+
+**Capture moves onto the board.** Double-click bare board and a card appears there, already in editing mode; type a title and it is captured and pinned in one gesture; cancel and nothing was ever recorded. That last clause is the design: the card is local until it is committed, so a cancelled capture leaves no piece behind and no event in the log. It also needs no new machinery — the rename editor is already a textarea floating over a card at a spot, and [`PieceTitle` was made to permit the empty string](./ARCHITECTURE.md#pieces-and-views--the-non-linear-model) for exactly this, back in M7.
+
+**Double-click means edit, everywhere.** On bare board it makes a new card; on a card it edits that card's title in place. Opening the passage moves entirely to the action bar's Open button. This replaces the current double-click-to-open, and it leaves one sub-question for the build: Enter on a focused card opens today, and it should probably follow the double-click rather than diverge from it — which would leave the bar as the only way in, reachable by Tab.
+
+The one thing capture needs is care about *order*: capturing writes to `pieces` and pinning writes to `boards`, two aggregates and two commands, and a piece captured but not pinned is a piece stranded in the pool. The waiting list stays regardless — it is where pieces live that exist without being on the board.
+
+**The look is settled: Ink & Ochre**, chosen from three directions mocked side by side. It takes its palette from the logo rather than from the greyscale the app drifted into — cream paper, deep teal ink, ochre accent — and it is deliberately the least disruptive of the three, since the current warm-stone palette is already halfway there.
+
+| | light | dark |
+|---|---|---|
+| paper / raised | `#fbf7f0` / `#fffdf9` | `#14232a` / `#182b33` |
+| ink | `#1d3b47` | `#e8e3d9` |
+| muted | `#6f6659` | `#8fa3ac` |
+| line | `#e6ddcf` | `#263b45` |
+| accent | `#8c5f27` | `#d3a05c` |
+
+**Type: Newsreader for headlines, Lexend for reading.** Georgia goes. **This is the app's first webfont**, and that has two consequences worth naming now rather than later. A local-first tool that fetches its faces from Google on every load is a contradiction, so both get self-hosted from the start. And the project is MIT while both faces are open-font-licensed — compatible, since the OFL governs the font files and the MIT the code. Both licences now ship in `clients/web/fonts/`, and the Reserved Font Name worry turned out not to bite: **Lexend reserves only "RevReading Lexend"**, and **Newsreader reserves nothing at all**, so neither name is encumbered. Nor is anything subset by hand — what is served is Google's own unmodified `latin` and `latin-ext` cuts, four `woff2` files, both faces variable so one file carries every weight. The `unicode-range` split means a reader who never types outside Latin-1 downloads 172 KB rather than 293 KB.
+
+**The palette above is the corrected one.** As drawn, six of ten pairs failed WCAG AA and the fix was not cosmetic: the mockups carried *three* values for one role — `#8a8175`, `#b3aa9b` and `#c4bcae` were all "secondary text", none chosen, each invented where it was needed. That is the duplicate-by-invention habit the shell exists to end, so the answer was one muted value per theme rather than three nudged ones. Light muted went `#8a8175` → `#6f6659` (3.59:1 → 5.29:1 worst case across paper and raised), dark muted consolidated onto the `#8fa3ac` that already passed at 5.59:1, and the accent went `#9a6a2f` → `#8c5f27` (4.39:1 → 5.20:1) so that one value serves as text *and* as a border, instead of needing a second accent for each threshold.
+
+**The switcher lists only views that exist.** Timeline, Threads and Cast are not drawn until they are built — a permanently dead tab is clutter in a tool used daily, and it was also two of the six contrast failures, since ghost text is unreadable by construction.
+
+**Two things noted and deliberately not taken.** The chosen direction puts the view switcher in the top bar as text tabs; a left icon rail scales better once Timeline, Threads and Cast arrive, so revisit it at the fourth view rather than pre-building it. And monospace for anything countable — word counts, piece counts, the zoom reading — was the strongest single idea in the direction that lost, and it costs nothing here if it is ever wanted.
+
+**Done when:** clicking a project lands on a full-width board; you can move between a project's views without going back through the pool; a passage still reads in a column; and the theme can be set against the system's wishes and survives a reload.
+
+**Explicitly not in M9a:** translation, touch, and the outline itself.
+
+### Milestone 9b — The board's live channel
+
+**Not next.** [M9a](#milestone-9a--the-shell) is, then M10; this sits here because it belongs to the board, not because of when it will be built.
+
+**Goal:** two browsers on one board, seeing each other work.
+
+**Build:** a second live surface. Awareness is bound to `/sync/{passage}` today and a board is not a passage, so the board needs its own socket carrying two different kinds of traffic: **committed events**, which are already published (`board.#`) and want a `Delivery::Fleeting` subscriber rather than a durable queue, and **in-flight drags**, which are awareness — a card travelling under someone else's pointer, never written down. The earlier implementation had precedent worth copying: a WebSocket pushing event messages, with per-event handlers patching a local store on the client.
+
+**Rust you'll meet:** a second WebSocket surface that is deliberately *not* a CRDT, and awareness carrying something other than a cursor.
+
+**Done when:** two browsers drag pieces on one board and see each other live; the durable record still holds one event per drop rather than per frame; and a peer that drops out leaves no ghost card mid-drag.
+
+**Know before starting.** Two things are already recorded and both bite here. `InProcessDispatcher` delivers synchronously, so it will **hide** the very races this exists to expose — the board's projection never lags in a test, and the find-or-start race stays invisible. And the client's board state gains a second writer: every optimistic write, rollback and version guard in `open_board.rs` was written assuming this author is the only one moving cards. The `Reshape` command carrying only what changed was chosen with exactly this in mind, and it gets its first real test here.
+
+**Explicitly not in M9a:** presence beyond the board, cursors in prose (that is the passage socket's job, already built), and any attempt to make drags durable.
 
 ### Milestone 10 — The outline
 
@@ -366,6 +425,24 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 **Done when:** an author can work with no database running, export the project, restart with an empty process, import, and find their pieces and prose exactly as they left them — with the catalog rebuilt rather than restored.
 
 ---
+
+### Milestone 13 — Two languages
+
+**Goal:** German and English, chosen by the reader rather than the build.
+
+**Build:** every string in the client comes out of the markup and into a catalogue, with a language the author picks and the browser's preference as the default. Dates and times already go through `time` and will need the locale too.
+
+**Know before starting:** **the E2E suite selects by English accessible name** — `getByRole("button", { name: "Pin The loom remembers" })`, across 107 tests. Either every spec pins a locale, or the selectors move to test ids and lose the accessibility check they currently double as. That decision is most of the work's character, so make it first.
+
+**Done when:** the whole app reads in German, the choice survives a reload, and the suite still passes in both.
+
+### Milestone 14 — Touch and small screens
+
+**Goal:** the app in a pocket, for the edits that happen away from a desk.
+
+**Build:** the writing view and the workspace are a media query away — they are already a single column. **The board is not.** Pointer events already carry touch, but the resize grips are 7px where a finger needs about 44, `touch-action: none` on the corkboard means the browser will not help, and **pinch-to-zoom is not wired at all** — ctrl-and-wheel is the only zoom, and pinch is *the* gesture on a phone. That is a feature, not a stylesheet.
+
+**Done when:** a piece can be captured, opened and written on a phone; the board pans and pinch-zooms with two fingers; and a card can be moved with a thumb.
 
 ## After Phase 3 (sketch only)
 

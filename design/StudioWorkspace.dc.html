@@ -1,0 +1,94 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Lexend:wght@300;400;500&display=swap">
+  <style>
+    body { margin: 0; }
+    a { color: #d99a52; text-decoration: none; }
+    a:hover { color: #e8b273; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 900px; display: flex; flex-direction: column; background: #0f1113; font-family: Lexend, system-ui, sans-serif; color: #e6e8ea; overflow: hidden;">
+
+  <div style="display: flex; align-items: center; padding: 0 20px; height: 52px; border-bottom: 1px solid #22262a; background: #131619; flex-shrink: 0;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <svg width="24" height="24" viewBox="0 0 32 32" fill="none" stroke="#e6e8ea" stroke-width="1.4">
+        <circle cx="16" cy="16" r="13" stroke="#d99a52" stroke-dasharray="3 5" opacity="0.75"></circle>
+        <path d="M6 11c7 6 13 6 20 0M5 20c8-5 14-5 22 0" opacity="0.35"></path>
+        <ellipse cx="16" cy="17" rx="5" ry="6"></ellipse>
+        <circle cx="13.6" cy="14" r="1.7" fill="#e6e8ea"></circle>
+        <circle cx="18.4" cy="14" r="1.7" fill="#e6e8ea"></circle>
+        <path d="M11 15l-4-3M21 15l4-3M11 19l-4 2M21 19l4 2"></path>
+      </svg>
+      <span style="font-family: 'Instrument Serif', 'Times New Roman', serif; font-size: 21px;">Weaveling</span>
+    </div>
+    <div style="flex-grow: 1;"></div>
+    <span style="display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c848b" stroke-width="1.8"><path d="M20 14.5A8 8 0 019.5 4a8 8 0 1010.5 10.5z"></path></svg>
+    </span>
+    <div style="display: grid; place-items: center; width: 28px; height: 28px; margin-left: 8px; border-radius: 999px; background: #d99a52; color: #0f1113; font-size: 12px; font-weight: 500;">B</div>
+  </div>
+
+  <div style="flex-grow: 1; padding: 56px 64px 0; overflow: hidden;">
+    <div style="display: flex; align-items: flex-end; gap: 20px; margin-bottom: 36px;">
+      <h1 style="margin: 0; font-family: 'Instrument Serif', 'Times New Roman', serif; font-size: 52px; line-height: 1; letter-spacing: -0.005em; color: #f2f4f5;">Your books</h1>
+      <div style="flex-grow: 1;"></div>
+      <div style="display: flex; gap: 8px;">
+        <div style="display: flex; align-items: center; padding: 0 14px; width: 300px; height: 40px; border: 1px solid #2a3036; border-radius: 8px; background: #191d21; font-size: 14px; color: #6e767c;">A working title&#8230;</div>
+        <div style="display: grid; place-items: center; padding: 0 18px; height: 40px; border-radius: 8px; background: #d99a52; color: #0f1113; font-size: 13.5px; font-weight: 500;">Begin</div>
+      </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid #2a3036; border-radius: 12px; background: #16191c; height: 176px;">
+        <div style="display: flex; gap: 5px;">
+          <span style="width: 34px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+          <span style="width: 44px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+          <span style="width: 26px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="font-family: 'Instrument Serif', 'Times New Roman', serif; font-size: 26px; line-height: 1.1; color: #eef1f2;">The Salt Road</div>
+        <div style="display: flex; gap: 10px; font-size: 12px; color: #6e767c;"><span>31 pieces</span><span>&#183;</span><span>4 minutes ago</span></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid #2a3036; border-radius: 12px; background: #16191c; height: 176px;">
+        <div style="display: flex; gap: 5px;">
+          <span style="width: 30px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+          <span style="width: 38px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="font-family: 'Instrument Serif', 'Times New Roman', serif; font-size: 26px; line-height: 1.1; color: #eef1f2;">Nine Ways Home</div>
+        <div style="display: flex; gap: 10px; font-size: 12px; color: #6e767c;"><span>7 pieces</span><span>&#183;</span><span>Yesterday</span></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; padding: 18px; border: 1px solid #2a3036; border-radius: 12px; background: #16191c; height: 176px;">
+        <div style="display: flex; gap: 5px;">
+          <span style="width: 40px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+          <span style="width: 28px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+          <span style="width: 46px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+          <span style="width: 22px; height: 22px; border-radius: 3px; background: #23282d;"></span>
+        </div>
+        <div style="flex-grow: 1;"></div>
+        <div style="font-family: 'Instrument Serif', 'Times New Roman', serif; font-size: 26px; line-height: 1.1; color: #eef1f2;">The Cartographer's Daughter</div>
+        <div style="display: flex; gap: 10px; font-size: 12px; color: #6e767c;"><span>112 pieces</span><span>&#183;</span><span>Last week</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

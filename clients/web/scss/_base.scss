@@ -4,9 +4,9 @@
 
 body {
   margin: 0;
-  background: var(--paper);
+  background: var(--surface);
   color: var(--ink);
-  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  font: 300 16px/1.6 var(--reading);
 }
 
 main {
@@ -16,13 +16,13 @@ main {
 }
 
 h1 {
-  font: 400 2.5rem/1.1 Georgia, "Iowan Old Style", serif;
+  font: 500 2.9rem/1.05 var(--heading);
   margin: 0 0 0.5rem;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .tagline {
-  font: italic 1.05rem/1.5 Georgia, serif;
+  font: 300 1.05rem/1.5 var(--reading);
   color: var(--muted);
   margin: 0 0 2.5rem;
 }
