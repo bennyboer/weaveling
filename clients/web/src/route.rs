@@ -19,6 +19,10 @@ pub fn board(project: &str) -> String {
     format!("/projects/{project}")
 }
 
+pub fn outline(project: &str) -> String {
+    format!("/projects/{project}/outline")
+}
+
 pub fn pool(project: &str) -> String {
     format!("/projects/{project}/pieces")
 }

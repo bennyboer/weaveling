@@ -47,6 +47,13 @@ export async function openTheBoard(page: Page) {
   await onTheBoard(page);
 }
 
+export async function openTheOutline(page: Page) {
+  await views(page).getByRole("link", { name: "Outline", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Add a section" }),
+  ).toBeVisible();
+}
+
 export async function openThePool(page: Page) {
   await views(page).getByRole("link", { name: "Pieces", exact: true }).click();
   await expect(

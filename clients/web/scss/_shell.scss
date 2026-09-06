@@ -19,6 +19,14 @@
     color: var(--ink);
     text-decoration: none;
 
+    .mark {
+      width: 2.4rem;
+      height: 1.65rem;
+      flex-shrink: 0;
+      background: var(--accent);
+      mask: url("/logo.svg") center / contain no-repeat;
+    }
+
     span {
       font: 600 1.2rem/1 var(--heading);
       letter-spacing: -0.01em;
