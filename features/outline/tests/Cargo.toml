@@ -1,0 +1,23 @@
+[package]
+name = "weaveling-outline-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+
+outline-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-outline-catalog" }
+outline-contract = { version = "0.1.0", path = "../contract", package = "weaveling-outline-contract" }
+outline-core = { version = "0.1.0", path = "../core", package = "weaveling-outline-core" }
+outline-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-outline-messaging" }
+outline-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-outline-wiring" }
+pieces-contract = { version = "0.1.0", path = "../../pieces/contract", package = "weaveling-pieces-contract" }

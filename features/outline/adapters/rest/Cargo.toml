@@ -1,0 +1,16 @@
+[package]
+name = "weaveling-outline-rest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+ids = { version = "0.1.0", path = "../../../../libraries/ids", package = "weaveling-ids" }
+serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
+
+outline-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-outline-contract" }
+outline-core = { version = "0.1.0", path = "../../core", package = "weaveling-outline-core" }

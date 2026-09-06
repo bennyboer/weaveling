@@ -13,6 +13,7 @@ pub struct Adapters {
     pub passages: passages_wiring::Ports,
     pub pieces: pieces_wiring::Ports,
     pub boards: boards_wiring::Ports,
+    pub outline: outline_wiring::Ports,
 }
 
 impl Adapters {
@@ -23,6 +24,7 @@ impl Adapters {
             passages: passages_wiring::Ports::in_memory(),
             pieces: pieces_wiring::Ports::in_memory(),
             boards: boards_wiring::Ports::in_memory(),
+            outline: outline_wiring::Ports::in_memory(),
         }
     }
 }
@@ -39,6 +41,7 @@ pub fn app(adapters: Adapters) -> Router {
         passages_wiring::wire(&adapters.passages, &context),
         pieces_wiring::wire(&adapters.pieces, &context),
         boards_wiring::wire(&adapters.boards, &context),
+        outline_wiring::wire(&adapters.outline, &context),
     ];
 
     Router::new()

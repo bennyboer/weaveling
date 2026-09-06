@@ -3007,6 +3007,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-outline-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "time",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-outline-core",
+]
+
+[[package]]
+name = "weaveling-outline-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "weaveling-outline-core"
 version = "0.1.0"
 dependencies = [
@@ -3018,6 +3036,73 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+]
+
+[[package]]
+name = "weaveling-outline-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-messaging",
+ "weaveling-outline-contract",
+ "weaveling-outline-core",
+ "weaveling-pieces-contract",
+]
+
+[[package]]
+name = "weaveling-outline-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "tracing",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-outline-contract",
+ "weaveling-outline-core",
+ "weaveling-serving",
+]
+
+[[package]]
+name = "weaveling-outline-tests"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-test",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
+ "weaveling-outline-catalog",
+ "weaveling-outline-contract",
+ "weaveling-outline-core",
+ "weaveling-outline-messaging",
+ "weaveling-outline-wiring",
+ "weaveling-pieces-contract",
+ "weaveling-wiring",
+]
+
+[[package]]
+name = "weaveling-outline-wiring"
+version = "0.1.0"
+dependencies = [
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-outline-catalog",
+ "weaveling-outline-core",
+ "weaveling-outline-messaging",
+ "weaveling-outline-rest",
+ "weaveling-wiring",
 ]
 
 [[package]]
@@ -3276,6 +3361,7 @@ dependencies = [
  "weaveling-boards-wiring",
  "weaveling-clock",
  "weaveling-messaging",
+ "weaveling-outline-wiring",
  "weaveling-passages-wiring",
  "weaveling-pieces-wiring",
  "weaveling-projects-wiring",

@@ -392,7 +392,11 @@ The one thing capture needs is care about *order*: capturing writes to `pieces` 
 
 Moves are shaped like an author's intent (*move*, *promote*, *demote*) rather than the "swap two nodes" primitive the earlier implementation was cornered into by its data structure. **Promote takes the sections that followed it along as children**, because the alternative silently reorders the book.
 
-**The aggregate is done** — `features/outline/core`, 26 tests, covering both orderings, the promote-adoption rule, subtree moves, the cycle refusal, removal lifting children into place, and a snapshot round trip. Still owed: the projection, the service, the REST surface, the wiring and the client view.
+**The whole back end is done** — `features/outline` in the same five-crate shape as `boards`: core (aggregate, catalog port, service), contract, and adapters for catalog, messaging and REST, wired into the composition root. 92 tests across the feature. The aggregate covers both orderings, the promote-adoption rule, subtree moves, the cycle refusal, removal lifting children into place and a snapshot round trip; the integration tests drive all of it through HTTP, and one of them replays the log through a **service that never saw the writes**, so the structure and the reading order have to come back out of the events rather than out of whoever wrote them.
+
+**One projection subtlety worth remembering:** the attachment index has to wake on `SECTION_REMOVED` as well as attach and detach, because removing a section returns its pieces to the pool. Listening only to the two obvious events leaves `outlines_holding` claiming pieces the book no longer contains — and the discard cascade reads that index.
+
+**Still owed: the client view.**
 
 This is the privileged view: export needs a linear order, so the outline is what "the manuscript" means. A piece may sit on the board and be absent from the outline — it simply is not in the book yet.
 
@@ -401,6 +405,20 @@ This is the privileged view: export needs a linear order, so the outline is what
 **Not in M10:** undo/redo. The event stream makes it available whenever it is wanted, which is exactly why it does not need to be built alongside the outline.
 
 **Done when:** a book-shaped outline of chapters and scenes, each openable in the editor, structural changes visible in the audit log, and rebuilding the projection from scratch reproducing the same order.
+
+### Milestone 10b — The outline's live channel
+
+**After [M9b](#milestone-9b--the-boards-live-channel), deliberately.** The board's channel is the harder one to design — free placement, drags emitting thousands of frames a second — and whatever it settles about transport, awareness and a second live surface, the outline reuses rather than re-decides.
+
+**Goal:** two browsers on one outline, seeing each other restructure.
+
+**But the conflict story is the opposite of the board's, and that is the whole milestone.** [Moves of different pieces on a board commute](./ARCHITECTURE.md#the-event-catalogue), which is why `PieceMoved` takes no strict version check and concurrent drags are last-drop-wins — no work is lost, the card simply lands where the last author dropped it. **Tree moves do not commute.** Two authors moving sections at once can produce a cycle, or leave a section parented to one that has just been removed, and "last writer wins" on a tree can silently discard a whole subtree's placement. A position is safe to overwrite; a structure is not.
+
+**This is where the intent-shaped commands earn their keep**, and they were chosen partly for it. A client-computed `Move { under, after }` is a placement derived from a view that may already be stale, so under concurrent editing `NoSuchNeighbour` starts firing in earnest. `Promote` and `Demote` carry only a section id and compute the placement from state at the moment they are applied, so they cannot go stale — which is the same reason [`Reshape` carries only what changed](#milestone-9--the-board-). Expect the [retry on version conflict](./ARCHITECTURE.md) to matter far more here than it does on the board.
+
+**One piece of view state is neither durable nor shared:** which twisties are open. It is not in the aggregate — [that was the rejected design's structural failure](./ARCHITECTURE.md#the-tree-is-a-view-not-the-model) — and it does not belong in awareness either, because nobody wants their outline folding itself to match a collaborator's. Local only, and worth saying out loud because "not durable" and "therefore awareness" is the easy wrong step.
+
+**Done when:** two browsers restructure one outline and see each other do it; no sequence of concurrent moves can produce a cycle or orphan a subtree; and the durable record still holds one event per move rather than per frame.
 
 ### Milestone 11 — The real store
 

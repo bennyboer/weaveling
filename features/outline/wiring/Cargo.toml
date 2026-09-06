@@ -1,0 +1,14 @@
+[package]
+name = "weaveling-outline-wiring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+outline-core = { version = "0.1.0", path = "../core", package = "weaveling-outline-core" }
+outline-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-outline-rest" }
+outline-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-outline-messaging" }
+outline-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-outline-catalog" }
