@@ -3007,6 +3007,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-outline-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "indexmap",
+ "thiserror",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+]
+
+[[package]]
 name = "weaveling-passages-contract"
 version = "0.1.0"
 dependencies = [

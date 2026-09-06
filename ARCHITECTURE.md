@@ -316,7 +316,7 @@ Each view is its own feature, with its own aggregate and its own invariants:
 | view | arranges pieces by | invariants |
 |---|---|---|
 | `board` | free 2D placement | none — an infinite surface |
-| `outline` | ordered nesting | acyclic, one parent per piece |
+| `outline` | sections that nest, holding pieces | acyclic; a piece sits in at most one section |
 | `timeline` | temporal relation | orderable, nestable buckets |
 | `threads` | named sequences | a piece may be in many |
 | `cast` | character presence | many-to-many |
@@ -332,6 +332,32 @@ Each view is its own feature, with its own aggregate and its own invariants:
 ### Naming
 
 Boring nouns for data, place-names for views. A **piece** is a piece wherever it appears; `board`, `outline`, `timeline`, `threads` and `cast` are places an author goes. Rejected: `card`, because a card is how the *board* draws a piece and a row is how the outline draws it — the name would describe one view's rendering. `node` and `graph` are both mechanism words, the same mistake as `tree` one level more abstract.
+
+### The outline arranges sections, not pieces
+
+The board was allowed to be simple: a card *is* a piece, so the board stores `piece -> point` and nothing else. The outline is not, and the reason is the table of contents. **A section carries its own title**, because what belongs in a table of contents is rarely the working title of the idea the scene grew from. And **the structure of a book is not the structure of the ideas it came from** — an author plans Part Two before knowing which of their pieces will fill it.
+
+So a **section** is its own thing: an id, a title, children, and the pieces attached to it. A section may hold several pieces, and a section that holds none is perfectly legal.
+
+**This is not the tree-as-model that [was rejected above](#the-tree-is-a-view-not-the-model), and the difference is worth stating** because the two look alike from a distance. The abandoned implementation's first failure was that *every node needed a parent at the moment of creation*, so there was nowhere to put an unplaced idea. That cannot recur here: pieces live in the pool and the outline is optional. A piece may have prose, sit on the board, and be in no section at all — it simply is not in the book yet. What the outline holds is structure, never content.
+
+**The outline is its own root, and that root is never materialised.** A section's parent is `Option<SectionId>`, where `None` means *directly inside the book*, and the outline holds those top-level sections as its own `children` — the same word `HeldSection` uses, because it means the same thing one level up. There is deliberately no root `Section` standing for the book. The rejected design had one, and it is precisely what made every node need a parent at creation; a materialised root is the mandatory root wearing a different hat. Keeping it implicit is what lets an outline be empty, and lets a section be added with no parent named.
+
+**The trap that design did fall into is still open, though.** Its structure module reached ~3,300 lines and it never got to prose. Sections cost more machinery than "order the pieces" would have, so the guardrail is a hard one: a section has an id, a title, children and pieces, and **nothing else**. No `kind` or `level` field — depth in the tree is the level, and a `kind` would immediately start refusing structures an author wanted. No numbering, which is a rendering. And above all **no expansion state**: `NodeToggled` in an event stream is named above as the structural failure of tree-as-model, and it is the single easiest mistake to repeat here.
+
+**An empty leaf is a warning, never a refusal.** A section with no children and no pieces is a hole in the manuscript, and the view says so — but the aggregate accepts it without complaint. Planning is exactly the act of writing down a structure you have not filled yet, so refusing would break the feature's main use. The same instinct as [`PieceTitle` permitting the empty string](#the-event-catalogue).
+
+**An unnamed section borrows its piece's title.** `SectionTitle` mirrors `PieceTitle` and permits `""`, and a view drawing an unnamed section that holds exactly one piece shows that piece's title. So the common case — a scene that is one piece, named already — costs the author nothing, and the override is there when the table of contents wants different words.
+
+**Two orderings, not one.** Sections nest and are ordered among their siblings; pieces are ordered within their section. The manuscript is the depth-first walk: at each section, its own pieces, then its children. That is what `reading_order()` returns, and it is what export will mean.
+
+**Moves are shaped like intent, and one of them is not obvious.** `Move { section, under, after }` is what dragging produces. `Promote` and `Demote` are the outliner's Shift+Tab and Tab, and they exist separately so the audit log records what the author *did* rather than where the section landed — which is also why their events carry only the section id: an event carries the command's parameters and never anything derived from state.
+
+**Promote takes the sections that followed it along as children.** This is the behaviour of Word, Workflowy and Logseq, and here it is load-bearing rather than a convention: the alternative silently reorders the book. Lifting a middle child out while its later siblings stay behind means text that read *Rain, Storm* now reads *Storm, Rain*. Adopting them keeps the reading order byte-identical, which is the property a manuscript cannot afford to lose. There is a test asserting exactly that.
+
+**Promote at the top and demote at the front of a list emit no events.** There is nothing to lift out of, and nothing to nest under. A command that changes nothing produces nothing, the same as [`Reshape`](#the-event-catalogue) emitting only for what actually moved.
+
+**Removing a section lifts its children into its place and returns its pieces to the pool.** Neither is deleted. Pruning a chapter is a structural edit, and it must never be a way to lose prose — the pieces simply stop being in the book, which is where they started.
 
 ### The event catalogue
 
@@ -354,6 +380,22 @@ PieceUnpinned { piece }
 ```
 
 Pin, move and unpin are corkboard words, and they keep *the board's arrangement* clearly separate from *the piece exists*.
+
+**`outline`** — one aggregate per outline:
+
+```
+Started         { project }
+SectionAdded    { section, under, after, title }
+SectionRetitled { section, title }
+SectionMoved    { section, under, after }
+SectionPromoted { section }
+SectionDemoted  { section }
+SectionRemoved  { section }
+PieceAttached   { piece, to, after }
+PieceDetached   { piece }
+```
+
+Attach and detach are the outline's words for *this piece is in the book here*, kept clearly apart from pin and unpin, which are the board's. A piece attached where it already sits elsewhere simply moves — no error, and export can never emit the same text twice.
 
 **A title may be empty, and that is a value rather than a missing one.** A piece captured on the board starts as `""` and the author types into it. So `PieceTitle` mirrors [`ProjectName`](#identifiers) in every rule but one — it trims, rejects control characters and caps length, and it **permits the empty string**. The asymmetry is deliberate and worth knowing before someone tidies it away: a project is named by an author who has already decided to start one, while a piece exists precisely so that an idea can land *before* it has a name.
 
