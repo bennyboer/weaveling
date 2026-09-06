@@ -277,6 +277,70 @@ test("the row menu promotes, demotes and removes", async ({ page }) => {
   await expect.poll(() => shape(page)).toBe("Chapter 1");
 });
 
+async function haul(page: Page, what: string, onto: string, at: number) {
+  const grip = page.getByRole("button", { name: `Move ${what}`, exact: true });
+  const target = page.getByRole("textbox", { name: `Section ${onto}` });
+  const from = (await grip.boundingBox())!;
+  const to = (await target.boundingBox())!;
+
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(to.x + 40, to.y + to.height * at, { steps: 10 });
+}
+
+test("dragging a section onto another nests it inside", async ({ page }) => {
+  await aNewProject(page, "Nesting by drag");
+  await openTheOutline(page);
+  await aBookOf(page, ["Kapitel 1", "Kapitel 2"]);
+  await page.keyboard.press("Escape");
+
+  await haul(page, "Kapitel 2", "Kapitel 1", 0.5);
+  await expect(page.locator(".row.nesting")).toHaveCount(1);
+  await page.mouse.up();
+
+  await expect
+    .poll(() => shape(page))
+    .toBe(["Kapitel 1", "  Kapitel 2"].join("\n"));
+});
+
+test("dragging a section to the edge of another puts it beside it", async ({
+  page,
+}) => {
+  await aNewProject(page, "Beside by drag");
+  await openTheOutline(page);
+  await aBookOf(page, ["Kapitel 1", "Kapitel 2", "Kapitel 3"]);
+  await page.keyboard.press("Escape");
+
+  await haul(page, "Kapitel 3", "Kapitel 1", 0.08);
+  await expect(page.locator(".row.above")).toHaveCount(1);
+  await page.mouse.up();
+
+  await expect
+    .poll(() => shape(page))
+    .toBe(["Kapitel 3", "Kapitel 1", "Kapitel 2"].join("\n"));
+});
+
+test("a section cannot be dragged inside itself", async ({ page }) => {
+  await aNewProject(page, "No swallowing");
+  await openTheOutline(page);
+  await aBookOf(page, ["Part One", "Chapter 1"]);
+  await page.keyboard.press("Tab");
+  await expect.poll(() => shape(page)).toContain("  Chapter 1");
+  await page.keyboard.press("Escape");
+
+  await haul(page, "Part One", "Chapter 1", 0.5);
+
+  await expect(
+    page.locator(".row.nesting, .row.above, .row.below"),
+    "a book cannot contain itself, so no landing may be offered",
+  ).toHaveCount(0);
+  await page.mouse.up();
+
+  await expect
+    .poll(() => shape(page))
+    .toBe(["Part One", "  Chapter 1"].join("\n"));
+});
+
 test("a piece can be dragged from the rail onto a section", async ({
   page,
 }) => {

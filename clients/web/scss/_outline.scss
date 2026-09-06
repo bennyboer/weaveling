@@ -33,6 +33,7 @@
   }
 
   .manuscript {
+    max-width: 58rem;
     padding: 1.8rem 2rem;
     overflow-y: auto;
   }
@@ -171,6 +172,7 @@
   }
 
   .title {
+    flex: 0 0 auto;
     field-sizing: content;
     min-width: 7rem;
     max-width: 100%;
