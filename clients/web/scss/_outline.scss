@@ -250,9 +250,18 @@
     min-width: 0;
     padding-left: 0.1rem;
     font-size: 0.92rem;
+    color: var(--muted);
+    text-decoration: none;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .leaf .name:hover,
+  .leaf .name:focus-visible {
+    color: var(--ink);
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 
   .leaf svg {

@@ -384,7 +384,7 @@ The one thing capture needs is care about *order*: capturing writes to `pieces` 
 
 ### Milestone 10 — The outline
 
-**Done, bar one link.**
+**Done.**
 
 **Goal:** manuscript order, as a view over the pool rather than a property of it.
 
@@ -400,7 +400,7 @@ Moves are shaped like an author's intent (*move*, *promote*, *demote*) rather th
 
 **Keyboard-first, which is why `Promote` and `Demote` are commands.** Enter adds a sibling, Tab demotes, Shift+Tab promotes, Escape stops editing. Each row also carries the three actions as buttons, **disabled when they would do nothing** — a section at the top cannot be promoted, the first of its siblings cannot be demoted, and the button says so rather than silently doing nothing. **Focus survives a promotion**, which is the property that makes the model work at all: Tab, keep typing, and the letters land in the row you just moved.
 
-**Sections reorder with Alt+Up and Alt+Down**, and with buttons that disable at the ends. That is the general `Move` command — which had been built all the way through the aggregate, service and REST surface and was reachable from nowhere, because the first client view never called it.
+**Sections drag, with three drop zones per row** — the middle nests the dragged section inside, the top and bottom edges insert it before or after as a sibling, and a section dragged into its own subtree is offered no landing at all rather than being refused after the fact. They also reorder with Alt+Up and Alt+Down, and with buttons that disable at the ends. That is the general `Move` command — which had been built all the way through the aggregate, service and REST surface and was reachable from nowhere, because the first client view never called it.
 
 **Pieces reach the book by dragging from a rail**, or by clicking a piece and then clicking a section — one gesture, one state, so the keyboard and touch are not stranded by the drag. The section under the pointer lights up as the landing.
 
@@ -418,7 +418,7 @@ This is the privileged view: export needs a linear order, so the outline is what
 
 **Not in M10:** undo/redo. The event stream makes it available whenever it is wanted, which is exactly why it does not need to be built alongside the outline.
 
-**Done when:** ~~a book-shaped outline of chapters and scenes, each openable in the editor, structural changes visible in the audit log, and rebuilding the projection from scratch reproducing the same order.~~ **All but one.** 143 browser tests, 633 unit and integration tests. *Openable in the editor* is the piece still missing: a leaf shows its piece's title, but does not yet link through to its passage. That is a link, and it is the first thing to add.
+**Done when:** ~~a book-shaped outline of chapters and scenes, each openable in the editor, structural changes visible in the audit log, and rebuilding the projection from scratch reproducing the same order.~~ **All four.** 147 browser tests, 633 unit and integration tests. A leaf is a real anchor into its passage, so it is ctrl-clickable and its link copyable — the same rule the board's cards follow.
 
 ### Milestone 10b — The outline's live channel
 

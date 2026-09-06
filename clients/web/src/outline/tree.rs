@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
+use leptos_router::components::A;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};
 
@@ -20,6 +21,7 @@ enum Landing {
 
 #[derive(Clone, Copy)]
 struct Held {
+    project: StoredValue<String>,
     carrying: RwSignal<Option<PieceId>>,
     hauling: RwSignal<Option<SectionId>>,
     landing: RwSignal<Option<Landing>>,
@@ -32,6 +34,7 @@ struct Held {
 #[component]
 pub fn TheOutline(project: String) -> impl IntoView {
     let held = Held {
+        project: StoredValue::new(project.clone()),
         carrying: RwSignal::new(None),
         hauling: RwSignal::new(None),
         landing: RwSignal::new(None),
@@ -129,7 +132,7 @@ fn branch(section: Section, held: Held) -> AnyView {
                 html::ul().class("twigs").child((
                     pieces
                         .iter()
-                        .map(|piece| leaf(piece.clone(), open))
+                        .map(|piece| leaf(piece.clone(), held))
                         .collect::<Vec<_>>(),
                     twigs(Some(under.clone()), held),
                 ))
@@ -439,15 +442,24 @@ fn landing_at(x: i32, y: i32, borne: &SectionId, held: Held) -> Option<Landing> 
     })
 }
 
-fn leaf(piece: PieceId, open: OpenOutline) -> impl IntoView {
+fn leaf(piece: PieceId, held: Held) -> impl IntoView {
+    let open = held.open;
     let shown = open.named(&piece);
     let taken = piece.clone();
+    let named = shown.clone();
+    let at = held
+        .project
+        .with_value(|project| route::piece(project, &piece, &shown));
 
     html::li()
         .class("leaf")
         .child(html::div().class("row").child((
             mark(Icon::Written),
-            html::span().class("name").child(shown.clone()),
+            view! {
+                <A href=at attr:class="name">
+                    {named}
+                </A>
+            },
             deed(
                 format!("Take {shown} out of the book"),
                 Icon::Remove,

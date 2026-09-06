@@ -238,6 +238,26 @@ test("a piece is placed from the tray and leaves it", async ({ page }) => {
   await expect(page.locator(".hollow")).toHaveCount(0);
 });
 
+test("a piece in the book opens for writing from the outline", async ({
+  page,
+}) => {
+  await aNewProject(page, "Opening");
+  await openThePool(page);
+  await capture(page, "The loom remembers");
+  await openTheOutline(page);
+  await aBookOf(page, ["Chapter 1"]);
+  await page.keyboard.press("Escape");
+  await place(page, "The loom remembers", "Chapter 1");
+
+  await page
+    .locator(".leaf")
+    .getByRole("link", { name: "The loom remembers" })
+    .click();
+
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page).toHaveURL(/\/pieces\/the-loom-remembers-piece_/);
+});
+
 test("a piece taken out of the book goes back to the tray", async ({
   page,
 }) => {
