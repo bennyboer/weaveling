@@ -2945,6 +2945,7 @@ dependencies = [
  "time",
  "wasm-bindgen",
  "weaveling-boards-contract",
+ "weaveling-outline-contract",
  "weaveling-passages-contract",
  "weaveling-pieces-contract",
  "weaveling-projects-contract",
@@ -3376,39 +3377,6 @@ dependencies = [
  "thiserror",
  "tracing",
  "weaveling-eventsourcing",
-]
-
-[[package]]
-name = "weaveling-spike-crdt"
-version = "0.1.0"
-dependencies = [
- "yrs",
-]
-
-[[package]]
-name = "weaveling-spike-editor"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "leptos",
- "wasm-bindgen",
- "weaveling-spike-crdt",
- "web-sys",
- "yrs",
-]
-
-[[package]]
-name = "weaveling-spike-sync"
-version = "0.1.0"
-dependencies = [
- "axum",
- "futures-util",
- "thiserror",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "weaveling-spike-crdt",
- "yrs",
 ]
 
 [[package]]

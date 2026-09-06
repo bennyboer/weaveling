@@ -384,7 +384,7 @@ The one thing capture needs is care about *order*: capturing writes to `pieces` 
 
 ### Milestone 10 — The outline
 
-**Next.**
+**Done, bar one link.**
 
 **Goal:** manuscript order, as a view over the pool rather than a property of it.
 
@@ -396,7 +396,21 @@ Moves are shaped like an author's intent (*move*, *promote*, *demote*) rather th
 
 **One projection subtlety worth remembering:** the attachment index has to wake on `SECTION_REMOVED` as well as attach and detach, because removing a section returns its pieces to the pool. Listening only to the two obvious events leaves `outlines_holding` claiming pieces the book no longer contains — and the discard cascade reads that index.
 
-**Still owed: the client view.**
+**The client view is a real tree, chosen from three drawn alternatives.** The first attempt drew every row as a bordered input, which made the whole view read as a form rather than a book, and offered a "put it here" button beside *every* section whenever a piece was picked up. Both were rejected on sight. The chosen direction draws elbow connectors and a vertical rule per level, foldable twisties, pieces as leaves, and chrome only on hover — the structure is the subject.
+
+**Keyboard-first, which is why `Promote` and `Demote` are commands.** Enter adds a sibling, Tab demotes, Shift+Tab promotes, Escape stops editing. Each row also carries the three actions as buttons, **disabled when they would do nothing** — a section at the top cannot be promoted, the first of its siblings cannot be demoted, and the button says so rather than silently doing nothing. **Focus survives a promotion**, which is the property that makes the model work at all: Tab, keep typing, and the letters land in the row you just moved.
+
+**Sections reorder with Alt+Up and Alt+Down**, and with buttons that disable at the ends. That is the general `Move` command — which had been built all the way through the aggregate, service and REST surface and was reachable from nowhere, because the first client view never called it.
+
+**Pieces reach the book by dragging from a rail**, or by clicking a piece and then clicking a section — one gesture, one state, so the keyboard and touch are not stranded by the drag. The section under the pointer lights up as the landing.
+
+**Folding is local and nothing else.** Not in the aggregate — [that was the rejected design's structural failure](./ARCHITECTURE.md#the-tree-is-a-view-not-the-model) — and deliberately not in awareness either, because nobody wants their outline folding itself to match a collaborator's. A test reloads the page to prove a fold was never written down.
+
+**The wordmark is the real logo**, served as a file and drawn with `mask-image` so it takes `var(--accent)` and follows the theme instead of carrying a hardcoded fill.
+
+**Icons are inline stroke SVG on a 24px grid**, not an icon font and not text arrows. The first version used literal `←` `→` `×` characters in the body font, which is why they looked thin and mismatched. An icon font would be a second face to self-host and licence-check, it flashes before it loads, and a screen reader can read a glyph as a letter.
+
+**An empty section says so** — a hollow mark and the word *empty* in the alarm colour, rather than the dashed red box the first attempt drew around every row. A book being planned is mostly holes; shouting about all of them is noise. Nothing refuses it, exactly as decided.
 
 This is the privileged view: export needs a linear order, so the outline is what "the manuscript" means. A piece may sit on the board and be absent from the outline — it simply is not in the book yet.
 
@@ -404,7 +418,7 @@ This is the privileged view: export needs a linear order, so the outline is what
 
 **Not in M10:** undo/redo. The event stream makes it available whenever it is wanted, which is exactly why it does not need to be built alongside the outline.
 
-**Done when:** a book-shaped outline of chapters and scenes, each openable in the editor, structural changes visible in the audit log, and rebuilding the projection from scratch reproducing the same order.
+**Done when:** ~~a book-shaped outline of chapters and scenes, each openable in the editor, structural changes visible in the audit log, and rebuilding the projection from scratch reproducing the same order.~~ **All but one.** 143 browser tests, 633 unit and integration tests. *Openable in the editor* is the piece still missing: a leaf shows its piece's title, but does not yet link through to its passage. That is a link, and it is the first thing to add.
 
 ### Milestone 10b — The outline's live channel
 

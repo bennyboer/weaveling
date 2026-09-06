@@ -1,7 +1,0 @@
-[package]
-name = "weaveling-spike-crdt"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-yrs = { workspace = true }

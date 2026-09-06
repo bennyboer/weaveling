@@ -4,19 +4,15 @@ members = [
     "clients/*",
     "libraries/*",
     "services/*",
-    "spikes/*",
     "features/*/contract",
     "features/*/core",
     "features/*/adapters/*",
     "features/*/tests",
     "features/*/wiring",
 ]
-exclude = ["spikes/logo"]
 default-members = [
     "libraries/*",
     "services/*",
-    "spikes/crdt",
-    "spikes/sync",
     "features/*/contract",
     "features/*/core",
     "features/*/adapters/*",
