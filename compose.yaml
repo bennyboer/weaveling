@@ -1,0 +1,21 @@
+name: weaveling
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: weaveling
+      POSTGRES_PASSWORD: weaveling
+      POSTGRES_DB: weaveling
+    ports:
+      - "5432:5432"
+    volumes:
+      - written:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U weaveling -d weaveling"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  written:

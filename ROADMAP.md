@@ -454,13 +454,21 @@ That also settles [the open question about the board's tray](./TODO.md) — it c
 
 ### Milestone 11 — The real store
 
+**Started.** The rig stands; the adapters do not.
+
 **Goal:** prove the abstractions were worth the trouble.
 
-**The database choice is reopened.** PostgreSQL was parked early; MongoDB is under consideration again. The decision belongs here, judged by the conformance suites rather than by preference, and it changes the outbox mechanics (`LISTEN/NOTIFY` versus change streams) without touching anything above a port.
+**The database is PostgreSQL, and MongoDB is closed rather than parked.** Three things decided it, none of them preference. A `unique (aggregate, kind, version)` index *is* optimistic concurrency, so `append` needs no read-then-write and no lock — Mongo needs a multi-document transaction, or a stream collapsed into one document, which caps a stream at 16MB and fights the range reads and pruning the port declares. The outbox insert has to share the event's transaction, and Mongo's multi-document transactions and change streams both require a replica set even single-node, so the guarantee [M8 deferred the broker for](#milestone-8--messaging-) would arrive with ceremony attached. And the shape of the data settles the rest: event payloads are JSON, which `jsonb` stores and indexes natively, but the *access pattern* is a strictly ordered append-only log read by version range, which is relational's home ground rather than a document store's. Mongo would win on sharding and on read models that drift; the catalogs here are `(id, project)` pairs.
+
+**Stored events get a shape of their own, per feature.** No `core` crate depends on serde — `PieceEvent`, `BoardEvent` and `OutlineEvent` are pure domain enums, 31 variants between them — and in-memory never had to care because it only clones. Deriving serde on the domain enums is the cheap answer and the wrong one: the enum's field names silently become the on-disk format, so a rename in `core` breaks every stored event with no version bump to trigger the patcher, which is exactly the failure [the abandoned implementation's never-once-run patcher](#milestone-7--event-sourcing-for-real-the-pool-of-pieces) predicts. So the SQL is written once against a raw row, and each feature supplies a codec to and from a stored shape it owns — the same shape `OutlineEventDTO` and `body()` already have for the broker, but total and reversible where publishing is lossy on purpose.
 
 **Build:** a second backend for every port that has one — `ProjectStore`, `PassageStore`, the event store — as modules behind an optional cargo feature, not sibling crates. CI must run `--all-features` or none of it is type-checked.
 
 **This is where storage representation finally gets decided,** and where the transaction tests that in-memory cannot express have to be written: rollback, connection failure mapping to `StoreError::Backend`, and the concurrency guard `apply` needs if `PassageStore` goes the snapshot route. The event store's `append` must be atomic across the version check, the append **and** the outbox insert — one transaction, invisible above the port.
+
+**The steps, each reviewable alone:** ~~the rig~~; the event store against its existing conformance suite; the outbox and its relay; `PassageStore` and the snapshot-versus-log choice; the catalogs and `ProjectStore`; wiring and CI.
+
+**The rig is done.** `compose.yaml` brings up PostgreSQL 18, `migrations/` holds the schema, and `libraries/scratch` hands every test its own schema — created, migrated, and dropped around it — so the suites still run in parallel and no test can see another's rows. A schema left behind by a killed test is swept an hour later by whichever test runs next. Database tests sit behind a `postgres` feature, so `cargo test --workspace` needs no Docker and `--all-features` runs everything: 638 tests without it, 642 with.
 
 **Done when:** the suites pass unchanged against the real store, and swapping backends is one line in one manifest.
 

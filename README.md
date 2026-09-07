@@ -106,7 +106,7 @@ Typesetting the finished weave is an **export function**, not a view. The in-ord
 
 ## How It's Built
 
-Weaveling is a browser-based client–server app: a Rust modular-monolith backend, event-sourcing for structure and CRDTs for prose (so editing is real-time collaborative *and* works offline). Which database backs it is deliberately still open. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full picture, and [ROADMAP.md](./ROADMAP.md) for what's actually being built right now.
+Weaveling is a browser-based client–server app: a Rust modular-monolith backend, event-sourcing for structure and CRDTs for prose (so editing is real-time collaborative *and* works offline), stored in PostgreSQL behind ports that do not know it is there. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full picture, and [ROADMAP.md](./ROADMAP.md) for what's actually being built right now.
 
 ## Getting Started
 
@@ -123,6 +123,12 @@ Weaveling is a browser-based client–server app: a Rust modular-monolith backen
 
   ```bash
   cd clients/web && npm install && npx playwright install chromium
+  ```
+
+- **Docker**, only for the tests that run against a real PostgreSQL. `cargo test` without them needs nothing:
+
+  ```bash
+  docker compose up -d
   ```
 
 ### Running it for development
@@ -165,6 +171,8 @@ npm test
 
 Playwright starts the API and Trunk if they aren't running and reuses them if they are, so this works whether or not you already have the dev servers up. The suite takes a few seconds.
 
+Each database test gets its own PostgreSQL schema, created and migrated on the spot and dropped afterwards, so the suite still runs in parallel and no test can see another's rows. A schema left behind by a killed test is swept up an hour later by whichever test runs next.
+
 Two things to know before writing more of these. Selectors are **role plus accessible name** only — never a CSS class or an index — so restyling can't break a test. And the API is in memory and shared for the whole run, so no test may assume an empty list; each one makes its own uniquely-named project.
 
 ### Common commands
@@ -172,7 +180,8 @@ Two things to know before writing more of these. Selectors are **role plus acces
 | Command | Does |
 |---|---|
 | `cargo build` | Builds the server-side crates. The web client is excluded from `default-members` — Trunk builds it, for a different target. |
-| `cargo test` | Runs the workspace test suite. |
+| `cargo test` | Runs the workspace test suite. Nothing here needs a database. |
+| `cargo test --workspace --all-features` | Adds every test that talks to a real PostgreSQL. Needs `docker compose up -d`. |
 | `cargo fmt --all` | Formats everything. |
 | `cargo clippy --workspace --all-targets` | Lints the server side. **Does not cover the client** — `--workspace` doesn't build for `wasm32`. |
 | `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` | Lints the client. Needed as a separate command, per the row above. |
