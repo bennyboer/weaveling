@@ -14,6 +14,7 @@ use crate::boards::open_board::OpenBoard;
 use crate::boards::viewport::{NEARER, Viewport};
 use crate::pieces::model::{Piece, PieceId};
 use crate::route;
+use crate::tray::laid_out;
 
 const DOTS: i64 = 20;
 
@@ -42,27 +43,41 @@ pub fn TheBoard(project: String) -> impl IntoView {
                 ))
             })
         },
-        corkboard(project, handles),
-        html::section().class("unpinned").child((
-            html::h2().child("Not on the board"),
-            move || {
-                (open.ready() && open.unpinned().is_empty()).then(|| {
-                    html::p()
-                        .class("empty")
-                        .child("Every piece is on the board.")
-                })
-            },
-            html::ul()
-                .class("waiting")
-                .attr("aria-label", "Pieces not on the board")
-                .child(move || {
-                    open.unpinned()
-                        .into_iter()
-                        .map(|piece| pinnable(piece, handles))
-                        .collect::<Vec<_>>()
-                }),
-        )),
+        laid_out(
+            corkboard(project, handles).into_any(),
+            kept(handles).into_any(),
+            move || open.unpinned().len(),
+        ),
     ))
+}
+
+fn kept(handles: Handles) -> impl IntoView {
+    let open = handles.open;
+
+    (
+        html::p()
+            .class("tally")
+            .child(move || format!("Not on the board \u{00b7} {}", open.unpinned().len())),
+        html::ul()
+            .class("waiting")
+            .attr("aria-label", "Pieces not on the board")
+            .child(move || {
+                open.unpinned()
+                    .into_iter()
+                    .map(|piece| pinnable(piece, handles))
+                    .collect::<Vec<_>>()
+            }),
+        move || {
+            (open.ready() && open.unpinned().is_empty()).then(|| {
+                html::p()
+                    .class("empty")
+                    .child("Every piece is on the board.")
+            })
+        },
+        html::p()
+            .class("how")
+            .child("Click a piece to pin it where there is room."),
+    )
 }
 
 fn corkboard(project: String, handles: Handles) -> impl IntoView {

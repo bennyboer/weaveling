@@ -368,7 +368,7 @@ The one thing capture needs is care about *order*: capturing writes to `pieces` 
 
 ### Milestone 9b — The board's live channel
 
-**Not next.** [M9a](#milestone-9a--the-shell) is, then M10; this sits here because it belongs to the board, not because of when it will be built.
+**Probably next**, now that [M10a](#milestone-10a--one-tray-in-one-place) has settled where the tray lives.
 
 **Goal:** two browsers on one board, seeing each other work.
 
@@ -422,7 +422,7 @@ This is the privileged view: export needs a linear order, so the outline is what
 
 ### Milestone 10a — One tray, in one place
 
-**Probably next.** Small, and it removes an inconsistency an author meets immediately.
+**Done.** Small, and it removed an inconsistency an author met immediately.
 
 **Goal:** the pieces waiting to be placed sit in the same place in every view.
 
@@ -432,7 +432,11 @@ That also settles [the open question about the board's tray](./TODO.md) — it c
 
 **Make it responsive at the same time**, because the answer differs by width. On a narrow screen neither a bottom strip nor a side rail works: the tray wants to be a **drawer** — pulled in from the bottom or the right, over the surface rather than beside it, dismissed when you are done placing. That is the first piece of [M14](#milestone-14--touch-and-small-screens) worth building early, because it is the one the two views must agree on.
 
-**Done when:** the board and the outline present waiting pieces the same way; the board keeps its full height when nothing is waiting; and at a phone width the tray is a drawer in both.
+**Done when:** ~~the board and the outline present waiting pieces the same way; the board keeps its full height when nothing is waiting; and at a phone width the tray is a drawer in both.~~ **All three.** 152 browser tests, 633 unit and integration tests.
+
+**One tray, defined once.** `.tray` lives in its own stylesheet and `laid_out` in its own module, so the grid, the toggle and the drawer are written down once and the two views cannot drift apart again — which is exactly how they drifted in the first place. Each view passes only what it keeps in the tray and how many pieces are waiting.
+
+**The breakpoint is 60rem**, and the switch is a real change of kind rather than a narrower rail: above it the tray is a grid column beside the surface, below it the surface takes the full width and the tray becomes an overlay that slides in from the right. The toggle carries the count, so an author on a phone can see there is something waiting without opening anything.
 
 ### Milestone 10b — The outline's live channel
 

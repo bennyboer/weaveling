@@ -294,33 +294,4 @@ $grip: 7px;
     }
   }
 
-  .unpinned {
-    flex-shrink: 0;
-    max-height: 30vh;
-    overflow-y: auto;
-    padding: 0.85rem 1.75rem 1rem;
-    border-top: 1px solid var(--line);
-    background: var(--paper);
-
-    h2 {
-      font: 500 0.8rem/1 var(--reading);
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      margin: 0 0 0.7rem;
-      color: var(--muted);
-    }
-
-    .empty {
-      margin: 0;
-    }
-  }
-
-  .waiting {
-    list-style: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin: 0;
-    padding: 0;
-  }
 }

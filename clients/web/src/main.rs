@@ -8,6 +8,7 @@ mod projects;
 mod route;
 mod shell;
 mod theme;
+mod tray;
 
 use leptos::prelude::*;
 

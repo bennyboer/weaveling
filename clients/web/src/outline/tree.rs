@@ -11,6 +11,7 @@ use crate::outline::model::{Section, SectionId};
 use crate::outline::open_outline::{OpenOutline, Urge};
 use crate::pieces::model::{Piece, PieceId};
 use crate::route;
+use crate::tray::laid_out;
 
 #[derive(Clone, PartialEq, Eq)]
 enum Landing {
@@ -59,30 +60,34 @@ pub fn TheOutline(project: String) -> impl IntoView {
                 ))
             })
         },
-        html::div().class("laid-out").child((
-            html::div().class("manuscript").child((
-                html::p().class("tally").child("Manuscript"),
-                html::ul()
-                    .class("branches")
-                    .attr("aria-label", "The manuscript")
-                    .child(move || twigs(None, held)),
-                move || {
-                    (open.ready() && open.sections().is_empty()).then(|| {
-                        html::p()
-                            .class("empty")
-                            .child("Nothing in the book yet. Add a section to begin.")
-                    })
-                },
-                html::button()
-                    .r#type("button")
-                    .class("begin")
-                    .on(ev::click, move |_| {
-                        open.add(None, last_top(open), String::new())
-                    })
-                    .child((mark(Icon::Plus), "Add a section")),
-            )),
-            rail(held),
-        )),
+        laid_out(
+            html::div()
+                .class("manuscript")
+                .child((
+                    html::p().class("tally").child("Manuscript"),
+                    html::ul()
+                        .class("branches")
+                        .attr("aria-label", "The manuscript")
+                        .child(move || twigs(None, held)),
+                    move || {
+                        (open.ready() && open.sections().is_empty()).then(|| {
+                            html::p()
+                                .class("empty")
+                                .child("Nothing in the book yet. Add a section to begin.")
+                        })
+                    },
+                    html::button()
+                        .r#type("button")
+                        .class("begin")
+                        .on(ev::click, move |_| {
+                            open.add(None, last_top(open), String::new())
+                        })
+                        .child((mark(Icon::Plus), "Add a section")),
+                ))
+                .into_any(),
+            kept(held).into_any(),
+            move || open.unplaced().len(),
+        ),
     ))
 }
 
@@ -466,10 +471,10 @@ fn leaf(piece: PieceId, held: Held) -> impl IntoView {
         )))
 }
 
-fn rail(held: Held) -> impl IntoView {
+fn kept(held: Held) -> impl IntoView {
     let open = held.open;
 
-    html::aside().class("unplaced").child((
+    (
         html::p()
             .class("tally")
             .child(move || format!("Not in the book \u{00b7} {}", open.unplaced().len())),
@@ -492,7 +497,7 @@ fn rail(held: Held) -> impl IntoView {
         html::p()
             .class("how")
             .child("Drag a piece onto a section, or click it and then click where it goes."),
-    ))
+    )
 }
 
 fn carried(piece: Piece, held: Held) -> impl IntoView {

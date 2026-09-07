@@ -23,6 +23,7 @@ const laidOut = (page: import("@playwright/test").Page) =>
       masthead: box(".masthead"),
       corkboard: box(".corkboard"),
       column: box(".column"),
+      tray: box(".tray"),
     };
   });
 
@@ -34,8 +35,8 @@ test("the board fills the window under the masthead", async ({ page }) => {
   expect(seen.masthead!.width).toBe(seen.window.width);
   expect(seen.masthead!.top).toBe(0);
   expect(seen.corkboard!.left).toBe(0);
-  expect(seen.corkboard!.width).toBe(seen.window.width);
   expect(seen.corkboard!.top).toBe(seen.masthead!.height);
+  expect(seen.corkboard!.width + seen.tray!.width).toBe(seen.window.width);
   expect(seen.scrollHeight).toBe(seen.window.height);
 });
 

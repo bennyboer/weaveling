@@ -1,0 +1,140 @@
+.laid-out {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 17rem;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tray {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 1.8rem 1.3rem;
+  border-left: 1px solid var(--line);
+  background: var(--paper);
+  overflow-y: auto;
+
+  .tally {
+    margin: 0;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .waiting {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0;
+    padding: 0;
+  }
+
+  .waiting button {
+    width: 100%;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--raised);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.88rem;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .waiting button:hover {
+    border-color: var(--muted);
+  }
+
+  .waiting .carrying {
+    border-color: var(--accent);
+    cursor: grabbing;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+  }
+
+  .empty {
+    margin: 0;
+    font-size: 0.88rem;
+  }
+
+  .how {
+    margin: auto 0 0;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    color: var(--muted);
+    opacity: 0.75;
+  }
+}
+
+.tray-toggle {
+  display: none;
+}
+
+@media (width <= 60rem) {
+  .laid-out {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tray-toggle {
+    position: absolute;
+    right: 0.6rem;
+    top: 0.6rem;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.35rem 0.7rem;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--raised);
+    color: var(--ink);
+    font: inherit;
+    font-size: 0.85rem;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgb(0 0 0 / 32%);
+  }
+
+  .tray {
+    position: absolute;
+    inset: 0 0 0 auto;
+    z-index: 4;
+    width: min(20rem, 85vw);
+    transform: translateX(101%);
+    transition: transform 160ms ease-out;
+  }
+
+  .tray.pulled-out {
+    transform: translateX(0);
+    box-shadow: -8px 0 24px rgb(0 0 0 / 35%);
+  }
+
+  .tray .shut {
+    position: absolute;
+    right: 0.6rem;
+    top: 0.6rem;
+    display: grid;
+    place-items: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .tray .shut:hover {
+    color: var(--ink);
+  }
+}
+
+@media (width > 60rem) {
+  .tray .shut {
+    display: none;
+  }
+}
