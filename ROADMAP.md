@@ -420,6 +420,20 @@ This is the privileged view: export needs a linear order, so the outline is what
 
 **Done when:** ~~a book-shaped outline of chapters and scenes, each openable in the editor, structural changes visible in the audit log, and rebuilding the projection from scratch reproducing the same order.~~ **All four.** 147 browser tests, 633 unit and integration tests. A leaf is a real anchor into its passage, so it is ctrl-clickable and its link copyable — the same rule the board's cards follow.
 
+### Milestone 10a — One tray, in one place
+
+**Probably next.** Small, and it removes an inconsistency an author meets immediately.
+
+**Goal:** the pieces waiting to be placed sit in the same place in every view.
+
+The board grew its waiting strip along the **bottom**; the outline grew its rail on the **right**. Both hold the same thing — pieces in the pool that this view has not arranged yet — and an author moving between the two has to look somewhere different for it each time. The outline's rail is the better of the two: a vertical list reads a column of titles far better than a wrapping row of chips does, and it leaves the working surface its full height. So **the board's tray moves to the right** to match.
+
+That also settles [the open question about the board's tray](./TODO.md) — it currently spends 80px of the working surface saying "Every piece is on the board", and a right rail can simply be narrow and quiet when empty rather than being a strip that has to justify its height.
+
+**Make it responsive at the same time**, because the answer differs by width. On a narrow screen neither a bottom strip nor a side rail works: the tray wants to be a **drawer** — pulled in from the bottom or the right, over the surface rather than beside it, dismissed when you are done placing. That is the first piece of [M14](#milestone-14--touch-and-small-screens) worth building early, because it is the one the two views must agree on.
+
+**Done when:** the board and the outline present waiting pieces the same way; the board keeps its full height when nothing is waiting; and at a phone width the tray is a drawer in both.
+
 ### Milestone 10b — The outline's live channel
 
 **After [M9b](#milestone-9b--the-boards-live-channel), deliberately.** The board's channel is the harder one to design — free placement, drags emitting thousands of frames a second — and whatever it settles about transport, awareness and a second live surface, the outline reuses rather than re-decides.

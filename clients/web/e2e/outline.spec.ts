@@ -386,6 +386,42 @@ test("a piece can be dragged from the rail onto a section", async ({
   await expect(waiting(page).getByRole("button")).toHaveCount(0);
 });
 
+test("the connector under the last child stops at its own row", async ({
+  page,
+}) => {
+  await aNewProject(page, "Connectors");
+  await openTheOutline(page);
+  await aBookOf(page, ["Part One", "Chapter 1", "Chapter 2"]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Demote Chapter 1" }).click();
+  await expect.poll(() => shape(page)).toContain("  Chapter 1");
+  await page.getByRole("button", { name: "Demote Chapter 2" }).click();
+  await expect.poll(() => shape(page)).toContain("  Chapter 2");
+
+  const stems = await page.evaluate(() =>
+    [...document.querySelectorAll(".twigs > .branch")].map((branch) => ({
+      stem: Math.round(parseFloat(getComputedStyle(branch, "::before").height)),
+      row: Math.round(branch.getBoundingClientRect().height),
+      last: branch === branch.parentElement!.lastElementChild,
+    })),
+  );
+
+  expect(stems.length).toBe(2);
+  for (const { stem, row, last } of stems) {
+    if (last) {
+      expect(
+        stem,
+        "the last child must not trail a line below itself",
+      ).toBeLessThan(row);
+    } else {
+      expect(
+        stem,
+        "every other child must carry the line down to the next",
+      ).toBe(row);
+    }
+  }
+});
+
 test("folding a section hides what is inside it without changing the book", async ({
   page,
 }) => {

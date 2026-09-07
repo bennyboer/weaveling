@@ -117,13 +117,11 @@ fn twigs(parent: Option<SectionId>, held: Held) -> AnyView {
 fn branch(section: Section, held: Held) -> AnyView {
     let open = held.open;
     let id = section.id.clone();
-    let borne = id.clone();
     let folding = id.clone();
     let under = id.clone();
 
     html::li()
         .class("branch")
-        .class(("last", move || last_of(&borne, held)))
         .child((row(section, held), move || {
             let shut = held.folded.with(|shut| shut.contains(&folding));
             let pieces = open.pieces_in(&under);
@@ -557,20 +555,6 @@ fn twigs_under(section: &SectionId, held: Held) -> Vec<Section> {
         .into_iter()
         .filter(|held| held.parent.as_ref() == Some(section))
         .collect()
-}
-
-fn last_of(section: &SectionId, held: Held) -> bool {
-    let sections = held.open.sections();
-    let parent = sections
-        .iter()
-        .find(|held| &held.id == section)
-        .and_then(|held| held.parent.clone());
-
-    sections
-        .iter()
-        .rfind(|held| held.parent == parent)
-        .map(|held| &held.id)
-        == Some(section)
 }
 
 fn urging(urge: Urge, section: SectionId, open: OpenOutline) -> impl IntoView {
