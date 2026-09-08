@@ -139,6 +139,46 @@ pub async fn a_refused_append_leaves_the_stream_untouched(store: &impl EventStor
     );
 }
 
+pub async fn a_pruned_stream_cannot_be_started_over(store: &impl EventStore<SampleEvent>) {
+    let aggregate = AggregateId::from("sample_looks_empty");
+    given_a_stream(
+        store,
+        &aggregate,
+        vec![a_creation(), SampleEvent::Deleted, a_snapshot()],
+    )
+    .await;
+
+    store
+        .prune_through(&aggregate, SAMPLE, Version::of(2))
+        .await
+        .expect("pruning should succeed");
+
+    let refused = store
+        .append(
+            &aggregate,
+            SAMPLE,
+            Version::ZERO,
+            &[at(&aggregate, 1, a_creation())],
+        )
+        .await;
+
+    assert!(
+        matches!(refused, Err(StoreError::Outdated { .. })),
+        "a stream collapsed to a snapshot has a history, however little of it is left: {refused:?}"
+    );
+
+    let found = store
+        .read_from(&aggregate, SAMPLE, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+
+    assert_eq!(
+        found.len(),
+        1,
+        "starting over would have written a second version 1 under the snapshot"
+    );
+}
+
 pub async fn one_append_may_carry_several_events(store: &impl EventStore<SampleEvent>) {
     let aggregate = AggregateId::from("sample_batch");
 
@@ -367,31 +407,36 @@ pub async fn appending_after_pruning_continues_the_version_count(
 
 #[macro_export]
 macro_rules! conformance_case {
-    ($make_store:expr, $case:ident) => {
+    ($workbench:ty, $case:ident) => {
         #[tokio::test]
         async fn $case() {
-            $crate::testing::suite::$case(&$make_store).await;
+            use $crate::testing::Workbench;
+
+            let bench = <$workbench>::setup().await;
+            $crate::testing::suite::$case(bench.store()).await;
+            bench.cleanup().await;
         }
     };
 }
 
 #[macro_export]
 macro_rules! conformance_tests {
-    ($make_store:expr) => {
-        $crate::conformance_case!($make_store, an_empty_stream_is_at_version_zero);
-        $crate::conformance_case!($make_store, appended_events_read_back_in_order);
-        $crate::conformance_case!($make_store, appending_at_a_stale_version_is_refused);
-        $crate::conformance_case!($make_store, a_refused_append_leaves_the_stream_untouched);
-        $crate::conformance_case!($make_store, one_append_may_carry_several_events);
-        $crate::conformance_case!($make_store, streams_of_different_aggregates_do_not_mix);
-        $crate::conformance_case!($make_store, reading_from_a_version_skips_what_came_before);
-        $crate::conformance_case!($make_store, reading_through_a_version_stops_there);
-        $crate::conformance_case!($make_store, a_stream_without_snapshots_has_none);
-        $crate::conformance_case!($make_store, the_latest_snapshot_is_the_newest_one);
-        $crate::conformance_case!($make_store, a_snapshot_can_be_found_as_of_an_older_version);
-        $crate::conformance_case!($make_store, pruning_discards_events_a_snapshot_replaced);
+    ($workbench:ty) => {
+        $crate::conformance_case!($workbench, an_empty_stream_is_at_version_zero);
+        $crate::conformance_case!($workbench, appended_events_read_back_in_order);
+        $crate::conformance_case!($workbench, appending_at_a_stale_version_is_refused);
+        $crate::conformance_case!($workbench, a_refused_append_leaves_the_stream_untouched);
+        $crate::conformance_case!($workbench, one_append_may_carry_several_events);
+        $crate::conformance_case!($workbench, a_pruned_stream_cannot_be_started_over);
+        $crate::conformance_case!($workbench, streams_of_different_aggregates_do_not_mix);
+        $crate::conformance_case!($workbench, reading_from_a_version_skips_what_came_before);
+        $crate::conformance_case!($workbench, reading_through_a_version_stops_there);
+        $crate::conformance_case!($workbench, a_stream_without_snapshots_has_none);
+        $crate::conformance_case!($workbench, the_latest_snapshot_is_the_newest_one);
+        $crate::conformance_case!($workbench, a_snapshot_can_be_found_as_of_an_older_version);
+        $crate::conformance_case!($workbench, pruning_discards_events_a_snapshot_replaced);
         $crate::conformance_case!(
-            $make_store,
+            $workbench,
             appending_after_pruning_continues_the_version_count
         );
     };

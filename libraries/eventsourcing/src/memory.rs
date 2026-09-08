@@ -155,7 +155,25 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::testing::Workbench;
     use crate::testing::sample::SampleEvent;
 
-    crate::conformance_tests!(InMemoryEventStore::<SampleEvent>::new());
+    struct InMemory(InMemoryEventStore<SampleEvent>);
+
+    #[async_trait]
+    impl Workbench for InMemory {
+        type Store = InMemoryEventStore<SampleEvent>;
+
+        async fn setup() -> Self {
+            Self(InMemoryEventStore::new())
+        }
+
+        fn store(&self) -> &Self::Store {
+            &self.0
+        }
+
+        async fn cleanup(self) {}
+    }
+
+    crate::conformance_tests!(InMemory);
 }

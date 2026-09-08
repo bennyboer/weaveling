@@ -131,6 +131,8 @@ Weaveling is a browser-based client–server app: a Rust modular-monolith backen
   docker compose up -d
   ```
 
+  First start creates one database per feature, reading the list from `features/` rather than repeating it. PostgreSQL only runs its init scripts on an empty data directory, so a feature added later will not get one this way — `docker compose down -v` and up again, until the API takes over creating them at startup.
+
 ### Running it for development
 
 Two processes, two terminals.
@@ -171,7 +173,7 @@ npm test
 
 Playwright starts the API and Trunk if they aren't running and reuses them if they are, so this works whether or not you already have the dev servers up. The suite takes a few seconds.
 
-Each database test gets its own PostgreSQL schema, created and migrated on the spot and dropped afterwards, so the suite still runs in parallel and no test can see another's rows. A schema left behind by a killed test is swept up an hour later by whichever test runs next.
+Each feature keeps its data in [a database of its own](./ARCHITECTURE.md#dependency-rules), so a database test gets one throwaway PostgreSQL schema per feature, created on the spot and dropped afterwards. The suite still runs in parallel and no test can see another's rows; a schema left behind by a killed test is swept up an hour later by whichever test runs next.
 
 Two things to know before writing more of these. Selectors are **role plus accessible name** only — never a CSS class or an index — so restyling can't break a test. And the API is in memory and shared for the whole run, so no test may assume an empty list; each one makes its own uniquely-named project.
 
@@ -192,6 +194,8 @@ Two things to know before writing more of these. Selectors are **role plus acces
 ### Layout
 
 A Cargo workspace: `clients/`, `services/`, `features/`, `libraries/`. Each feature is an onion — a dependency-free `core`, wrapped in a ring of adapter crates, plus a WASM-safe `contract` crate shared with the client. The rules for what may depend on what are in [ARCHITECTURE.md](./ARCHITECTURE.md#repository-structure).
+
+One crate in `libraries/` ships with nothing: `weaveling-test-harness` is a dev-dependency everywhere it appears and is never linked into a binary. It gives a test a `PostgresFixture` handing out a throwaway database namespace per feature, and it is the only crate there that exists solely for the suite.
 
 ## Status
 

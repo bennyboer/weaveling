@@ -3485,10 +3485,14 @@ name = "weaveling-eventsourcing"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
+ "serde_json",
+ "sqlx",
  "thiserror",
  "time",
  "tokio",
  "weaveling-clock",
+ "weaveling-test-harness",
 ]
 
 [[package]]
@@ -3857,16 +3861,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "weaveling-scratch"
-version = "0.1.0"
-dependencies = [
- "sqlx",
- "time",
- "tokio",
- "uuid",
-]
-
-[[package]]
 name = "weaveling-service-api"
 version = "0.1.0"
 dependencies = [
@@ -3894,6 +3888,16 @@ dependencies = [
  "thiserror",
  "tracing",
  "weaveling-eventsourcing",
+]
+
+[[package]]
+name = "weaveling-test-harness"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "time",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
