@@ -23,7 +23,7 @@ struct OnPostgres {
 }
 
 async fn ready_for(feature: &str, fixture: &PostgresFixture) -> PgPool {
-    let pool = fixture.namespace_for(feature).await;
+    let pool = fixture.create_schema(feature).await;
     crate::postgres::migrations()
         .run(&pool)
         .await

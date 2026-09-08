@@ -32,7 +32,7 @@ impl PostgresFixture {
         }
     }
 
-    pub async fn namespace_for(&self, feature: &str) -> PgPool {
+    pub async fn create_schema(&self, feature: &str) -> PgPool {
         let schema = self.schema_of(feature);
         let base = connect(1).await;
 

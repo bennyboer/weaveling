@@ -40,16 +40,16 @@ async fn tables_in(pool: &PgPool, schema: &str) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn a_feature_is_handed_an_empty_place_of_its_own() {
+async fn a_feature_is_handed_an_empty_schema_of_its_own() {
     let fixture = PostgresFixture::setup().await;
 
-    let pool = fixture.namespace_for("outline").await;
+    let pool = fixture.create_schema("outline").await;
 
     assert!(
         tables_in(&pool, &fixture.schema_of("outline"))
             .await
             .is_empty(),
-        "a fixture namespace arrives empty — what goes in it is the caller's own schema"
+        "a fixture schema arrives empty — what goes in it is the caller's own schema"
     );
     fixture.cleanup().await;
 }
@@ -57,8 +57,8 @@ async fn a_feature_is_handed_an_empty_place_of_its_own() {
 #[tokio::test]
 async fn two_features_of_one_fixture_cannot_reach_each_other() {
     let fixture = PostgresFixture::setup().await;
-    let outline = fixture.namespace_for("outline").await;
-    let pieces = fixture.namespace_for("pieces").await;
+    let outline = fixture.create_schema("outline").await;
+    let pieces = fixture.create_schema("pieces").await;
 
     a_table_of_notes(&outline).await;
     a_table_of_notes(&pieces).await;
@@ -77,8 +77,8 @@ async fn two_features_of_one_fixture_cannot_reach_each_other() {
 async fn nothing_written_in_one_fixture_is_visible_in_another() {
     let mine = PostgresFixture::setup().await;
     let yours = PostgresFixture::setup().await;
-    let ours = mine.namespace_for("outline").await;
-    let theirs = yours.namespace_for("outline").await;
+    let ours = mine.create_schema("outline").await;
+    let theirs = yours.create_schema("outline").await;
 
     a_table_of_notes(&ours).await;
     a_table_of_notes(&theirs).await;
@@ -95,15 +95,15 @@ async fn nothing_written_in_one_fixture_is_visible_in_another() {
 }
 
 #[tokio::test]
-async fn a_cleaned_up_fixture_takes_every_namespace_it_made_with_it() {
+async fn a_cleaned_up_fixture_takes_every_schema_it_made_with_it() {
     let fixture = PostgresFixture::setup().await;
-    let outline = fixture.namespace_for("outline").await;
-    let _pieces = fixture.namespace_for("pieces").await;
+    let outline = fixture.create_schema("outline").await;
+    let _pieces = fixture.create_schema("pieces").await;
     let named = [fixture.schema_of("outline"), fixture.schema_of("pieces")];
 
     a_table_of_notes(&outline).await;
     let looking = PostgresFixture::setup().await;
-    let elsewhere = looking.namespace_for("watching").await;
+    let elsewhere = looking.create_schema("watching").await;
 
     fixture.cleanup().await;
 
@@ -118,9 +118,9 @@ async fn a_cleaned_up_fixture_takes_every_namespace_it_made_with_it() {
 }
 
 #[tokio::test]
-async fn a_namespace_keeps_nothing_in_public() {
+async fn a_schema_keeps_nothing_in_public() {
     let fixture = PostgresFixture::setup().await;
-    let pool = fixture.namespace_for("outline").await;
+    let pool = fixture.create_schema("outline").await;
 
     a_table_of_notes(&pool).await;
 
