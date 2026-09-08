@@ -5,10 +5,16 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+sqlx = { workspace = true, optional = true }
 
 passages-core = { version = "0.1.0", path = "../../core", package = "weaveling-passages-core" }
 
+[features]
+postgres = ["dep:sqlx"]
+
 [dev-dependencies]
 time = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 yrs = { workspace = true }
+
+test-harness = { version = "0.1.0", path = "../../../../libraries/test-harness", package = "weaveling-test-harness" }

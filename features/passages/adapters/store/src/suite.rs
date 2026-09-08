@@ -2,6 +2,17 @@ use passages_core::{FRAGMENT, Passage, PassageId, PassageStore, StoreError};
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
+#[async_trait::async_trait]
+pub trait Workbench: Sized {
+    type Store: PassageStore;
+
+    async fn setup() -> Self;
+
+    fn store(&self) -> &Self::Store;
+
+    async fn cleanup(self);
+}
+
 pub fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
@@ -232,37 +243,41 @@ pub async fn delete_missing_passage_is_not_found(store: &impl PassageStore) {
 }
 
 macro_rules! conformance_case {
-    ($make_store:expr, $case:ident) => {
+    ($workbench:ty, $case:ident) => {
         #[tokio::test]
         async fn $case() {
-            $crate::suite::$case(&$make_store).await;
+            use $crate::suite::Workbench;
+
+            let bench = <$workbench>::setup().await;
+            $crate::suite::$case(bench.store()).await;
+            bench.cleanup().await;
         }
     };
 }
 
 macro_rules! conformance_tests {
-    ($make_store:expr) => {
-        $crate::suite::conformance_case!($make_store, create_then_load_returns_the_prose);
-        $crate::suite::conformance_case!($make_store, an_empty_passage_can_be_stored);
-        $crate::suite::conformance_case!($make_store, load_missing_passage_is_not_found);
-        $crate::suite::conformance_case!($make_store, create_rejects_a_duplicate_id);
+    ($workbench:ty) => {
+        $crate::suite::conformance_case!($workbench, create_then_load_returns_the_prose);
+        $crate::suite::conformance_case!($workbench, an_empty_passage_can_be_stored);
+        $crate::suite::conformance_case!($workbench, load_missing_passage_is_not_found);
+        $crate::suite::conformance_case!($workbench, create_rejects_a_duplicate_id);
         $crate::suite::conformance_case!(
-            $make_store,
+            $workbench,
             a_rejected_create_leaves_the_stored_passage_untouched
         );
-        $crate::suite::conformance_case!($make_store, absorb_missing_passage_is_not_found);
-        $crate::suite::conformance_case!($make_store, absorbed_updates_are_visible_on_load);
+        $crate::suite::conformance_case!($workbench, absorb_missing_passage_is_not_found);
+        $crate::suite::conformance_case!($workbench, absorbed_updates_are_visible_on_load);
         $crate::suite::conformance_case!(
-            $make_store,
+            $workbench,
             absorbing_the_same_update_twice_changes_nothing
         );
-        $crate::suite::conformance_case!($make_store, updates_absorbed_in_either_order_converge);
+        $crate::suite::conformance_case!($workbench, updates_absorbed_in_either_order_converge);
         $crate::suite::conformance_case!(
-            $make_store,
+            $workbench,
             an_unusable_update_is_refused_and_changes_nothing
         );
-        $crate::suite::conformance_case!($make_store, delete_removes_the_passage);
-        $crate::suite::conformance_case!($make_store, delete_missing_passage_is_not_found);
+        $crate::suite::conformance_case!($workbench, delete_removes_the_passage);
+        $crate::suite::conformance_case!($workbench, delete_missing_passage_is_not_found);
     };
 }
 

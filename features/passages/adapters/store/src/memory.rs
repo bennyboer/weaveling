@@ -78,6 +78,24 @@ impl PassageStore for InMemoryPassageStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::suite::Workbench;
 
-    crate::suite::conformance_tests!(InMemoryPassageStore::new());
+    struct InMemory(InMemoryPassageStore);
+
+    #[async_trait]
+    impl Workbench for InMemory {
+        type Store = InMemoryPassageStore;
+
+        async fn setup() -> Self {
+            Self(InMemoryPassageStore::new())
+        }
+
+        fn store(&self) -> &Self::Store {
+            &self.0
+        }
+
+        async fn cleanup(self) {}
+    }
+
+    crate::suite::conformance_tests!(InMemory);
 }
