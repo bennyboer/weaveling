@@ -33,7 +33,7 @@ where
             return Ok(());
         }
 
-        let mut writing = self
+        let mut transaction = self
             .pool
             .begin()
             .await
@@ -42,7 +42,7 @@ where
         let head: i64 = sqlx::query_scalar(HEAD)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
-            .fetch_one(&mut *writing)
+            .fetch_one(&mut *transaction)
             .await
             .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;
 
@@ -51,11 +51,13 @@ where
         }
 
         for happened in events {
-            self.insert(&mut writing, aggregate, kind, expected, happened)
+            self.insert(&mut transaction, aggregate, kind, expected, happened)
+                .await?;
+            self.announce(&mut transaction, aggregate, kind, happened)
                 .await?;
         }
 
-        writing
+        transaction
             .commit()
             .await
             .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))
@@ -63,7 +65,7 @@ where
 
     async fn insert(
         &self,
-        writing: &mut Transaction<'_, Postgres>,
+        transaction: &mut Transaction<'_, Postgres>,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
@@ -79,7 +81,7 @@ where
             .bind(agent::encode(&happened.metadata.agent))
             .bind(happened.metadata.occurred_at)
             .bind(happened.metadata.is_snapshot)
-            .execute(&mut **writing)
+            .execute(&mut **transaction)
             .await
             .map_err(|failure| match is_unique_violation(&failure) {
                 true => self.outdated(aggregate, kind, expected),

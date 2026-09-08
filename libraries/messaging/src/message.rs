@@ -33,6 +33,10 @@ impl MessageId {
         )))
     }
 
+    pub fn of(known: Uuid) -> Self {
+        Self(known)
+    }
+
     pub fn as_uuid(self) -> Uuid {
         self.0
     }

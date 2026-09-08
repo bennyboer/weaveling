@@ -173,6 +173,8 @@ npm test
 
 Playwright starts the API and Trunk if they aren't running and reuses them if they are, so this works whether or not you already have the dev servers up. The suite takes a few seconds.
 
+**Editing a migration needs a nudge.** `sqlx::migrate!` bakes the SQL into the binary at compile time and, on stable Rust, cannot tell cargo that the `.sql` files are build inputs — so changing one alone may not trigger a rebuild, and the old schema stays in the binary. Touch any `.rs` in the crate, or run `cargo clean -p weaveling-eventsourcing`. A test asserts the expected indexes exist, so a migration that failed to land fails the suite rather than going unnoticed.
+
 Each feature keeps its data in [a database of its own](./ARCHITECTURE.md#dependency-rules), so a database test gets one throwaway PostgreSQL schema per feature, created on the spot and dropped afterwards. The suite still runs in parallel and no test can see another's rows; a schema left behind by a killed test is swept up an hour later by whichever test runs next.
 
 Two things to know before writing more of these. Selectors are **role plus accessible name** only — never a CSS class or an index — so restyling can't break a test. And the API is in memory and shared for the whole run, so no test may assume an empty list; each one makes its own uniquely-named project.

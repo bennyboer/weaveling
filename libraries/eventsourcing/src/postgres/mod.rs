@@ -1,5 +1,7 @@
 mod agent;
+mod announcing;
 mod codec;
+mod outbox;
 mod reading;
 mod rows;
 mod schema;
@@ -7,11 +9,15 @@ mod snapshots;
 mod writing;
 
 #[cfg(test)]
+mod outbox_tests;
+#[cfg(test)]
 mod sample;
 #[cfg(test)]
 mod tests;
 
+pub use announcing::MessageMapping;
 pub use codec::Codec;
+pub use outbox::{CLAIM_FOR, Delivered, KEPT_FOR, OutboxError, PostgresOutbox};
 pub use schema::migrations;
 
 use async_trait::async_trait;
@@ -25,11 +31,16 @@ use crate::version::Version;
 pub struct PostgresEventStore<E> {
     pool: PgPool,
     codec: Codec<E>,
+    message_for: MessageMapping<E>,
 }
 
 impl<E> PostgresEventStore<E> {
-    pub fn new(pool: PgPool, codec: Codec<E>) -> Self {
-        Self { pool, codec }
+    pub fn new(pool: PgPool, codec: Codec<E>, message_for: MessageMapping<E>) -> Self {
+        Self {
+            pool,
+            codec,
+            message_for,
+        }
     }
 
     fn backend_error(

@@ -20,6 +20,9 @@ CREATE TABLE outbox (
     aggregate       TEXT        NOT NULL,
     kind            TEXT        NOT NULL,
     version         BIGINT      NOT NULL,
+    message_id      UUID        NOT NULL,
+    conversation    UUID        NOT NULL,
+    caused_by       UUID,
     routing_key     TEXT        NOT NULL,
     payload         JSONB       NOT NULL,
     occurred_at     TIMESTAMPTZ NOT NULL,
@@ -29,3 +32,4 @@ CREATE TABLE outbox (
 );
 
 CREATE INDEX outbox_waiting ON outbox (entry) WHERE published_at IS NULL;
+CREATE INDEX outbox_published ON outbox (published_at) WHERE published_at IS NOT NULL;

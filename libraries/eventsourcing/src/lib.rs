@@ -20,7 +20,10 @@ pub use memory::InMemoryEventStore;
 pub use metadata::EventMetadata;
 pub use patch::{Patch, Patcher};
 #[cfg(feature = "postgres")]
-pub use postgres::{Codec, PostgresEventStore, migrations};
+pub use postgres::{
+    CLAIM_FOR, Codec, Delivered, KEPT_FOR, MessageMapping, OutboxError, PostgresEventStore,
+    PostgresOutbox, migrations,
+};
 pub use publish::{EventPublisher, NoopEventPublisher, PublishError};
 pub use service::{Appended, EventSourcingService, ServiceError, Standing};
 pub use store::{EventStore, StoreError};

@@ -2513,6 +2513,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -2579,6 +2580,7 @@ dependencies = [
  "thiserror",
  "time",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2614,6 +2616,7 @@ dependencies = [
  "thiserror",
  "time",
  "tracing",
+ "uuid",
  "whoami",
 ]
 
@@ -2640,6 +2643,7 @@ dependencies = [
  "time",
  "tracing",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -3491,7 +3495,10 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "tracing",
+ "uuid",
  "weaveling-clock",
+ "weaveling-messaging",
  "weaveling-test-harness",
 ]
 

@@ -9,7 +9,7 @@ use crate::agent::Agent;
 use crate::aggregate::AggregateId;
 use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
-use crate::postgres::sample::{codec, nonsense};
+use crate::postgres::sample::{codec, message_for, nonsense};
 use crate::postgres::{Codec, PostgresEventStore};
 use crate::store::{EventStore, StoreError};
 use crate::testing::Workbench;
@@ -39,7 +39,7 @@ impl Workbench for OnPostgres {
     async fn setup() -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool = ready_for("sample", &fixture).await;
-        let store = PostgresEventStore::new(pool.clone(), codec());
+        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
 
         Self {
             fixture,
@@ -115,7 +115,11 @@ async fn two_writers_at_the_same_version_cannot_both_win() {
     let aggregate = AggregateId::from("sample_contested");
     a_started_stream(bench.store(), &aggregate).await;
 
-    let store = Arc::new(PostgresEventStore::new(bench.pool.clone(), codec()));
+    let store = Arc::new(PostgresEventStore::new(
+        bench.pool.clone(),
+        codec(),
+        message_for,
+    ));
     let batch = |named: &str| {
         vec![
             at(&aggregate, 2, SampleEvent::TitleUpdated(named.to_owned())),
@@ -222,7 +226,7 @@ async fn a_backend_that_cannot_be_reached_says_so() {
         .store()
         .read_from(&aggregate, SAMPLE, Version::ZERO)
         .await;
-    let writing = bench
+    let appending = bench
         .store()
         .append(
             &aggregate,
@@ -237,8 +241,8 @@ async fn a_backend_that_cannot_be_reached_says_so() {
         "a store that cannot be reached has not gone out of date: {reading:?}"
     );
     assert!(
-        matches!(writing, Err(StoreError::Backend { .. })),
-        "a store that cannot be reached has not gone out of date: {writing:?}"
+        matches!(appending, Err(StoreError::Backend { .. })),
+        "a store that cannot be reached has not gone out of date: {appending:?}"
     );
 
     bench.cleanup().await;
@@ -305,6 +309,7 @@ async fn a_codec_is_all_a_second_kind_of_event_needs() {
             body: |_| serde_json::json!("Deleted"),
             event: |_| Some(SampleEvent::Deleted),
         },
+        message_for,
     );
     let aggregate = AggregateId::from("sample_recoded");
 
@@ -371,7 +376,41 @@ async fn laying_the_schema_down_twice_changes_nothing() {
         .expect("a schema already laid down should be left alone");
 
     let aggregate = AggregateId::from("sample_again");
-    a_started_stream(&PostgresEventStore::new(pool.clone(), codec()), &aggregate).await;
+    a_started_stream(
+        &PostgresEventStore::new(pool.clone(), codec(), message_for),
+        &aggregate,
+    )
+    .await;
+
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+async fn the_schema_carries_the_indexes_the_queries_rely_on() {
+    let fixture = PostgresFixture::setup().await;
+    let pool = ready_for("indexed", &fixture).await;
+
+    let found: Vec<String> = sqlx::query_scalar(
+        "SELECT indexname::text FROM pg_indexes WHERE schemaname = $1 ORDER BY indexname",
+    )
+    .bind(fixture.schema_of("indexed"))
+    .fetch_all(&pool)
+    .await
+    .expect("reading the catalog should succeed");
+
+    assert_eq!(
+        found,
+        vec![
+            "_sqlx_migrations_events_pkey",
+            "events_pkey",
+            "events_snapshots",
+            "outbox_pkey",
+            "outbox_published",
+            "outbox_waiting",
+        ],
+        "sqlx bakes the migrations into the binary at compile time and cannot tell cargo the SQL \
+         is an input, so an edited migration can go missing from a build entirely"
+    );
 
     fixture.cleanup().await;
 }
