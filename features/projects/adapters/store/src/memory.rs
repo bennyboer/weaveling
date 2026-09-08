@@ -77,5 +77,24 @@ impl ProjectStore for InMemoryProjectStore {
 mod tests {
     use super::*;
 
-    crate::suite::conformance_tests!(InMemoryProjectStore::new());
+    use crate::suite::Workbench;
+
+    struct InMemory(InMemoryProjectStore);
+
+    #[async_trait]
+    impl Workbench for InMemory {
+        type Store = InMemoryProjectStore;
+
+        async fn setup() -> Self {
+            Self(InMemoryProjectStore::new())
+        }
+
+        fn store(&self) -> &Self::Store {
+            &self.0
+        }
+
+        async fn cleanup(self) {}
+    }
+
+    crate::suite::conformance_tests!(InMemory);
 }

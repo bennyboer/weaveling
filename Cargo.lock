@@ -3350,10 +3350,12 @@ name = "weaveling-boards-catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "sqlx",
  "time",
  "tokio",
  "weaveling-boards-core",
  "weaveling-eventsourcing",
+ "weaveling-test-harness",
 ]
 
 [[package]]
@@ -3530,10 +3532,12 @@ name = "weaveling-outline-catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "sqlx",
  "time",
  "tokio",
  "weaveling-eventsourcing",
  "weaveling-outline-core",
+ "weaveling-test-harness",
 ]
 
 [[package]]
@@ -3714,10 +3718,12 @@ name = "weaveling-pieces-catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "sqlx",
  "time",
  "tokio",
  "weaveling-eventsourcing",
  "weaveling-pieces-core",
+ "weaveling-test-harness",
 ]
 
 [[package]]
@@ -3838,9 +3844,11 @@ name = "weaveling-projects-store"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "sqlx",
  "time",
  "tokio",
  "weaveling-projects-core",
+ "weaveling-test-harness",
 ]
 
 [[package]]

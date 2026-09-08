@@ -100,5 +100,24 @@ impl BoardCatalog for InMemoryBoardCatalog {
 mod tests {
     use super::*;
 
-    crate::conformance_tests!(InMemoryBoardCatalog::new());
+    use crate::suite::Workbench;
+
+    struct InMemory(InMemoryBoardCatalog);
+
+    #[async_trait]
+    impl Workbench for InMemory {
+        type Store = InMemoryBoardCatalog;
+
+        async fn setup() -> Self {
+            Self(InMemoryBoardCatalog::new())
+        }
+
+        fn store(&self) -> &Self::Store {
+            &self.0
+        }
+
+        async fn cleanup(self) {}
+    }
+
+    crate::conformance_tests!(InMemory);
 }

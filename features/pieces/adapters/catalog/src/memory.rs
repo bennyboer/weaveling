@@ -56,5 +56,24 @@ impl PieceCatalog for InMemoryPieceCatalog {
 mod tests {
     use super::*;
 
-    crate::conformance_tests!(InMemoryPieceCatalog::new());
+    use crate::suite::Workbench;
+
+    struct InMemory(InMemoryPieceCatalog);
+
+    #[async_trait]
+    impl Workbench for InMemory {
+        type Store = InMemoryPieceCatalog;
+
+        async fn setup() -> Self {
+            Self(InMemoryPieceCatalog::new())
+        }
+
+        fn store(&self) -> &Self::Store {
+            &self.0
+        }
+
+        async fn cleanup(self) {}
+    }
+
+    crate::conformance_tests!(InMemory);
 }

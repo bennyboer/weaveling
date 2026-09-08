@@ -108,5 +108,24 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
 mod tests {
     use super::*;
 
-    crate::conformance_tests!(InMemoryOutlineCatalog::new());
+    use crate::suite::Workbench;
+
+    struct InMemory(InMemoryOutlineCatalog);
+
+    #[async_trait]
+    impl Workbench for InMemory {
+        type Store = InMemoryOutlineCatalog;
+
+        async fn setup() -> Self {
+            Self(InMemoryOutlineCatalog::new())
+        }
+
+        fn store(&self) -> &Self::Store {
+            &self.0
+        }
+
+        async fn cleanup(self) {}
+    }
+
+    crate::conformance_tests!(InMemory);
 }

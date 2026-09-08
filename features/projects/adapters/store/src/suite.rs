@@ -1,6 +1,17 @@
 use projects_core::{Project, ProjectId, ProjectName, ProjectStore, StoreError};
 use time::{Duration, OffsetDateTime};
 
+#[async_trait::async_trait]
+pub trait Workbench: Sized {
+    type Store: ProjectStore;
+
+    async fn setup() -> Self;
+
+    fn store(&self) -> &Self::Store;
+
+    async fn cleanup(self);
+}
+
 pub fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
@@ -144,25 +155,29 @@ pub async fn delete_missing_project_is_not_found(store: &impl ProjectStore) {
 }
 
 macro_rules! conformance_case {
-    ($make_store:expr, $case:ident) => {
+    ($workbench:ty, $case:ident) => {
         #[tokio::test]
         async fn $case() {
-            $crate::suite::$case(&$make_store).await;
+            use $crate::suite::Workbench;
+
+            let bench = <$workbench>::setup().await;
+            $crate::suite::$case(bench.store()).await;
+            bench.cleanup().await;
         }
     };
 }
 
 macro_rules! conformance_tests {
-    ($make_store:expr) => {
-        $crate::suite::conformance_case!($make_store, create_then_get_returns_the_project);
-        $crate::suite::conformance_case!($make_store, get_missing_project_is_not_found);
-        $crate::suite::conformance_case!($make_store, create_rejects_a_duplicate_id);
-        $crate::suite::conformance_case!($make_store, list_is_empty_for_a_fresh_store);
-        $crate::suite::conformance_case!($make_store, list_returns_projects_in_creation_order);
-        $crate::suite::conformance_case!($make_store, update_replaces_the_stored_project);
-        $crate::suite::conformance_case!($make_store, update_missing_project_is_not_found);
-        $crate::suite::conformance_case!($make_store, delete_removes_the_project);
-        $crate::suite::conformance_case!($make_store, delete_missing_project_is_not_found);
+    ($workbench:ty) => {
+        $crate::suite::conformance_case!($workbench, create_then_get_returns_the_project);
+        $crate::suite::conformance_case!($workbench, get_missing_project_is_not_found);
+        $crate::suite::conformance_case!($workbench, create_rejects_a_duplicate_id);
+        $crate::suite::conformance_case!($workbench, list_is_empty_for_a_fresh_store);
+        $crate::suite::conformance_case!($workbench, list_returns_projects_in_creation_order);
+        $crate::suite::conformance_case!($workbench, update_replaces_the_stored_project);
+        $crate::suite::conformance_case!($workbench, update_missing_project_is_not_found);
+        $crate::suite::conformance_case!($workbench, delete_removes_the_project);
+        $crate::suite::conformance_case!($workbench, delete_missing_project_is_not_found);
     };
 }
 

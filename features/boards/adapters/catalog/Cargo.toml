@@ -5,11 +5,16 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+sqlx = { workspace = true, optional = true }
 time = { workspace = true }
 
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 boards-core = { version = "0.1.0", path = "../../core", package = "weaveling-boards-core" }
 
+[features]
+postgres = ["dep:sqlx"]
+
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+test-harness = { version = "0.1.0", path = "../../../../libraries/test-harness", package = "weaveling-test-harness" }

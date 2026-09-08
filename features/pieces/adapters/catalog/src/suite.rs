@@ -2,6 +2,17 @@ use eventsourcing::Version;
 use pieces_core::{PassageLink, PieceCatalog, PieceId, PieceSummary, PieceTitle, ProjectLink};
 use time::OffsetDateTime;
 
+#[async_trait::async_trait]
+pub trait Workbench: Sized {
+    type Store: PieceCatalog;
+
+    async fn setup() -> Self;
+
+    fn store(&self) -> &Self::Store;
+
+    async fn cleanup(self);
+}
+
 pub fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
 }
@@ -145,32 +156,33 @@ pub async fn the_newest_piece_is_listed_first(catalog: &impl PieceCatalog) {
 
 #[macro_export]
 macro_rules! catalog_conformance_case {
-    ($make_catalog:expr, $case:ident) => {
+    ($workbench:ty, $case:ident) => {
         #[tokio::test]
         async fn $case() {
-            $crate::suite::$case(&$make_catalog).await;
+            use $crate::suite::Workbench;
+
+            let bench = <$workbench>::setup().await;
+            $crate::suite::$case(bench.store()).await;
+            bench.cleanup().await;
         }
     };
 }
 
 #[macro_export]
 macro_rules! conformance_tests {
-    ($make_catalog:expr) => {
+    ($workbench:ty) => {
+        $crate::catalog_conformance_case!($workbench, a_remembered_piece_is_listed_in_its_project);
+        $crate::catalog_conformance_case!($workbench, a_project_nobody_wrote_in_lists_nothing);
+        $crate::catalog_conformance_case!($workbench, pieces_of_other_projects_are_not_listed);
         $crate::catalog_conformance_case!(
-            $make_catalog,
-            a_remembered_piece_is_listed_in_its_project
-        );
-        $crate::catalog_conformance_case!($make_catalog, a_project_nobody_wrote_in_lists_nothing);
-        $crate::catalog_conformance_case!($make_catalog, pieces_of_other_projects_are_not_listed);
-        $crate::catalog_conformance_case!(
-            $make_catalog,
+            $workbench,
             remembering_the_same_piece_again_replaces_what_was_there
         );
-        $crate::catalog_conformance_case!($make_catalog, a_forgotten_piece_is_no_longer_listed);
+        $crate::catalog_conformance_case!($workbench, a_forgotten_piece_is_no_longer_listed);
         $crate::catalog_conformance_case!(
-            $make_catalog,
+            $workbench,
             forgetting_something_never_remembered_is_harmless
         );
-        $crate::catalog_conformance_case!($make_catalog, the_newest_piece_is_listed_first);
+        $crate::catalog_conformance_case!($workbench, the_newest_piece_is_listed_first);
     };
 }

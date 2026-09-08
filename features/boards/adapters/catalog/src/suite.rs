@@ -1,6 +1,17 @@
 use boards_core::{BoardCatalog, BoardId, BoardSummary, PieceLink, ProjectLink};
 use time::OffsetDateTime;
 
+#[async_trait::async_trait]
+pub trait Workbench: Sized {
+    type Store: BoardCatalog;
+
+    async fn setup() -> Self;
+
+    fn store(&self) -> &Self::Store;
+
+    async fn cleanup(self);
+}
+
 pub fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::from_unix_timestamp(seconds).expect("a plausible moment")
 }
@@ -209,43 +220,41 @@ pub async fn one_board_letting_a_piece_go_leaves_the_others_holding_it(
 
 #[macro_export]
 macro_rules! catalog_conformance_case {
-    ($make_catalog:expr, $case:ident) => {
+    ($workbench:ty, $case:ident) => {
         #[tokio::test]
         async fn $case() {
-            $crate::suite::$case(&$make_catalog).await;
+            use $crate::suite::Workbench;
+
+            let bench = <$workbench>::setup().await;
+            $crate::suite::$case(bench.store()).await;
+            bench.cleanup().await;
         }
     };
 }
 
 #[macro_export]
 macro_rules! conformance_tests {
-    ($make_catalog:expr) => {
+    ($workbench:ty) => {
+        $crate::catalog_conformance_case!($workbench, a_remembered_board_is_listed_in_its_project);
         $crate::catalog_conformance_case!(
-            $make_catalog,
-            a_remembered_board_is_listed_in_its_project
-        );
-        $crate::catalog_conformance_case!(
-            $make_catalog,
+            $workbench,
             a_project_that_never_opened_a_board_lists_nothing
         );
-        $crate::catalog_conformance_case!($make_catalog, boards_of_other_projects_are_not_listed);
+        $crate::catalog_conformance_case!($workbench, boards_of_other_projects_are_not_listed);
         $crate::catalog_conformance_case!(
-            $make_catalog,
+            $workbench,
             remembering_the_same_board_again_replaces_what_was_there
         );
         $crate::catalog_conformance_case!(
-            $make_catalog,
+            $workbench,
             a_project_lists_its_boards_in_a_settled_order
         );
-        $crate::catalog_conformance_case!($make_catalog, a_piece_nobody_pinned_is_on_no_board);
-        $crate::catalog_conformance_case!($make_catalog, a_pinned_piece_names_the_board_holding_it);
-        $crate::catalog_conformance_case!($make_catalog, a_piece_may_sit_on_more_than_one_board);
+        $crate::catalog_conformance_case!($workbench, a_piece_nobody_pinned_is_on_no_board);
+        $crate::catalog_conformance_case!($workbench, a_pinned_piece_names_the_board_holding_it);
+        $crate::catalog_conformance_case!($workbench, a_piece_may_sit_on_more_than_one_board);
+        $crate::catalog_conformance_case!($workbench, what_a_board_holds_is_replaced_not_added_to);
         $crate::catalog_conformance_case!(
-            $make_catalog,
-            what_a_board_holds_is_replaced_not_added_to
-        );
-        $crate::catalog_conformance_case!(
-            $make_catalog,
+            $workbench,
             one_board_letting_a_piece_go_leaves_the_others_holding_it
         );
     };
