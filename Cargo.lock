@@ -3412,6 +3412,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-boards-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "weaveling-boards-core",
+ "weaveling-eventsourcing",
+]
+
+[[package]]
 name = "weaveling-boards-tests"
 version = "0.1.0"
 dependencies = [
@@ -3595,6 +3605,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-outline-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-outline-core",
+]
+
+[[package]]
 name = "weaveling-outline-tests"
 version = "0.1.0"
 dependencies = [
@@ -3774,6 +3795,16 @@ dependencies = [
  "weaveling-pieces-contract",
  "weaveling-pieces-core",
  "weaveling-serving",
+]
+
+[[package]]
+name = "weaveling-pieces-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "weaveling-eventsourcing",
+ "weaveling-pieces-core",
 ]
 
 [[package]]

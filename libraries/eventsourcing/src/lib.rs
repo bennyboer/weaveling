@@ -1,5 +1,6 @@
 mod agent;
 mod aggregate;
+mod codec;
 mod event;
 mod memory;
 mod metadata;
@@ -15,13 +16,14 @@ pub mod testing;
 
 pub use agent::{Agent, AgentId};
 pub use aggregate::{Aggregate, AggregateId, AggregateType};
+pub use codec::Codec;
 pub use event::{Event, EventName, Recorded};
 pub use memory::InMemoryEventStore;
 pub use metadata::EventMetadata;
 pub use patch::{Patch, Patcher};
 #[cfg(feature = "postgres")]
 pub use postgres::{
-    CLAIM_FOR, Codec, Delivered, KEPT_FOR, MessageMapping, OutboxError, PostgresEventStore,
+    CLAIM_FOR, Delivered, KEPT_FOR, MessageMapping, OutboxError, PostgresEventStore,
     PostgresOutbox, migrations,
 };
 pub use publish::{EventPublisher, NoopEventPublisher, PublishError};

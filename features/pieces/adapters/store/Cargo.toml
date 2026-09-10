@@ -1,0 +1,12 @@
+[package]
+name = "weaveling-pieces-store"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+pieces-core = { version = "0.1.0", path = "../../core", package = "weaveling-pieces-core" }

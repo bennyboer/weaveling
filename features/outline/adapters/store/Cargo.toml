@@ -1,0 +1,14 @@
+[package]
+name = "weaveling-outline-store"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+ids = { version = "0.1.0", path = "../../../../libraries/ids", package = "weaveling-ids" }
+
+outline-core = { version = "0.1.0", path = "../../core", package = "weaveling-outline-core" }

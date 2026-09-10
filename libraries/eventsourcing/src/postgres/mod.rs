@@ -1,6 +1,5 @@
 mod agent;
 mod announcing;
-mod codec;
 mod outbox;
 mod reading;
 mod rows;
@@ -16,7 +15,6 @@ mod sample;
 mod tests;
 
 pub use announcing::MessageMapping;
-pub use codec::Codec;
 pub use outbox::{CLAIM_FOR, Delivered, KEPT_FOR, OutboxError, PostgresOutbox};
 pub use schema::migrations;
 
@@ -24,6 +22,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 
 use crate::aggregate::{AggregateId, AggregateType};
+use crate::codec::Codec;
 use crate::event::{Event, Recorded};
 use crate::store::{EventStore, StoreError};
 use crate::version::Version;
