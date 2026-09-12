@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+sqlx = { workspace = true, optional = true }
+
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
 
@@ -13,3 +15,6 @@ passages-core = { version = "0.1.0", path = "../core", package = "weaveling-pass
 passages-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-passages-rest" }
 passages-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveling-passages-sync" }
 passages-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-passages-store" }
+
+[features]
+postgres = ["dep:sqlx", "wiring/postgres", "passages-store/postgres"]

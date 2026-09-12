@@ -8,6 +8,7 @@ mod patch;
 #[cfg(feature = "postgres")]
 mod postgres;
 mod publish;
+mod publishing;
 mod service;
 mod store;
 mod version;
@@ -27,6 +28,7 @@ pub use postgres::{
     PostgresOutbox, migrations,
 };
 pub use publish::{EventPublisher, NoopEventPublisher, PublishError};
+pub use publishing::PublishingEventStore;
 pub use service::{Appended, EventSourcingService, ServiceError, Standing};
 pub use store::{EventStore, StoreError};
 pub use version::Version;

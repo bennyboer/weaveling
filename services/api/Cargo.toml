@@ -5,6 +5,8 @@ edition.workspace = true
 
 [dependencies]
 axum = { workspace = true }
+sqlx = { workspace = true, optional = true }
+thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net"] }
 tower-http = { workspace = true, features = ["trace", "fs"] }
 tracing = { workspace = true }
@@ -28,5 +30,21 @@ passages-wiring = { version = "0.1.0", path = "../../features/passages/wiring", 
 pieces-wiring = { version = "0.1.0", path = "../../features/pieces/wiring", package = "weaveling-pieces-wiring" }
 projects-wiring = { version = "0.1.0", path = "../../features/projects/wiring", package = "weaveling-projects-wiring" }
 
+
+[features]
+postgres = [
+    "dep:sqlx",
+    "wiring/postgres",
+    "boards-wiring/postgres",
+    "outline-wiring/postgres",
+    "pieces-wiring/postgres",
+    "passages-wiring/postgres",
+    "projects-wiring/postgres",
+]
+
 [dev-dependencies]
 tower = { workspace = true }
+axum-test = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+test-harness = { version = "0.1.0", path = "../../libraries/test-harness", package = "weaveling-test-harness" }

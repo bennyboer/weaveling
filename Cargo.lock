@@ -3446,12 +3446,15 @@ dependencies = [
 name = "weaveling-boards-wiring"
 version = "0.1.0"
 dependencies = [
+ "sqlx",
  "weaveling-boards-catalog",
  "weaveling-boards-core",
  "weaveling-boards-messaging",
  "weaveling-boards-rest",
+ "weaveling-boards-store",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-messaging",
  "weaveling-wiring",
 ]
 
@@ -3640,12 +3643,15 @@ dependencies = [
 name = "weaveling-outline-wiring"
 version = "0.1.0"
 dependencies = [
+ "sqlx",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-messaging",
  "weaveling-outline-catalog",
  "weaveling-outline-core",
  "weaveling-outline-messaging",
  "weaveling-outline-rest",
+ "weaveling-outline-store",
  "weaveling-wiring",
 ]
 
@@ -3726,6 +3732,7 @@ dependencies = [
 name = "weaveling-passages-wiring"
 version = "0.1.0"
 dependencies = [
+ "sqlx",
  "weaveling-clock",
  "weaveling-passages-core",
  "weaveling-passages-rest",
@@ -3831,12 +3838,15 @@ dependencies = [
 name = "weaveling-pieces-wiring"
 version = "0.1.0"
 dependencies = [
+ "sqlx",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-messaging",
  "weaveling-pieces-catalog",
  "weaveling-pieces-core",
  "weaveling-pieces-messaging",
  "weaveling-pieces-rest",
+ "weaveling-pieces-store",
  "weaveling-wiring",
 ]
 
@@ -3901,6 +3911,7 @@ dependencies = [
 name = "weaveling-projects-wiring"
 version = "0.1.0"
 dependencies = [
+ "sqlx",
  "weaveling-clock",
  "weaveling-projects-core",
  "weaveling-projects-rest",
@@ -3913,6 +3924,10 @@ name = "weaveling-service-api"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "axum-test",
+ "serde_json",
+ "sqlx",
+ "thiserror",
  "tokio",
  "tower",
  "tower-http",
@@ -3925,6 +3940,7 @@ dependencies = [
  "weaveling-passages-wiring",
  "weaveling-pieces-wiring",
  "weaveling-projects-wiring",
+ "weaveling-test-harness",
  "weaveling-wiring",
 ]
 
@@ -3953,6 +3969,9 @@ name = "weaveling-wiring"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "sqlx",
+ "thiserror",
+ "tracing",
  "weaveling-clock",
  "weaveling-messaging",
 ]

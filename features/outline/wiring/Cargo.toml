@@ -4,11 +4,18 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+sqlx = { workspace = true, optional = true }
+
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 outline-core = { version = "0.1.0", path = "../core", package = "weaveling-outline-core" }
 outline-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-outline-rest" }
 outline-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-outline-messaging" }
 outline-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-outline-catalog" }
+outline-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-outline-store" }
+
+[features]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outline-catalog/postgres"]

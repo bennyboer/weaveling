@@ -4,7 +4,7 @@ use axum::Router;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardEvent, BoardService};
 use clock::Clock;
-use eventsourcing::InMemoryEventStore;
+use eventsourcing::{InMemoryEventStore, PublishingEventStore};
 use messaging::{InProcessDispatcher, Listener};
 use wiring::Context;
 
@@ -27,7 +27,10 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let catalog = Arc::new(InMemoryBoardCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
     let ports = boards_wiring::Ports {
-        events: store.clone(),
+        events: PublishingEventStore::wrapping(
+            store.clone(),
+            Arc::new(boards_messaging::Publishing::new(dispatcher.clone())),
+        ),
         catalog: catalog.clone(),
     };
     let context = Context {

@@ -11,6 +11,7 @@ const DEFAULT_URL: &str = "postgres://weaveling:weaveling@127.0.0.1:5432/weaveli
 const PREFIX: &str = "fixture";
 const STALE_AFTER: i64 = 3_600;
 const HEX_LENGTH: usize = 8;
+const HANDFUL: u32 = 5;
 
 pub struct PostgresFixture {
     stem: String,
@@ -84,7 +85,7 @@ async fn connect_to(schema: &str) -> PgPool {
     let search_path = format!(r#"SET search_path TO "{schema}""#);
 
     PgPoolOptions::new()
-        .max_connections(5)
+        .max_connections(HANDFUL)
         .after_connect(move |connection, _| {
             let search_path = search_path.clone();
 

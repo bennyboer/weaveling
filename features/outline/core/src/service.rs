@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{
-    Agent, AggregateId, EventPublisher, EventSourcingService, EventStore, ServiceError, Standing,
-    Version,
+    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
 use ids::InvalidId;
 use thiserror::Error;
@@ -44,15 +43,10 @@ impl OutlineService {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
         catalog: Arc<dyn OutlineCatalog>,
-        publishing: Arc<dyn EventPublisher<OutlineEvent>>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::publishing_to(
-                store,
-                clock.clone(),
-                publishing,
-            )),
+            events: Arc::new(EventSourcingService::new(store, clock.clone())),
             catalog,
             clock,
         }

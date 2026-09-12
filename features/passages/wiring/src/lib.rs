@@ -15,6 +15,13 @@ impl Ports {
             store: Arc::new(InMemoryPassageStore::new()),
         }
     }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres(pool: sqlx::PgPool) -> Self {
+        Self {
+            store: Arc::new(passages_store::PostgresPassageStore::new(pool)),
+        }
+    }
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
@@ -24,4 +31,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         passages_rest::router(passages.clone())
             .merge(passages_sync::router(LivePassages::new(passages))),
     )
+}
+
+pub const NAME: &str = "passages";
+
+#[cfg(feature = "postgres")]
+pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
+    wiring::database::lay_out(NAME, pool, passages_store::migrations()).await
 }

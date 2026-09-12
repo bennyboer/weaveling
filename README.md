@@ -160,7 +160,14 @@ Then **open http://localhost:8080** — that's the one you want. Trunk rebuilds 
 
 Start the API first if you care about the first paint; otherwise the client shows its error banner until the API answers and a reload picks it up. Rust changes on the server need a manual restart (or `cargo watch -x 'run -p weaveling-service-api'`); client changes are live.
 
-You can create, rename and delete projects. State lives in memory, so restarting the API empties it — see [ROADMAP.md](./ROADMAP.md) for where a real database comes in.
+You can create, rename and delete projects. By default state lives in memory, so restarting the API empties it. To run against PostgreSQL instead:
+
+```bash
+docker compose up -d
+DATABASE_URL=postgres://weaveling:weaveling@127.0.0.1:5432/weaveling   cargo run -p weaveling-service-api --features postgres
+```
+
+It creates any missing feature databases and applies every migration at startup. **Not yet usable end to end** — with PostgreSQL the store enqueues its events for a relay that nothing runs yet, so anything reading a projection comes back empty. See [ROADMAP.md](./ROADMAP.md#milestone-11--the-real-store).
 
 ### Testing the client
 

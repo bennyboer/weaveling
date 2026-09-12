@@ -1,3 +1,9 @@
+#[cfg(feature = "postgres")]
+pub mod database;
+
+#[cfg(feature = "postgres")]
+pub use database::Unprepared;
+
 use std::sync::Arc;
 
 use axum::Router;

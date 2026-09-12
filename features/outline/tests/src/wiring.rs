@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use clock::Clock;
-use eventsourcing::InMemoryEventStore;
+use eventsourcing::{InMemoryEventStore, PublishingEventStore};
 use messaging::{InProcessDispatcher, Listener};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineEvent, OutlineService};
@@ -28,7 +28,10 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let catalog = Arc::new(InMemoryOutlineCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
     let ports = outline_wiring::Ports {
-        events: store.clone(),
+        events: PublishingEventStore::wrapping(
+            store.clone(),
+            Arc::new(outline_messaging::Publishing::new(dispatcher.clone())),
+        ),
         catalog: catalog.clone(),
     };
     let context = Context {
@@ -45,7 +48,10 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         move || {
             outline_wiring::service(
                 &outline_wiring::Ports {
-                    events: store.clone(),
+                    events: PublishingEventStore::wrapping(
+                        store.clone(),
+                        Arc::new(outline_messaging::Publishing::new(publisher.clone())),
+                    ),
                     catalog: catalog.clone(),
                 },
                 &Context {

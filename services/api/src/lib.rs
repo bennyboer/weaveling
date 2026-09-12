@@ -1,3 +1,6 @@
+#[cfg(feature = "postgres")]
+mod databases;
+
 use std::sync::Arc;
 
 use axum::Router;
@@ -7,8 +10,14 @@ use messaging::InProcessDispatcher;
 use tower_http::trace::TraceLayer;
 use wiring::{Context, Wired};
 
+#[cfg(feature = "postgres")]
+pub use databases::Databases;
+#[cfg(feature = "postgres")]
+pub use wiring::Unprepared;
+
 pub struct Adapters {
     pub clock: Arc<dyn Clock>,
+    pub dispatcher: Arc<InProcessDispatcher>,
     pub projects: projects_wiring::Ports,
     pub passages: passages_wiring::Ports,
     pub pieces: pieces_wiring::Ports,
@@ -18,19 +27,35 @@ pub struct Adapters {
 
 impl Adapters {
     pub fn in_memory(clock: Arc<dyn Clock>) -> Self {
+        let dispatcher = Arc::new(InProcessDispatcher::new());
+
         Self {
             clock,
             projects: projects_wiring::Ports::in_memory(),
             passages: passages_wiring::Ports::in_memory(),
-            pieces: pieces_wiring::Ports::in_memory(),
-            boards: boards_wiring::Ports::in_memory(),
-            outline: outline_wiring::Ports::in_memory(),
+            pieces: pieces_wiring::Ports::in_memory(dispatcher.clone()),
+            boards: boards_wiring::Ports::in_memory(dispatcher.clone()),
+            outline: outline_wiring::Ports::in_memory(dispatcher.clone()),
+            dispatcher,
+        }
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres(clock: Arc<dyn Clock>, databases: &Databases) -> Self {
+        Self {
+            clock,
+            dispatcher: Arc::new(InProcessDispatcher::new()),
+            projects: projects_wiring::Ports::postgres(databases.projects.clone()),
+            passages: passages_wiring::Ports::postgres(databases.passages.clone()),
+            pieces: pieces_wiring::Ports::postgres(databases.pieces.clone()),
+            boards: boards_wiring::Ports::postgres(databases.boards.clone()),
+            outline: outline_wiring::Ports::postgres(databases.outline.clone()),
         }
     }
 }
 
 pub fn app(adapters: Adapters) -> Router {
-    let dispatcher = Arc::new(InProcessDispatcher::new());
+    let dispatcher = adapters.dispatcher.clone();
     let context = Context {
         clock: adapters.clock,
         publisher: dispatcher.clone(),

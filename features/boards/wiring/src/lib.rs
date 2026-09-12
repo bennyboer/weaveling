@@ -3,7 +3,7 @@ use std::sync::Arc;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
 use boards_messaging::{BoardCatalogProjector, PinnedPiecesProjector, Publishing, UnpinOnDiscard};
-use eventsourcing::{EventStore, InMemoryEventStore};
+use eventsourcing::{EventStore, InMemoryEventStore, PublishingEventStore};
 use wiring::{Context, Wired};
 
 pub struct Ports {
@@ -12,10 +12,27 @@ pub struct Ports {
 }
 
 impl Ports {
-    pub fn in_memory() -> Self {
+    pub fn in_memory(publisher: Arc<dyn messaging::Publisher>) -> Self {
         Self {
-            events: Arc::new(InMemoryEventStore::new()),
+            events: PublishingEventStore::wrapping(
+                Arc::new(InMemoryEventStore::new()),
+                Arc::new(Publishing::new(publisher)),
+            ),
             catalog: Arc::new(InMemoryBoardCatalog::new()),
+        }
+    }
+
+    #[cfg(feature = "postgres")]
+    pub fn postgres(pool: sqlx::PgPool) -> Self {
+        use eventsourcing::PostgresEventStore;
+
+        Self {
+            events: Arc::new(PostgresEventStore::new(
+                pool.clone(),
+                boards_store::codec(),
+                boards_messaging::message_for,
+            )),
+            catalog: Arc::new(boards_catalog::PostgresBoardCatalog::new(pool)),
         }
     }
 }
@@ -24,7 +41,6 @@ pub fn service(ports: &Ports, context: &Context) -> BoardService {
     BoardService::new(
         ports.events.clone(),
         ports.catalog.clone(),
-        Arc::new(Publishing::new(context.publisher.clone())),
         context.clock.clone(),
     )
 }
@@ -48,4 +64,12 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(index),
         Arc::new(tidy),
     ])
+}
+
+pub const NAME: &str = "boards";
+
+#[cfg(feature = "postgres")]
+pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
+    wiring::database::lay_out(NAME, pool, eventsourcing::migrations()).await?;
+    wiring::database::lay_out(NAME, pool, boards_catalog::migrations()).await
 }

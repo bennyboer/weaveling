@@ -3,6 +3,7 @@ name: weaveling
 services:
   postgres:
     image: postgres:18-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: weaveling
       POSTGRES_PASSWORD: weaveling

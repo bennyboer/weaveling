@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use clock::Clock;
-use eventsourcing::InMemoryEventStore;
+use eventsourcing::{InMemoryEventStore, PublishingEventStore};
 use messaging::{InProcessDispatcher, Listener};
 use pieces_catalog::InMemoryPieceCatalog;
 use pieces_core::{PieceEvent, PieceService};
@@ -23,7 +23,10 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let catalog = Arc::new(InMemoryPieceCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
     let ports = pieces_wiring::Ports {
-        events: store.clone(),
+        events: PublishingEventStore::wrapping(
+            store.clone(),
+            Arc::new(pieces_messaging::Publishing::new(dispatcher.clone())),
+        ),
         catalog: catalog.clone(),
     };
     let context = Context {
