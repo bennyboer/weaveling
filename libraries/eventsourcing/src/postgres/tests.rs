@@ -212,6 +212,16 @@ async fn a_batch_that_collides_halfway_writes_none_of_itself() {
         "an append is all of its events or none of them"
     );
 
+    let announced: i64 = sqlx::query_scalar("SELECT count(*) FROM outbox")
+        .fetch_one(&bench.pool)
+        .await
+        .expect("counting the outbox should succeed");
+
+    assert_eq!(
+        announced, 1,
+        "only the stream's start announced: the outbox row shares its append's transaction, so a refused append announces nothing"
+    );
+
     bench.cleanup().await;
 }
 

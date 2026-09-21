@@ -3,10 +3,13 @@ use std::sync::Arc;
 use clock::Clock;
 use messaging::{Conversation, Message, MessageId, Publisher, RoutingKey};
 use serde_json::Value;
-use sqlx::{PgPool, Row, postgres::PgRow};
+use sqlx::postgres::{PgListener, PgRow};
+use sqlx::{PgPool, Row};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
+
+const CHANNEL: &str = "SELECT left('outbox_waiting_' || current_schema(), 63)";
 
 const CLAIM: &str = "
     WITH waiting AS (
@@ -67,6 +70,24 @@ impl PostgresOutbox {
             publisher,
             clock,
         }
+    }
+
+    pub async fn nudges(&self) -> Result<PgListener, OutboxError> {
+        let channel: String = sqlx::query_scalar(CHANNEL)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+
+        let mut listening = PgListener::connect_with(&self.pool)
+            .await
+            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+
+        listening
+            .listen(&channel)
+            .await
+            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+
+        Ok(listening)
     }
 
     pub async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError> {

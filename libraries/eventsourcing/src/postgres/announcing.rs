@@ -6,6 +6,8 @@ use crate::event::Recorded;
 use crate::postgres::{PostgresEventStore, as_bigint};
 use crate::store::StoreError;
 
+const WAKE: &str = "SELECT pg_notify(left('outbox_waiting_' || current_schema(), 63), '')";
+
 const ANNOUNCE: &str = "
     INSERT INTO outbox
         (aggregate, kind, version, message_id, conversation, caused_by,
@@ -37,6 +39,11 @@ impl<E> PostgresEventStore<E> {
             .bind(message.routing.to_string())
             .bind(&message.payload)
             .bind(message.occurred_at)
+            .execute(&mut **transaction)
+            .await
+            .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;
+
+        sqlx::query(WAKE)
             .execute(&mut **transaction)
             .await
             .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;

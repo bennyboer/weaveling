@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use sqlx::postgres::PgListener;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
@@ -18,7 +19,7 @@ pub struct Cadence {
 impl Default for Cadence {
     fn default() -> Self {
         Self {
-            deliver_every: std::time::Duration::from_millis(250),
+            deliver_every: std::time::Duration::from_secs(5),
             deliver_at_most: 128,
             sweep_every: std::time::Duration::from_secs(60 * 60),
             sweep_at_most: 1_000,
@@ -56,7 +57,19 @@ async fn delivering(
     cadence: Cadence,
     mut stopped: watch::Receiver<bool>,
 ) {
-    while waiting(cadence.deliver_every, &mut stopped).await {
+    let mut nudges = match outbox.nudges().await {
+        Ok(listening) => Some(listening),
+        Err(why) => {
+            tracing::warn!(
+                error = %why,
+                "the outbox cannot be listened to, so delivery falls back to polling alone"
+            );
+
+            None
+        }
+    };
+
+    loop {
         match outbox.deliver(cadence.deliver_at_most).await {
             Ok(delivered) if delivered.refused > 0 => {
                 tracing::warn!(
@@ -67,6 +80,32 @@ async fn delivering(
             }
             Ok(_) => {}
             Err(why) => tracing::error!(error = %why, "the outbox could not be drained"),
+        }
+
+        if !nudged(cadence.deliver_every, nudges.as_mut(), &mut stopped).await {
+            break;
+        }
+    }
+}
+
+async fn nudged(
+    within: std::time::Duration,
+    nudges: Option<&mut PgListener>,
+    stopped: &mut watch::Receiver<bool>,
+) -> bool {
+    let Some(nudges) = nudges else {
+        return waiting(within, stopped).await;
+    };
+
+    tokio::select! {
+        _ = stopped.changed() => false,
+        _ = tokio::time::sleep(within) => true,
+        heard = nudges.recv() => {
+            if let Err(why) = heard {
+                tracing::warn!(error = %why, "the nudge channel dropped, polling carries on");
+            }
+
+            true
         }
     }
 }
@@ -423,6 +462,45 @@ mod tests {
             .expect("counting should succeed");
         assert_eq!(left, 0);
 
+        fixture.cleanup().await;
+    }
+
+    fn only_when_nudged() -> Cadence {
+        Cadence {
+            deliver_every: std::time::Duration::from_secs(300),
+            ..briskly()
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_nudge_delivers_long_before_the_next_poll_would() {
+        let fixture = PostgresFixture::setup().await;
+        let pool = fixture.create_schema("nudging").await;
+        crate::postgres::migrations()
+            .run(&pool)
+            .await
+            .expect("the schema should lay down");
+
+        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
+        let heard = Arc::new(Overheard::default());
+        let relay = RelayTask::started(
+            Arc::new(PostgresOutbox::new(
+                pool.clone(),
+                heard.clone(),
+                Arc::new(SystemClock),
+            )),
+            only_when_nudged(),
+        );
+
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        a_captured_sample(&store, &AggregateId::from("sample_nudged")).await;
+
+        assert!(
+            until(|| heard.how_many() == 1).await,
+            "polling is five minutes away, so only the notification can have woken it"
+        );
+
+        relay.stop().await;
         fixture.cleanup().await;
     }
 }

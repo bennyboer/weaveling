@@ -167,7 +167,7 @@ docker compose up -d
 DATABASE_URL=postgres://weaveling:weaveling@127.0.0.1:5432/weaveling   cargo run -p weaveling-service-api --features postgres
 ```
 
-It creates any missing feature databases, applies every migration at startup, and runs an outbox relay per event-sourced feature. `ctrl-c` stops the relays before exiting.
+It creates any missing feature databases, applies every migration at startup, and runs an outbox relay per event-sourced feature — each woken by a PostgreSQL notification when something is appended, and polling every five seconds as a backstop. `ctrl-c` stops the relays before exiting.
 
 ### Testing the client
 
