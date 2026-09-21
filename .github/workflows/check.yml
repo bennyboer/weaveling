@@ -1,0 +1,73 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  DATABASE_URL: postgres://weaveling:weaveling@127.0.0.1:5432/weaveling
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: weaveling
+          POSTGRES_PASSWORD: weaveling
+          POSTGRES_DB: weaveling
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U weaveling -d weaveling"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: formatting
+        run: cargo fmt --all --check
+
+      - name: lint
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+      - name: lint the client
+        run: cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown -- -D warnings
+
+      - name: test
+        run: cargo test --workspace --all-features
+
+  browser:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+
+      - name: install trunk
+        run: cargo install --locked trunk
+
+      - name: install the browser
+        working-directory: clients/web
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: test in a browser
+        working-directory: clients/web
+        run: npm test

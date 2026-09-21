@@ -39,3 +39,12 @@ pub const NAME: &str = "passages";
 pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
     wiring::database::lay_out(NAME, pool, passages_store::migrations()).await
 }
+
+#[cfg(feature = "postgres")]
+pub fn outbox(
+    _pool: &sqlx::PgPool,
+    _publisher: Arc<dyn messaging::Publisher>,
+    _clock: Arc<dyn clock::Clock>,
+) -> Option<eventsourcing::PostgresOutbox> {
+    None
+}

@@ -10,10 +10,12 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 projects-core = { version = "0.1.0", path = "../core", package = "weaveling-projects-core" }
 projects-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-projects-rest" }
 projects-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-projects-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "projects-store/postgres"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "projects-store/postgres"]

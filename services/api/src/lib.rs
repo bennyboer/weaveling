@@ -1,5 +1,7 @@
 #[cfg(feature = "postgres")]
 mod databases;
+#[cfg(feature = "postgres")]
+mod relays;
 
 use std::sync::Arc;
 
@@ -12,6 +14,8 @@ use wiring::{Context, Wired};
 
 #[cfg(feature = "postgres")]
 pub use databases::Databases;
+#[cfg(feature = "postgres")]
+pub use relays::Relays;
 #[cfg(feature = "postgres")]
 pub use wiring::Unprepared;
 

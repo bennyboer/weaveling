@@ -196,3 +196,64 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
 
     running.cleanup().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
+    use eventsourcing::Cadence;
+    use weaveling_service_api::Relays;
+
+    let fixture = PostgresFixture::setup().await;
+    let databases = five_schemas(&fixture).await;
+    let clock = Arc::new(SystemClock);
+    let adapters = Adapters::postgres(clock.clone(), &databases);
+    let publisher = adapters.dispatcher.clone();
+    let server = TestServer::new(app(adapters));
+
+    let relays = Relays::started(
+        &databases,
+        publisher,
+        clock,
+        Cadence {
+            deliver_every: std::time::Duration::from_millis(10),
+            sweep_every: std::time::Duration::from_secs(3_600),
+            deliver_at_most: 16,
+            sweep_at_most: 16,
+            kept_for: time::Duration::days(90),
+        },
+    );
+
+    let project = a_project(&server, "Relaying").await;
+    server
+        .post("/api/pieces")
+        .json(&json!({ "project": project, "title": "A girl in a wood" }))
+        .await
+        .assert_status(axum::http::StatusCode::CREATED);
+
+    let mut titles = Vec::new();
+    for _ in 0..200 {
+        titles = server
+            .get(&format!("/api/pieces?project={project}"))
+            .await
+            .json::<Value>()
+            .as_array()
+            .expect("a listing is an array")
+            .iter()
+            .filter_map(|piece| piece["title"].as_str().map(ToOwned::to_owned))
+            .collect();
+
+        if !titles.is_empty() {
+            break;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(
+        titles,
+        vec!["A girl in a wood".to_owned()],
+        "the catalog is a projection, so this is the whole chain: append, outbox, relay, listener"
+    );
+
+    relays.stop().await;
+    fixture.cleanup().await;
+}

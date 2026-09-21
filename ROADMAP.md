@@ -454,7 +454,7 @@ That also settles [the open question about the board's tray](./TODO.md) — it c
 
 ### Milestone 11 — The real store
 
-**Started.** The rig stands; the adapters do not.
+**Done.** 788 tests with `--all-features`, 657 without; the API runs on PostgreSQL end to end.
 
 **Goal:** prove the abstractions were worth the trouble.
 
@@ -466,7 +466,7 @@ That also settles [the open question about the board's tray](./TODO.md) — it c
 
 **This is where storage representation finally gets decided,** and where the transaction tests that in-memory cannot express have to be written: rollback, connection failure mapping to `StoreError::Backend`, and the concurrency guard `apply` needs if `PassageStore` goes the snapshot route. The event store's `append` must be atomic across the version check, the append **and** the outbox insert — one transaction, invisible above the port.
 
-**The steps, each reviewable alone:** ~~the rig~~; ~~the event store against its existing conformance suite~~; ~~the outbox and its relay~~; ~~`PassageStore` and the snapshot-versus-log choice~~; ~~the catalogs and `ProjectStore`~~; ~~the three stored-event codecs~~; ~~the wiring~~; the background tasks and CI.
+**The steps, each reviewable alone:** ~~the rig~~; ~~the event store against its existing conformance suite~~; ~~the outbox and its relay~~; ~~`PassageStore` and the snapshot-versus-log choice~~; ~~the catalogs and `ProjectStore`~~; ~~the three stored-event codecs~~; ~~the wiring~~; ~~the background tasks and CI~~.
 
 **Owed to step 6:** the API should ensure its own databases exist at startup, beside the migrations it already has to run. `compose.yaml` creates them today by reading `features/`, which keeps the list from going stale but cannot help with a feature added after the volume exists — PostgreSQL runs an init script only on an empty data directory. The authority belongs where the list already lives, in `Adapters`.
 
@@ -516,9 +516,15 @@ That also settles [the open question about the board's tray](./TODO.md) — it c
 
 **And it exposed the gap 6c has to close.** With publishing chosen by the backend, the PostgreSQL store enqueues and the service publishes nothing -- so with no relay running, **no projection is ever fed**. Reading an aggregate still works, because that replays its own stream, but every listing that reads a catalog comes back empty. The test says so out loud rather than papering over it: a captured piece is readable by id and its message is sitting unpublished in the outbox. The application is not usable end to end on PostgreSQL until something drives `deliver`.
 
-**Still owed:** nothing drives the relay yet — no timer, no `LISTEN/NOTIFY` nudge — because nothing is wired to Postgres until step 6. `deliver(at_most)` is a single pass, called by tests.
-
 **The outbox has no foreign key back to `events`**, which the first draft of the migration gave it. Compaction deletes the events a snapshot replaced, and `on delete cascade` would have quietly unsaid messages that had not been published yet. An outbox row is a statement that something happened; pruning the record of it must not retract it.
+
+**The relays run, and the chain closes.** `RelayTask::started` spawns two loops per outbox -- one delivering, one sweeping published entries past `KEPT_FOR` -- and `stop` ends both and waits for them, so `ctrl-c` releases the database instead of hanging. `main` starts them after `app()` has registered its listeners, which is the one ordering that matters: a relay publishing into a dispatcher nobody is listening to would drop the message on the floor.
+
+**Which features have an outbox is the feature's own answer**, not the service's. Each wiring crate exposes `outbox(...) -> Option<PostgresOutbox>` -- `Some` for the three event-sourced features, `None` for `projects` and `passages` -- and the service starts whatever it is handed. Same shape as `lay_out` and `NAME`, and for the same reason: the composition root knows which features exist and nothing about what they are made of.
+
+**The test that matters is the whole chain.** Capturing a piece through the real HTTP API now arrives in the piece catalog: append, outbox row in the same transaction, relay, dispatcher, projector, projection. That is the listing which came back empty at the end of the wiring step, and it is what made PostgreSQL unusable end to end until now.
+
+**CI exists for the first time.** `.github/workflows/check.yml` runs `fmt`, `clippy --workspace --all-targets --all-features`, the client's own wasm `clippy`, and `cargo test --workspace --all-features` against a PostgreSQL service container -- so code behind the `postgres` feature is type-checked and exercised rather than merely present. A second job installs Trunk and Chromium and runs the browser suite.
 
 **Done when:** the suites pass unchanged against the real store, and swapping backends is one line in one manifest.
 
@@ -535,6 +541,26 @@ Deferred out of [M8](#milestone-8--messaging-), where the cascade was originally
 **Done when:** deleting a project leaves nothing behind; a cascade that fails midway is recoverable and observable; the project's own history says who deleted it and when; and `projects` looks like every other feature.
 
 ---
+
+### An open question about the model — ideas versus passages
+
+**Raised 2026-09-13, deliberately unresolved.** The board may be holding the wrong kind of thing. Today a *piece* is title plus prose, and the same object is pinned to the board, attached to an outline section and exported as part of the book. The proposal is that a board piece is an **idea** — a character, a what-if, a scrap of dialogue — carrying a description rather than manuscript, while the passages that make up the book are created from the outline and may merely *link back* to the idea that prompted them.
+
+It would explain a complaint already on record: attaching pieces to outline sections was called "very weird" during [M10](#milestone-10--the-outline) and redesigned twice without the feeling going away. It would also give the Codex the route it presently lacks, from a thought about a character to a character sheet.
+
+**Against it:** every weft view — timeline, threads, codex back-links, research — is defined over one kind of thing, and splitting ideas from passages makes each of them choose or carry both. And it moves content onto the tree, which [ARCHITECTURE.md](./ARCHITECTURE.md#the-outline-arranges-sections-not-pieces) currently forbids in as many words.
+
+**It is not being decided here**, because the deciding evidence is twenty real ideas on a board and one section written against them — see the full argument in [TODO.md](./TODO.md). What matters for planning is the timing: this touches `pieces`, `boards` and `outline`, all event-sourced with stored event shapes, so it is cheap only while no durable data exists. That window closes on the first real book.
+
+### A feature should be able to hand over a background task
+
+**Owed, not scheduled.** `Wired` already lets a feature hand the service its routes and its listeners, and the service mounts and registers them without knowing what they are. Background work has no such seam: `services/api/src/relays.rs` is a purpose-built struct that knows outboxes specifically, asks each feature for `outbox(...) -> Option<PostgresOutbox>`, and wraps each one in a `RelayTask`. Add a second kind of periodic work and it needs a second struct beside it.
+
+**And there is already a queue of second kinds.** Passage compaction runs opportunistically inside `apply` and would rather be scheduled; nothing ever calls `EventSourcingService::compact`, so event streams are never collapsed; [dead letters are collected and never retried](./TODO.md); and [M11a](#milestone-11a--projects-event-sourced-and-the-deletion-cascade)'s cascade may want an expiry sweep. Each of those is the same shape — start it with the application, run it on a cadence, stop it before the pools close.
+
+**The shape it wants** is the one listeners already have: `Wired` grows a third list, a feature returns whatever periodic work it owns, and the service starts and stops the lot. What that costs is deciding the awkward parts once instead of per task — a tick that overruns its interval must not stack, a failing tick must log and carry on rather than kill the loop, and shutdown has to stop every task *before* anything it writes to is closed. `RelayTask` answers all three today for one case, and is the obvious thing to generalise.
+
+**Not done now** because one task is not yet a pattern, and [M12](#milestone-12--local-mode) reshuffles the composition root anyway — which is the moment to do it rather than twice.
 
 ### Milestone 12 — Local mode
 

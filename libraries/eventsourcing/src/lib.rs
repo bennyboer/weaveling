@@ -24,8 +24,8 @@ pub use metadata::EventMetadata;
 pub use patch::{Patch, Patcher};
 #[cfg(feature = "postgres")]
 pub use postgres::{
-    CLAIM_FOR, Delivered, KEPT_FOR, MessageMapping, OutboxError, PostgresEventStore,
-    PostgresOutbox, migrations,
+    CLAIM_FOR, Cadence, Delivered, KEPT_FOR, MessageMapping, OutboxError, PostgresEventStore,
+    PostgresOutbox, RelayTask, migrations,
 };
 pub use publish::{EventPublisher, NoopEventPublisher, PublishError};
 pub use publishing::PublishingEventStore;

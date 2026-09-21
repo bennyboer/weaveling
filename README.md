@@ -167,7 +167,7 @@ docker compose up -d
 DATABASE_URL=postgres://weaveling:weaveling@127.0.0.1:5432/weaveling   cargo run -p weaveling-service-api --features postgres
 ```
 
-It creates any missing feature databases and applies every migration at startup. **Not yet usable end to end** — with PostgreSQL the store enqueues its events for a relay that nothing runs yet, so anything reading a projection comes back empty. See [ROADMAP.md](./ROADMAP.md#milestone-11--the-real-store).
+It creates any missing feature databases, applies every migration at startup, and runs an outbox relay per event-sourced feature. `ctrl-c` stops the relays before exiting.
 
 ### Testing the client
 
@@ -196,6 +196,7 @@ Two things to know before writing more of these. Selectors are **role plus acces
 | `cargo fmt --all` | Formats everything. |
 | `cargo clippy --workspace --all-targets` | Lints the server side. **Does not cover the client** — `--workspace` doesn't build for `wasm32`. |
 | `cargo clippy -p weaveling-client-web --target wasm32-unknown-unknown` | Lints the client. Needed as a separate command, per the row above. |
+| — | CI runs all of the above plus the browser suite, against a PostgreSQL service container. See [.github/workflows/check.yml](./.github/workflows/check.yml). |
 | `cargo check -p weaveling-client-web --target wasm32-unknown-unknown` | Type-checks the client without invoking Trunk. |
 | `trunk build --release` | Produces the optimised client bundle in `clients/web/dist`. |
 | `cd clients/web && npm test` | Runs the client's end-to-end tests in a real browser. Starts the API and Trunk itself if they aren't already up, and reuses them if they are. |

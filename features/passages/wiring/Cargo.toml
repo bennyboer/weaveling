@@ -10,6 +10,8 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 passages-core = { version = "0.1.0", path = "../core", package = "weaveling-passages-core" }
 passages-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-passages-rest" }
@@ -17,4 +19,4 @@ passages-sync = { version = "0.1.0", path = "../adapters/sync", package = "weave
 passages-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-passages-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "passages-store/postgres"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "passages-store/postgres"]

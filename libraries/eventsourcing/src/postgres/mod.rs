@@ -2,6 +2,7 @@ mod agent;
 mod announcing;
 mod outbox;
 mod reading;
+mod relaying;
 mod rows;
 mod schema;
 mod snapshots;
@@ -16,6 +17,7 @@ mod tests;
 
 pub use announcing::MessageMapping;
 pub use outbox::{CLAIM_FOR, Delivered, KEPT_FOR, OutboxError, PostgresOutbox};
+pub use relaying::{Cadence, RelayTask};
 pub use schema::migrations;
 
 use async_trait::async_trait;

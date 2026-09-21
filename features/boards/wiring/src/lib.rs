@@ -73,3 +73,16 @@ pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
     wiring::database::lay_out(NAME, pool, eventsourcing::migrations()).await?;
     wiring::database::lay_out(NAME, pool, boards_catalog::migrations()).await
 }
+
+#[cfg(feature = "postgres")]
+pub fn outbox(
+    pool: &sqlx::PgPool,
+    publisher: Arc<dyn messaging::Publisher>,
+    clock: Arc<dyn clock::Clock>,
+) -> Option<eventsourcing::PostgresOutbox> {
+    Some(eventsourcing::PostgresOutbox::new(
+        pool.clone(),
+        publisher,
+        clock,
+    ))
+}
