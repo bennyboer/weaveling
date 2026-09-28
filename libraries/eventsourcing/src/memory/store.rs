@@ -1,23 +1,52 @@
 use std::collections::HashMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
+use crate::memory::outbox::InMemoryOutbox;
+use crate::outbox::MessageMapping;
 use crate::store::{EventStore, StoreError};
 use crate::version::Version;
 
 type Streams<E> = HashMap<(AggregateId, AggregateType), Vec<Recorded<E>>>;
 
-#[derive(Debug)]
 pub struct InMemoryEventStore<E> {
     streams: RwLock<Streams<E>>,
+    enqueuing: Option<Enqueuing<E>>,
+}
+
+struct Enqueuing<E> {
+    outbox: Arc<InMemoryOutbox>,
+    message_for: MessageMapping<E>,
 }
 
 impl<E> InMemoryEventStore<E> {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn enqueuing_to(outbox: Arc<InMemoryOutbox>, message_for: MessageMapping<E>) -> Self {
+        Self {
+            streams: RwLock::new(HashMap::new()),
+            enqueuing: Some(Enqueuing {
+                outbox,
+                message_for,
+            }),
+        }
+    }
+
+    fn enqueue(&self, events: &[Recorded<E>]) {
+        let Some(enqueuing) = &self.enqueuing else {
+            return;
+        };
+
+        for happened in events {
+            if let Some(message) = (enqueuing.message_for)(happened) {
+                enqueuing.outbox.enqueue(message);
+            }
+        }
     }
 
     fn read(&self) -> RwLockReadGuard<'_, Streams<E>> {
@@ -33,6 +62,7 @@ impl<E> Default for InMemoryEventStore<E> {
     fn default() -> Self {
         Self {
             streams: RwLock::new(HashMap::new()),
+            enqueuing: None,
         }
     }
 }
@@ -71,6 +101,7 @@ where
             .entry(key)
             .or_default()
             .extend(events.iter().cloned());
+        self.enqueue(events);
 
         Ok(())
     }

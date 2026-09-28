@@ -9,6 +9,7 @@ indexmap = { workspace = true }
 thiserror = { workspace = true }
 
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
+registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 

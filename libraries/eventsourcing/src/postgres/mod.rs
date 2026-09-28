@@ -1,8 +1,7 @@
 mod agent;
-mod announcing;
+mod enqueuing;
 mod outbox;
 mod reading;
-mod relaying;
 mod rows;
 mod schema;
 mod snapshots;
@@ -11,13 +10,13 @@ mod writing;
 #[cfg(test)]
 mod outbox_tests;
 #[cfg(test)]
-mod sample;
+pub(crate) mod sample;
 #[cfg(test)]
 mod tests;
 
-pub use announcing::MessageMapping;
-pub use outbox::{CLAIM_FOR, Delivered, KEPT_FOR, OutboxError, PostgresOutbox};
-pub use relaying::{Cadence, RelayTask};
+pub use outbox::PostgresOutbox;
+
+use crate::outbox::MessageMapping;
 pub use schema::migrations;
 
 use async_trait::async_trait;

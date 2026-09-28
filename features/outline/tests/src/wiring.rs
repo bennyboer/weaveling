@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use axum::Router;
 use clock::Clock;
-use eventsourcing::{InMemoryEventStore, PublishingEventStore};
+use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
 use messaging::{InProcessDispatcher, Listener};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineEvent, OutlineService};
+use registry::InMemoryRegistry;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-outline";
@@ -17,6 +18,8 @@ pub struct Wired {
     pub reopened: Box<dyn Fn() -> OutlineService + Send + Sync>,
     pub routes: Router,
     pub store: Arc<InMemoryEventStore<OutlineEvent>>,
+    pub outbox: Arc<InMemoryOutbox>,
+    pub registry: Arc<InMemoryRegistry>,
     pub catalog: Arc<InMemoryOutlineCatalog>,
     pub projector: Arc<dyn Listener>,
     pub indexer: Arc<dyn Listener>,
@@ -24,17 +27,19 @@ pub struct Wired {
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    let store = Arc::new(InMemoryEventStore::<OutlineEvent>::new());
-    let catalog = Arc::new(InMemoryOutlineCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
+    let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
+    let store = Arc::new(InMemoryEventStore::enqueuing_to(
+        outbox.clone(),
+        outline_messaging::message_for,
+    ));
+    let registry = Arc::new(InMemoryRegistry::new());
+    let catalog = Arc::new(InMemoryOutlineCatalog::new());
     let ports = outline_wiring::Ports {
-        events: PublishingEventStore::wrapping(
-            store.clone(),
-            Arc::new(outline_messaging::OutlineEventPublisher::new(
-                dispatcher.clone(),
-            )),
-        ),
+        events: store.clone(),
         catalog: catalog.clone(),
+        registry: registry.clone(),
+        outbox: outbox.clone(),
     };
     let context = Context {
         clock,
@@ -44,19 +49,18 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let afresh = {
         let store = store.clone();
         let catalog = catalog.clone();
+        let outbox = outbox.clone();
+        let registry = registry.clone();
         let clock = context.clock.clone();
         let publisher = dispatcher.clone();
 
         move || {
             outline_wiring::service(
                 &outline_wiring::Ports {
-                    events: PublishingEventStore::wrapping(
-                        store.clone(),
-                        Arc::new(outline_messaging::OutlineEventPublisher::new(
-                            publisher.clone(),
-                        )),
-                    ),
+                    events: store.clone(),
                     catalog: catalog.clone(),
+                    registry: registry.clone(),
+                    outbox: outbox.clone(),
                 },
                 &Context {
                     clock: clock.clone(),
@@ -87,9 +91,24 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         reopened: Box::new(afresh),
         routes: wired.routes,
         store,
+        outbox,
+        registry,
         catalog,
         projector,
         indexer,
         tidier,
+    }
+}
+
+impl Wired {
+    pub async fn settle(&self) {
+        while self
+            .outbox
+            .deliver(128)
+            .await
+            .expect("delivering should succeed")
+            .published
+            > 0
+        {}
     }
 }

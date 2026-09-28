@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use clock::Clock;
 use messaging::{Conversation, Message, MessageId, Publisher, RoutingKey};
 use serde_json::Value;
 use sqlx::postgres::{PgListener, PgRow};
 use sqlx::{PgPool, Row};
-use thiserror::Error;
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use uuid::Uuid;
+
+use crate::outbox::{CLAIM_FOR, Delivered, Notifications, Outbox, OutboxError};
 
 const CHANNEL: &str = "SELECT left('outbox_waiting_' || current_schema(), 63)";
 
@@ -39,28 +41,10 @@ const DELETE_PUBLISHED: &str = "
     )
 ";
 
-pub const CLAIM_FOR: Duration = Duration::seconds(30);
-
-pub const KEPT_FOR: Duration = Duration::days(90);
-
-#[derive(Debug, Error)]
-pub enum OutboxError {
-    #[error("the outbox could not be reached: {0}")]
-    Unreachable(String),
-    #[error("outbox entry {entry} holds something that is not a message: {why}")]
-    Unreadable { entry: i64, why: String },
-}
-
 pub struct PostgresOutbox {
     pool: PgPool,
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Delivered {
-    pub published: usize,
-    pub refused: usize,
 }
 
 impl PostgresOutbox {
@@ -72,7 +56,7 @@ impl PostgresOutbox {
         }
     }
 
-    pub async fn nudges(&self) -> Result<PgListener, OutboxError> {
+    async fn listening(&self) -> Result<PgListener, OutboxError> {
         let channel: String = sqlx::query_scalar(CHANNEL)
             .fetch_one(&self.pool)
             .await
@@ -90,7 +74,21 @@ impl PostgresOutbox {
         Ok(listening)
     }
 
-    pub async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError> {
+    async fn mark_published(&self, entry: i64) -> Result<(), OutboxError> {
+        sqlx::query(MARK_PUBLISHED)
+            .bind(entry)
+            .bind(self.clock.now())
+            .execute(&self.pool)
+            .await
+            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl Outbox for PostgresOutbox {
+    async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError> {
         let now = self.clock.now();
         let claimed = sqlx::query(CLAIM)
             .bind(now)
@@ -123,7 +121,7 @@ impl PostgresOutbox {
         Ok(delivered)
     }
 
-    pub async fn delete_published(
+    async fn delete_published(
         &self,
         before: OffsetDateTime,
         at_most: i64,
@@ -138,15 +136,17 @@ impl PostgresOutbox {
         Ok(gone.rows_affected())
     }
 
-    async fn mark_published(&self, entry: i64) -> Result<(), OutboxError> {
-        sqlx::query(MARK_PUBLISHED)
-            .bind(entry)
-            .bind(self.clock.now())
-            .execute(&self.pool)
-            .await
-            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+    async fn notifications(&self) -> Result<Box<dyn Notifications>, OutboxError> {
+        Ok(Box::new(self.listening().await?))
+    }
+}
 
-        Ok(())
+#[async_trait]
+impl Notifications for PgListener {
+    async fn wait(&mut self) {
+        if let Err(why) = self.recv().await {
+            tracing::warn!(error = %why, "the outbox listener dropped, so delivery falls back to polling");
+        }
     }
 }
 

@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use axum::Router;
 use clock::Clock;
-use eventsourcing::{InMemoryEventStore, PublishingEventStore};
+use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
 use messaging::{InProcessDispatcher, Listener};
 use projects_catalog::InMemoryProjectCatalog;
-use projects_core::{ProjectEvent, ProjectService};
+use projects_core::ProjectService;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-project";
@@ -13,22 +13,23 @@ const CATALOGUING: &str = "catalogue-project";
 pub struct Wired {
     pub projects: ProjectService,
     pub routes: Router,
+    pub outbox: Arc<InMemoryOutbox>,
     pub catalog: Arc<InMemoryProjectCatalog>,
     pub projector: Arc<dyn Listener>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    let store = Arc::new(InMemoryEventStore::<ProjectEvent>::new());
-    let catalog = Arc::new(InMemoryProjectCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
+    let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
+    let store = Arc::new(InMemoryEventStore::enqueuing_to(
+        outbox.clone(),
+        projects_messaging::message_for,
+    ));
+    let catalog = Arc::new(InMemoryProjectCatalog::new());
     let ports = projects_wiring::Ports {
-        events: PublishingEventStore::wrapping(
-            store.clone(),
-            Arc::new(projects_messaging::ProjectEventPublisher::new(
-                dispatcher.clone(),
-            )),
-        ),
+        events: store.clone(),
         catalog: catalog.clone(),
+        outbox: outbox.clone(),
     };
     let context = Context {
         clock,
@@ -50,7 +51,21 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     Wired {
         projects: projects_wiring::service(&ports, &context),
         routes: wired.routes,
+        outbox,
         catalog,
         projector,
+    }
+}
+
+impl Wired {
+    pub async fn settle(&self) {
+        while self
+            .outbox
+            .deliver(128)
+            .await
+            .expect("delivering should succeed")
+            .published
+            > 0
+        {}
     }
 }

@@ -1,6 +1,5 @@
 #[cfg(feature = "postgres")]
 mod databases;
-#[cfg(feature = "postgres")]
 mod relays;
 
 use std::sync::Arc;
@@ -14,7 +13,6 @@ use wiring::{Context, Wired};
 
 #[cfg(feature = "postgres")]
 pub use databases::Databases;
-#[cfg(feature = "postgres")]
 pub use relays::Relays;
 #[cfg(feature = "postgres")]
 pub use wiring::Unprepared;
@@ -34,27 +32,54 @@ impl Adapters {
         let dispatcher = Arc::new(InProcessDispatcher::new());
 
         Self {
-            clock,
-            projects: projects_wiring::Ports::in_memory(dispatcher.clone()),
+            projects: projects_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             passages: passages_wiring::Ports::in_memory(),
-            pieces: pieces_wiring::Ports::in_memory(dispatcher.clone()),
-            boards: boards_wiring::Ports::in_memory(dispatcher.clone()),
-            outline: outline_wiring::Ports::in_memory(dispatcher.clone()),
+            pieces: pieces_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
+            boards: boards_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
+            outline: outline_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
+            clock,
             dispatcher,
         }
     }
 
     #[cfg(feature = "postgres")]
     pub fn postgres(clock: Arc<dyn Clock>, databases: &Databases) -> Self {
+        let dispatcher = Arc::new(InProcessDispatcher::new());
+
         Self {
-            clock,
-            dispatcher: Arc::new(InProcessDispatcher::new()),
-            projects: projects_wiring::Ports::postgres(databases.projects.clone()),
+            projects: projects_wiring::Ports::postgres(
+                databases.projects.clone(),
+                dispatcher.clone(),
+                clock.clone(),
+            ),
             passages: passages_wiring::Ports::postgres(databases.passages.clone()),
-            pieces: pieces_wiring::Ports::postgres(databases.pieces.clone()),
-            boards: boards_wiring::Ports::postgres(databases.boards.clone()),
-            outline: outline_wiring::Ports::postgres(databases.outline.clone()),
+            pieces: pieces_wiring::Ports::postgres(
+                databases.pieces.clone(),
+                dispatcher.clone(),
+                clock.clone(),
+            ),
+            boards: boards_wiring::Ports::postgres(
+                databases.boards.clone(),
+                dispatcher.clone(),
+                clock.clone(),
+            ),
+            outline: outline_wiring::Ports::postgres(
+                databases.outline.clone(),
+                dispatcher.clone(),
+                clock.clone(),
+            ),
+            clock,
+            dispatcher,
         }
+    }
+
+    pub fn outboxes(&self) -> Vec<Arc<dyn eventsourcing::Outbox>> {
+        vec![
+            self.projects.outbox.clone(),
+            self.pieces.outbox.clone(),
+            self.boards.outbox.clone(),
+            self.outline.outbox.clone(),
+        ]
     }
 }
 

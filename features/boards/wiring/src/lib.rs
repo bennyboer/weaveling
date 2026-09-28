@@ -2,31 +2,43 @@ use std::sync::Arc;
 
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
-use boards_messaging::{
-    BoardCatalogProjector, BoardEventPublisher, PinnedPiecesProjector, UnpinOnDiscard,
-};
-use eventsourcing::{EventStore, InMemoryEventStore, PublishingEventStore};
+use boards_messaging::{BoardCatalogProjector, PinnedPiecesProjector, UnpinOnDiscard};
+use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
+use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<BoardEvent>>,
     pub catalog: Arc<dyn BoardCatalog>,
+    pub registry: Arc<dyn Registry>,
+    pub outbox: Arc<dyn Outbox>,
 }
 
 impl Ports {
-    pub fn in_memory(publisher: Arc<dyn messaging::Publisher>) -> Self {
+    pub fn in_memory(
+        publisher: Arc<dyn messaging::Publisher>,
+        clock: Arc<dyn clock::Clock>,
+    ) -> Self {
+        let outbox = Arc::new(InMemoryOutbox::new(publisher, clock));
+
         Self {
-            events: PublishingEventStore::wrapping(
-                Arc::new(InMemoryEventStore::new()),
-                Arc::new(BoardEventPublisher::new(publisher)),
-            ),
+            events: Arc::new(InMemoryEventStore::enqueuing_to(
+                outbox.clone(),
+                boards_messaging::message_for,
+            )),
             catalog: Arc::new(InMemoryBoardCatalog::new()),
+            registry: Arc::new(InMemoryRegistry::new()),
+            outbox,
         }
     }
 
     #[cfg(feature = "postgres")]
-    pub fn postgres(pool: sqlx::PgPool) -> Self {
-        use eventsourcing::PostgresEventStore;
+    pub fn postgres(
+        pool: sqlx::PgPool,
+        publisher: Arc<dyn messaging::Publisher>,
+        clock: Arc<dyn clock::Clock>,
+    ) -> Self {
+        use eventsourcing::{PostgresEventStore, PostgresOutbox};
 
         Self {
             events: Arc::new(PostgresEventStore::new(
@@ -34,7 +46,9 @@ impl Ports {
                 boards_store::codec(),
                 boards_messaging::message_for,
             )),
-            catalog: Arc::new(boards_catalog::PostgresBoardCatalog::new(pool)),
+            catalog: Arc::new(boards_catalog::PostgresBoardCatalog::new(pool.clone())),
+            registry: Arc::new(registry::PostgresRegistry::new(pool.clone())),
+            outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
         }
     }
 }
@@ -42,7 +56,7 @@ impl Ports {
 pub fn service(ports: &Ports, context: &Context) -> BoardService {
     BoardService::new(
         ports.events.clone(),
-        ports.catalog.clone(),
+        ports.registry.clone(),
         context.clock.clone(),
     )
 }
@@ -73,18 +87,6 @@ pub const NAME: &str = "boards";
 #[cfg(feature = "postgres")]
 pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
     wiring::database::lay_out(NAME, pool, eventsourcing::migrations()).await?;
-    wiring::database::lay_out(NAME, pool, boards_catalog::migrations()).await
-}
-
-#[cfg(feature = "postgres")]
-pub fn outbox(
-    pool: &sqlx::PgPool,
-    publisher: Arc<dyn messaging::Publisher>,
-    clock: Arc<dyn clock::Clock>,
-) -> Option<eventsourcing::PostgresOutbox> {
-    Some(eventsourcing::PostgresOutbox::new(
-        pool.clone(),
-        publisher,
-        clock,
-    ))
+    wiring::database::lay_out(NAME, pool, boards_catalog::migrations()).await?;
+    wiring::database::lay_out(NAME, pool, registry::migrations()).await
 }

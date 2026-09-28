@@ -14,7 +14,7 @@ Weaveling's domain language is deliberate — a piece is *captured*, a project i
 | --- | --- | --- |
 | `core` — aggregate, command, event, error, service | The domain's own words | `PieceCommand::Capture`, `ProjectEvent::Started` |
 | `adapters/*`, `wiring`, `libraries/*` | Plain and technical | `to_dto`, `to_response`, `ProjectEventPublisher` |
-| Test function names | A sentence that states the claim | `a_nudge_delivers_long_before_the_next_poll_would` |
+| Test function names | A sentence that states the claim | `a_notification_delivers_long_before_the_next_poll_would` |
 | Test helpers | Read at the call site, article-prefixed | `a_title()`, `an_author()`, `at(1_000)` |
 
 ### A converter is named for what it returns
@@ -56,6 +56,15 @@ Singular, built on the aggregate's own name — `ProjectEventPublisher`, not `Pr
 ### Where participles do belong
 
 As predicates and states, not as conversions: `is_deleted`, `is_snapshot`, `is_publishable`, `Delivery::Kept`. A participle answers *what is true of this*, never *what does this return*.
+
+### Name the mechanism, not the feeling
+
+The same trap in a different shape: a word chosen because it evokes the right *idea* rather than because it names what happens. It reads well once and tells a reader nothing the second time.
+
+- `Nudges` / `outbox.nudges()` became **`Notifications`** / `outbox.notifications()`. Both backends already call it notify — PostgreSQL `pg_notify` and `LISTEN`, tokio's `Notify` — so "nudge" was a third word for a thing that had two perfectly good ones.
+- `announce` became **`enqueue`**, because the in-memory outbox already had `enqueue` and the two were one operation under two names in one crate. What it does is put a row in a queue.
+
+**Prose is the exception, and deliberately so.** A test name and an assertion message may keep the domain word — "a refused append announces nothing" says what an outbox row *means* to a reader, where `enqueue` says what the code *does*. Meaning in the prose, mechanism in the code; they are allowed to differ as long as each is in its own place.
 
 ## Comments
 

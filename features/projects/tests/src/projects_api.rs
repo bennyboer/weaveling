@@ -7,7 +7,7 @@ use clock::FixedClock;
 use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::wired;
+use crate::wiring::{Wired, wired};
 
 const UNKNOWN_ID: &str = "project_031VkO0hnpeQZUiAB7nDma";
 
@@ -15,12 +15,36 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn a_server() -> TestServer {
+struct Serving {
+    server: TestServer,
+    wired: Wired,
+}
+
+impl std::ops::Deref for Serving {
+    type Target = TestServer;
+
+    fn deref(&self) -> &TestServer {
+        &self.server
+    }
+}
+
+impl Serving {
+    async fn listed(&self) -> Vec<ProjectDTO> {
+        self.wired.settle().await;
+
+        self.server.get("/projects").await.json()
+    }
+}
+
+fn a_server() -> Serving {
     a_server_on(Arc::new(FixedClock::new(at(1_700_000_000))))
 }
 
-fn a_server_on(clock: Arc<FixedClock>) -> TestServer {
-    TestServer::new(wired(clock).routes)
+fn a_server_on(clock: Arc<FixedClock>) -> Serving {
+    let wired = wired(clock);
+    let server = TestServer::new(wired.routes.clone());
+
+    Serving { server, wired }
 }
 
 fn named(name: &str) -> CreateProjectRequest {
@@ -35,7 +59,7 @@ fn renamed(name: &str) -> RenameProjectRequest {
     }
 }
 
-async fn a_project_named(server: &TestServer, name: &str) -> ProjectDTO {
+async fn a_project_named(server: &Serving, name: &str) -> ProjectDTO {
     let response = server.post("/projects").json(&named(name)).await;
     response.assert_status(StatusCode::CREATED);
 
@@ -86,10 +110,7 @@ async fn a_started_project_appears_in_the_listing() {
     let server = a_server();
     let created = a_project_named(&server, "Tapestry").await;
 
-    let response = server.get("/projects").await;
-
-    response.assert_status(StatusCode::OK);
-    assert_eq!(response.json::<Vec<ProjectDTO>>(), vec![created]);
+    assert_eq!(server.listed().await, vec![created]);
 }
 
 #[tokio::test]
@@ -110,7 +131,7 @@ async fn the_project_started_most_recently_is_listed_first() {
     clock.set(at(1_700_000_060));
     a_project_named(&server, "Second").await;
 
-    let listed: Vec<ProjectDTO> = server.get("/projects").await.json();
+    let listed = server.listed().await;
 
     assert_eq!(
         listed
@@ -256,13 +277,7 @@ async fn deleting_a_project_answers_204_and_it_is_gone() {
         .get(&format!("/projects/{}", created.id))
         .await
         .assert_status(StatusCode::NOT_FOUND);
-    assert!(
-        server
-            .get("/projects")
-            .await
-            .json::<Vec<ProjectDTO>>()
-            .is_empty()
-    );
+    assert!(server.listed().await.is_empty());
 }
 
 #[tokio::test]

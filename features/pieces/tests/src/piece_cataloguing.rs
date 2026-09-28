@@ -34,11 +34,14 @@ async fn listed(wired: &Wired) -> Vec<String> {
 }
 
 async fn a_captured_piece(wired: &Wired) -> PieceId {
-    wired
+    let id = wired
         .pieces
         .capture("project_1", "The Loom", &an_author())
         .await
-        .expect("capturing should succeed")
+        .expect("capturing should succeed");
+    wired.settle().await;
+
+    id
 }
 
 fn a_title() -> PieceTitle {
@@ -107,6 +110,7 @@ async fn a_stale_message_cannot_resurrect_a_discarded_piece() {
         .discard(&id.to_string(), None, &an_author())
         .await
         .expect("discarding should succeed");
+    wired.settle().await;
     assert!(listed(&wired).await.is_empty(), "the discard was projected");
 
     wired
@@ -130,6 +134,7 @@ async fn the_listing_follows_the_latest_title_however_messages_arrive() {
         .retitle(&id.to_string(), "The Silent Loom", None, &an_author())
         .await
         .expect("retitling should succeed");
+    wired.settle().await;
 
     wired
         .projector

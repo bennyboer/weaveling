@@ -570,13 +570,39 @@ Deferred out of [M8](#milestone-8--messaging-), where the cascade was originally
 
 **That is not theoretical; it bit twice in one milestone.** The wiring step left PostgreSQL with no relay, so no projection was ever fed and every listing came back empty; [M11a step 1](#step-1--projects-becomes-an-aggregate--done) hit it again the moment `projects` stopped publishing inline. Both were caught only because a handful of tests run against a real database in Docker. A bug that depends on a projection being one beat behind — a read straight after a write, a listener whose ordering assumption is wrong, a cascade step that races the projection it reads — is invisible to the in-memory suite by construction.
 
-**Build:** an in-memory outbox and an in-memory relay with the same shape as the PostgreSQL pair — enqueue inside the append, claim a batch, publish, mark published — driven by the same `Cadence`. The notification is a `tokio::sync::Notify` the store pokes after the write rather than `pg_notify`, because a single process needs no database to carry a wake-up. Tests that want the projection settled ask the relay to drain rather than assuming it already has, which is the same discipline the PostgreSQL tests already follow.
+#### Step 1 — one flow — done
 
-**It also collapses something that never sat right.** `PublishingEventStore` exists *only* because the two backends disagree about publishing — [it was argued into being for exactly that reason](#milestone-11--the-real-store). Once both enqueue, the decorator has no deployment left to serve and becomes a test fixture for the one case that wants publishing without a relay.
+**The trait came first.** `Outbox` and `Nudges` now sit at the crate root, and `RelayTask` moved out of `postgres/` to drive either backend — so there is one relay, not one per store, and the PostgreSQL one keeps `LISTEN/NOTIFY` only as its own implementation of a wake-up. `tokio`, `tracing` and `messaging` stopped being optional dependencies of `eventsourcing`, which is honest: relaying is what the library does, not a PostgreSQL detail. Nothing reaches wasm from here, so the cost is nil.
 
-**And it has to close a gap that makes `Kept` a lie.** `InProcessDispatcher::publish` returns `Ok(())` whatever the listeners do: a refusal is handed to `DeadLetters` and the publish reports success. So when the relay publishes a message and a projector refuses it, the relay is told it went out and **marks the outbox row published** — the message is gone, and the only trace is a log line from `Logged` whose own text admits there is nowhere to retry it. A listener declaring [`Delivery::Kept`](../libraries/messaging/src/listening.rs) is asking to be retried, and nothing retries it. The fix belongs here rather than after, because the outbox is the retry: the dispatcher reports the refusal, the relay leaves the row unpublished, and the next tick claims it again. Until then `Kept` and `Fleeting` differ only in log level — and note that no listener declares `Fleeting` at all today, so that half of the enum is still waiting for its first real case.
+**`Ports` carries its own outbox**, and the free `outbox(pool, publisher, clock)` per feature is gone. `Adapters::outboxes()` hands the composition root a `Vec<Arc<dyn Outbox>>` and `Relays::started` takes exactly that — so the service no longer knows which backend it is running, and local mode starts relays like everything else. `main` lost its `#[cfg]` split entirely.
 
-**Done when:** both backends enqueue and both relay; no store publishes inline outside a test; a refused message stays in the outbox and is tried again rather than being logged and lost; and a test that reads a projection immediately after a command fails in memory for the same reason it would fail on PostgreSQL.
+**`PublishingEventStore` has no deployment left.** Both backends enqueue; the decorator survives only for a test that wants publishing without a relay.
+
+**What it found, which is the point.** Five tests failed the moment delivery stopped being synchronous, and they were not all the same thing:
+
+- **Three were tests observing a projection early** — fixed by a `settle()` on the test wiring, which drains the outbox rather than assuming it has drained. That is the discipline the PostgreSQL tests already followed.
+- **One was a real idempotency defect.** `unpin-discarded-piece` read a stale index on a redelivered `piece.discarded`, tried to unpin a piece that was already gone, and was refused with `NotPinned`. It had only ever looked idempotent because the index was always current. Fixed.
+- **Two were the find-or-start race**, and they are `#[ignore]`d rather than settled, because [TODO.md](./TODO.md) says in as many words that a settle hook would hide the defect the canary exists to find. `open` asks a projection whether the project already has a board; a second open that beats the projection starts a second one. It needs its own step and a decision.
+
+The canary was documented as "one test leans on delivery being synchronous, and that is the whole list." It was five, and two of them were defects rather than test artefacts.
+
+#### Step 1a — the uniqueness guard — done
+
+**`open` claims instead of looking.** `BoardService::open` and `OutlineService::open` asked the catalog whether the project already had one and started one when it said no — so a second open that beat the projection started a second board. They now claim `(kind, project)` in a registry: an insert that returns the id already holding the claim when it loses, so the loser goes and reads the winner's board rather than being refused. Starting is then idempotent against the event store's own `(aggregate, kind, version)` guard — two racers both try `begin`, one wins, the other reads.
+
+**It is a library, not a feature detail.** Boards and outline had the identical defect with the identical shape, so [`libraries/registry`](./libraries/registry) owns the `Registry` port, an in-memory and a PostgreSQL adapter behind one conformance suite, and the `claims` table's migration. Each feature lays it down in its **own** database, so the guard never becomes a shared table between features — and the ledger is `_sqlx_migrations_claims`, because a feature now runs three migrators into one schema and sqlx would otherwise see one version 1 modified into another.
+
+**Proved rather than assumed:** a PostgreSQL test fires eight concurrent claims at one key and asserts all eight are told the same board. The three canary tests are un-ignored.
+
+**And the catalog stopped deciding anything.** `in_project` remains as the listing the model anticipates, but neither service holds a catalog any more — identity comes from the claim, which cannot lag, rather than from a projection, which can.
+
+#### Step 2 — `Kept` gets teeth
+
+**The gap that makes `Kept` a lie.** `InProcessDispatcher::publish` returns `Ok(())` whatever the listeners do: a refusal is handed to `DeadLetters` and the publish reports success. So when the relay publishes a message and a projector refuses it, the relay is told it went out and **marks the outbox row published** — the message is gone, and the only trace is a log line from `Logged` whose own text admits there is nowhere to retry it. A listener declaring [`Delivery::Kept`](../libraries/messaging/src/listening.rs) is asking to be retried, and nothing retries it. The fix belongs here rather than after, because the outbox is the retry: the dispatcher reports the refusal, the relay leaves the row unpublished, and the next tick claims it again. Until then `Kept` and `Fleeting` differ only in log level — and note that no listener declares `Fleeting` at all today, so that half of the enum is still waiting for its first real case.
+
+**And a sweep of the listeners**, because step 1 found one that was not idempotent and there are six of them. Until a refusal is retried, every stale-projection read in a listener is a message quietly lost.
+
+**Done when:** a refused message stays in the outbox and is tried again rather than being logged and lost; `DeadLetters` has a stated job now that the outbox is the retry; and local mode surfaces a refusal to the author instead of dead-lettering it for an ops team that does not exist.
 
 ---
 

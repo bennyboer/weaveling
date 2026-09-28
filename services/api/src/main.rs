@@ -1,15 +1,14 @@
 use std::sync::Arc;
 
 use clock::SystemClock;
+use eventsourcing::Cadence;
 use tokio::net::TcpListener;
-use weaveling_service_api::{Adapters, app};
+use weaveling_service_api::{Adapters, Relays, app};
 
 #[cfg(feature = "postgres")]
-async fn serving() -> (axum::Router, Option<weaveling_service_api::Relays>) {
-    use eventsourcing::Cadence;
-    use weaveling_service_api::{Databases, Relays};
+async fn adapters() -> Adapters {
+    use weaveling_service_api::Databases;
 
-    let clock = Arc::new(SystemClock);
     let server = std::env::var("DATABASE_URL").expect(
         "DATABASE_URL should name a PostgreSQL server when built with the postgres feature",
     );
@@ -17,17 +16,20 @@ async fn serving() -> (axum::Router, Option<weaveling_service_api::Relays>) {
         .await
         .expect("the databases should be reachable and migratable");
 
-    let adapters = Adapters::postgres(clock.clone(), &databases);
-    let publisher = adapters.dispatcher.clone();
-    let routes = app(adapters);
-    let relays = Relays::started(&databases, publisher, clock, Cadence::default());
-
-    (routes, Some(relays))
+    Adapters::postgres(Arc::new(SystemClock), &databases)
 }
 
 #[cfg(not(feature = "postgres"))]
-async fn serving() -> (axum::Router, Option<()>) {
-    (app(Adapters::in_memory(Arc::new(SystemClock))), None)
+async fn adapters() -> Adapters {
+    Adapters::in_memory(Arc::new(SystemClock))
+}
+
+async fn serving() -> (axum::Router, Relays) {
+    let adapters = adapters().await;
+    let outboxes = adapters.outboxes();
+    let routes = app(adapters);
+
+    (routes, Relays::started(outboxes, Cadence::default()))
 }
 
 #[tokio::main]
@@ -52,16 +54,10 @@ async fn main() {
     stop(relays).await;
 }
 
-#[cfg(feature = "postgres")]
-async fn stop(relays: Option<weaveling_service_api::Relays>) {
-    if let Some(relays) = relays {
-        relays.stop().await;
-        tracing::info!("the outbox relays have stopped");
-    }
+async fn stop(relays: Relays) {
+    relays.stop().await;
+    tracing::info!("the outbox relays have stopped");
 }
-
-#[cfg(not(feature = "postgres"))]
-async fn stop(_relays: Option<()>) {}
 
 async fn interrupted() {
     tokio::signal::ctrl_c()

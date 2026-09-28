@@ -2,13 +2,15 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{
-    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
+    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, StoreError,
+    Version,
 };
 use ids::InvalidId;
+use registry::{Registry, RegistryError};
 use thiserror::Error;
 
-use crate::board::{Board, BoardCommand, BoardError, BoardEvent, PieceLink, ProjectLink};
-use crate::catalog::{BoardCatalog, CatalogError};
+use crate::board::{Board, BoardCommand, BoardError, BoardEvent, KIND, PieceLink, ProjectLink};
+use crate::catalog::CatalogError;
 use crate::id::BoardId;
 use crate::size::Size;
 use crate::spot::Spot;
@@ -21,12 +23,14 @@ pub enum BoardServiceError {
     Events(#[from] ServiceError<BoardError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    Registry(#[from] RegistryError),
 }
 
 #[derive(Clone)]
 pub struct BoardService {
     events: Arc<EventSourcingService<Board>>,
-    catalog: Arc<dyn BoardCatalog>,
+    registry: Arc<dyn Registry>,
     clock: Arc<dyn Clock>,
 }
 
@@ -38,26 +42,31 @@ pub struct Open {
 impl BoardService {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
-        catalog: Arc<dyn BoardCatalog>,
+        registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
-            catalog,
+            registry,
             clock,
         }
     }
 
     pub async fn open(&self, project: &str, agent: &Agent) -> Result<Open, BoardServiceError> {
-        let id = match self.first_of(project).await? {
-            Some(found) => found,
-            None => self.start(project, agent).await?,
+        let id = self.claimed_by(project).await?;
+        let key = AggregateId::from(&id);
+
+        let standing = match self.events.latest(&key).await {
+            Ok(standing) => standing,
+            Err(ServiceError::NotFound { .. }) => {
+                self.start(&key, project, agent).await?;
+
+                self.events.latest(&key).await?
+            }
+            Err(refused) => return Err(refused.into()),
         };
 
-        Ok(Open {
-            id,
-            standing: self.events.latest(&AggregateId::from(&id)).await?,
-        })
+        Ok(Open { id, standing })
     }
 
     pub async fn get(&self, board: &str) -> Result<Standing<Board>, BoardServiceError> {
@@ -113,25 +122,36 @@ impl BoardService {
             .await
     }
 
-    async fn first_of(&self, project: &str) -> Result<Option<BoardId>, BoardServiceError> {
-        let opened = self.catalog.in_project(&ProjectLink::from(project)).await?;
+    async fn claimed_by(&self, project: &str) -> Result<BoardId, BoardServiceError> {
+        let mine = BoardId::generate(self.clock.now());
+        let held = self
+            .registry
+            .claim(KIND.as_str(), project, &mine.to_string())
+            .await?;
 
-        Ok(opened.first().map(|board| board.id))
+        Ok(held.parse()?)
     }
 
-    async fn start(&self, project: &str, agent: &Agent) -> Result<BoardId, BoardServiceError> {
-        let id = BoardId::generate(self.clock.now());
-        self.events
+    async fn start(
+        &self,
+        key: &AggregateId,
+        project: &str,
+        agent: &Agent,
+    ) -> Result<(), BoardServiceError> {
+        match self
+            .events
             .begin(
-                &AggregateId::from(&id),
+                key,
                 BoardCommand::Start {
                     project: ProjectLink::from(project),
                 },
                 agent,
             )
-            .await?;
-
-        Ok(id)
+            .await
+        {
+            Ok(_) | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(()),
+            Err(refused) => Err(refused.into()),
+        }
     }
 
     async fn carry_out(

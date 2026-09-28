@@ -6,7 +6,7 @@ use clock::FixedClock;
 use pieces_contract::{AttachPassageRequest, CapturePieceRequest, PieceDTO, RetitlePieceRequest};
 use pieces_core::PieceTitle;
 
-use crate::wiring::wired;
+use crate::wiring::{Wired, wired};
 use time::{Duration, OffsetDateTime};
 
 const UNKNOWN_ID: &str = "piece_031VkO0hnpeQZUiAB7nDma";
@@ -15,10 +15,35 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn a_server() -> TestServer {
-    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+struct Serving {
+    server: TestServer,
+    wired: Wired,
+}
 
-    TestServer::new(wired.routes)
+impl std::ops::Deref for Serving {
+    type Target = TestServer;
+
+    fn deref(&self) -> &TestServer {
+        &self.server
+    }
+}
+
+impl Serving {
+    async fn listed(&self, project: &str) -> Vec<PieceDTO> {
+        self.wired.settle().await;
+
+        self.server
+            .get(&format!("/pieces?project={project}"))
+            .await
+            .json()
+    }
+}
+
+fn a_server() -> Serving {
+    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+    let server = TestServer::new(wired.routes.clone());
+
+    Serving { server, wired }
 }
 
 fn a_capture(title: &str) -> CapturePieceRequest {
@@ -28,7 +53,7 @@ fn a_capture(title: &str) -> CapturePieceRequest {
     }
 }
 
-async fn a_piece(server: &TestServer, title: &str) -> PieceDTO {
+async fn a_piece(server: &Serving, title: &str) -> PieceDTO {
     let response = server.post("/pieces").json(&a_capture(title)).await;
     response.assert_status(StatusCode::CREATED);
 
@@ -413,10 +438,7 @@ async fn captured_pieces_are_listed_for_their_project() {
     let one = a_piece(&server, "The Loom").await;
     let other = a_piece(&server, "The Shuttle").await;
 
-    let listed = server
-        .get("/pieces?project=project_1")
-        .await
-        .json::<Vec<PieceDTO>>();
+    let listed = server.listed("project_1").await;
 
     assert_eq!(listed.len(), 2);
     assert!(listed.iter().any(|piece| piece.id == one.id));
@@ -446,10 +468,7 @@ async fn a_retitled_piece_is_listed_under_its_new_title() {
         .await
         .assert_status_ok();
 
-    let listed = server
-        .get("/pieces?project=project_1")
-        .await
-        .json::<Vec<PieceDTO>>();
+    let listed = server.listed("project_1").await;
 
     assert_eq!(listed[0].title, "The Silent Loom");
     assert_eq!(listed[0].version, 2, "the listing must not go stale");
@@ -468,10 +487,7 @@ async fn an_attached_passage_shows_up_in_the_listing() {
         .await
         .assert_status_ok();
 
-    let listed = server
-        .get("/pieces?project=project_1")
-        .await
-        .json::<Vec<PieceDTO>>();
+    let listed = server.listed("project_1").await;
 
     assert_eq!(listed[0].passage, Some("passage_9".to_owned()));
 }
@@ -487,10 +503,7 @@ async fn a_discarded_piece_leaves_the_listing() {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
-    let listed = server
-        .get("/pieces?project=project_1")
-        .await
-        .json::<Vec<PieceDTO>>();
+    let listed = server.listed("project_1").await;
 
     assert_eq!(listed.len(), 1);
     assert_eq!(listed[0].id, kept.id);
@@ -510,10 +523,7 @@ async fn a_refused_change_leaves_the_listing_alone() {
         .await
         .assert_status(StatusCode::PRECONDITION_FAILED);
 
-    let listed = server
-        .get("/pieces?project=project_1")
-        .await
-        .json::<Vec<PieceDTO>>();
+    let listed = server.listed("project_1").await;
 
     assert_eq!(
         listed[0].title, "The Loom",

@@ -64,6 +64,8 @@ async fn a_board_holding(wired: &Wired, pieces: &[&str]) -> BoardId {
             .expect("pinning should succeed");
     }
 
+    wired.settle().await;
+
     id
 }
 
@@ -107,6 +109,7 @@ async fn unpinning_a_piece_takes_it_out_of_the_index() {
         .unpin(&board.to_string(), a_piece("piece_1"), None, &an_author())
         .await
         .expect("unpinning should succeed");
+    wired.settle().await;
 
     assert!(
         wired
@@ -128,6 +131,7 @@ async fn a_discarded_piece_is_taken_off_the_board() {
         .handle(&discarded("piece_1"))
         .await
         .expect("tidying should succeed");
+    wired.settle().await;
 
     assert_eq!(
         pinned_on(&wired, &board).await,
@@ -148,6 +152,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
             .await
             .expect("a redelivery is not a failure");
     }
+    wired.settle().await;
 
     assert!(
         pinned_on(&wired, &board).await.is_empty(),

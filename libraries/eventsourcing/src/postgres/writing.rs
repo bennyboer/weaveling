@@ -53,7 +53,7 @@ where
         for happened in events {
             self.insert(&mut transaction, aggregate, kind, expected, happened)
                 .await?;
-            self.announce(&mut transaction, aggregate, kind, happened)
+            self.enqueue(&mut transaction, aggregate, kind, happened)
                 .await?;
         }
 

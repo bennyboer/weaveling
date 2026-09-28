@@ -2,14 +2,18 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{
-    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
+    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, StoreError,
+    Version,
 };
 use ids::InvalidId;
+use registry::{Registry, RegistryError};
 use thiserror::Error;
 
-use crate::catalog::{CatalogError, OutlineCatalog};
+use crate::catalog::CatalogError;
 use crate::id::{OutlineId, SectionId};
-use crate::outline::{Outline, OutlineCommand, OutlineError, OutlineEvent, PieceLink, ProjectLink};
+use crate::outline::{
+    KIND, Outline, OutlineCommand, OutlineError, OutlineEvent, PieceLink, ProjectLink,
+};
 use crate::title::SectionTitle;
 
 #[derive(Debug, Error)]
@@ -20,12 +24,14 @@ pub enum OutlineServiceError {
     Events(#[from] ServiceError<OutlineError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    Registry(#[from] RegistryError),
 }
 
 #[derive(Clone)]
 pub struct OutlineService {
     events: Arc<EventSourcingService<Outline>>,
-    catalog: Arc<dyn OutlineCatalog>,
+    registry: Arc<dyn Registry>,
     clock: Arc<dyn Clock>,
 }
 
@@ -42,26 +48,31 @@ pub struct Added {
 impl OutlineService {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
-        catalog: Arc<dyn OutlineCatalog>,
+        registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
-            catalog,
+            registry,
             clock,
         }
     }
 
     pub async fn open(&self, project: &str, agent: &Agent) -> Result<Open, OutlineServiceError> {
-        let id = match self.first_of(project).await? {
-            Some(found) => found,
-            None => self.start(project, agent).await?,
+        let id = self.claimed_by(project).await?;
+        let key = AggregateId::from(&id);
+
+        let standing = match self.events.latest(&key).await {
+            Ok(standing) => standing,
+            Err(ServiceError::NotFound { .. }) => {
+                self.start(&key, project, agent).await?;
+
+                self.events.latest(&key).await?
+            }
+            Err(refused) => return Err(refused.into()),
         };
 
-        Ok(Open {
-            id,
-            standing: self.events.latest(&AggregateId::from(&id)).await?,
-        })
+        Ok(Open { id, standing })
     }
 
     pub async fn get(&self, outline: &str) -> Result<Standing<Outline>, OutlineServiceError> {
@@ -208,25 +219,36 @@ impl OutlineService {
         .await
     }
 
-    async fn first_of(&self, project: &str) -> Result<Option<OutlineId>, OutlineServiceError> {
-        let opened = self.catalog.in_project(&ProjectLink::from(project)).await?;
+    async fn claimed_by(&self, project: &str) -> Result<OutlineId, OutlineServiceError> {
+        let mine = OutlineId::generate(self.clock.now());
+        let held = self
+            .registry
+            .claim(KIND.as_str(), project, &mine.to_string())
+            .await?;
 
-        Ok(opened.first().map(|outline| outline.id))
+        Ok(held.parse()?)
     }
 
-    async fn start(&self, project: &str, agent: &Agent) -> Result<OutlineId, OutlineServiceError> {
-        let id = OutlineId::generate(self.clock.now());
-        self.events
+    async fn start(
+        &self,
+        key: &AggregateId,
+        project: &str,
+        agent: &Agent,
+    ) -> Result<(), OutlineServiceError> {
+        match self
+            .events
             .begin(
-                &AggregateId::from(&id),
+                key,
                 OutlineCommand::Start {
                     project: ProjectLink::from(project),
                 },
                 agent,
             )
-            .await?;
-
-        Ok(id)
+            .await
+        {
+            Ok(_) | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(()),
+            Err(refused) => Err(refused.into()),
+        }
     }
 
     async fn carry_out(

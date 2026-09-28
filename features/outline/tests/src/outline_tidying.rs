@@ -88,6 +88,8 @@ async fn a_book_holding(wired: &Wired, pieces: &[&str]) -> (OutlineId, SectionId
         behind = Some(a_piece(piece));
     }
 
+    wired.settle().await;
+
     (outline, chapter)
 }
 
@@ -130,6 +132,7 @@ async fn detaching_a_piece_takes_it_out_of_the_index() {
         .detach(&outline.to_string(), a_piece("piece_1"), None, &an_author())
         .await
         .expect("detaching should succeed");
+    wired.settle().await;
 
     assert!(
         wired
@@ -151,6 +154,7 @@ async fn removing_a_section_takes_its_pieces_out_of_the_index() {
         .remove(&outline.to_string(), chapter, None, &an_author())
         .await
         .expect("removing should succeed");
+    wired.settle().await;
 
     assert!(
         wired
@@ -173,6 +177,7 @@ async fn a_discarded_piece_leaves_the_book() {
         .handle(&discarded("piece_1"))
         .await
         .expect("tidying should succeed");
+    wired.settle().await;
 
     assert_eq!(
         reading_order(&wired, &outline).await,
@@ -192,6 +197,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
             .handle(&discarded("piece_1"))
             .await
             .expect("a redelivery is not a failure");
+        wired.settle().await;
     }
 
     assert!(

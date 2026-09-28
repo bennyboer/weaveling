@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use sqlx::postgres::PgListener;
 use time::{Duration, OffsetDateTime};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use crate::postgres::outbox::{KEPT_FOR, PostgresOutbox};
+use crate::outbox::{KEPT_FOR, Notifications, Outbox};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Cadence {
@@ -35,7 +34,7 @@ pub struct RelayTask {
 }
 
 impl RelayTask {
-    pub fn started(outbox: Arc<PostgresOutbox>, cadence: Cadence) -> Self {
+    pub fn started(outbox: Arc<dyn Outbox>, cadence: Cadence) -> Self {
         let (stopping, stopped) = watch::channel(false);
 
         Self {
@@ -52,12 +51,8 @@ impl RelayTask {
     }
 }
 
-async fn delivering(
-    outbox: Arc<PostgresOutbox>,
-    cadence: Cadence,
-    mut stopped: watch::Receiver<bool>,
-) {
-    let mut nudges = match outbox.nudges().await {
+async fn delivering(outbox: Arc<dyn Outbox>, cadence: Cadence, mut stopped: watch::Receiver<bool>) {
+    let mut notifications = match outbox.notifications().await {
         Ok(listening) => Some(listening),
         Err(why) => {
             tracing::warn!(
@@ -82,49 +77,35 @@ async fn delivering(
             Err(why) => tracing::error!(error = %why, "the outbox could not be drained"),
         }
 
-        if !nudged(cadence.deliver_every, nudges.as_mut(), &mut stopped).await {
+        if !notified(cadence.deliver_every, notifications.as_mut(), &mut stopped).await {
             break;
         }
     }
 }
 
-async fn nudged(
+async fn notified(
     within: std::time::Duration,
-    nudges: Option<&mut PgListener>,
+    notifications: Option<&mut Box<dyn Notifications>>,
     stopped: &mut watch::Receiver<bool>,
 ) -> bool {
-    let Some(nudges) = nudges else {
+    let Some(notifications) = notifications else {
         return waiting(within, stopped).await;
     };
 
     tokio::select! {
         _ = stopped.changed() => false,
         _ = tokio::time::sleep(within) => true,
-        heard = nudges.recv() => {
-            if let Err(why) = heard {
-                tracing::warn!(error = %why, "the nudge channel dropped, polling carries on");
-            }
-
-            true
-        }
+        () = notifications.wait() => true,
     }
 }
 
-async fn sweeping(
-    outbox: Arc<PostgresOutbox>,
-    cadence: Cadence,
-    mut stopped: watch::Receiver<bool>,
-) {
+async fn sweeping(outbox: Arc<dyn Outbox>, cadence: Cadence, mut stopped: watch::Receiver<bool>) {
     while waiting(cadence.sweep_every, &mut stopped).await {
-        swept(&outbox, cadence, &mut stopped).await;
+        swept(outbox.as_ref(), cadence, &mut stopped).await;
     }
 }
 
-async fn swept(
-    outbox: &PostgresOutbox,
-    cadence: Cadence,
-    stopped: &mut watch::Receiver<bool>,
-) -> u64 {
+async fn swept(outbox: &dyn Outbox, cadence: Cadence, stopped: &mut watch::Receiver<bool>) -> u64 {
     let before = OffsetDateTime::now_utc() - cadence.kept_for;
     let mut gone = 0;
 
@@ -158,7 +139,7 @@ async fn waiting(every: std::time::Duration, stopped: &mut watch::Receiver<bool>
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "postgres"))]
 mod tests {
     use std::sync::{Arc, Mutex};
 
@@ -465,7 +446,7 @@ mod tests {
         fixture.cleanup().await;
     }
 
-    fn only_when_nudged() -> Cadence {
+    fn only_when_notified() -> Cadence {
         Cadence {
             deliver_every: std::time::Duration::from_secs(300),
             ..briskly()
@@ -473,7 +454,7 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread")]
-    async fn a_nudge_delivers_long_before_the_next_poll_would() {
+    async fn a_notification_delivers_long_before_the_next_poll_would() {
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("nudging").await;
         crate::postgres::migrations()
@@ -489,11 +470,11 @@ mod tests {
                 heard.clone(),
                 Arc::new(SystemClock),
             )),
-            only_when_nudged(),
+            only_when_notified(),
         );
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        a_captured_sample(&store, &AggregateId::from("sample_nudged")).await;
+        a_captured_sample(&store, &AggregateId::from("sample_notified")).await;
 
         assert!(
             until(|| heard.how_many() == 1).await,

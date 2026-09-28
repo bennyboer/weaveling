@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::Router;
 use clock::Clock;
-use eventsourcing::{InMemoryEventStore, PublishingEventStore};
+use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
 use messaging::{InProcessDispatcher, Listener};
 use pieces_catalog::InMemoryPieceCatalog;
 use pieces_core::{PieceEvent, PieceService};
@@ -14,22 +14,23 @@ pub struct Wired {
     pub pieces: PieceService,
     pub routes: Router,
     pub store: Arc<InMemoryEventStore<PieceEvent>>,
+    pub outbox: Arc<InMemoryOutbox>,
     pub catalog: Arc<InMemoryPieceCatalog>,
     pub projector: Arc<dyn Listener>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    let store = Arc::new(InMemoryEventStore::<PieceEvent>::new());
-    let catalog = Arc::new(InMemoryPieceCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
+    let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
+    let store = Arc::new(InMemoryEventStore::enqueuing_to(
+        outbox.clone(),
+        pieces_messaging::message_for,
+    ));
+    let catalog = Arc::new(InMemoryPieceCatalog::new());
     let ports = pieces_wiring::Ports {
-        events: PublishingEventStore::wrapping(
-            store.clone(),
-            Arc::new(pieces_messaging::PieceEventPublisher::new(
-                dispatcher.clone(),
-            )),
-        ),
+        events: store.clone(),
         catalog: catalog.clone(),
+        outbox: outbox.clone(),
     };
     let context = Context {
         clock,
@@ -52,7 +53,21 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         pieces: pieces_wiring::service(&ports, &context),
         routes: wired.routes,
         store,
+        outbox,
         catalog,
         projector,
+    }
+}
+
+impl Wired {
+    pub async fn settle(&self) {
+        while self
+            .outbox
+            .deliver(128)
+            .await
+            .expect("delivering should succeed")
+            .published
+            > 0
+        {}
     }
 }

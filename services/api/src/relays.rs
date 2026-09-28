@@ -1,34 +1,16 @@
 use std::sync::Arc;
 
-use clock::Clock;
-use eventsourcing::{Cadence, RelayTask};
-use messaging::Publisher;
-
-use crate::databases::Databases;
+use eventsourcing::{Cadence, Outbox, RelayTask};
 
 pub struct Relays {
     running: Vec<RelayTask>,
 }
 
 impl Relays {
-    pub fn started(
-        databases: &Databases,
-        publisher: Arc<dyn Publisher>,
-        clock: Arc<dyn Clock>,
-        cadence: Cadence,
-    ) -> Self {
-        let asked = [
-            projects_wiring::outbox(&databases.projects, publisher.clone(), clock.clone()),
-            pieces_wiring::outbox(&databases.pieces, publisher.clone(), clock.clone()),
-            boards_wiring::outbox(&databases.boards, publisher.clone(), clock.clone()),
-            outline_wiring::outbox(&databases.outline, publisher.clone(), clock.clone()),
-            passages_wiring::outbox(&databases.passages, publisher, clock),
-        ];
-
-        let running: Vec<RelayTask> = asked
+    pub fn started(outboxes: Vec<Arc<dyn Outbox>>, cadence: Cadence) -> Self {
+        let running: Vec<RelayTask> = outboxes
             .into_iter()
-            .flatten()
-            .map(|outbox| RelayTask::started(Arc::new(outbox), cadence))
+            .map(|outbox| RelayTask::started(outbox, cadence))
             .collect();
 
         tracing::info!(relays = running.len(), "started the outbox relays");

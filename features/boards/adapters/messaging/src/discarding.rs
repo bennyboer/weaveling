@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
-use boards_core::{BoardCatalog, BoardService, BoardServiceError, CatalogError, PieceLink};
+use boards_core::{
+    BoardCatalog, BoardError, BoardService, BoardServiceError, CatalogError, PieceLink,
+};
 use eventpublishing::{UnreadableMessage, published_in};
-use eventsourcing::Agent;
+use eventsourcing::{Agent, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use pieces_contract::{DISCARDED, PieceEventDTO};
 use thiserror::Error;
@@ -35,9 +37,15 @@ impl UnpinOnDiscard {
 
     async fn unpin_everywhere(&self, piece: &PieceLink) -> Result<(), NotUnpinned> {
         for board in self.catalog.boards_holding(piece).await? {
-            self.boards
+            match self
+                .boards
                 .unpin(&board.to_string(), piece.clone(), None, &nobody())
-                .await?;
+                .await
+            {
+                Ok(_) => {}
+                Err(refused) if already_unpinned(&refused) => {}
+                Err(refused) => return Err(refused.into()),
+            }
         }
 
         Ok(())
@@ -49,6 +57,13 @@ impl UnpinOnDiscard {
         self.unpin_everywhere(&PieceLink::from(discarded.aggregate.id.as_str()))
             .await
     }
+}
+
+fn already_unpinned(refused: &BoardServiceError) -> bool {
+    matches!(
+        refused,
+        BoardServiceError::Events(ServiceError::Refused(BoardError::NotPinned))
+    )
 }
 
 fn nobody() -> Agent {

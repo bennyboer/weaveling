@@ -12,6 +12,8 @@ use outline_core::{
 use outline_messaging::message_for;
 use time::{Duration, OffsetDateTime};
 
+use registry::Registry;
+
 use crate::shapes::shaped;
 use crate::wiring::{Wired, wired};
 
@@ -184,6 +186,7 @@ async fn starting_an_outline_puts_it_in_the_catalog() {
         .await
         .expect("opening should succeed")
         .id;
+    wired.settle().await;
 
     assert_eq!(catalogued(&wired, "project_1").await, vec![outline]);
 }
@@ -293,5 +296,27 @@ async fn a_snapshot_carries_the_whole_shape_of_the_book() {
     assert!(
         sections.iter().any(|placed| placed.parent.is_some()),
         "a flat snapshot of a nested book would lose the nesting silently"
+    );
+}
+
+#[tokio::test]
+async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
+    let wired = a_workbench();
+    let known = OutlineId::generate(at(500));
+    wired
+        .registry
+        .claim(KIND.as_str(), "project_1", &known.to_string())
+        .await
+        .expect("claiming should succeed");
+
+    let opened = wired
+        .outlines
+        .open("project_1", &an_author())
+        .await
+        .expect("opening should succeed");
+
+    assert_eq!(
+        opened.id, known,
+        "the find branch takes whoever holds the claim rather than starting afresh; the claim          is authoritative where the catalog is only a projection"
     );
 }

@@ -34,11 +34,14 @@ async fn listed(wired: &Wired) -> Vec<String> {
 }
 
 async fn a_started_project(wired: &Wired) -> ProjectId {
-    wired
+    let id = wired
         .projects
         .start("The Weaver's Apprentice", &an_author())
         .await
-        .expect("starting should succeed")
+        .expect("starting should succeed");
+    wired.settle().await;
+
+    id
 }
 
 fn a_name() -> ProjectName {
@@ -117,6 +120,7 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
         .delete(&id.to_string(), None, &an_author())
         .await
         .expect("deleting should succeed");
+    wired.settle().await;
     assert!(
         listed(&wired).await.is_empty(),
         "the deletion was projected"
@@ -143,6 +147,7 @@ async fn the_listing_follows_the_latest_name_however_messages_arrive() {
         .rename(&id.to_string(), "A crown of straw", None, &an_author())
         .await
         .expect("renaming should succeed");
+    wired.settle().await;
 
     wired
         .projector

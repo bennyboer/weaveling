@@ -1,4 +1,3 @@
-use messaging::Message;
 use sqlx::{Postgres, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
@@ -6,19 +5,17 @@ use crate::event::Recorded;
 use crate::postgres::{PostgresEventStore, as_bigint};
 use crate::store::StoreError;
 
-const WAKE: &str = "SELECT pg_notify(left('outbox_waiting_' || current_schema(), 63), '')";
+const NOTIFY: &str = "SELECT pg_notify(left('outbox_waiting_' || current_schema(), 63), '')";
 
-const ANNOUNCE: &str = "
+const ENQUEUE: &str = "
     INSERT INTO outbox
         (aggregate, kind, version, message_id, conversation, caused_by,
          routing_key, payload, occurred_at)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ";
 
-pub type MessageMapping<E> = fn(&Recorded<E>) -> Option<Message>;
-
 impl<E> PostgresEventStore<E> {
-    pub(super) async fn announce(
+    pub(super) async fn enqueue(
         &self,
         transaction: &mut Transaction<'_, Postgres>,
         aggregate: &AggregateId,
@@ -29,7 +26,7 @@ impl<E> PostgresEventStore<E> {
             return Ok(());
         };
 
-        sqlx::query(ANNOUNCE)
+        sqlx::query(ENQUEUE)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
             .bind(as_bigint(happened.metadata.version))
@@ -43,7 +40,7 @@ impl<E> PostgresEventStore<E> {
             .await
             .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;
 
-        sqlx::query(WAKE)
+        sqlx::query(NOTIFY)
             .execute(&mut **transaction)
             .await
             .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;

@@ -217,14 +217,12 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
     let fixture = PostgresFixture::setup().await;
     let databases = five_schemas(&fixture).await;
     let clock = Arc::new(SystemClock);
-    let adapters = Adapters::postgres(clock.clone(), &databases);
-    let publisher = adapters.dispatcher.clone();
+    let adapters = Adapters::postgres(clock, &databases);
+    let outboxes = adapters.outboxes();
     let server = TestServer::new(app(adapters));
 
     let relays = Relays::started(
-        &databases,
-        publisher,
-        clock,
+        outboxes,
         Cadence {
             deliver_every: std::time::Duration::from_millis(10),
             sweep_every: std::time::Duration::from_secs(3_600),

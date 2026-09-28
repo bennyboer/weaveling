@@ -3401,6 +3401,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-registry",
 ]
 
 [[package]]
@@ -3463,6 +3464,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-messaging",
  "weaveling-pieces-contract",
+ "weaveling-registry",
  "weaveling-wiring",
 ]
 
@@ -3479,6 +3481,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-registry",
  "weaveling-wiring",
 ]
 
@@ -3596,6 +3599,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-registry",
 ]
 
 [[package]]
@@ -3660,6 +3664,7 @@ dependencies = [
  "weaveling-outline-messaging",
  "weaveling-outline-wiring",
  "weaveling-pieces-contract",
+ "weaveling-registry",
  "weaveling-wiring",
 ]
 
@@ -3676,6 +3681,7 @@ dependencies = [
  "weaveling-outline-messaging",
  "weaveling-outline-rest",
  "weaveling-outline-store",
+ "weaveling-registry",
  "weaveling-wiring",
 ]
 
@@ -3984,6 +3990,17 @@ dependencies = [
  "weaveling-projects-rest",
  "weaveling-projects-store",
  "weaveling-wiring",
+]
+
+[[package]]
+name = "weaveling-registry"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "thiserror",
+ "tokio",
+ "weaveling-test-harness",
 ]
 
 [[package]]

@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_UNPINNED, STARTED};
 use boards_core::{
-    BoardCatalog, BoardError, BoardEvent, BoardId, BoardServiceError, BoardSummary, KIND,
-    PieceLink, ProjectLink, Size, Spot,
+    BoardError, BoardEvent, BoardId, BoardServiceError, KIND, PieceLink, ProjectLink, Size, Spot,
 };
 use clock::FixedClock;
 use eventsourcing::{
@@ -11,6 +10,7 @@ use eventsourcing::{
     Version,
 };
 use messaging::RoutingKey;
+use registry::Registry;
 use time::{Duration, OffsetDateTime};
 
 use crate::wiring::{Wired, wired};
@@ -81,17 +81,14 @@ async fn opening_a_project_that_never_had_a_board_starts_one() {
 }
 
 #[tokio::test]
-async fn opening_a_project_whose_board_is_already_catalogued_finds_it() {
+async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
     let (wired, _) = a_workbench();
     let known = BoardId::generate(at(500));
     wired
-        .catalog
-        .remember(&BoardSummary {
-            id: known,
-            project: ProjectLink::from("project_1"),
-        })
+        .registry
+        .claim(KIND.as_str(), "project_1", &known.to_string())
         .await
-        .expect("remembering should succeed");
+        .expect("claiming should succeed");
     wired
         .store
         .append(
@@ -111,7 +108,7 @@ async fn opening_a_project_whose_board_is_already_catalogued_finds_it() {
 
     assert_eq!(
         opened.id, known,
-        "the find branch must take what the catalog offers rather than starting afresh"
+        "the find branch takes whoever holds the claim rather than starting afresh; the claim          is authoritative where the catalog is only a projection"
     );
 }
 
@@ -125,7 +122,7 @@ async fn opening_the_same_project_again_finds_the_board_it_already_had() {
 
     assert_eq!(
         first, second,
-        "a second open must not leave the author looking at a different board; this one          leans on delivery being synchronous, and over a broker it is the find-or-start race"
+        "a second open must not leave the author looking at a different board; find-or-start          reads the catalog, so it cannot see a board whose projection has not landed yet"
     );
 }
 
