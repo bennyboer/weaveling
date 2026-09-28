@@ -97,9 +97,7 @@ Real gaps found while spiking, to settle when prose becomes production code rath
 
 ## Revisit later
 
-- [ ] **A `README.md` in every library and every feature module.** A short description of what the module is and what it is for — enough that someone opening `libraries/eventpublishing` or `features/outline` knows why it exists without reading its source or hunting through [ARCHITECTURE.md](./ARCHITECTURE.md).
-
-  **Explicitly not yet.** Raised 2026-09-28 during the M11a review, to be done **once that review is finished** — writing them mid-review would mean describing modules that are still moving, and `projects` had just changed shape entirely.
+- [x] ~~**A `README.md` in every library and every feature module.**~~ Done — thirteen of them, eight libraries and five features. Each says what the module is, the decision it encodes, and which crates it holds, linking into [ARCHITECTURE.md](./ARCHITECTURE.md) rather than restating it.
 
 - [ ] **One test leans on delivery being synchronous, and that is the whole list.** `board_service::opening_the_same_project_again_finds_the_board_it_already_had` asserts that a second `open` finds the board the first one started — which only holds because `InProcessDispatcher` awaits every listener before `publish` returns.
 
