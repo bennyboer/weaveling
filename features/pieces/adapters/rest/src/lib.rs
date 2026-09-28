@@ -30,10 +30,10 @@ async fn list(
 ) -> Result<Json<Vec<PieceDTO>>, ApiError> {
     let found = pieces.list(&asked.project).await?;
 
-    Ok(Json(found.iter().map(listed).collect()))
+    Ok(Json(found.iter().map(to_dto).collect()))
 }
 
-fn listed(summary: &PieceSummary) -> PieceDTO {
+fn to_dto(summary: &PieceSummary) -> PieceDTO {
     PieceDTO {
         id: summary.id.to_string(),
         version: summary.version.count(),
@@ -53,7 +53,7 @@ async fn capture(
         .to_string();
     let captured = pieces.get(&id).await?;
 
-    Ok(reported(StatusCode::CREATED, &id, &captured))
+    Ok(to_response(StatusCode::CREATED, &id, &captured))
 }
 
 async fn find(
@@ -62,7 +62,7 @@ async fn find(
 ) -> Result<Response, ApiError> {
     let found = pieces.get(&id).await?;
 
-    Ok(reported(StatusCode::OK, &id, &found))
+    Ok(to_response(StatusCode::OK, &id, &found))
 }
 
 async fn retitle(
@@ -75,7 +75,7 @@ async fn retitle(
         .retitle(&id, &request.title, expected(&headers)?, &nobody_yet())
         .await?;
 
-    Ok(reported(StatusCode::OK, &id, &pieces.get(&id).await?))
+    Ok(to_response(StatusCode::OK, &id, &pieces.get(&id).await?))
 }
 
 async fn attach_passage(
@@ -88,7 +88,7 @@ async fn attach_passage(
         .attach_passage(&id, &request.passage, expected(&headers)?, &nobody_yet())
         .await?;
 
-    Ok(reported(StatusCode::OK, &id, &pieces.get(&id).await?))
+    Ok(to_response(StatusCode::OK, &id, &pieces.get(&id).await?))
 }
 
 async fn discard(
@@ -111,23 +111,21 @@ fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
     Ok(demanded(headers)?)
 }
 
-fn reported(status: StatusCode, id: &str, standing: &Standing<Piece>) -> Response {
+fn to_response(status: StatusCode, id: &str, standing: &Standing<Piece>) -> Response {
+    let piece = &standing.state;
+
     (
         status,
         [(ETAG, tag(standing.version))],
-        Json(to_dto(id, &standing.state, standing.version)),
+        Json(PieceDTO {
+            id: id.to_owned(),
+            version: standing.version.count(),
+            project: piece.project().to_string(),
+            title: piece.title().to_string(),
+            passage: piece.passage().map(ToString::to_string),
+        }),
     )
         .into_response()
-}
-
-fn to_dto(id: &str, piece: &Piece, version: Version) -> PieceDTO {
-    PieceDTO {
-        id: id.to_owned(),
-        version: version.count(),
-        project: piece.project().to_string(),
-        title: piece.title().to_string(),
-        passage: piece.passage().map(ToString::to_string),
-    }
 }
 
 enum ApiError {

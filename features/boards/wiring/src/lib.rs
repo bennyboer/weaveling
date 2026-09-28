@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
-use boards_messaging::{BoardCatalogProjector, PinnedPiecesProjector, Publishing, UnpinOnDiscard};
+use boards_messaging::{
+    BoardCatalogProjector, BoardEventPublisher, PinnedPiecesProjector, UnpinOnDiscard,
+};
 use eventsourcing::{EventStore, InMemoryEventStore, PublishingEventStore};
 use wiring::{Context, Wired};
 
@@ -16,7 +18,7 @@ impl Ports {
         Self {
             events: PublishingEventStore::wrapping(
                 Arc::new(InMemoryEventStore::new()),
-                Arc::new(Publishing::new(publisher)),
+                Arc::new(BoardEventPublisher::new(publisher)),
             ),
             catalog: Arc::new(InMemoryBoardCatalog::new()),
         }

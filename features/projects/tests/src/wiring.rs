@@ -4,28 +4,27 @@ use axum::Router;
 use clock::Clock;
 use eventsourcing::{InMemoryEventStore, PublishingEventStore};
 use messaging::{InProcessDispatcher, Listener};
-use pieces_catalog::InMemoryPieceCatalog;
-use pieces_core::{PieceEvent, PieceService};
+use projects_catalog::InMemoryProjectCatalog;
+use projects_core::{ProjectEvent, ProjectService};
 use wiring::Context;
 
-const CATALOGUING: &str = "catalogue-piece";
+const CATALOGUING: &str = "catalogue-project";
 
 pub struct Wired {
-    pub pieces: PieceService,
+    pub projects: ProjectService,
     pub routes: Router,
-    pub store: Arc<InMemoryEventStore<PieceEvent>>,
-    pub catalog: Arc<InMemoryPieceCatalog>,
+    pub catalog: Arc<InMemoryProjectCatalog>,
     pub projector: Arc<dyn Listener>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    let store = Arc::new(InMemoryEventStore::<PieceEvent>::new());
-    let catalog = Arc::new(InMemoryPieceCatalog::new());
+    let store = Arc::new(InMemoryEventStore::<ProjectEvent>::new());
+    let catalog = Arc::new(InMemoryProjectCatalog::new());
     let dispatcher = Arc::new(InProcessDispatcher::new());
-    let ports = pieces_wiring::Ports {
+    let ports = projects_wiring::Ports {
         events: PublishingEventStore::wrapping(
             store.clone(),
-            Arc::new(pieces_messaging::PieceEventPublisher::new(
+            Arc::new(projects_messaging::ProjectEventPublisher::new(
                 dispatcher.clone(),
             )),
         ),
@@ -35,7 +34,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         clock,
         publisher: dispatcher.clone(),
     };
-    let wired = pieces_wiring::wire(&ports, &context);
+    let wired = projects_wiring::wire(&ports, &context);
 
     for listener in &wired.listeners {
         dispatcher.listen(listener.clone());
@@ -49,9 +48,8 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         .expect("the feature should wire a catalog projector");
 
     Wired {
-        pieces: pieces_wiring::service(&ports, &context),
+        projects: projects_wiring::service(&ports, &context),
         routes: wired.routes,
-        store,
         catalog,
         projector,
     }

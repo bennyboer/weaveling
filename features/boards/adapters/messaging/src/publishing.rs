@@ -14,7 +14,7 @@ use ids::InvalidId;
 use messaging::{Message, Publisher, Subscription};
 use thiserror::Error;
 
-pub struct Publishing {
+pub struct BoardEventPublisher {
     publishing: MessagingEventPublisher<BoardEvent, BoardEventDTO>,
 }
 
@@ -58,7 +58,7 @@ pub fn message_for(happened: &Recorded<BoardEvent>) -> Option<Message> {
     message_carrying(happened, body)
 }
 
-impl Publishing {
+impl BoardEventPublisher {
     pub fn new(publisher: Arc<dyn Publisher>) -> Self {
         Self {
             publishing: MessagingEventPublisher::new(publisher, body),
@@ -67,7 +67,7 @@ impl Publishing {
 }
 
 #[async_trait]
-impl EventPublisher<BoardEvent> for Publishing {
+impl EventPublisher<BoardEvent> for BoardEventPublisher {
     async fn publish(&self, happened: &Recorded<BoardEvent>) -> Result<(), PublishError> {
         self.publishing
             .publish(happened)

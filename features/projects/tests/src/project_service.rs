@@ -1,206 +1,276 @@
 use std::sync::Arc;
 
 use clock::FixedClock;
-use projects_core::{InvalidProjectName, ProjectError, ProjectId, ProjectService, StoreError};
-use projects_store::InMemoryProjectStore;
+use eventsourcing::{Agent, ServiceError, Version};
+use projects_core::{InvalidProjectName, ProjectError, ProjectId, ProjectService, ProjectSummary};
 use time::{Duration, OffsetDateTime};
+
+use crate::wiring::wired;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn new_service() -> ProjectService {
-    new_service_with(Arc::new(FixedClock::new(at(1_000))))
+fn nobody() -> Agent {
+    Agent::Anonymous
 }
 
-fn new_service_with(clock: Arc<FixedClock>) -> ProjectService {
-    ProjectService::new(Arc::new(InMemoryProjectStore::new()), clock)
+fn a_service() -> ProjectService {
+    a_service_on(Arc::new(FixedClock::new(at(1_000))))
+}
+
+fn a_service_on(clock: Arc<FixedClock>) -> ProjectService {
+    wired(clock).projects
+}
+
+async fn a_project(service: &ProjectService, named: &str) -> String {
+    service
+        .start(named, &nobody())
+        .await
+        .expect("starting should succeed")
+        .to_string()
+}
+
+async fn listed(service: &ProjectService) -> Vec<ProjectSummary> {
+    service.list().await.expect("listing should succeed")
 }
 
 #[tokio::test]
-async fn a_new_project_records_when_it_was_created() {
-    let service = new_service();
+async fn a_started_project_records_when_it_began() {
+    let service = a_service();
 
-    let project = service.create("Tapestry").await.expect("should create");
+    let id = a_project(&service, "Tapestry").await;
 
-    assert_eq!(project.created_at(), at(1_000));
-    assert_eq!(project.updated_at(), at(1_000));
+    let standing = service.get(&id).await.expect("it should be there");
+    assert_eq!(standing.state.created_at(), at(1_000));
+    assert_eq!(standing.state.updated_at(), at(1_000));
+    assert_eq!(standing.version, Version::of(1));
 }
 
 #[tokio::test]
 async fn surrounding_whitespace_is_trimmed_from_a_new_name() {
-    let service = new_service();
+    let service = a_service();
 
-    let project = service.create("  Tapestry  ").await.expect("should create");
+    let id = a_project(&service, "  Tapestry  ").await;
 
-    assert_eq!(project.name().as_str(), "Tapestry");
+    let standing = service.get(&id).await.expect("it should be there");
+    assert_eq!(standing.state.name().as_str(), "Tapestry");
 }
 
 #[tokio::test]
-async fn creating_a_project_with_a_blank_name_is_rejected_and_stores_nothing() {
-    let service = new_service();
+async fn starting_a_project_with_a_blank_name_is_refused_and_writes_nothing() {
+    let wired = wired(Arc::new(FixedClock::new(at(1_000))));
 
-    let error = service.create("   ").await.expect_err("should reject");
+    let refused = wired
+        .projects
+        .start("   ", &nobody())
+        .await
+        .expect_err("a blank name should be refused");
 
     assert!(
-        matches!(&error, ProjectError::InvalidName(InvalidProjectName::Blank)),
-        "expected a blank-name error, got {error:?}"
+        matches!(
+            &refused,
+            projects_core::ProjectServiceError::InvalidName(InvalidProjectName::Blank)
+        ),
+        "expected a blank-name error, got {refused:?}"
     );
-    let found = service.list().await.expect("should list");
-    assert!(found.is_empty(), "expected no projects, got {found:?}");
+    assert!(
+        listed(&wired.projects).await.is_empty(),
+        "a name the domain refuses must never reach the log"
+    );
 }
 
 #[tokio::test]
-async fn a_created_project_can_be_found_again() {
-    let service = new_service();
+async fn a_started_project_is_catalogued_without_anyone_asking() {
+    let service = a_service();
 
-    let created = service.create("Tapestry").await.expect("should create");
+    let id = a_project(&service, "Tapestry").await;
 
-    let found = service
-        .get(&created.id().to_string())
-        .await
-        .expect("should find it");
-    assert_eq!(found, created);
+    let found = listed(&service).await;
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].id.to_string(), id);
+    assert_eq!(found[0].name.as_str(), "Tapestry");
 }
 
 #[tokio::test]
-async fn renaming_records_when_it_happened() {
+async fn renaming_moves_the_moment_the_project_was_last_touched() {
     let clock = Arc::new(FixedClock::new(at(1_000)));
-    let service = new_service_with(clock.clone());
-    let created = service
-        .create("Working Title")
-        .await
-        .expect("should create");
+    let service = a_service_on(clock.clone());
+    let id = a_project(&service, "Working Title").await;
 
     clock.set(at(2_000));
-    let renamed = service
-        .rename(&created.id().to_string(), "The Weaver's Apprentice")
+    service
+        .rename(&id, "The Weaver's Apprentice", None, &nobody())
         .await
-        .expect("should rename");
+        .expect("renaming should succeed");
 
-    assert_eq!(renamed.name().as_str(), "The Weaver's Apprentice");
-    assert_eq!(renamed.created_at(), at(1_000));
-    assert_eq!(renamed.updated_at(), at(2_000));
+    let standing = service.get(&id).await.expect("it should be there");
+    assert_eq!(standing.state.name().as_str(), "The Weaver's Apprentice");
+    assert_eq!(standing.state.created_at(), at(1_000));
+    assert_eq!(standing.state.updated_at(), at(2_000));
 }
 
 #[tokio::test]
-async fn renaming_with_a_malformed_id_is_rejected() {
-    let service = new_service();
+async fn renaming_with_a_malformed_id_is_refused() {
+    let service = a_service();
 
-    let error = service
-        .rename("weaveling", "Renamed")
+    let refused = service
+        .rename("weaveling", "Renamed", None, &nobody())
         .await
-        .expect_err("should reject");
+        .expect_err("a malformed id should be refused");
 
     assert!(
-        matches!(&error, ProjectError::InvalidId(_)),
-        "expected an invalid-id error, got {error:?}"
+        matches!(&refused, projects_core::ProjectServiceError::InvalidId(_)),
+        "expected an invalid-id error, got {refused:?}"
     );
 }
 
 #[tokio::test]
-async fn renaming_to_a_blank_name_leaves_the_project_unchanged() {
-    let clock = Arc::new(FixedClock::new(at(1_000)));
-    let service = new_service_with(clock.clone());
-    let created = service
-        .create("Working Title")
-        .await
-        .expect("should create");
+async fn renaming_to_a_blank_name_leaves_the_project_as_it_was() {
+    let service = a_service();
+    let id = a_project(&service, "Working Title").await;
 
-    clock.set(at(2_000));
-    let error = service
-        .rename(&created.id().to_string(), "")
+    let refused = service
+        .rename(&id, "", None, &nobody())
         .await
-        .expect_err("should reject");
+        .expect_err("a blank name should be refused");
 
     assert!(
-        matches!(&error, ProjectError::InvalidName(InvalidProjectName::Blank)),
-        "expected a blank-name error, got {error:?}"
+        matches!(
+            &refused,
+            projects_core::ProjectServiceError::InvalidName(InvalidProjectName::Blank)
+        ),
+        "expected a blank-name error, got {refused:?}"
     );
-    let unchanged = service
-        .get(&created.id().to_string())
-        .await
-        .expect("should still exist");
-    assert_eq!(unchanged, created);
+    let standing = service.get(&id).await.expect("it should be there");
+    assert_eq!(standing.state.name().as_str(), "Working Title");
+    assert_eq!(standing.version, Version::of(1));
 }
 
 #[tokio::test]
-async fn renaming_a_missing_project_reports_not_found() {
-    let service = new_service();
+async fn renaming_a_project_nobody_started_is_not_found() {
+    let service = a_service();
     let missing = ProjectId::generate(at(1_000));
 
-    let error = service
-        .rename(&missing.to_string(), "Renamed")
+    let refused = service
+        .rename(&missing.to_string(), "Renamed", None, &nobody())
         .await
-        .expect_err("should fail");
+        .expect_err("an unknown project should not be renameable");
 
     assert!(
-        matches!(&error, ProjectError::Store(StoreError::NotFound(id)) if *id == missing),
-        "expected NotFound({missing}), got {error:?}"
+        matches!(
+            &refused,
+            projects_core::ProjectServiceError::Events(ServiceError::NotFound { .. })
+        ),
+        "expected NotFound, got {refused:?}"
     );
 }
 
 #[tokio::test]
-async fn deleting_with_a_malformed_id_is_rejected() {
-    let service = new_service();
-
-    let error = service
-        .delete("weaveling")
-        .await
-        .expect_err("should reject");
-
-    assert!(
-        matches!(&error, ProjectError::InvalidId(_)),
-        "expected an invalid-id error, got {error:?}"
-    );
-}
-
-#[tokio::test]
-async fn a_deleted_project_can_no_longer_be_found() {
-    let service = new_service();
-    let created = service.create("Tapestry").await.expect("should create");
+async fn a_deleted_project_is_gone_from_the_authors_point_of_view() {
+    let service = a_service();
+    let id = a_project(&service, "Abandoned").await;
 
     service
-        .delete(&created.id().to_string())
+        .delete(&id, None, &nobody())
         .await
-        .expect("should delete");
-
-    let error = service
-        .get(&created.id().to_string())
-        .await
-        .expect_err("should be gone");
+        .expect("deleting should succeed");
 
     assert!(
-        matches!(&error, ProjectError::Store(StoreError::NotFound(_))),
-        "expected NotFound, got {error:?}"
+        matches!(
+            service.get(&id).await.expect_err("it should be gone"),
+            projects_core::ProjectServiceError::Events(ServiceError::NotFound { .. })
+        ),
+        "the stream survives as the audit log, but the project itself is no longer served"
+    );
+    assert!(listed(&service).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_deleted_project_cannot_be_renamed_afterwards() {
+    let service = a_service();
+    let id = a_project(&service, "Abandoned").await;
+    service
+        .delete(&id, None, &nobody())
+        .await
+        .expect("deleting should succeed");
+
+    let refused = service
+        .rename(&id, "Too late", None, &nobody())
+        .await
+        .expect_err("a deleted project should accept nothing");
+
+    assert!(
+        matches!(
+            &refused,
+            projects_core::ProjectServiceError::Events(ServiceError::Refused(
+                ProjectError::Deleted
+            ))
+        ),
+        "expected a refusal that says the project is deleted, got {refused:?}"
     );
 }
 
 #[tokio::test]
-async fn deleting_a_missing_project_reports_not_found() {
-    let service = new_service();
+async fn deleting_a_project_nobody_started_is_not_found() {
+    let service = a_service();
     let missing = ProjectId::generate(at(1_000));
 
-    let error = service
-        .delete(&missing.to_string())
+    let refused = service
+        .delete(&missing.to_string(), None, &nobody())
         .await
-        .expect_err("should fail");
+        .expect_err("an unknown project should not be deleteable");
 
     assert!(
-        matches!(&error, ProjectError::Store(StoreError::NotFound(id)) if *id == missing),
-        "expected NotFound({missing}), got {error:?}"
+        matches!(
+            &refused,
+            projects_core::ProjectServiceError::Events(ServiceError::NotFound { .. })
+        ),
+        "expected NotFound, got {refused:?}"
     );
 }
 
 #[tokio::test]
-async fn projects_are_listed_in_creation_order() {
+async fn the_project_started_most_recently_is_listed_first() {
     let clock = Arc::new(FixedClock::new(at(1_000)));
-    let service = new_service_with(clock.clone());
-    let first = service.create("First").await.expect("should create");
+    let service = a_service_on(clock.clone());
+    a_project(&service, "First").await;
     clock.set(at(2_000));
-    let second = service.create("Second").await.expect("should create");
+    a_project(&service, "Second").await;
 
-    let found = service.list().await.expect("should list");
+    let found = listed(&service).await;
 
-    assert_eq!(found, vec![first, second]);
+    assert_eq!(
+        found
+            .iter()
+            .map(|summary| summary.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["Second", "First"],
+        "the project an author touched most recently should be the first they see"
+    );
+}
+
+#[tokio::test]
+async fn renaming_from_a_stale_version_is_refused() {
+    let service = a_service();
+    let id = a_project(&service, "Working Title").await;
+    service
+        .rename(&id, "Once", None, &nobody())
+        .await
+        .expect("the first rename should succeed");
+
+    let refused = service
+        .rename(&id, "Twice", Some(Version::of(1)), &nobody())
+        .await
+        .expect_err("the project has moved on since version one");
+
+    assert!(
+        matches!(
+            &refused,
+            projects_core::ProjectServiceError::Events(ServiceError::Store(
+                eventsourcing::StoreError::Outdated { .. }
+            ))
+        ),
+        "expected a stale-version refusal, got {refused:?}"
+    );
 }

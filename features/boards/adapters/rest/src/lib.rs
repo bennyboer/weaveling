@@ -33,7 +33,7 @@ async fn open(
 ) -> Result<Response, ApiError> {
     let opened = boards.open(&request.project, &nobody_yet()).await?;
 
-    Ok(reported(
+    Ok(to_response(
         StatusCode::OK,
         &opened.id.to_string(),
         &opened.standing,
@@ -46,7 +46,7 @@ async fn find(
 ) -> Result<Response, ApiError> {
     let found = boards.get(&board).await?;
 
-    Ok(reported(StatusCode::OK, &board, &found))
+    Ok(to_response(StatusCode::OK, &board, &found))
 }
 
 async fn pin(
@@ -66,7 +66,11 @@ async fn pin(
         )
         .await?;
 
-    Ok(reported(StatusCode::OK, &board, &boards.get(&board).await?))
+    Ok(to_response(
+        StatusCode::OK,
+        &board,
+        &boards.get(&board).await?,
+    ))
 }
 
 async fn reshape(
@@ -86,7 +90,11 @@ async fn reshape(
         )
         .await?;
 
-    Ok(reported(StatusCode::OK, &board, &boards.get(&board).await?))
+    Ok(to_response(
+        StatusCode::OK,
+        &board,
+        &boards.get(&board).await?,
+    ))
 }
 
 async fn unpin(
@@ -122,7 +130,7 @@ fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
     Ok(demanded(headers)?)
 }
 
-fn reported(status: StatusCode, board: &str, standing: &Standing<Board>) -> Response {
+fn to_response(status: StatusCode, board: &str, standing: &Standing<Board>) -> Response {
     (
         status,
         [(ETAG, tag(standing.version))],

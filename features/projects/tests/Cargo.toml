@@ -6,11 +6,17 @@ edition.workspace = true
 [dev-dependencies]
 axum = { workspace = true }
 axum-test = { workspace = true }
+serde_json = { workspace = true }
 time = { workspace = true }
-tokio = { workspace = true, features = ["rt", "macros"] }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+
+projects-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-projects-catalog" }
 projects-contract = { version = "0.1.0", path = "../contract", package = "weaveling-projects-contract" }
 projects-core = { version = "0.1.0", path = "../core", package = "weaveling-projects-core" }
-projects-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-projects-rest" }
-projects-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-projects-store" }
+projects-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-projects-messaging" }
+projects-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-projects-wiring" }

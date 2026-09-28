@@ -547,6 +547,9 @@ name = "deranged"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7cd812cc2bc1d69d4764bd80df88b4317eaef9e773c75226407d9bc0876b211c"
+dependencies = [
+ "serde_core",
+]
 
 [[package]]
 name = "derive-where"
@@ -3874,6 +3877,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-projects-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "time",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-projects-core",
+ "weaveling-test-harness",
+]
+
+[[package]]
 name = "weaveling-projects-contract"
 version = "0.1.0"
 dependencies = [
@@ -3889,7 +3905,25 @@ dependencies = [
  "time",
  "uuid",
  "weaveling-clock",
+ "weaveling-eventsourcing",
  "weaveling-ids",
+]
+
+[[package]]
+name = "weaveling-projects-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "time",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
+ "weaveling-projects-core",
 ]
 
 [[package]]
@@ -3899,20 +3933,21 @@ dependencies = [
  "axum",
  "time",
  "tracing",
+ "weaveling-eventsourcing",
  "weaveling-projects-contract",
  "weaveling-projects-core",
+ "weaveling-serving",
 ]
 
 [[package]]
 name = "weaveling-projects-store"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "sqlx",
+ "serde",
+ "serde_json",
  "time",
- "tokio",
+ "weaveling-eventsourcing",
  "weaveling-projects-core",
- "weaveling-test-harness",
 ]
 
 [[package]]
@@ -3921,13 +3956,18 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "axum-test",
+ "serde_json",
  "time",
  "tokio",
  "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
+ "weaveling-projects-catalog",
  "weaveling-projects-contract",
  "weaveling-projects-core",
- "weaveling-projects-rest",
- "weaveling-projects-store",
+ "weaveling-projects-messaging",
+ "weaveling-projects-wiring",
+ "weaveling-wiring",
 ]
 
 [[package]]
@@ -3938,7 +3978,9 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-projects-catalog",
  "weaveling-projects-core",
+ "weaveling-projects-messaging",
  "weaveling-projects-rest",
  "weaveling-projects-store",
  "weaveling-wiring",

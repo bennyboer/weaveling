@@ -35,7 +35,7 @@ impl Adapters {
 
         Self {
             clock,
-            projects: projects_wiring::Ports::in_memory(),
+            projects: projects_wiring::Ports::in_memory(dispatcher.clone()),
             passages: passages_wiring::Ports::in_memory(),
             pieces: pieces_wiring::Ports::in_memory(dispatcher.clone()),
             boards: boards_wiring::Ports::in_memory(dispatcher.clone()),

@@ -30,7 +30,9 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let ports = outline_wiring::Ports {
         events: PublishingEventStore::wrapping(
             store.clone(),
-            Arc::new(outline_messaging::Publishing::new(dispatcher.clone())),
+            Arc::new(outline_messaging::OutlineEventPublisher::new(
+                dispatcher.clone(),
+            )),
         ),
         catalog: catalog.clone(),
     };
@@ -50,7 +52,9 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
                 &outline_wiring::Ports {
                     events: PublishingEventStore::wrapping(
                         store.clone(),
-                        Arc::new(outline_messaging::Publishing::new(publisher.clone())),
+                        Arc::new(outline_messaging::OutlineEventPublisher::new(
+                            publisher.clone(),
+                        )),
                     ),
                     catalog: catalog.clone(),
                 },

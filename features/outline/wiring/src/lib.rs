@@ -4,7 +4,7 @@ use eventsourcing::{EventStore, InMemoryEventStore, PublishingEventStore};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineCatalog, OutlineEvent, OutlineService};
 use outline_messaging::{
-    AttachedPiecesProjector, DetachOnDiscard, OutlineCatalogProjector, Publishing,
+    AttachedPiecesProjector, DetachOnDiscard, OutlineCatalogProjector, OutlineEventPublisher,
 };
 use wiring::{Context, Wired};
 
@@ -18,7 +18,7 @@ impl Ports {
         Self {
             events: PublishingEventStore::wrapping(
                 Arc::new(InMemoryEventStore::new()),
-                Arc::new(Publishing::new(publisher)),
+                Arc::new(OutlineEventPublisher::new(publisher)),
             ),
             catalog: Arc::new(InMemoryOutlineCatalog::new()),
         }

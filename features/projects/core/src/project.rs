@@ -1,48 +1,64 @@
+use eventsourcing::{
+    Agent, Aggregate, AggregateId, AggregateType, Event, EventMetadata, EventName, Version,
+};
+use thiserror::Error;
 use time::OffsetDateTime;
 
-use crate::{ProjectId, ProjectName};
+use crate::id::ProjectId;
+use crate::name::ProjectName;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Project {
-    id: ProjectId,
-    name: ProjectName,
-    created_at: OffsetDateTime,
-    updated_at: OffsetDateTime,
+pub const KIND: AggregateType = AggregateType::of("project");
+
+impl From<&ProjectId> for AggregateId {
+    fn from(id: &ProjectId) -> Self {
+        AggregateId::from(id.to_string())
+    }
 }
 
-impl Project {
-    pub fn new(name: ProjectName, now: OffsetDateTime) -> Self {
-        Self {
-            id: ProjectId::generate(now),
-            name,
-            created_at: now,
-            updated_at: now,
-        }
-    }
+const STARTED: EventName = EventName::of("STARTED");
+const RENAMED: EventName = EventName::of("RENAMED");
+const DELETED: EventName = EventName::of("DELETED");
+const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
-    pub fn from_parts(
-        id: ProjectId,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectCommand {
+    Start(ProjectName),
+    Rename(ProjectName),
+    Delete,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectEvent {
+    Started(ProjectName),
+    Renamed(ProjectName),
+    Deleted,
+    Snapshotted {
         name: ProjectName,
         created_at: OffsetDateTime,
         updated_at: OffsetDateTime,
-    ) -> Self {
-        Self {
-            id,
-            name,
-            created_at,
-            updated_at,
-        }
-    }
+        deleted: bool,
+    },
+}
 
-    pub fn rename(&mut self, name: ProjectName, now: OffsetDateTime) {
-        self.name = name;
-        self.updated_at = now;
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Project {
+    name: ProjectName,
+    created_at: OffsetDateTime,
+    updated_at: OffsetDateTime,
+    deleted: bool,
+}
 
-    pub fn id(&self) -> ProjectId {
-        self.id
-    }
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ProjectError {
+    #[error("a project must be started before anything else can happen to it")]
+    NotStartedYet,
+    #[error("a project cannot be started twice")]
+    AlreadyStarted,
+    #[error("a deleted project accepts no changes")]
+    Deleted,
+}
 
+impl Project {
     pub fn name(&self) -> &ProjectName {
         &self.name
     }
@@ -54,85 +70,121 @@ impl Project {
     pub fn updated_at(&self) -> OffsetDateTime {
         self.updated_at
     }
+
+    pub fn is_deleted(&self) -> bool {
+        self.deleted
+    }
 }
 
-#[cfg(test)]
-mod tests {
-    use time::Duration;
-
-    use super::*;
-
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
+impl Event for ProjectEvent {
+    fn name(&self) -> EventName {
+        match self {
+            Self::Started(..) => STARTED,
+            Self::Renamed(..) => RENAMED,
+            Self::Deleted => DELETED,
+            Self::Snapshotted { .. } => SNAPSHOTTED,
+        }
     }
 
-    fn name(raw: &str) -> ProjectName {
-        ProjectName::new(raw).expect("test name should be valid")
+    fn version(&self) -> Version {
+        Version::ZERO
     }
 
-    #[test]
-    fn new_project_is_created_and_updated_at_the_same_moment() {
-        let project = Project::new(name("Tapestry"), at(1_000));
+    fn is_snapshot(&self) -> bool {
+        matches!(self, Self::Snapshotted { .. })
+    }
+}
 
-        assert_eq!(project.created_at(), at(1_000));
-        assert_eq!(project.updated_at(), at(1_000));
+impl Aggregate for Project {
+    type Command = ProjectCommand;
+    type Event = ProjectEvent;
+    type Error = ProjectError;
+
+    const KIND: AggregateType = KIND;
+
+    fn begin(command: ProjectCommand, _agent: &Agent) -> Result<Vec<ProjectEvent>, ProjectError> {
+        match command {
+            ProjectCommand::Start(name) => Ok(vec![ProjectEvent::Started(name)]),
+            _ => Err(ProjectError::NotStartedYet),
+        }
     }
 
-    #[test]
-    fn new_projects_get_distinct_ids() {
-        let one = Project::new(name("Tapestry"), at(1_000));
-        let other = Project::new(name("Tapestry"), at(1_000));
-
-        assert_ne!(one.id(), other.id());
+    fn from_first(event: &ProjectEvent, metadata: &EventMetadata) -> Option<Self> {
+        match event {
+            ProjectEvent::Started(name) => Some(Self {
+                name: name.clone(),
+                created_at: metadata.occurred_at,
+                updated_at: metadata.occurred_at,
+                deleted: false,
+            }),
+            ProjectEvent::Snapshotted {
+                name,
+                created_at,
+                updated_at,
+                deleted,
+            } => Some(Self {
+                name: name.clone(),
+                created_at: *created_at,
+                updated_at: *updated_at,
+                deleted: *deleted,
+            }),
+            _ => None,
+        }
     }
 
-    #[test]
-    fn renaming_replaces_the_name_and_bumps_updated_at() {
-        let mut project = Project::new(name("Working Title"), at(1_000));
+    fn decide(
+        &self,
+        command: ProjectCommand,
+        _agent: &Agent,
+    ) -> Result<Vec<ProjectEvent>, ProjectError> {
+        if self.deleted {
+            return Err(ProjectError::Deleted);
+        }
 
-        project.rename(name("The Weaver's Apprentice"), at(2_000));
+        match command {
+            ProjectCommand::Start(..) => Err(ProjectError::AlreadyStarted),
+            ProjectCommand::Rename(to) => {
+                if to == self.name {
+                    return Ok(vec![]);
+                }
 
-        assert_eq!(project.name().as_str(), "The Weaver's Apprentice");
-        assert_eq!(project.updated_at(), at(2_000));
+                Ok(vec![ProjectEvent::Renamed(to)])
+            }
+            ProjectCommand::Delete => Ok(vec![ProjectEvent::Deleted]),
+        }
     }
 
-    #[test]
-    fn renaming_leaves_identity_and_creation_time_untouched() {
-        let mut project = Project::new(name("Working Title"), at(1_000));
-        let id = project.id();
-
-        project.rename(name("Renamed"), at(2_000));
-
-        assert_eq!(project.id(), id);
-        assert_eq!(project.created_at(), at(1_000));
+    fn apply(&mut self, event: &ProjectEvent, metadata: &EventMetadata) {
+        match event {
+            ProjectEvent::Started(..) => {}
+            ProjectEvent::Renamed(to) => {
+                self.name = to.clone();
+                self.updated_at = metadata.occurred_at;
+            }
+            ProjectEvent::Deleted => {
+                self.deleted = true;
+                self.updated_at = metadata.occurred_at;
+            }
+            ProjectEvent::Snapshotted {
+                name,
+                created_at,
+                updated_at,
+                deleted,
+            } => {
+                self.name = name.clone();
+                self.created_at = *created_at;
+                self.updated_at = *updated_at;
+                self.deleted = *deleted;
+            }
+        }
     }
 
-    #[test]
-    fn the_id_carries_the_same_moment_as_created_at() {
-        let project = Project::new(name("Tapestry"), at(1_700_000_000));
-
-        let (seconds, _) = project
-            .id()
-            .as_uuid()
-            .get_timestamp()
-            .expect("a v7 id carries a timestamp")
-            .to_unix();
-
-        assert_eq!(
-            i64::try_from(seconds).expect("timestamp fits"),
-            project.created_at().unix_timestamp()
-        );
-    }
-
-    #[test]
-    fn rehydrated_project_keeps_every_part() {
-        let id = ProjectId::generate(at(500));
-
-        let project = Project::from_parts(id, name("Tapestry"), at(1_000), at(2_000));
-
-        assert_eq!(project.id(), id);
-        assert_eq!(project.name().as_str(), "Tapestry");
-        assert_eq!(project.created_at(), at(1_000));
-        assert_eq!(project.updated_at(), at(2_000));
+    fn snapshot(&self) -> ProjectEvent {
+        ProjectEvent::Snapshotted {
+            name: self.name.clone(),
+            created_at: self.created_at,
+            updated_at: self.updated_at,
+            deleted: self.deleted,
+        }
     }
 }

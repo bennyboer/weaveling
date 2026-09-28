@@ -14,8 +14,10 @@ messaging = { version = "0.1.0", path = "../../../libraries/messaging", package 
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 projects-core = { version = "0.1.0", path = "../core", package = "weaveling-projects-core" }
+projects-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-projects-messaging" }
 projects-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-projects-rest" }
+projects-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-projects-catalog" }
 projects-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-projects-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "projects-store/postgres"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "projects-catalog/postgres"]

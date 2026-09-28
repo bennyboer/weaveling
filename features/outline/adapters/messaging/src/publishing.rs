@@ -13,7 +13,7 @@ use outline_contract::{
 use outline_core::{OutlineEvent, OutlineId};
 use thiserror::Error;
 
-pub struct Publishing {
+pub struct OutlineEventPublisher {
     publishing: MessagingEventPublisher<OutlineEvent, OutlineEventDTO>,
 }
 
@@ -63,7 +63,7 @@ pub fn message_for(happened: &Recorded<OutlineEvent>) -> Option<Message> {
     message_carrying(happened, body)
 }
 
-impl Publishing {
+impl OutlineEventPublisher {
     pub fn new(publisher: Arc<dyn Publisher>) -> Self {
         Self {
             publishing: MessagingEventPublisher::new(publisher, body),
@@ -72,7 +72,7 @@ impl Publishing {
 }
 
 #[async_trait::async_trait]
-impl EventPublisher<OutlineEvent> for Publishing {
+impl EventPublisher<OutlineEvent> for OutlineEventPublisher {
     async fn publish(&self, happened: &Recorded<OutlineEvent>) -> Result<(), PublishError> {
         self.publishing
             .publish(happened)

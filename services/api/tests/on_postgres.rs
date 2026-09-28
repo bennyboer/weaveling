@@ -62,23 +62,29 @@ async fn a_project(server: &TestServer, named: &str) -> String {
 }
 
 #[tokio::test]
-async fn a_project_written_to_postgres_is_listed_back() {
+async fn a_project_written_to_postgres_is_read_back_and_left_waiting_to_be_announced() {
     let running = a_running_api().await;
     let id = a_project(&running.server, "The Weaver's Apprentice").await;
 
-    let listed = running.server.get("/api/projects").await;
-    listed.assert_status_ok();
+    let found = running.server.get(&format!("/api/projects/{id}")).await;
+    found.assert_status_ok();
+    assert_eq!(
+        found.json::<Value>()["name"].as_str(),
+        Some("The Weaver's Apprentice"),
+        "reading an aggregate replays its stream, so this needs no projection"
+    );
 
-    let found = listed.json::<Value>();
-    let names: Vec<&str> = found
-        .as_array()
-        .expect("a listing is an array")
-        .iter()
-        .filter(|project| project["id"] == id.as_str())
-        .filter_map(|project| project["name"].as_str())
-        .collect();
+    let waiting: Vec<String> =
+        sqlx::query_scalar("SELECT routing_key FROM outbox WHERE published_at IS NULL")
+            .fetch_all(&running.databases.projects)
+            .await
+            .expect("reading the outbox should succeed");
 
-    assert_eq!(names, vec!["The Weaver's Apprentice"]);
+    assert_eq!(
+        waiting,
+        vec!["project.started".to_owned()],
+        "on PostgreSQL the store enqueues and a relay publishes, so the message waits here"
+    );
 
     running.cleanup().await;
 }
@@ -159,8 +165,14 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
     for (feature, table, counting, pool) in [
         (
             "projects",
+            "events",
+            "SELECT count(*) FROM events",
+            &running.databases.projects,
+        ),
+        (
             "projects",
-            "SELECT count(*) FROM projects",
+            "outbox",
+            "SELECT count(*) FROM outbox",
             &running.databases.projects,
         ),
         (
@@ -252,6 +264,32 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
         titles,
         vec!["A girl in a wood".to_owned()],
         "the catalog is a projection, so this is the whole chain: append, outbox, relay, listener"
+    );
+
+    let mut names = Vec::new();
+    for _ in 0..200 {
+        names = server
+            .get("/api/projects")
+            .await
+            .json::<Value>()
+            .as_array()
+            .expect("a listing is an array")
+            .iter()
+            .filter(|listed| listed["id"] == project.as_str())
+            .filter_map(|listed| listed["name"].as_str().map(ToOwned::to_owned))
+            .collect();
+
+        if !names.is_empty() {
+            break;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(
+        names,
+        vec!["Relaying".to_owned()],
+        "projects travel the same chain as everything else now, each on its own database"
     );
 
     relays.stop().await;

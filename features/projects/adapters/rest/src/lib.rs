@@ -1,11 +1,14 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
+use axum::http::header::ETAG;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use eventsourcing::{Agent, Standing, Version};
 use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
-use projects_core::{Project, ProjectError, ProjectService, StoreError};
+use projects_core::{Project, ProjectService, ProjectServiceError, ProjectSummary};
+use serving::{Unreadable, demanded, refusal, tag};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
@@ -22,50 +25,86 @@ async fn list(State(projects): State<ProjectService>) -> Result<Json<Vec<Project
     Ok(Json(found.iter().map(to_dto).collect()))
 }
 
+fn to_dto(summary: &ProjectSummary) -> ProjectDTO {
+    ProjectDTO {
+        id: summary.id.to_string(),
+        version: summary.version.count(),
+        name: summary.name.to_string(),
+        created_at: to_rfc3339(summary.created_at),
+        updated_at: to_rfc3339(summary.updated_at),
+    }
+}
+
 async fn create(
     State(projects): State<ProjectService>,
     Json(request): Json<CreateProjectRequest>,
-) -> Result<(StatusCode, Json<ProjectDTO>), ApiError> {
-    let created = projects.create(&request.name).await?;
+) -> Result<Response, ApiError> {
+    let id = projects
+        .start(&request.name, &nobody_yet())
+        .await?
+        .to_string();
+    let started = projects.get(&id).await?;
 
-    Ok((StatusCode::CREATED, Json(to_dto(&created))))
+    Ok(to_response(StatusCode::CREATED, &id, &started))
 }
 
 async fn find(
     State(projects): State<ProjectService>,
     Path(id): Path<String>,
-) -> Result<Json<ProjectDTO>, ApiError> {
+) -> Result<Response, ApiError> {
     let found = projects.get(&id).await?;
 
-    Ok(Json(to_dto(&found)))
+    Ok(to_response(StatusCode::OK, &id, &found))
 }
 
 async fn rename(
     State(projects): State<ProjectService>,
     Path(id): Path<String>,
+    headers: HeaderMap,
     Json(request): Json<RenameProjectRequest>,
-) -> Result<Json<ProjectDTO>, ApiError> {
-    let renamed = projects.rename(&id, &request.name).await?;
+) -> Result<Response, ApiError> {
+    projects
+        .rename(&id, &request.name, expected(&headers)?, &nobody_yet())
+        .await?;
 
-    Ok(Json(to_dto(&renamed)))
+    Ok(to_response(StatusCode::OK, &id, &projects.get(&id).await?))
 }
 
 async fn remove(
     State(projects): State<ProjectService>,
     Path(id): Path<String>,
+    headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    projects.delete(&id).await?;
+    projects
+        .delete(&id, expected(&headers)?, &nobody_yet())
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn to_dto(project: &Project) -> ProjectDTO {
-    ProjectDTO {
-        id: project.id().to_string(),
-        name: project.name().to_string(),
-        created_at: to_rfc3339(project.created_at()),
-        updated_at: to_rfc3339(project.updated_at()),
-    }
+fn nobody_yet() -> Agent {
+    Agent::Anonymous
+}
+
+fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
+    Ok(demanded(headers)?)
+}
+
+fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Response {
+    let project = &standing.state;
+
+    (
+        status,
+        [(ETAG, tag(standing.version))],
+        Json(ProjectDTO {
+            id: id.to_owned(),
+            version: standing.version.count(),
+            name: project.name().to_string(),
+            created_at: to_rfc3339(project.created_at()),
+            updated_at: to_rfc3339(project.updated_at()),
+        }),
+    )
+        .into_response()
 }
 
 fn to_rfc3339(at: OffsetDateTime) -> String {
@@ -73,31 +112,44 @@ fn to_rfc3339(at: OffsetDateTime) -> String {
         .expect("a project timestamp should be representable as RFC 3339")
 }
 
-struct ApiError(ProjectError);
+enum ApiError {
+    Unreadable(Unreadable),
+    Refused(ProjectServiceError),
+}
 
-impl From<ProjectError> for ApiError {
-    fn from(error: ProjectError) -> Self {
-        Self(error)
+impl From<ProjectServiceError> for ApiError {
+    fn from(error: ProjectServiceError) -> Self {
+        Self::Refused(error)
+    }
+}
+
+impl From<Unreadable> for ApiError {
+    fn from(error: Unreadable) -> Self {
+        Self::Unreadable(error)
     }
 }
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, message) = match self.0 {
-            ProjectError::InvalidId(error) => (StatusCode::BAD_REQUEST, error.to_string()),
-            ProjectError::InvalidName(error) => (StatusCode::BAD_REQUEST, error.to_string()),
-            ProjectError::Store(StoreError::NotFound(id)) => {
-                (StatusCode::NOT_FOUND, format!("project {id} was not found"))
+        let refused = match self {
+            Self::Unreadable(reason) => {
+                return (StatusCode::BAD_REQUEST, reason.to_string()).into_response();
             }
-            ProjectError::Store(StoreError::Conflict(id)) => {
-                (StatusCode::CONFLICT, format!("project {id} already exists"))
+            Self::Refused(refused) => refused,
+        };
+
+        let (status, message) = match refused {
+            ProjectServiceError::InvalidId(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
+            ProjectServiceError::InvalidName(reason) => {
+                (StatusCode::BAD_REQUEST, reason.to_string())
             }
-            ProjectError::Store(error @ StoreError::Backend(_)) => {
-                tracing::error!(%error, "the project store failed");
+            ProjectServiceError::Events(events) => refusal(&events),
+            unserveable => {
+                tracing::error!(error = %unserveable, "a project request could not be served");
 
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "the project store is unavailable".to_owned(),
+                    "something went wrong".to_owned(),
                 )
             }
         };

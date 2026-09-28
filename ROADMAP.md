@@ -240,7 +240,7 @@ Two things arrived that were not planned: every feature grew a [`wiring` crate](
 
 **Deferred out of M8: the project-deletion saga.** It was scoped here and pulled, for two reasons found while building.
 
-**It is blocked on a decision, not on effort.** `projects` is the last feature that is not event-sourced — it is Phase 1 CRUD over a `ProjectStore` — so there is no `project.deleted` on the wire to listen to. Getting one means either event-sourcing `projects` properly (aggregate, catalog, projector, `If-Match` — the whole M7 treatment) or hand-rolling a publish inside `ProjectService::delete`, which would be a second publishing path bypassing `eventpublishing` that we would delete again later.
+**It was blocked on a decision, not on effort.** `projects` was the last feature that was not event-sourced — Phase 1 CRUD over a `ProjectStore` — so there was no `project.deleted` on the wire to listen to. The choice was to event-source `projects` properly or to hand-roll a publish inside `ProjectService::delete`, which would have been a second publishing path bypassing `eventpublishing` that we would have deleted again later. [M11a step 1](#step-1--projects-becomes-an-aggregate--done) settled it the first way, and `project.deleted` is now on the wire.
 
 **And its payoff is still theoretical.** An orphaned piece from a deleted project is unreachable — you cannot navigate to a project that no longer exists — and dies at process restart. It becomes real at [M12](#milestone-12--local-mode), where in-memory *is* the store, which is also about when event-sourcing `projects` starts paying for itself: **deletion is exactly where an author wants an audit log.** The two belong together, so they now live together in [M11a](#milestone-11a--projects-event-sourced-and-the-deletion-cascade).
 
@@ -538,11 +538,59 @@ That also settles [the open question about the board's tray](./TODO.md) — it c
 
 Deferred out of [M8](#milestone-8--messaging-), where the cascade was originally scoped. Sits here because both halves start paying at the same moment: with a durable store — and certainly in [local mode](#milestone-12--local-mode) — an orphan outlives the session, and **deletion is exactly where an author wants an audit log**.
 
-**Build:** `Project` as an aggregate — `Started`, `Renamed`, `Deleted` — with the catalog, projector and `If-Match` handling that `pieces` already has, so the codebase stops carrying two shapes of feature. Then the cascade itself: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+**Build:** ~~`Project` as an aggregate — `Started`, `Renamed`, `Deleted` — with the catalog, projector and `If-Match` handling that `pieces` already has, so the codebase stops carrying two shapes of feature.~~ Then the cascade itself: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+
+#### Step 1 — `projects` becomes an aggregate — done
+
+**`ProjectStore` is gone**, and with it the last CRUD port in the codebase. `projects` now carries the same five parts every other feature does: an aggregate, a stored-event codec, a catalog with two backends behind one conformance suite, a projector fed by messages, and a REST adapter that reports and demands versions. `Ports` no longer has a `store` — it has `events` and `catalog`, like the rest — and the feature returns `Some` outbox, so its relay starts with the others.
+
+**The aggregate carries its own timestamps**, which `pieces` does not need to. An author sees "edited 2 hours ago" on a project row, so `created_at` and `updated_at` are state rather than something a reader derives — and they come from `EventMetadata.occurred_at` in `apply`, never from a clock the aggregate reaches for. The one place that cannot work is the snapshot: it is written at compaction time, long after the fact, so its own `occurred_at` is meaningless and both moments travel inside the snapshot body. There is a test that replaying a snapshot stamped years later still yields the original moments, because getting this wrong would silently re-date every old project the first time the log was collapsed.
+
+**Three things about the API changed**, all deliberate and all visible to the client:
+
+- **The listing is newest-first**, where the CRUD store returned creation order. It is now a projection ordered by id, and a v7 id sorts by age — the same rule the piece catalog follows, for the same reason: what an author touched most recently should be what they see first.
+- **`ProjectDTO` gained `version`**, and the routes now speak `ETag`/`If-Match`. Renaming from a stale version answers `412` rather than silently winning.
+- **A deleted project answers `404` on the way in and `409` on the way back.** `GET` is refused because the project is gone from the author's view; `PATCH` is refused as a conflict because the stream is still there and still says why. The old store deleted the row and had nothing left to say.
+
+**A project's name collided with the event-name convention.** All four features tag their published event DTOs with `#[serde(tag = "name")]`, which is the event's own name — and a project's payload field is also `name`. serde refuses that outright rather than letting one shadow the other. The field is published as `project_name`; renaming the tag across four features and the library that derives it would have been the larger change for the smaller reason.
+
+**And the postgres service test had to become honest**, the same way [the pieces one did in 6b](#milestone-11--the-real-store): with the store enqueueing rather than publishing, a project written with no relay running is readable by id and absent from the listing. The end-to-end relay test now follows a project through the whole chain as well as a piece, each on its own database.
 
 **The open question is choreography or orchestration.** Each feature listening for `project.deleted` and disposing its own is far simpler and is the right default; a saga with its own state earns its place only if the cascade needs ordering, compensation, or a completion signal an author can see. Decide it against the real requirement rather than in advance — but note that "recoverable and observable when it fails midway" leans toward orchestration, and that a saga that entails another (a `BoardDeletion` inside a `ProjectDeletion`) is a question the `Conversation` id was designed to answer.
 
 **Done when:** deleting a project leaves nothing behind; a cascade that fails midway is recoverable and observable; the project's own history says who deleted it and when; and `projects` looks like every other feature.
+
+---
+
+### Milestone 11b — One flow in every mode
+
+**Goal:** in-memory enqueues and relays like PostgreSQL does, so local mode and server mode take the same path through the application.
+
+**The problem is not durability, it is divergence.** Today the two backends differ in *where publishing lives*: the PostgreSQL store writes an outbox row and a relay publishes from it later, while the in-memory store publishes inline through [`PublishingEventStore`](#milestone-11--the-real-store). So a command in local mode has its projections up to date by the time it returns, and the same command on PostgreSQL does not. Every test that runs in memory — which is nearly all of them — exercises a flow no deployment uses.
+
+**That is not theoretical; it bit twice in one milestone.** The wiring step left PostgreSQL with no relay, so no projection was ever fed and every listing came back empty; [M11a step 1](#step-1--projects-becomes-an-aggregate--done) hit it again the moment `projects` stopped publishing inline. Both were caught only because a handful of tests run against a real database in Docker. A bug that depends on a projection being one beat behind — a read straight after a write, a listener whose ordering assumption is wrong, a cascade step that races the projection it reads — is invisible to the in-memory suite by construction.
+
+**Build:** an in-memory outbox and an in-memory relay with the same shape as the PostgreSQL pair — enqueue inside the append, claim a batch, publish, mark published — driven by the same `Cadence`. The notification is a `tokio::sync::Notify` the store pokes after the write rather than `pg_notify`, because a single process needs no database to carry a wake-up. Tests that want the projection settled ask the relay to drain rather than assuming it already has, which is the same discipline the PostgreSQL tests already follow.
+
+**It also collapses something that never sat right.** `PublishingEventStore` exists *only* because the two backends disagree about publishing — [it was argued into being for exactly that reason](#milestone-11--the-real-store). Once both enqueue, the decorator has no deployment left to serve and becomes a test fixture for the one case that wants publishing without a relay.
+
+**And it has to close a gap that makes `Kept` a lie.** `InProcessDispatcher::publish` returns `Ok(())` whatever the listeners do: a refusal is handed to `DeadLetters` and the publish reports success. So when the relay publishes a message and a projector refuses it, the relay is told it went out and **marks the outbox row published** — the message is gone, and the only trace is a log line from `Logged` whose own text admits there is nowhere to retry it. A listener declaring [`Delivery::Kept`](../libraries/messaging/src/listening.rs) is asking to be retried, and nothing retries it. The fix belongs here rather than after, because the outbox is the retry: the dispatcher reports the refusal, the relay leaves the row unpublished, and the next tick claims it again. Until then `Kept` and `Fleeting` differ only in log level — and note that no listener declares `Fleeting` at all today, so that half of the enum is still waiting for its first real case.
+
+**Done when:** both backends enqueue and both relay; no store publishes inline outside a test; a refused message stays in the outbox and is tried again rather than being logged and lost; and a test that reads a projection immediately after a command fails in memory for the same reason it would fail on PostgreSQL.
+
+---
+
+### Would SQLite be a better local mode than no store at all?
+
+**Raised 2026-09-28, deliberately unresolved.** [M12](#milestone-12--local-mode) answers "local mode" with *no database*: in-memory stores plus export and import of a project file. The alternative is SQLite — a real embedded store, so an author's work survives a crash rather than surviving only as far as their last export.
+
+**Two arguments for it, and they are not equally strong.** The first is durability: in-memory loses an afternoon's work to a crash, and export/import narrows that window without closing it. The second is that the two modes take different paths through the application — but that argument belongs to [M11b](#milestone-11b--one-flow-in-every-mode), which fixes it without a second store, because the divergence is in *messaging* rather than in *storage*. Settle M11b first and see whether durability alone still justifies the cost.
+
+**The relay is not the obstacle it looks like.** SQLite has no `LISTEN/NOTIFY` — there is no server, so there is nothing to notify across connections, and `update_hook`/`commit_hook`/`wal_hook` fire only on the connection that did the write. But local mode is single-process by definition, so the relay wants an in-process wake-up anyway, which is the same `Notify` M11b introduces. `FOR UPDATE SKIP LOCKED` falls away for the same reason: one writer and one relay means claiming is an ordinary `UPDATE … WHERE entry IN (SELECT … LIMIT n) RETURNING`.
+
+**The real cost is the schemas, not the Rust.** Every feature's `migrations/` is PostgreSQL DDL, and SQLite would need its own directory per feature — two schemas per table, drifting silently, with no compiler to notice. The adapters themselves are ordinary work against conformance suites that already exist: event store, outbox, four catalogs, `PassageStore`. Dialect drift is mostly mechanical — `TIMESTAMPTZ` becomes TEXT, `JSONB` becomes TEXT, `BIGSERIAL` becomes `INTEGER PRIMARY KEY` — and `COLLATE "C"` is free, since SQLite's default collation is already byte order.
+
+**Not decided now**, because M11b removes the stronger of the two arguments, and whatever is left is then a much smaller step: adapters against existing suites, with the outbox shape already backend-agnostic.
 
 ---
 
@@ -576,7 +624,7 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 
 **Local is single-user by definition** — no accounts, no authors on other machines. Two tabs on the same computer still collaborate, because the sync socket is local and knows nothing about deployment.
 
-**Depends on** the deferrals that in-memory made free being closed first, since a session now lasts an afternoon rather than a test run: the catalog's dual write, passages never being evicted, and the deletion cascade. See [TODO.md](./TODO.md).
+**Depends on** the deferrals that in-memory made free being closed first, since a session now lasts an afternoon rather than a test run: the catalog's dual write, passages never being evicted, and the deletion cascade. See [TODO.md](./TODO.md). Also on [M11b](#milestone-11b--one-flow-in-every-mode), so that local mode relays rather than publishing inline — and note the open question of [whether SQLite should back it instead](#would-sqlite-be-a-better-local-mode-than-no-store-at-all).
 
 **Done when:** an author can work with no database running, export the project, restart with an empty process, import, and find their pieces and prose exactly as they left them — with the catalog rebuilt rather than restored.
 

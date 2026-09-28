@@ -8,5 +8,8 @@ axum = { workspace = true }
 time = { workspace = true, features = ["formatting"] }
 tracing = { workspace = true }
 
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
+
 projects-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-projects-contract" }
 projects-core = { version = "0.1.0", path = "../../core", package = "weaveling-projects-core" }

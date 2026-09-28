@@ -29,7 +29,9 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let ports = boards_wiring::Ports {
         events: PublishingEventStore::wrapping(
             store.clone(),
-            Arc::new(boards_messaging::Publishing::new(dispatcher.clone())),
+            Arc::new(boards_messaging::BoardEventPublisher::new(
+                dispatcher.clone(),
+            )),
         ),
         catalog: catalog.clone(),
     };

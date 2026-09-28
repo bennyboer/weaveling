@@ -45,7 +45,7 @@ async fn open(
 ) -> Result<Response, ApiError> {
     let opened = outlines.open(&request.project, &nobody_yet()).await?;
 
-    Ok(reported(
+    Ok(to_response(
         StatusCode::OK,
         &opened.id.to_string(),
         &opened.standing,
@@ -58,7 +58,7 @@ async fn find(
 ) -> Result<Response, ApiError> {
     let found = outlines.get(&outline).await?;
 
-    Ok(reported(StatusCode::OK, &outline, &found))
+    Ok(to_response(StatusCode::OK, &outline, &found))
 }
 
 async fn add(
@@ -106,7 +106,7 @@ async fn retitle(
         )
         .await?;
 
-    Ok(reported(
+    Ok(to_response(
         StatusCode::OK,
         &outline,
         &outlines.get(&outline).await?,
@@ -130,7 +130,7 @@ async fn place(
         )
         .await?;
 
-    Ok(reported(
+    Ok(to_response(
         StatusCode::OK,
         &outline,
         &outlines.get(&outline).await?,
@@ -151,7 +151,7 @@ async fn promote(
         )
         .await?;
 
-    Ok(reported(
+    Ok(to_response(
         StatusCode::OK,
         &outline,
         &outlines.get(&outline).await?,
@@ -172,7 +172,7 @@ async fn demote(
         )
         .await?;
 
-    Ok(reported(
+    Ok(to_response(
         StatusCode::OK,
         &outline,
         &outlines.get(&outline).await?,
@@ -193,7 +193,7 @@ async fn remove(
         )
         .await?;
 
-    Ok(reported(
+    Ok(to_response(
         StatusCode::OK,
         &outline,
         &outlines.get(&outline).await?,
@@ -217,7 +217,7 @@ async fn attach(
         )
         .await?;
 
-    Ok(reported(
+    Ok(to_response(
         StatusCode::OK,
         &outline,
         &outlines.get(&outline).await?,
@@ -260,7 +260,7 @@ fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
     Ok(demanded(headers)?)
 }
 
-fn reported(status: StatusCode, outline: &str, standing: &Standing<Outline>) -> Response {
+fn to_response(status: StatusCode, outline: &str, standing: &Standing<Outline>) -> Response {
     (
         status,
         [(ETAG, tag(standing.version))],

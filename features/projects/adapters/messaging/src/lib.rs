@@ -1,7 +1,7 @@
 mod publishing;
 
 pub use publishing::{
-    PieceEventPublisher, UnreadablePieceEvent, event_in, every_event, message_for, piece_in,
+    ProjectEventPublisher, UnreadableProjectEvent, event_in, every_event, message_for, project_in,
 };
 
 use std::sync::Arc;
@@ -10,32 +10,32 @@ use async_trait::async_trait;
 use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use pieces_core::{
-    CatalogError, Piece, PieceCatalog, PieceError, PieceEvent, PieceId, PieceSummary,
+use projects_core::{
+    CatalogError, Project, ProjectCatalog, ProjectError, ProjectEvent, ProjectId, ProjectSummary,
 };
 use thiserror::Error;
 
-const NAME: &str = "catalogue-piece";
+const NAME: &str = "catalogue-project";
 
-pub struct PieceCatalogProjector {
-    events: EventSourcingService<Piece>,
-    catalog: Arc<dyn PieceCatalog>,
+pub struct ProjectCatalogProjector {
+    events: EventSourcingService<Project>,
+    catalog: Arc<dyn ProjectCatalog>,
 }
 
 #[derive(Debug, Error)]
 enum NotCatalogued {
     #[error(transparent)]
-    Unreadable(#[from] UnreadablePieceEvent),
+    Unreadable(#[from] UnreadableProjectEvent),
     #[error(transparent)]
-    Events(#[from] ServiceError<PieceError>),
+    Events(#[from] ServiceError<ProjectError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
 }
 
-impl PieceCatalogProjector {
+impl ProjectCatalogProjector {
     pub fn new(
-        store: Arc<dyn EventStore<PieceEvent>>,
-        catalog: Arc<dyn PieceCatalog>,
+        store: Arc<dyn EventStore<ProjectEvent>>,
+        catalog: Arc<dyn ProjectCatalog>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
@@ -44,14 +44,14 @@ impl PieceCatalogProjector {
         }
     }
 
-    async fn catalogue(&self, id: &PieceId) -> Result<(), NotCatalogued> {
+    async fn catalogue(&self, id: &ProjectId) -> Result<(), NotCatalogued> {
         let standing = self.events.latest(&AggregateId::from(id)).await?;
 
-        if standing.state.is_discarded() {
+        if standing.state.is_deleted() {
             self.catalog.forget(id).await?;
         } else {
             self.catalog
-                .remember(&PieceSummary::of(*id, standing.version, &standing.state))
+                .remember(&ProjectSummary::of(*id, standing.version, &standing.state))
                 .await?;
         }
 
@@ -59,12 +59,12 @@ impl PieceCatalogProjector {
     }
 
     async fn handle(&self, message: &Message) -> Result<(), NotCatalogued> {
-        self.catalogue(&piece_in(message)?).await
+        self.catalogue(&project_in(message)?).await
     }
 }
 
 #[async_trait]
-impl Listener for PieceCatalogProjector {
+impl Listener for ProjectCatalogProjector {
     fn named(&self) -> ListenerName {
         ListenerName::parse(NAME).expect("the catalog listener is named at compile time")
     }

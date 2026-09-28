@@ -3,7 +3,7 @@ use std::sync::Arc;
 use eventsourcing::{EventStore, InMemoryEventStore, PublishingEventStore};
 use pieces_catalog::InMemoryPieceCatalog;
 use pieces_core::{PieceCatalog, PieceEvent, PieceService};
-use pieces_messaging::{PieceCatalogProjector, Publishing};
+use pieces_messaging::{PieceCatalogProjector, PieceEventPublisher};
 use wiring::{Context, Wired};
 
 pub struct Ports {
@@ -16,7 +16,7 @@ impl Ports {
         Self {
             events: PublishingEventStore::wrapping(
                 Arc::new(InMemoryEventStore::new()),
-                Arc::new(Publishing::new(publisher)),
+                Arc::new(PieceEventPublisher::new(publisher)),
             ),
             catalog: Arc::new(InMemoryPieceCatalog::new()),
         }

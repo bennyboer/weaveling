@@ -106,7 +106,7 @@ Typesetting the finished weave is an **export function**, not a view. The in-ord
 
 ## How It's Built
 
-Weaveling is a browser-based client–server app: a Rust modular-monolith backend, event-sourcing for structure and CRDTs for prose (so editing is real-time collaborative *and* works offline), stored in PostgreSQL behind ports that do not know it is there. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full picture, and [ROADMAP.md](./ROADMAP.md) for what's actually being built right now.
+Weaveling is a browser-based client–server app: a Rust modular-monolith backend, event-sourcing for structure and CRDTs for prose (so editing is real-time collaborative *and* works offline), stored in PostgreSQL behind ports that do not know it is there. See [ARCHITECTURE.md](./ARCHITECTURE.md) for the full picture, [ROADMAP.md](./ROADMAP.md) for what's actually being built right now, and [CONVENTIONS.md](./CONVENTIONS.md) for how it is written.
 
 ## Getting Started
 

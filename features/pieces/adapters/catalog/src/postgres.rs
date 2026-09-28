@@ -44,7 +44,7 @@ fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> Catal
     CatalogError::Backend(Box::new(failure))
 }
 
-fn summarised(row: &PgRow) -> Result<PieceSummary, CatalogError> {
+fn to_summary(row: &PgRow) -> Result<PieceSummary, CatalogError> {
     let piece: String = row.try_get("piece").map_err(unreachable)?;
     let version: i64 = row.try_get("version").map_err(unreachable)?;
     let project: String = row.try_get("project").map_err(unreachable)?;
@@ -93,6 +93,6 @@ impl PieceCatalog for PostgresPieceCatalog {
             .await
             .map_err(unreachable)?;
 
-        found.iter().map(summarised).collect()
+        found.iter().map(to_summary).collect()
     }
 }

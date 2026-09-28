@@ -97,6 +97,10 @@ Real gaps found while spiking, to settle when prose becomes production code rath
 
 ## Revisit later
 
+- [ ] **A `README.md` in every library and every feature module.** A short description of what the module is and what it is for — enough that someone opening `libraries/eventpublishing` or `features/outline` knows why it exists without reading its source or hunting through [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+  **Explicitly not yet.** Raised 2026-09-28 during the M11a review, to be done **once that review is finished** — writing them mid-review would mean describing modules that are still moving, and `projects` had just changed shape entirely.
+
 - [ ] **One test leans on delivery being synchronous, and that is the whole list.** `board_service::opening_the_same_project_again_finds_the_board_it_already_had` asserts that a second `open` finds the board the first one started — which only holds because `InProcessDispatcher` awaits every listener before `publish` returns.
 
   **It is deliberately left that way.** Over a broker the test would fail, and it would be right to: the projection lags, the second open sees an empty catalog, and a second board gets started. That is not a test problem, it is the find-or-start race below, and this test is its canary. Making it pass with a settle hook would hide the defect it exists to find.
@@ -215,8 +219,8 @@ Suggested order was **#1 → #3**: nail the domain vocabulary while fresh, then 
 ## Parked (decided — don't re-litigate)
 
 - Rust, modular monolith. **No broker** — `libraries/messaging` owns the port, the envelope and an in-process dispatcher; a broker is an adapter for when a second deployable exists. See [Messaging](./ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
-- ~~PostgreSQL~~ **reopened.** MongoDB is back under consideration; the decision moved to M11, judged by the conformance suites. Everything above a port is unaffected either way, which is the whole reason the choice can wait.
-- Two-speed model: ES/CQRS for structure, CRDT (yrs/Yjs) for prose. **Projects stay plain CRUD** — a title carries no history worth sourcing; ES debuts on `pieces`.
+- **PostgreSQL**, settled in [M11](./ROADMAP.md#milestone-11--the-real-store) after being reopened for MongoDB and judged by the conformance suites. One server, one database per feature. Everything above a port was unaffected either way, which is the whole reason the choice could wait that long.
+- Two-speed model: ES/CQRS for structure, CRDT (yrs/Yjs) for prose. ES debuted on `pieces`; ~~projects stay plain CRUD~~ **overturned in [M11a](./ROADMAP.md#step-1--projects-becomes-an-aggregate--done)** — a name carries no history worth sourcing, but a *deletion* does, and carrying two shapes of feature cost more than the aggregate.
 - **The tree is a view, not the model.** Pieces are a pool; `board`, `outline`, `timeline`, `threads` and `cast` each own their own arrangement of them. Position is never a property of a piece. See [Pieces and views](./ARCHITECTURE.md#pieces-and-views--the-non-linear-model).
 - Local-first-capable client.
 - Full-stack Rust first; Angular as fallback.
