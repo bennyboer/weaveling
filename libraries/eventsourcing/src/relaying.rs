@@ -4,7 +4,9 @@ use time::{Duration, OffsetDateTime};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 
-use crate::outbox::{KEPT_FOR, Notifications, Outbox};
+use messaging::Notifications;
+
+use crate::outbox::{KEPT_FOR, Outbox};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Cadence {

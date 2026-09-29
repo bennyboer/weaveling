@@ -3,9 +3,15 @@ use std::sync::Arc;
 
 use clock::Clock;
 
+use tokio::sync::watch;
+
 use crate::delivering::{ATTEMPTS, Deliveries, again_after};
 use crate::in_process::InProcessDispatcher;
-use crate::listening::{Delivery, NotHandled};
+use crate::listening::{Delivery, NotHandled, Notifications};
+
+pub const LOOK_EVERY: std::time::Duration = std::time::Duration::from_millis(200);
+
+pub const AT_MOST: i64 = 128;
 
 fn down_to_the_cause(refused: &NotHandled) -> String {
     let mut saying = refused.to_string();
@@ -25,6 +31,8 @@ pub struct DeliveryConsumer {
     deliveries: Arc<dyn Deliveries>,
     clock: Arc<dyn Clock>,
     attempts: i32,
+    look_every: std::time::Duration,
+    at_most: i64,
 }
 
 impl DeliveryConsumer {
@@ -38,12 +46,57 @@ impl DeliveryConsumer {
             deliveries,
             clock,
             attempts: ATTEMPTS,
+            look_every: LOOK_EVERY,
+            at_most: AT_MOST,
         }
     }
 
     pub fn giving_up_after(mut self, attempts: i32) -> Self {
         self.attempts = attempts;
         self
+    }
+
+    pub fn looking_every(mut self, look_every: std::time::Duration) -> Self {
+        self.look_every = look_every;
+        self
+    }
+
+    pub async fn run(self, mut stopped: watch::Receiver<bool>) {
+        let mut notifications = match self.deliveries.notifications().await {
+            Ok(notifications) => Some(notifications),
+            Err(why) => {
+                tracing::warn!(error = %why, "the deliveries cannot be listened to, so the consumer polls alone");
+
+                None
+            }
+        };
+
+        loop {
+            self.drain(self.at_most).await;
+
+            if !self.waited(notifications.as_mut(), &mut stopped).await {
+                break;
+            }
+        }
+    }
+
+    async fn waited(
+        &self,
+        notifications: Option<&mut Box<dyn Notifications>>,
+        stopped: &mut watch::Receiver<bool>,
+    ) -> bool {
+        let Some(notifications) = notifications else {
+            return tokio::select! {
+                _ = stopped.changed() => false,
+                _ = tokio::time::sleep(self.look_every) => true,
+            };
+        };
+
+        tokio::select! {
+            _ = stopped.changed() => false,
+            _ = tokio::time::sleep(self.look_every) => true,
+            () = notifications.wait() => true,
+        }
     }
 
     pub async fn drain(&self, at_most: i64) -> usize {
@@ -383,5 +436,43 @@ mod tests {
             "a listener missing at startup is a wiring fault to fix, not a message to throw away"
         );
         assert!(wired.dead().await.is_empty());
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_delivery_is_taken_long_before_the_next_look_would() {
+        let wired = a_workbench();
+        let coping = Fussy::refusing("catalogue-piece", 0);
+        wired.dispatcher.listen(coping.clone());
+
+        let (stopping, stopped) = watch::channel(false);
+        let running = tokio::spawn(
+            DeliveryConsumer::new(
+                wired.dispatcher.clone(),
+                wired.deliveries.clone(),
+                wired.clock.clone(),
+            )
+            .looking_every(std::time::Duration::from_secs(300))
+            .run(stopped),
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+        wired.publish("piece.captured").await;
+
+        let mut took = false;
+        for _ in 0..40 {
+            if coping.how_many() == 1 {
+                took = true;
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+
+        assert!(
+            took,
+            "looking is five minutes away, so only the notification can have woken the consumer"
+        );
+
+        let _ = stopping.send(true);
+        let _ = running.await;
     }
 }

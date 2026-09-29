@@ -1,11 +1,12 @@
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
 use time::OffsetDateTime;
 
 use crate::delivering::{CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued};
-use crate::listening::ListenerName;
+use crate::listening::{ListenerName, Notifications};
 use crate::message::Message;
+use tokio::sync::Notify;
 
 struct QueuedDelivery {
     id: i64,
@@ -26,6 +27,16 @@ struct Queues {
 #[derive(Default)]
 pub struct InMemoryDeliveries {
     queues: Mutex<Queues>,
+    waiting: Arc<Notify>,
+}
+
+struct Waiting(Arc<Notify>);
+
+#[async_trait]
+impl Notifications for Waiting {
+    async fn wait(&mut self) {
+        self.0.notified().await;
+    }
 }
 
 impl InMemoryDeliveries {
@@ -57,6 +68,9 @@ impl Deliveries for InMemoryDeliveries {
             due_at: message.occurred_at,
             claimed_until: None,
         });
+        drop(queues);
+
+        self.waiting.notify_one();
 
         Ok(())
     }
@@ -142,6 +156,10 @@ impl Deliveries for InMemoryDeliveries {
 
     async fn waiting(&self) -> Result<usize, DeliveryError> {
         Ok(self.queues().deliveries.len())
+    }
+
+    async fn notifications(&self) -> Result<Box<dyn Notifications>, DeliveryError> {
+        Ok(Box::new(Waiting(self.waiting.clone())))
     }
 }
 

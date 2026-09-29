@@ -23,9 +23,7 @@ pub use codec::Codec;
 pub use event::{Event, EventName, Recorded};
 pub use memory::{InMemoryEventStore, InMemoryOutbox};
 pub use metadata::EventMetadata;
-pub use outbox::{
-    CLAIM_FOR, Delivered, KEPT_FOR, MessageMapping, Notifications, Outbox, OutboxError,
-};
+pub use outbox::{CLAIM_FOR, Delivered, KEPT_FOR, MessageMapping, Outbox, OutboxError};
 pub use patch::{Patch, Patcher};
 #[cfg(feature = "postgres")]
 pub use postgres::{PostgresEventStore, PostgresOutbox, migrations};

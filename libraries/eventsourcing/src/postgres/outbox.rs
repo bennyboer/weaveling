@@ -2,16 +2,16 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clock::Clock;
-use messaging::{Conversation, Message, MessageId, Publisher, RoutingKey};
+use messaging::{Conversation, Message, MessageId, Notifications, Publisher, RoutingKey};
 use serde_json::Value;
-use sqlx::postgres::{PgListener, PgRow};
+use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
-use crate::outbox::{CLAIM_FOR, Delivered, Notifications, Outbox, OutboxError};
+use crate::outbox::{CLAIM_FOR, Delivered, Outbox, OutboxError};
 
-const CHANNEL: &str = "SELECT left('outbox_waiting_' || current_schema(), 63)";
+const CHANNEL: &str = "outbox_waiting_";
 
 const CLAIM: &str = "
     WITH waiting AS (
@@ -54,24 +54,6 @@ impl PostgresOutbox {
             publisher,
             clock,
         }
-    }
-
-    async fn listening(&self) -> Result<PgListener, OutboxError> {
-        let channel: String = sqlx::query_scalar(CHANNEL)
-            .fetch_one(&self.pool)
-            .await
-            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
-
-        let mut listening = PgListener::connect_with(&self.pool)
-            .await
-            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
-
-        listening
-            .listen(&channel)
-            .await
-            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
-
-        Ok(listening)
     }
 
     async fn mark_published(&self, entry: i64) -> Result<(), OutboxError> {
@@ -137,16 +119,11 @@ impl Outbox for PostgresOutbox {
     }
 
     async fn notifications(&self) -> Result<Box<dyn Notifications>, OutboxError> {
-        Ok(Box::new(self.listening().await?))
-    }
-}
+        let listening = messaging::listening_to(&self.pool, CHANNEL)
+            .await
+            .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
 
-#[async_trait]
-impl Notifications for PgListener {
-    async fn wait(&mut self) {
-        if let Err(why) = self.recv().await {
-            tracing::warn!(error = %why, "the outbox listener dropped, so delivery falls back to polling");
-        }
+        Ok(Box::new(listening))
     }
 }
 

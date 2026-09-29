@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use messaging::Message;
+use messaging::{Message, Notifications};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
@@ -23,11 +23,6 @@ pub enum OutboxError {
 pub struct Delivered {
     pub published: usize,
     pub refused: usize,
-}
-
-#[async_trait]
-pub trait Notifications: Send {
-    async fn wait(&mut self);
 }
 
 #[async_trait]

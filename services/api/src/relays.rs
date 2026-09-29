@@ -14,7 +14,7 @@ pub struct Relays {
 impl Relays {
     pub fn started(
         outboxes: Vec<Arc<dyn Outbox>>,
-        consuming: DeliveryConsumer,
+        consumer: DeliveryConsumer,
         cadence: Cadence,
     ) -> Self {
         let running: Vec<RelayTask> = outboxes
@@ -28,7 +28,7 @@ impl Relays {
         Self {
             running,
             stopping,
-            consuming: tokio::spawn(draining(consuming, cadence, stopped)),
+            consuming: tokio::spawn(consumer.run(stopped)),
         }
     }
 
@@ -38,21 +38,6 @@ impl Relays {
 
         for relay in self.running {
             relay.stop().await;
-        }
-    }
-}
-
-async fn draining(
-    consuming: DeliveryConsumer,
-    cadence: Cadence,
-    mut stopped: watch::Receiver<bool>,
-) {
-    loop {
-        consuming.drain(cadence.deliver_at_most).await;
-
-        tokio::select! {
-            _ = stopped.changed() => break,
-            _ = tokio::time::sleep(cadence.deliver_every) => {}
         }
     }
 }

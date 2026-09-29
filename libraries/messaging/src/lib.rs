@@ -4,6 +4,8 @@ mod delivering;
 mod in_process;
 mod listening;
 mod message;
+#[cfg(feature = "postgres")]
+mod notifying;
 mod routing;
 
 pub use consuming::DeliveryConsumer;
@@ -15,7 +17,10 @@ pub use delivering::{
 };
 pub use in_process::InProcessDispatcher;
 pub use listening::{
-    Delivery, InvalidListenerName, Listener, ListenerName, NotHandled, Publisher, Undelivered,
+    Delivery, InvalidListenerName, Listener, ListenerName, NotHandled, Notifications, Publisher,
+    Undelivered,
 };
 pub use message::{Conversation, Message, MessageId};
+#[cfg(feature = "postgres")]
+pub use notifying::{Listening, listening_to};
 pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};

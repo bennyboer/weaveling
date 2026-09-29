@@ -6,7 +6,9 @@ use messaging::{Message, Publisher};
 use time::OffsetDateTime;
 use tokio::sync::Notify;
 
-use crate::outbox::{CLAIM_FOR, Delivered, Notifications, Outbox, OutboxError};
+use messaging::Notifications;
+
+use crate::outbox::{CLAIM_FOR, Delivered, Outbox, OutboxError};
 
 struct Entry {
     entry: i64,

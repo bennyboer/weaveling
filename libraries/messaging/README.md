@@ -15,4 +15,6 @@ A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscrip
 
 **A listener's name is its queue name**, so two listeners may not share one — `listen` asserts against it, because a duplicate would quietly eat the other's messages and that is a wiring fault worth failing at startup.
 
+**The consumer is woken, not polled.** `enqueue` notifies — a `tokio::sync::Notify` in memory, `pg_notify` on PostgreSQL — so a new message is taken at once and the 200ms look is a backstop for deliveries that became due again on their own. Without it the retry curve would be decorative: a delivery re-due in 200ms would still wait for the next tick.
+
 `Deliveries` has an in-memory and a PostgreSQL adapter behind one conformance suite. The state is durable on purpose: an attempt count that resets on restart is not a budget.

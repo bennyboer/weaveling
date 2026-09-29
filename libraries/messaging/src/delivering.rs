@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
-use crate::listening::ListenerName;
+use crate::listening::{ListenerName, Notifications};
 use crate::message::Message;
 
 pub const ATTEMPTS: i32 = 5;
@@ -65,6 +65,8 @@ pub trait Deliveries: Send + Sync {
     async fn dead_letters(&self) -> Result<Vec<DeadLetter>, DeliveryError>;
 
     async fn waiting(&self) -> Result<usize, DeliveryError>;
+
+    async fn notifications(&self) -> Result<Box<dyn Notifications>, DeliveryError>;
 }
 
 pub fn again_after(attempts: i32) -> Duration {

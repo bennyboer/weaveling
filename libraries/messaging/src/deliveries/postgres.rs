@@ -7,7 +7,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::delivering::{CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued};
-use crate::listening::ListenerName;
+use crate::listening::{ListenerName, Notifications};
 use crate::message::{Conversation, Message, MessageId};
 use crate::routing::RoutingKey;
 
@@ -66,6 +66,10 @@ const DEAD_LETTERS: &str = "
 ";
 
 const WAITING: &str = "SELECT count(*) FROM deliveries";
+
+const CHANNEL: &str = "deliveries_waiting_";
+
+const NOTIFY: &str = "SELECT pg_notify(left('deliveries_waiting_' || current_schema(), 63), '')";
 
 pub fn migrations() -> Migrator {
     let mut laying = sqlx::migrate!("./migrations");
@@ -134,6 +138,11 @@ impl Deliveries for PostgresDeliveries {
             .bind(message.routing.to_string())
             .bind(&message.payload)
             .bind(message.occurred_at)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        sqlx::query(NOTIFY)
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -237,5 +246,13 @@ impl Deliveries for PostgresDeliveries {
             .map_err(unreachable)?;
 
         Ok(held as usize)
+    }
+
+    async fn notifications(&self) -> Result<Box<dyn Notifications>, DeliveryError> {
+        let listening = crate::notifying::listening_to(&self.pool, CHANNEL)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(Box::new(listening))
     }
 }

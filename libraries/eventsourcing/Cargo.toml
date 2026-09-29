@@ -18,7 +18,7 @@ clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 
 [features]
-postgres = ["dep:sqlx", "dep:uuid"]
+postgres = ["dep:sqlx", "dep:uuid", "messaging/postgres"]
 
 [dev-dependencies]
 serde = { workspace = true }

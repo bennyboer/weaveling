@@ -612,7 +612,11 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 
 **Two things fell out of it.** A **listener name is now a queue name**, so two listeners sharing one would quietly eat each other's messages — `listen` asserts against it, because a wiring fault must fail at startup rather than be debugged later. And a **dead letter records the root cause** rather than `NotHandled`'s own wording: a test asked why the message failed, got "catalogue-piece could not take in piece.captured", and that is not an answer, so the reason now walks the whole source chain.
 
-**Still owed:** the sweep of the six listeners for the stale-projection idempotency shape. They are retried rather than lost now, which turns each into a delay rather than a defect — but a listener that will never cope still burns five attempts before dead-lettering.
+**The consumer is woken like the relay is.** `enqueue` notifies — `tokio::sync::Notify` in memory, `pg_notify` on PostgreSQL — and `DeliveryConsumer::run` selects on that, a 200ms backstop look, and the stop signal. Without it the backoff curve would have been decorative: the drain ticked on the outbox's five-second backstop, so a delivery re-due in 200ms would have waited five seconds anyway. The `PgListener` wrapper moved into `messaging` and both queues share it, and `Notifications` moved with it — `eventsourcing` already depends on `messaging`, so one trait serves both rather than two identical ones.
+
+**The backoff is 200ms growing five-fold** — 0.2s, 1s, 5s, 25s, 125s. Fast where the failure actually is (a projection a beat behind clears on the first retry) and slow enough at the tail that a database blinking does not dead-letter everything in flight. Both ends are asserted, because either alone is easy to wreck.
+
+**Still owed:** the sweep of the eight listeners for the stale-projection idempotency shape. They are retried rather than lost now, which turns each into a delay rather than a defect — but a listener that will never cope still burns five attempts before dead-lettering.
 
 **Done when:** ~~a listener that refuses is retried a bounded number of times and only then dead-lettered; a retry reaches **only** the listener that refused; `publish` still reports nothing about handling~~; and local mode surfaces the dead letter to the author instead of filing it for an ops team that does not exist.
 

@@ -114,6 +114,11 @@ impl Undelivered {
     }
 }
 
+#[async_trait::async_trait]
+pub trait Notifications: Send {
+    async fn wait(&mut self);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
