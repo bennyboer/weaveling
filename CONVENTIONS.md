@@ -83,6 +83,7 @@ Say why the expectation holds or what breaks if it does not — never restate th
 
 - The name is the claim, as a sentence: `a_deleted_project_refuses_everything`, `a_batch_that_collides_halfway_writes_none_of_itself`.
 - Helpers are article-prefixed so call sites read as English: `a_project(&service, "Tapestry")`, `an_author()`, `a_workbench()`.
+- A test's assembled world is a **`Wired`**, built by **`a_workbench()`** — the feature test wirings, and the library ones. Once a helper bundles more than a value, it is that, not a new name per file.
 - A behaviour two backends must share is a **conformance suite**: free functions taking `&impl Trait`, a `Workbench` trait (`setup`/`store`/`cleanup`), and a `conformance_tests!` macro each backend invokes. One case list, both implementations.
 - A guard worth having is worth proving load-bearing — break it deliberately and watch the test fail.
 

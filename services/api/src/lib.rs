@@ -20,6 +20,7 @@ pub use wiring::Unprepared;
 pub struct Adapters {
     pub clock: Arc<dyn Clock>,
     pub dispatcher: Arc<InProcessDispatcher>,
+    pub deliveries: Arc<dyn messaging::Deliveries>,
     pub projects: projects_wiring::Ports,
     pub passages: passages_wiring::Ports,
     pub pieces: pieces_wiring::Ports,
@@ -29,7 +30,8 @@ pub struct Adapters {
 
 impl Adapters {
     pub fn in_memory(clock: Arc<dyn Clock>) -> Self {
-        let dispatcher = Arc::new(InProcessDispatcher::new());
+        let deliveries = Arc::new(messaging::InMemoryDeliveries::new());
+        let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
 
         Self {
             projects: projects_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
@@ -39,12 +41,16 @@ impl Adapters {
             outline: outline_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             clock,
             dispatcher,
+            deliveries,
         }
     }
 
     #[cfg(feature = "postgres")]
     pub fn postgres(clock: Arc<dyn Clock>, databases: &Databases) -> Self {
-        let dispatcher = Arc::new(InProcessDispatcher::new());
+        let deliveries = Arc::new(messaging::PostgresDeliveries::new(
+            databases.messaging.clone(),
+        ));
+        let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
 
         Self {
             projects: projects_wiring::Ports::postgres(
@@ -70,7 +76,16 @@ impl Adapters {
             ),
             clock,
             dispatcher,
+            deliveries,
         }
+    }
+
+    pub fn consuming(&self) -> messaging::DeliveryConsumer {
+        messaging::DeliveryConsumer::new(
+            self.dispatcher.clone(),
+            self.deliveries.clone(),
+            self.clock.clone(),
+        )
     }
 
     pub fn outboxes(&self) -> Vec<Arc<dyn eventsourcing::Outbox>> {

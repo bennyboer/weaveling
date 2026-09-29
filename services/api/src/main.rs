@@ -27,9 +27,13 @@ async fn adapters() -> Adapters {
 async fn serving() -> (axum::Router, Relays) {
     let adapters = adapters().await;
     let outboxes = adapters.outboxes();
+    let consuming = adapters.consuming();
     let routes = app(adapters);
 
-    (routes, Relays::started(outboxes, Cadence::default()))
+    (
+        routes,
+        Relays::started(outboxes, consuming, Cadence::default()),
+    )
 }
 
 #[tokio::main]

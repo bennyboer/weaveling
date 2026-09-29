@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::Router;
 use clock::Clock;
 use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
-use messaging::{InProcessDispatcher, Listener};
+use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineEvent, OutlineService};
 use registry::InMemoryRegistry;
@@ -19,6 +19,7 @@ pub struct Wired {
     pub routes: Router,
     pub store: Arc<InMemoryEventStore<OutlineEvent>>,
     pub outbox: Arc<InMemoryOutbox>,
+    pub consuming: DeliveryConsumer,
     pub registry: Arc<InMemoryRegistry>,
     pub catalog: Arc<InMemoryOutlineCatalog>,
     pub projector: Arc<dyn Listener>,
@@ -27,7 +28,8 @@ pub struct Wired {
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    let dispatcher = Arc::new(InProcessDispatcher::new());
+    let deliveries = Arc::new(InMemoryDeliveries::new());
+    let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
     let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
     let store = Arc::new(InMemoryEventStore::enqueuing_to(
         outbox.clone(),
@@ -92,6 +94,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         routes: wired.routes,
         store,
         outbox,
+        consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, context.clock.clone()),
         registry,
         catalog,
         projector,
@@ -102,13 +105,18 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
 
 impl Wired {
     pub async fn settle(&self) {
-        while self
-            .outbox
-            .deliver(128)
-            .await
-            .expect("delivering should succeed")
-            .published
-            > 0
-        {}
+        loop {
+            let published = self
+                .outbox
+                .deliver(128)
+                .await
+                .expect("delivering should succeed")
+                .published;
+            let taken = self.consuming.drain(128).await;
+
+            if published == 0 && taken == 0 {
+                break;
+            }
+        }
     }
 }

@@ -2,7 +2,10 @@ use sqlx::PgPool;
 use wiring::Unprepared;
 use wiring::database::{connect, ensure};
 
+const MESSAGING: &str = "messaging";
+
 pub struct Databases {
+    pub messaging: PgPool,
     pub projects: PgPool,
     pub pieces: PgPool,
     pub boards: PgPool,
@@ -18,11 +21,13 @@ impl Databases {
             boards_wiring::NAME,
             outline_wiring::NAME,
             passages_wiring::NAME,
+            MESSAGING,
         ] {
             ensure(server, feature).await?;
         }
 
         let databases = Self {
+            messaging: connect(server, MESSAGING).await?,
             projects: connect(server, projects_wiring::NAME).await?,
             pieces: connect(server, pieces_wiring::NAME).await?,
             boards: connect(server, boards_wiring::NAME).await?,
@@ -39,6 +44,7 @@ impl Databases {
         pieces_wiring::lay_out(&self.pieces).await?;
         boards_wiring::lay_out(&self.boards).await?;
         outline_wiring::lay_out(&self.outline).await?;
-        passages_wiring::lay_out(&self.passages).await
+        passages_wiring::lay_out(&self.passages).await?;
+        wiring::database::lay_out(MESSAGING, &self.messaging, messaging::migrations()).await
     }
 }

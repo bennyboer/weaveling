@@ -63,11 +63,6 @@ pub trait Publisher: Send + Sync {
     async fn publish(&self, message: Message) -> Result<(), Undelivered>;
 }
 
-#[async_trait]
-pub trait DeadLetters: Send + Sync {
-    async fn refused(&self, message: &Message, why: &NotHandled);
-}
-
 impl ListenerName {
     pub fn parse(name: &str) -> Result<Self, InvalidListenerName> {
         if name.is_empty() {
@@ -116,22 +111,6 @@ impl Undelivered {
             routing,
             because: Box::new(reason),
         }
-    }
-}
-
-pub struct Logged;
-
-#[async_trait]
-impl DeadLetters for Logged {
-    async fn refused(&self, message: &Message, why: &NotHandled) {
-        tracing::error!(
-            listener = %why.listener,
-            message = %message.id,
-            conversation = %message.conversation,
-            routing = %message.routing,
-            error = %why,
-            "a listener refused a message"
-        );
     }
 }
 

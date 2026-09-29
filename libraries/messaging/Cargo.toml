@@ -10,8 +10,14 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 time = { workspace = true }
 uuid = { workspace = true, features = ["v7"] }
+sqlx = { workspace = true, optional = true, features = ["uuid"] }
 
+clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 ids = { version = "0.1.0", path = "../ids", package = "weaveling-ids" }
 
+[features]
+postgres = ["dep:sqlx"]
+
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+test-harness = { version = "0.1.0", path = "../test-harness", package = "weaveling-test-harness" }

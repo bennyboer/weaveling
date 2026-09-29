@@ -2,37 +2,44 @@ use std::sync::{Arc, RwLock};
 
 use async_trait::async_trait;
 
-use crate::listening::{DeadLetters, Delivery, Listener, Logged, Publisher, Undelivered};
+use crate::delivering::Deliveries;
+use crate::listening::{Listener, ListenerName, Publisher, Undelivered};
 use crate::message::Message;
 
 pub struct InProcessDispatcher {
     listeners: RwLock<Vec<Arc<dyn Listener>>>,
-    dead_letters: Arc<dyn DeadLetters>,
-}
-
-impl Default for InProcessDispatcher {
-    fn default() -> Self {
-        Self::new()
-    }
+    deliveries: Arc<dyn Deliveries>,
 }
 
 impl InProcessDispatcher {
-    pub fn new() -> Self {
-        Self::dead_lettering_to(Arc::new(Logged))
-    }
-
-    pub fn dead_lettering_to(dead_letters: Arc<dyn DeadLetters>) -> Self {
+    pub fn queueing_to(deliveries: Arc<dyn Deliveries>) -> Self {
         Self {
             listeners: RwLock::new(Vec::new()),
-            dead_letters,
+            deliveries,
         }
     }
 
     pub fn listen(&self, listener: Arc<dyn Listener>) {
+        let mut listeners = self.listeners.write().expect("messaging lock poisoned");
+
+        assert!(
+            !listeners
+                .iter()
+                .any(|held| held.named() == listener.named()),
+            "{} is already listening: a name is a queue, so a second one under it would              quietly eat the first one's messages",
+            listener.named()
+        );
+
+        listeners.push(listener);
+    }
+
+    pub(crate) fn named(&self, wanted: &ListenerName) -> Option<Arc<dyn Listener>> {
         self.listeners
-            .write()
+            .read()
             .expect("messaging lock poisoned")
-            .push(listener);
+            .iter()
+            .find(|listener| &listener.named() == wanted)
+            .cloned()
     }
 
     fn interested_in(&self, message: &Message) -> Vec<Arc<dyn Listener>> {
@@ -50,19 +57,10 @@ impl InProcessDispatcher {
 impl Publisher for InProcessDispatcher {
     async fn publish(&self, message: Message) -> Result<(), Undelivered> {
         for listener in self.interested_in(&message) {
-            let Err(refused) = listener.handle(&message).await else {
-                continue;
-            };
-
-            match listener.delivery() {
-                Delivery::Kept => self.dead_letters.refused(&message, &refused).await,
-                Delivery::Fleeting => tracing::debug!(
-                    listener = %refused.listener,
-                    routing = %message.routing,
-                    error = %refused,
-                    "a fleeting listener let a message go by"
-                ),
-            }
+            self.deliveries
+                .enqueue(&listener.named(), &message)
+                .await
+                .map_err(|why| Undelivered::because(message.routing.clone(), why))?;
         }
 
         Ok(())
@@ -77,8 +75,12 @@ mod tests {
     use thiserror::Error;
     use time::{Duration, OffsetDateTime};
 
+    use clock::FixedClock;
+
     use super::*;
-    use crate::listening::{ListenerName, NotHandled};
+    use crate::consuming::DeliveryConsumer;
+    use crate::deliveries::InMemoryDeliveries;
+    use crate::listening::{Delivery, NotHandled};
     use crate::routing::{RoutingKey, Subscription};
 
     #[derive(Debug, Error)]
@@ -153,14 +155,6 @@ mod tests {
             Self::named("listening", to, Delivery::Kept, false)
         }
 
-        fn refusing(to: &str) -> Arc<Self> {
-            Self::named("refusing", to, Delivery::Kept, true)
-        }
-
-        fn refusing_fleetingly(to: &str) -> Arc<Self> {
-            Self::named("fleeting", to, Delivery::Fleeting, true)
-        }
-
         fn what_it_heard(&self) -> Vec<String> {
             self.heard
                 .lock()
@@ -168,6 +162,56 @@ mod tests {
                 .iter()
                 .map(ToString::to_string)
                 .collect()
+        }
+    }
+
+    struct Wired {
+        dispatcher: Arc<InProcessDispatcher>,
+        deliveries: Arc<InMemoryDeliveries>,
+        clock: Arc<FixedClock>,
+    }
+
+    impl Wired {
+        fn listen(&self, listener: Arc<dyn Listener>) {
+            self.dispatcher.listen(listener);
+        }
+
+        async fn publish(&self, message: Message) -> Result<(), Undelivered> {
+            let handed = self.dispatcher.publish(message).await;
+            self.drain().await;
+
+            handed
+        }
+
+        async fn drain(&self) {
+            DeliveryConsumer::new(
+                self.dispatcher.clone(),
+                self.deliveries.clone(),
+                self.clock.clone(),
+            )
+            .drain(64)
+            .await;
+        }
+
+        async fn dead(&self) -> Vec<(String, String)> {
+            self.deliveries
+                .dead_letters()
+                .await
+                .expect("reading the dead letters should succeed")
+                .into_iter()
+                .map(|dead| (dead.listener.to_string(), dead.message.routing.to_string()))
+                .collect()
+        }
+    }
+
+    fn a_workbench() -> Wired {
+        let deliveries = Arc::new(InMemoryDeliveries::new());
+        let clock = Arc::new(FixedClock::new(at(2_000)));
+
+        Wired {
+            dispatcher: Arc::new(InProcessDispatcher::queueing_to(deliveries.clone())),
+            deliveries,
+            clock,
         }
     }
 
@@ -185,7 +229,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_listener_hears_what_it_subscribed_to() {
-        let dispatcher = InProcessDispatcher::new();
+        let dispatcher = a_workbench();
         let listener = Overheard::listening("piece.captured");
         dispatcher.listen(listener.clone());
 
@@ -199,7 +243,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_listener_hears_nothing_it_did_not_subscribe_to() {
-        let dispatcher = InProcessDispatcher::new();
+        let dispatcher = a_workbench();
         let listener = Overheard::listening("piece.captured");
         dispatcher.listen(listener.clone());
 
@@ -213,10 +257,10 @@ mod tests {
 
     #[tokio::test]
     async fn everyone_interested_hears_the_same_message() {
-        let dispatcher = InProcessDispatcher::new();
-        let exact = Overheard::listening("piece.captured");
-        let wildcard = Overheard::listening("piece.*");
-        let everything = Overheard::listening("#");
+        let dispatcher = a_workbench();
+        let exact = Overheard::named("exact", "piece.captured", Delivery::Kept, false);
+        let wildcard = Overheard::named("wildcard", "piece.*", Delivery::Kept, false);
+        let everything = Overheard::named("everything", "#", Delivery::Kept, false);
         dispatcher.listen(exact.clone());
         dispatcher.listen(wildcard.clone());
         dispatcher.listen(everything.clone());
@@ -232,8 +276,17 @@ mod tests {
     }
 
     #[tokio::test]
+    #[should_panic(expected = "is already listening")]
+    async fn two_listeners_may_not_share_a_name() {
+        let dispatcher = a_workbench();
+        dispatcher.listen(Overheard::listening("piece.captured"));
+
+        dispatcher.listen(Overheard::listening("piece.retitled"));
+    }
+
+    #[tokio::test]
     async fn a_listener_may_bind_more_than_one_key() {
-        let dispatcher = InProcessDispatcher::new();
+        let dispatcher = a_workbench();
         let listener = Overheard::listening_to_both("board.piece.pinned", "board.piece.unpinned");
         dispatcher.listen(listener.clone());
 
@@ -257,7 +310,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_message_matching_two_bindings_arrives_once() {
-        let dispatcher = InProcessDispatcher::new();
+        let dispatcher = a_workbench();
         let listener = Overheard::listening_to_both("board.#", "board.piece.pinned");
         dispatcher.listen(listener.clone());
 
@@ -275,114 +328,12 @@ mod tests {
 
     #[tokio::test]
     async fn a_message_nobody_wants_is_not_a_failure() {
-        let dispatcher = InProcessDispatcher::new();
+        let dispatcher = a_workbench();
 
         dispatcher
             .publish(saying("piece.captured"))
             .await
             .expect("nobody listening is not an error, it is just quiet");
-    }
-
-    #[derive(Default)]
-    struct Kept {
-        refused: Mutex<Vec<(String, String)>>,
-    }
-
-    #[async_trait]
-    impl DeadLetters for Kept {
-        async fn refused(&self, message: &Message, why: &NotHandled) {
-            self.refused
-                .lock()
-                .expect("dead letters lock poisoned")
-                .push((why.listener.to_string(), message.routing.to_string()));
-        }
-    }
-
-    impl Kept {
-        fn what_it_kept(&self) -> Vec<(String, String)> {
-            self.refused
-                .lock()
-                .expect("dead letters lock poisoned")
-                .clone()
-        }
-    }
-
-    #[tokio::test]
-    async fn one_listener_refusing_does_not_rob_the_others() {
-        let dead_letters = Arc::new(Kept::default());
-        let dispatcher = InProcessDispatcher::dead_lettering_to(dead_letters.clone());
-        let refusing = Overheard::refusing("piece.captured");
-        let willing = Overheard::listening("piece.captured");
-        dispatcher.listen(refusing.clone());
-        dispatcher.listen(willing.clone());
-
-        dispatcher
-            .publish(saying("piece.captured"))
-            .await
-            .expect("handing a message over is not where handling it is judged");
-
-        assert_eq!(
-            willing.what_it_heard().len(),
-            1,
-            "one listener refusing must not rob the others of the message"
-        );
-        assert_eq!(
-            dead_letters.what_it_kept(),
-            [("refusing".to_owned(), "piece.captured".to_owned())],
-            "the refusal is set aside rather than lost"
-        );
-    }
-
-    #[tokio::test]
-    async fn dead_letters_learn_which_listener_refused() {
-        let dead_letters = Arc::new(Kept::default());
-        let dispatcher = InProcessDispatcher::dead_lettering_to(dead_letters.clone());
-        dispatcher.listen(Overheard::named(
-            "pieces-catalog",
-            "piece.captured",
-            Delivery::Kept,
-            true,
-        ));
-        dispatcher.listen(Overheard::named(
-            "deletion-saga",
-            "piece.captured",
-            Delivery::Kept,
-            true,
-        ));
-
-        dispatcher
-            .publish(saying("piece.captured"))
-            .await
-            .expect("handing a message over is not where handling it is judged");
-
-        assert_eq!(
-            dead_letters
-                .what_it_kept()
-                .into_iter()
-                .map(|(listener, _)| listener)
-                .collect::<Vec<_>>(),
-            ["pieces-catalog", "deletion-saga"],
-            "over a broker each listener has its own dead queue, so in process the sink must be told"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_fleeting_listener_refusing_is_not_dead_lettered() {
-        let dead_letters = Arc::new(Kept::default());
-        let dispatcher = InProcessDispatcher::dead_lettering_to(dead_letters.clone());
-        let fleeting = Overheard::refusing_fleetingly("piece.captured");
-        dispatcher.listen(fleeting.clone());
-
-        dispatcher
-            .publish(saying("piece.captured"))
-            .await
-            .expect("publishing should succeed");
-
-        assert_eq!(fleeting.what_it_heard().len(), 1, "it was still offered");
-        assert!(
-            dead_letters.what_it_kept().is_empty(),
-            "nothing will replay it, so setting it aside would only grow a pile nobody drains"
-        );
     }
 
     #[tokio::test]
@@ -413,8 +364,7 @@ mod tests {
 
     #[tokio::test]
     async fn nothing_is_dead_lettered_when_every_listener_copes() {
-        let dead_letters = Arc::new(Kept::default());
-        let dispatcher = InProcessDispatcher::dead_lettering_to(dead_letters.clone());
+        let dispatcher = a_workbench();
         dispatcher.listen(Overheard::listening("piece.captured"));
 
         dispatcher
@@ -422,7 +372,16 @@ mod tests {
             .await
             .expect("publishing should succeed");
 
-        assert!(dead_letters.what_it_kept().is_empty());
+        assert!(dispatcher.dead().await.is_empty());
+        assert_eq!(
+            dispatcher
+                .deliveries
+                .waiting()
+                .await
+                .expect("counting should succeed"),
+            0,
+            "a delivery that was taken is done with, not left for the next drain"
+        );
     }
 
     #[tokio::test]
@@ -453,17 +412,18 @@ mod tests {
             }
         }
 
-        let dispatcher = Arc::new(InProcessDispatcher::new());
+        let dispatcher = a_workbench();
         let onward = Overheard::listening("board.pinned");
         dispatcher.listen(onward.clone());
         dispatcher.listen(Arc::new(Echoing {
-            dispatcher: dispatcher.clone(),
+            dispatcher: dispatcher.dispatcher.clone(),
         }));
 
         dispatcher
             .publish(saying("piece.captured"))
             .await
             .expect("a listener publishing must not deadlock the dispatcher");
+        dispatcher.drain().await;
 
         assert_eq!(onward.what_it_heard(), vec!["board.pinned"]);
     }
@@ -494,7 +454,7 @@ mod tests {
             }
         }
 
-        let dispatcher = InProcessDispatcher::new();
+        let dispatcher = a_workbench();
         let listener = Arc::new(Remembering {
             seen: Mutex::new(Vec::new()),
         });

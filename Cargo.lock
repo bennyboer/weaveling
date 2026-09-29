@@ -3559,12 +3559,15 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "serde_json",
+ "sqlx",
  "thiserror",
  "time",
  "tokio",
  "tracing",
  "uuid",
+ "weaveling-clock",
  "weaveling-ids",
+ "weaveling-test-harness",
 ]
 
 [[package]]

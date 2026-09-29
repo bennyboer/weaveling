@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::Router;
 use clock::Clock;
 use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
-use messaging::{InProcessDispatcher, Listener};
+use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use projects_catalog::InMemoryProjectCatalog;
 use projects_core::ProjectService;
 use wiring::Context;
@@ -14,12 +14,14 @@ pub struct Wired {
     pub projects: ProjectService,
     pub routes: Router,
     pub outbox: Arc<InMemoryOutbox>,
+    pub consuming: DeliveryConsumer,
     pub catalog: Arc<InMemoryProjectCatalog>,
     pub projector: Arc<dyn Listener>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
-    let dispatcher = Arc::new(InProcessDispatcher::new());
+    let deliveries = Arc::new(InMemoryDeliveries::new());
+    let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
     let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
     let store = Arc::new(InMemoryEventStore::enqueuing_to(
         outbox.clone(),
@@ -52,6 +54,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         projects: projects_wiring::service(&ports, &context),
         routes: wired.routes,
         outbox,
+        consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, context.clock.clone()),
         catalog,
         projector,
     }
@@ -59,13 +62,18 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
 
 impl Wired {
     pub async fn settle(&self) {
-        while self
-            .outbox
-            .deliver(128)
-            .await
-            .expect("delivering should succeed")
-            .published
-            > 0
-        {}
+        loop {
+            let published = self
+                .outbox
+                .deliver(128)
+                .await
+                .expect("delivering should succeed")
+                .published;
+            let taken = self.consuming.drain(128).await;
+
+            if published == 0 && taken == 0 {
+                break;
+            }
+        }
     }
 }

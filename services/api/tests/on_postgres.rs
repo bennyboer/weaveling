@@ -14,8 +14,9 @@ struct Running {
     server: TestServer,
 }
 
-async fn five_schemas(fixture: &PostgresFixture) -> Databases {
+async fn a_schema_each(fixture: &PostgresFixture) -> Databases {
     let databases = Databases {
+        messaging: fixture.create_schema("messaging").await,
         projects: fixture.create_schema("projects").await,
         pieces: fixture.create_schema("pieces").await,
         boards: fixture.create_schema("boards").await,
@@ -32,7 +33,7 @@ async fn five_schemas(fixture: &PostgresFixture) -> Databases {
 
 async fn a_running_api() -> Running {
     let fixture = PostgresFixture::setup().await;
-    let databases = five_schemas(&fixture).await;
+    let databases = a_schema_each(&fixture).await;
     let server = TestServer::new(app(Adapters::postgres(Arc::new(SystemClock), &databases)));
 
     Running {
@@ -131,7 +132,7 @@ async fn a_piece_captured_against_postgres_is_written_and_left_waiting_to_be_ann
 #[tokio::test]
 async fn what_was_written_survives_a_second_api_built_on_the_same_databases() {
     let fixture = PostgresFixture::setup().await;
-    let databases = five_schemas(&fixture).await;
+    let databases = a_schema_each(&fixture).await;
 
     let first = TestServer::new(app(Adapters::postgres(Arc::new(SystemClock), &databases)));
     let id = a_project(&first, "Outliving").await;
@@ -215,14 +216,16 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
     use weaveling_service_api::Relays;
 
     let fixture = PostgresFixture::setup().await;
-    let databases = five_schemas(&fixture).await;
+    let databases = a_schema_each(&fixture).await;
     let clock = Arc::new(SystemClock);
     let adapters = Adapters::postgres(clock, &databases);
     let outboxes = adapters.outboxes();
+    let consuming = adapters.consuming();
     let server = TestServer::new(app(adapters));
 
     let relays = Relays::started(
         outboxes,
+        consuming,
         Cadence {
             deliver_every: std::time::Duration::from_millis(10),
             sweep_every: std::time::Duration::from_secs(3_600),

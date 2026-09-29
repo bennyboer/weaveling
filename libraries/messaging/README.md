@@ -11,4 +11,8 @@ A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscrip
 
 `InProcessDispatcher` is the only transport today: publishing awaits every interested listener in turn. A broker is an adapter for when a second deployable exists — see [why the outbox comes first](../../ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
 
-**`publish` reports the transport, never the handling.** It says whether the message was handed over — over a broker, whether the exchange took it. It cannot say more: consumers have not run yet and may be on another machine. A `Kept` refusal therefore reaches `DeadLetters` and nothing retries it, which is the gap [M11b step 2](../../ROADMAP.md#milestone-11b--one-flow-in-every-mode) has to close **on the consuming side**, where a broker closes it — a queue per listener, a bounded number of redeliveries, then a dead-letter queue.
+**`InProcessDispatcher` is an exchange; `Deliveries` is the queues; `DeliveryConsumer` is the consumer.** `publish` writes one delivery row per interested listener and returns — it reports the transport and never the handling, because over a broker consumers have not run yet and may be on another machine. A `DeliveryConsumer` claims what is due and settles each delivery: handled deletes it, refused counts the attempt and pushes it out by a growing backoff, and the fifth refusal moves it to the dead letters with its root cause. So **a retry reaches only the listener that refused**, exactly as a consumer acks its own queue.
+
+**A listener's name is its queue name**, so two listeners may not share one — `listen` asserts against it, because a duplicate would quietly eat the other's messages and that is a wiring fault worth failing at startup.
+
+`Deliveries` has an in-memory and a PostgreSQL adapter behind one conformance suite. The state is durable on purpose: an attempt count that resets on restart is not a budget.
