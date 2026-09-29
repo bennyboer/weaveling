@@ -50,18 +50,18 @@ impl InProcessDispatcher {
 impl Publisher for InProcessDispatcher {
     async fn publish(&self, message: Message) -> Result<(), Undelivered> {
         for listener in self.interested_in(&message) {
-            if let Err(refused) = listener.handle(&message).await {
-                match listener.delivery() {
-                    // TODO local mode must not dead letter a Kept refusal either:
-                    // there is nobody to retry it, so it has to reach the author
-                    Delivery::Kept => self.dead_letters.refused(&message, refused).await,
-                    Delivery::Fleeting => tracing::debug!(
-                        listener = %refused.listener,
-                        routing = %message.routing,
-                        error = %refused,
-                        "a fleeting listener let a message go by"
-                    ),
-                }
+            let Err(refused) = listener.handle(&message).await else {
+                continue;
+            };
+
+            match listener.delivery() {
+                Delivery::Kept => self.dead_letters.refused(&message, &refused).await,
+                Delivery::Fleeting => tracing::debug!(
+                    listener = %refused.listener,
+                    routing = %message.routing,
+                    error = %refused,
+                    "a fleeting listener let a message go by"
+                ),
             }
         }
 
@@ -290,7 +290,7 @@ mod tests {
 
     #[async_trait]
     impl DeadLetters for Kept {
-        async fn refused(&self, message: &Message, why: NotHandled) {
+        async fn refused(&self, message: &Message, why: &NotHandled) {
             self.refused
                 .lock()
                 .expect("dead letters lock poisoned")
@@ -319,17 +319,17 @@ mod tests {
         dispatcher
             .publish(saying("piece.captured"))
             .await
-            .expect("a publisher never learns what listeners made of it");
+            .expect("handing a message over is not where handling it is judged");
 
         assert_eq!(
             willing.what_it_heard().len(),
             1,
-            "the second still heard it"
+            "one listener refusing must not rob the others of the message"
         );
         assert_eq!(
             dead_letters.what_it_kept(),
             [("refusing".to_owned(), "piece.captured".to_owned())],
-            "the refusal is not lost, it is set aside for nobody_yet retries later"
+            "the refusal is set aside rather than lost"
         );
     }
 
@@ -353,7 +353,7 @@ mod tests {
         dispatcher
             .publish(saying("piece.captured"))
             .await
-            .expect("publishing should succeed");
+            .expect("handing a message over is not where handling it is judged");
 
         assert_eq!(
             dead_letters

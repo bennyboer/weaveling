@@ -11,4 +11,4 @@ A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscrip
 
 `InProcessDispatcher` is the only transport today: publishing awaits every interested listener in turn. A broker is an adapter for when a second deployable exists — see [why the outbox comes first](../../ARCHITECTURE.md#messaging--the-seam-now-the-transport-later).
 
-**Known gap:** `publish` reports success whatever the listeners do, so a `Kept` refusal is logged rather than retried, even behind an outbox. [M11b](../../ROADMAP.md#milestone-11b--one-flow-in-every-mode) closes it.
+**`publish` reports the transport, never the handling.** It says whether the message was handed over — over a broker, whether the exchange took it. It cannot say more: consumers have not run yet and may be on another machine. A `Kept` refusal therefore reaches `DeadLetters` and nothing retries it, which is the gap [M11b step 2](../../ROADMAP.md#milestone-11b--one-flow-in-every-mode) has to close **on the consuming side**, where a broker closes it — a queue per listener, a bounded number of redeliveries, then a dead-letter queue.

@@ -598,11 +598,18 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 
 #### Step 2 — `Kept` gets teeth
 
-**The gap that makes `Kept` a lie.** `InProcessDispatcher::publish` returns `Ok(())` whatever the listeners do: a refusal is handed to `DeadLetters` and the publish reports success. So when the relay publishes a message and a projector refuses it, the relay is told it went out and **marks the outbox row published** — the message is gone, and the only trace is a log line from `Logged` whose own text admits there is nowhere to retry it. A listener declaring [`Delivery::Kept`](../libraries/messaging/src/listening.rs) is asking to be retried, and nothing retries it. The fix belongs here rather than after, because the outbox is the retry: the dispatcher reports the refusal, the relay leaves the row unpublished, and the next tick claims it again. Until then `Kept` and `Fleeting` differ only in log level — and note that no listener declares `Fleeting` at all today, so that half of the enum is still waiting for its first real case.
+**The gap that makes `Kept` a lie.** A listener declaring `Delivery::Kept` is asking to be retried, and nothing retries it: `InProcessDispatcher::publish` hands the refusal to `DeadLetters` and reports success, so the relay marks the outbox row published and the message is gone. The only trace is a log line.
 
-**And a sweep of the listeners**, because step 1 found one that was not idempotent and there are six of them. Until a refusal is retried, every stale-projection read in a listener is a message quietly lost.
+**The first attempt at this was in the wrong layer, and the reason is worth keeping.** Making a `Kept` refusal fail the publish does close the gap in process — and it is a shape that **cannot exist over a broker**. `publish` hands the message to an exchange; the broker takes it and returns; consumers have not run yet and may be on another machine, so there is no value a publish could return that describes how handling went. Worse, retrying the *message* redelivers it to listeners that already succeeded, which a broker never does — each consumer has its own queue and acks on its own. It reproduced the exact divergence this milestone exists to remove, one layer up. Reverted.
 
-**Done when:** a refused message stays in the outbox and is tried again rather than being logged and lost; `DeadLetters` has a stated job now that the outbox is the retry; and local mode surfaces a refusal to the author instead of dead-lettering it for an ops team that does not exist.
+**Retry belongs where the broker puts it: on the consuming side.** RabbitMQ's shape is exchange → **a queue per listener** → consumer, and a consumer that fails nacks; the message is redelivered a bounded number of times and then lands on a dead-letter queue. So the two reliability mechanisms are separate and must stay separate:
+
+- **Outbox → transport.** The outbox guarantees the message *leaves*. A failed publish means the transport refused, and that is what the relay retries. This already works and is unchanged.
+- **Queue → listener.** A bounded, per-listener redelivery guarantees the message is *handled*, and dead-letters it when it is not. Nothing does this today.
+
+**Which makes the real question how much broker to write.** The in-process dispatcher stands in for exchange, queues and consumers at once, and the failure class we actually hit — a listener reading a projection that has not landed — needs *elapsed time* rather than an immediate second try. So a faithful version is a per-listener queue with an attempt count and a next-attempt time, drained on a cadence: roughly what `RelayTask` already does, for a different queue. Its state would be in memory, so a crash loses pending retries where a broker would not — an honest limit of any in-process answer short of making the retry queue durable, which is another outbox.
+
+**Done when:** a listener that refuses is retried a bounded number of times and only then dead-lettered; a retry reaches **only** the listener that refused; `publish` still reports nothing about handling, so the in-process behaviour is one a broker could replace without changing a caller; and local mode surfaces the dead letter to the author instead of filing it for an ops team that does not exist.
 
 ---
 
