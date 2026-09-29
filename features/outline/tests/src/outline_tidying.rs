@@ -197,12 +197,12 @@ async fn hearing_the_same_discard_twice_is_harmless() {
             .handle(&discarded("piece_1"))
             .await
             .expect("a redelivery is not a failure");
-        wired.settle().await;
     }
+    wired.settle().await;
 
     assert!(
         reading_order(&wired, &outline).await.is_empty(),
-        "a broker redelivers, so the second detach must find nothing left to do"
+        "a broker redelivers before the index it reads has caught up, so the second detach          finds the piece still listed and must treat an already-detached piece as done"
     );
 }
 

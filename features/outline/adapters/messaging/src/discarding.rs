@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
 use eventpublishing::{UnreadableMessage, published_in};
-use eventsourcing::Agent;
+use eventsourcing::{Agent, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use outline_core::{CatalogError, OutlineCatalog, OutlineService, OutlineServiceError, PieceLink};
+use outline_core::{
+    CatalogError, OutlineCatalog, OutlineError, OutlineService, OutlineServiceError, PieceLink,
+};
 use pieces_contract::{DISCARDED, PieceEventDTO};
 use thiserror::Error;
 
@@ -35,9 +37,15 @@ impl DetachOnDiscard {
 
     async fn detach_everywhere(&self, piece: &PieceLink) -> Result<(), NotDetached> {
         for outline in self.catalog.outlines_holding(piece).await? {
-            self.outlines
+            match self
+                .outlines
                 .detach(&outline.to_string(), piece.clone(), None, &nobody())
-                .await?;
+                .await
+            {
+                Ok(_) => {}
+                Err(refused) if already_detached(&refused) => {}
+                Err(refused) => return Err(refused.into()),
+            }
         }
 
         Ok(())
@@ -49,6 +57,13 @@ impl DetachOnDiscard {
         self.detach_everywhere(&PieceLink::from(discarded.aggregate.id.as_str()))
             .await
     }
+}
+
+fn already_detached(refused: &OutlineServiceError) -> bool {
+    matches!(
+        refused,
+        OutlineServiceError::Events(ServiceError::Refused(OutlineError::NotAttached))
+    )
 }
 
 fn nobody() -> Agent {
