@@ -49,7 +49,9 @@ pub enum PieceEvent {
     PassageAttached {
         passage: PassageLink,
     },
-    Discarded,
+    Discarded {
+        passage: Option<PassageLink>,
+    },
     Snapshotted {
         project: ProjectLink,
         title: PieceTitle,
@@ -150,7 +152,7 @@ impl Event for PieceEvent {
             Self::Captured { .. } => CAPTURED,
             Self::Retitled { .. } => RETITLED,
             Self::PassageAttached { .. } => PASSAGE_ATTACHED,
-            Self::Discarded => DISCARDED,
+            Self::Discarded { .. } => DISCARDED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -224,7 +226,9 @@ impl Aggregate for Piece {
 
                 Ok(vec![PieceEvent::PassageAttached { passage }])
             }
-            PieceCommand::Discard => Ok(vec![PieceEvent::Discarded]),
+            PieceCommand::Discard => Ok(vec![PieceEvent::Discarded {
+                passage: self.passage.clone(),
+            }]),
         }
     }
 
@@ -233,7 +237,7 @@ impl Aggregate for Piece {
             PieceEvent::Captured { .. } => {}
             PieceEvent::Retitled(to) => self.title = to.clone(),
             PieceEvent::PassageAttached { passage } => self.passage = Some(passage.clone()),
-            PieceEvent::Discarded => self.discarded = true,
+            PieceEvent::Discarded { .. } => self.discarded = true,
             PieceEvent::Snapshotted {
                 project,
                 title,

@@ -48,5 +48,5 @@ pub enum PieceEventDTO {
     #[serde(rename = "PASSAGE_ATTACHED")]
     PassageAttached { passage: String },
     #[serde(rename = "DISCARDED")]
-    Discarded,
+    Discarded { passage: Option<String> },
 }

@@ -188,7 +188,7 @@ fn what_exists_cannot_be_captured_again() {
 #[test]
 fn a_discarded_piece_accepts_nothing_further() {
     let mut piece = a_captured_piece();
-    piece.apply(&PieceEvent::Discarded, &stamped(2));
+    piece.apply(&PieceEvent::Discarded { passage: None }, &stamped(2));
 
     assert_eq!(
         piece.decide(PieceCommand::Retitle(a_title("Too late")), &an_author()),
@@ -220,7 +220,7 @@ fn a_snapshot_replays_into_exactly_the_piece_it_came_from() {
         },
         &stamped(3),
     );
-    piece.apply(&PieceEvent::Discarded, &stamped(4));
+    piece.apply(&PieceEvent::Discarded { passage: None }, &stamped(4));
 
     let snapshot = piece.snapshot();
     let restored = Piece::from_first(&snapshot, &stamped(5)).expect("a snapshot gives birth");
@@ -231,12 +231,12 @@ fn a_snapshot_replays_into_exactly_the_piece_it_came_from() {
 #[test]
 fn a_snapshot_declares_itself_a_snapshot() {
     assert!(a_captured_piece().snapshot().is_snapshot());
-    assert!(!PieceEvent::Discarded.is_snapshot());
+    assert!(!PieceEvent::Discarded { passage: None }.is_snapshot());
 }
 
 #[test]
 fn a_stream_that_does_not_start_with_a_capture_gives_birth_to_nothing() {
-    assert!(Piece::from_first(&PieceEvent::Discarded, &stamped(1)).is_none());
+    assert!(Piece::from_first(&PieceEvent::Discarded { passage: None }, &stamped(1)).is_none());
     assert!(
         Piece::from_first(
             &PieceEvent::PassageAttached {
@@ -263,7 +263,7 @@ fn every_event_has_a_name_of_its_own() {
             passage: PassageLink::from("passage_9"),
         }
         .name(),
-        PieceEvent::Discarded.name(),
+        PieceEvent::Discarded { passage: None }.name(),
         a_captured_piece().snapshot().name(),
     ]
     .into_iter()
@@ -292,4 +292,36 @@ fn a_replayed_stream_ends_where_the_events_say() {
     assert_eq!(piece.title(), &a_title("The Silent Loom"));
     assert_eq!(piece.passage(), Some(&PassageLink::from("passage_9")));
     assert!(!piece.is_discarded());
+}
+
+#[test]
+fn discarding_a_piece_says_which_passage_went_with_it() {
+    let mut piece = a_captured_piece();
+    piece.apply(
+        &PieceEvent::PassageAttached {
+            passage: PassageLink::from("passage_1"),
+        },
+        &stamped(2),
+    );
+
+    let events = piece
+        .decide(PieceCommand::Discard, &an_author())
+        .expect("discarding should succeed");
+
+    assert_eq!(
+        events,
+        vec![PieceEvent::Discarded {
+            passage: Some(PassageLink::from("passage_1")),
+        }],
+        "passages cannot look a piece up across the seam, so the discard has to carry the          passage or the prose is orphaned with nothing to say so"
+    );
+}
+
+#[test]
+fn discarding_a_piece_that_never_had_prose_carries_no_passage() {
+    let events = a_captured_piece()
+        .decide(PieceCommand::Discard, &an_author())
+        .expect("discarding should succeed");
+
+    assert_eq!(events, vec![PieceEvent::Discarded { passage: None }]);
 }

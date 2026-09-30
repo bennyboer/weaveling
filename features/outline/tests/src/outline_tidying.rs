@@ -299,7 +299,7 @@ async fn what_the_discard_message_says_matches_the_published_shape() {
 
     assert_eq!(
         read,
-        PieceEventDTO::Discarded,
+        PieceEventDTO::Discarded { passage: None },
         "if this stops parsing, the pieces contract moved and this listener is deaf"
     );
 }

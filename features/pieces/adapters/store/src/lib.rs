@@ -14,7 +14,9 @@ enum StoredPieceEvent {
     PassageAttached {
         passage: String,
     },
-    Discarded,
+    Discarded {
+        passage: Option<String>,
+    },
     Snapshotted {
         project: String,
         title: String,
@@ -50,7 +52,9 @@ impl From<&PieceEvent> for StoredPieceEvent {
             PieceEvent::PassageAttached { passage } => Self::PassageAttached {
                 passage: passage.as_str().to_owned(),
             },
-            PieceEvent::Discarded => Self::Discarded,
+            PieceEvent::Discarded { passage } => Self::Discarded {
+                passage: passage.as_ref().map(|link| link.as_str().to_owned()),
+            },
             PieceEvent::Snapshotted {
                 project,
                 title,
@@ -79,7 +83,9 @@ impl TryFrom<StoredPieceEvent> for PieceEvent {
             StoredPieceEvent::PassageAttached { passage } => Self::PassageAttached {
                 passage: PassageLink::from(passage),
             },
-            StoredPieceEvent::Discarded => Self::Discarded,
+            StoredPieceEvent::Discarded { passage } => Self::Discarded {
+                passage: passage.map(PassageLink::from),
+            },
             StoredPieceEvent::Snapshotted {
                 project,
                 title,
@@ -120,7 +126,10 @@ mod tests {
             PieceEvent::PassageAttached {
                 passage: PassageLink::from("passage_1"),
             },
-            PieceEvent::Discarded,
+            PieceEvent::Discarded { passage: None },
+            PieceEvent::Discarded {
+                passage: Some(PassageLink::from("passage_1")),
+            },
             PieceEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
                 title: a_title("A crown of straw"),
@@ -166,8 +175,11 @@ mod tests {
 
     #[test]
     fn the_stored_shape_names_its_variant() {
-        let written = (codec().body)(&PieceEvent::Discarded);
+        let written = (codec().body)(&PieceEvent::Discarded { passage: None });
 
-        assert_eq!(written, serde_json::json!("Discarded"));
+        assert_eq!(
+            written,
+            serde_json::json!({ "Discarded": { "passage": null } })
+        );
     }
 }

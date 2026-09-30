@@ -74,7 +74,9 @@ fn body(event: &PieceEvent) -> Option<PieceEventDTO> {
         PieceEvent::PassageAttached { passage } => PieceEventDTO::PassageAttached {
             passage: passage.to_string(),
         },
-        PieceEvent::Discarded => PieceEventDTO::Discarded,
+        PieceEvent::Discarded { passage } => PieceEventDTO::Discarded {
+            passage: passage.as_ref().map(ToString::to_string),
+        },
         PieceEvent::Snapshotted { .. } => return None,
     })
 }
@@ -134,7 +136,7 @@ mod tests {
                 },
                 PASSAGE_ATTACHED,
             ),
-            (PieceEvent::Discarded, DISCARDED),
+            (PieceEvent::Discarded { passage: None }, DISCARDED),
         ]
     }
 
@@ -237,5 +239,26 @@ mod tests {
             event_in(&stray),
             Err(UnreadablePieceEvent::NotAPieceEvent(..))
         ));
+    }
+
+    #[test]
+    fn a_discard_puts_the_passage_on_the_wire() {
+        let id = a_piece();
+
+        let body = event_in(&published(
+            &id,
+            PieceEvent::Discarded {
+                passage: Some(PassageLink::from("passage_1")),
+            },
+        ))
+        .expect("what we wrote must be readable");
+
+        assert_eq!(
+            body.event.body,
+            PieceEventDTO::Discarded {
+                passage: Some("passage_1".to_owned()),
+            },
+            "the passage has to survive the mapping, because the listener that deletes the              prose has no other way of learning which passage it was"
+        );
     }
 }
