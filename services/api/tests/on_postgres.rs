@@ -323,11 +323,32 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
     );
 
     let project = a_project(&server, "Doomed").await;
-    server
+    let captured = server
         .post("/api/pieces")
         .json(&json!({ "project": project, "title": "A girl in a wood" }))
+        .await;
+    captured.assert_status(axum::http::StatusCode::CREATED);
+    let piece = captured.json::<Value>()["id"]
+        .as_str()
+        .expect("a captured piece carries an id")
+        .to_owned();
+
+    let made = server.post("/api/passages").await;
+    made.assert_status(axum::http::StatusCode::CREATED);
+    let passage = made.json::<Value>()["id"]
+        .as_str()
+        .expect("a passage carries an id")
+        .to_owned();
+    server
+        .put(&format!("/api/pieces/{piece}/passage"))
+        .json(&json!({ "passage": passage }))
         .await
-        .assert_status(axum::http::StatusCode::CREATED);
+        .assert_status_ok();
+    server
+        .get(&format!("/api/passages/{passage}"))
+        .await
+        .assert_status_ok();
+
     server
         .post("/api/boards")
         .json(&json!({ "project": project }))
@@ -380,6 +401,18 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
         })
         .await,
         "the board and the outline go with the project, each disposing its own"
+    );
+
+    assert!(
+        until(|| async {
+            server
+                .get(&format!("/api/passages/{passage}"))
+                .await
+                .status_code()
+                == axum::http::StatusCode::NOT_FOUND
+        })
+        .await,
+        "the CRDT store holds the only copy of the prose, so a deleted project has to reach          it — the piece's own discard is what carries the passage across the seam"
     );
 
     let stuck: Vec<(String, String)> = sqlx::query_as("SELECT listener, why FROM dead_letters")

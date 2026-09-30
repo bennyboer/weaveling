@@ -9,3 +9,6 @@ mod passages_api;
 
 #[cfg(test)]
 mod shared_kernel;
+
+#[cfg(test)]
+mod passage_tidying;

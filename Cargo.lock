@@ -3710,6 +3710,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-passages-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "weaveling-eventpublishing",
+ "weaveling-messaging",
+ "weaveling-passages-core",
+ "weaveling-pieces-contract",
+]
+
+[[package]]
 name = "weaveling-passages-rest"
 version = "0.1.0"
 dependencies = [
@@ -3752,14 +3764,18 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "axum-test",
+ "serde_json",
  "time",
  "tokio",
  "weaveling-clock",
+ "weaveling-messaging",
  "weaveling-passages-contract",
  "weaveling-passages-core",
+ "weaveling-passages-messaging",
  "weaveling-passages-rest",
  "weaveling-passages-store",
  "weaveling-passages-sync",
+ "weaveling-pieces-contract",
  "yrs",
 ]
 
@@ -3772,6 +3788,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-messaging",
  "weaveling-passages-core",
+ "weaveling-passages-messaging",
  "weaveling-passages-rest",
  "weaveling-passages-store",
  "weaveling-passages-sync",

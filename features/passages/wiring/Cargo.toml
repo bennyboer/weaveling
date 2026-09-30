@@ -14,6 +14,7 @@ messaging = { version = "0.1.0", path = "../../../libraries/messaging", package 
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 passages-core = { version = "0.1.0", path = "../core", package = "weaveling-passages-core" }
+passages-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-passages-messaging" }
 passages-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-passages-rest" }
 passages-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveling-passages-sync" }
 passages-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-passages-store" }

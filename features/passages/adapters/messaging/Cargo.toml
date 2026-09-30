@@ -1,0 +1,17 @@
+[package]
+name = "weaveling-passages-messaging"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+
+eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
+messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+
+passages-core = { version = "0.1.0", path = "../../core", package = "weaveling-passages-core" }
+
+# Foreign contracts: another feature's published events. A feature may reach across the seam
+# for a `contract` crate and nothing else — never its `core`, never its adapters.
+pieces-contract = { version = "0.1.0", path = "../../../pieces/contract", package = "weaveling-pieces-contract" }
