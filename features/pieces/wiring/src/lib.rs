@@ -64,7 +64,12 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.catalog.clone(),
         context.clock.clone(),
     );
-    let sweep = DiscardOnProjectDeleted::new(pieces.clone(), ports.catalog.clone());
+    let sweep = DiscardOnProjectDeleted::new(
+        pieces.clone(),
+        ports.catalog.clone(),
+        context.publisher.clone(),
+        context.clock.clone(),
+    );
 
     Wired::serving(pieces_rest::router(pieces))
         .listening(vec![Arc::new(projector), Arc::new(sweep)])

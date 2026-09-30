@@ -19,6 +19,14 @@ const REMEMBER: &str = "
 
 const FORGET: &str = "DELETE FROM piece_summaries WHERE piece = $1";
 
+const IN_PROJECT_AFTER: &str = "
+    SELECT piece, version, project, title, passage
+    FROM piece_summaries
+    WHERE project = $1 AND piece > $2
+    ORDER BY piece
+    LIMIT $3
+";
+
 const IN_PROJECT: &str = "
     SELECT piece, version, project, title, passage
     FROM piece_summaries
@@ -84,6 +92,23 @@ impl PieceCatalog for PostgresPieceCatalog {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn in_project_after(
+        &self,
+        project: &ProjectLink,
+        after: Option<PieceId>,
+        at_most: usize,
+    ) -> Result<Vec<PieceSummary>, CatalogError> {
+        let found = sqlx::query(IN_PROJECT_AFTER)
+            .bind(project.to_string())
+            .bind(after.map(|last| last.to_string()).unwrap_or_default())
+            .bind(at_most as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found.iter().map(to_summary).collect()
     }
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<PieceSummary>, CatalogError> {

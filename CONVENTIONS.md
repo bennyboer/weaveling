@@ -49,6 +49,18 @@ The shapes each feature repeats:
 
 Singular, built on the aggregate's own name — `ProjectEventPublisher`, not `ProjectsEventPublisher`. The crate is plural (`projects_messaging`); the types inside it are not.
 
+### A contract crate has three suffixes and no fourth
+
+Everything in a `contract` crate crosses a process boundary, and the suffix says which direction:
+
+- **`*Request`** — a REST body coming in: `CapturePieceRequest`, `OpenBoardRequest`.
+- **`*Response`** — a REST body going out that is not a resource: `AddedSectionResponse`.
+- **`*DTO`** — everything else on the wire: resources (`PieceDTO`), value objects (`SpotDTO`), event payloads (`PieceEventDTO`) and message payloads (`MoreToSweepDTO`).
+
+`DTO` mostly earns its place as *disambiguation* — `Piece`/`PieceDTO`, `PieceEvent`/`PieceEventDTO` — but it marks a wire shape even where no domain type shares the name, because one unmarked type among a dozen reads as an oversight rather than a decision.
+
+**One suffix, never a pile of them.** `MoreToSweepMsgPayloadDTO` says *data crossing a boundary* three times, and a `Pieces` in the name stutters against `pieces_contract`. Spelling out what a thing **is** is the rule; stacking what it **is made of** is not.
+
 ### Reading something out of something else
 
 `<thing>_in(<source>)` when a value is extracted from a message or envelope: `project_in(message)`, `piece_in(message)`, `event_in(message)`, `published_in(message)`. This is distinct from `to_*`, which converts a whole value rather than picking one out.

@@ -72,3 +72,60 @@ async fn the_id_columns_sort_bytewise_whatever_the_database_locale_is() {
 
     bench.cleanup().await;
 }
+
+#[tokio::test]
+async fn a_batch_is_read_straight_out_of_the_index() {
+    let bench = OnPostgres::setup().await;
+    let mut written = Vec::new();
+    for nth in 1..=2_000 {
+        written.push(format!("piece_{nth:0>22}"));
+    }
+
+    sqlx::query(
+        "INSERT INTO piece_summaries (piece, version, project, title)
+         SELECT held, 1, 'project_' || (ordinality % 8), 'A piece'
+         FROM unnest($1::text[]) WITH ORDINALITY AS held",
+    )
+    .bind(&written)
+    .execute(&bench.pool)
+    .await
+    .expect("seeding should succeed");
+
+    sqlx::query("ANALYZE piece_summaries")
+        .execute(&bench.pool)
+        .await
+        .expect("analysing should succeed");
+
+    let plan: Vec<String> = sqlx::query_scalar(
+        "EXPLAIN SELECT piece, version, project, title, passage
+         FROM piece_summaries
+         WHERE project = $1 AND piece > $2
+         ORDER BY piece
+         LIMIT $3",
+    )
+    .bind("project_3")
+    .bind("piece_0000000000000000000100")
+    .bind(100_i64)
+    .fetch_all(&bench.pool)
+    .await
+    .expect("explaining should succeed");
+    let plan = plan.join("\n");
+
+    assert!(
+        plan.contains("piece_summaries_by_project"),
+        "a sweep walks a project one batch at a time, so the batch must come out of the \
+         index rather than a scan that grows with the table: {plan}"
+    );
+    assert!(
+        !plan.contains("Seq Scan"),
+        "the index is (project, piece DESC) and the sweep wants ascending, which only works \
+         because PostgreSQL walks a b-tree backwards; a plan change here is silent: {plan}"
+    );
+    assert!(
+        !plan.contains("Filter:"),
+        "both halves belong in the index condition — a filter means rows are read and then \
+         thrown away, which is the cost the cursor exists to avoid: {plan}"
+    );
+
+    bench.cleanup().await;
+}

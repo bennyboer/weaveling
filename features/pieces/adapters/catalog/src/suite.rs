@@ -154,6 +154,93 @@ pub async fn the_newest_piece_is_listed_first(catalog: &impl PieceCatalog) {
     );
 }
 
+pub async fn a_batch_starts_at_the_oldest_piece(catalog: &impl PieceCatalog) {
+    let captured: Vec<PieceId> = (1..=5)
+        .map(|nth| PieceId::generate(at(nth * 1_000)))
+        .collect();
+    for id in &captured {
+        catalog
+            .remember(&a_summary(*id, "project_1", "A piece"))
+            .await
+            .expect("remembering should succeed");
+    }
+
+    let batch = catalog
+        .in_project_after(&ProjectLink::from("project_1"), None, 2)
+        .await
+        .expect("listing should succeed");
+
+    assert_eq!(
+        batch.iter().map(|summary| summary.id).collect::<Vec<_>>(),
+        captured[..2].to_vec(),
+        "a sweep walks forward from the oldest, so the cursor it carries only ever grows"
+    );
+}
+
+pub async fn a_batch_after_a_cursor_takes_what_comes_next(catalog: &impl PieceCatalog) {
+    let captured: Vec<PieceId> = (1..=5)
+        .map(|nth| PieceId::generate(at(nth * 1_000)))
+        .collect();
+    for id in &captured {
+        catalog
+            .remember(&a_summary(*id, "project_1", "A piece"))
+            .await
+            .expect("remembering should succeed");
+    }
+
+    let batch = catalog
+        .in_project_after(&ProjectLink::from("project_1"), Some(captured[1]), 2)
+        .await
+        .expect("listing should succeed");
+
+    assert_eq!(
+        batch.iter().map(|summary| summary.id).collect::<Vec<_>>(),
+        captured[2..4].to_vec()
+    );
+}
+
+pub async fn a_batch_past_the_end_is_empty(catalog: &impl PieceCatalog) {
+    let only = PieceId::generate(at(1_000));
+    catalog
+        .remember(&a_summary(only, "project_1", "A piece"))
+        .await
+        .expect("remembering should succeed");
+
+    let batch = catalog
+        .in_project_after(&ProjectLink::from("project_1"), Some(only), 8)
+        .await
+        .expect("listing should succeed");
+
+    assert!(
+        batch.is_empty(),
+        "an empty batch is how a sweep learns it is finished, so it must not wrap around"
+    );
+}
+
+pub async fn a_batch_stays_inside_its_project(catalog: &impl PieceCatalog) {
+    let mine = PieceId::generate(at(1_000));
+    let theirs = PieceId::generate(at(2_000));
+    catalog
+        .remember(&a_summary(mine, "project_mine", "Mine"))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember(&a_summary(theirs, "project_theirs", "Theirs"))
+        .await
+        .expect("remembering should succeed");
+
+    let batch = catalog
+        .in_project_after(&ProjectLink::from("project_mine"), None, 8)
+        .await
+        .expect("listing should succeed");
+
+    assert_eq!(
+        batch.iter().map(|summary| summary.id).collect::<Vec<_>>(),
+        vec![mine],
+        "a sweep of one deleted project must never reach into another"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -171,6 +258,10 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!($workbench, a_batch_starts_at_the_oldest_piece);
+        $crate::catalog_conformance_case!($workbench, a_batch_after_a_cursor_takes_what_comes_next);
+        $crate::catalog_conformance_case!($workbench, a_batch_past_the_end_is_empty);
+        $crate::catalog_conformance_case!($workbench, a_batch_stays_inside_its_project);
         $crate::catalog_conformance_case!($workbench, a_remembered_piece_is_listed_in_its_project);
         $crate::catalog_conformance_case!($workbench, a_project_nobody_wrote_in_lists_nothing);
         $crate::catalog_conformance_case!($workbench, pieces_of_other_projects_are_not_listed);

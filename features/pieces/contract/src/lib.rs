@@ -30,6 +30,13 @@ pub const RETITLED: &str = "piece.retitled";
 pub const PASSAGE_ATTACHED: &str = "piece.passage.attached";
 pub const DISCARDED: &str = "piece.discarded";
 pub const EVERY_PIECE: &str = "piece.#";
+pub const MORE_TO_SWEEP: &str = "piece.sweep.more";
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MoreToSweepDTO {
+    pub project: String,
+    pub after: String,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "name")]

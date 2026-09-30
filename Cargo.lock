@@ -3856,6 +3856,7 @@ dependencies = [
 name = "weaveling-pieces-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
  "serde_json",
@@ -3869,6 +3870,7 @@ dependencies = [
  "weaveling-pieces-core",
  "weaveling-pieces-messaging",
  "weaveling-pieces-wiring",
+ "weaveling-projects-contract",
  "weaveling-wiring",
 ]
 

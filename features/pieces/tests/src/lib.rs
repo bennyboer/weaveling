@@ -5,6 +5,9 @@ mod piece_cataloguing;
 mod piece_service;
 
 #[cfg(test)]
+mod piece_sweeping;
+
+#[cfg(test)]
 mod pieces_api;
 
 #[cfg(test)]

@@ -39,6 +39,25 @@ impl PieceCatalog for InMemoryPieceCatalog {
         Ok(())
     }
 
+    async fn in_project_after(
+        &self,
+        project: &ProjectLink,
+        after: Option<PieceId>,
+        at_most: usize,
+    ) -> Result<Vec<PieceSummary>, CatalogError> {
+        let mut found: Vec<PieceSummary> = self
+            .read()
+            .values()
+            .filter(|summary| &summary.project == project)
+            .filter(|summary| after.is_none_or(|last| summary.id > last))
+            .cloned()
+            .collect();
+        found.sort_by_key(|summary| summary.id);
+        found.truncate(at_most);
+
+        Ok(found)
+    }
+
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<PieceSummary>, CatalogError> {
         let mut found: Vec<PieceSummary> = self
             .read()

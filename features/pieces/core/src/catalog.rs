@@ -30,6 +30,13 @@ pub trait PieceCatalog: Send + Sync {
     async fn forget(&self, id: &PieceId) -> Result<(), CatalogError>;
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<PieceSummary>, CatalogError>;
+
+    async fn in_project_after(
+        &self,
+        project: &ProjectLink,
+        after: Option<PieceId>,
+        at_most: usize,
+    ) -> Result<Vec<PieceSummary>, CatalogError>;
 }
 
 impl PieceSummary {
