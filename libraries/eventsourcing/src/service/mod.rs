@@ -24,7 +24,8 @@ pub enum ServiceError<E> {
         kind: AggregateType,
     },
     #[error(
-        "the snapshot for {kind} {aggregate} does not declare itself a snapshot, so it could never be found again"
+        "the snapshot for {kind} {aggregate} does not declare itself a snapshot, so it could never \
+         be found again"
     )]
     Unmarked {
         aggregate: AggregateId,

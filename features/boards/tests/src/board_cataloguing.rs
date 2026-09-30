@@ -144,6 +144,7 @@ async fn a_start_for_a_board_that_was_never_stored_is_refused() {
 
     assert!(
         refused.is_err(),
-        "a refusal reaches dead letters and can be retried, while acknowledging it would          leave the catalog short a board for good"
+        "a refusal reaches dead letters and can be retried, while acknowledging it would leave the \
+         catalog short a board for good"
     );
 }

@@ -202,7 +202,8 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 
     assert!(
         reading_order(&wired, &outline).await.is_empty(),
-        "a broker redelivers before the index it reads has caught up, so the second detach          finds the piece still listed and must treat an already-detached piece as done"
+        "a broker redelivers before the index it reads has caught up, so the second detach finds \
+         the piece still listed and must treat an already-detached piece as done"
     );
 }
 

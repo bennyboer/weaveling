@@ -25,6 +25,7 @@ const PIECE_MOVED: EventName = EventName::of("PIECE_MOVED");
 const PIECE_RESIZED: EventName = EventName::of("PIECE_RESIZED");
 const PIECE_RAISED: EventName = EventName::of("PIECE_RAISED");
 const PIECE_UNPINNED: EventName = EventName::of("PIECE_UNPINNED");
+const DISCARDED: EventName = EventName::of("DISCARDED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -64,6 +65,7 @@ pub enum BoardCommand {
     Unpin {
         piece: PieceLink,
     },
+    Discard,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,9 +92,11 @@ pub enum BoardEvent {
     PieceUnpinned {
         piece: PieceLink,
     },
+    Discarded,
     Snapshotted {
         project: ProjectLink,
         pieces: Vec<PositionedPiece>,
+        discarded: bool,
     },
 }
 
@@ -100,6 +104,7 @@ pub enum BoardEvent {
 pub struct Board {
     project: ProjectLink,
     pieces: IndexMap<PieceLink, Placement>,
+    discarded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -114,6 +119,8 @@ pub enum BoardError {
     NotPinned,
     #[error("a card must have width and height")]
     Shapeless,
+    #[error("a discarded board accepts no changes")]
+    Discarded,
 }
 
 impl ProjectLink {
@@ -165,6 +172,10 @@ impl Display for PieceLink {
 }
 
 impl Board {
+    pub fn is_discarded(&self) -> bool {
+        self.discarded
+    }
+
     pub fn project(&self) -> &ProjectLink {
         &self.project
     }
@@ -248,6 +259,7 @@ impl Event for BoardEvent {
             Self::PieceResized { .. } => PIECE_RESIZED,
             Self::PieceRaised { .. } => PIECE_RAISED,
             Self::PieceUnpinned { .. } => PIECE_UNPINNED,
+            Self::Discarded => DISCARDED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -280,18 +292,29 @@ impl Aggregate for Board {
             BoardEvent::Started { project } => Some(Self {
                 project: project.clone(),
                 pieces: IndexMap::new(),
+                discarded: false,
             }),
-            BoardEvent::Snapshotted { project, pieces } => Some(Self {
+            BoardEvent::Snapshotted {
+                project,
+                pieces,
+                discarded,
+            } => Some(Self {
                 project: project.clone(),
                 pieces: Self::holding(pieces),
+                discarded: *discarded,
             }),
             _ => None,
         }
     }
 
     fn decide(&self, command: BoardCommand, _agent: &Agent) -> Result<Vec<BoardEvent>, BoardError> {
+        if self.discarded {
+            return Err(BoardError::Discarded);
+        }
+
         match command {
             BoardCommand::Start { .. } => Err(BoardError::AlreadyStarted),
+            BoardCommand::Discard => Ok(vec![BoardEvent::Discarded]),
             BoardCommand::Pin { piece, at, size } => {
                 if self.placement_of(&piece).is_some() {
                     return Err(BoardError::AlreadyPinned);
@@ -351,9 +374,15 @@ impl Aggregate for Board {
             BoardEvent::PieceResized { piece, to } => self.resize(piece, *to),
             BoardEvent::PieceRaised { piece } => self.raise(piece),
             BoardEvent::PieceUnpinned { piece } => self.unpin(piece),
-            BoardEvent::Snapshotted { project, pieces } => {
+            BoardEvent::Discarded => self.discarded = true,
+            BoardEvent::Snapshotted {
+                project,
+                pieces,
+                discarded,
+            } => {
                 self.project = project.clone();
                 self.pieces = Self::holding(pieces);
+                self.discarded = *discarded;
             }
         }
     }
@@ -362,6 +391,7 @@ impl Aggregate for Board {
         BoardEvent::Snapshotted {
             project: self.project.clone(),
             pieces: self.pieces(),
+            discarded: self.discarded,
         }
     }
 }

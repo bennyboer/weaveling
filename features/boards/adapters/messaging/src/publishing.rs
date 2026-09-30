@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use boards_contract::{
-    BoardEventDTO, EVERY_BOARD, PIECE_PINNED, PIECE_UNPINNED, STARTED, SizeDTO, SpotDTO,
+    BoardEventDTO, DISCARDED, EVERY_BOARD, PIECE_PINNED, PIECE_UNPINNED, STARTED, SizeDTO, SpotDTO,
 };
 use boards_core::{BoardEvent, BoardId, Size, Spot};
 use eventpublishing::{
@@ -36,6 +36,10 @@ pub fn when_pinned() -> Subscription {
 
 pub fn when_unpinned() -> Subscription {
     Subscription::parse(PIECE_UNPINNED).expect("a declared routing key holds no wildcards")
+}
+
+pub fn when_board_discarded() -> Subscription {
+    Subscription::parse(DISCARDED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_started() -> Subscription {
@@ -100,6 +104,7 @@ fn body(event: &BoardEvent) -> Option<BoardEventDTO> {
         BoardEvent::PieceUnpinned { piece } => BoardEventDTO::PieceUnpinned {
             piece: piece.to_string(),
         },
+        BoardEvent::Discarded => BoardEventDTO::Discarded,
         BoardEvent::Snapshotted { .. } => return None,
     })
 }
@@ -248,7 +253,8 @@ mod tests {
         ] {
             assert!(
                 !listening.covers(&routing_for(KIND, pinning.name())),
-                "which board a project has can only change when one is started, so a drop must not cost a projection write"
+                "which board a project has can only change when one is started, so a drop must not \
+                 cost a projection write"
             );
         }
     }
@@ -319,6 +325,7 @@ mod tests {
                 spot: Spot::ORIGIN,
                 size: Size::CARD,
             }],
+            discarded: false,
         };
 
         assert!(

@@ -1,13 +1,14 @@
 mod discarding;
 mod pinning;
 mod publishing;
+mod sweeping;
 
 pub use discarding::{UnpinOnDiscard, when_discarded};
 pub use pinning::PinnedPiecesProjector;
 
 pub use publishing::{
     BoardEventPublisher, UnreadableBoardEvent, board_in, event_in, every_event, message_for,
-    when_pinned, when_started, when_unpinned,
+    when_board_discarded, when_pinned, when_started, when_unpinned,
 };
 
 use std::sync::Arc;
@@ -53,9 +54,13 @@ impl BoardCatalogProjector {
     async fn catalogue(&self, id: &BoardId) -> Result<(), NotCatalogued> {
         let standing = self.events.latest(&AggregateId::from(id)).await?;
 
-        self.catalog
-            .remember(&BoardSummary::of(*id, &standing.state))
-            .await?;
+        if standing.state.is_discarded() {
+            self.catalog.forget(id).await?;
+        } else {
+            self.catalog
+                .remember(&BoardSummary::of(*id, &standing.state))
+                .await?;
+        }
 
         Ok(())
     }
@@ -72,7 +77,7 @@ impl Listener for BoardCatalogProjector {
     }
 
     fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_started()]
+        vec![when_started(), when_board_discarded()]
     }
 
     fn delivery(&self) -> Delivery {
@@ -85,3 +90,5 @@ impl Listener for BoardCatalogProjector {
             .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
     }
 }
+
+pub use sweeping::{DiscardBoardsOnProjectDeleted, when_project_deleted};

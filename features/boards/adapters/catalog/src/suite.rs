@@ -218,6 +218,56 @@ pub async fn one_board_letting_a_piece_go_leaves_the_others_holding_it(
     );
 }
 
+pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &impl BoardCatalog) {
+    let board = BoardId::generate(at(1_000));
+    let elsewhere = BoardId::generate(at(2_000));
+    catalog
+        .remember(&a_summary(board, "project_1"))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember(&a_summary(elsewhere, "project_2"))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .holds(board, &[PieceLink::from("piece_1")])
+        .await
+        .expect("indexing should succeed");
+    catalog
+        .holds(elsewhere, &[PieceLink::from("piece_1")])
+        .await
+        .expect("indexing should succeed");
+
+    catalog
+        .forget(&board)
+        .await
+        .expect("forgetting should succeed");
+
+    assert!(
+        catalog
+            .in_project(&ProjectLink::from("project_1"))
+            .await
+            .expect("listing should succeed")
+            .is_empty()
+    );
+    assert_eq!(
+        catalog
+            .boards_holding(&PieceLink::from("piece_1"))
+            .await
+            .expect("looking should succeed"),
+        vec![elsewhere],
+        "a forgotten board must take its pins with it, or the index keeps answering for a board \
+         that is gone — and leave every other board's alone"
+    );
+}
+
+pub async fn forgetting_a_board_nobody_opened_is_harmless(catalog: &impl BoardCatalog) {
+    catalog
+        .forget(&BoardId::generate(at(1_000)))
+        .await
+        .expect("forgetting an unknown board should not fail");
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -250,6 +300,8 @@ macro_rules! conformance_tests {
             a_project_lists_its_boards_in_a_settled_order
         );
         $crate::catalog_conformance_case!($workbench, a_piece_nobody_pinned_is_on_no_board);
+        $crate::catalog_conformance_case!($workbench, a_forgotten_board_takes_its_pins_with_it);
+        $crate::catalog_conformance_case!($workbench, forgetting_a_board_nobody_opened_is_harmless);
         $crate::catalog_conformance_case!($workbench, a_pinned_piece_names_the_board_holding_it);
         $crate::catalog_conformance_case!($workbench, a_piece_may_sit_on_more_than_one_board);
         $crate::catalog_conformance_case!($workbench, what_a_board_holds_is_replaced_not_added_to);

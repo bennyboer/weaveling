@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
-use boards_messaging::{BoardCatalogProjector, PinnedPiecesProjector, UnpinOnDiscard};
+use boards_messaging::{
+    BoardCatalogProjector, DiscardBoardsOnProjectDeleted, PinnedPiecesProjector, UnpinOnDiscard,
+};
 use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, Wired};
@@ -74,11 +76,13 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
     let tidy = UnpinOnDiscard::new(boards.clone(), ports.catalog.clone());
+    let sweep = DiscardBoardsOnProjectDeleted::new(boards.clone(), ports.catalog.clone());
 
     Wired::serving(boards_rest::router(boards)).listening(vec![
         Arc::new(catalogue),
         Arc::new(index),
         Arc::new(tidy),
+        Arc::new(sweep),
     ])
 }
 

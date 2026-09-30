@@ -627,3 +627,71 @@ fn a_snapshot_rebuilds_the_same_book() {
     assert_eq!(rebuilt.sections(), book.outline.sections());
     assert_eq!(rebuilt.reading_order(), book.outline.reading_order());
 }
+
+#[test]
+fn an_outline_can_be_discarded() {
+    let mut book = Book::started();
+
+    let happened = book.does(OutlineCommand::Discard);
+
+    assert_eq!(happened, vec![OutlineEvent::Discarded]);
+    assert!(book.outline.is_discarded());
+}
+
+#[test]
+fn a_discarded_outline_refuses_everything() {
+    let mut book = Book::started();
+    let chapter = a_section("one");
+    book.does(OutlineCommand::Add {
+        section: chapter,
+        under: None,
+        after: None,
+        title: titled("Chapter One"),
+    });
+    book.does(OutlineCommand::Discard);
+
+    for command in [
+        OutlineCommand::Start {
+            project: "project_1".into(),
+        },
+        OutlineCommand::Add {
+            section: a_section("two"),
+            under: None,
+            after: None,
+            title: titled("Chapter Two"),
+        },
+        OutlineCommand::Retitle {
+            section: chapter,
+            title: titled("Renamed"),
+        },
+        OutlineCommand::Remove { section: chapter },
+        OutlineCommand::Discard,
+    ] {
+        assert_eq!(
+            book.outline.decide(command, &an_author()),
+            Err(OutlineError::Discarded),
+            "an outline is discarded when its project is deleted, so anything still holding a \
+             reference to it must be refused rather than quietly allowed"
+        );
+    }
+}
+
+#[test]
+fn a_snapshot_remembers_that_the_outline_was_discarded() {
+    let mut book = Book::started();
+    book.does(OutlineCommand::Add {
+        section: a_section("one"),
+        under: None,
+        after: None,
+        title: titled("Chapter One"),
+    });
+    book.does(OutlineCommand::Discard);
+
+    let snapshot = book.outline.snapshot();
+
+    assert_eq!(
+        Outline::from_first(&snapshot, &a_metadata()).expect("a snapshot should raise an outline"),
+        book.outline,
+        "compaction must not resurrect a discarded outline by forgetting it ever ended"
+    );
+}

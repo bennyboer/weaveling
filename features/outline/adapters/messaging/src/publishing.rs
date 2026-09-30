@@ -8,7 +8,8 @@ use eventsourcing::{EventPublisher, PublishError, Recorded};
 use ids::InvalidId;
 use messaging::{Message, Publisher, Subscription};
 use outline_contract::{
-    EVERY_OUTLINE, OutlineEventDTO, PIECE_ATTACHED, PIECE_DETACHED, SECTION_REMOVED, STARTED,
+    DISCARDED, EVERY_OUTLINE, OutlineEventDTO, PIECE_ATTACHED, PIECE_DETACHED, SECTION_REMOVED,
+    STARTED,
 };
 use outline_core::{OutlineEvent, OutlineId};
 use thiserror::Error;
@@ -27,6 +28,10 @@ pub enum UnreadableOutlineEvent {
 
 pub fn every_event() -> Subscription {
     Subscription::parse(EVERY_OUTLINE).expect("the outline pattern is written at compile time")
+}
+
+pub fn when_outline_discarded() -> Subscription {
+    Subscription::parse(DISCARDED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_started() -> Subscription {
@@ -127,6 +132,7 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
         OutlineEvent::PieceDetached { piece } => OutlineEventDTO::PieceDetached {
             piece: piece.to_string(),
         },
+        OutlineEvent::Discarded => OutlineEventDTO::Discarded,
         OutlineEvent::Snapshotted { .. } => return None,
     })
 }
@@ -285,7 +291,8 @@ mod tests {
             assert_eq!(
                 woken,
                 matches!(event, OutlineEvent::Started { .. }),
-                "which outline a project has can only change when one is started, so a move must not cost a projection write"
+                "which outline a project has can only change when one is started, so a move must \
+                 not cost a projection write"
             );
         }
     }
@@ -303,7 +310,8 @@ mod tests {
 
         assert!(
             listening.iter().any(|watching| watching.covers(&removal)),
-            "a removed section returns its pieces to the pool, so the index would go stale without it"
+            "a removed section returns its pieces to the pool, so the index would go stale without \
+             it"
         );
     }
 
@@ -367,6 +375,7 @@ mod tests {
                 title: titled("Part One"),
                 pieces: vec![PieceLink::from("piece_1")],
             }],
+            discarded: false,
         };
 
         assert!(

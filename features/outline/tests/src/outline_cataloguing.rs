@@ -317,6 +317,7 @@ async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
 
     assert_eq!(
         opened.id, known,
-        "the find branch takes whoever holds the claim rather than starting afresh; the claim          is authoritative where the catalog is only a projection"
+        "the find branch takes whoever holds the claim rather than starting afresh; the claim is \
+         authoritative where the catalog is only a projection"
     );
 }

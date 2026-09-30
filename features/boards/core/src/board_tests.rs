@@ -362,7 +362,8 @@ fn unpinning_a_piece_leaves_the_rest_in_order() {
     assert_eq!(
         pinned_order(&board),
         vec![first, third, last],
-        "taking a card off the board must not shuffle the ones left, so the gap closes rather than being filled from the end"
+        "taking a card off the board must not shuffle the ones left, so the gap closes rather than \
+         being filled from the end"
     );
 }
 
@@ -732,4 +733,75 @@ fn a_snapshot_remembers_the_order_the_cards_are_stacked_in() {
         .expect("a snapshot should raise a board");
 
     assert_eq!(pinned_order(&regrown), vec![over, under]);
+}
+
+#[test]
+fn a_board_can_be_discarded() {
+    let board = a_started_board();
+
+    let events = board
+        .decide(BoardCommand::Discard, &an_author())
+        .expect("discarding should succeed");
+
+    assert_eq!(events, vec![BoardEvent::Discarded]);
+}
+
+#[test]
+fn a_discarded_board_refuses_everything() {
+    let mut board = a_board_holding(&a_piece("piece_1"), Spot::ORIGIN);
+    board.apply(&BoardEvent::Discarded, &a_metadata(9));
+
+    for command in [
+        BoardCommand::Start {
+            project: ProjectLink::from("project_1"),
+        },
+        BoardCommand::Pin {
+            piece: a_piece("piece_2"),
+            at: Spot::ORIGIN,
+            size: Size::CARD,
+        },
+        BoardCommand::Reshape {
+            piece: a_piece("piece_1"),
+            to: Some(Spot::at(10, 10)),
+            size: None,
+        },
+        BoardCommand::Unpin {
+            piece: a_piece("piece_1"),
+        },
+        BoardCommand::Discard,
+    ] {
+        assert_eq!(
+            board.decide(command, &an_author()),
+            Err(BoardError::Discarded),
+            "a board is discarded when its project is deleted, so anything still holding a \
+             reference to it must be refused rather than quietly allowed"
+        );
+    }
+}
+
+#[test]
+fn a_discarded_board_still_says_what_it_held() {
+    let mut board = a_board_holding(&a_piece("piece_1"), Spot::ORIGIN);
+    board.apply(&BoardEvent::Discarded, &a_metadata(9));
+
+    assert!(board.is_discarded());
+    assert_eq!(
+        pinned_order(&board),
+        vec![a_piece("piece_1")],
+        "the stream is the audit log, so a discarded board still reads back what was on it"
+    );
+}
+
+#[test]
+fn a_snapshot_remembers_that_the_board_was_discarded() {
+    let mut board = a_board_holding(&a_piece("piece_1"), Spot::ORIGIN);
+    board.apply(&BoardEvent::Discarded, &a_metadata(9));
+
+    let snapshot = board.snapshot();
+
+    assert_eq!(
+        Board::from_first(&snapshot, &a_metadata(10)).expect("a snapshot should raise a board"),
+        board,
+        "compaction must not resurrect a discarded board by forgetting it ever ended"
+    );
 }

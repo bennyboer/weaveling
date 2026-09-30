@@ -16,7 +16,11 @@ messaging = { version = "0.1.0", path = "../../../../libraries/messaging", packa
 
 outline-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-outline-contract" }
 outline-core = { version = "0.1.0", path = "../../core", package = "weaveling-outline-core" }
+
+# Foreign contracts: another feature's published events. A feature may reach across the seam
+# for a `contract` crate and nothing else — never its `core`, never its adapters.
 pieces-contract = { version = "0.1.0", path = "../../../pieces/contract", package = "weaveling-pieces-contract" }
+projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 
 [dev-dependencies]
 time = { workspace = true }

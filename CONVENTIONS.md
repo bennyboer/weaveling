@@ -93,6 +93,10 @@ Say why the expectation holds or what breaks if it does not — never restate th
 - `thiserror` for every error type; `#[error(transparent)]` when wrapping another error whole.
 - `expect` carries the reason it cannot fail: `.expect("a plain title is fine")`.
 
+## Manifests
+
+- Dependencies are grouped: workspace crates, then this feature's own crates, then **foreign contracts** under a comment saying what they are. A feature may reach across the seam for another feature's `contract` crate and nothing else — never its `core`, never its adapters — and the grouping is what makes an accidental `pieces-core` in a `boards` manifest obvious on sight.
+
 ## SQL
 
 - Statements are `const` items in SCREAMING_SNAKE, directly above the function that runs them. When a file grows past a couple of operations, give each operation its own file with its constant beside it.

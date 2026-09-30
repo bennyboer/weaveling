@@ -26,7 +26,8 @@ impl InProcessDispatcher {
             !listeners
                 .iter()
                 .any(|held| held.named() == listener.named()),
-            "{} is already listening: a name is a queue, so a second one under it would              quietly eat the first one's messages",
+            "{} is already listening: a name is a queue, so a second one under it would quietly \
+             eat the first one's messages",
             listener.named()
         );
 
@@ -304,7 +305,8 @@ mod tests {
         assert_eq!(
             listener.what_it_heard(),
             vec!["board.piece.pinned", "board.piece.unpinned"],
-            "several bindings on one queue is what a broker does, and the key between them is left out"
+            "several bindings on one queue is what a broker does, and the key between them is left \
+             out"
         );
     }
 

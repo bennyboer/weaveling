@@ -3421,6 +3421,7 @@ dependencies = [
  "weaveling-ids",
  "weaveling-messaging",
  "weaveling-pieces-contract",
+ "weaveling-projects-contract",
 ]
 
 [[package]]
@@ -3622,6 +3623,7 @@ dependencies = [
  "weaveling-outline-contract",
  "weaveling-outline-core",
  "weaveling-pieces-contract",
+ "weaveling-projects-contract",
 ]
 
 [[package]]
@@ -3824,6 +3826,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-pieces-contract",
  "weaveling-pieces-core",
+ "weaveling-projects-contract",
 ]
 
 [[package]]

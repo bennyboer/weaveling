@@ -327,7 +327,8 @@ mod tests {
 
         assert!(
             matches!(refused, ServiceError::Store(StoreError::Backend { .. })),
-            "announcing is part of what the store was asked to do, so failing it fails the append: {refused:?}"
+            "announcing is part of what the store was asked to do, so failing it fails the append: \
+             {refused:?}"
         );
     }
 

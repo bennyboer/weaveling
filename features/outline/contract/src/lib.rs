@@ -9,6 +9,7 @@ pub const SECTION_DEMOTED: &str = "outline.section.demoted";
 pub const SECTION_REMOVED: &str = "outline.section.removed";
 pub const PIECE_ATTACHED: &str = "outline.piece.attached";
 pub const PIECE_DETACHED: &str = "outline.piece.detached";
+pub const DISCARDED: &str = "outline.discarded";
 pub const EVERY_OUTLINE: &str = "outline.#";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -98,4 +99,6 @@ pub enum OutlineEventDTO {
     },
     #[serde(rename = "PIECE_DETACHED")]
     PieceDetached { piece: String },
+    #[serde(rename = "DISCARDED")]
+    Discarded,
 }

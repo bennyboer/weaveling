@@ -6,6 +6,7 @@ pub const PIECE_MOVED: &str = "board.piece.moved";
 pub const PIECE_RESIZED: &str = "board.piece.resized";
 pub const PIECE_RAISED: &str = "board.piece.raised";
 pub const PIECE_UNPINNED: &str = "board.piece.unpinned";
+pub const DISCARDED: &str = "board.discarded";
 pub const EVERY_BOARD: &str = "board.#";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -74,4 +75,6 @@ pub enum BoardEventDTO {
     PieceRaised { piece: String },
     #[serde(rename = "PIECE_UNPINNED")]
     PieceUnpinned { piece: String },
+    #[serde(rename = "DISCARDED")]
+    Discarded,
 }

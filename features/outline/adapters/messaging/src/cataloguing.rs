@@ -9,7 +9,7 @@ use outline_core::{
 };
 use thiserror::Error;
 
-use crate::publishing::{UnreadableOutlineEvent, outline_in, when_started};
+use crate::publishing::{UnreadableOutlineEvent, outline_in, when_outline_discarded, when_started};
 
 const NAME: &str = "catalogue-outline";
 
@@ -43,9 +43,13 @@ impl OutlineCatalogProjector {
     async fn catalogue(&self, id: &OutlineId) -> Result<(), NotCatalogued> {
         let standing = self.events.latest(&AggregateId::from(id)).await?;
 
-        self.catalog
-            .remember(&OutlineSummary::of(*id, &standing.state))
-            .await?;
+        if standing.state.is_discarded() {
+            self.catalog.forget(id).await?;
+        } else {
+            self.catalog
+                .remember(&OutlineSummary::of(*id, &standing.state))
+                .await?;
+        }
 
         Ok(())
     }
@@ -62,7 +66,7 @@ impl Listener for OutlineCatalogProjector {
     }
 
     fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_started()]
+        vec![when_started(), when_outline_discarded()]
     }
 
     fn delivery(&self) -> Delivery {

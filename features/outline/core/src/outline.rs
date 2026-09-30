@@ -27,6 +27,7 @@ const SECTION_DEMOTED: EventName = EventName::of("SECTION_DEMOTED");
 const SECTION_REMOVED: EventName = EventName::of("SECTION_REMOVED");
 const PIECE_ATTACHED: EventName = EventName::of("PIECE_ATTACHED");
 const PIECE_DETACHED: EventName = EventName::of("PIECE_DETACHED");
+const DISCARDED: EventName = EventName::of("DISCARDED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -45,6 +46,7 @@ pub struct PlacedSection {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutlineCommand {
+    Discard,
     Start {
         project: ProjectLink,
     },
@@ -119,9 +121,11 @@ pub enum OutlineEvent {
     PieceDetached {
         piece: PieceLink,
     },
+    Discarded,
     Snapshotted {
         project: ProjectLink,
         sections: Vec<PlacedSection>,
+        discarded: bool,
     },
 }
 
@@ -138,6 +142,7 @@ pub struct Outline {
     project: ProjectLink,
     sections: IndexMap<SectionId, HeldSection>,
     children: Vec<SectionId>,
+    discarded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -156,6 +161,8 @@ pub enum OutlineError {
     NoSuchNeighbour,
     #[error("this piece is not in the outline")]
     NotAttached,
+    #[error("a discarded outline accepts no changes")]
+    Discarded,
 }
 
 impl ProjectLink {
@@ -207,6 +214,10 @@ impl Display for PieceLink {
 }
 
 impl Outline {
+    pub fn is_discarded(&self) -> bool {
+        self.discarded
+    }
+
     pub fn project(&self) -> &ProjectLink {
         &self.project
     }
@@ -532,6 +543,7 @@ impl Event for OutlineEvent {
             Self::SectionRemoved { .. } => SECTION_REMOVED,
             Self::PieceAttached { .. } => PIECE_ATTACHED,
             Self::PieceDetached { .. } => PIECE_DETACHED,
+            Self::Discarded => DISCARDED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -565,14 +577,20 @@ impl Aggregate for Outline {
                 project: project.clone(),
                 sections: IndexMap::new(),
                 children: Vec::new(),
+                discarded: false,
             }),
-            OutlineEvent::Snapshotted { project, sections } => {
+            OutlineEvent::Snapshotted {
+                project,
+                sections,
+                discarded,
+            } => {
                 let (sections, children) = Self::holding(sections);
 
                 Some(Self {
                     project: project.clone(),
                     sections,
                     children,
+                    discarded: *discarded,
                 })
             }
             _ => None,
@@ -584,8 +602,13 @@ impl Aggregate for Outline {
         command: OutlineCommand,
         _agent: &Agent,
     ) -> Result<Vec<OutlineEvent>, OutlineError> {
+        if self.discarded {
+            return Err(OutlineError::Discarded);
+        }
+
         match command {
             OutlineCommand::Start { .. } => Err(OutlineError::AlreadyStarted),
+            OutlineCommand::Discard => Ok(vec![OutlineEvent::Discarded]),
             OutlineCommand::Add {
                 section,
                 under,
@@ -697,6 +720,7 @@ impl Aggregate for Outline {
     fn apply(&mut self, event: &OutlineEvent, _metadata: &EventMetadata) {
         match event {
             OutlineEvent::Started { .. } => {}
+            OutlineEvent::Discarded => self.discarded = true,
             OutlineEvent::SectionAdded {
                 section,
                 under,
@@ -718,12 +742,17 @@ impl Aggregate for Outline {
                 self.attach(piece, to, after.as_ref())
             }
             OutlineEvent::PieceDetached { piece } => self.detach(piece),
-            OutlineEvent::Snapshotted { project, sections } => {
+            OutlineEvent::Snapshotted {
+                project,
+                sections,
+                discarded,
+            } => {
                 let (held, children) = Self::holding(sections);
 
                 self.project = project.clone();
                 self.sections = held;
                 self.children = children;
+                self.discarded = *discarded;
             }
         }
     }
@@ -732,6 +761,7 @@ impl Aggregate for Outline {
         OutlineEvent::Snapshotted {
             project: self.project.clone(),
             sections: self.sections(),
+            discarded: self.discarded,
         }
     }
 }

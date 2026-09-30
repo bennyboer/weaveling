@@ -64,7 +64,8 @@ mod tests {
         assert_ne!(
             migrations().table_name,
             "_sqlx_migrations_events",
-            "a feature lays the event store and the registry down in one schema, so their              ledgers must not be the same table"
+            "a feature lays the event store and the registry down in one schema, so their ledgers \
+             must not be the same table"
         );
     }
 }

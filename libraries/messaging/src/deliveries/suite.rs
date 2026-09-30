@@ -198,7 +198,8 @@ pub async fn the_backoff_grows_with_each_attempt(deliveries: &impl Deliveries) {
     );
     assert!(
         again_after(ATTEMPTS) > Duration::minutes(1),
-        "the tail has to outlast a database blinking, or an outage dead-letters everything          that was in flight"
+        "the tail has to outlast a database blinking, or an outage dead-letters everything that \
+         was in flight"
     );
 }
 

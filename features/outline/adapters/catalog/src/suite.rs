@@ -223,6 +223,56 @@ pub async fn one_outline_letting_a_piece_go_leaves_the_others_holding_it(
     );
 }
 
+pub async fn a_forgotten_outline_takes_its_pieces_with_it(catalog: &impl OutlineCatalog) {
+    let outline = OutlineId::generate(at(1_000));
+    let elsewhere = OutlineId::generate(at(2_000));
+    catalog
+        .remember(&a_summary(outline, "project_1"))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember(&a_summary(elsewhere, "project_2"))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .holds(outline, &[PieceLink::from("piece_1")])
+        .await
+        .expect("indexing should succeed");
+    catalog
+        .holds(elsewhere, &[PieceLink::from("piece_1")])
+        .await
+        .expect("indexing should succeed");
+
+    catalog
+        .forget(&outline)
+        .await
+        .expect("forgetting should succeed");
+
+    assert!(
+        catalog
+            .in_project(&ProjectLink::from("project_1"))
+            .await
+            .expect("listing should succeed")
+            .is_empty()
+    );
+    assert_eq!(
+        catalog
+            .outlines_holding(&PieceLink::from("piece_1"))
+            .await
+            .expect("looking should succeed"),
+        vec![elsewhere],
+        "a forgotten outline must take its pieces with it, or the index keeps answering for an \
+         outline that is gone — and leave every other outline's alone"
+    );
+}
+
+pub async fn forgetting_an_outline_nobody_opened_is_harmless(catalog: &impl OutlineCatalog) {
+    catalog
+        .forget(&OutlineId::generate(at(1_000)))
+        .await
+        .expect("forgetting an unknown outline should not fail");
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -240,6 +290,11 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!($workbench, a_forgotten_outline_takes_its_pieces_with_it);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            forgetting_an_outline_nobody_opened_is_harmless
+        );
         $crate::catalog_conformance_case!(
             $workbench,
             a_remembered_outline_is_listed_in_its_project

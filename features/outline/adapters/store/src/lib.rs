@@ -39,9 +39,11 @@ enum StoredOutlineEvent {
     PieceDetached {
         piece: String,
     },
+    Discarded,
     Snapshotted {
         project: String,
         sections: Vec<StoredPlacedSection>,
+        discarded: bool,
     },
 }
 
@@ -164,9 +166,15 @@ impl From<&OutlineEvent> for StoredOutlineEvent {
             OutlineEvent::PieceDetached { piece } => Self::PieceDetached {
                 piece: piece.as_str().to_owned(),
             },
-            OutlineEvent::Snapshotted { project, sections } => Self::Snapshotted {
+            OutlineEvent::Discarded => Self::Discarded,
+            OutlineEvent::Snapshotted {
+                project,
+                sections,
+                discarded,
+            } => Self::Snapshotted {
                 project: project.as_str().to_owned(),
                 sections: sections.iter().map(StoredPlacedSection::from).collect(),
+                discarded: *discarded,
             },
         }
     }
@@ -224,12 +232,18 @@ impl TryFrom<StoredOutlineEvent> for OutlineEvent {
             StoredOutlineEvent::PieceDetached { piece } => Self::PieceDetached {
                 piece: PieceLink::from(piece),
             },
-            StoredOutlineEvent::Snapshotted { project, sections } => Self::Snapshotted {
+            StoredOutlineEvent::Discarded => Self::Discarded,
+            StoredOutlineEvent::Snapshotted {
+                project,
+                sections,
+                discarded,
+            } => Self::Snapshotted {
                 project: ProjectLink::from(project),
                 sections: sections
                     .into_iter()
                     .map(PlacedSection::try_from)
                     .collect::<Result<Vec<_>, _>>()?,
+                discarded,
             },
         })
     }
@@ -316,6 +330,7 @@ mod tests {
                         pieces: vec![PieceLink::from("piece_1"), PieceLink::from("piece_2")],
                     },
                 ],
+                discarded: false,
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -337,6 +352,7 @@ mod tests {
                     ],
                 })
                 .collect(),
+            discarded: false,
         };
 
         assert_eq!(

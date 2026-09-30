@@ -9,6 +9,8 @@ const REMEMBER: &str = "
     ON CONFLICT (board) DO UPDATE SET project = EXCLUDED.project
 ";
 
+const FORGET: &str = "DELETE FROM board_summaries WHERE board = $1";
+
 const IN_PROJECT: &str = "
     SELECT board, project
     FROM board_summaries
@@ -56,6 +58,24 @@ impl BoardCatalog for PostgresBoardCatalog {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget(&self, board: &BoardId) -> Result<(), CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+
+        sqlx::query(FORGET)
+            .bind(board.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+
+        sqlx::query(LET_GO)
+            .bind(board.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+
+        transaction.commit().await.map_err(unreachable)
     }
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<BoardSummary>, CatalogError> {

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
 use pieces_catalog::InMemoryPieceCatalog;
 use pieces_core::{PieceCatalog, PieceEvent, PieceService};
-use pieces_messaging::PieceCatalogProjector;
+use pieces_messaging::{DiscardOnProjectDeleted, PieceCatalogProjector};
 use wiring::{Context, Wired};
 
 pub struct Ports {
@@ -58,14 +58,16 @@ pub fn service(ports: &Ports, context: &Context) -> PieceService {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
+    let pieces = service(ports, context);
     let projector = PieceCatalogProjector::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),
     );
+    let sweep = DiscardOnProjectDeleted::new(pieces.clone(), ports.catalog.clone());
 
-    Wired::serving(pieces_rest::router(service(ports, context)))
-        .listening(vec![Arc::new(projector)])
+    Wired::serving(pieces_rest::router(pieces))
+        .listening(vec![Arc::new(projector), Arc::new(sweep)])
 }
 
 pub const NAME: &str = "pieces";

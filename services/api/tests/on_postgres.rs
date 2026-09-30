@@ -296,3 +296,130 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
     relays.stop().await;
     fixture.cleanup().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn deleting_a_project_sweeps_away_everything_it_held() {
+    use eventsourcing::Cadence;
+    use weaveling_service_api::Relays;
+
+    let fixture = PostgresFixture::setup().await;
+    let databases = a_schema_each(&fixture).await;
+    let clock = Arc::new(SystemClock);
+    let adapters = Adapters::postgres(clock, &databases);
+    let outboxes = adapters.outboxes();
+    let consuming = adapters.consuming();
+    let server = TestServer::new(app(adapters));
+
+    let relays = Relays::started(
+        outboxes,
+        consuming,
+        Cadence {
+            deliver_every: std::time::Duration::from_millis(10),
+            sweep_every: std::time::Duration::from_secs(3_600),
+            deliver_at_most: 16,
+            sweep_at_most: 16,
+            kept_for: time::Duration::days(90),
+        },
+    );
+
+    let project = a_project(&server, "Doomed").await;
+    server
+        .post("/api/pieces")
+        .json(&json!({ "project": project, "title": "A girl in a wood" }))
+        .await
+        .assert_status(axum::http::StatusCode::CREATED);
+    server
+        .post("/api/boards")
+        .json(&json!({ "project": project }))
+        .await
+        .assert_status(axum::http::StatusCode::OK);
+    server
+        .post("/api/outlines")
+        .json(&json!({ "project": project }))
+        .await
+        .assert_status(axum::http::StatusCode::OK);
+
+    assert!(
+        until(|| async {
+            !listed(&server, &format!("/api/pieces?project={project}"))
+                .await
+                .is_empty()
+        })
+        .await,
+        "the piece has to be catalogued before deleting can be shown to sweep it away"
+    );
+
+    server
+        .delete(&format!("/api/projects/{project}"))
+        .await
+        .assert_status(axum::http::StatusCode::NO_CONTENT);
+
+    assert!(
+        until(|| async {
+            listed(&server, &format!("/api/pieces?project={project}"))
+                .await
+                .is_empty()
+        })
+        .await,
+        "a deleted project must not leave its pieces behind; with a durable store an orphan \
+         outlives the session rather than dying with the process"
+    );
+
+    assert!(
+        until(|| async {
+            let boards: i64 = sqlx::query_scalar("SELECT count(*) FROM board_summaries")
+                .fetch_one(&databases.boards)
+                .await
+                .expect("counting should succeed");
+            let outlines: i64 = sqlx::query_scalar("SELECT count(*) FROM outline_summaries")
+                .fetch_one(&databases.outline)
+                .await
+                .expect("counting should succeed");
+
+            (boards, outlines) == (0, 0)
+        })
+        .await,
+        "the board and the outline go with the project, each disposing its own"
+    );
+
+    let stuck: Vec<(String, String)> = sqlx::query_as("SELECT listener, why FROM dead_letters")
+        .fetch_all(&databases.messaging)
+        .await
+        .expect("reading the dead letters should succeed");
+
+    assert!(
+        stuck.is_empty(),
+        "a cascade that dead-letters has half finished, which is worse than not starting: {stuck:?}"
+    );
+
+    relays.stop().await;
+    fixture.cleanup().await;
+}
+
+async fn listed(server: &TestServer, at: &str) -> Vec<String> {
+    server
+        .get(at)
+        .await
+        .json::<Value>()
+        .as_array()
+        .expect("a listing is an array")
+        .iter()
+        .filter_map(|held| held["id"].as_str().map(ToOwned::to_owned))
+        .collect()
+}
+
+async fn until<F, Fut>(settled: F) -> bool
+where
+    F: Fn() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    for _ in 0..200 {
+        if settled().await {
+            return true;
+        }
+
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+
+    false
+}

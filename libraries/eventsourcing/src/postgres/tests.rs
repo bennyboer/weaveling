@@ -219,7 +219,8 @@ async fn a_batch_that_collides_halfway_writes_none_of_itself() {
 
     assert_eq!(
         announced, 1,
-        "only the stream's start announced: the outbox row shares its append's transaction, so a refused append announces nothing"
+        "only the stream's start announced: the outbox row shares its append's transaction, so a \
+         refused append announces nothing"
     );
 
     bench.cleanup().await;

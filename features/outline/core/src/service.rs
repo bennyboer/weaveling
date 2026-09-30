@@ -219,6 +219,16 @@ impl OutlineService {
         .await
     }
 
+    pub async fn discard(
+        &self,
+        outline: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Version, OutlineServiceError> {
+        self.carry_out(outline, OutlineCommand::Discard, expected, agent)
+            .await
+    }
+
     async fn claimed_by(&self, project: &str) -> Result<OutlineId, OutlineServiceError> {
         let mine = OutlineId::generate(self.clock.now());
         let held = self

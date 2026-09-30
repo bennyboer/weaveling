@@ -1,8 +1,10 @@
 mod publishing;
+mod sweeping;
 
 pub use publishing::{
     PieceEventPublisher, UnreadablePieceEvent, event_in, every_event, message_for, piece_in,
 };
+pub use sweeping::{DiscardOnProjectDeleted, when_project_deleted};
 
 use std::sync::Arc;
 

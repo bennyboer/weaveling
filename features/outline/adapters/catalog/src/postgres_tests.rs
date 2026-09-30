@@ -2,11 +2,14 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
+use outline_core::{OutlineCatalog, OutlineId, PieceLink};
+
 use crate::postgres::{PostgresOutlineCatalog, migrations};
 use crate::suite::Workbench;
 
 struct OnPostgres {
     fixture: PostgresFixture,
+    pool: PgPool,
     store: PostgresOutlineCatalog,
 }
 
@@ -24,7 +27,8 @@ impl Workbench for OnPostgres {
 
         Self {
             fixture,
-            store: PostgresOutlineCatalog::new(pool),
+            store: PostgresOutlineCatalog::new(pool.clone()),
+            pool,
         }
     }
 
@@ -38,3 +42,43 @@ impl Workbench for OnPostgres {
 }
 
 crate::conformance_tests!(OnPostgres);
+
+#[tokio::test]
+async fn forgetting_a_outline_leaves_no_half_of_it_behind() {
+    let bench = OnPostgres::setup().await;
+    let outline = OutlineId::generate(crate::suite::at(1_000));
+    bench
+        .store()
+        .remember(&crate::suite::a_summary(outline, "project_1"))
+        .await
+        .expect("remembering should succeed");
+    bench
+        .store()
+        .holds(outline, &[PieceLink::from("piece_1")])
+        .await
+        .expect("indexing should succeed");
+
+    bench
+        .store()
+        .forget(&outline)
+        .await
+        .expect("forgetting should succeed");
+
+    let summaries: i64 = sqlx::query_scalar("SELECT count(*) FROM outline_summaries")
+        .fetch_one(&bench.pool)
+        .await
+        .expect("counting should succeed");
+    let pins: i64 = sqlx::query_scalar("SELECT count(*) FROM outline_pieces")
+        .fetch_one(&bench.pool)
+        .await
+        .expect("counting should succeed");
+
+    assert_eq!(
+        (summaries, pins),
+        (0, 0),
+        "the summary and the index go in one transaction, so a crash between them cannot leave the \
+         index naming a outline that is gone"
+    );
+
+    bench.cleanup().await;
+}

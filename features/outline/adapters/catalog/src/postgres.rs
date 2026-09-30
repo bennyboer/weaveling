@@ -11,6 +11,8 @@ const REMEMBER: &str = "
     ON CONFLICT (outline) DO UPDATE SET project = EXCLUDED.project
 ";
 
+const FORGET: &str = "DELETE FROM outline_summaries WHERE outline = $1";
+
 const IN_PROJECT: &str = "
     SELECT outline, project
     FROM outline_summaries
@@ -58,6 +60,24 @@ impl OutlineCatalog for PostgresOutlineCatalog {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget(&self, outline: &OutlineId) -> Result<(), CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+
+        sqlx::query(FORGET)
+            .bind(outline.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+
+        sqlx::query(LET_GO)
+            .bind(outline.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+
+        transaction.commit().await.map_err(unreachable)
     }
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<OutlineSummary>, CatalogError> {

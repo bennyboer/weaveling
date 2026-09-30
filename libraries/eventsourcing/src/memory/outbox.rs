@@ -265,7 +265,8 @@ mod tests {
 
         assert_eq!(
             straight_away.published, 0,
-            "the claim is the backoff: retrying in the same breath would spin on a message              that is failing for a reason a moment cannot fix"
+            "the claim is the backoff: retrying in the same breath would spin on a message that is \
+             failing for a reason a moment cannot fix"
         );
 
         clock.set(at(1_000) + CLAIM_FOR + Duration::seconds(1));

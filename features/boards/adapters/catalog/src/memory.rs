@@ -48,6 +48,13 @@ impl BoardCatalog for InMemoryBoardCatalog {
         Ok(())
     }
 
+    async fn forget(&self, board: &BoardId) -> Result<(), CatalogError> {
+        self.write().remove(board);
+        self.holds(*board, &[]).await?;
+
+        Ok(())
+    }
+
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<BoardSummary>, CatalogError> {
         let mut found: Vec<BoardSummary> = self
             .read()

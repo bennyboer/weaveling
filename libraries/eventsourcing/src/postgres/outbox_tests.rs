@@ -544,7 +544,8 @@ async fn an_entry_never_published_is_kept_however_old_it_is() {
     assert_eq!(
         wired.unpublished().await,
         1,
-        "an old unpublished entry is a stuck message, not rubbish — deleting it would lose it silently"
+        "an old unpublished entry is a stuck message, not rubbish — deleting it would lose it \
+         silently"
     );
 
     wired.cleanup().await;

@@ -122,6 +122,16 @@ impl BoardService {
             .await
     }
 
+    pub async fn discard(
+        &self,
+        board: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Version, BoardServiceError> {
+        self.carry_out(board, BoardCommand::Discard, expected, agent)
+            .await
+    }
+
     async fn claimed_by(&self, project: &str) -> Result<BoardId, BoardServiceError> {
         let mine = BoardId::generate(self.clock.now());
         let held = self

@@ -26,9 +26,11 @@ enum StoredBoardEvent {
     PieceUnpinned {
         piece: String,
     },
+    Discarded,
     Snapshotted {
         project: String,
         pieces: Vec<StoredPositionedPiece>,
+        discarded: bool,
     },
 }
 
@@ -146,9 +148,15 @@ impl From<&BoardEvent> for StoredBoardEvent {
             BoardEvent::PieceUnpinned { piece } => Self::PieceUnpinned {
                 piece: piece.as_str().to_owned(),
             },
-            BoardEvent::Snapshotted { project, pieces } => Self::Snapshotted {
+            BoardEvent::Discarded => Self::Discarded,
+            BoardEvent::Snapshotted {
+                project,
+                pieces,
+                discarded,
+            } => Self::Snapshotted {
                 project: project.as_str().to_owned(),
                 pieces: pieces.iter().map(StoredPositionedPiece::from).collect(),
+                discarded: *discarded,
             },
         }
     }
@@ -179,9 +187,15 @@ impl From<StoredBoardEvent> for BoardEvent {
             StoredBoardEvent::PieceUnpinned { piece } => Self::PieceUnpinned {
                 piece: PieceLink::from(piece),
             },
-            StoredBoardEvent::Snapshotted { project, pieces } => Self::Snapshotted {
+            StoredBoardEvent::Discarded => Self::Discarded,
+            StoredBoardEvent::Snapshotted {
+                project,
+                pieces,
+                discarded,
+            } => Self::Snapshotted {
                 project: ProjectLink::from(project),
                 pieces: pieces.into_iter().map(PositionedPiece::from).collect(),
+                discarded,
             },
         }
     }
@@ -247,10 +261,12 @@ mod tests {
                         size: a_size(),
                     },
                 ],
+                discarded: false,
             },
             BoardEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
                 pieces: Vec::new(),
+                discarded: false,
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -269,6 +285,7 @@ mod tests {
                     size: a_size(),
                 })
                 .collect(),
+            discarded: false,
         };
 
         assert_eq!(

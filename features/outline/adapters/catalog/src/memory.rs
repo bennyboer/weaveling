@@ -52,6 +52,13 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
         Ok(())
     }
 
+    async fn forget(&self, outline: &OutlineId) -> Result<(), CatalogError> {
+        self.write().remove(outline);
+        self.holds(*outline, &[]).await?;
+
+        Ok(())
+    }
+
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<OutlineSummary>, CatalogError> {
         let mut found: Vec<OutlineSummary> = self
             .read()

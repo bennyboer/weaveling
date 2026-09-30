@@ -108,7 +108,8 @@ async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
 
     assert_eq!(
         opened.id, known,
-        "the find branch takes whoever holds the claim rather than starting afresh; the claim          is authoritative where the catalog is only a projection"
+        "the find branch takes whoever holds the claim rather than starting afresh; the claim is \
+         authoritative where the catalog is only a projection"
     );
 }
 
@@ -122,7 +123,8 @@ async fn opening_the_same_project_again_finds_the_board_it_already_had() {
 
     assert_eq!(
         first, second,
-        "a second open must not leave the author looking at a different board; find-or-start          reads the catalog, so it cannot see a board whose projection has not landed yet"
+        "a second open must not leave the author looking at a different board; find-or-start reads \
+         the catalog, so it cannot see a board whose projection has not landed yet"
     );
 }
 
@@ -335,7 +337,8 @@ async fn the_catalog_projector_is_woken_only_by_a_board_being_started() {
     for quiet in [PIECE_PINNED, PIECE_MOVED, PIECE_UNPINNED] {
         assert!(
             !wired.projector.hears(&a_key(quiet)),
-            "which board a project has cannot change on a drop, so {quiet} must not cost a projection write"
+            "which board a project has cannot change on a drop, so {quiet} must not cost a \
+             projection write"
         );
     }
 }
