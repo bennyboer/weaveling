@@ -4,11 +4,8 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
 use crate::http::ApiError;
-use crate::ideas::model::IdeaId;
+use crate::ideas::model::Idea;
 use crate::ideas::service as ideas;
-use crate::passages::editor::{PassageEditor, PassageEditorProps};
-use crate::passages::model::PassageId;
-use crate::passages::service as passages;
 use crate::route;
 use crate::shell::{Inside, masthead};
 
@@ -16,16 +13,16 @@ use crate::shell::{Inside, masthead};
 pub fn OneIdea() -> impl IntoView {
     let params = use_params_map();
     let problem = RwSignal::new(None::<ApiError>);
-    let passage = RwSignal::new(None::<PassageId>);
+    let idea = RwSignal::new(None::<Idea>);
 
-    let opening = Action::new_local(move |idea: &IdeaId| {
-        let idea = idea.clone();
+    let opening = Action::new_local(move |asked: &String| {
+        let asked = route::idea_id(asked);
 
         async move {
-            match writing_in(&idea).await {
+            match ideas::get(&asked).await {
                 Ok(found) => {
                     problem.set(None);
-                    passage.set(Some(found));
+                    idea.set(Some(found));
                 }
                 Err(failure) => problem.set(Some(failure)),
             }
@@ -33,8 +30,8 @@ pub fn OneIdea() -> impl IntoView {
     });
 
     Effect::new(move || {
-        if let Some(idea) = params.read().get("idea") {
-            opening.dispatch(route::idea_id(&idea));
+        if let Some(asked) = params.read().get("idea") {
+            opening.dispatch(asked);
         }
     });
 
@@ -51,31 +48,11 @@ pub fn OneIdea() -> impl IntoView {
                         .child(failure.to_string())
                 })
             },
-            move || {
-                match passage.get() {
-                    Some(passage) => PassageEditor(PassageEditorProps { passage }).into_any(),
-                    None => html::p()
-                        .class("empty")
-                        .child("Opening the idea…")
-                        .into_any(),
-                }
+            move || match idea.get() {
+                // TODO M12 step 8: the backlinks, and the name editable in place.
+                Some(found) => html::h1().child(found.shown_as().to_owned()).into_any(),
+                None => html::p().class("empty").child("Opening…").into_any(),
             },
         ))),
     )
-}
-
-async fn writing_in(idea: &IdeaId) -> Result<PassageId, ApiError> {
-    let found = ideas::get(idea).await?;
-
-    match found.passage {
-        Some(passage) => Ok(passage),
-        None => {
-            let started = passages::create(&found.project).await?;
-
-            ideas::attach_passage(idea, &started)
-                .await?
-                .passage
-                .ok_or(ApiError::Unexpected)
-        }
-    }
 }

@@ -1,9 +1,8 @@
 use gloo_net::http::Request;
-use ideas_contract::{AttachPassageRequest, CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
+use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
 
 use crate::http::{ApiError, parsed};
 use crate::ideas::model::{Idea, IdeaId};
-use crate::passages::model::PassageId;
 use crate::projects::model::ProjectId;
 
 const IDEAS: &str = "/api/ideas";
@@ -54,26 +53,11 @@ fn as_idea(dto: IdeaDTO) -> Idea {
         version: dto.version,
         project: ProjectId::from(dto.project),
         title: dto.title,
-        passage: dto.passage.map(PassageId::from),
     }
 }
 
 pub async fn get(id: &IdeaId) -> Result<Idea, ApiError> {
     let response = Request::get(&format!("{IDEAS}/{id}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
-
-    Ok(as_idea(parsed(response, SUBJECT).await?))
-}
-
-pub async fn attach_passage(id: &IdeaId, passage: &PassageId) -> Result<Idea, ApiError> {
-    let payload = AttachPassageRequest {
-        passage: passage.to_string(),
-    };
-    let response = Request::put(&format!("{IDEAS}/{id}/passage"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
         .send()
         .await
         .map_err(|_| ApiError::Offline)?;

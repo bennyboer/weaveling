@@ -1,6 +1,5 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::passages::model::PassageId;
 use crate::projects::model::ProjectId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -12,7 +11,6 @@ pub struct Idea {
     pub version: u64,
     pub project: ProjectId,
     pub title: String,
-    pub passage: Option<PassageId>,
 }
 
 impl From<String> for IdeaId {

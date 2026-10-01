@@ -119,32 +119,9 @@ fn row(project: String, idea: Idea) -> impl IntoView {
     let href = route::idea(&project, &idea.id, &idea.title);
     let shown = idea.shown_as().to_owned();
 
-    html::li().child((
-        view! {
-            <A href=href attr:class="name">
-                {shown}
-            </A>
-        },
-        idea.passage.is_some().then(opened_for_writing),
-    ))
-}
-
-fn opened_for_writing() -> impl IntoView {
-    let quill = view! {
-        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-            <path
-                d="M11.5 1.5 14.5 4.5 5.5 13.5 1.5 14.5 2.5 10.5z"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.3"
-                stroke-linejoin="round"
-            />
-        </svg>
-    };
-
-    html::span()
-        .class("stamp")
-        .role("img")
-        .attr("aria-label", "Opened for writing")
-        .child(quill)
+    html::li().child((view! {
+        <A href=href attr:class="name">
+            {shown}
+        </A>
+    },))
 }
