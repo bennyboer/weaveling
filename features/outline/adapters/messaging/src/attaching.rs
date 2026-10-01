@@ -4,7 +4,7 @@ use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use outline_core::{
-    CatalogError, IdeaLink, Outline, OutlineCatalog, OutlineError, OutlineEvent, OutlineId,
+    CatalogError, Outline, OutlineCatalog, OutlineError, OutlineEvent, OutlineId, PassageLink,
 };
 use thiserror::Error;
 
@@ -12,9 +12,9 @@ use crate::publishing::{
     UnreadableOutlineEvent, outline_in, when_attached, when_detached, when_section_removed,
 };
 
-const NAME: &str = "index-attached-ideas";
+const NAME: &str = "index-attached-passages";
 
-pub struct AttachedIdeasProjector {
+pub struct AttachedPassagesProjector {
     events: EventSourcingService<Outline>,
     catalog: Arc<dyn OutlineCatalog>,
 }
@@ -29,7 +29,7 @@ enum NotIndexed {
     Catalog(#[from] CatalogError),
 }
 
-impl AttachedIdeasProjector {
+impl AttachedPassagesProjector {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
         catalog: Arc<dyn OutlineCatalog>,
@@ -43,7 +43,7 @@ impl AttachedIdeasProjector {
 
     async fn index(&self, outline: &OutlineId) -> Result<(), NotIndexed> {
         let standing = self.events.latest(&AggregateId::from(outline)).await?;
-        let holding: Vec<IdeaLink> = standing.state.reading_order();
+        let holding: Vec<PassageLink> = standing.state.reading_order();
 
         self.catalog.holds(*outline, &holding).await?;
 
@@ -56,7 +56,7 @@ impl AttachedIdeasProjector {
 }
 
 #[async_trait::async_trait]
-impl Listener for AttachedIdeasProjector {
+impl Listener for AttachedPassagesProjector {
     fn named(&self) -> ListenerName {
         ListenerName::parse(NAME).expect("the attachment index listener is named at compile time")
     }

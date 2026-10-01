@@ -3,15 +3,15 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use outline_core::{
-    CatalogError, IdeaLink, OutlineCatalog, OutlineId, OutlineSummary, ProjectLink,
+    CatalogError, OutlineCatalog, OutlineId, OutlineSummary, PassageLink, ProjectLink,
 };
 
 type Listed = HashMap<OutlineId, OutlineSummary>;
 
 #[derive(Debug, Default)]
 struct Attachments {
-    by_outline: HashMap<OutlineId, Vec<IdeaLink>>,
-    by_idea: HashMap<IdeaLink, BTreeSet<OutlineId>>,
+    by_outline: HashMap<OutlineId, Vec<PassageLink>>,
+    by_passage: HashMap<PassageLink, BTreeSet<OutlineId>>,
 }
 
 #[derive(Debug, Default)]
@@ -71,28 +71,35 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
         Ok(found)
     }
 
-    async fn holds(&self, outline: OutlineId, ideas: &[IdeaLink]) -> Result<(), CatalogError> {
+    async fn holds(
+        &self,
+        outline: OutlineId,
+        passages: &[PassageLink],
+    ) -> Result<(), CatalogError> {
         let mut attached = self.write_attachments();
-        let arriving: HashSet<&IdeaLink> = ideas.iter().collect();
+        let arriving: HashSet<&PassageLink> = passages.iter().collect();
         let left_behind = attached
             .by_outline
-            .insert(outline, ideas.to_vec())
+            .insert(outline, passages.to_vec())
             .unwrap_or_default();
 
-        for gone in left_behind.iter().filter(|idea| !arriving.contains(idea)) {
-            let Some(holding) = attached.by_idea.get_mut(gone) else {
+        for gone in left_behind
+            .iter()
+            .filter(|passage| !arriving.contains(passage))
+        {
+            let Some(holding) = attached.by_passage.get_mut(gone) else {
                 continue;
             };
             holding.remove(&outline);
 
             if holding.is_empty() {
-                attached.by_idea.remove(gone);
+                attached.by_passage.remove(gone);
             }
         }
 
-        for held in ideas {
+        for held in passages {
             attached
-                .by_idea
+                .by_passage
                 .entry(held.clone())
                 .or_default()
                 .insert(outline);
@@ -101,11 +108,14 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
         Ok(())
     }
 
-    async fn outlines_holding(&self, idea: &IdeaLink) -> Result<Vec<OutlineId>, CatalogError> {
+    async fn outlines_holding(
+        &self,
+        passage: &PassageLink,
+    ) -> Result<Vec<OutlineId>, CatalogError> {
         Ok(self
             .read_attachments()
-            .by_idea
-            .get(idea)
+            .by_passage
+            .get(passage)
             .map(|holding| holding.iter().copied().collect())
             .unwrap_or_default())
     }

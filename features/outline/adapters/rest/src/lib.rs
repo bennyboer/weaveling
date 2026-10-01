@@ -7,11 +7,11 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use eventsourcing::{Agent, ServiceError, Standing, Version};
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachIdeaRequest, MoveSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachPassageRequest, MoveSectionRequest,
     OpenOutlineRequest, OutlineDTO, PlacedSectionDTO, RetitleSectionRequest,
 };
 use outline_core::{
-    IdeaLink, InvalidSectionTitle, Outline, OutlineError, OutlineService, OutlineServiceError,
+    InvalidSectionTitle, Outline, OutlineError, OutlineService, OutlineServiceError, PassageLink,
     PlacedSection, SectionId, SectionTitle,
 };
 use serving::{Unreadable, demanded, refusal, tag};
@@ -34,8 +34,8 @@ pub fn router(outlines: OutlineService) -> Router {
             "/outlines/{outline}/sections/{section}/demote",
             post(demote),
         )
-        .route("/outlines/{outline}/ideas", post(attach))
-        .route("/outlines/{outline}/ideas/{idea}", delete(detach))
+        .route("/outlines/{outline}/passages", post(attach))
+        .route("/outlines/{outline}/passages/{passage}", delete(detach))
         .with_state(outlines)
 }
 
@@ -204,14 +204,14 @@ async fn attach(
     State(outlines): State<OutlineService>,
     Path(outline): Path<String>,
     headers: HeaderMap,
-    Json(request): Json<AttachIdeaRequest>,
+    Json(request): Json<AttachPassageRequest>,
 ) -> Result<Response, ApiError> {
     outlines
         .attach(
             &outline,
-            IdeaLink::from(request.idea.as_str()),
+            PassageLink::from(request.passage.as_str()),
             request.section.parse()?,
-            request.after.map(|after| IdeaLink::from(after.as_str())),
+            request.after.map(|after| PassageLink::from(after.as_str())),
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -226,13 +226,13 @@ async fn attach(
 
 async fn detach(
     State(outlines): State<OutlineService>,
-    Path((outline, idea)): Path<(String, String)>,
+    Path((outline, passage)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     outlines
         .detach(
             &outline,
-            IdeaLink::from(idea.as_str()),
+            PassageLink::from(passage.as_str()),
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -283,7 +283,11 @@ fn to_section_dto(placed: &PlacedSection) -> PlacedSectionDTO {
         section: placed.section.to_string(),
         parent: placed.parent.map(|parent| parent.to_string()),
         title: placed.title.to_string(),
-        ideas: placed.ideas.iter().map(|held| held.to_string()).collect(),
+        passages: placed
+            .passages
+            .iter()
+            .map(|held| held.to_string())
+            .collect(),
     }
 }
 

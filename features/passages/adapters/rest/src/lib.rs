@@ -1,17 +1,39 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::get;
 use passages_contract::{CreatePassageRequest, PassageDTO};
 use passages_core::{Passage, PassageService, PassageServiceError, StoreError};
+use serde::Deserialize;
 
 pub fn router(passages: PassageService) -> Router {
     Router::new()
-        .route("/passages", post(create))
+        .route("/passages", get(list).post(create))
         .route("/passages/{id}", get(find).delete(remove))
         .with_state(passages)
+}
+
+const AT_MOST: usize = 500;
+
+#[derive(Deserialize)]
+struct InProject {
+    project: String,
+}
+
+async fn list(
+    State(passages): State<PassageService>,
+    Query(asked): Query<InProject>,
+) -> Result<Json<Vec<PassageDTO>>, ApiError> {
+    let found = passages.in_project(&asked.project, None, AT_MOST).await?;
+    let mut listed = Vec::with_capacity(found.len());
+
+    for id in found {
+        listed.push(to_dto(&passages.open(&id.to_string()).await?));
+    }
+
+    Ok(Json(listed))
 }
 
 async fn create(

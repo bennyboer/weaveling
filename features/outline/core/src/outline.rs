@@ -25,8 +25,8 @@ const SECTION_MOVED: EventName = EventName::of("SECTION_MOVED");
 const SECTION_PROMOTED: EventName = EventName::of("SECTION_PROMOTED");
 const SECTION_DEMOTED: EventName = EventName::of("SECTION_DEMOTED");
 const SECTION_REMOVED: EventName = EventName::of("SECTION_REMOVED");
-const IDEA_ATTACHED: EventName = EventName::of("IDEA_ATTACHED");
-const IDEA_DETACHED: EventName = EventName::of("IDEA_DETACHED");
+const PASSAGE_ATTACHED: EventName = EventName::of("PASSAGE_ATTACHED");
+const PASSAGE_DETACHED: EventName = EventName::of("PASSAGE_DETACHED");
 const DISCARDED: EventName = EventName::of("DISCARDED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
@@ -34,14 +34,14 @@ const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 pub struct ProjectLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct IdeaLink(String);
+pub struct PassageLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlacedSection {
     pub section: SectionId,
     pub parent: Option<SectionId>,
     pub title: SectionTitle,
-    pub ideas: Vec<IdeaLink>,
+    pub passages: Vec<PassageLink>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,13 +74,13 @@ pub enum OutlineCommand {
     Remove {
         section: SectionId,
     },
-    AttachIdea {
-        idea: IdeaLink,
+    AttachPassage {
+        passage: PassageLink,
         to: SectionId,
-        after: Option<IdeaLink>,
+        after: Option<PassageLink>,
     },
-    DetachIdea {
-        idea: IdeaLink,
+    DetachPassage {
+        passage: PassageLink,
     },
 }
 
@@ -113,13 +113,13 @@ pub enum OutlineEvent {
     SectionRemoved {
         section: SectionId,
     },
-    IdeaAttached {
-        idea: IdeaLink,
+    PassageAttached {
+        passage: PassageLink,
         to: SectionId,
-        after: Option<IdeaLink>,
+        after: Option<PassageLink>,
     },
-    IdeaDetached {
-        idea: IdeaLink,
+    PassageDetached {
+        passage: PassageLink,
     },
     Discarded,
     Snapshotted {
@@ -134,7 +134,7 @@ struct HeldSection {
     title: SectionTitle,
     parent: Option<SectionId>,
     children: Vec<SectionId>,
-    ideas: Vec<IdeaLink>,
+    passages: Vec<PassageLink>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,7 +159,7 @@ pub enum OutlineError {
     WouldContainItself,
     #[error("there is nothing at that place to sit after")]
     NoSuchNeighbour,
-    #[error("this idea is not in the outline")]
+    #[error("this passage is not in the outline")]
     NotAttached,
     #[error("a discarded outline accepts no changes")]
     Discarded,
@@ -189,25 +189,25 @@ impl Display for ProjectLink {
     }
 }
 
-impl IdeaLink {
+impl PassageLink {
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-impl From<String> for IdeaLink {
+impl From<String> for PassageLink {
     fn from(given: String) -> Self {
         Self(given)
     }
 }
 
-impl From<&str> for IdeaLink {
+impl From<&str> for PassageLink {
     fn from(given: &str) -> Self {
         Self(given.to_owned())
     }
 }
 
-impl Display for IdeaLink {
+impl Display for PassageLink {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.0, f)
     }
@@ -245,17 +245,17 @@ impl Outline {
         &self.children
     }
 
-    pub fn ideas_in(&self, section: &SectionId) -> Vec<IdeaLink> {
+    pub fn passages_in(&self, section: &SectionId) -> Vec<PassageLink> {
         self.sections
             .get(section)
-            .map(|held| held.ideas.clone())
+            .map(|held| held.passages.clone())
             .unwrap_or_default()
     }
 
-    pub fn section_holding(&self, idea: &IdeaLink) -> Option<SectionId> {
+    pub fn section_holding(&self, passage: &PassageLink) -> Option<SectionId> {
         self.sections
             .iter()
-            .find(|(_, held)| held.ideas.contains(idea))
+            .find(|(_, held)| held.passages.contains(passage))
             .map(|(section, _)| *section)
     }
 
@@ -269,10 +269,10 @@ impl Outline {
         walked
     }
 
-    pub fn reading_order(&self) -> Vec<IdeaLink> {
+    pub fn reading_order(&self) -> Vec<PassageLink> {
         self.sections()
             .into_iter()
-            .flat_map(|placed| placed.ideas)
+            .flat_map(|placed| placed.passages)
             .collect()
     }
 
@@ -285,7 +285,7 @@ impl Outline {
             section: *section,
             parent: held.parent,
             title: held.title.clone(),
-            ideas: held.ideas.clone(),
+            passages: held.passages.clone(),
         });
 
         for child in &held.children {
@@ -401,7 +401,7 @@ impl Outline {
                 title,
                 parent: None,
                 children: Vec::new(),
-                ideas: Vec::new(),
+                passages: Vec::new(),
             },
         );
         self.put(section, under, after);
@@ -476,8 +476,8 @@ impl Outline {
         }
     }
 
-    fn attach(&mut self, idea: &IdeaLink, to: &SectionId, after: Option<&IdeaLink>) {
-        self.detach(idea);
+    fn attach(&mut self, passage: &PassageLink, to: &SectionId, after: Option<&PassageLink>) {
+        self.detach(passage);
 
         let Some(held) = self.sections.get_mut(to) else {
             return;
@@ -485,18 +485,19 @@ impl Outline {
         let at = match after {
             None => 0,
             Some(after) => held
-                .ideas
+                .passages
                 .iter()
                 .position(|held| held == after)
                 .map_or(0, |nth| nth + 1),
         };
 
-        held.ideas.insert(at.min(held.ideas.len()), idea.clone());
+        held.passages
+            .insert(at.min(held.passages.len()), passage.clone());
     }
 
-    fn detach(&mut self, idea: &IdeaLink) {
+    fn detach(&mut self, passage: &PassageLink) {
         for held in self.sections.values_mut() {
-            held.ideas.retain(|held| held != idea);
+            held.passages.retain(|held| held != passage);
         }
     }
 
@@ -511,7 +512,7 @@ impl Outline {
                     title: placed.title.clone(),
                     parent: placed.parent,
                     children: Vec::new(),
-                    ideas: placed.ideas.clone(),
+                    passages: placed.passages.clone(),
                 },
             );
         }
@@ -541,8 +542,8 @@ impl Event for OutlineEvent {
             Self::SectionPromoted { .. } => SECTION_PROMOTED,
             Self::SectionDemoted { .. } => SECTION_DEMOTED,
             Self::SectionRemoved { .. } => SECTION_REMOVED,
-            Self::IdeaAttached { .. } => IDEA_ATTACHED,
-            Self::IdeaDetached { .. } => IDEA_DETACHED,
+            Self::PassageAttached { .. } => PASSAGE_ATTACHED,
+            Self::PassageDetached { .. } => PASSAGE_DETACHED,
             Self::Discarded => DISCARDED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -694,25 +695,25 @@ impl Aggregate for Outline {
 
                 Ok(vec![OutlineEvent::SectionRemoved { section }])
             }
-            OutlineCommand::AttachIdea { idea, to, after } => {
+            OutlineCommand::AttachPassage { passage, to, after } => {
                 if !self.holds(&to) {
                     return Err(OutlineError::NoSuchSection);
                 }
 
                 if let Some(after) = &after
-                    && (after == &idea || !self.ideas_in(&to).contains(after))
+                    && (after == &passage || !self.passages_in(&to).contains(after))
                 {
                     return Err(OutlineError::NoSuchNeighbour);
                 }
 
-                Ok(vec![OutlineEvent::IdeaAttached { idea, to, after }])
+                Ok(vec![OutlineEvent::PassageAttached { passage, to, after }])
             }
-            OutlineCommand::DetachIdea { idea } => {
-                if self.section_holding(&idea).is_none() {
+            OutlineCommand::DetachPassage { passage } => {
+                if self.section_holding(&passage).is_none() {
                     return Err(OutlineError::NotAttached);
                 }
 
-                Ok(vec![OutlineEvent::IdeaDetached { idea }])
+                Ok(vec![OutlineEvent::PassageDetached { passage }])
             }
         }
     }
@@ -738,8 +739,10 @@ impl Aggregate for Outline {
             OutlineEvent::SectionPromoted { section } => self.promote(section),
             OutlineEvent::SectionDemoted { section } => self.demote(section),
             OutlineEvent::SectionRemoved { section } => self.remove(section),
-            OutlineEvent::IdeaAttached { idea, to, after } => self.attach(idea, to, after.as_ref()),
-            OutlineEvent::IdeaDetached { idea } => self.detach(idea),
+            OutlineEvent::PassageAttached { passage, to, after } => {
+                self.attach(passage, to, after.as_ref())
+            }
+            OutlineEvent::PassageDetached { passage } => self.detach(passage),
             OutlineEvent::Snapshotted {
                 project,
                 sections,

@@ -1,12 +1,12 @@
 use gloo_net::http::Request;
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachIdeaRequest, MoveSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachPassageRequest, MoveSectionRequest,
     OpenOutlineRequest, OutlineDTO, PlacedSectionDTO, RetitleSectionRequest,
 };
 
 use crate::http::{ApiError, parsed};
-use crate::ideas::model::IdeaId;
 use crate::outline::model::{Outline, OutlineId, Section, SectionId};
+use crate::passages::model::PassageId;
 use crate::projects::model::ProjectId;
 
 const OUTLINES: &str = "/api/outlines";
@@ -105,16 +105,16 @@ pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<Outline,
 
 pub async fn attach(
     outline: &OutlineId,
-    idea: &IdeaId,
+    passage: &PassageId,
     to: &SectionId,
-    after: Option<IdeaId>,
+    after: Option<PassageId>,
 ) -> Result<Outline, ApiError> {
-    let payload = AttachIdeaRequest {
-        idea: idea.to_string(),
+    let payload = AttachPassageRequest {
+        passage: passage.to_string(),
         section: to.to_string(),
         after: after.map(|after| after.to_string()),
     };
-    let response = Request::post(&format!("{OUTLINES}/{outline}/ideas"))
+    let response = Request::post(&format!("{OUTLINES}/{outline}/passages"))
         .json(&payload)
         .map_err(|_| ApiError::Unexpected)?
         .send()
@@ -124,8 +124,8 @@ pub async fn attach(
     Ok(as_outline(parsed(response, SUBJECT).await?))
 }
 
-pub async fn detach(outline: &OutlineId, idea: &IdeaId) -> Result<(), ApiError> {
-    let response = Request::delete(&format!("{OUTLINES}/{outline}/ideas/{idea}"))
+pub async fn detach(outline: &OutlineId, passage: &PassageId) -> Result<(), ApiError> {
+    let response = Request::delete(&format!("{OUTLINES}/{outline}/passages/{passage}"))
         .send()
         .await
         .map_err(|_| ApiError::Offline)?;
@@ -159,6 +159,6 @@ fn as_section(dto: PlacedSectionDTO) -> Section {
         id: SectionId::from(dto.section),
         parent: dto.parent.map(SectionId::from),
         title: dto.title,
-        ideas: dto.ideas.into_iter().map(IdeaId::from).collect(),
+        passages: dto.passages.into_iter().map(PassageId::from).collect(),
     }
 }

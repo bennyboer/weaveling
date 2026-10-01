@@ -5,11 +5,11 @@ CREATE TABLE outline_summaries (
 
 CREATE INDEX outline_summaries_by_project ON outline_summaries (project, outline);
 
-CREATE TABLE outline_ideas (
+CREATE TABLE outline_passages (
     outline     TEXT COLLATE "C" NOT NULL,
-    idea       TEXT COLLATE "C" NOT NULL,
+    passage       TEXT COLLATE "C" NOT NULL,
 
-    PRIMARY KEY (outline, idea)
+    PRIMARY KEY (outline, passage)
 );
 
-CREATE INDEX outline_ideas_by_idea ON outline_ideas (idea, outline);
+CREATE INDEX outline_passages_by_passage ON outline_passages (passage, outline);

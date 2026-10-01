@@ -60,3 +60,13 @@ export async function openThePool(page: Page) {
     page.getByRole("heading", { name: "Ideas", exact: true }),
   ).toBeVisible();
 }
+
+export async function aLoosePassage(page: Page): Promise<string> {
+  const project = new URL(page.url()).pathname.split("/")[2];
+  const made = await page.request.post("http://127.0.0.1:3000/api/passages", {
+    data: { project: project.split("-").pop() },
+  });
+  expect(made.status()).toBe(201);
+
+  return (await made.json()).id;
+}

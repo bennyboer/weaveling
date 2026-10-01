@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::id::OutlineId;
-use crate::outline::{IdeaLink, Outline, ProjectLink};
+use crate::outline::{Outline, PassageLink, ProjectLink};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutlineSummary {
@@ -26,9 +26,11 @@ pub trait OutlineCatalog: Send + Sync {
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<OutlineSummary>, CatalogError>;
 
-    async fn holds(&self, outline: OutlineId, ideas: &[IdeaLink]) -> Result<(), CatalogError>;
+    async fn holds(&self, outline: OutlineId, passages: &[PassageLink])
+    -> Result<(), CatalogError>;
 
-    async fn outlines_holding(&self, idea: &IdeaLink) -> Result<Vec<OutlineId>, CatalogError>;
+    async fn outlines_holding(&self, passage: &PassageLink)
+    -> Result<Vec<OutlineId>, CatalogError>;
 }
 
 impl OutlineSummary {

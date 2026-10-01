@@ -7,9 +7,9 @@ use leptos_router::components::A;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};
 
-use crate::ideas::model::{Idea, IdeaId};
 use crate::outline::model::{Section, SectionId};
 use crate::outline::open_outline::{OpenOutline, Urge};
+use crate::passages::model::{Passage, PassageId};
 use crate::route;
 use crate::tray::laid_out;
 
@@ -23,7 +23,7 @@ enum Landing {
 #[derive(Clone, Copy)]
 struct Held {
     project: StoredValue<String>,
-    carrying: RwSignal<Option<IdeaId>>,
+    carrying: RwSignal<Option<PassageId>>,
     hauling: RwSignal<Option<SectionId>>,
     landing: RwSignal<Option<Landing>>,
     over: RwSignal<Option<SectionId>>,
@@ -86,6 +86,7 @@ pub fn TheOutline(project: String) -> impl IntoView {
                 ))
                 .into_any(),
             kept(held).into_any(),
+            "Passages",
             move || open.unplaced().len(),
         ),
     ))
@@ -129,13 +130,13 @@ fn branch(section: Section, held: Held) -> AnyView {
         .class("branch")
         .child((row(section, held), move || {
             let shut = held.folded.with(|shut| shut.contains(&folding));
-            let ideas = open.ideas_in(&under);
+            let passages = open.passages_in(&under);
 
             (bears(&under, held) && !shut).then(|| {
                 html::ul().class("twigs").child((
-                    ideas
+                    passages
                         .iter()
-                        .map(|idea| leaf(idea.clone(), held))
+                        .map(|passage| leaf(passage.clone(), held))
                         .collect::<Vec<_>>(),
                     twigs(Some(under.clone()), held),
                 ))
@@ -145,7 +146,7 @@ fn branch(section: Section, held: Held) -> AnyView {
 }
 
 fn bears(section: &SectionId, held: Held) -> bool {
-    !held.open.ideas_in(section).is_empty() || !twigs_under(section, held).is_empty()
+    !held.open.passages_in(section).is_empty() || !twigs_under(section, held).is_empty()
 }
 
 fn row(section: Section, held: Held) -> impl IntoView {
@@ -227,11 +228,11 @@ fn row(section: Section, held: Held) -> impl IntoView {
         }))
         .attr("data-section", id.to_string())
         .on(ev::click, move |_| {
-            let Some(idea) = held.carrying.get_untracked() else {
+            let Some(passage) = held.carrying.get_untracked() else {
                 return;
             };
 
-            open.attach(idea, leaving.clone());
+            open.attach(passage, leaving.clone());
             held.carrying.set(None);
             held.over.set(None);
         })
@@ -358,6 +359,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     urging(Urge::Later, pruned.clone(), open),
                     urging(Urge::Promote, pruned.clone(), open),
                     urging(Urge::Demote, pruned.clone(), open),
+                    writing(pruned.clone(), open),
                     pruning(pruned.clone(), open),
                 )),
         ))
@@ -445,14 +447,14 @@ fn landing_at(x: i32, y: i32, borne: &SectionId, held: Held) -> Option<Landing> 
     })
 }
 
-fn leaf(idea: IdeaId, held: Held) -> impl IntoView {
+fn leaf(passage: PassageId, held: Held) -> impl IntoView {
     let open = held.open;
-    let shown = open.named(&idea);
-    let taken = idea.clone();
+    let shown = open.named(&passage);
+    let taken = passage.clone();
     let named = shown.clone();
     let at = held
         .project
-        .with_value(|project| route::idea(project, &idea, &shown));
+        .with_value(|project| route::passage(project, &passage));
 
     html::li()
         .class("leaf")
@@ -480,29 +482,29 @@ fn kept(held: Held) -> impl IntoView {
             .child(move || format!("Not in the book \u{00b7} {}", open.unplaced().len())),
         html::ul()
             .class("waiting")
-            .attr("aria-label", "Ideas not in the book")
+            .attr("aria-label", "Passages not in the book")
             .child(move || {
                 open.unplaced()
                     .into_iter()
-                    .map(|idea| carried(idea, held))
+                    .map(|passage| carried(passage, held))
                     .collect::<Vec<_>>()
             }),
         move || {
             (open.ready() && open.unplaced().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child("Every idea has a place in the book.")
+                    .child("Every passage has a place in the book.")
             })
         },
         html::p()
             .class("how")
-            .child("Drag an idea onto a section, or click it and then click where it goes."),
+            .child("Drag a passage onto a section, or click it and then click where it goes."),
     )
 }
 
-fn carried(idea: Idea, held: Held) -> impl IntoView {
-    let shown = idea.shown_as().to_owned();
-    let id = idea.id;
+fn carried(passage: Passage, held: Held) -> impl IntoView {
+    let shown = passage.shown_as().to_owned();
+    let id = passage.id;
     let mine = id.clone();
     let taken = id.clone();
     let dropped = id.clone();
@@ -585,6 +587,25 @@ fn urging(urge: Urge, section: SectionId, open: OpenOutline) -> impl IntoView {
         .child(mark(icon))
 }
 
+fn writing(section: SectionId, open: OpenOutline) -> impl IntoView {
+    let labelled = section.clone();
+    let titled = section.clone();
+
+    html::button()
+        .r#type("button")
+        .attr("aria-label", move || {
+            format!("Write in {}", shown_or_blank(&open.title_of(&labelled)))
+        })
+        .attr("title", move || {
+            format!("Write in {}", shown_or_blank(&open.title_of(&titled)))
+        })
+        .on(ev::click, move |event| {
+            event.stop_propagation();
+            open.write_in(section.clone());
+        })
+        .child(mark(Icon::Quill))
+}
+
 fn pruning(section: SectionId, open: OpenOutline) -> impl IntoView {
     let labelled = section.clone();
 
@@ -653,6 +674,7 @@ enum Icon {
     Written,
     Hollow,
     Plus,
+    Quill,
 }
 
 fn mark(icon: Icon) -> impl IntoView {
@@ -668,6 +690,7 @@ fn mark(icon: Icon) -> impl IntoView {
         Icon::Written => "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
         Icon::Hollow => "M12 8v4M12 16h.01",
         Icon::Plus => "M12 5v14M5 12h14",
+        Icon::Quill => "M17.25 2.25 21.75 6.75 8.25 20.25 2.25 21.75 3.75 15.75z",
     };
     let ringed = matches!(icon, Icon::Hollow);
 

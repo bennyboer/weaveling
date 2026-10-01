@@ -1,17 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import {
-  aNewProject,
-  capture,
-  openTheOutline,
-  openThePool,
-} from "./support/shell";
+import { aLoosePassage, aNewProject, openTheOutline } from "./support/shell";
 
 const manuscript = (page: Page) =>
   page.getByRole("list", { name: "The manuscript" });
 
 const waiting = (page: Page) =>
-  page.getByRole("list", { name: "Ideas not in the book" });
+  page.getByRole("list", { name: "Passages not in the book" });
 
 const titles = (page: Page) => page.locator(".branch .title");
 
@@ -223,60 +218,82 @@ test("a section with nothing in it is flagged without being refused", async ({
   await expect(titles(page).first()).toHaveValue("Chapter 1");
 });
 
-test("an idea is placed from the tray and leaves it", async ({ page }) => {
+test("a passage is placed from the tray and leaves it", async ({ page }) => {
   await aNewProject(page, "Placing");
-  await openThePool(page);
-  await capture(page, "The loom remembers");
+  await aLoosePassage(page);
   await openTheOutline(page);
   await aBookOf(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
 
-  await place(page, "The loom remembers", "Chapter 1");
+  await place(page, "Empty", "Chapter 1");
 
-  await expect(page.locator(".leaf .name")).toHaveText("The loom remembers");
+  await expect(page.locator(".leaf .name")).toHaveText("Empty");
   await expect(waiting(page).getByRole("button")).toHaveCount(0);
   await expect(page.locator(".hollow")).toHaveCount(0);
 });
-
-test("an idea in the book opens from the outline", async ({ page }) => {
-  await aNewProject(page, "Opening");
-  await openThePool(page);
-  await capture(page, "The loom remembers");
+test("writing in a section opens the new passage", async ({ page }) => {
+  await aNewProject(page, "Writing");
   await openTheOutline(page);
   await aBookOf(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
-  await place(page, "The loom remembers", "Chapter 1");
 
-  await page
-    .locator(".leaf")
-    .getByRole("link", { name: "The loom remembers" })
-    .click();
+  await page.getByRole("button", { name: "Write in Chapter 1" }).click();
 
   await expect(
-    page.getByRole("heading", { name: "The loom remembers" }),
+    page.locator(".surface .ProseMirror"),
+    "the button says write, so it has to leave the author writing rather than appending a blank row they may not even see",
   ).toBeVisible();
-  await expect(page).toHaveURL(/\/ideas\/the-loom-remembers-idea_/);
+  await expect(page).toHaveURL(/\/passages\/passage_/);
 });
 
-test("an idea taken out of the book goes back to the tray", async ({
+test("a passage written in a section is held there", async ({ page }) => {
+  await aNewProject(page, "Holding");
+  await openTheOutline(page);
+  await aBookOf(page, ["Chapter 1"]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Write in Chapter 1" }).click();
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+
+  await openTheOutline(page);
+
+  await expect(page.locator(".leaf .name")).toHaveText("Empty");
+  await expect(page.locator(".hollow")).toHaveCount(0);
+  await expect(waiting(page).getByRole("button")).toHaveCount(0);
+});
+
+test("a passage in the book opens from the outline", async ({ page }) => {
+  await aNewProject(page, "Opening");
+  await openTheOutline(page);
+  await aBookOf(page, ["Chapter 1"]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Write in Chapter 1" }).click();
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await openTheOutline(page);
+  await expect(page.locator(".leaf .name")).toHaveText("Empty");
+
+  await page.locator(".leaf").getByRole("link", { name: "Empty" }).click();
+
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page).toHaveURL(/\/passages\/passage_/);
+});
+test("a passage taken out of the book goes back to the tray", async ({
   page,
 }) => {
   await aNewProject(page, "Removing");
-  await openThePool(page);
-  await capture(page, "The loom remembers");
   await openTheOutline(page);
   await aBookOf(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
-  await place(page, "The loom remembers", "Chapter 1");
+  await page.getByRole("button", { name: "Write in Chapter 1" }).click();
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await openTheOutline(page);
   await expect(waiting(page).getByRole("button")).toHaveCount(0);
 
   await page
-    .getByRole("button", { name: "Take The loom remembers out of the book" })
+    .getByRole("button", { name: "Take Empty out of the book" })
     .click();
 
   await expect(waiting(page).getByRole("button")).toHaveCount(1);
 });
-
 test("the row menu promotes, demotes and removes", async ({ page }) => {
   await aNewProject(page, "Menus");
   await openTheOutline(page);
@@ -361,17 +378,16 @@ test("a section cannot be dragged inside itself", async ({ page }) => {
     .toBe(["Part One", "  Chapter 1"].join("\n"));
 });
 
-test("an idea can be dragged from the rail onto a section", async ({
+test("a passage can be dragged from the rail onto a section", async ({
   page,
 }) => {
   await aNewProject(page, "Dragging");
-  await openThePool(page);
-  await capture(page, "The loom remembers");
+  await aLoosePassage(page);
   await openTheOutline(page);
   await aBookOf(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
 
-  const chip = page.getByRole("button", { name: "Place The loom remembers" });
+  const chip = page.getByRole("button", { name: "Place Empty" });
   const onto = page.getByRole("textbox", { name: "Section Chapter 1" });
   const from = (await chip.boundingBox())!;
   const to = (await onto.boundingBox())!;
@@ -382,10 +398,8 @@ test("an idea can be dragged from the rail onto a section", async ({
   await expect(page.locator(".row.landing")).toHaveCount(1);
   await page.mouse.up();
 
-  await expect(page.locator(".leaf .name")).toHaveText("The loom remembers");
-  await expect(waiting(page).getByRole("button")).toHaveCount(0);
+  await expect(page.locator(".leaf .name")).toHaveText("Empty");
 });
-
 test("the connector under the last child stops at its own row", async ({
   page,
 }) => {

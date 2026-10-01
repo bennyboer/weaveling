@@ -3730,7 +3730,6 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
- "weaveling-ideas-contract",
  "weaveling-ids",
  "weaveling-messaging",
  "weaveling-outline-contract",
@@ -3774,7 +3773,6 @@ dependencies = [
  "tokio",
  "weaveling-clock",
  "weaveling-eventsourcing",
- "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-outline-catalog",
  "weaveling-outline-contract",
@@ -3841,6 +3839,7 @@ name = "weaveling-passages-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
  "tracing",
  "weaveling-passages-contract",
  "weaveling-passages-core",

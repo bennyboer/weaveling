@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import {
+  aLoosePassage,
   aNewProject,
   capture,
   openTheBoard,
@@ -12,8 +13,8 @@ const NARROW = { width: 700, height: 800 };
 
 const tray = (page: Page) => page.locator(".tray");
 
-const toggle = (page: Page) =>
-  page.getByRole("button", { name: /^Ideas ·/ });
+const toggle = (page: Page, holding = "Ideas") =>
+  page.getByRole("button", { name: new RegExp(`^${holding} ·`) });
 
 const placed = (page: Page) =>
   page.evaluate(() => {
@@ -54,8 +55,14 @@ test("the tally counts what is still waiting", async ({ page }) => {
   await openTheBoard(page);
   await expect(tray(page).getByText("Not on the board · 2")).toBeVisible();
 
+  await aLoosePassage(page);
+  await aLoosePassage(page);
   await openTheOutline(page);
   await expect(tray(page).getByText("Not in the book · 2")).toBeVisible();
+  await expect(
+    page.locator(".tray-toggle"),
+    "the drawer is shut most of the time, so its own label is the only thing naming what the tray holds, and the two views hold different things",
+  ).toHaveText(/^Passages · 2$/);
 });
 
 test("a narrow window keeps the tray in a drawer", async ({ page }) => {
@@ -66,9 +73,7 @@ test("a narrow window keeps the tray in a drawer", async ({ page }) => {
   await awayFromView(page);
 
   await toggle(page).click();
-  await expect
-    .poll(async () => (await placed(page)).right)
-    .toBe(NARROW.width);
+  await expect.poll(async () => (await placed(page)).right).toBe(NARROW.width);
   expect((await placed(page)).left).toBeLessThan(NARROW.width);
 
   await tray(page).getByRole("button", { name: "Hide the ideas" }).click();
@@ -85,8 +90,6 @@ test("the drawer becomes the rail again when the window widens", async ({
   await page.setViewportSize({ width: 1280, height: 800 });
 
   await expect(toggle(page)).toBeHidden();
-  await expect
-    .poll(async () => (await placed(page)).right)
-    .toBe(1280);
+  await expect.poll(async () => (await placed(page)).right).toBe(1280);
   expect((await placed(page)).left).toBeLessThan(1280);
 });

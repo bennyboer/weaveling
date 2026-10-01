@@ -1,12 +1,10 @@
 mod attaching;
 mod cataloguing;
-mod discarding;
 mod publishing;
 mod sweeping;
 
-pub use attaching::AttachedIdeasProjector;
+pub use attaching::AttachedPassagesProjector;
 pub use cataloguing::OutlineCatalogProjector;
-pub use discarding::{DetachOnDiscard, when_discarded};
 pub use publishing::{
     OutlineEventPublisher, UnreadableOutlineEvent, event_in, every_event, message_for, outline_in,
     when_attached, when_detached, when_section_removed, when_started,

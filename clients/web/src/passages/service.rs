@@ -1,8 +1,9 @@
 use gloo_net::http::Request;
-use passages_contract::PassageDTO;
+use passages_contract::{CreatePassageRequest, PassageDTO};
 
 use crate::http::{ApiError, parsed};
-use crate::passages::model::PassageId;
+use crate::passages::model::{Passage, PassageId};
+use crate::projects::model::ProjectId;
 
 const PASSAGES: &str = "/api/passages";
 const SUBJECT: &str = "passage";
@@ -15,4 +16,35 @@ pub async fn open(id: &PassageId) -> Result<PassageId, ApiError> {
     let found: PassageDTO = parsed(response, SUBJECT).await?;
 
     Ok(PassageId::from(found.id))
+}
+
+pub async fn in_project(project: &ProjectId) -> Result<Vec<Passage>, ApiError> {
+    let response = Request::get(&format!("{PASSAGES}?project={project}"))
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
+    let listed: Vec<PassageDTO> = parsed(response, SUBJECT).await?;
+
+    Ok(listed.into_iter().map(as_passage).collect())
+}
+
+pub async fn create(project: &ProjectId) -> Result<Passage, ApiError> {
+    let payload = CreatePassageRequest {
+        project: project.to_string(),
+    };
+    let response = Request::post(PASSAGES)
+        .json(&payload)
+        .map_err(|_| ApiError::Unexpected)?
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
+
+    Ok(as_passage(parsed(response, SUBJECT).await?))
+}
+
+fn as_passage(dto: PassageDTO) -> Passage {
+    Passage {
+        id: PassageId::from(dto.id),
+        text: dto.text,
+    }
 }

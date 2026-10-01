@@ -669,8 +669,8 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 1. **Rename `pieces` to `ideas`** — directory, crates, `PieceId` to `IdeaId`, `piece.*` routing keys to `idea.*`, the summaries table, the client. Pure vocabulary: 2,097 sites across 126 files and not one behaviour change, so it is reviewed by confirming nothing *but* names moved rather than by reading every hunk.
 2. **A passage belongs to a project** — the project link it has never had, plus `in_project`, and the deletion cascade sweeps passages straight from `project.deleted`. Split in two: **2a** gives the passage its project, **2b** adds the sweep.
 3. **The idea loses its passage** — `Idea.passage`, `PassageAttached`, the attach route and `Discarded { passage }` all go, and with them the `delete-passage-of-discarded-idea` listener.
-4. **The outline arranges passages** rather than ideas.
-5. **The outline also arranges ideas**, as notes beside the content — the first tagged reference.
+4. **The outline arranges passages** rather than ideas. Split in two: **4a** the feature, **4b** the client. A leaf shows the passage’s opening words until [step 6](#milestone-12--ideas-and-passages) gives it a name, and a section gains **write here** — which is where a passage now comes from, since opening an idea used to be the only thing that made one.
+5. **The outline also arranges ideas**, as notes beside the content — the first tagged reference. **The two kinds must be told apart on sight**: once a section can hold both, an idea and a passage drawn with the same glyph are indistinguishable, and an idea must not open an editor — clicking one goes to the idea. Flagged from use while the outline held only passages.
 6. **A passage names the idea that prompted it**, owned by the passage.
 7. **The backlinks read model.**
 8. **The inspector, and the routes it rearranges** — in the client.

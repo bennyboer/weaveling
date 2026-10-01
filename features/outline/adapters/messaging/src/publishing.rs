@@ -8,7 +8,7 @@ use eventsourcing::{EventPublisher, PublishError, Recorded};
 use ids::InvalidId;
 use messaging::{Message, Publisher, Subscription};
 use outline_contract::{
-    DISCARDED, EVERY_OUTLINE, IDEA_ATTACHED, IDEA_DETACHED, OutlineEventDTO, SECTION_REMOVED,
+    DISCARDED, EVERY_OUTLINE, OutlineEventDTO, PASSAGE_ATTACHED, PASSAGE_DETACHED, SECTION_REMOVED,
     STARTED,
 };
 use outline_core::{OutlineEvent, OutlineId};
@@ -39,11 +39,11 @@ pub fn when_started() -> Subscription {
 }
 
 pub fn when_attached() -> Subscription {
-    Subscription::parse(IDEA_ATTACHED).expect("a declared routing key holds no wildcards")
+    Subscription::parse(PASSAGE_ATTACHED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_detached() -> Subscription {
-    Subscription::parse(IDEA_DETACHED).expect("a declared routing key holds no wildcards")
+    Subscription::parse(PASSAGE_DETACHED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_section_removed() -> Subscription {
@@ -124,13 +124,13 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
         OutlineEvent::SectionRemoved { section } => OutlineEventDTO::SectionRemoved {
             section: section.to_string(),
         },
-        OutlineEvent::IdeaAttached { idea, to, after } => OutlineEventDTO::IdeaAttached {
-            idea: idea.to_string(),
+        OutlineEvent::PassageAttached { passage, to, after } => OutlineEventDTO::PassageAttached {
+            passage: passage.to_string(),
             to: to.to_string(),
             after: after.as_ref().map(|after| after.to_string()),
         },
-        OutlineEvent::IdeaDetached { idea } => OutlineEventDTO::IdeaDetached {
-            idea: idea.to_string(),
+        OutlineEvent::PassageDetached { passage } => OutlineEventDTO::PassageDetached {
+            passage: passage.to_string(),
         },
         OutlineEvent::Discarded => OutlineEventDTO::Discarded,
         OutlineEvent::Snapshotted { .. } => return None,
@@ -144,7 +144,7 @@ mod tests {
     use outline_contract::{
         SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED, SECTION_PROMOTED, SECTION_RETITLED,
     };
-    use outline_core::{IdeaLink, KIND, PlacedSection, ProjectLink, SectionId, SectionTitle};
+    use outline_core::{KIND, PassageLink, PlacedSection, ProjectLink, SectionId, SectionTitle};
     use serde_json::json;
     use time::{Duration, OffsetDateTime};
 
@@ -181,8 +181,8 @@ mod tests {
     }
 
     fn attaching_to(section: SectionId) -> OutlineEvent {
-        OutlineEvent::IdeaAttached {
-            idea: IdeaLink::from("idea_1"),
+        OutlineEvent::PassageAttached {
+            passage: PassageLink::from("passage_1"),
             to: section,
             after: None,
         }
@@ -242,12 +242,12 @@ mod tests {
                 },
                 SECTION_REMOVED,
             ),
-            (an_attachment(), IDEA_ATTACHED),
+            (an_attachment(), PASSAGE_ATTACHED),
             (
-                OutlineEvent::IdeaDetached {
-                    idea: IdeaLink::from("idea_1"),
+                OutlineEvent::PassageDetached {
+                    passage: PassageLink::from("passage_1"),
                 },
-                IDEA_DETACHED,
+                PASSAGE_DETACHED,
             ),
         ]
     }
@@ -298,7 +298,7 @@ mod tests {
     }
 
     #[test]
-    fn removing_a_section_wakes_the_attachment_index_because_it_detaches_ideas() {
+    fn removing_a_section_wakes_the_attachment_index_because_it_detaches_passages() {
         let listening = [when_attached(), when_detached(), when_section_removed()];
         let removal = routing_for(
             KIND,
@@ -310,13 +310,13 @@ mod tests {
 
         assert!(
             listening.iter().any(|watching| watching.covers(&removal)),
-            "a removed section returns its ideas to the pool, so the index would go stale without \
+            "a removed section returns its passages to the pool, so the index would go stale without \
              it"
         );
     }
 
     #[test]
-    fn an_attachment_carries_the_idea_and_the_section_it_landed_in() {
+    fn an_attachment_carries_the_passage_and_the_section_it_landed_in() {
         let id = an_outline();
         let section = a_section();
 
@@ -325,8 +325,8 @@ mod tests {
 
         assert_eq!(
             told.event.body,
-            OutlineEventDTO::IdeaAttached {
-                idea: "idea_1".to_owned(),
+            OutlineEventDTO::PassageAttached {
+                passage: "passage_1".to_owned(),
                 to: section.to_string(),
                 after: None,
             }
@@ -373,7 +373,7 @@ mod tests {
                 section: a_section(),
                 parent: None,
                 title: titled("Part One"),
-                ideas: vec![IdeaLink::from("idea_1")],
+                passages: vec![PassageLink::from("passage_1")],
             }],
             discarded: false,
         };

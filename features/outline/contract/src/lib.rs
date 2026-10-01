@@ -7,8 +7,8 @@ pub const SECTION_MOVED: &str = "outline.section.moved";
 pub const SECTION_PROMOTED: &str = "outline.section.promoted";
 pub const SECTION_DEMOTED: &str = "outline.section.demoted";
 pub const SECTION_REMOVED: &str = "outline.section.removed";
-pub const IDEA_ATTACHED: &str = "outline.idea.attached";
-pub const IDEA_DETACHED: &str = "outline.idea.detached";
+pub const PASSAGE_ATTACHED: &str = "outline.passage.attached";
+pub const PASSAGE_DETACHED: &str = "outline.passage.detached";
 pub const DISCARDED: &str = "outline.discarded";
 pub const EVERY_OUTLINE: &str = "outline.#";
 
@@ -17,7 +17,7 @@ pub struct PlacedSectionDTO {
     pub section: String,
     pub parent: Option<String>,
     pub title: String,
-    pub ideas: Vec<String>,
+    pub passages: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -59,8 +59,8 @@ pub struct MoveSectionRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct AttachIdeaRequest {
-    pub idea: String,
+pub struct AttachPassageRequest {
+    pub passage: String,
     pub section: String,
     pub after: Option<String>,
 }
@@ -91,14 +91,14 @@ pub enum OutlineEventDTO {
     SectionDemoted { section: String },
     #[serde(rename = "SECTION_REMOVED")]
     SectionRemoved { section: String },
-    #[serde(rename = "IDEA_ATTACHED")]
-    IdeaAttached {
-        idea: String,
+    #[serde(rename = "PASSAGE_ATTACHED")]
+    PassageAttached {
+        passage: String,
         to: String,
         after: Option<String>,
     },
-    #[serde(rename = "IDEA_DETACHED")]
-    IdeaDetached { idea: String },
+    #[serde(rename = "PASSAGE_DETACHED")]
+    PassageDetached { passage: String },
     #[serde(rename = "DISCARDED")]
     Discarded,
 }

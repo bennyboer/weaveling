@@ -1,5 +1,7 @@
 use eventsourcing::Codec;
-use outline_core::{IdeaLink, OutlineEvent, PlacedSection, ProjectLink, SectionId, SectionTitle};
+use outline_core::{
+    OutlineEvent, PassageLink, PlacedSection, ProjectLink, SectionId, SectionTitle,
+};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -31,13 +33,13 @@ enum StoredOutlineEvent {
     SectionRemoved {
         section: String,
     },
-    IdeaAttached {
-        idea: String,
+    PassageAttached {
+        passage: String,
         to: String,
         after: Option<String>,
     },
-    IdeaDetached {
-        idea: String,
+    PassageDetached {
+        passage: String,
     },
     Discarded,
     Snapshotted {
@@ -52,7 +54,7 @@ struct StoredPlacedSection {
     section: String,
     parent: Option<String>,
     title: String,
-    ideas: Vec<String>,
+    passages: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -97,10 +99,10 @@ impl From<&PlacedSection> for StoredPlacedSection {
             section: named(&placed.section),
             parent: placed.parent.as_ref().map(named),
             title: placed.title.as_str().to_owned(),
-            ideas: placed
-                .ideas
+            passages: placed
+                .passages
                 .iter()
-                .map(|idea| idea.as_str().to_owned())
+                .map(|passage| passage.as_str().to_owned())
                 .collect(),
         }
     }
@@ -114,7 +116,7 @@ impl TryFrom<StoredPlacedSection> for PlacedSection {
             section: section(&stored.section)?,
             parent: maybe_section(stored.parent)?,
             title: titled(&stored.title)?,
-            ideas: stored.ideas.into_iter().map(IdeaLink::from).collect(),
+            passages: stored.passages.into_iter().map(PassageLink::from).collect(),
         })
     }
 }
@@ -158,13 +160,13 @@ impl From<&OutlineEvent> for StoredOutlineEvent {
             OutlineEvent::SectionRemoved { section } => Self::SectionRemoved {
                 section: named(section),
             },
-            OutlineEvent::IdeaAttached { idea, to, after } => Self::IdeaAttached {
-                idea: idea.as_str().to_owned(),
+            OutlineEvent::PassageAttached { passage, to, after } => Self::PassageAttached {
+                passage: passage.as_str().to_owned(),
                 to: named(to),
                 after: after.as_ref().map(|link| link.as_str().to_owned()),
             },
-            OutlineEvent::IdeaDetached { idea } => Self::IdeaDetached {
-                idea: idea.as_str().to_owned(),
+            OutlineEvent::PassageDetached { passage } => Self::PassageDetached {
+                passage: passage.as_str().to_owned(),
             },
             OutlineEvent::Discarded => Self::Discarded,
             OutlineEvent::Snapshotted {
@@ -224,13 +226,13 @@ impl TryFrom<StoredOutlineEvent> for OutlineEvent {
             StoredOutlineEvent::SectionRemoved { section: which } => Self::SectionRemoved {
                 section: section(&which)?,
             },
-            StoredOutlineEvent::IdeaAttached { idea, to, after } => Self::IdeaAttached {
-                idea: IdeaLink::from(idea),
+            StoredOutlineEvent::PassageAttached { passage, to, after } => Self::PassageAttached {
+                passage: PassageLink::from(passage),
                 to: section(&to)?,
-                after: after.map(IdeaLink::from),
+                after: after.map(PassageLink::from),
             },
-            StoredOutlineEvent::IdeaDetached { idea } => Self::IdeaDetached {
-                idea: IdeaLink::from(idea),
+            StoredOutlineEvent::PassageDetached { passage } => Self::PassageDetached {
+                passage: PassageLink::from(passage),
             },
             StoredOutlineEvent::Discarded => Self::Discarded,
             StoredOutlineEvent::Snapshotted {
@@ -301,18 +303,18 @@ mod tests {
             OutlineEvent::SectionPromoted { section: chapter },
             OutlineEvent::SectionDemoted { section: chapter },
             OutlineEvent::SectionRemoved { section: chapter },
-            OutlineEvent::IdeaAttached {
-                idea: IdeaLink::from("idea_1"),
+            OutlineEvent::PassageAttached {
+                passage: PassageLink::from("passage_1"),
                 to: chapter,
-                after: Some(IdeaLink::from("idea_2")),
+                after: Some(PassageLink::from("passage_2")),
             },
-            OutlineEvent::IdeaAttached {
-                idea: IdeaLink::from("idea_1"),
+            OutlineEvent::PassageAttached {
+                passage: PassageLink::from("passage_1"),
                 to: chapter,
                 after: None,
             },
-            OutlineEvent::IdeaDetached {
-                idea: IdeaLink::from("idea_1"),
+            OutlineEvent::PassageDetached {
+                passage: PassageLink::from("passage_1"),
             },
             OutlineEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
@@ -321,13 +323,16 @@ mod tests {
                         section: part,
                         parent: None,
                         title: a_title("Part One"),
-                        ideas: Vec::new(),
+                        passages: Vec::new(),
                     },
                     PlacedSection {
                         section: chapter,
                         parent: Some(part),
                         title: a_title("Chapter One"),
-                        ideas: vec![IdeaLink::from("idea_1"), IdeaLink::from("idea_2")],
+                        passages: vec![
+                            PassageLink::from("passage_1"),
+                            PassageLink::from("passage_2"),
+                        ],
                     },
                 ],
                 discarded: false,
@@ -338,7 +343,7 @@ mod tests {
     }
 
     #[test]
-    fn a_snapshot_keeps_the_reading_order_of_its_sections_and_their_ideas() {
+    fn a_snapshot_keeps_the_reading_order_of_its_sections_and_their_passages() {
         let shape = OutlineEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             sections: (1..=4)
@@ -346,9 +351,9 @@ mod tests {
                     section: a_section(nth * 1_000),
                     parent: None,
                     title: a_title(&format!("Section {nth}")),
-                    ideas: vec![
-                        IdeaLink::from(format!("idea_{}b", nth)),
-                        IdeaLink::from(format!("idea_{}a", nth)),
+                    passages: vec![
+                        PassageLink::from(format!("passage_{}b", nth)),
+                        PassageLink::from(format!("passage_{}a", nth)),
                     ],
                 })
                 .collect(),
