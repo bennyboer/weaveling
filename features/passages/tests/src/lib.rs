@@ -12,3 +12,6 @@ mod shared_kernel;
 
 #[cfg(test)]
 mod passage_tidying;
+
+#[cfg(test)]
+mod passage_sweeping;

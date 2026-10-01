@@ -667,13 +667,21 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 **The steps, each reviewable alone:**
 
 1. **Rename `pieces` to `ideas`** — directory, crates, `PieceId` to `IdeaId`, `piece.*` routing keys to `idea.*`, the summaries table, the client. Pure vocabulary: 2,097 sites across 126 files and not one behaviour change, so it is reviewed by confirming nothing *but* names moved rather than by reading every hunk.
-2. **A passage belongs to a project** — the project link it has never had, plus `in_project`, and the deletion cascade sweeps passages straight from `project.deleted`.
-3. **The idea loses its passage** — `Idea.passage`, `PassageAttached`, the attach route and `Discarded { passage }` all go.
+2. **A passage belongs to a project** — the project link it has never had, plus `in_project`, and the deletion cascade sweeps passages straight from `project.deleted`. Split in two: **2a** gives the passage its project, **2b** adds the sweep.
+3. **The idea loses its passage** — `Idea.passage`, `PassageAttached`, the attach route and `Discarded { passage }` all go, and with them the `delete-passage-of-discarded-idea` listener.
 4. **The outline arranges passages** rather than ideas.
 5. **The outline also arranges ideas**, as notes beside the content — the first tagged reference.
 6. **A passage names the idea that prompted it**, owned by the passage.
 7. **The backlinks read model.**
 8. **The inspector, and the routes it rearranges** — in the client.
+
+**Step 2 must precede step 3, and the reason is the nastiest failure in the list.** A `Passage` today is `{ id, doc }` — it has no project, and the only route from a project to its prose runs through the piece that links it. That is exactly what [the cascade](#milestone-11a--projects-event-sourced-and-the-deletion-cascade) exploits. Take the passage off the idea first and project deletion silently stops reaching the prose: no error, no dead letter, just a book that outlives everything that could find it.
+
+**The listener is the whole point of step 3, not a loose end.** Everything else in that step is data; `delete-passage-of-discarded-idea` is the only *behaviour*, and it is the one piece of the codebase that contradicts the decision outright. It makes prose die with a scrap — and the argument for two pools was precisely that an idea is disposable while a passage is the book. A listener that turns throwing away a what-if into destroying a chapter is the coupling the split exists to remove. **Nothing replaces it.** Discarding an idea becomes free because it destroys nothing, and after step 2b the project sweep is the only thing that deletes prose.
+
+**It could not have gone earlier, and it does not come back in step 6.** Before step 2b a passage had no project, so the idea's discard was the only route the cascade had to the prose — the listener was load-bearing, which is why M11a added `Discarded { passage }` to feed it. Step 6 then gives the passage its own link back to the idea that prompted it, and that link is **provenance, not ownership**: it says where the prose came from, carries no delete in either direction, and a discarded idea leaves it dangling rather than taking the passage with it.
+
+**Which means steps 2 and 3 partly undo M11a.** `PieceEvent::Discarded { passage }` exists *because* a passage is unreachable except through its piece; give passages their own project and that carrying is dead weight. It was right for the model as it stood, and it is cheap to remove.
 
 **Step 8 is bigger than "add a panel", because step 3 breaks a route.** Today `/projects/{p}/ideas/{idea}` opens the idea's prose: it reads the idea, follows `Idea.passage`, creates one if there is none, and hands you an editor. Every link into an idea in the client points there — the board chrome, the pool, the outline. Step 3 takes that link away, and with it the question that route answers: an idea no longer *has* a passage, it may touch none or five, so there is nothing singular left to open.
 
@@ -684,10 +692,6 @@ So the inspector is not a new surface beside the old one, it is what that route 
 - **The panel on the board is the same inspector, docked**, filled from the existing selection.
 
 **The inspector follows selection, not a double-click.** Double-click on a card already means rename in place, and selection already exists (`handles.selected`, set on `focusin`). Hanging the inspector off selection costs no new gesture and takes nothing away: single click inspects, double-click still renames, and the inspector's name field is that same edit rather than a second way to do it. Double-click would have to displace rename to a worse home for no gain.
-
-**Step 2 must precede step 3, and the reason is the nastiest failure in the list.** A `Passage` today is `{ id, doc }` — it has no project, and the only route from a project to its prose runs through the piece that links it. That is exactly what [the cascade](#milestone-11a--projects-event-sourced-and-the-deletion-cascade) exploits. Take the passage off the idea first and project deletion silently stops reaching the prose: no error, no dead letter, just a book that outlives everything that could find it.
-
-**Which means steps 2 and 3 partly undo M11a.** `PieceEvent::Discarded { passage }` exists *because* a passage is unreachable except through its piece; give passages their own project and that carrying is dead weight. It was right for the model as it stood, and it is cheap to remove.
 
 **Deliberately out of scope:** a `kind` and a `description` on an idea — both additive, neither needed to prove the model — and anything timeline-shaped, which is what the twenty-ideas spike should inform first.
 

@@ -309,7 +309,8 @@ fn discarding_a_idea_says_which_passage_went_with_it() {
         vec![IdeaEvent::Discarded {
             passage: Some(PassageLink::from("passage_1")),
         }],
-        "passages cannot look a idea up across the seam, so the discard has to carry the          passage or the prose is orphaned with nothing to say so"
+        "passages cannot look a idea up across the seam, so the discard has to carry the \
+         passage or the prose is orphaned with nothing to say so"
     );
 }
 

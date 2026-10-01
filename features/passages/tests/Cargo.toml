@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+async-trait = { workspace = true }
 axum = { workspace = true }
 axum-test = { workspace = true }
 time = { workspace = true }
@@ -23,3 +24,4 @@ passages-sync = { version = "0.1.0", path = "../adapters/sync", package = "weave
 # Foreign contracts: another feature's published events. A feature may reach across the seam
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
 ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }

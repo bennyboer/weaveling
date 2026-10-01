@@ -258,7 +258,8 @@ mod tests {
             IdeaEventDTO::Discarded {
                 passage: Some("passage_1".to_owned()),
             },
-            "the passage has to survive the mapping, because the listener that deletes the              prose has no other way of learning which passage it was"
+            "the passage has to survive the mapping, because the listener that deletes the \
+             prose has no other way of learning which passage it was"
         );
     }
 }

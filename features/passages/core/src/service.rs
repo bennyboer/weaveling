@@ -48,6 +48,20 @@ impl PassageService {
         Ok(self.store.apply(id, update).await?)
     }
 
+    pub async fn in_project(
+        &self,
+        project: &str,
+        after: Option<&str>,
+        at_most: usize,
+    ) -> Result<Vec<PassageId>, PassageServiceError> {
+        let after = after.map(str::parse).transpose()?;
+
+        Ok(self
+            .store
+            .in_project(&ProjectLink::from(project), after, at_most)
+            .await?)
+    }
+
     pub async fn delete(&self, id: &str) -> Result<(), PassageServiceError> {
         let id: PassageId = id.parse()?;
 

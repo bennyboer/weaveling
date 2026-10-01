@@ -352,6 +352,16 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
         .await
         .assert_status_ok();
 
+    let loose = server
+        .post("/api/passages")
+        .json(&json!({ "project": project }))
+        .await;
+    loose.assert_status(axum::http::StatusCode::CREATED);
+    let loose = loose.json::<Value>()["id"]
+        .as_str()
+        .expect("a passage carries an id")
+        .to_owned();
+
     server
         .post("/api/boards")
         .json(&json!({ "project": project }))
@@ -415,7 +425,21 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
                 == axum::http::StatusCode::NOT_FOUND
         })
         .await,
-        "the CRDT store holds the only copy of the prose, so a deleted project has to reach          it — the idea's own discard is what carries the passage across the seam"
+        "the CRDT store holds the only copy of the prose, so a deleted project has to reach \
+         it, however the passage was reached"
+    );
+
+    assert!(
+        until(|| async {
+            server
+                .get(&format!("/api/passages/{loose}"))
+                .await
+                .status_code()
+                == axum::http::StatusCode::NOT_FOUND
+        })
+        .await,
+        "this passage hangs off no idea at all, so nothing but the project's own sweep can \
+         reach it — the path that has to survive the idea losing its passage"
     );
 
     let stuck: Vec<(String, String)> = sqlx::query_as("SELECT listener, why FROM dead_letters")
