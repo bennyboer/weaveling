@@ -8,7 +8,7 @@ A passage is a CRDT document (`yrs`, the Rust side of Yjs), because prose is edi
 
 **Storage is an append-only log of updates**, compacted into a snapshot when it grows. Appends commute, so concurrent applies need no locking; a read-merge-write backend would silently lose one of two concurrent updates, below the merge where CRDTs cannot help.
 
-**A passage belongs to a project, not to whatever points at it.** The prose is reachable from an idea, and later from the outline, but ownership is a column on the passage itself: deleting a project has to reach the words directly. If the only path to prose ran through its idea, dropping that link would leave a book nobody can find and nothing can collect.
+**A passage belongs to a project, and to nothing else.** Views will point at prose — the outline arranges it, an idea may name it — but ownership is a column on the passage itself, and the project’s deletion sweep is the only thing that removes one. Nothing an author throws away can take prose with it: an idea is disposable, a passage is the book.
 
 Awareness — cursors, selections, who is here — is relayed as opaque bytes and never decoded or stored. Presence is ephemeral by decision, expressed as a dependency arrow: it lives and dies inside `adapters/sync`.
 

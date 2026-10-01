@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use passages_core::{PassageService, PassageStore};
-use passages_messaging::{DeleteOnDiscard, DeleteOnProjectDeleted};
+use passages_messaging::DeleteOnProjectDeleted;
 use passages_store::InMemoryPassageStore;
 use passages_sync::LivePassages;
 use wiring::{Context, Wired};
@@ -27,7 +27,6 @@ impl Ports {
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let passages = PassageService::new(ports.store.clone(), context.clock.clone());
-    let tidy = DeleteOnDiscard::new(passages.clone());
     let sweep = DeleteOnProjectDeleted::new(
         passages.clone(),
         context.publisher.clone(),
@@ -38,7 +37,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         passages_rest::router(passages.clone())
             .merge(passages_sync::router(LivePassages::new(passages))),
     )
-    .listening(vec![Arc::new(tidy), Arc::new(sweep)])
+    .listening(vec![Arc::new(sweep)])
 }
 
 pub const NAME: &str = "passages";

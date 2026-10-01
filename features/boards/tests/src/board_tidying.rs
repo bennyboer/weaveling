@@ -233,7 +233,7 @@ async fn what_the_discard_message_says_matches_the_published_shape() {
 
     assert_eq!(
         read,
-        IdeaEventDTO::Discarded { passage: None },
+        IdeaEventDTO::Discarded,
         "if this stops parsing, the ideas contract moved and this listener is deaf"
     );
 }

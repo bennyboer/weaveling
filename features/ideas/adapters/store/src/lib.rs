@@ -1,5 +1,5 @@
 use eventsourcing::Codec;
-use ideas_core::{IdeaEvent, IdeaTitle, PassageLink, ProjectLink};
+use ideas_core::{IdeaEvent, IdeaTitle, ProjectLink};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
@@ -11,16 +11,10 @@ enum StoredIdeaEvent {
     Retitled {
         title: String,
     },
-    PassageAttached {
-        passage: String,
-    },
-    Discarded {
-        passage: Option<String>,
-    },
+    Discarded,
     Snapshotted {
         project: String,
         title: String,
-        passage: Option<String>,
         discarded: bool,
     },
 }
@@ -49,21 +43,14 @@ impl From<&IdeaEvent> for StoredIdeaEvent {
             IdeaEvent::Retitled(title) => Self::Retitled {
                 title: title.as_str().to_owned(),
             },
-            IdeaEvent::PassageAttached { passage } => Self::PassageAttached {
-                passage: passage.as_str().to_owned(),
-            },
-            IdeaEvent::Discarded { passage } => Self::Discarded {
-                passage: passage.as_ref().map(|link| link.as_str().to_owned()),
-            },
+            IdeaEvent::Discarded => Self::Discarded,
             IdeaEvent::Snapshotted {
                 project,
                 title,
-                passage,
                 discarded,
             } => Self::Snapshotted {
                 project: project.as_str().to_owned(),
                 title: title.as_str().to_owned(),
-                passage: passage.as_ref().map(|link| link.as_str().to_owned()),
                 discarded: *discarded,
             },
         }
@@ -80,21 +67,14 @@ impl TryFrom<StoredIdeaEvent> for IdeaEvent {
                 title: IdeaTitle::new(&title)?,
             },
             StoredIdeaEvent::Retitled { title } => Self::Retitled(IdeaTitle::new(&title)?),
-            StoredIdeaEvent::PassageAttached { passage } => Self::PassageAttached {
-                passage: PassageLink::from(passage),
-            },
-            StoredIdeaEvent::Discarded { passage } => Self::Discarded {
-                passage: passage.map(PassageLink::from),
-            },
+            StoredIdeaEvent::Discarded => Self::Discarded,
             StoredIdeaEvent::Snapshotted {
                 project,
                 title,
-                passage,
                 discarded,
             } => Self::Snapshotted {
                 project: ProjectLink::from(project),
                 title: IdeaTitle::new(&title)?,
-                passage: passage.map(PassageLink::from),
                 discarded,
             },
         })
@@ -123,23 +103,15 @@ mod tests {
                 title: a_title("A girl in a wood"),
             },
             IdeaEvent::Retitled(a_title("The fox who lied")),
-            IdeaEvent::PassageAttached {
-                passage: PassageLink::from("passage_1"),
-            },
-            IdeaEvent::Discarded { passage: None },
-            IdeaEvent::Discarded {
-                passage: Some(PassageLink::from("passage_1")),
-            },
+            IdeaEvent::Discarded,
             IdeaEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
                 title: a_title("A crown of straw"),
-                passage: Some(PassageLink::from("passage_1")),
                 discarded: true,
             },
             IdeaEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
                 title: a_title("Unwritten"),
-                passage: None,
                 discarded: false,
             },
         ] {
@@ -175,11 +147,21 @@ mod tests {
 
     #[test]
     fn the_stored_shape_names_its_variant() {
-        let written = (codec().body)(&IdeaEvent::Discarded { passage: None });
+        let written = (codec().body)(&IdeaEvent::Snapshotted {
+            project: ProjectLink::from("project_1"),
+            title: a_title("A crown of straw"),
+            discarded: true,
+        });
 
         assert_eq!(
             written,
-            serde_json::json!({ "Discarded": { "passage": null } })
+            serde_json::json!({
+                "Snapshotted": {
+                    "project": "project_1",
+                    "title": "A crown of straw",
+                    "discarded": true,
+                }
+            })
         );
     }
 }

@@ -1,5 +1,5 @@
 use eventsourcing::Version;
-use ideas_core::{IdeaCatalog, IdeaId, IdeaSummary, IdeaTitle, PassageLink, ProjectLink};
+use ideas_core::{IdeaCatalog, IdeaId, IdeaSummary, IdeaTitle, ProjectLink};
 use time::OffsetDateTime;
 
 #[async_trait::async_trait]
@@ -23,7 +23,6 @@ pub fn a_summary(id: IdeaId, project: &str, title: &str) -> IdeaSummary {
         version: Version::of(1),
         project: ProjectLink::from(project),
         title: IdeaTitle::new(title).expect("a plain title is fine"),
-        passage: None,
     }
 }
 
@@ -88,7 +87,6 @@ pub async fn remembering_the_same_idea_again_replaces_what_was_there(catalog: &i
 
     let mut later = a_summary(id, "project_1", "The Silent Loom");
     later.version = Version::of(2);
-    later.passage = Some(PassageLink::from("passage_9"));
     catalog
         .remember(&later)
         .await

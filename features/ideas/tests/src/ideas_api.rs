@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
-use ideas_contract::{AttachPassageRequest, CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
+use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
 use ideas_core::IdeaTitle;
 
 use crate::wiring::{Wired, wired};
@@ -73,10 +73,6 @@ async fn a_captured_idea_comes_back_with_a_prefixed_id() {
     );
     assert_eq!(captured.title, "The Loom");
     assert_eq!(captured.project, "project_1");
-    assert_eq!(
-        captured.passage, None,
-        "a passage is attached on first open"
-    );
 }
 
 #[tokio::test]
@@ -167,46 +163,6 @@ async fn a_title_the_domain_refuses_is_a_bad_request() {
         })
         .await
         .assert_status(StatusCode::BAD_REQUEST);
-}
-
-#[tokio::test]
-async fn a_passage_can_be_attached() {
-    let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
-
-    let response = server
-        .put(&format!("/ideas/{}/passage", captured.id))
-        .json(&AttachPassageRequest {
-            passage: "passage_9".to_owned(),
-        })
-        .await;
-
-    response.assert_status_ok();
-    assert_eq!(
-        response.json::<IdeaDTO>().passage,
-        Some("passage_9".to_owned())
-    );
-}
-
-#[tokio::test]
-async fn a_second_passage_is_a_conflict() {
-    let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
-    server
-        .put(&format!("/ideas/{}/passage", captured.id))
-        .json(&AttachPassageRequest {
-            passage: "passage_9".to_owned(),
-        })
-        .await
-        .assert_status_ok();
-
-    server
-        .put(&format!("/ideas/{}/passage", captured.id))
-        .json(&AttachPassageRequest {
-            passage: "passage_10".to_owned(),
-        })
-        .await
-        .assert_status(StatusCode::CONFLICT);
 }
 
 #[tokio::test]
@@ -472,24 +428,6 @@ async fn a_retitled_idea_is_listed_under_its_new_title() {
 
     assert_eq!(listed[0].title, "The Silent Loom");
     assert_eq!(listed[0].version, 2, "the listing must not go stale");
-}
-
-#[tokio::test]
-async fn an_attached_passage_shows_up_in_the_listing() {
-    let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
-
-    server
-        .put(&format!("/ideas/{}/passage", captured.id))
-        .json(&AttachPassageRequest {
-            passage: "passage_9".to_owned(),
-        })
-        .await
-        .assert_status_ok();
-
-    let listed = server.listed("project_1").await;
-
-    assert_eq!(listed[0].passage, Some("passage_9".to_owned()));
 }
 
 #[tokio::test]

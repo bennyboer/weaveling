@@ -9,6 +9,6 @@ mod idea_tests;
 
 pub use catalog::{CatalogError, IdeaCatalog, IdeaSummary};
 pub use id::IdeaId;
-pub use idea::{Idea, IdeaCommand, IdeaError, IdeaEvent, KIND, PassageLink, ProjectLink};
+pub use idea::{Idea, IdeaCommand, IdeaError, IdeaEvent, KIND, ProjectLink};
 pub use service::{IdeaService, IdeaServiceError};
 pub use title::{IdeaTitle, InvalidIdeaTitle};

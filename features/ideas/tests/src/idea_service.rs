@@ -5,9 +5,7 @@ use clock::FixedClock;
 use eventsourcing::{Agent, AgentId, AggregateId, EventStore, ServiceError, Version};
 use time::{Duration, OffsetDateTime};
 
-use ideas_core::{
-    IdeaError, IdeaId, IdeaService, IdeaServiceError, IdeaTitle, KIND, PassageLink, ProjectLink,
-};
+use ideas_core::{IdeaError, IdeaId, IdeaService, IdeaServiceError, IdeaTitle, KIND, ProjectLink};
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -39,7 +37,6 @@ async fn capturing_yields_an_id_the_idea_can_be_fetched_with() {
 
     assert_eq!(idea.state.title().as_str(), "The Loom");
     assert_eq!(idea.state.project(), &ProjectLink::from("project_1"));
-    assert_eq!(idea.state.passage(), None);
     assert_eq!(idea.version, Version::of(1));
 }
 
@@ -142,47 +139,6 @@ async fn retitling_to_the_same_title_is_accepted_and_records_nothing() {
 }
 
 #[tokio::test]
-async fn a_passage_can_be_attached_once() {
-    let (service, _) = a_workbench();
-    let id = a_captured_idea(&service).await;
-
-    service
-        .attach_passage(&id.to_string(), "passage_9", None, &an_author())
-        .await
-        .expect("attaching should succeed");
-
-    assert_eq!(
-        service
-            .get(&id.to_string())
-            .await
-            .expect("it exists")
-            .state
-            .passage(),
-        Some(&PassageLink::from("passage_9"))
-    );
-}
-
-#[tokio::test]
-async fn a_second_passage_is_refused() {
-    let (service, _) = a_workbench();
-    let id = a_captured_idea(&service).await;
-    service
-        .attach_passage(&id.to_string(), "passage_9", None, &an_author())
-        .await
-        .expect("the first attaches");
-
-    let refused = service
-        .attach_passage(&id.to_string(), "passage_10", None, &an_author())
-        .await
-        .expect_err("the second must not");
-
-    assert!(matches!(
-        refused,
-        IdeaServiceError::Events(ServiceError::Refused(IdeaError::AlreadyHoldsPassage))
-    ));
-}
-
-#[tokio::test]
 async fn a_discarded_idea_refuses_further_changes() {
     let (service, _) = a_workbench();
     let id = a_captured_idea(&service).await;
@@ -262,9 +218,9 @@ async fn a_idea_is_snapshotted_once_the_threshold_is_reached() {
         .await
         .expect("capturing should succeed");
     service
-        .attach_passage(&id.to_string(), "passage_9", None, &an_author())
+        .retitle(&id.to_string(), "Title 2", None, &an_author())
         .await
-        .expect("attaching should succeed");
+        .expect("retitling should succeed");
 
     for counted in 3..100 {
         service
@@ -311,9 +267,9 @@ async fn a_idea_survives_on_its_snapshot_alone() {
         .await
         .expect("capturing should succeed");
     service
-        .attach_passage(&id.to_string(), "passage_9", None, &an_author())
+        .retitle(&id.to_string(), "Title 2", None, &an_author())
         .await
-        .expect("attaching should succeed");
+        .expect("retitling should succeed");
 
     for counted in 3..=100 {
         service
@@ -363,7 +319,6 @@ async fn a_idea_survives_on_its_snapshot_alone() {
         .state;
 
     assert_eq!(idea.title().as_str(), "Title 100");
-    assert_eq!(idea.passage(), Some(&PassageLink::from("passage_9")));
     assert_eq!(idea.project(), &ProjectLink::from("project_1"));
     assert!(!idea.is_discarded());
 }

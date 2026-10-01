@@ -328,10 +328,6 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
         .json(&json!({ "project": project, "title": "A girl in a wood" }))
         .await;
     captured.assert_status(axum::http::StatusCode::CREATED);
-    let idea = captured.json::<Value>()["id"]
-        .as_str()
-        .expect("a captured idea carries an id")
-        .to_owned();
 
     let made = server
         .post("/api/passages")
@@ -343,24 +339,9 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
         .expect("a passage carries an id")
         .to_owned();
     server
-        .put(&format!("/api/ideas/{idea}/passage"))
-        .json(&json!({ "passage": passage }))
-        .await
-        .assert_status_ok();
-    server
         .get(&format!("/api/passages/{passage}"))
         .await
         .assert_status_ok();
-
-    let loose = server
-        .post("/api/passages")
-        .json(&json!({ "project": project }))
-        .await;
-    loose.assert_status(axum::http::StatusCode::CREATED);
-    let loose = loose.json::<Value>()["id"]
-        .as_str()
-        .expect("a passage carries an id")
-        .to_owned();
 
     server
         .post("/api/boards")
@@ -425,21 +406,8 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
                 == axum::http::StatusCode::NOT_FOUND
         })
         .await,
-        "the CRDT store holds the only copy of the prose, so a deleted project has to reach \
-         it, however the passage was reached"
-    );
-
-    assert!(
-        until(|| async {
-            server
-                .get(&format!("/api/passages/{loose}"))
-                .await
-                .status_code()
-                == axum::http::StatusCode::NOT_FOUND
-        })
-        .await,
-        "this passage hangs off no idea at all, so nothing but the project's own sweep can \
-         reach it — the path that has to survive the idea losing its passage"
+        "the CRDT store holds the only copy of the prose, and nothing points at this passage \
+         but its own project column, so the project's sweep is the only thing that can reach it"
     );
 
     let stuck: Vec<(String, String)> = sqlx::query_as("SELECT listener, why FROM dead_letters")

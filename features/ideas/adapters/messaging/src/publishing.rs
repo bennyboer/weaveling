@@ -71,12 +71,7 @@ fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
         IdeaEvent::Retitled(title) => IdeaEventDTO::Retitled {
             title: title.to_string(),
         },
-        IdeaEvent::PassageAttached { passage } => IdeaEventDTO::PassageAttached {
-            passage: passage.to_string(),
-        },
-        IdeaEvent::Discarded { passage } => IdeaEventDTO::Discarded {
-            passage: passage.as_ref().map(ToString::to_string),
-        },
+        IdeaEvent::Discarded => IdeaEventDTO::Discarded,
         IdeaEvent::Snapshotted { .. } => return None,
     })
 }
@@ -85,8 +80,8 @@ fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
 mod tests {
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Recorded, Version};
-    use ideas_contract::{CAPTURED, DISCARDED, PASSAGE_ATTACHED, RETITLED};
-    use ideas_core::{IdeaTitle, KIND, PassageLink, ProjectLink};
+    use ideas_contract::{CAPTURED, DISCARDED, RETITLED};
+    use ideas_core::{IdeaTitle, KIND, ProjectLink};
     use messaging::RoutingKey;
     use serde_json::json;
     use time::{Duration, OffsetDateTime};
@@ -130,13 +125,7 @@ mod tests {
         vec![
             (a_capture(), CAPTURED),
             (IdeaEvent::Retitled(a_title()), RETITLED),
-            (
-                IdeaEvent::PassageAttached {
-                    passage: PassageLink::from("passage_1"),
-                },
-                PASSAGE_ATTACHED,
-            ),
-            (IdeaEvent::Discarded { passage: None }, DISCARDED),
+            (IdeaEvent::Discarded, DISCARDED),
         ]
     }
 
@@ -207,7 +196,6 @@ mod tests {
         let snapshot = IdeaEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             title: a_title(),
-            passage: Some(PassageLink::from("passage_1")),
             discarded: false,
         };
 
@@ -239,27 +227,5 @@ mod tests {
             event_in(&stray),
             Err(UnreadableIdeaEvent::NotAIdeaEvent(..))
         ));
-    }
-
-    #[test]
-    fn a_discard_puts_the_passage_on_the_wire() {
-        let id = a_idea();
-
-        let body = event_in(&published(
-            &id,
-            IdeaEvent::Discarded {
-                passage: Some(PassageLink::from("passage_1")),
-            },
-        ))
-        .expect("what we wrote must be readable");
-
-        assert_eq!(
-            body.event.body,
-            IdeaEventDTO::Discarded {
-                passage: Some("passage_1".to_owned()),
-            },
-            "the passage has to survive the mapping, because the listener that deletes the \
-             prose has no other way of learning which passage it was"
-        );
     }
 }

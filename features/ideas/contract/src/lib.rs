@@ -12,22 +12,15 @@ pub struct RetitleIdeaRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct AttachPassageRequest {
-    pub passage: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct IdeaDTO {
     pub id: String,
     pub version: u64,
     pub project: String,
     pub title: String,
-    pub passage: Option<String>,
 }
 
 pub const CAPTURED: &str = "idea.captured";
 pub const RETITLED: &str = "idea.retitled";
-pub const PASSAGE_ATTACHED: &str = "idea.passage.attached";
 pub const DISCARDED: &str = "idea.discarded";
 pub const EVERY_IDEA: &str = "idea.#";
 pub const MORE_TO_SWEEP: &str = "idea.sweep.more";
@@ -45,8 +38,6 @@ pub enum IdeaEventDTO {
     Captured { project: String, title: String },
     #[serde(rename = "RETITLED")]
     Retitled { title: String },
-    #[serde(rename = "PASSAGE_ATTACHED")]
-    PassageAttached { passage: String },
     #[serde(rename = "DISCARDED")]
-    Discarded { passage: Option<String> },
+    Discarded,
 }

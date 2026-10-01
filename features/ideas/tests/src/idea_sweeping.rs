@@ -88,7 +88,6 @@ impl Wired {
                     version: Version::of(1),
                     project: ProjectLink::from(A_PROJECT),
                     title: IdeaTitle::new(&format!("Idea {nth}")).expect("a plain title is fine"),
-                    passage: None,
                 })
                 .await
                 .expect("remembering should succeed");

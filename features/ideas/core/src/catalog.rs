@@ -5,7 +5,7 @@ use eventsourcing::Version;
 use thiserror::Error;
 
 use crate::id::IdeaId;
-use crate::idea::{Idea, PassageLink, ProjectLink};
+use crate::idea::{Idea, ProjectLink};
 use crate::title::IdeaTitle;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,7 +14,6 @@ pub struct IdeaSummary {
     pub version: Version,
     pub project: ProjectLink,
     pub title: IdeaTitle,
-    pub passage: Option<PassageLink>,
 }
 
 #[derive(Debug, Error)]
@@ -46,7 +45,6 @@ impl IdeaSummary {
             version,
             project: idea.project().clone(),
             title: idea.title().clone(),
-            passage: idea.passage().cloned(),
         }
     }
 }

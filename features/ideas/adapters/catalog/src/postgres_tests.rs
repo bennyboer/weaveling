@@ -56,7 +56,7 @@ async fn the_id_columns_sort_bytewise_whatever_the_database_locale_is() {
     .await
     .expect("reading the catalog should succeed");
 
-    for named in ["idea", "project", "passage"] {
+    for named in ["idea", "project"] {
         let found = collations
             .iter()
             .find(|(column, _)| column == named)
@@ -97,7 +97,7 @@ async fn a_batch_is_read_straight_out_of_the_index() {
         .expect("analysing should succeed");
 
     let plan: Vec<String> = sqlx::query_scalar(
-        "EXPLAIN SELECT idea, version, project, title, passage
+        "EXPLAIN SELECT idea, version, project, title
          FROM idea_summaries
          WHERE project = $1 AND idea > $2
          ORDER BY idea

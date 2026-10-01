@@ -4,9 +4,9 @@ use axum::extract::{Path, Query, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put};
+use axum::routing::get;
 use eventsourcing::{Agent, Standing, Version};
-use ideas_contract::{AttachPassageRequest, CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
+use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
 use ideas_core::{Idea, IdeaService, IdeaServiceError, IdeaSummary};
 use serde::Deserialize;
 use serving::{Unreadable, demanded, refusal, tag};
@@ -15,7 +15,6 @@ pub fn router(ideas: IdeaService) -> Router {
     Router::new()
         .route("/ideas", get(list).post(capture))
         .route("/ideas/{id}", get(find).patch(retitle).delete(discard))
-        .route("/ideas/{id}/passage", put(attach_passage))
         .with_state(ideas)
 }
 
@@ -39,7 +38,6 @@ fn to_dto(summary: &IdeaSummary) -> IdeaDTO {
         version: summary.version.count(),
         project: summary.project.to_string(),
         title: summary.title.to_string(),
-        passage: summary.passage.as_ref().map(ToString::to_string),
     }
 }
 
@@ -78,19 +76,6 @@ async fn retitle(
     Ok(to_response(StatusCode::OK, &id, &ideas.get(&id).await?))
 }
 
-async fn attach_passage(
-    State(ideas): State<IdeaService>,
-    Path(id): Path<String>,
-    headers: HeaderMap,
-    Json(request): Json<AttachPassageRequest>,
-) -> Result<Response, ApiError> {
-    ideas
-        .attach_passage(&id, &request.passage, expected(&headers)?, &nobody_yet())
-        .await?;
-
-    Ok(to_response(StatusCode::OK, &id, &ideas.get(&id).await?))
-}
-
 async fn discard(
     State(ideas): State<IdeaService>,
     Path(id): Path<String>,
@@ -122,7 +107,6 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Idea>) -> Respo
             version: standing.version.count(),
             project: idea.project().to_string(),
             title: idea.title().to_string(),
-            passage: idea.passage().map(ToString::to_string),
         }),
     )
         .into_response()

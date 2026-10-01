@@ -9,7 +9,7 @@ use thiserror::Error;
 
 use crate::catalog::{CatalogError, IdeaCatalog, IdeaSummary};
 use crate::id::IdeaId;
-use crate::idea::{Idea, IdeaCommand, IdeaError, IdeaEvent, PassageLink, ProjectLink};
+use crate::idea::{Idea, IdeaCommand, IdeaError, IdeaEvent, ProjectLink};
 use crate::title::{IdeaTitle, InvalidIdeaTitle};
 
 #[derive(Debug, Error)]
@@ -87,22 +87,6 @@ impl IdeaService {
         self.carry_out(
             id,
             IdeaCommand::Retitle(IdeaTitle::new(title)?),
-            expected,
-            agent,
-        )
-        .await
-    }
-
-    pub async fn attach_passage(
-        &self,
-        id: &str,
-        passage: &str,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Version, IdeaServiceError> {
-        self.carry_out(
-            id,
-            IdeaCommand::AttachPassage(PassageLink::from(passage)),
             expected,
             agent,
         )

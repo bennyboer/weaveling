@@ -18,15 +18,11 @@ impl From<&IdeaId> for AggregateId {
 
 const CAPTURED: EventName = EventName::of("CAPTURED");
 const RETITLED: EventName = EventName::of("RETITLED");
-const PASSAGE_ATTACHED: EventName = EventName::of("PASSAGE_ATTACHED");
 const DISCARDED: EventName = EventName::of("DISCARDED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProjectLink(String);
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PassageLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IdeaCommand {
@@ -35,7 +31,6 @@ pub enum IdeaCommand {
         title: IdeaTitle,
     },
     Retitle(IdeaTitle),
-    AttachPassage(PassageLink),
     Discard,
 }
 
@@ -46,16 +41,10 @@ pub enum IdeaEvent {
         title: IdeaTitle,
     },
     Retitled(IdeaTitle),
-    PassageAttached {
-        passage: PassageLink,
-    },
-    Discarded {
-        passage: Option<PassageLink>,
-    },
+    Discarded,
     Snapshotted {
         project: ProjectLink,
         title: IdeaTitle,
-        passage: Option<PassageLink>,
         discarded: bool,
     },
 }
@@ -64,7 +53,6 @@ pub enum IdeaEvent {
 pub struct Idea {
     project: ProjectLink,
     title: IdeaTitle,
-    passage: Option<PassageLink>,
     discarded: bool,
 }
 
@@ -76,8 +64,6 @@ pub enum IdeaError {
     AlreadyCaptured,
     #[error("a discarded idea accepts no changes")]
     Discarded,
-    #[error("this idea already has a passage")]
-    AlreadyHoldsPassage,
 }
 
 impl ProjectLink {
@@ -104,30 +90,6 @@ impl Display for ProjectLink {
     }
 }
 
-impl PassageLink {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
-impl From<String> for PassageLink {
-    fn from(given: String) -> Self {
-        Self(given)
-    }
-}
-
-impl From<&str> for PassageLink {
-    fn from(given: &str) -> Self {
-        Self(given.to_owned())
-    }
-}
-
-impl Display for PassageLink {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        Display::fmt(&self.0, f)
-    }
-}
-
 impl Idea {
     pub fn project(&self) -> &ProjectLink {
         &self.project
@@ -135,10 +97,6 @@ impl Idea {
 
     pub fn title(&self) -> &IdeaTitle {
         &self.title
-    }
-
-    pub fn passage(&self) -> Option<&PassageLink> {
-        self.passage.as_ref()
     }
 
     pub fn is_discarded(&self) -> bool {
@@ -151,7 +109,6 @@ impl Event for IdeaEvent {
         match self {
             Self::Captured { .. } => CAPTURED,
             Self::Retitled { .. } => RETITLED,
-            Self::PassageAttached { .. } => PASSAGE_ATTACHED,
             Self::Discarded { .. } => DISCARDED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -187,18 +144,15 @@ impl Aggregate for Idea {
             IdeaEvent::Captured { project, title } => Some(Self {
                 project: project.clone(),
                 title: title.clone(),
-                passage: None,
                 discarded: false,
             }),
             IdeaEvent::Snapshotted {
                 project,
                 title,
-                passage,
                 discarded,
             } => Some(Self {
                 project: project.clone(),
                 title: title.clone(),
-                passage: passage.clone(),
                 discarded: *discarded,
             }),
             _ => None,
@@ -219,16 +173,7 @@ impl Aggregate for Idea {
 
                 Ok(vec![IdeaEvent::Retitled(to)])
             }
-            IdeaCommand::AttachPassage(passage) => {
-                if self.passage.is_some() {
-                    return Err(IdeaError::AlreadyHoldsPassage);
-                }
-
-                Ok(vec![IdeaEvent::PassageAttached { passage }])
-            }
-            IdeaCommand::Discard => Ok(vec![IdeaEvent::Discarded {
-                passage: self.passage.clone(),
-            }]),
+            IdeaCommand::Discard => Ok(vec![IdeaEvent::Discarded]),
         }
     }
 
@@ -236,17 +181,14 @@ impl Aggregate for Idea {
         match event {
             IdeaEvent::Captured { .. } => {}
             IdeaEvent::Retitled(to) => self.title = to.clone(),
-            IdeaEvent::PassageAttached { passage } => self.passage = Some(passage.clone()),
-            IdeaEvent::Discarded { .. } => self.discarded = true,
+            IdeaEvent::Discarded => self.discarded = true,
             IdeaEvent::Snapshotted {
                 project,
                 title,
-                passage,
                 discarded,
             } => {
                 self.project = project.clone();
                 self.title = title.clone();
-                self.passage = passage.clone();
                 self.discarded = *discarded;
             }
         }
@@ -256,7 +198,6 @@ impl Aggregate for Idea {
         IdeaEvent::Snapshotted {
             project: self.project.clone(),
             title: self.title.clone(),
-            passage: self.passage.clone(),
             discarded: self.discarded,
         }
     }
