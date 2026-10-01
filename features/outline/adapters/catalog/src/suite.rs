@@ -1,4 +1,4 @@
-use outline_core::{OutlineCatalog, OutlineId, OutlineSummary, PassageLink, ProjectLink};
+use outline_core::{Attachment, OutlineCatalog, OutlineId, OutlineSummary, ProjectLink};
 use time::OffsetDateTime;
 
 #[async_trait::async_trait]
@@ -120,7 +120,7 @@ pub async fn a_project_lists_its_outlines_in_a_settled_order(catalog: &impl Outl
 
 pub async fn a_passage_nobody_placed_is_in_no_outline(catalog: &impl OutlineCatalog) {
     let found = catalog
-        .outlines_holding(&PassageLink::from("passage_loose"))
+        .outlines_holding(&Attachment::passage("passage_loose"))
         .await
         .expect("looking should succeed");
 
@@ -134,13 +134,13 @@ pub async fn an_attached_passage_names_the_outline_holding_it(catalog: &impl Out
     let outline = OutlineId::generate(at(1_000));
 
     catalog
-        .holds(outline, &[PassageLink::from("passage_1")])
+        .holds(outline, &[Attachment::passage("passage_1")])
         .await
         .expect("indexing should succeed");
 
     assert_eq!(
         catalog
-            .outlines_holding(&PassageLink::from("passage_1"))
+            .outlines_holding(&Attachment::passage("passage_1"))
             .await
             .expect("looking should succeed"),
         vec![outline]
@@ -152,14 +152,14 @@ pub async fn a_passage_may_sit_in_more_than_one_outline(catalog: &impl OutlineCa
     let latest = OutlineId::generate(at(2_000));
     for outline in [latest, earliest] {
         catalog
-            .holds(outline, &[PassageLink::from("passage_1")])
+            .holds(outline, &[Attachment::passage("passage_1")])
             .await
             .expect("indexing should succeed");
     }
 
     assert_eq!(
         catalog
-            .outlines_holding(&PassageLink::from("passage_1"))
+            .outlines_holding(&Attachment::passage("passage_1"))
             .await
             .expect("looking should succeed"),
         vec![earliest, latest],
@@ -170,18 +170,18 @@ pub async fn a_passage_may_sit_in_more_than_one_outline(catalog: &impl OutlineCa
 pub async fn what_an_outline_holds_is_replaced_not_added_to(catalog: &impl OutlineCatalog) {
     let outline = OutlineId::generate(at(1_000));
     catalog
-        .holds(outline, &[PassageLink::from("passage_1")])
+        .holds(outline, &[Attachment::passage("passage_1")])
         .await
         .expect("indexing should succeed");
 
     catalog
-        .holds(outline, &[PassageLink::from("passage_2")])
+        .holds(outline, &[Attachment::passage("passage_2")])
         .await
         .expect("indexing again should succeed");
 
     assert!(
         catalog
-            .outlines_holding(&PassageLink::from("passage_1"))
+            .outlines_holding(&Attachment::passage("passage_1"))
             .await
             .expect("looking should succeed")
             .is_empty(),
@@ -189,7 +189,7 @@ pub async fn what_an_outline_holds_is_replaced_not_added_to(catalog: &impl Outli
     );
     assert_eq!(
         catalog
-            .outlines_holding(&PassageLink::from("passage_2"))
+            .outlines_holding(&Attachment::passage("passage_2"))
             .await
             .expect("looking should succeed"),
         vec![outline]
@@ -203,7 +203,7 @@ pub async fn one_outline_letting_a_passage_go_leaves_the_others_holding_it(
     let dropping = OutlineId::generate(at(2_000));
     for outline in [keeping, dropping] {
         catalog
-            .holds(outline, &[PassageLink::from("passage_1")])
+            .holds(outline, &[Attachment::passage("passage_1")])
             .await
             .expect("indexing should succeed");
     }
@@ -215,7 +215,7 @@ pub async fn one_outline_letting_a_passage_go_leaves_the_others_holding_it(
 
     assert_eq!(
         catalog
-            .outlines_holding(&PassageLink::from("passage_1"))
+            .outlines_holding(&Attachment::passage("passage_1"))
             .await
             .expect("looking should succeed"),
         vec![keeping],
@@ -235,11 +235,11 @@ pub async fn a_forgotten_outline_takes_its_passages_with_it(catalog: &impl Outli
         .await
         .expect("remembering should succeed");
     catalog
-        .holds(outline, &[PassageLink::from("passage_1")])
+        .holds(outline, &[Attachment::passage("passage_1")])
         .await
         .expect("indexing should succeed");
     catalog
-        .holds(elsewhere, &[PassageLink::from("passage_1")])
+        .holds(elsewhere, &[Attachment::passage("passage_1")])
         .await
         .expect("indexing should succeed");
 
@@ -257,7 +257,7 @@ pub async fn a_forgotten_outline_takes_its_passages_with_it(catalog: &impl Outli
     );
     assert_eq!(
         catalog
-            .outlines_holding(&PassageLink::from("passage_1"))
+            .outlines_holding(&Attachment::passage("passage_1"))
             .await
             .expect("looking should succeed"),
         vec![elsewhere],

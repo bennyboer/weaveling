@@ -6,7 +6,7 @@ use eventsourcing::{
 };
 use messaging::Message;
 use outline_core::{
-    KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, PassageLink, ProjectLink, SectionId,
+    Attachment, KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, ProjectLink, SectionId,
     SectionTitle,
 };
 use outline_messaging::message_for;
@@ -130,7 +130,7 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
             .outlines
             .attach(
                 &address,
-                PassageLink::from(format!("passage_{nth}").as_str()),
+                Attachment::passage(&format!("passage_{nth}")),
                 *chapter,
                 None,
                 None,

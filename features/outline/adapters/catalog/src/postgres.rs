@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use outline_core::{
-    CatalogError, OutlineCatalog, OutlineId, OutlineSummary, PassageLink, ProjectLink,
+    Attachment, CatalogError, OutlineCatalog, OutlineId, OutlineSummary, ProjectLink,
 };
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
@@ -20,16 +20,28 @@ const IN_PROJECT: &str = "
     ORDER BY outline
 ";
 
-const LET_GO: &str = "DELETE FROM outline_passages WHERE outline = $1";
+const LET_GO: &str = "DELETE FROM outline_attachments WHERE outline = $1";
 
 const HOLD: &str = "
-    INSERT INTO outline_passages (outline, passage)
-    SELECT $1, held
-    FROM unnest($2::text[]) AS held
+    INSERT INTO outline_attachments (outline, kind, attached)
+    SELECT $1, kind, attached
+    FROM unnest($2::text[], $3::text[]) AS held (kind, attached)
     ON CONFLICT DO NOTHING
 ";
 
-const HOLDING: &str = "SELECT outline FROM outline_passages WHERE passage = $1 ORDER BY outline";
+const HOLDING: &str = "
+    SELECT outline
+    FROM outline_attachments
+    WHERE kind = $1 AND attached = $2
+    ORDER BY outline
+";
+
+fn kind_of(attachment: &Attachment) -> &'static str {
+    match attachment {
+        Attachment::Passage(_) => "passage",
+        Attachment::Idea(_) => "idea",
+    }
+}
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations")
@@ -104,9 +116,10 @@ impl OutlineCatalog for PostgresOutlineCatalog {
     async fn holds(
         &self,
         outline: OutlineId,
-        passages: &[PassageLink],
+        attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
-        let held: Vec<String> = passages.iter().map(ToString::to_string).collect();
+        let kinds: Vec<&str> = attachments.iter().map(kind_of).collect();
+        let held: Vec<String> = attachments.iter().map(ToString::to_string).collect();
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(LET_GO)
@@ -117,6 +130,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
 
         sqlx::query(HOLD)
             .bind(outline.to_string())
+            .bind(&kinds)
             .bind(&held)
             .execute(&mut *transaction)
             .await
@@ -127,10 +141,11 @@ impl OutlineCatalog for PostgresOutlineCatalog {
 
     async fn outlines_holding(
         &self,
-        passage: &PassageLink,
+        attachment: &Attachment,
     ) -> Result<Vec<OutlineId>, CatalogError> {
         let found = sqlx::query(HOLDING)
-            .bind(passage.to_string())
+            .bind(kind_of(attachment))
+            .bind(attachment.to_string())
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;

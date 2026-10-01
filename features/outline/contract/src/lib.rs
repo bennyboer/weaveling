@@ -7,17 +7,24 @@ pub const SECTION_MOVED: &str = "outline.section.moved";
 pub const SECTION_PROMOTED: &str = "outline.section.promoted";
 pub const SECTION_DEMOTED: &str = "outline.section.demoted";
 pub const SECTION_REMOVED: &str = "outline.section.removed";
-pub const PASSAGE_ATTACHED: &str = "outline.passage.attached";
-pub const PASSAGE_DETACHED: &str = "outline.passage.detached";
+pub const ATTACHED: &str = "outline.attached";
+pub const DETACHED: &str = "outline.detached";
 pub const DISCARDED: &str = "outline.discarded";
 pub const EVERY_OUTLINE: &str = "outline.#";
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum AttachmentDTO {
+    Passage { id: String },
+    Idea { id: String },
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PlacedSectionDTO {
     pub section: String,
     pub parent: Option<String>,
     pub title: String,
-    pub passages: Vec<String>,
+    pub attachments: Vec<AttachmentDTO>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -59,10 +66,10 @@ pub struct MoveSectionRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct AttachPassageRequest {
-    pub passage: String,
+pub struct AttachRequest {
+    pub attachment: AttachmentDTO,
     pub section: String,
-    pub after: Option<String>,
+    pub after: Option<AttachmentDTO>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -91,14 +98,14 @@ pub enum OutlineEventDTO {
     SectionDemoted { section: String },
     #[serde(rename = "SECTION_REMOVED")]
     SectionRemoved { section: String },
-    #[serde(rename = "PASSAGE_ATTACHED")]
-    PassageAttached {
-        passage: String,
+    #[serde(rename = "ATTACHED")]
+    Attached {
+        attachment: AttachmentDTO,
         to: String,
-        after: Option<String>,
+        after: Option<AttachmentDTO>,
     },
-    #[serde(rename = "PASSAGE_DETACHED")]
-    PassageDetached { passage: String },
+    #[serde(rename = "DETACHED")]
+    Detached { attachment: AttachmentDTO },
     #[serde(rename = "DISCARDED")]
     Discarded,
 }

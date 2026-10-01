@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachPassageRequest, MoveSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, MoveSectionRequest,
     OpenOutlineRequest, OutlineDTO, RetitleSectionRequest,
 };
 use time::{Duration, OffsetDateTime};
@@ -358,6 +358,10 @@ async fn removing_a_section_lifts_its_children_into_its_place() {
     );
 }
 
+fn a_passage(id: &str) -> AttachmentDTO {
+    AttachmentDTO::Passage { id: id.to_owned() }
+}
+
 #[tokio::test]
 async fn a_passage_is_attached_to_a_section_and_read_back_in_order() {
     let server = a_server();
@@ -366,11 +370,11 @@ async fn a_passage_is_attached_to_a_section_and_read_back_in_order() {
 
     for (passage, after) in [("passage_1", None), ("passage_2", Some("passage_1"))] {
         let response = server
-            .post(&format!("/outlines/{}/passages", outline.id))
-            .json(&AttachPassageRequest {
-                passage: passage.to_owned(),
+            .post(&format!("/outlines/{}/attachments", outline.id))
+            .json(&AttachRequest {
+                attachment: a_passage(passage),
                 section: chapter.section.clone(),
-                after: after.map(str::to_owned),
+                after: after.map(a_passage),
             })
             .await;
         response.assert_status(StatusCode::OK);
@@ -381,7 +385,10 @@ async fn a_passage_is_attached_to_a_section_and_read_back_in_order() {
         .await
         .json();
 
-    assert_eq!(found.sections[0].passages, vec!["passage_1", "passage_2"]);
+    assert_eq!(
+        found.sections[0].attachments,
+        vec![a_passage("passage_1"), a_passage("passage_2")]
+    );
 }
 
 #[tokio::test]
@@ -393,9 +400,11 @@ async fn attaching_a_passage_that_sits_elsewhere_moves_it() {
 
     for section in [&one.section, &two.section] {
         server
-            .post(&format!("/outlines/{}/passages", outline.id))
-            .json(&AttachPassageRequest {
-                passage: "passage_1".to_owned(),
+            .post(&format!("/outlines/{}/attachments", outline.id))
+            .json(&AttachRequest {
+                attachment: AttachmentDTO::Passage {
+                    id: "passage_1".to_owned(),
+                },
                 section: section.clone(),
                 after: None,
             })
@@ -408,8 +417,8 @@ async fn attaching_a_passage_that_sits_elsewhere_moves_it() {
         .await
         .json();
 
-    assert!(found.sections[0].passages.is_empty());
-    assert_eq!(found.sections[1].passages, vec!["passage_1"]);
+    assert!(found.sections[0].attachments.is_empty());
+    assert_eq!(found.sections[1].attachments, vec![a_passage("passage_1")]);
 }
 
 #[tokio::test]
@@ -418,9 +427,11 @@ async fn detaching_a_passage_takes_it_out_of_the_book() {
     let outline = an_open_outline(&server).await;
     let chapter = a_section(&server, &outline.id, "Chapter 1", None, None).await;
     server
-        .post(&format!("/outlines/{}/passages", outline.id))
-        .json(&AttachPassageRequest {
-            passage: "passage_1".to_owned(),
+        .post(&format!("/outlines/{}/attachments", outline.id))
+        .json(&AttachRequest {
+            attachment: AttachmentDTO::Passage {
+                id: "passage_1".to_owned(),
+            },
             section: chapter.section.clone(),
             after: None,
         })
@@ -428,7 +439,10 @@ async fn detaching_a_passage_takes_it_out_of_the_book() {
         .assert_status(StatusCode::OK);
 
     server
-        .delete(&format!("/outlines/{}/passages/passage_1", outline.id))
+        .delete(&format!(
+            "/outlines/{}/attachments/passages/passage_1",
+            outline.id
+        ))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
@@ -437,7 +451,7 @@ async fn detaching_a_passage_takes_it_out_of_the_book() {
         .await
         .json();
 
-    assert!(found.sections[0].passages.is_empty());
+    assert!(found.sections[0].attachments.is_empty());
 }
 
 #[tokio::test]
@@ -448,7 +462,7 @@ async fn a_section_with_no_passages_is_accepted_because_planning_comes_first() {
     let added = a_section(&server, &outline.id, "Chapter 9", None, None).await;
 
     assert!(
-        added.outline.sections[0].passages.is_empty(),
+        added.outline.sections[0].attachments.is_empty(),
         "an empty leaf is a hole the view flags, never a refusal the domain makes"
     );
 }

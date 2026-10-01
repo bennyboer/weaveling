@@ -7,11 +7,11 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use eventsourcing::{Agent, ServiceError, Standing, Version};
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachPassageRequest, MoveSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, MoveSectionRequest,
     OpenOutlineRequest, OutlineDTO, PlacedSectionDTO, RetitleSectionRequest,
 };
 use outline_core::{
-    InvalidSectionTitle, Outline, OutlineError, OutlineService, OutlineServiceError, PassageLink,
+    Attachment, InvalidSectionTitle, Outline, OutlineError, OutlineService, OutlineServiceError,
     PlacedSection, SectionId, SectionTitle,
 };
 use serving::{Unreadable, demanded, refusal, tag};
@@ -34,8 +34,11 @@ pub fn router(outlines: OutlineService) -> Router {
             "/outlines/{outline}/sections/{section}/demote",
             post(demote),
         )
-        .route("/outlines/{outline}/passages", post(attach))
-        .route("/outlines/{outline}/passages/{passage}", delete(detach))
+        .route("/outlines/{outline}/attachments", post(attach))
+        .route(
+            "/outlines/{outline}/attachments/{kind}/{attached}",
+            delete(detach),
+        )
         .with_state(outlines)
 }
 
@@ -204,14 +207,14 @@ async fn attach(
     State(outlines): State<OutlineService>,
     Path(outline): Path<String>,
     headers: HeaderMap,
-    Json(request): Json<AttachPassageRequest>,
+    Json(request): Json<AttachRequest>,
 ) -> Result<Response, ApiError> {
     outlines
         .attach(
             &outline,
-            PassageLink::from(request.passage.as_str()),
+            to_attachment(&request.attachment),
             request.section.parse()?,
-            request.after.map(|after| PassageLink::from(after.as_str())),
+            request.after.as_ref().map(to_attachment),
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -226,16 +229,17 @@ async fn attach(
 
 async fn detach(
     State(outlines): State<OutlineService>,
-    Path((outline, passage)): Path<(String, String)>,
+    Path((outline, kind, attached)): Path<(String, String, String)>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
+    let attachment = match kind.as_str() {
+        "passages" => Attachment::passage(&attached),
+        "ideas" => Attachment::idea(&attached),
+        _ => return Err(ApiError::NoSuchKind),
+    };
+
     outlines
-        .detach(
-            &outline,
-            PassageLink::from(passage.as_str()),
-            expected(&headers)?,
-            &nobody_yet(),
-        )
+        .detach(&outline, attachment, expected(&headers)?, &nobody_yet())
         .await?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -278,22 +282,37 @@ fn to_dto(outline: &str, held: &Outline, version: Version) -> OutlineDTO {
     }
 }
 
+fn to_attachment(dto: &AttachmentDTO) -> Attachment {
+    match dto {
+        AttachmentDTO::Passage { id } => Attachment::passage(id),
+        AttachmentDTO::Idea { id } => Attachment::idea(id),
+    }
+}
+
+fn to_attachment_dto(attachment: &Attachment) -> AttachmentDTO {
+    match attachment {
+        Attachment::Passage(passage) => AttachmentDTO::Passage {
+            id: passage.to_string(),
+        },
+        Attachment::Idea(idea) => AttachmentDTO::Idea {
+            id: idea.to_string(),
+        },
+    }
+}
+
 fn to_section_dto(placed: &PlacedSection) -> PlacedSectionDTO {
     PlacedSectionDTO {
         section: placed.section.to_string(),
         parent: placed.parent.map(|parent| parent.to_string()),
         title: placed.title.to_string(),
-        passages: placed
-            .passages
-            .iter()
-            .map(|held| held.to_string())
-            .collect(),
+        attachments: placed.attachments.iter().map(to_attachment_dto).collect(),
     }
 }
 
 enum ApiError {
     Unreadable(Unreadable),
     Untitled(InvalidSectionTitle),
+    NoSuchKind,
     Refused(OutlineServiceError),
 }
 
@@ -329,6 +348,13 @@ impl IntoResponse for ApiError {
             }
             Self::Untitled(reason) => {
                 return (StatusCode::UNPROCESSABLE_ENTITY, reason.to_string()).into_response();
+            }
+            Self::NoSuchKind => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    "an outline holds passages and ideas, and nothing else",
+                )
+                    .into_response();
             }
             Self::Refused(refused) => refused,
         };

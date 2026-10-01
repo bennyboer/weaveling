@@ -21,3 +21,7 @@ outline-contract = { version = "0.1.0", path = "../contract", package = "weaveli
 outline-core = { version = "0.1.0", path = "../core", package = "weaveling-outline-core" }
 outline-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-outline-messaging" }
 outline-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-outline-wiring" }
+
+# Foreign contracts: another feature's published events. A feature may reach across the seam
+# for a `contract` crate and nothing else — never its `core`, never its adapters.
+ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }

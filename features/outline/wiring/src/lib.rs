@@ -4,7 +4,8 @@ use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineCatalog, OutlineEvent, OutlineService};
 use outline_messaging::{
-    AttachedPassagesProjector, DiscardOutlinesOnProjectDeleted, OutlineCatalogProjector,
+    AttachmentIndexProjector, DetachOnDiscard, DiscardOutlinesOnProjectDeleted,
+    OutlineCatalogProjector,
 };
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, Wired};
@@ -70,16 +71,18 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.catalog.clone(),
         context.clock.clone(),
     );
-    let index = AttachedPassagesProjector::new(
+    let index = AttachmentIndexProjector::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),
     );
+    let tidy = DetachOnDiscard::new(outlines.clone(), ports.catalog.clone());
     let sweep = DiscardOutlinesOnProjectDeleted::new(outlines.clone(), ports.catalog.clone());
 
     Wired::serving(outline_rest::router(outlines)).listening(vec![
         Arc::new(catalogue),
         Arc::new(index),
+        Arc::new(tidy),
         Arc::new(sweep),
     ])
 }

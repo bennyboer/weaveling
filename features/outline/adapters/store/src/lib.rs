@@ -1,6 +1,7 @@
 use eventsourcing::Codec;
 use outline_core::{
-    OutlineEvent, PassageLink, PlacedSection, ProjectLink, SectionId, SectionTitle,
+    Attachment, IdeaLink, OutlineEvent, PassageLink, PlacedSection, ProjectLink, SectionId,
+    SectionTitle,
 };
 use serde::{Deserialize, Serialize};
 
@@ -33,13 +34,13 @@ enum StoredOutlineEvent {
     SectionRemoved {
         section: String,
     },
-    PassageAttached {
-        passage: String,
+    Attached {
+        attachment: StoredAttachment,
         to: String,
-        after: Option<String>,
+        after: Option<StoredAttachment>,
     },
-    PassageDetached {
-        passage: String,
+    Detached {
+        attachment: StoredAttachment,
     },
     Discarded,
     Snapshotted {
@@ -54,7 +55,31 @@ struct StoredPlacedSection {
     section: String,
     parent: Option<String>,
     title: String,
-    passages: Vec<String>,
+    attachments: Vec<StoredAttachment>,
+}
+
+#[derive(Serialize, Deserialize)]
+enum StoredAttachment {
+    Passage(String),
+    Idea(String),
+}
+
+impl From<&Attachment> for StoredAttachment {
+    fn from(attachment: &Attachment) -> Self {
+        match attachment {
+            Attachment::Passage(passage) => Self::Passage(passage.as_str().to_owned()),
+            Attachment::Idea(idea) => Self::Idea(idea.as_str().to_owned()),
+        }
+    }
+}
+
+impl From<StoredAttachment> for Attachment {
+    fn from(stored: StoredAttachment) -> Self {
+        match stored {
+            StoredAttachment::Passage(passage) => Self::Passage(PassageLink::from(passage)),
+            StoredAttachment::Idea(idea) => Self::Idea(IdeaLink::from(idea)),
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -99,10 +124,10 @@ impl From<&PlacedSection> for StoredPlacedSection {
             section: named(&placed.section),
             parent: placed.parent.as_ref().map(named),
             title: placed.title.as_str().to_owned(),
-            passages: placed
-                .passages
+            attachments: placed
+                .attachments
                 .iter()
-                .map(|passage| passage.as_str().to_owned())
+                .map(StoredAttachment::from)
                 .collect(),
         }
     }
@@ -116,7 +141,11 @@ impl TryFrom<StoredPlacedSection> for PlacedSection {
             section: section(&stored.section)?,
             parent: maybe_section(stored.parent)?,
             title: titled(&stored.title)?,
-            passages: stored.passages.into_iter().map(PassageLink::from).collect(),
+            attachments: stored
+                .attachments
+                .into_iter()
+                .map(Attachment::from)
+                .collect(),
         })
     }
 }
@@ -160,13 +189,17 @@ impl From<&OutlineEvent> for StoredOutlineEvent {
             OutlineEvent::SectionRemoved { section } => Self::SectionRemoved {
                 section: named(section),
             },
-            OutlineEvent::PassageAttached { passage, to, after } => Self::PassageAttached {
-                passage: passage.as_str().to_owned(),
+            OutlineEvent::Attached {
+                attachment,
+                to,
+                after,
+            } => Self::Attached {
+                attachment: StoredAttachment::from(attachment),
                 to: named(to),
-                after: after.as_ref().map(|link| link.as_str().to_owned()),
+                after: after.as_ref().map(StoredAttachment::from),
             },
-            OutlineEvent::PassageDetached { passage } => Self::PassageDetached {
-                passage: passage.as_str().to_owned(),
+            OutlineEvent::Detached { attachment } => Self::Detached {
+                attachment: StoredAttachment::from(attachment),
             },
             OutlineEvent::Discarded => Self::Discarded,
             OutlineEvent::Snapshotted {
@@ -226,13 +259,17 @@ impl TryFrom<StoredOutlineEvent> for OutlineEvent {
             StoredOutlineEvent::SectionRemoved { section: which } => Self::SectionRemoved {
                 section: section(&which)?,
             },
-            StoredOutlineEvent::PassageAttached { passage, to, after } => Self::PassageAttached {
-                passage: PassageLink::from(passage),
+            StoredOutlineEvent::Attached {
+                attachment,
+                to,
+                after,
+            } => Self::Attached {
+                attachment: Attachment::from(attachment),
                 to: section(&to)?,
-                after: after.map(PassageLink::from),
+                after: after.map(Attachment::from),
             },
-            StoredOutlineEvent::PassageDetached { passage } => Self::PassageDetached {
-                passage: PassageLink::from(passage),
+            StoredOutlineEvent::Detached { attachment } => Self::Detached {
+                attachment: Attachment::from(attachment),
             },
             StoredOutlineEvent::Discarded => Self::Discarded,
             StoredOutlineEvent::Snapshotted {
@@ -303,18 +340,26 @@ mod tests {
             OutlineEvent::SectionPromoted { section: chapter },
             OutlineEvent::SectionDemoted { section: chapter },
             OutlineEvent::SectionRemoved { section: chapter },
-            OutlineEvent::PassageAttached {
-                passage: PassageLink::from("passage_1"),
+            OutlineEvent::Attached {
+                attachment: Attachment::passage("passage_1"),
                 to: chapter,
-                after: Some(PassageLink::from("passage_2")),
+                after: Some(Attachment::passage("passage_2")),
             },
-            OutlineEvent::PassageAttached {
-                passage: PassageLink::from("passage_1"),
+            OutlineEvent::Attached {
+                attachment: Attachment::idea("idea_1"),
+                to: chapter,
+                after: Some(Attachment::passage("passage_1")),
+            },
+            OutlineEvent::Attached {
+                attachment: Attachment::passage("passage_1"),
                 to: chapter,
                 after: None,
             },
-            OutlineEvent::PassageDetached {
-                passage: PassageLink::from("passage_1"),
+            OutlineEvent::Detached {
+                attachment: Attachment::passage("passage_1"),
+            },
+            OutlineEvent::Detached {
+                attachment: Attachment::idea("idea_1"),
             },
             OutlineEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
@@ -323,15 +368,16 @@ mod tests {
                         section: part,
                         parent: None,
                         title: a_title("Part One"),
-                        passages: Vec::new(),
+                        attachments: Vec::new(),
                     },
                     PlacedSection {
                         section: chapter,
                         parent: Some(part),
                         title: a_title("Chapter One"),
-                        passages: vec![
-                            PassageLink::from("passage_1"),
-                            PassageLink::from("passage_2"),
+                        attachments: vec![
+                            Attachment::passage("passage_1"),
+                            Attachment::idea("idea_1"),
+                            Attachment::passage("passage_2"),
                         ],
                     },
                 ],
@@ -351,9 +397,9 @@ mod tests {
                     section: a_section(nth * 1_000),
                     parent: None,
                     title: a_title(&format!("Section {nth}")),
-                    passages: vec![
-                        PassageLink::from(format!("passage_{}b", nth)),
-                        PassageLink::from(format!("passage_{}a", nth)),
+                    attachments: vec![
+                        Attachment::passage(&format!("passage_{nth}b")),
+                        Attachment::passage(&format!("passage_{nth}a")),
                     ],
                 })
                 .collect(),

@@ -10,7 +10,8 @@ use registry::InMemoryRegistry;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-outline";
-const INDEXING: &str = "index-attached-passages";
+const INDEXING: &str = "index-attachments";
+const TIDYING: &str = "detach-discarded-idea";
 
 pub struct Wired {
     pub outlines: OutlineService,
@@ -23,6 +24,7 @@ pub struct Wired {
     pub catalog: Arc<InMemoryOutlineCatalog>,
     pub projector: Arc<dyn Listener>,
     pub indexer: Arc<dyn Listener>,
+    pub tidier: Arc<dyn Listener>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
@@ -84,6 +86,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     };
     let projector = named(CATALOGUING);
     let indexer = named(INDEXING);
+    let tidier = named(TIDYING);
 
     Wired {
         outlines: outline_wiring::service(&ports, &context),
@@ -96,6 +99,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         catalog,
         projector,
         indexer,
+        tidier,
     }
 }
 

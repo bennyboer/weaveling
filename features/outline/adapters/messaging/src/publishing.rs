@@ -8,10 +8,10 @@ use eventsourcing::{EventPublisher, PublishError, Recorded};
 use ids::InvalidId;
 use messaging::{Message, Publisher, Subscription};
 use outline_contract::{
-    DISCARDED, EVERY_OUTLINE, OutlineEventDTO, PASSAGE_ATTACHED, PASSAGE_DETACHED, SECTION_REMOVED,
+    ATTACHED, AttachmentDTO, DETACHED, DISCARDED, EVERY_OUTLINE, OutlineEventDTO, SECTION_REMOVED,
     STARTED,
 };
-use outline_core::{OutlineEvent, OutlineId};
+use outline_core::{Attachment, OutlineEvent, OutlineId};
 use thiserror::Error;
 
 pub struct OutlineEventPublisher {
@@ -39,11 +39,11 @@ pub fn when_started() -> Subscription {
 }
 
 pub fn when_attached() -> Subscription {
-    Subscription::parse(PASSAGE_ATTACHED).expect("a declared routing key holds no wildcards")
+    Subscription::parse(ATTACHED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_detached() -> Subscription {
-    Subscription::parse(PASSAGE_DETACHED).expect("a declared routing key holds no wildcards")
+    Subscription::parse(DETACHED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_section_removed() -> Subscription {
@@ -86,6 +86,17 @@ impl EventPublisher<OutlineEvent> for OutlineEventPublisher {
     }
 }
 
+fn to_dto(attachment: &Attachment) -> AttachmentDTO {
+    match attachment {
+        Attachment::Passage(passage) => AttachmentDTO::Passage {
+            id: passage.to_string(),
+        },
+        Attachment::Idea(idea) => AttachmentDTO::Idea {
+            id: idea.to_string(),
+        },
+    }
+}
+
 fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
     Some(match event {
         OutlineEvent::Started { project } => OutlineEventDTO::Started {
@@ -124,13 +135,17 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
         OutlineEvent::SectionRemoved { section } => OutlineEventDTO::SectionRemoved {
             section: section.to_string(),
         },
-        OutlineEvent::PassageAttached { passage, to, after } => OutlineEventDTO::PassageAttached {
-            passage: passage.to_string(),
+        OutlineEvent::Attached {
+            attachment,
+            to,
+            after,
+        } => OutlineEventDTO::Attached {
+            attachment: to_dto(attachment),
             to: to.to_string(),
-            after: after.as_ref().map(|after| after.to_string()),
+            after: after.as_ref().map(to_dto),
         },
-        OutlineEvent::PassageDetached { passage } => OutlineEventDTO::PassageDetached {
-            passage: passage.to_string(),
+        OutlineEvent::Detached { attachment } => OutlineEventDTO::Detached {
+            attachment: to_dto(attachment),
         },
         OutlineEvent::Discarded => OutlineEventDTO::Discarded,
         OutlineEvent::Snapshotted { .. } => return None,
@@ -144,7 +159,7 @@ mod tests {
     use outline_contract::{
         SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED, SECTION_PROMOTED, SECTION_RETITLED,
     };
-    use outline_core::{KIND, PassageLink, PlacedSection, ProjectLink, SectionId, SectionTitle};
+    use outline_core::{Attachment, KIND, PlacedSection, ProjectLink, SectionId, SectionTitle};
     use serde_json::json;
     use time::{Duration, OffsetDateTime};
 
@@ -181,8 +196,8 @@ mod tests {
     }
 
     fn attaching_to(section: SectionId) -> OutlineEvent {
-        OutlineEvent::PassageAttached {
-            passage: PassageLink::from("passage_1"),
+        OutlineEvent::Attached {
+            attachment: Attachment::passage("passage_1"),
             to: section,
             after: None,
         }
@@ -242,12 +257,12 @@ mod tests {
                 },
                 SECTION_REMOVED,
             ),
-            (an_attachment(), PASSAGE_ATTACHED),
+            (an_attachment(), ATTACHED),
             (
-                OutlineEvent::PassageDetached {
-                    passage: PassageLink::from("passage_1"),
+                OutlineEvent::Detached {
+                    attachment: Attachment::passage("passage_1"),
                 },
-                PASSAGE_DETACHED,
+                DETACHED,
             ),
         ]
     }
@@ -325,8 +340,10 @@ mod tests {
 
         assert_eq!(
             told.event.body,
-            OutlineEventDTO::PassageAttached {
-                passage: "passage_1".to_owned(),
+            OutlineEventDTO::Attached {
+                attachment: AttachmentDTO::Passage {
+                    id: "passage_1".to_owned(),
+                },
                 to: section.to_string(),
                 after: None,
             }
@@ -373,7 +390,7 @@ mod tests {
                 section: a_section(),
                 parent: None,
                 title: titled("Part One"),
-                passages: vec![PassageLink::from("passage_1")],
+                attachments: vec![Attachment::passage("passage_1")],
             }],
             discarded: false,
         };
@@ -406,5 +423,34 @@ mod tests {
             event_in(&stray),
             Err(UnreadableOutlineEvent::NotAnOutlineEvent(..))
         ));
+    }
+}
+
+#[cfg(test)]
+mod notes {
+    use outline_core::{Attachment, SectionId};
+
+    use super::*;
+
+    #[test]
+    fn a_note_goes_on_the_wire_tagged_as_an_idea() {
+        let told = body(&OutlineEvent::Attached {
+            attachment: Attachment::idea("idea_1"),
+            to: SectionId::generate(time::OffsetDateTime::UNIX_EPOCH),
+            after: None,
+        })
+        .expect("an attachment is published");
+
+        let OutlineEventDTO::Attached { attachment, .. } = told else {
+            panic!("expected an attachment, got {told:?}");
+        };
+        assert_eq!(
+            attachment,
+            AttachmentDTO::Idea {
+                id: "idea_1".to_owned()
+            },
+            "a subscriber cannot look the id up to find out what it is, so the tag has to \
+             survive the crossing or every note reads as prose"
+        );
     }
 }

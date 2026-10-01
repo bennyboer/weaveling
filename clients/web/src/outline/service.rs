@@ -1,6 +1,6 @@
 use gloo_net::http::Request;
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachPassageRequest, MoveSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, MoveSectionRequest,
     OpenOutlineRequest, OutlineDTO, PlacedSectionDTO, RetitleSectionRequest,
 };
 
@@ -109,12 +109,16 @@ pub async fn attach(
     to: &SectionId,
     after: Option<PassageId>,
 ) -> Result<Outline, ApiError> {
-    let payload = AttachPassageRequest {
-        passage: passage.to_string(),
+    let payload = AttachRequest {
+        attachment: AttachmentDTO::Passage {
+            id: passage.to_string(),
+        },
         section: to.to_string(),
-        after: after.map(|after| after.to_string()),
+        after: after.map(|after| AttachmentDTO::Passage {
+            id: after.to_string(),
+        }),
     };
-    let response = Request::post(&format!("{OUTLINES}/{outline}/passages"))
+    let response = Request::post(&format!("{OUTLINES}/{outline}/attachments"))
         .json(&payload)
         .map_err(|_| ApiError::Unexpected)?
         .send()
@@ -125,10 +129,12 @@ pub async fn attach(
 }
 
 pub async fn detach(outline: &OutlineId, passage: &PassageId) -> Result<(), ApiError> {
-    let response = Request::delete(&format!("{OUTLINES}/{outline}/passages/{passage}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = Request::delete(&format!(
+        "{OUTLINES}/{outline}/attachments/passages/{passage}"
+    ))
+    .send()
+    .await
+    .map_err(|_| ApiError::Offline)?;
 
     if response.ok() {
         return Ok(());
@@ -159,6 +165,15 @@ fn as_section(dto: PlacedSectionDTO) -> Section {
         id: SectionId::from(dto.section),
         parent: dto.parent.map(SectionId::from),
         title: dto.title,
-        passages: dto.passages.into_iter().map(PassageId::from).collect(),
+        // TODO M12 step 5b: an idea attached as a note is dropped here, so the outline
+        // draws only the prose until the client can tell the two kinds apart.
+        passages: dto
+            .attachments
+            .into_iter()
+            .filter_map(|held| match held {
+                AttachmentDTO::Passage { id } => Some(PassageId::from(id)),
+                AttachmentDTO::Idea { .. } => None,
+            })
+            .collect(),
     }
 }
