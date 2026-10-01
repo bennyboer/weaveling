@@ -25,7 +25,7 @@ fn a_workbench() -> Wired {
     wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
-fn a_idea(named: &str) -> IdeaLink {
+fn an_idea(named: &str) -> IdeaLink {
     IdeaLink::from(named)
 }
 
@@ -77,7 +77,7 @@ async fn a_book_holding(wired: &Wired, ideas: &[&str]) -> (OutlineId, SectionId)
             .outlines
             .attach(
                 &outline.to_string(),
-                a_idea(idea),
+                an_idea(idea),
                 chapter,
                 behind.clone(),
                 None,
@@ -85,7 +85,7 @@ async fn a_book_holding(wired: &Wired, ideas: &[&str]) -> (OutlineId, SectionId)
             )
             .await
             .expect("attaching should succeed");
-        behind = Some(a_idea(idea));
+        behind = Some(an_idea(idea));
     }
 
     wired.settle().await;
@@ -107,7 +107,7 @@ async fn reading_order(wired: &Wired, outline: &OutlineId) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn attaching_a_idea_puts_it_in_the_index() {
+async fn attaching_an_idea_puts_it_in_the_index() {
     let wired = a_workbench();
 
     let (outline, _) = a_book_holding(&wired, &["idea_1"]).await;
@@ -115,7 +115,7 @@ async fn attaching_a_idea_puts_it_in_the_index() {
     assert_eq!(
         wired
             .catalog
-            .outlines_holding(&a_idea("idea_1"))
+            .outlines_holding(&an_idea("idea_1"))
             .await
             .expect("looking should succeed"),
         vec![outline]
@@ -123,13 +123,13 @@ async fn attaching_a_idea_puts_it_in_the_index() {
 }
 
 #[tokio::test]
-async fn detaching_a_idea_takes_it_out_of_the_index() {
+async fn detaching_an_idea_takes_it_out_of_the_index() {
     let wired = a_workbench();
     let (outline, _) = a_book_holding(&wired, &["idea_1"]).await;
 
     wired
         .outlines
-        .detach(&outline.to_string(), a_idea("idea_1"), None, &an_author())
+        .detach(&outline.to_string(), an_idea("idea_1"), None, &an_author())
         .await
         .expect("detaching should succeed");
     wired.settle().await;
@@ -137,7 +137,7 @@ async fn detaching_a_idea_takes_it_out_of_the_index() {
     assert!(
         wired
             .catalog
-            .outlines_holding(&a_idea("idea_1"))
+            .outlines_holding(&an_idea("idea_1"))
             .await
             .expect("looking should succeed")
             .is_empty()
@@ -159,7 +159,7 @@ async fn removing_a_section_takes_its_ideas_out_of_the_index() {
     assert!(
         wired
             .catalog
-            .outlines_holding(&a_idea("idea_1"))
+            .outlines_holding(&an_idea("idea_1"))
             .await
             .expect("looking should succeed")
             .is_empty(),
@@ -208,7 +208,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 }
 
 #[tokio::test]
-async fn discarding_a_idea_that_was_never_in_the_book_is_harmless() {
+async fn discarding_an_idea_that_was_never_in_the_book_is_harmless() {
     let wired = a_workbench();
     a_book_holding(&wired, &["idea_1"]).await;
 
@@ -216,7 +216,7 @@ async fn discarding_a_idea_that_was_never_in_the_book_is_harmless() {
         .tidier
         .handle(&discarded("idea_never_placed"))
         .await
-        .expect("a idea that was only ever in the pool is not a failure");
+        .expect("an idea that was only ever in the pool is not a failure");
 }
 
 #[tokio::test]
@@ -288,7 +288,7 @@ async fn the_discard_listener_hears_only_discards() {
         !wired
             .tidier
             .hears(&RoutingKey::parse("idea.retitled").expect("a plain key is fine")),
-        "nothing else a idea does should take it out of the book"
+        "nothing else an idea does should take it out of the book"
     );
 }
 

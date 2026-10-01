@@ -7,9 +7,9 @@ pub struct IdeaTitle(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InvalidIdeaTitle {
-    #[error("a idea title must not contain control characters")]
+    #[error("an idea title must not contain control characters")]
     ControlCharacter,
-    #[error("a idea title must be at most {max} characters, got {actual}")]
+    #[error("an idea title must be at most {max} characters, got {actual}")]
     TooLong { max: usize, actual: usize },
 }
 

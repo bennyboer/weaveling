@@ -34,7 +34,7 @@ export async function capture(page: Page, idea: string) {
   await page.getByRole("textbox", { name: "What is the idea?" }).fill(idea);
   await page.getByRole("button", { name: "Capture", exact: true }).click();
   await expect(
-    page.getByRole("list", { name: "Pieces" }).getByText(idea),
+    page.getByRole("list", { name: "Ideas" }).getByText(idea),
   ).toBeVisible();
 }
 
@@ -55,8 +55,8 @@ export async function openTheOutline(page: Page) {
 }
 
 export async function openThePool(page: Page) {
-  await views(page).getByRole("link", { name: "Pieces", exact: true }).click();
+  await views(page).getByRole("link", { name: "Ideas", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Pieces", exact: true }),
+    page.getByRole("heading", { name: "Ideas", exact: true }),
   ).toBeVisible();
 }

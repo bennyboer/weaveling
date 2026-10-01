@@ -496,7 +496,7 @@ fn kept(held: Held) -> impl IntoView {
         },
         html::p()
             .class("how")
-            .child("Drag a idea onto a section, or click it and then click where it goes."),
+            .child("Drag an idea onto a section, or click it and then click where it goes."),
     )
 }
 

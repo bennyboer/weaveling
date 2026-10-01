@@ -83,7 +83,7 @@ async fn a_batch_is_read_straight_out_of_the_index() {
 
     sqlx::query(
         "INSERT INTO idea_summaries (idea, version, project, title)
-         SELECT held, 1, 'project_' || (ordinality % 8), 'A idea'
+         SELECT held, 1, 'project_' || (ordinality % 8), 'An idea'
          FROM unnest($1::text[]) WITH ORDINALITY AS held",
     )
     .bind(&written)

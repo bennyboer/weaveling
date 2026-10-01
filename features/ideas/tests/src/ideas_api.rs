@@ -53,7 +53,7 @@ fn a_capture(title: &str) -> CaptureIdeaRequest {
     }
 }
 
-async fn a_idea(server: &Serving, title: &str) -> IdeaDTO {
+async fn an_idea(server: &Serving, title: &str) -> IdeaDTO {
     let response = server.post("/ideas").json(&a_capture(title)).await;
     response.assert_status(StatusCode::CREATED);
 
@@ -64,7 +64,7 @@ async fn a_idea(server: &Serving, title: &str) -> IdeaDTO {
 async fn a_captured_idea_comes_back_with_a_prefixed_id() {
     let server = a_server();
 
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     assert!(
         captured.id.starts_with("idea_"),
@@ -76,10 +76,10 @@ async fn a_captured_idea_comes_back_with_a_prefixed_id() {
 }
 
 #[tokio::test]
-async fn a_idea_may_be_captured_with_no_title() {
+async fn an_idea_may_be_captured_with_no_title() {
     let server = a_server();
 
-    let captured = a_idea(&server, "").await;
+    let captured = an_idea(&server, "").await;
 
     assert_eq!(captured.title, "");
 }
@@ -88,8 +88,8 @@ async fn a_idea_may_be_captured_with_no_title() {
 async fn two_captured_ideas_are_distinct() {
     let server = a_server();
 
-    let one = a_idea(&server, "The Loom").await;
-    let other = a_idea(&server, "The Loom").await;
+    let one = an_idea(&server, "The Loom").await;
+    let other = an_idea(&server, "The Loom").await;
 
     assert_ne!(one.id, other.id);
 }
@@ -97,7 +97,7 @@ async fn two_captured_ideas_are_distinct() {
 #[tokio::test]
 async fn a_captured_idea_can_be_fetched_again() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     let response = server.get(&format!("/ideas/{}", captured.id)).await;
 
@@ -106,7 +106,7 @@ async fn a_captured_idea_can_be_fetched_again() {
 }
 
 #[tokio::test]
-async fn a_idea_nobody_captured_is_not_found() {
+async fn an_idea_nobody_captured_is_not_found() {
     let server = a_server();
 
     server
@@ -136,9 +136,9 @@ async fn an_id_without_its_prefix_is_a_bad_request() {
 }
 
 #[tokio::test]
-async fn a_idea_can_be_retitled() {
+async fn an_idea_can_be_retitled() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     let response = server
         .patch(&format!("/ideas/{}", captured.id))
@@ -154,7 +154,7 @@ async fn a_idea_can_be_retitled() {
 #[tokio::test]
 async fn a_title_the_domain_refuses_is_a_bad_request() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     server
         .patch(&format!("/ideas/{}", captured.id))
@@ -168,7 +168,7 @@ async fn a_title_the_domain_refuses_is_a_bad_request() {
 #[tokio::test]
 async fn a_discarded_idea_is_gone_from_the_authors_point_of_view() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     server
         .delete(&format!("/ideas/{}", captured.id))
@@ -195,10 +195,10 @@ async fn discarding_something_that_was_never_captured_is_not_found() {
 }
 
 #[tokio::test]
-async fn a_idea_reports_the_version_it_stands_at() {
+async fn an_idea_reports_the_version_it_stands_at() {
     let server = a_server();
 
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     assert_eq!(
         captured.version, 1,
@@ -209,7 +209,7 @@ async fn a_idea_reports_the_version_it_stands_at() {
 #[tokio::test]
 async fn every_response_carries_the_version_as_an_etag() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     let response = server.get(&format!("/ideas/{}", captured.id)).await;
 
@@ -223,7 +223,7 @@ async fn every_response_carries_the_version_as_an_etag() {
 #[tokio::test]
 async fn a_change_moves_the_version_on() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     let response = server
         .patch(&format!("/ideas/{}", captured.id))
@@ -238,7 +238,7 @@ async fn a_change_moves_the_version_on() {
 #[tokio::test]
 async fn a_change_from_the_version_the_caller_saw_is_accepted() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     server
         .patch(&format!("/ideas/{}", captured.id))
@@ -253,7 +253,7 @@ async fn a_change_from_the_version_the_caller_saw_is_accepted() {
 #[tokio::test]
 async fn a_change_from_a_version_that_has_moved_on_is_refused() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
     server
         .patch(&format!("/ideas/{}", captured.id))
         .json(&RetitleIdeaRequest {
@@ -282,7 +282,7 @@ async fn a_change_from_a_version_that_has_moved_on_is_refused() {
 #[tokio::test]
 async fn discarding_from_a_stale_version_is_refused() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
     server
         .patch(&format!("/ideas/{}", captured.id))
         .json(&RetitleIdeaRequest {
@@ -306,7 +306,7 @@ async fn discarding_from_a_stale_version_is_refused() {
 #[tokio::test]
 async fn any_version_will_do_when_the_caller_says_so() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
     server
         .patch(&format!("/ideas/{}", captured.id))
         .json(&RetitleIdeaRequest {
@@ -328,7 +328,7 @@ async fn any_version_will_do_when_the_caller_says_so() {
 #[tokio::test]
 async fn an_if_match_that_is_not_a_version_is_a_bad_request() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     server
         .patch(&format!("/ideas/{}", captured.id))
@@ -343,7 +343,7 @@ async fn an_if_match_that_is_not_a_version_is_a_bad_request() {
 #[tokio::test]
 async fn a_version_that_never_existed_is_a_failed_precondition_not_a_missing_idea() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     server
         .patch(&format!("/ideas/{}", captured.id))
@@ -365,7 +365,7 @@ async fn a_version_that_never_existed_is_a_failed_precondition_not_a_missing_ide
 }
 
 #[tokio::test]
-async fn a_precondition_on_a_idea_nobody_captured_is_still_not_found() {
+async fn a_precondition_on_an_idea_nobody_captured_is_still_not_found() {
     let server = a_server();
 
     server
@@ -391,8 +391,8 @@ async fn a_project_nobody_wrote_in_lists_nothing() {
 #[tokio::test]
 async fn captured_ideas_are_listed_for_their_project() {
     let server = a_server();
-    let one = a_idea(&server, "The Loom").await;
-    let other = a_idea(&server, "The Shuttle").await;
+    let one = an_idea(&server, "The Loom").await;
+    let other = an_idea(&server, "The Shuttle").await;
 
     let listed = server.listed("project_1").await;
 
@@ -414,7 +414,7 @@ async fn listing_asks_for_a_project() {
 #[tokio::test]
 async fn a_retitled_idea_is_listed_under_its_new_title() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     server
         .patch(&format!("/ideas/{}", captured.id))
@@ -433,8 +433,8 @@ async fn a_retitled_idea_is_listed_under_its_new_title() {
 #[tokio::test]
 async fn a_discarded_idea_leaves_the_listing() {
     let server = a_server();
-    let kept = a_idea(&server, "The Loom").await;
-    let discarded = a_idea(&server, "A false start").await;
+    let kept = an_idea(&server, "The Loom").await;
+    let discarded = an_idea(&server, "A false start").await;
 
     server
         .delete(&format!("/ideas/{}", discarded.id))
@@ -450,7 +450,7 @@ async fn a_discarded_idea_leaves_the_listing() {
 #[tokio::test]
 async fn a_refused_change_leaves_the_listing_alone() {
     let server = a_server();
-    let captured = a_idea(&server, "The Loom").await;
+    let captured = an_idea(&server, "The Loom").await;
 
     server
         .patch(&format!("/ideas/{}", captured.id))

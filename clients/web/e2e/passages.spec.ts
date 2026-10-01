@@ -1,6 +1,6 @@
 import { test, expect, type Page, type WebSocket } from "@playwright/test";
 
-import { openThePool } from "./support/shell";
+import { aNewProject, openTheBoard } from "./support/shell";
 
 const API = "http://127.0.0.1:3000/api";
 
@@ -17,59 +17,37 @@ const prose = (target: Page) =>
 
 const idIn = (segment: string) => segment.split("-").pop() ?? segment;
 
-async function aPieceBeingWritten(page: Page, named: string) {
-  const title = `Project ${named} ${crypto.randomUUID().slice(0, 8)}`;
+async function aPassageBeingWritten(page: Page, named: string) {
+  await aNewProject(page, named);
 
-  await page.goto("/");
-  await page.getByPlaceholder("A working title…").fill(title);
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  await page.getByRole("link", { name: title }).click();
-  await openThePool(page);
+  const segments = new URL(page.url()).pathname.split("/");
+  const project = segments[segments.length - 1];
+  const made = await page.request.post(`${API}/passages`, {
+    data: { project: idIn(project) },
+  });
+  expect(made.status()).toBe(201);
+  const { id: passage } = await made.json();
 
-  await page
-    .getByRole("textbox", { name: "What is the idea?" })
-    .fill("The loom");
-  await page.getByRole("button", { name: "Capture", exact: true }).click();
-  await page
-    .getByRole("list", { name: "Pieces" })
-    .getByRole("link", { name: "The loom" })
-    .click();
-
+  await page.goto(`/projects/${project}/passages/${passage}`);
   await expect(surface(page)).toBeVisible();
   await expect(page.getByText("Synced")).toBeVisible();
 
-  const segments = new URL(page.url()).pathname.split("/");
-
-  return { address: page.url(), piece: idIn(segments[segments.length - 1]) };
+  return { address: page.url(), passage };
 }
 
-test("opening a piece connects the editor to the sync socket", async ({
+test("opening a passage connects the editor to the sync socket", async ({
   page,
 }) => {
-  await aPieceBeingWritten(page, "Connects");
+  await aPassageBeingWritten(page, "Connects");
 
   await expect(page.getByText("Synced")).toBeVisible();
-});
-
-test("a piece is given its passage the first time it is opened", async ({
-  page,
-  request,
-}) => {
-  const { piece } = await aPieceBeingWritten(page, "Attached");
-
-  const found = await (await request.get(`${API}/pieces/${piece}`)).json();
-
-  expect(found.passage).toMatch(/^passage_/);
 });
 
 test("typed prose reaches the server's own projection", async ({
   page,
   request,
 }) => {
-  const { piece } = await aPieceBeingWritten(page, "Projection");
-  const { passage } = await (
-    await request.get(`${API}/pieces/${piece}`)
-  ).json();
+  const { passage } = await aPassageBeingWritten(page, "Projection");
 
   await surface(page).click();
   await page.keyboard.type("The loom stood silent.");
@@ -83,8 +61,20 @@ test("typed prose reaches the server's own projection", async ({
     .toContain("The loom stood silent.");
 });
 
-test("two tabs on one piece converge", async ({ page, context }) => {
-  const { address } = await aPieceBeingWritten(page, "Converge");
+test("prose survives a reload", async ({ page }) => {
+  await aPassageBeingWritten(page, "Survives");
+
+  await surface(page).click();
+  await page.keyboard.type("She had not touched it since spring.");
+  await expect(surface(page)).toContainText("since spring");
+
+  await page.reload();
+
+  await expect(surface(page)).toContainText("since spring");
+});
+
+test("two tabs on one passage converge", async ({ page, context }) => {
+  const { address } = await aPassageBeingWritten(page, "Converge");
 
   const second = await context.newPage();
   await second.goto(address);
@@ -111,7 +101,7 @@ test("two tabs on one piece converge", async ({ page, context }) => {
   await second.close();
 });
 
-test("leaving a piece tears down the editor and its socket", async ({
+test("leaving a passage tears down the editor and its socket", async ({
   page,
 }) => {
   const sockets: WebSocket[] = [];
@@ -121,23 +111,22 @@ test("leaving a piece tears down the editor and its socket", async ({
     }
   });
 
-  await aPieceBeingWritten(page, "TearDown");
+  await aPassageBeingWritten(page, "TearDown");
   expect(sockets).toHaveLength(1);
 
-  await openThePool(page);
+  await openTheBoard(page);
 
   await expect
     .poll(() => sockets[0].isClosed(), { timeout: 10_000 })
     .toBe(true);
   await expect(surface(page)).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Pieces" })).toBeVisible();
 });
 
-test("a piece the server does not know says so", async ({ page }) => {
-  const { address } = await aPieceBeingWritten(page, "Missing");
+test("a passage the server does not know says so", async ({ page }) => {
+  const { address } = await aPassageBeingWritten(page, "Missing");
   const elsewhere = address.replace(
-    /piece_[0-9A-Za-z]{22}$/,
-    "piece_0000000000000000000000",
+    /passage_[0-9A-Za-z]{22}$/,
+    "passage_0000000000000000000000",
   );
 
   await page.goto(elsewhere);

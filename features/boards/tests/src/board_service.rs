@@ -19,7 +19,7 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn a_idea() -> IdeaLink {
+fn an_idea() -> IdeaLink {
     IdeaLink::from("idea_1")
 }
 
@@ -156,7 +156,7 @@ async fn a_pinned_idea_is_there_when_the_board_is_read_again() {
         .boards
         .pin(
             &id.to_string(),
-            a_idea(),
+            an_idea(),
             Spot::at(120, -40),
             Size::CARD,
             None,
@@ -185,7 +185,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
         .boards
         .pin(
             &id.to_string(),
-            a_idea(),
+            an_idea(),
             Spot::at(10, 10),
             Size::CARD,
             None,
@@ -198,7 +198,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
         .boards
         .reshape(
             &id.to_string(),
-            a_idea(),
+            an_idea(),
             Some(Spot::at(300, 20)),
             None,
             None,
@@ -226,7 +226,7 @@ async fn an_unpinned_idea_leaves_the_board() {
         .boards
         .pin(
             &id.to_string(),
-            a_idea(),
+            an_idea(),
             Spot::at(10, 10),
             Size::CARD,
             None,
@@ -237,7 +237,7 @@ async fn an_unpinned_idea_leaves_the_board() {
 
     wired
         .boards
-        .unpin(&id.to_string(), a_idea(), None, &an_author())
+        .unpin(&id.to_string(), an_idea(), None, &an_author())
         .await
         .expect("unpinning should succeed");
 
@@ -257,7 +257,7 @@ async fn pinning_the_same_idea_twice_is_refused() {
         .boards
         .pin(
             &id.to_string(),
-            a_idea(),
+            an_idea(),
             Spot::ORIGIN,
             Size::CARD,
             None,
@@ -270,7 +270,7 @@ async fn pinning_the_same_idea_twice_is_refused() {
         .boards
         .pin(
             &id.to_string(),
-            a_idea(),
+            an_idea(),
             Spot::at(9, 9),
             Size::CARD,
             None,
@@ -294,7 +294,7 @@ async fn a_move_against_a_stale_version_is_refused() {
         .boards
         .pin(
             &id.to_string(),
-            a_idea(),
+            an_idea(),
             Spot::at(10, 10),
             Size::CARD,
             None,
@@ -307,7 +307,7 @@ async fn a_move_against_a_stale_version_is_refused() {
         .boards
         .reshape(
             &id.to_string(),
-            a_idea(),
+            an_idea(),
             Some(Spot::at(20, 20)),
             None,
             Some(Version::of(1)),

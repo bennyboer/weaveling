@@ -118,7 +118,7 @@ pub async fn a_project_lists_its_outlines_in_a_settled_order(catalog: &impl Outl
     );
 }
 
-pub async fn a_idea_nobody_placed_is_in_no_outline(catalog: &impl OutlineCatalog) {
+pub async fn an_idea_nobody_placed_is_in_no_outline(catalog: &impl OutlineCatalog) {
     let found = catalog
         .outlines_holding(&IdeaLink::from("idea_loose"))
         .await
@@ -126,7 +126,7 @@ pub async fn a_idea_nobody_placed_is_in_no_outline(catalog: &impl OutlineCatalog
 
     assert!(
         found.is_empty(),
-        "a idea in the pool and not in the book is not an error, it is simply not in the book yet"
+        "an idea in the pool and not in the book is not an error, it is simply not in the book yet"
     );
 }
 
@@ -147,7 +147,7 @@ pub async fn an_attached_idea_names_the_outline_holding_it(catalog: &impl Outlin
     );
 }
 
-pub async fn a_idea_may_sit_in_more_than_one_outline(catalog: &impl OutlineCatalog) {
+pub async fn an_idea_may_sit_in_more_than_one_outline(catalog: &impl OutlineCatalog) {
     let earliest = OutlineId::generate(at(1_000));
     let latest = OutlineId::generate(at(2_000));
     for outline in [latest, earliest] {
@@ -196,7 +196,7 @@ pub async fn what_an_outline_holds_is_replaced_not_added_to(catalog: &impl Outli
     );
 }
 
-pub async fn one_outline_letting_a_idea_go_leaves_the_others_holding_it(
+pub async fn one_outline_letting_an_idea_go_leaves_the_others_holding_it(
     catalog: &impl OutlineCatalog,
 ) {
     let keeping = OutlineId::generate(at(1_000));
@@ -312,19 +312,19 @@ macro_rules! conformance_tests {
             $workbench,
             a_project_lists_its_outlines_in_a_settled_order
         );
-        $crate::catalog_conformance_case!($workbench, a_idea_nobody_placed_is_in_no_outline);
+        $crate::catalog_conformance_case!($workbench, an_idea_nobody_placed_is_in_no_outline);
         $crate::catalog_conformance_case!(
             $workbench,
             an_attached_idea_names_the_outline_holding_it
         );
-        $crate::catalog_conformance_case!($workbench, a_idea_may_sit_in_more_than_one_outline);
+        $crate::catalog_conformance_case!($workbench, an_idea_may_sit_in_more_than_one_outline);
         $crate::catalog_conformance_case!(
             $workbench,
             what_an_outline_holds_is_replaced_not_added_to
         );
         $crate::catalog_conformance_case!(
             $workbench,
-            one_outline_letting_a_idea_go_leaves_the_others_holding_it
+            one_outline_letting_an_idea_go_leaves_the_others_holding_it
         );
     };
 }

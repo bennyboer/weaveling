@@ -167,13 +167,13 @@ mod tests {
         },
     };
 
-    fn a_idea() -> IdeaId {
+    fn an_idea() -> IdeaId {
         IdeaId::from("idea_1".to_owned())
     }
 
     fn carrying(held: Held, by: Spot) -> Carrying {
         Carrying {
-            idea: a_idea(),
+            idea: an_idea(),
             held,
             from: CARD,
             by,

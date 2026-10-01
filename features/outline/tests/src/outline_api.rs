@@ -359,7 +359,7 @@ async fn removing_a_section_lifts_its_children_into_its_place() {
 }
 
 #[tokio::test]
-async fn a_idea_is_attached_to_a_section_and_read_back_in_order() {
+async fn an_idea_is_attached_to_a_section_and_read_back_in_order() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let chapter = a_section(&server, &outline.id, "Chapter 1", None, None).await;
@@ -385,7 +385,7 @@ async fn a_idea_is_attached_to_a_section_and_read_back_in_order() {
 }
 
 #[tokio::test]
-async fn attaching_a_idea_that_sits_elsewhere_moves_it() {
+async fn attaching_an_idea_that_sits_elsewhere_moves_it() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let one = a_section(&server, &outline.id, "Chapter 1", None, None).await;
@@ -413,7 +413,7 @@ async fn attaching_a_idea_that_sits_elsewhere_moves_it() {
 }
 
 #[tokio::test]
-async fn detaching_a_idea_takes_it_out_of_the_book() {
+async fn detaching_an_idea_takes_it_out_of_the_book() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let chapter = a_section(&server, &outline.id, "Chapter 1", None, None).await;

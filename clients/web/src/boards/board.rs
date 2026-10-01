@@ -76,7 +76,7 @@ fn kept(handles: Handles) -> impl IntoView {
         },
         html::p()
             .class("how")
-            .child("Click a idea to pin it where there is room."),
+            .child("Click an idea to pin it where there is room."),
     )
 }
 

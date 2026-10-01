@@ -4,7 +4,7 @@ import {
   bar,
   cardNamed,
   corkboard,
-  openForWriting,
+  openTheIdea,
   select,
 } from "./support/board";
 import {
@@ -14,25 +14,29 @@ import {
   openTheBoard,
 } from "./support/shell";
 
-test("a pinned piece opens for writing from the board", async ({ page }) => {
+test("a pinned idea opens from the board", async ({ page }) => {
   await anOpenProject(page, "Writing");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
-  await openForWriting(page, "The loom remembers");
+  await openTheIdea(page, "The loom remembers");
 
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
-  await expect(page).toHaveURL(/\/pieces\/the-loom-remembers-piece_/);
+  await expect(
+    page.getByRole("heading", { name: "The loom remembers" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/ideas\/the-loom-remembers-idea_/);
 });
 
-test("the writing view leads back to the board", async ({ page }) => {
+test("an opened idea leads back to the board", async ({ page }) => {
   await anOpenProject(page, "BackToBoard");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
-  await openForWriting(page, "The loom remembers");
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await openTheIdea(page, "The loom remembers");
+  await expect(
+    page.getByRole("heading", { name: "The loom remembers" }),
+  ).toBeVisible();
 
   await openTheBoard(page);
 
@@ -236,7 +240,7 @@ test("arrow keys write into a title being renamed instead of moving the card", a
   ).toHaveAttribute("style", /left: 40px; top: 40px;/);
 });
 
-test("the bar's open button opens the piece for writing", async ({ page }) => {
+test("the bar's open button opens the idea", async ({ page }) => {
   await anOpenProject(page, "BarOpen");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -245,8 +249,10 @@ test("the bar's open button opens the piece for writing", async ({ page }) => {
 
   await page.getByRole("button", { name: "Open The loom remembers" }).click();
 
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
-  await expect(page).toHaveURL(/\/pieces\/the-loom-remembers-piece_/);
+  await expect(
+    page.getByRole("heading", { name: "The loom remembers" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/ideas\/the-loom-remembers-idea_/);
 });
 
 test("clicking away from a rename keeps what was typed", async ({ page }) => {
@@ -290,7 +296,7 @@ test("a rename survives the board changing underneath it", async ({ page }) => {
 
   await expect(
     field,
-    "pinning another piece must not wipe the editor",
+    "pinning another idea must not wipe the editor",
   ).toHaveValue("Half typed");
   await field.press("Enter");
   await expect(corkboard(page).locator(".name").first()).toHaveText(
@@ -306,11 +312,11 @@ test("a failure stays on screen until it is dismissed", async ({ page }) => {
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
 
-  await page.route("**/api/boards/*/pieces/*", (route) => route.abort());
+  await page.route("**/api/boards/*/ideas/*", (route) => route.abort());
   await corkboard(page).locator(".pinned").focus();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("alert")).toBeVisible();
-  await page.unroute("**/api/boards/*/pieces/*");
+  await page.unroute("**/api/boards/*/ideas/*");
 
   await page.getByRole("button", { name: "Pin She never returned" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(2);

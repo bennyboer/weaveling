@@ -19,7 +19,7 @@ test("a project's board can be opened from its pool", async ({ page }) => {
   );
 });
 
-test("a captured piece waits beside the board until it is pinned", async ({
+test("a captured idea waits beside the board until it is pinned", async ({
   page,
 }) => {
   await anOpenProject(page, "Waiting");
@@ -31,7 +31,7 @@ test("a captured piece waits beside the board until it is pinned", async ({
   await expect(corkboard(page).getByText("The loom remembers")).toHaveCount(0);
 });
 
-test("pinning a piece puts it on the board and takes it off the waiting list", async ({
+test("pinning an idea puts it on the board and takes it off the waiting list", async ({
   page,
 }) => {
   await anOpenProject(page, "Pinning");
@@ -44,7 +44,7 @@ test("pinning a piece puts it on the board and takes it off the waiting list", a
   await expect(waiting(page).getByText("The loom remembers")).toHaveCount(0);
 });
 
-test("a pinned piece is placed somewhere on the board", async ({ page }) => {
+test("a pinned idea is placed somewhere on the board", async ({ page }) => {
   await anOpenProject(page, "Placed");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -61,7 +61,7 @@ test("a pinned piece is placed somewhere on the board", async ({ page }) => {
   expect(box!.y).toBeGreaterThanOrEqual(surface!.y);
 });
 
-test("pinned pieces survive a reload", async ({ page }) => {
+test("pinned ideas survive a reload", async ({ page }) => {
   await anOpenProject(page, "Survives");
   await capture(page, "The loom remembers");
   await openTheBoard(page);
@@ -89,7 +89,7 @@ test("reopening the board finds the same board rather than a new one", async ({
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
 });
 
-test("several pinned pieces all appear, each in its own spot", async ({
+test("several pinned ideas all appear, each in its own spot", async ({
   page,
 }) => {
   await anOpenProject(page, "Several");
@@ -115,7 +115,7 @@ test("several pinned pieces all appear, each in its own spot", async ({
   );
 });
 
-test("a spot freed by unpinning is handed to the next piece", async ({
+test("a spot freed by unpinning is handed to the next idea", async ({
   page,
 }) => {
   await anOpenProject(page, "Reused");
@@ -140,7 +140,7 @@ test("a spot freed by unpinning is handed to the next piece", async ({
   );
 });
 
-test("a discarded piece leaves the board", async ({ page }) => {
+test("a discarded idea leaves the board", async ({ page }) => {
   await anOpenProject(page, "Discarded");
   await capture(page, "The loom remembers");
   await capture(page, "She never returned");
@@ -151,13 +151,13 @@ test("a discarded piece leaves the board", async ({ page }) => {
   const board = page.url();
   const listed = await page.evaluate(async () => {
     const project = window.location.pathname.split("/")[2].split("-").pop();
-    const pieces = await fetch(`/api/pieces?project=${project}`).then((it) =>
+    const ideas = await fetch(`/api/ideas?project=${project}`).then((it) =>
       it.json(),
     );
-    const going = pieces.find(
-      (piece: { title: string }) => piece.title === "The loom remembers",
+    const going = ideas.find(
+      (idea: { title: string }) => idea.title === "The loom remembers",
     );
-    await fetch(`/api/pieces/${going.id}`, { method: "DELETE" });
+    await fetch(`/api/ideas/${going.id}`, { method: "DELETE" });
 
     return going.id;
   });
@@ -170,11 +170,11 @@ test("a discarded piece leaves the board", async ({ page }) => {
   await expect(waiting(page).getByText("She never returned")).toBeVisible();
 });
 
-test("an untitled piece can be pinned", async ({ page }) => {
+test("an untitled idea can be pinned", async ({ page }) => {
   await anOpenProject(page, "Nameless");
   await page.getByRole("button", { name: "Capture", exact: true }).click();
   await expect(
-    page.getByRole("list", { name: "Pieces" }).getByText("Untitled"),
+    page.getByRole("list", { name: "Ideas" }).getByText("Untitled"),
   ).toBeVisible();
   await openTheBoard(page);
 
@@ -183,7 +183,7 @@ test("an untitled piece can be pinned", async ({ page }) => {
   await expect(corkboard(page).getByText("Untitled")).toBeVisible();
 });
 
-test("a placement whose piece was never captured draws nothing", async ({
+test("a placement whose idea was never captured draws nothing", async ({
   page,
 }) => {
   await anOpenProject(page, "Dangling");
@@ -200,11 +200,11 @@ test("a placement whose piece was never captured draws nothing", async ({
       body: JSON.stringify({ project }),
     }).then((it) => it.json());
 
-    await fetch(`/api/boards/${board.id}/pieces`, {
+    await fetch(`/api/boards/${board.id}/ideas`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        piece: "piece_000000000000000000000A",
+        idea: "idea_000000000000000000000A",
         spot: { x: 520, y: 40 },
       }),
     });
@@ -217,7 +217,7 @@ test("a placement whose piece was never captured draws nothing", async ({
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("a pinned piece can be unpinned back to the waiting list", async ({
+test("a pinned idea can be unpinned back to the waiting list", async ({
   page,
 }) => {
   await anOpenProject(page, "Unpinning");
@@ -233,7 +233,7 @@ test("a pinned piece can be unpinned back to the waiting list", async ({
   await expect(waiting(page).getByText("The loom remembers")).toBeVisible();
 });
 
-test("an unpinned piece stays off the board after a reload", async ({
+test("an unpinned idea stays off the board after a reload", async ({
   page,
 }) => {
   await anOpenProject(page, "UnpinLasts");
@@ -251,7 +251,7 @@ test("an unpinned piece stays off the board after a reload", async ({
   await expect(waiting(page).getByText("The loom remembers")).toBeVisible();
 });
 
-test("freshly pinned pieces land inside the board as it is first shown", async ({
+test("freshly pinned ideas land inside the board as it is first shown", async ({
   page,
 }) => {
   await anOpenProject(page, "Layout");

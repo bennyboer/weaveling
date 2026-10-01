@@ -11,12 +11,12 @@ const manuscript = (page: Page) =>
   page.getByRole("list", { name: "The manuscript" });
 
 const waiting = (page: Page) =>
-  page.getByRole("list", { name: "Pieces not in the book" });
+  page.getByRole("list", { name: "Ideas not in the book" });
 
 const titles = (page: Page) => page.locator(".branch .title");
 
-async function place(page: Page, piece: string, into: string) {
-  await page.getByRole("button", { name: `Place ${piece}` }).click();
+async function place(page: Page, idea: string, into: string) {
+  await page.getByRole("button", { name: `Place ${idea}` }).click();
   await page.getByRole("textbox", { name: `Section ${into}` }).click();
 }
 
@@ -223,7 +223,7 @@ test("a section with nothing in it is flagged without being refused", async ({
   await expect(titles(page).first()).toHaveValue("Chapter 1");
 });
 
-test("a piece is placed from the tray and leaves it", async ({ page }) => {
+test("an idea is placed from the tray and leaves it", async ({ page }) => {
   await aNewProject(page, "Placing");
   await openThePool(page);
   await capture(page, "The loom remembers");
@@ -238,9 +238,7 @@ test("a piece is placed from the tray and leaves it", async ({ page }) => {
   await expect(page.locator(".hollow")).toHaveCount(0);
 });
 
-test("a piece in the book opens for writing from the outline", async ({
-  page,
-}) => {
+test("an idea in the book opens from the outline", async ({ page }) => {
   await aNewProject(page, "Opening");
   await openThePool(page);
   await capture(page, "The loom remembers");
@@ -254,11 +252,13 @@ test("a piece in the book opens for writing from the outline", async ({
     .getByRole("link", { name: "The loom remembers" })
     .click();
 
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
-  await expect(page).toHaveURL(/\/pieces\/the-loom-remembers-piece_/);
+  await expect(
+    page.getByRole("heading", { name: "The loom remembers" }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/ideas\/the-loom-remembers-idea_/);
 });
 
-test("a piece taken out of the book goes back to the tray", async ({
+test("an idea taken out of the book goes back to the tray", async ({
   page,
 }) => {
   await aNewProject(page, "Removing");
@@ -361,7 +361,7 @@ test("a section cannot be dragged inside itself", async ({ page }) => {
     .toBe(["Part One", "  Chapter 1"].join("\n"));
 });
 
-test("a piece can be dragged from the rail onto a section", async ({
+test("an idea can be dragged from the rail onto a section", async ({
   page,
 }) => {
   await aNewProject(page, "Dragging");

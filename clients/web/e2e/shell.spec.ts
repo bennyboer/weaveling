@@ -61,12 +61,12 @@ test("the switcher marks the view you are on", async ({ page }) => {
     /here/,
   );
   await expect(
-    views(page).getByRole("link", { name: "Pieces" }),
+    views(page).getByRole("link", { name: "Ideas" }),
   ).not.toHaveClass(/here/);
 
   await openThePool(page);
 
-  await expect(views(page).getByRole("link", { name: "Pieces" })).toHaveClass(
+  await expect(views(page).getByRole("link", { name: "Ideas" })).toHaveClass(
     /here/,
   );
   await expect(

@@ -24,7 +24,7 @@ fn a_workbench() -> Wired {
     wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
-fn a_idea(named: &str) -> IdeaLink {
+fn an_idea(named: &str) -> IdeaLink {
     IdeaLink::from(named)
 }
 
@@ -54,7 +54,7 @@ async fn a_board_holding(wired: &Wired, ideas: &[&str]) -> BoardId {
             .boards
             .pin(
                 &id.to_string(),
-                a_idea(idea),
+                an_idea(idea),
                 Spot::at(nth as i64 * 10, 0),
                 Size::CARD,
                 None,
@@ -83,7 +83,7 @@ async fn pinned_on(wired: &Wired, board: &BoardId) -> Vec<String> {
 }
 
 #[tokio::test]
-async fn pinning_a_idea_puts_it_in_the_index() {
+async fn pinning_an_idea_puts_it_in_the_index() {
     let wired = a_workbench();
 
     let board = a_board_holding(&wired, &["idea_1"]).await;
@@ -91,7 +91,7 @@ async fn pinning_a_idea_puts_it_in_the_index() {
     assert_eq!(
         wired
             .catalog
-            .boards_holding(&a_idea("idea_1"))
+            .boards_holding(&an_idea("idea_1"))
             .await
             .expect("looking should succeed"),
         vec![board],
@@ -100,13 +100,13 @@ async fn pinning_a_idea_puts_it_in_the_index() {
 }
 
 #[tokio::test]
-async fn unpinning_a_idea_takes_it_out_of_the_index() {
+async fn unpinning_an_idea_takes_it_out_of_the_index() {
     let wired = a_workbench();
     let board = a_board_holding(&wired, &["idea_1"]).await;
 
     wired
         .boards
-        .unpin(&board.to_string(), a_idea("idea_1"), None, &an_author())
+        .unpin(&board.to_string(), an_idea("idea_1"), None, &an_author())
         .await
         .expect("unpinning should succeed");
     wired.settle().await;
@@ -114,7 +114,7 @@ async fn unpinning_a_idea_takes_it_out_of_the_index() {
     assert!(
         wired
             .catalog
-            .boards_holding(&a_idea("idea_1"))
+            .boards_holding(&an_idea("idea_1"))
             .await
             .expect("looking should succeed")
             .is_empty()
@@ -161,7 +161,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 }
 
 #[tokio::test]
-async fn discarding_a_idea_nobody_pinned_is_harmless() {
+async fn discarding_an_idea_nobody_pinned_is_harmless() {
     let wired = a_workbench();
     a_board_holding(&wired, &["idea_1"]).await;
 
@@ -169,7 +169,7 @@ async fn discarding_a_idea_nobody_pinned_is_harmless() {
         .tidier
         .handle(&discarded("idea_never_pinned"))
         .await
-        .expect("a idea that was never on a board is not a failure");
+        .expect("an idea that was never on a board is not a failure");
 }
 
 #[tokio::test]
@@ -222,7 +222,7 @@ async fn the_discard_listener_hears_only_discards() {
         !wired
             .tidier
             .hears(&RoutingKey::parse("idea.retitled").expect("a plain key is fine")),
-        "nothing else a idea does should move it off a board"
+        "nothing else an idea does should move it off a board"
     );
 }
 

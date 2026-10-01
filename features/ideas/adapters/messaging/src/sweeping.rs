@@ -32,7 +32,7 @@ enum NotSwept {
     Unreadable(#[from] UnreadableMessage),
     #[error("this message does not say which project to sweep: {0}")]
     Unshaped(String),
-    #[error("this message names something that is not a idea")]
+    #[error("this message names something that is not an idea")]
     NotAIdeaId(#[source] ids::InvalidId),
     #[error(transparent)]
     Catalog(#[from] CatalogError),

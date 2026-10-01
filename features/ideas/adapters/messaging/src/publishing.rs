@@ -20,7 +20,7 @@ pub struct IdeaEventPublisher {
 pub enum UnreadableIdeaEvent {
     #[error(transparent)]
     NotAIdeaEvent(#[from] UnreadableMessage),
-    #[error("this message names something that is not a idea")]
+    #[error("this message names something that is not an idea")]
     NotAIdeaId(#[source] InvalidId),
 }
 
@@ -92,7 +92,7 @@ mod tests {
         OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
     }
 
-    fn a_idea() -> IdeaId {
+    fn an_idea() -> IdeaId {
         IdeaId::generate(at(1_000))
     }
 
@@ -135,7 +135,7 @@ mod tests {
 
     #[test]
     fn every_event_lands_on_the_routing_key_the_contract_declares() {
-        let id = a_idea();
+        let id = an_idea();
 
         for (event, declared) in everything_worth_publishing() {
             let name = event.name();
@@ -161,8 +161,8 @@ mod tests {
     }
 
     #[test]
-    fn what_a_idea_event_says_comes_from_the_features_own_mapping() {
-        let id = a_idea();
+    fn what_an_idea_event_says_comes_from_the_features_own_mapping() {
+        let id = an_idea();
 
         let body = event_in(&published(&id, a_capture())).expect("what we wrote must be readable");
 
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event() {
-        let id = a_idea();
+        let id = an_idea();
 
         for (event, _) in everything_worth_publishing() {
             let expected = event.name().as_str().to_owned();
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn a_snapshot_is_not_published_at_all() {
-        let id = a_idea();
+        let id = an_idea();
         let snapshot = IdeaEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             title: a_title(),
@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn the_idea_can_be_read_back_out_of_a_message() {
-        let id = a_idea();
+        let id = an_idea();
 
         assert_eq!(
             idea_in(&published(&id, a_capture())).expect("what we wrote must be readable"),

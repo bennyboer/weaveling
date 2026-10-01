@@ -113,7 +113,7 @@ pub async fn a_project_lists_its_boards_in_a_settled_order(catalog: &impl BoardC
     );
 }
 
-pub async fn a_idea_nobody_pinned_is_on_no_board(catalog: &impl BoardCatalog) {
+pub async fn an_idea_nobody_pinned_is_on_no_board(catalog: &impl BoardCatalog) {
     let found = catalog
         .boards_holding(&IdeaLink::from("idea_loose"))
         .await
@@ -142,7 +142,7 @@ pub async fn a_pinned_idea_names_the_board_holding_it(catalog: &impl BoardCatalo
     );
 }
 
-pub async fn a_idea_may_sit_on_more_than_one_board(catalog: &impl BoardCatalog) {
+pub async fn an_idea_may_sit_on_more_than_one_board(catalog: &impl BoardCatalog) {
     let earliest = BoardId::generate(at(1_000));
     let latest = BoardId::generate(at(2_000));
     for board in [latest, earliest] {
@@ -191,7 +191,9 @@ pub async fn what_a_board_holds_is_replaced_not_added_to(catalog: &impl BoardCat
     );
 }
 
-pub async fn one_board_letting_a_idea_go_leaves_the_others_holding_it(catalog: &impl BoardCatalog) {
+pub async fn one_board_letting_an_idea_go_leaves_the_others_holding_it(
+    catalog: &impl BoardCatalog,
+) {
     let keeping = BoardId::generate(at(1_000));
     let dropping = BoardId::generate(at(2_000));
     for board in [keeping, dropping] {
@@ -297,15 +299,15 @@ macro_rules! conformance_tests {
             $workbench,
             a_project_lists_its_boards_in_a_settled_order
         );
-        $crate::catalog_conformance_case!($workbench, a_idea_nobody_pinned_is_on_no_board);
+        $crate::catalog_conformance_case!($workbench, an_idea_nobody_pinned_is_on_no_board);
         $crate::catalog_conformance_case!($workbench, a_forgotten_board_takes_its_pins_with_it);
         $crate::catalog_conformance_case!($workbench, forgetting_a_board_nobody_opened_is_harmless);
         $crate::catalog_conformance_case!($workbench, a_pinned_idea_names_the_board_holding_it);
-        $crate::catalog_conformance_case!($workbench, a_idea_may_sit_on_more_than_one_board);
+        $crate::catalog_conformance_case!($workbench, an_idea_may_sit_on_more_than_one_board);
         $crate::catalog_conformance_case!($workbench, what_a_board_holds_is_replaced_not_added_to);
         $crate::catalog_conformance_case!(
             $workbench,
-            one_board_letting_a_idea_go_leaves_the_others_holding_it
+            one_board_letting_an_idea_go_leaves_the_others_holding_it
         );
     };
 }

@@ -167,7 +167,7 @@ async fn a_message_about_no_idea_at_all_is_refused() {
 }
 
 #[tokio::test]
-async fn a_message_about_a_idea_that_was_never_stored_is_refused() {
+async fn a_message_about_an_idea_that_was_never_stored_is_refused() {
     let wired = a_workbench();
     let never_stored = IdeaId::generate(at(1_000));
 

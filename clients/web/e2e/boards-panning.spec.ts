@@ -37,11 +37,11 @@ test("dragging the bare board carries the cards with it", async ({ page }) => {
   expect(after.y).toBe(before.y - 70);
   await expect(
     cardNamed(page, "The loom remembers"),
-    "panning moves the window, not the piece",
+    "panning moves the window, not the idea",
   ).toHaveAttribute("style", /left: 40px; top: 40px;/);
 });
 
-test("a piece pinned beyond the edge can be panned to", async ({ page }) => {
+test("an idea pinned beyond the edge can be panned to", async ({ page }) => {
   await anOpenProject(page, "FarAway");
   await capture(page, "Far away");
   await openTheBoard(page);
@@ -56,7 +56,7 @@ test("a piece pinned beyond the edge can be panned to", async ({ page }) => {
       body: JSON.stringify({ project }),
     }).then((it) => it.json());
 
-    await fetch(`/api/boards/${board.id}/pieces/${board.pieces[0].piece}`, {
+    await fetch(`/api/boards/${board.id}/ideas/${board.ideas[0].idea}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ spot: { x: 40, y: 900 } }),
@@ -66,10 +66,9 @@ test("a piece pinned beyond the edge can be panned to", async ({ page }) => {
   await onTheBoard(page);
 
   const away = await seenAt(page, "Far away");
-  expect(
-    away.y,
-    "the piece starts far below the visible board",
-  ).toBeGreaterThan(500);
+  expect(away.y, "the idea starts far below the visible board").toBeGreaterThan(
+    500,
+  );
 
   await panBy(page, 0, -400);
   await panBy(page, 0, -400);
@@ -267,7 +266,7 @@ test("the action bar keeps its size however far the board is zoomed out", async 
   expect(Math.round(after!.width)).toBe(Math.round(before!.width));
 });
 
-test("a piece is pinned where the author is looking, not at the board's origin", async ({
+test("an idea is pinned where the author is looking, not at the board's origin", async ({
   page,
 }) => {
   await anOpenProject(page, "PinInView");

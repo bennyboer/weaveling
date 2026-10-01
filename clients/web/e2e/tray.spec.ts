@@ -13,7 +13,7 @@ const NARROW = { width: 700, height: 800 };
 const tray = (page: Page) => page.locator(".tray");
 
 const toggle = (page: Page) =>
-  page.getByRole("button", { name: /^Pieces ·/ });
+  page.getByRole("button", { name: /^Ideas ·/ });
 
 const placed = (page: Page) =>
   page.evaluate(() => {
@@ -71,7 +71,7 @@ test("a narrow window keeps the tray in a drawer", async ({ page }) => {
     .toBe(NARROW.width);
   expect((await placed(page)).left).toBeLessThan(NARROW.width);
 
-  await tray(page).getByRole("button", { name: "Hide the pieces" }).click();
+  await tray(page).getByRole("button", { name: "Hide the ideas" }).click();
   await awayFromView(page);
 });
 

@@ -2,7 +2,7 @@
 
 The spatial view: ideas pinned on a canvas, where an author can see them all at once.
 
-A board holds **placements** — a idea, a spot, a size — and nothing else about the idea. The title an author reads on a card comes from the [idea catalog](../ideas), joined in the client. That is deliberate: a board that stored titles would hold a second copy of a fact it does not own, and every retitle would have to chase it. See [the frontend join](../../ARCHITECTURE.md#the-board-renders-through-a-frontend-join).
+A board holds **placements** — an idea, a spot, a size — and nothing else about the idea. The title an author reads on a card comes from the [idea catalog](../ideas), joined in the client. That is deliberate: a board that stored titles would hold a second copy of a fact it does not own, and every retitle would have to chase it. See [the frontend join](../../ARCHITECTURE.md#the-board-renders-through-a-frontend-join).
 
 **`Board` is an aggregate** — `Started`, `IdeaPinned`, `IdeaMoved`, `IdeaResized`, `IdeaRaised`, `IdeaUnpinned`. Moving and resizing are separate events even though one `Reshape` command can do both, because an event says what changed rather than what a caller asked for. Multiple boards per project are in the model from the first event even though the first version ships one, because keying placements by project id is the shortcut that would turn a second board into a migration of everything ever written.
 

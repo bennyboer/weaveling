@@ -8,7 +8,7 @@ use super::*;
 const KIND: AggregateType = AggregateType::of("idea");
 
 #[derive(Debug, Error)]
-#[error("a idea cannot be captured twice")]
+#[error("an idea cannot be captured twice")]
 struct AlreadyCaptured;
 
 fn asking(with: &str) -> HeaderMap {
@@ -92,7 +92,7 @@ fn a_domain_refusal_is_a_conflict() {
     let (status, message) = refusal(&ServiceError::Refused(AlreadyCaptured));
 
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(message, "a idea cannot be captured twice");
+    assert_eq!(message, "an idea cannot be captured twice");
 }
 
 #[test]

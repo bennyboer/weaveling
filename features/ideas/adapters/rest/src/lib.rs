@@ -143,7 +143,7 @@ impl IntoResponse for ApiError {
             IdeaServiceError::InvalidTitle(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
             IdeaServiceError::Events(events) => refusal(&events),
             unserveable => {
-                tracing::error!(error = %unserveable, "a idea request could not be served");
+                tracing::error!(error = %unserveable, "an idea request could not be served");
 
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,

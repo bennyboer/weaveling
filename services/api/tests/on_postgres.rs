@@ -91,7 +91,7 @@ async fn a_project_written_to_postgres_is_read_back_and_left_waiting_to_be_annou
 }
 
 #[tokio::test]
-async fn a_idea_captured_against_postgres_is_written_and_left_waiting_to_be_announced() {
+async fn an_idea_captured_against_postgres_is_written_and_left_waiting_to_be_announced() {
     let running = a_running_api().await;
     let project = a_project(&running.server, "Capturing").await;
 
@@ -204,7 +204,7 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
 
     assert_eq!(
         elsewhere, 0,
-        "capturing a idea must not write into another feature's database"
+        "capturing an idea must not write into another feature's database"
     );
 
     running.cleanup().await;

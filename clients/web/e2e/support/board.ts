@@ -4,7 +4,7 @@ export const corkboard = (page: Page) =>
   page.getByRole("region", { name: "Board" });
 
 export const waiting = (page: Page) =>
-  page.getByRole("list", { name: "Pieces not on the board" });
+  page.getByRole("list", { name: "Ideas not on the board" });
 
 export const bar = (page: Page) => corkboard(page).locator(".pinned-actions");
 
@@ -16,7 +16,7 @@ export async function select(page: Page, named: string) {
   await expect(bar(page)).toHaveAttribute("aria-label", `Actions for ${named}`);
 }
 
-export async function openForWriting(page: Page, named: string) {
+export async function openTheIdea(page: Page, named: string) {
   await select(page, named);
   await bar(page)
     .getByRole("button", { name: `Open ${named}` })

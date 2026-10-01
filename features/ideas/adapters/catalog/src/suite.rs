@@ -135,7 +135,7 @@ pub async fn the_newest_idea_is_listed_first(catalog: &impl IdeaCatalog) {
 
     for id in &captured {
         catalog
-            .remember(&a_summary(*id, "project_1", "A idea"))
+            .remember(&a_summary(*id, "project_1", "An idea"))
             .await
             .expect("remembering should succeed");
     }
@@ -158,7 +158,7 @@ pub async fn a_batch_starts_at_the_oldest_idea(catalog: &impl IdeaCatalog) {
         .collect();
     for id in &captured {
         catalog
-            .remember(&a_summary(*id, "project_1", "A idea"))
+            .remember(&a_summary(*id, "project_1", "An idea"))
             .await
             .expect("remembering should succeed");
     }
@@ -181,7 +181,7 @@ pub async fn a_batch_after_a_cursor_takes_what_comes_next(catalog: &impl IdeaCat
         .collect();
     for id in &captured {
         catalog
-            .remember(&a_summary(*id, "project_1", "A idea"))
+            .remember(&a_summary(*id, "project_1", "An idea"))
             .await
             .expect("remembering should succeed");
     }
@@ -200,7 +200,7 @@ pub async fn a_batch_after_a_cursor_takes_what_comes_next(catalog: &impl IdeaCat
 pub async fn a_batch_past_the_end_is_empty(catalog: &impl IdeaCatalog) {
     let only = IdeaId::generate(at(1_000));
     catalog
-        .remember(&a_summary(only, "project_1", "A idea"))
+        .remember(&a_summary(only, "project_1", "An idea"))
         .await
         .expect("remembering should succeed");
 

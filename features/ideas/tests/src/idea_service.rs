@@ -41,7 +41,7 @@ async fn capturing_yields_an_id_the_idea_can_be_fetched_with() {
 }
 
 #[tokio::test]
-async fn the_client_never_computes_a_idea_id() {
+async fn the_client_never_computes_an_idea_id() {
     let (service, _) = a_workbench();
 
     let id = a_captured_idea(&service).await;
@@ -63,7 +63,7 @@ async fn two_ideas_captured_in_the_same_instant_still_differ() {
 }
 
 #[tokio::test]
-async fn a_idea_may_be_captured_with_no_title() {
+async fn an_idea_may_be_captured_with_no_title() {
     let (service, _) = a_workbench();
 
     let id = service
@@ -159,7 +159,7 @@ async fn a_discarded_idea_refuses_further_changes() {
 }
 
 #[tokio::test]
-async fn fetching_a_idea_that_was_never_captured_is_not_found() {
+async fn fetching_an_idea_that_was_never_captured_is_not_found() {
     let (service, _) = a_workbench();
     let never = IdeaId::generate(at(2_000));
 
@@ -193,7 +193,7 @@ async fn an_id_of_another_kind_is_refused_before_the_store_is_touched() {
 }
 
 #[tokio::test]
-async fn a_idea_captured_later_sorts_after_one_captured_earlier() {
+async fn an_idea_captured_later_sorts_after_one_captured_earlier() {
     let (service, clock) = a_workbench();
 
     let earliest = a_captured_idea(&service).await;
@@ -207,7 +207,7 @@ async fn a_idea_captured_later_sorts_after_one_captured_earlier() {
 }
 
 #[tokio::test]
-async fn a_idea_is_snapshotted_once_the_threshold_is_reached() {
+async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
     let Wired {
         ideas: service,
         store,
@@ -256,7 +256,7 @@ async fn a_idea_is_snapshotted_once_the_threshold_is_reached() {
 }
 
 #[tokio::test]
-async fn a_idea_survives_on_its_snapshot_alone() {
+async fn an_idea_survives_on_its_snapshot_alone() {
     let Wired {
         ideas: service,
         store,

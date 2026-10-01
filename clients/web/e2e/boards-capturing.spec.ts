@@ -20,7 +20,7 @@ async function doubleClickBareBoard(page: import("@playwright/test").Page) {
   );
 }
 
-test("double-clicking the bare board captures a piece and pins it", async ({
+test("double-clicking the bare board captures an idea and pins it", async ({
   page,
 }) => {
   await aNewProject(page, "Capturing");
@@ -37,7 +37,7 @@ test("double-clicking the bare board captures a piece and pins it", async ({
   await openThePool(page);
 
   await expect(
-    page.getByRole("list", { name: "Pieces" }).getByText("The loom remembers"),
+    page.getByRole("list", { name: "Ideas" }).getByText("The loom remembers"),
   ).toBeVisible();
 });
 
@@ -55,7 +55,7 @@ test("a cancelled capture records nothing at all", async ({ page }) => {
 
   await expect(page.getByText("Never mind")).toHaveCount(0);
   await expect(
-    page.getByText("No pieces yet. Shoot an idea in and see where it goes."),
+    page.getByText("No ideas yet. Shoot an idea in and see where it goes."),
   ).toBeVisible();
 });
 
@@ -71,7 +71,7 @@ test("a capture left empty records nothing", async ({ page }) => {
   await openThePool(page);
 
   await expect(
-    page.getByText("No pieces yet. Shoot an idea in and see where it goes."),
+    page.getByText("No ideas yet. Shoot an idea in and see where it goes."),
   ).toBeVisible();
 });
 

@@ -58,9 +58,9 @@ pub struct Idea {
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum IdeaError {
-    #[error("a idea must be captured before anything else can happen to it")]
+    #[error("an idea must be captured before anything else can happen to it")]
     NotCapturedYet,
-    #[error("a idea cannot be captured twice")]
+    #[error("an idea cannot be captured twice")]
     AlreadyCaptured,
     #[error("a discarded idea accepts no changes")]
     Discarded,

@@ -48,7 +48,7 @@ fn grown(events: &[IdeaEvent]) -> Idea {
 }
 
 #[test]
-fn a_idea_is_captured_with_a_project_and_a_title() {
+fn an_idea_is_captured_with_a_project_and_a_title() {
     let events = Idea::begin(a_capture(), &an_author()).expect("capturing should succeed");
 
     assert_eq!(
@@ -61,7 +61,7 @@ fn a_idea_is_captured_with_a_project_and_a_title() {
 }
 
 #[test]
-fn a_idea_may_be_captured_with_no_title_at_all() {
+fn an_idea_may_be_captured_with_no_title_at_all() {
     let events = Idea::begin(
         IdeaCommand::Capture {
             project: ProjectLink::from("project_1"),
@@ -75,7 +75,7 @@ fn a_idea_may_be_captured_with_no_title_at_all() {
 }
 
 #[test]
-fn nothing_but_a_capture_can_start_a_idea() {
+fn nothing_but_a_capture_can_start_an_idea() {
     assert_eq!(
         Idea::begin(IdeaCommand::Discard, &an_author()),
         Err(IdeaError::NotCapturedYet)
@@ -114,7 +114,7 @@ fn retitling_to_the_same_title_records_nothing() {
 }
 
 #[test]
-fn a_idea_can_be_given_a_title_it_never_had() {
+fn an_idea_can_be_given_a_title_it_never_had() {
     let mut idea = a_captured_idea();
     let decided = idea
         .decide(IdeaCommand::Retitle(IdeaTitle::untitled()), &an_author())

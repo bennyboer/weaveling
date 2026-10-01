@@ -42,7 +42,7 @@ fn a_section(named: &str) -> SectionId {
     })
 }
 
-fn a_idea(named: &str) -> IdeaLink {
+fn an_idea(named: &str) -> IdeaLink {
     IdeaLink::from(format!("idea_{named}"))
 }
 
@@ -103,7 +103,7 @@ impl Book {
         let held = self.outline.ideas_in(&a_section(to));
 
         self.does(OutlineCommand::AttachIdea {
-            idea: a_idea(idea),
+            idea: an_idea(idea),
             to: a_section(to),
             after: held.last().cloned(),
         });
@@ -541,11 +541,11 @@ fn removing_a_section_returns_its_ideas_to_the_pool_rather_than_losing_them() {
     });
 
     assert!(book.outline.reading_order().is_empty());
-    assert_eq!(book.outline.section_holding(&a_idea("arrival")), None);
+    assert_eq!(book.outline.section_holding(&an_idea("arrival")), None);
 }
 
 #[test]
-fn a_idea_attached_where_it_already_sits_elsewhere_simply_moves() {
+fn an_idea_attached_where_it_already_sits_elsewhere_simply_moves() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
     book.adds("Chapter 2", None, Some("Chapter 1"));
@@ -555,7 +555,7 @@ fn a_idea_attached_where_it_already_sits_elsewhere_simply_moves() {
 
     assert!(book.outline.ideas_in(&a_section("Chapter 1")).is_empty());
     assert_eq!(
-        book.outline.section_holding(&a_idea("rain")),
+        book.outline.section_holding(&an_idea("rain")),
         Some(a_section("Chapter 2"))
     );
 }
@@ -571,7 +571,7 @@ fn several_ideas_may_sit_in_one_section_in_the_order_they_are_read() {
 
     assert_eq!(
         book.outline.reading_order(),
-        vec![a_idea("one"), a_idea("two"), a_idea("three")]
+        vec![an_idea("one"), an_idea("two"), an_idea("three")]
     );
 }
 
@@ -590,21 +590,21 @@ fn the_reading_order_walks_the_whole_book_depth_first() {
     assert_eq!(
         book.outline.reading_order(),
         vec![
-            a_idea("epigraph"),
-            a_idea("arrival"),
-            a_idea("rain"),
-            a_idea("after")
+            an_idea("epigraph"),
+            an_idea("arrival"),
+            an_idea("rain"),
+            an_idea("after")
         ]
     );
 }
 
 #[test]
-fn a_idea_that_is_not_in_the_outline_cannot_be_detached() {
+fn an_idea_that_is_not_in_the_outline_cannot_be_detached() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
 
     let refused = book.refuses(OutlineCommand::DetachIdea {
-        idea: a_idea("nowhere"),
+        idea: an_idea("nowhere"),
     });
 
     assert_eq!(refused, OutlineError::NotAttached);

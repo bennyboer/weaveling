@@ -190,7 +190,7 @@ async fn a_moved_idea_comes_back_at_its_new_spot() {
 }
 
 #[tokio::test]
-async fn moving_a_idea_that_is_not_on_the_board_is_not_found() {
+async fn moving_an_idea_that_is_not_on_the_board_is_not_found() {
     let server = a_server();
     let opened = an_open_board(&server).await;
 
@@ -205,7 +205,7 @@ async fn moving_a_idea_that_is_not_on_the_board_is_not_found() {
 }
 
 #[tokio::test]
-async fn unpinning_a_idea_that_is_not_on_the_board_is_not_found() {
+async fn unpinning_an_idea_that_is_not_on_the_board_is_not_found() {
     let server = a_server();
     let opened = an_open_board(&server).await;
 
