@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, PieceLink, ProjectLink};
+use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, IdeaLink, ProjectLink};
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
 
@@ -18,16 +18,16 @@ const IN_PROJECT: &str = "
     ORDER BY board
 ";
 
-const LET_GO: &str = "DELETE FROM board_pieces WHERE board = $1";
+const LET_GO: &str = "DELETE FROM board_ideas WHERE board = $1";
 
 const HOLD: &str = "
-    INSERT INTO board_pieces (board, piece)
+    INSERT INTO board_ideas (board, idea)
     SELECT $1, held
     FROM unnest($2::text[]) AS held
     ON CONFLICT DO NOTHING
 ";
 
-const HOLDING: &str = "SELECT board FROM board_pieces WHERE piece = $1 ORDER BY board";
+const HOLDING: &str = "SELECT board FROM board_ideas WHERE idea = $1 ORDER BY board";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations")
@@ -99,8 +99,8 @@ impl BoardCatalog for PostgresBoardCatalog {
             .collect()
     }
 
-    async fn holds(&self, board: BoardId, pieces: &[PieceLink]) -> Result<(), CatalogError> {
-        let held: Vec<String> = pieces.iter().map(ToString::to_string).collect();
+    async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError> {
+        let held: Vec<String> = ideas.iter().map(ToString::to_string).collect();
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(LET_GO)
@@ -119,9 +119,9 @@ impl BoardCatalog for PostgresBoardCatalog {
         transaction.commit().await.map_err(unreachable)
     }
 
-    async fn boards_holding(&self, piece: &PieceLink) -> Result<Vec<BoardId>, CatalogError> {
+    async fn boards_holding(&self, idea: &IdeaLink) -> Result<Vec<BoardId>, CatalogError> {
         let found = sqlx::query(HOLDING)
-            .bind(piece.to_string())
+            .bind(idea.to_string())
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;

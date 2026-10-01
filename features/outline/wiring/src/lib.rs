@@ -4,7 +4,7 @@ use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineCatalog, OutlineEvent, OutlineService};
 use outline_messaging::{
-    AttachedPiecesProjector, DetachOnDiscard, DiscardOutlinesOnProjectDeleted,
+    AttachedIdeasProjector, DetachOnDiscard, DiscardOutlinesOnProjectDeleted,
     OutlineCatalogProjector,
 };
 use registry::{InMemoryRegistry, Registry};
@@ -71,7 +71,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.catalog.clone(),
         context.clock.clone(),
     );
-    let index = AttachedPiecesProjector::new(
+    let index = AttachedIdeasProjector::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),

@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 pub const STARTED: &str = "board.started";
-pub const PIECE_PINNED: &str = "board.piece.pinned";
-pub const PIECE_MOVED: &str = "board.piece.moved";
-pub const PIECE_RESIZED: &str = "board.piece.resized";
-pub const PIECE_RAISED: &str = "board.piece.raised";
-pub const PIECE_UNPINNED: &str = "board.piece.unpinned";
+pub const IDEA_PINNED: &str = "board.idea.pinned";
+pub const IDEA_MOVED: &str = "board.idea.moved";
+pub const IDEA_RESIZED: &str = "board.idea.resized";
+pub const IDEA_RAISED: &str = "board.idea.raised";
+pub const IDEA_UNPINNED: &str = "board.idea.unpinned";
 pub const DISCARDED: &str = "board.discarded";
 pub const EVERY_BOARD: &str = "board.#";
 
@@ -22,8 +22,8 @@ pub struct SizeDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct PositionedPieceDTO {
-    pub piece: String,
+pub struct PositionedIdeaDTO {
+    pub idea: String,
     pub spot: SpotDTO,
     pub size: SizeDTO,
 }
@@ -33,7 +33,7 @@ pub struct BoardDTO {
     pub id: String,
     pub version: u64,
     pub project: String,
-    pub pieces: Vec<PositionedPieceDTO>,
+    pub ideas: Vec<PositionedIdeaDTO>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -42,14 +42,14 @@ pub struct OpenBoardRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct PinPieceRequest {
-    pub piece: String,
+pub struct PinIdeaRequest {
+    pub idea: String,
     pub spot: SpotDTO,
     pub size: SizeDTO,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct ReshapePieceRequest {
+pub struct ReshapeIdeaRequest {
     #[serde(default)]
     pub spot: Option<SpotDTO>,
     #[serde(default)]
@@ -61,20 +61,20 @@ pub struct ReshapePieceRequest {
 pub enum BoardEventDTO {
     #[serde(rename = "STARTED")]
     Started { project: String },
-    #[serde(rename = "PIECE_PINNED")]
-    PiecePinned {
-        piece: String,
+    #[serde(rename = "IDEA_PINNED")]
+    IdeaPinned {
+        idea: String,
         at: SpotDTO,
         size: SizeDTO,
     },
-    #[serde(rename = "PIECE_MOVED")]
-    PieceMoved { piece: String, to: SpotDTO },
-    #[serde(rename = "PIECE_RESIZED")]
-    PieceResized { piece: String, to: SizeDTO },
-    #[serde(rename = "PIECE_RAISED")]
-    PieceRaised { piece: String },
-    #[serde(rename = "PIECE_UNPINNED")]
-    PieceUnpinned { piece: String },
+    #[serde(rename = "IDEA_MOVED")]
+    IdeaMoved { idea: String, to: SpotDTO },
+    #[serde(rename = "IDEA_RESIZED")]
+    IdeaResized { idea: String, to: SizeDTO },
+    #[serde(rename = "IDEA_RAISED")]
+    IdeaRaised { idea: String },
+    #[serde(rename = "IDEA_UNPINNED")]
+    IdeaUnpinned { idea: String },
     #[serde(rename = "DISCARDED")]
     Discarded,
 }

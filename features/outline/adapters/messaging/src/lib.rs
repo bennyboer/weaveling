@@ -4,7 +4,7 @@ mod discarding;
 mod publishing;
 mod sweeping;
 
-pub use attaching::AttachedPiecesProjector;
+pub use attaching::AttachedIdeasProjector;
 pub use cataloguing::OutlineCatalogProjector;
 pub use discarding::{DetachOnDiscard, when_discarded};
 pub use publishing::{

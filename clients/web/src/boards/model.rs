@@ -1,6 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::pieces::model::PieceId;
+use crate::ideas::model::IdeaId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct BoardId(String);
@@ -24,8 +24,8 @@ pub struct Placement {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct PositionedPiece {
-    pub piece: PieceId,
+pub struct PositionedIdea {
+    pub idea: IdeaId,
     pub spot: Spot,
     pub size: Size,
 }
@@ -34,7 +34,7 @@ pub struct PositionedPiece {
 pub struct Board {
     pub id: BoardId,
     pub version: u64,
-    pub pieces: Vec<PositionedPiece>,
+    pub ideas: Vec<PositionedIdea>,
 }
 
 impl From<String> for BoardId {
@@ -50,7 +50,7 @@ impl Display for BoardId {
 }
 
 impl Board {
-    pub fn holds(&self, piece: &PieceId) -> bool {
-        self.pieces.iter().any(|held| &held.piece == piece)
+    pub fn holds(&self, idea: &IdeaId) -> bool {
+        self.ideas.iter().any(|held| &held.idea == idea)
     }
 }

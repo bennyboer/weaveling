@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use boards_contract::{
-    BoardDTO, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, ReshapePieceRequest, SizeDTO,
+    BoardDTO, OpenBoardRequest, PinIdeaRequest, PositionedIdeaDTO, ReshapeIdeaRequest, SizeDTO,
     SpotDTO,
 };
 use clock::FixedClock;
@@ -45,16 +45,11 @@ async fn an_open_board(server: &TestServer) -> BoardDTO {
     response.json()
 }
 
-async fn a_pinned_piece(
-    server: &TestServer,
-    board: &BoardDTO,
-    piece: &str,
-    at: SpotDTO,
-) -> BoardDTO {
+async fn a_pinned_idea(server: &TestServer, board: &BoardDTO, idea: &str, at: SpotDTO) -> BoardDTO {
     let response = server
-        .post(&format!("/boards/{}/pieces", board.id))
-        .json(&PinPieceRequest {
-            piece: piece.to_owned(),
+        .post(&format!("/boards/{}/ideas", board.id))
+        .json(&PinIdeaRequest {
+            idea: idea.to_owned(),
             spot: at,
             size: a_size(),
         })
@@ -77,7 +72,7 @@ async fn opening_a_board_comes_back_with_a_prefixed_id() {
     );
     assert_eq!(opened.project, "project_1");
     assert_eq!(opened.version, 1);
-    assert!(opened.pieces.is_empty());
+    assert!(opened.ideas.is_empty());
 }
 
 #[tokio::test]
@@ -129,22 +124,22 @@ async fn an_id_of_another_kind_is_a_bad_request() {
     let server = a_server();
 
     server
-        .get("/boards/piece_031VkO0hnpeQZUiAB7nDma")
+        .get("/boards/idea_031VkO0hnpeQZUiAB7nDma")
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
-async fn a_pinned_piece_comes_back_where_it_was_dropped() {
+async fn a_pinned_idea_comes_back_where_it_was_dropped() {
     let server = a_server();
     let opened = an_open_board(&server).await;
 
-    let pinned = a_pinned_piece(&server, &opened, "piece_1", a_spot(120, -40)).await;
+    let pinned = a_pinned_idea(&server, &opened, "idea_1", a_spot(120, -40)).await;
 
     assert_eq!(
-        pinned.pieces,
-        vec![PositionedPieceDTO {
-            piece: "piece_1".to_owned(),
+        pinned.ideas,
+        vec![PositionedIdeaDTO {
+            idea: "idea_1".to_owned(),
             spot: a_spot(120, -40),
             size: a_size(),
         }]
@@ -153,15 +148,15 @@ async fn a_pinned_piece_comes_back_where_it_was_dropped() {
 }
 
 #[tokio::test]
-async fn pinning_the_same_piece_twice_is_a_conflict() {
+async fn pinning_the_same_idea_twice_is_a_conflict() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    a_pinned_piece(&server, &opened, "piece_1", a_spot(0, 0)).await;
+    a_pinned_idea(&server, &opened, "idea_1", a_spot(0, 0)).await;
 
     server
-        .post(&format!("/boards/{}/pieces", opened.id))
-        .json(&PinPieceRequest {
-            piece: "piece_1".to_owned(),
+        .post(&format!("/boards/{}/ideas", opened.id))
+        .json(&PinIdeaRequest {
+            idea: "idea_1".to_owned(),
             spot: a_spot(9, 9),
             size: a_size(),
         })
@@ -170,14 +165,14 @@ async fn pinning_the_same_piece_twice_is_a_conflict() {
 }
 
 #[tokio::test]
-async fn a_moved_piece_comes_back_at_its_new_spot() {
+async fn a_moved_idea_comes_back_at_its_new_spot() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+    a_pinned_idea(&server, &opened, "idea_1", a_spot(10, 10)).await;
 
     let response = server
-        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
-        .json(&ReshapePieceRequest {
+        .patch(&format!("/boards/{}/ideas/idea_1", opened.id))
+        .json(&ReshapeIdeaRequest {
             spot: Some(a_spot(300, 20)),
             size: None,
         })
@@ -185,9 +180,9 @@ async fn a_moved_piece_comes_back_at_its_new_spot() {
     response.assert_status(StatusCode::OK);
 
     assert_eq!(
-        response.json::<BoardDTO>().pieces,
-        vec![PositionedPieceDTO {
-            piece: "piece_1".to_owned(),
+        response.json::<BoardDTO>().ideas,
+        vec![PositionedIdeaDTO {
+            idea: "idea_1".to_owned(),
             spot: a_spot(300, 20),
             size: a_size(),
         }]
@@ -195,13 +190,13 @@ async fn a_moved_piece_comes_back_at_its_new_spot() {
 }
 
 #[tokio::test]
-async fn moving_a_piece_that_is_not_on_the_board_is_not_found() {
+async fn moving_a_idea_that_is_not_on_the_board_is_not_found() {
     let server = a_server();
     let opened = an_open_board(&server).await;
 
     server
-        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
-        .json(&ReshapePieceRequest {
+        .patch(&format!("/boards/{}/ideas/idea_1", opened.id))
+        .json(&ReshapeIdeaRequest {
             spot: Some(a_spot(1, 1)),
             size: None,
         })
@@ -210,41 +205,41 @@ async fn moving_a_piece_that_is_not_on_the_board_is_not_found() {
 }
 
 #[tokio::test]
-async fn unpinning_a_piece_that_is_not_on_the_board_is_not_found() {
+async fn unpinning_a_idea_that_is_not_on_the_board_is_not_found() {
     let server = a_server();
     let opened = an_open_board(&server).await;
 
     server
-        .delete(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .delete(&format!("/boards/{}/ideas/idea_1", opened.id))
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn an_unpinned_piece_leaves_the_board() {
+async fn an_unpinned_idea_leaves_the_board() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+    a_pinned_idea(&server, &opened, "idea_1", a_spot(10, 10)).await;
 
     server
-        .delete(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .delete(&format!("/boards/{}/ideas/idea_1", opened.id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
     let response = server.get(&format!("/boards/{}", opened.id)).await;
-    assert!(response.json::<BoardDTO>().pieces.is_empty());
+    assert!(response.json::<BoardDTO>().ideas.is_empty());
 }
 
 #[tokio::test]
 async fn a_move_against_a_stale_version_is_refused() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+    a_pinned_idea(&server, &opened, "idea_1", a_spot(10, 10)).await;
 
     server
-        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .patch(&format!("/boards/{}/ideas/idea_1", opened.id))
         .add_header("if-match", "\"1\"")
-        .json(&ReshapePieceRequest {
+        .json(&ReshapeIdeaRequest {
             spot: Some(a_spot(20, 20)),
             size: None,
         })
@@ -256,12 +251,12 @@ async fn a_move_against_a_stale_version_is_refused() {
 async fn a_move_against_the_current_version_is_allowed() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    let pinned = a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+    let pinned = a_pinned_idea(&server, &opened, "idea_1", a_spot(10, 10)).await;
 
     server
-        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .patch(&format!("/boards/{}/ideas/idea_1", opened.id))
         .add_header("if-match", format!("\"{}\"", pinned.version))
-        .json(&ReshapePieceRequest {
+        .json(&ReshapeIdeaRequest {
             spot: Some(a_spot(20, 20)),
             size: None,
         })
@@ -275,7 +270,7 @@ async fn an_if_match_that_is_not_a_version_is_a_bad_request() {
     let opened = an_open_board(&server).await;
 
     server
-        .delete(&format!("/boards/{}/pieces/piece_1", opened.id))
+        .delete(&format!("/boards/{}/ideas/idea_1", opened.id))
         .add_header("if-match", "\"not-a-version\"")
         .await
         .assert_status(StatusCode::BAD_REQUEST);
@@ -293,14 +288,14 @@ async fn boards_of_other_projects_are_left_alone() {
 }
 
 #[tokio::test]
-async fn a_resized_piece_comes_back_at_its_new_extent() {
+async fn a_resized_idea_comes_back_at_its_new_extent() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+    a_pinned_idea(&server, &opened, "idea_1", a_spot(10, 10)).await;
 
     let response = server
-        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
-        .json(&ReshapePieceRequest {
+        .patch(&format!("/boards/{}/ideas/idea_1", opened.id))
+        .json(&ReshapeIdeaRequest {
             spot: None,
             size: Some(SizeDTO {
                 width: 400,
@@ -311,9 +306,9 @@ async fn a_resized_piece_comes_back_at_its_new_extent() {
     response.assert_status(StatusCode::OK);
 
     assert_eq!(
-        response.json::<BoardDTO>().pieces,
-        vec![PositionedPieceDTO {
-            piece: "piece_1".to_owned(),
+        response.json::<BoardDTO>().ideas,
+        vec![PositionedIdeaDTO {
+            idea: "idea_1".to_owned(),
             spot: a_spot(10, 10),
             size: SizeDTO {
                 width: 400,
@@ -327,11 +322,11 @@ async fn a_resized_piece_comes_back_at_its_new_extent() {
 async fn dragging_an_edge_moves_and_resizes_in_one_request() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    a_pinned_piece(&server, &opened, "piece_1", a_spot(100, 100)).await;
+    a_pinned_idea(&server, &opened, "idea_1", a_spot(100, 100)).await;
 
     let response = server
-        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
-        .json(&ReshapePieceRequest {
+        .patch(&format!("/boards/{}/ideas/idea_1", opened.id))
+        .json(&ReshapeIdeaRequest {
             spot: Some(a_spot(60, 100)),
             size: Some(SizeDTO {
                 width: 208,
@@ -343,9 +338,9 @@ async fn dragging_an_edge_moves_and_resizes_in_one_request() {
 
     let board = response.json::<BoardDTO>();
     assert_eq!(
-        board.pieces,
-        vec![PositionedPieceDTO {
-            piece: "piece_1".to_owned(),
+        board.ideas,
+        vec![PositionedIdeaDTO {
+            idea: "idea_1".to_owned(),
             spot: a_spot(60, 100),
             size: SizeDTO {
                 width: 208,
@@ -363,11 +358,11 @@ async fn dragging_an_edge_moves_and_resizes_in_one_request() {
 async fn a_card_cannot_be_resized_into_nothing() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
+    a_pinned_idea(&server, &opened, "idea_1", a_spot(10, 10)).await;
 
     server
-        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
-        .json(&ReshapePieceRequest {
+        .patch(&format!("/boards/{}/ideas/idea_1", opened.id))
+        .json(&ReshapeIdeaRequest {
             spot: None,
             size: Some(SizeDTO {
                 width: 0,
@@ -379,15 +374,15 @@ async fn a_card_cannot_be_resized_into_nothing() {
 }
 
 #[tokio::test]
-async fn a_moved_piece_comes_back_at_the_front_of_the_stack() {
+async fn a_moved_idea_comes_back_at_the_front_of_the_stack() {
     let server = a_server();
     let opened = an_open_board(&server).await;
-    a_pinned_piece(&server, &opened, "piece_1", a_spot(10, 10)).await;
-    a_pinned_piece(&server, &opened, "piece_2", a_spot(20, 20)).await;
+    a_pinned_idea(&server, &opened, "idea_1", a_spot(10, 10)).await;
+    a_pinned_idea(&server, &opened, "idea_2", a_spot(20, 20)).await;
 
     let response = server
-        .patch(&format!("/boards/{}/pieces/piece_1", opened.id))
-        .json(&ReshapePieceRequest {
+        .patch(&format!("/boards/{}/ideas/idea_1", opened.id))
+        .json(&ReshapeIdeaRequest {
             spot: Some(a_spot(300, 20)),
             size: None,
         })
@@ -396,13 +391,13 @@ async fn a_moved_piece_comes_back_at_the_front_of_the_stack() {
 
     let order: Vec<String> = response
         .json::<BoardDTO>()
-        .pieces
+        .ideas
         .into_iter()
-        .map(|held| held.piece)
+        .map(|held| held.idea)
         .collect();
     assert_eq!(
         order,
-        vec!["piece_2".to_owned(), "piece_1".to_owned()],
-        "the board lists its pieces bottom to top, and the moved one is now on top"
+        vec!["idea_2".to_owned(), "idea_1".to_owned()],
+        "the board lists its ideas bottom to top, and the moved one is now on top"
     );
 }

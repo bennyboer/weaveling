@@ -2,7 +2,7 @@ use eventsourcing::{Agent, AgentId, Aggregate, AggregateId, Event, EventMetadata
 use time::{Duration, OffsetDateTime};
 
 use crate::board::{
-    Board, BoardCommand, BoardError, BoardEvent, KIND, PieceLink, PositionedPiece, ProjectLink,
+    Board, BoardCommand, BoardError, BoardEvent, IdeaLink, KIND, PositionedIdea, ProjectLink,
 };
 use crate::size::Size;
 use crate::spot::Spot;
@@ -26,8 +26,8 @@ fn a_metadata(version: u64) -> EventMetadata {
     }
 }
 
-fn a_piece(named: &str) -> PieceLink {
-    PieceLink::from(named)
+fn a_idea(named: &str) -> IdeaLink {
+    IdeaLink::from(named)
 }
 
 fn a_started_board() -> Board {
@@ -38,15 +38,15 @@ fn a_started_board() -> Board {
     Board::from_first(&started, &a_metadata(1)).expect("a start should raise a board")
 }
 
-fn pinned_order(board: &Board) -> Vec<PieceLink> {
-    board.pieces().into_iter().map(|held| held.piece).collect()
+fn pinned_order(board: &Board) -> Vec<IdeaLink> {
+    board.ideas().into_iter().map(|held| held.idea).collect()
 }
 
-fn a_board_holding(piece: &PieceLink, at_spot: Spot) -> Board {
+fn a_board_holding(idea: &IdeaLink, at_spot: Spot) -> Board {
     let mut board = a_started_board();
     board.apply(
-        &BoardEvent::PiecePinned {
-            piece: piece.clone(),
+        &BoardEvent::IdeaPinned {
+            idea: idea.clone(),
             at: at_spot,
             size: Size::CARD,
         },
@@ -78,7 +78,7 @@ fn a_board_begins_by_being_started_for_a_project() {
 fn nothing_can_be_pinned_before_the_board_exists() {
     let refused = Board::begin(
         BoardCommand::Pin {
-            piece: a_piece("piece_1"),
+            idea: a_idea("idea_1"),
             at: Spot::ORIGIN,
             size: Size::CARD,
         },
@@ -104,18 +104,18 @@ fn a_board_cannot_be_started_twice() {
 
 #[test]
 fn a_started_board_holds_nothing_yet() {
-    assert!(a_started_board().pieces().is_empty());
+    assert!(a_started_board().ideas().is_empty());
 }
 
 #[test]
-fn pinning_a_piece_puts_it_where_it_was_dropped() {
+fn pinning_a_idea_puts_it_where_it_was_dropped() {
     let board = a_started_board();
-    let piece = a_piece("piece_1");
+    let idea = a_idea("idea_1");
 
     let events = board
         .decide(
             BoardCommand::Pin {
-                piece: piece.clone(),
+                idea: idea.clone(),
                 at: Spot::at(120, -40),
                 size: Size::CARD,
             },
@@ -125,8 +125,8 @@ fn pinning_a_piece_puts_it_where_it_was_dropped() {
 
     assert_eq!(
         events,
-        vec![BoardEvent::PiecePinned {
-            piece,
+        vec![BoardEvent::IdeaPinned {
+            idea,
             at: Spot::at(120, -40),
             size: Size::CARD,
         }]
@@ -134,16 +134,16 @@ fn pinning_a_piece_puts_it_where_it_was_dropped() {
 }
 
 #[test]
-fn a_pinned_piece_can_be_found_at_its_spot() {
-    let piece = a_piece("piece_1");
+fn a_pinned_idea_can_be_found_at_its_spot() {
+    let idea = a_idea("idea_1");
 
-    let board = a_board_holding(&piece, Spot::at(120, -40));
+    let board = a_board_holding(&idea, Spot::at(120, -40));
 
-    assert_eq!(board.spot_of(&piece), Some(Spot::at(120, -40)));
+    assert_eq!(board.spot_of(&idea), Some(Spot::at(120, -40)));
     assert_eq!(
-        board.pieces(),
-        [PositionedPiece {
-            piece,
+        board.ideas(),
+        [PositionedIdea {
+            idea,
             spot: Spot::at(120, -40),
             size: Size::CARD,
         }]
@@ -151,13 +151,13 @@ fn a_pinned_piece_can_be_found_at_its_spot() {
 }
 
 #[test]
-fn the_same_piece_cannot_be_pinned_twice() {
-    let piece = a_piece("piece_1");
-    let board = a_board_holding(&piece, Spot::ORIGIN);
+fn the_same_idea_cannot_be_pinned_twice() {
+    let idea = a_idea("idea_1");
+    let board = a_board_holding(&idea, Spot::ORIGIN);
 
     let refused = board.decide(
         BoardCommand::Pin {
-            piece,
+            idea,
             at: Spot::at(9, 9),
             size: Size::CARD,
         },
@@ -172,14 +172,14 @@ fn the_same_piece_cannot_be_pinned_twice() {
 }
 
 #[test]
-fn moving_a_piece_takes_it_to_the_new_spot() {
-    let piece = a_piece("piece_1");
-    let mut board = a_board_holding(&piece, Spot::at(10, 10));
+fn moving_a_idea_takes_it_to_the_new_spot() {
+    let idea = a_idea("idea_1");
+    let mut board = a_board_holding(&idea, Spot::at(10, 10));
 
     let events = board
         .decide(
             BoardCommand::Reshape {
-                piece: piece.clone(),
+                idea: idea.clone(),
                 to: Some(Spot::at(300, 20)),
                 size: None,
             },
@@ -188,18 +188,18 @@ fn moving_a_piece_takes_it_to_the_new_spot() {
         .expect("moving should succeed");
     board.apply(&events[0], &a_metadata(3));
 
-    assert_eq!(board.spot_of(&piece), Some(Spot::at(300, 20)));
+    assert_eq!(board.spot_of(&idea), Some(Spot::at(300, 20)));
 }
 
 #[test]
-fn moving_a_piece_nowhere_is_not_a_move() {
-    let piece = a_piece("piece_1");
-    let board = a_board_holding(&piece, Spot::at(10, 10));
+fn moving_a_idea_nowhere_is_not_a_move() {
+    let idea = a_idea("idea_1");
+    let board = a_board_holding(&idea, Spot::at(10, 10));
 
     let events = board
         .decide(
             BoardCommand::Reshape {
-                piece,
+                idea,
                 to: Some(Spot::at(10, 10)),
                 size: None,
             },
@@ -214,12 +214,12 @@ fn moving_a_piece_nowhere_is_not_a_move() {
 }
 
 #[test]
-fn a_piece_that_is_not_on_the_board_cannot_be_moved() {
+fn a_idea_that_is_not_on_the_board_cannot_be_moved() {
     let board = a_started_board();
 
     let refused = board.decide(
         BoardCommand::Reshape {
-            piece: a_piece("piece_1"),
+            idea: a_idea("idea_1"),
             to: Some(Spot::ORIGIN),
             size: None,
         },
@@ -230,31 +230,26 @@ fn a_piece_that_is_not_on_the_board_cannot_be_moved() {
 }
 
 #[test]
-fn unpinning_takes_a_piece_off_the_board() {
-    let piece = a_piece("piece_1");
-    let mut board = a_board_holding(&piece, Spot::at(10, 10));
+fn unpinning_takes_a_idea_off_the_board() {
+    let idea = a_idea("idea_1");
+    let mut board = a_board_holding(&idea, Spot::at(10, 10));
 
     let events = board
-        .decide(
-            BoardCommand::Unpin {
-                piece: piece.clone(),
-            },
-            &an_author(),
-        )
+        .decide(BoardCommand::Unpin { idea: idea.clone() }, &an_author())
         .expect("unpinning should succeed");
     board.apply(&events[0], &a_metadata(3));
 
-    assert_eq!(board.spot_of(&piece), None);
-    assert!(board.pieces().is_empty());
+    assert_eq!(board.spot_of(&idea), None);
+    assert!(board.ideas().is_empty());
 }
 
 #[test]
-fn a_piece_that_is_not_on_the_board_cannot_be_unpinned() {
+fn a_idea_that_is_not_on_the_board_cannot_be_unpinned() {
     let board = a_started_board();
 
     let refused = board.decide(
         BoardCommand::Unpin {
-            piece: a_piece("piece_1"),
+            idea: a_idea("idea_1"),
         },
         &an_author(),
     );
@@ -263,32 +258,32 @@ fn a_piece_that_is_not_on_the_board_cannot_be_unpinned() {
 }
 
 #[test]
-fn unpinning_one_piece_leaves_the_others_where_they_are() {
-    let staying = a_piece("piece_1");
-    let going = a_piece("piece_2");
+fn unpinning_one_idea_leaves_the_others_where_they_are() {
+    let staying = a_idea("idea_1");
+    let going = a_idea("idea_2");
     let mut board = a_board_holding(&staying, Spot::at(10, 10));
     board.apply(
-        &BoardEvent::PiecePinned {
-            piece: going.clone(),
+        &BoardEvent::IdeaPinned {
+            idea: going.clone(),
             at: Spot::at(20, 20),
             size: Size::CARD,
         },
         &a_metadata(3),
     );
 
-    board.apply(&BoardEvent::PieceUnpinned { piece: going }, &a_metadata(4));
+    board.apply(&BoardEvent::IdeaUnpinned { idea: going }, &a_metadata(4));
 
     assert_eq!(board.spot_of(&staying), Some(Spot::at(10, 10)));
 }
 
 #[test]
-fn pieces_keep_the_order_they_were_pinned_in() {
-    let first = a_piece("piece_1");
-    let second = a_piece("piece_2");
+fn ideas_keep_the_order_they_were_pinned_in() {
+    let first = a_idea("idea_1");
+    let second = a_idea("idea_2");
     let mut board = a_board_holding(&first, Spot::at(10, 10));
     board.apply(
-        &BoardEvent::PiecePinned {
-            piece: second.clone(),
+        &BoardEvent::IdeaPinned {
+            idea: second.clone(),
             at: Spot::at(20, 20),
             size: Size::CARD,
         },
@@ -297,23 +292,23 @@ fn pieces_keep_the_order_they_were_pinned_in() {
 
     assert_eq!(
         board
-            .pieces()
+            .ideas()
             .into_iter()
-            .map(|held| held.piece)
+            .map(|held| held.idea)
             .collect::<Vec<_>>(),
         vec![first, second],
-        "the order pieces come back in is the order they stack on the board"
+        "the order ideas come back in is the order they stack on the board"
     );
 }
 
 #[test]
-fn moving_a_piece_does_not_restack_the_board() {
-    let first = a_piece("piece_1");
-    let second = a_piece("piece_2");
+fn moving_a_idea_does_not_restack_the_board() {
+    let first = a_idea("idea_1");
+    let second = a_idea("idea_2");
     let mut board = a_board_holding(&first, Spot::at(10, 10));
     board.apply(
-        &BoardEvent::PiecePinned {
-            piece: second.clone(),
+        &BoardEvent::IdeaPinned {
+            idea: second.clone(),
             at: Spot::at(20, 20),
             size: Size::CARD,
         },
@@ -321,8 +316,8 @@ fn moving_a_piece_does_not_restack_the_board() {
     );
 
     board.apply(
-        &BoardEvent::PieceMoved {
-            piece: first.clone(),
+        &BoardEvent::IdeaMoved {
+            idea: first.clone(),
             to: Spot::at(99, 99),
         },
         &a_metadata(4),
@@ -330,9 +325,9 @@ fn moving_a_piece_does_not_restack_the_board() {
 
     assert_eq!(
         board
-            .pieces()
+            .ideas()
             .into_iter()
-            .map(|held| held.piece)
+            .map(|held| held.idea)
             .collect::<Vec<_>>(),
         vec![first, second],
         "a drag must not send a card to the front or the back"
@@ -340,16 +335,16 @@ fn moving_a_piece_does_not_restack_the_board() {
 }
 
 #[test]
-fn unpinning_a_piece_leaves_the_rest_in_order() {
-    let first = a_piece("piece_1");
-    let going = a_piece("piece_2");
-    let third = a_piece("piece_3");
-    let last = a_piece("piece_4");
+fn unpinning_a_idea_leaves_the_rest_in_order() {
+    let first = a_idea("idea_1");
+    let going = a_idea("idea_2");
+    let third = a_idea("idea_3");
+    let last = a_idea("idea_4");
     let mut board = a_board_holding(&first, Spot::at(10, 10));
-    for (piece, version) in [(&going, 3), (&third, 4), (&last, 5)] {
+    for (idea, version) in [(&going, 3), (&third, 4), (&last, 5)] {
         board.apply(
-            &BoardEvent::PiecePinned {
-                piece: piece.clone(),
+            &BoardEvent::IdeaPinned {
+                idea: idea.clone(),
                 at: Spot::at(20, 20),
                 size: Size::CARD,
             },
@@ -357,7 +352,7 @@ fn unpinning_a_piece_leaves_the_rest_in_order() {
         );
     }
 
-    board.apply(&BoardEvent::PieceUnpinned { piece: going }, &a_metadata(6));
+    board.apply(&BoardEvent::IdeaUnpinned { idea: going }, &a_metadata(6));
 
     assert_eq!(
         pinned_order(&board),
@@ -368,12 +363,12 @@ fn unpinning_a_piece_leaves_the_rest_in_order() {
 }
 
 #[test]
-fn the_board_does_not_ask_whether_the_piece_exists() {
+fn the_board_does_not_ask_whether_the_idea_exists() {
     let board = a_started_board();
 
     let pinned = board.decide(
         BoardCommand::Pin {
-            piece: a_piece("piece_that_was_discarded"),
+            idea: a_idea("idea_that_was_discarded"),
             at: Spot::ORIGIN,
             size: Size::CARD,
         },
@@ -382,14 +377,14 @@ fn the_board_does_not_ask_whether_the_piece_exists() {
 
     assert!(
         pinned.is_ok(),
-        "a board may not reach into pieces, so a dangling positioned is the client's to tolerate"
+        "a board may not reach into ideas, so a dangling positioned is the client's to tolerate"
     );
 }
 
 #[test]
 fn a_board_survives_on_its_snapshot_alone() {
-    let piece = a_piece("piece_1");
-    let board = a_board_holding(&piece, Spot::at(7, 8));
+    let idea = a_idea("idea_1");
+    let board = a_board_holding(&idea, Spot::at(7, 8));
 
     let snapshot = board.snapshot();
     let recovered =
@@ -404,14 +399,14 @@ fn a_snapshot_says_it_is_one() {
 }
 
 #[test]
-fn a_pinned_piece_keeps_the_size_it_was_given() {
+fn a_pinned_idea_keeps_the_size_it_was_given() {
     let board = a_started_board();
-    let piece = a_piece("piece_1");
+    let idea = a_idea("idea_1");
 
     let events = board
         .decide(
             BoardCommand::Pin {
-                piece: piece.clone(),
+                idea: idea.clone(),
                 at: Spot::at(120, -40),
                 size: Size::of(400, 90),
             },
@@ -421,8 +416,8 @@ fn a_pinned_piece_keeps_the_size_it_was_given() {
 
     assert_eq!(
         events,
-        vec![BoardEvent::PiecePinned {
-            piece,
+        vec![BoardEvent::IdeaPinned {
+            idea,
             at: Spot::at(120, -40),
             size: Size::of(400, 90),
         }]
@@ -437,7 +432,7 @@ fn a_card_without_extent_cannot_be_pinned() {
         assert_eq!(
             board.decide(
                 BoardCommand::Pin {
-                    piece: a_piece("piece_1"),
+                    idea: a_idea("idea_1"),
                     at: Spot::ORIGIN,
                     size: shapeless,
                 },
@@ -450,14 +445,14 @@ fn a_card_without_extent_cannot_be_pinned() {
 }
 
 #[test]
-fn resizing_a_piece_gives_it_the_new_extent() {
-    let piece = a_piece("piece_1");
-    let mut board = a_board_holding(&piece, Spot::at(10, 10));
+fn resizing_a_idea_gives_it_the_new_extent() {
+    let idea = a_idea("idea_1");
+    let mut board = a_board_holding(&idea, Spot::at(10, 10));
 
     let events = board
         .decide(
             BoardCommand::Reshape {
-                piece: piece.clone(),
+                idea: idea.clone(),
                 to: None,
                 size: Some(Size::of(400, 90)),
             },
@@ -468,14 +463,14 @@ fn resizing_a_piece_gives_it_the_new_extent() {
 
     assert_eq!(
         events,
-        vec![BoardEvent::PieceResized {
-            piece: piece.clone(),
+        vec![BoardEvent::IdeaResized {
+            idea: idea.clone(),
             to: Size::of(400, 90),
         }]
     );
-    assert_eq!(board.size_of(&piece), Some(Size::of(400, 90)));
+    assert_eq!(board.size_of(&idea), Some(Size::of(400, 90)));
     assert_eq!(
-        board.spot_of(&piece),
+        board.spot_of(&idea),
         Some(Spot::at(10, 10)),
         "resizing from a corner that does not move must leave the spot alone"
     );
@@ -483,13 +478,13 @@ fn resizing_a_piece_gives_it_the_new_extent() {
 
 #[test]
 fn dragging_an_edge_both_moves_and_resizes_in_one_go() {
-    let piece = a_piece("piece_1");
-    let mut board = a_board_holding(&piece, Spot::at(100, 100));
+    let idea = a_idea("idea_1");
+    let mut board = a_board_holding(&idea, Spot::at(100, 100));
 
     let events = board
         .decide(
             BoardCommand::Reshape {
-                piece: piece.clone(),
+                idea: idea.clone(),
                 to: Some(Spot::at(60, 100)),
                 size: Some(Size::of(208, 84)),
             },
@@ -503,30 +498,30 @@ fn dragging_an_edge_both_moves_and_resizes_in_one_go() {
     assert_eq!(
         events,
         vec![
-            BoardEvent::PieceMoved {
-                piece: piece.clone(),
+            BoardEvent::IdeaMoved {
+                idea: idea.clone(),
                 to: Spot::at(60, 100),
             },
-            BoardEvent::PieceResized {
-                piece: piece.clone(),
+            BoardEvent::IdeaResized {
+                idea: idea.clone(),
                 to: Size::of(208, 84),
             },
         ],
         "one gesture, two facts, and the log should say both"
     );
-    assert_eq!(board.spot_of(&piece), Some(Spot::at(60, 100)));
-    assert_eq!(board.size_of(&piece), Some(Size::of(208, 84)));
+    assert_eq!(board.spot_of(&idea), Some(Spot::at(60, 100)));
+    assert_eq!(board.size_of(&idea), Some(Size::of(208, 84)));
 }
 
 #[test]
-fn reshaping_a_piece_into_the_shape_it_already_has_is_not_a_change() {
-    let piece = a_piece("piece_1");
-    let board = a_board_holding(&piece, Spot::at(10, 10));
+fn reshaping_a_idea_into_the_shape_it_already_has_is_not_a_change() {
+    let idea = a_idea("idea_1");
+    let board = a_board_holding(&idea, Spot::at(10, 10));
 
     let events = board
         .decide(
             BoardCommand::Reshape {
-                piece,
+                idea,
                 to: Some(Spot::at(10, 10)),
                 size: Some(Size::CARD),
             },
@@ -542,12 +537,12 @@ fn reshaping_a_piece_into_the_shape_it_already_has_is_not_a_change() {
 
 #[test]
 fn a_card_cannot_be_resized_into_nothing() {
-    let piece = a_piece("piece_1");
-    let board = a_board_holding(&piece, Spot::at(10, 10));
+    let idea = a_idea("idea_1");
+    let board = a_board_holding(&idea, Spot::at(10, 10));
 
     let refused = board.decide(
         BoardCommand::Reshape {
-            piece,
+            idea,
             to: None,
             size: Some(Size::of(168, 0)),
         },
@@ -558,12 +553,12 @@ fn a_card_cannot_be_resized_into_nothing() {
 }
 
 #[test]
-fn a_piece_that_is_not_on_the_board_cannot_be_reshaped() {
+fn a_idea_that_is_not_on_the_board_cannot_be_reshaped() {
     let board = a_started_board();
 
     let refused = board.decide(
         BoardCommand::Reshape {
-            piece: a_piece("piece_1"),
+            idea: a_idea("idea_1"),
             to: None,
             size: Some(Size::of(400, 90)),
         },
@@ -575,11 +570,11 @@ fn a_piece_that_is_not_on_the_board_cannot_be_reshaped() {
 
 #[test]
 fn a_snapshot_remembers_how_big_each_card_was() {
-    let piece = a_piece("piece_1");
-    let mut board = a_board_holding(&piece, Spot::at(10, 10));
+    let idea = a_idea("idea_1");
+    let mut board = a_board_holding(&idea, Spot::at(10, 10));
     board.apply(
-        &BoardEvent::PieceResized {
-            piece: piece.clone(),
+        &BoardEvent::IdeaResized {
+            idea: idea.clone(),
             to: Size::of(400, 90),
         },
         &a_metadata(3),
@@ -589,18 +584,18 @@ fn a_snapshot_remembers_how_big_each_card_was() {
     let regrown =
         Board::from_first(&taken, &a_metadata(4)).expect("a snapshot should raise a board");
 
-    assert_eq!(regrown.size_of(&piece), Some(Size::of(400, 90)));
-    assert_eq!(regrown.spot_of(&piece), Some(Spot::at(10, 10)));
+    assert_eq!(regrown.size_of(&idea), Some(Size::of(400, 90)));
+    assert_eq!(regrown.spot_of(&idea), Some(Spot::at(10, 10)));
 }
 
 #[test]
-fn moving_a_piece_brings_it_to_the_front() {
-    let under = a_piece("piece_1");
-    let over = a_piece("piece_2");
+fn moving_a_idea_brings_it_to_the_front() {
+    let under = a_idea("idea_1");
+    let over = a_idea("idea_2");
     let mut board = a_board_holding(&under, Spot::at(10, 10));
     board.apply(
-        &BoardEvent::PiecePinned {
-            piece: over.clone(),
+        &BoardEvent::IdeaPinned {
+            idea: over.clone(),
             at: Spot::at(20, 20),
             size: Size::CARD,
         },
@@ -611,7 +606,7 @@ fn moving_a_piece_brings_it_to_the_front() {
     let events = board
         .decide(
             BoardCommand::Reshape {
-                piece: under.clone(),
+                idea: under.clone(),
                 to: Some(Spot::at(30, 30)),
                 size: None,
             },
@@ -625,12 +620,12 @@ fn moving_a_piece_brings_it_to_the_front() {
     assert_eq!(
         events,
         vec![
-            BoardEvent::PieceMoved {
-                piece: under.clone(),
+            BoardEvent::IdeaMoved {
+                idea: under.clone(),
                 to: Spot::at(30, 30),
             },
-            BoardEvent::PieceRaised {
-                piece: under.clone(),
+            BoardEvent::IdeaRaised {
+                idea: under.clone(),
             },
         ]
     );
@@ -643,12 +638,12 @@ fn moving_a_piece_brings_it_to_the_front() {
 
 #[test]
 fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
-    let under = a_piece("piece_1");
-    let over = a_piece("piece_2");
+    let under = a_idea("idea_1");
+    let over = a_idea("idea_2");
     let mut board = a_board_holding(&under, Spot::at(10, 10));
     board.apply(
-        &BoardEvent::PiecePinned {
-            piece: over.clone(),
+        &BoardEvent::IdeaPinned {
+            idea: over.clone(),
             at: Spot::at(20, 20),
             size: Size::CARD,
         },
@@ -658,7 +653,7 @@ fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
     let events = board
         .decide(
             BoardCommand::Reshape {
-                piece: over,
+                idea: over,
                 to: Some(Spot::at(40, 40)),
                 size: None,
             },
@@ -671,17 +666,17 @@ fn moving_the_card_that_is_already_in_front_does_not_raise_it_again() {
         1,
         "raising what is already on top says nothing"
     );
-    assert!(matches!(events[0], BoardEvent::PieceMoved { .. }));
+    assert!(matches!(events[0], BoardEvent::IdeaMoved { .. }));
 }
 
 #[test]
-fn resizing_a_piece_leaves_the_stack_alone() {
-    let under = a_piece("piece_1");
-    let over = a_piece("piece_2");
+fn resizing_a_idea_leaves_the_stack_alone() {
+    let under = a_idea("idea_1");
+    let over = a_idea("idea_2");
     let mut board = a_board_holding(&under, Spot::at(10, 10));
     board.apply(
-        &BoardEvent::PiecePinned {
-            piece: over.clone(),
+        &BoardEvent::IdeaPinned {
+            idea: over.clone(),
             at: Spot::at(20, 20),
             size: Size::CARD,
         },
@@ -691,7 +686,7 @@ fn resizing_a_piece_leaves_the_stack_alone() {
     let events = board
         .decide(
             BoardCommand::Reshape {
-                piece: under.clone(),
+                idea: under.clone(),
                 to: None,
                 size: Some(Size::of(400, 90)),
             },
@@ -711,20 +706,20 @@ fn resizing_a_piece_leaves_the_stack_alone() {
 
 #[test]
 fn a_snapshot_remembers_the_order_the_cards_are_stacked_in() {
-    let under = a_piece("piece_1");
-    let over = a_piece("piece_2");
+    let under = a_idea("idea_1");
+    let over = a_idea("idea_2");
     let mut board = a_board_holding(&under, Spot::at(10, 10));
     board.apply(
-        &BoardEvent::PiecePinned {
-            piece: over.clone(),
+        &BoardEvent::IdeaPinned {
+            idea: over.clone(),
             at: Spot::at(20, 20),
             size: Size::CARD,
         },
         &a_metadata(3),
     );
     board.apply(
-        &BoardEvent::PieceRaised {
-            piece: under.clone(),
+        &BoardEvent::IdeaRaised {
+            idea: under.clone(),
         },
         &a_metadata(4),
     );
@@ -748,7 +743,7 @@ fn a_board_can_be_discarded() {
 
 #[test]
 fn a_discarded_board_refuses_everything() {
-    let mut board = a_board_holding(&a_piece("piece_1"), Spot::ORIGIN);
+    let mut board = a_board_holding(&a_idea("idea_1"), Spot::ORIGIN);
     board.apply(&BoardEvent::Discarded, &a_metadata(9));
 
     for command in [
@@ -756,17 +751,17 @@ fn a_discarded_board_refuses_everything() {
             project: ProjectLink::from("project_1"),
         },
         BoardCommand::Pin {
-            piece: a_piece("piece_2"),
+            idea: a_idea("idea_2"),
             at: Spot::ORIGIN,
             size: Size::CARD,
         },
         BoardCommand::Reshape {
-            piece: a_piece("piece_1"),
+            idea: a_idea("idea_1"),
             to: Some(Spot::at(10, 10)),
             size: None,
         },
         BoardCommand::Unpin {
-            piece: a_piece("piece_1"),
+            idea: a_idea("idea_1"),
         },
         BoardCommand::Discard,
     ] {
@@ -781,20 +776,20 @@ fn a_discarded_board_refuses_everything() {
 
 #[test]
 fn a_discarded_board_still_says_what_it_held() {
-    let mut board = a_board_holding(&a_piece("piece_1"), Spot::ORIGIN);
+    let mut board = a_board_holding(&a_idea("idea_1"), Spot::ORIGIN);
     board.apply(&BoardEvent::Discarded, &a_metadata(9));
 
     assert!(board.is_discarded());
     assert_eq!(
         pinned_order(&board),
-        vec![a_piece("piece_1")],
+        vec![a_idea("idea_1")],
         "the stream is the audit log, so a discarded board still reads back what was on it"
     );
 }
 
 #[test]
 fn a_snapshot_remembers_that_the_board_was_discarded() {
-    let mut board = a_board_holding(&a_piece("piece_1"), Spot::ORIGIN);
+    let mut board = a_board_holding(&a_idea("idea_1"), Spot::ORIGIN);
     board.apply(&BoardEvent::Discarded, &a_metadata(9));
 
     let snapshot = board.snapshot();

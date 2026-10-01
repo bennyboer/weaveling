@@ -7,12 +7,12 @@ use web_sys::HtmlElement;
 use crate::boards::carrying::{Carrying, EVERY_HANDLE, Held, nudge};
 use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Spot};
-use crate::pieces::model::{Piece, PieceId};
+use crate::ideas::model::{Idea, IdeaId};
 
-pub fn card(href: String, piece: Piece, at: Placement, handles: Handles) -> impl IntoView {
-    let shown = piece.shown_as().to_owned();
+pub fn card(href: String, idea: Idea, at: Placement, handles: Handles) -> impl IntoView {
+    let shown = idea.shown_as().to_owned();
     let named = shown.clone();
-    let id = piece.id;
+    let id = idea.id;
     let mine = id.clone();
     let chosen = id.clone();
     let borne = id.clone();
@@ -32,7 +32,7 @@ pub fn card(href: String, piece: Piece, at: Placement, handles: Handles) -> impl
         .class(("carried", move || {
             handles
                 .carrying
-                .with(|held| held.as_ref().is_some_and(|held| held.piece == borne))
+                .with(|held| held.as_ref().is_some_and(|held| held.idea == borne))
         }))
         .attr("tabindex", "0")
         .attr("aria-label", shown.clone())
@@ -50,7 +50,7 @@ pub fn card(href: String, piece: Piece, at: Placement, handles: Handles) -> impl
         .on(ev::dblclick, move |event| {
             event.stop_propagation();
             handles.naming.set(Some(Naming::Renaming {
-                piece: renamed.clone(),
+                idea: renamed.clone(),
                 at,
                 was: called.clone(),
             }));
@@ -59,7 +59,7 @@ pub fn card(href: String, piece: Piece, at: Placement, handles: Handles) -> impl
             if event.key() == "Enter" {
                 event.prevent_default();
                 handles.naming.set(Some(Naming::Renaming {
-                    piece: retyped.clone(),
+                    idea: retyped.clone(),
                     at,
                     was: recalled.clone(),
                 }));
@@ -83,13 +83,7 @@ pub fn card(href: String, piece: Piece, at: Placement, handles: Handles) -> impl
         ))
 }
 
-fn grip(
-    piece: PieceId,
-    held: Held,
-    at: Placement,
-    shown: String,
-    handles: Handles,
-) -> impl IntoView {
+fn grip(idea: IdeaId, held: Held, at: Placement, shown: String, handles: Handles) -> impl IntoView {
     html::div()
         .class(format!("grip {}", held.side()))
         .attr("role", "separator")
@@ -98,7 +92,7 @@ fn grip(
             format!("Resize {shown} from the {}", held.side()),
         )
         .on(ev::pointerdown, move |event| {
-            grab(&event, piece.clone(), held, at, handles);
+            grab(&event, idea.clone(), held, at, handles);
         })
         .on(ev::pointermove, move |event| {
             event.stop_propagation();
@@ -114,7 +108,7 @@ fn grip(
         })
 }
 
-fn grab(event: &ev::PointerEvent, piece: PieceId, held: Held, at: Placement, handles: Handles) {
+fn grab(event: &ev::PointerEvent, idea: IdeaId, held: Held, at: Placement, handles: Handles) {
     event.stop_propagation();
 
     if let Some(under) = event
@@ -128,9 +122,9 @@ fn grab(event: &ev::PointerEvent, piece: PieceId, held: Held, at: Placement, han
         }
     }
 
-    handles.selected.set(Some(piece.clone()));
+    handles.selected.set(Some(idea.clone()));
     handles.carrying.set(Some(Carrying {
-        piece,
+        idea,
         held,
         from: at,
         by: Spot { x: 0, y: 0 },
@@ -176,7 +170,7 @@ fn drop_it(handles: Handles) {
 
     if landed != carried.from {
         handles.open.reshape(
-            carried.piece,
+            carried.idea,
             (landed.spot != carried.from.spot).then_some(landed.spot),
             (landed.size != carried.from.size).then_some(landed.size),
         );
@@ -185,9 +179,9 @@ fn drop_it(handles: Handles) {
     handles.carrying.set(None);
 }
 
-fn drawn_at(handles: Handles, piece: &PieceId, at: Placement) -> Placement {
+fn drawn_at(handles: Handles, idea: &IdeaId, at: Placement) -> Placement {
     handles.carrying.with(|held| match held {
-        Some(held) if &held.piece == piece => held.landing(),
+        Some(held) if &held.idea == idea => held.landing(),
         _ => at,
     })
 }

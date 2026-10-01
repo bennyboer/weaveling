@@ -11,7 +11,7 @@ use time::{Duration, OffsetDateTime};
 
 use super::*;
 
-const KIND: AggregateType = AggregateType::of("piece");
+const KIND: AggregateType = AggregateType::of("idea");
 const CAPTURED: EventName = EventName::of("CAPTURED");
 const PASSAGE_ATTACHED: EventName = EventName::of("PASSAGE_ATTACHED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
@@ -91,7 +91,7 @@ fn an_author() -> Agent {
 fn recorded(event: Happened, version: u64, agent: Agent) -> Recorded<Happened> {
     Recorded {
         metadata: EventMetadata {
-            aggregate: AggregateId::from("piece_1"),
+            aggregate: AggregateId::from("idea_1"),
             kind: KIND,
             version: Version::of(version),
             agent,
@@ -118,17 +118,17 @@ fn read(message: &Message) -> PublishedEvent<Body> {
 
 #[test]
 fn a_routing_key_is_the_kind_and_the_event_name() {
-    assert_eq!(routing_for(KIND, CAPTURED).to_string(), "piece.captured");
+    assert_eq!(routing_for(KIND, CAPTURED).to_string(), "idea.captured");
     assert_eq!(
         routing_for(KIND, PASSAGE_ATTACHED).to_string(),
-        "piece.passage.attached",
+        "idea.passage.attached",
         "an underscore becomes a separator, so a wildcard can select a subtree"
     );
 }
 
 #[test]
 fn a_kind_can_be_subscribed_to_whole() {
-    assert_eq!(everything_from(KIND), "piece.#");
+    assert_eq!(everything_from(KIND), "idea.#");
 }
 
 #[test]
@@ -166,8 +166,8 @@ fn what_is_published_names_the_aggregate_it_happened_to() {
     assert_eq!(
         read(&published).aggregate,
         PublishedAggregate {
-            id: "piece_1".to_owned(),
-            kind: "piece".to_owned(),
+            id: "idea_1".to_owned(),
+            kind: "idea".to_owned(),
             version: 7,
         },
         "a projection guarding against stale news needs the version, not just the id"
@@ -211,7 +211,7 @@ fn an_event_with_nothing_to_say_still_says_its_name() {
         .message_for(&recorded(Happened::PassageAttached, 2, an_author()))
         .expect("an attachment should be published");
 
-    assert_eq!(published.routing.to_string(), "piece.passage.attached");
+    assert_eq!(published.routing.to_string(), "idea.passage.attached");
     assert_eq!(
         published.payload["event"],
         json!({ "version": 0, "name": "PASSAGE_ATTACHED" }),
@@ -268,7 +268,7 @@ async fn publishing_hands_the_message_to_the_transport() {
 
     let published = overheard.published.lock().expect("published lock poisoned");
     assert_eq!(published.len(), 1);
-    assert_eq!(published[0].routing.to_string(), "piece.captured");
+    assert_eq!(published[0].routing.to_string(), "idea.captured");
 }
 
 #[tokio::test]

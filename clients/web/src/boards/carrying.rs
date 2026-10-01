@@ -1,5 +1,5 @@
 use crate::boards::model::{Placement, Size, Spot};
-use crate::pieces::model::PieceId;
+use crate::ideas::model::IdeaId;
 
 pub const GRID: i64 = 5;
 const LEAP: i64 = 40;
@@ -39,7 +39,7 @@ pub enum Held {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct Carrying {
-    pub piece: PieceId,
+    pub idea: IdeaId,
     pub held: Held,
     pub from: Placement,
     pub by: Spot,
@@ -167,13 +167,13 @@ mod tests {
         },
     };
 
-    fn a_piece() -> PieceId {
-        PieceId::from("piece_1".to_owned())
+    fn a_idea() -> IdeaId {
+        IdeaId::from("idea_1".to_owned())
     }
 
     fn carrying(held: Held, by: Spot) -> Carrying {
         Carrying {
-            piece: a_piece(),
+            idea: a_idea(),
             held,
             from: CARD,
             by,

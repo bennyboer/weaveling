@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use boards_core::{Board, BoardCatalog, BoardError, BoardEvent, BoardId, CatalogError, PieceLink};
+use boards_core::{Board, BoardCatalog, BoardError, BoardEvent, BoardId, CatalogError, IdeaLink};
 use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
@@ -8,9 +8,9 @@ use thiserror::Error;
 
 use crate::publishing::{UnreadableBoardEvent, board_in, when_pinned, when_unpinned};
 
-const NAME: &str = "index-pinned-pieces";
+const NAME: &str = "index-pinned-ideas";
 
-pub struct PinnedPiecesProjector {
+pub struct PinnedIdeasProjector {
     events: EventSourcingService<Board>,
     catalog: Arc<dyn BoardCatalog>,
 }
@@ -25,7 +25,7 @@ enum NotIndexed {
     Catalog(#[from] CatalogError),
 }
 
-impl PinnedPiecesProjector {
+impl PinnedIdeasProjector {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
         catalog: Arc<dyn BoardCatalog>,
@@ -39,11 +39,11 @@ impl PinnedPiecesProjector {
 
     async fn index(&self, board: &BoardId) -> Result<(), NotIndexed> {
         let standing = self.events.latest(&AggregateId::from(board)).await?;
-        let holding: Vec<PieceLink> = standing
+        let holding: Vec<IdeaLink> = standing
             .state
-            .pieces()
+            .ideas()
             .into_iter()
-            .map(|positioned| positioned.piece)
+            .map(|positioned| positioned.idea)
             .collect();
 
         self.catalog.holds(*board, &holding).await?;
@@ -57,7 +57,7 @@ impl PinnedPiecesProjector {
 }
 
 #[async_trait::async_trait]
-impl Listener for PinnedPiecesProjector {
+impl Listener for PinnedIdeasProjector {
     fn named(&self) -> ListenerName {
         ListenerName::parse(NAME).expect("the pin index listener is named at compile time")
     }

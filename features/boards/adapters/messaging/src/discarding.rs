@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
 use boards_core::{
-    BoardCatalog, BoardError, BoardService, BoardServiceError, CatalogError, PieceLink,
+    BoardCatalog, BoardError, BoardService, BoardServiceError, CatalogError, IdeaLink,
 };
 use eventpublishing::{UnreadableMessage, published_in};
 use eventsourcing::{Agent, ServiceError};
+use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use pieces_contract::{DISCARDED, PieceEventDTO};
 use thiserror::Error;
 
-const NAME: &str = "unpin-discarded-piece";
+const NAME: &str = "unpin-discarded-idea";
 
 pub struct UnpinOnDiscard {
     boards: BoardService,
@@ -35,11 +35,11 @@ impl UnpinOnDiscard {
         Self { boards, catalog }
     }
 
-    async fn unpin_everywhere(&self, piece: &PieceLink) -> Result<(), NotUnpinned> {
-        for board in self.catalog.boards_holding(piece).await? {
+    async fn unpin_everywhere(&self, idea: &IdeaLink) -> Result<(), NotUnpinned> {
+        for board in self.catalog.boards_holding(idea).await? {
             match self
                 .boards
-                .unpin(&board.to_string(), piece.clone(), None, &nobody())
+                .unpin(&board.to_string(), idea.clone(), None, &nobody())
                 .await
             {
                 Ok(_) => {}
@@ -52,9 +52,9 @@ impl UnpinOnDiscard {
     }
 
     async fn work_through(&self, message: &Message) -> Result<(), NotUnpinned> {
-        let discarded = published_in::<PieceEventDTO>(message)?;
+        let discarded = published_in::<IdeaEventDTO>(message)?;
 
-        self.unpin_everywhere(&PieceLink::from(discarded.aggregate.id.as_str()))
+        self.unpin_everywhere(&IdeaLink::from(discarded.aggregate.id.as_str()))
             .await
     }
 }

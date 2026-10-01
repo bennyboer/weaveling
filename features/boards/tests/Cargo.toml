@@ -21,4 +21,4 @@ boards-contract = { version = "0.1.0", path = "../contract", package = "weavelin
 boards-core = { version = "0.1.0", path = "../core", package = "weaveling-boards-core" }
 boards-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-boards-messaging" }
 boards-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-boards-wiring" }
-pieces-contract = { version = "0.1.0", path = "../../pieces/contract", package = "weaveling-pieces-contract" }
+ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }

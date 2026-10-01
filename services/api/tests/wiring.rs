@@ -116,20 +116,20 @@ async fn the_two_features_do_not_shadow_each_other() {
 }
 
 #[tokio::test]
-async fn the_pieces_feature_is_mounted_under_api() {
+async fn the_ideas_feature_is_mounted_under_api() {
     let (status, body) = post_json(
-        "/api/pieces",
+        "/api/ideas",
         r#"{"project":"project_1","title":"The Loom"}"#,
     )
     .await;
 
     assert_eq!(status, StatusCode::CREATED, "body was {body}");
-    assert!(body.contains("piece_"), "body was {body}");
+    assert!(body.contains("idea_"), "body was {body}");
 }
 
 #[tokio::test]
-async fn the_pieces_listing_is_mounted_under_api() {
-    let (status, body) = get("/api/pieces?project=project_1").await;
+async fn the_ideas_listing_is_mounted_under_api() {
+    let (status, body) = get("/api/ideas?project=project_1").await;
 
     assert_eq!(status, StatusCode::OK, "body was {body}");
     assert_eq!(body, "[]");
@@ -139,9 +139,9 @@ async fn the_pieces_listing_is_mounted_under_api() {
 async fn every_feature_answers_without_shadowing_the_others() {
     let (projects, _) = get("/api/projects").await;
     let (passages, _) = post("/api/passages").await;
-    let (pieces, _) = get("/api/pieces?project=project_1").await;
+    let (ideas, _) = get("/api/ideas?project=project_1").await;
 
     assert_eq!(projects, StatusCode::OK);
     assert_eq!(passages, StatusCode::CREATED);
-    assert_eq!(pieces, StatusCode::OK);
+    assert_eq!(ideas, StatusCode::OK);
 }

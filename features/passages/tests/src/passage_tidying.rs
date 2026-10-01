@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use clock::FixedClock;
+use ideas_contract::DISCARDED;
 use messaging::{Listener, Message, RoutingKey};
 use passages_core::{PassageId, PassageService};
 use passages_messaging::DeleteOnDiscard;
 use passages_store::InMemoryPassageStore;
-use pieces_contract::DISCARDED;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
@@ -53,7 +53,7 @@ fn discarded(passage: Option<&str>) -> Message {
                 "name": "DISCARDED",
                 "passage": passage,
             },
-            "aggregate": { "id": "piece_1", "kind": "piece", "version": 4 },
+            "aggregate": { "id": "idea_1", "kind": "idea", "version": 4 },
             "agent": { "kind": "system", "id": null },
             "occurred_at": "1970-01-01T00:16:40Z",
         }),
@@ -62,7 +62,7 @@ fn discarded(passage: Option<&str>) -> Message {
 }
 
 #[tokio::test]
-async fn discarding_a_piece_takes_its_prose_with_it() {
+async fn discarding_a_idea_takes_its_prose_with_it() {
     let wired = a_workbench();
     let passage = wired.a_passage().await;
 
@@ -80,7 +80,7 @@ async fn discarding_a_piece_takes_its_prose_with_it() {
 }
 
 #[tokio::test]
-async fn discarding_a_piece_that_never_had_prose_is_harmless() {
+async fn discarding_a_idea_that_never_had_prose_is_harmless() {
     let wired = a_workbench();
     let untouched = wired.a_passage().await;
 
@@ -88,7 +88,7 @@ async fn discarding_a_piece_that_never_had_prose_is_harmless() {
         .tidy
         .handle(&discarded(None))
         .await
-        .expect("a piece with no passage is nothing to do");
+        .expect("a idea with no passage is nothing to do");
 
     assert!(wired.still_there(&untouched).await);
 }
@@ -110,7 +110,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 }
 
 #[tokio::test]
-async fn a_passage_of_another_piece_is_left_alone() {
+async fn a_passage_of_another_idea_is_left_alone() {
     let wired = a_workbench();
     let mine = wired.a_passage().await;
     let theirs = wired.a_passage().await;
@@ -124,12 +124,12 @@ async fn a_passage_of_another_piece_is_left_alone() {
     assert!(!wired.still_there(&mine).await);
     assert!(
         wired.still_there(&theirs).await,
-        "one discarded piece must never take another author's prose with it"
+        "one discarded idea must never take another author's prose with it"
     );
 }
 
 #[tokio::test]
-async fn a_message_about_no_piece_at_all_is_refused() {
+async fn a_message_about_no_idea_at_all_is_refused() {
     let wired = a_workbench();
     let nonsense = Message::opening(
         RoutingKey::parse(DISCARDED).expect("a declared routing key is fine"),

@@ -1,4 +1,4 @@
-use boards_core::{BoardCatalog, BoardId, BoardSummary, PieceLink, ProjectLink};
+use boards_core::{BoardCatalog, BoardId, BoardSummary, IdeaLink, ProjectLink};
 use time::OffsetDateTime;
 
 #[async_trait::async_trait]
@@ -113,48 +113,48 @@ pub async fn a_project_lists_its_boards_in_a_settled_order(catalog: &impl BoardC
     );
 }
 
-pub async fn a_piece_nobody_pinned_is_on_no_board(catalog: &impl BoardCatalog) {
+pub async fn a_idea_nobody_pinned_is_on_no_board(catalog: &impl BoardCatalog) {
     let found = catalog
-        .boards_holding(&PieceLink::from("piece_loose"))
+        .boards_holding(&IdeaLink::from("idea_loose"))
         .await
         .expect("looking should succeed");
 
     assert!(
         found.is_empty(),
-        "an unpinned piece is not an error, it is just not on a board"
+        "an unpinned idea is not an error, it is just not on a board"
     );
 }
 
-pub async fn a_pinned_piece_names_the_board_holding_it(catalog: &impl BoardCatalog) {
+pub async fn a_pinned_idea_names_the_board_holding_it(catalog: &impl BoardCatalog) {
     let board = BoardId::generate(at(1_000));
 
     catalog
-        .holds(board, &[PieceLink::from("piece_1")])
+        .holds(board, &[IdeaLink::from("idea_1")])
         .await
         .expect("indexing should succeed");
 
     assert_eq!(
         catalog
-            .boards_holding(&PieceLink::from("piece_1"))
+            .boards_holding(&IdeaLink::from("idea_1"))
             .await
             .expect("looking should succeed"),
         vec![board]
     );
 }
 
-pub async fn a_piece_may_sit_on_more_than_one_board(catalog: &impl BoardCatalog) {
+pub async fn a_idea_may_sit_on_more_than_one_board(catalog: &impl BoardCatalog) {
     let earliest = BoardId::generate(at(1_000));
     let latest = BoardId::generate(at(2_000));
     for board in [latest, earliest] {
         catalog
-            .holds(board, &[PieceLink::from("piece_1")])
+            .holds(board, &[IdeaLink::from("idea_1")])
             .await
             .expect("indexing should succeed");
     }
 
     assert_eq!(
         catalog
-            .boards_holding(&PieceLink::from("piece_1"))
+            .boards_holding(&IdeaLink::from("idea_1"))
             .await
             .expect("looking should succeed"),
         vec![earliest, latest],
@@ -165,40 +165,38 @@ pub async fn a_piece_may_sit_on_more_than_one_board(catalog: &impl BoardCatalog)
 pub async fn what_a_board_holds_is_replaced_not_added_to(catalog: &impl BoardCatalog) {
     let board = BoardId::generate(at(1_000));
     catalog
-        .holds(board, &[PieceLink::from("piece_1")])
+        .holds(board, &[IdeaLink::from("idea_1")])
         .await
         .expect("indexing should succeed");
 
     catalog
-        .holds(board, &[PieceLink::from("piece_2")])
+        .holds(board, &[IdeaLink::from("idea_2")])
         .await
         .expect("indexing again should succeed");
 
     assert!(
         catalog
-            .boards_holding(&PieceLink::from("piece_1"))
+            .boards_holding(&IdeaLink::from("idea_1"))
             .await
             .expect("looking should succeed")
             .is_empty(),
-        "the projector writes the whole set, so an unpinned piece falls out of the index"
+        "the projector writes the whole set, so an unpinned idea falls out of the index"
     );
     assert_eq!(
         catalog
-            .boards_holding(&PieceLink::from("piece_2"))
+            .boards_holding(&IdeaLink::from("idea_2"))
             .await
             .expect("looking should succeed"),
         vec![board]
     );
 }
 
-pub async fn one_board_letting_a_piece_go_leaves_the_others_holding_it(
-    catalog: &impl BoardCatalog,
-) {
+pub async fn one_board_letting_a_idea_go_leaves_the_others_holding_it(catalog: &impl BoardCatalog) {
     let keeping = BoardId::generate(at(1_000));
     let dropping = BoardId::generate(at(2_000));
     for board in [keeping, dropping] {
         catalog
-            .holds(board, &[PieceLink::from("piece_1")])
+            .holds(board, &[IdeaLink::from("idea_1")])
             .await
             .expect("indexing should succeed");
     }
@@ -210,7 +208,7 @@ pub async fn one_board_letting_a_piece_go_leaves_the_others_holding_it(
 
     assert_eq!(
         catalog
-            .boards_holding(&PieceLink::from("piece_1"))
+            .boards_holding(&IdeaLink::from("idea_1"))
             .await
             .expect("looking should succeed"),
         vec![keeping],
@@ -230,11 +228,11 @@ pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &impl BoardCatalo
         .await
         .expect("remembering should succeed");
     catalog
-        .holds(board, &[PieceLink::from("piece_1")])
+        .holds(board, &[IdeaLink::from("idea_1")])
         .await
         .expect("indexing should succeed");
     catalog
-        .holds(elsewhere, &[PieceLink::from("piece_1")])
+        .holds(elsewhere, &[IdeaLink::from("idea_1")])
         .await
         .expect("indexing should succeed");
 
@@ -252,7 +250,7 @@ pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &impl BoardCatalo
     );
     assert_eq!(
         catalog
-            .boards_holding(&PieceLink::from("piece_1"))
+            .boards_holding(&IdeaLink::from("idea_1"))
             .await
             .expect("looking should succeed"),
         vec![elsewhere],
@@ -299,15 +297,15 @@ macro_rules! conformance_tests {
             $workbench,
             a_project_lists_its_boards_in_a_settled_order
         );
-        $crate::catalog_conformance_case!($workbench, a_piece_nobody_pinned_is_on_no_board);
+        $crate::catalog_conformance_case!($workbench, a_idea_nobody_pinned_is_on_no_board);
         $crate::catalog_conformance_case!($workbench, a_forgotten_board_takes_its_pins_with_it);
         $crate::catalog_conformance_case!($workbench, forgetting_a_board_nobody_opened_is_harmless);
-        $crate::catalog_conformance_case!($workbench, a_pinned_piece_names_the_board_holding_it);
-        $crate::catalog_conformance_case!($workbench, a_piece_may_sit_on_more_than_one_board);
+        $crate::catalog_conformance_case!($workbench, a_pinned_idea_names_the_board_holding_it);
+        $crate::catalog_conformance_case!($workbench, a_idea_may_sit_on_more_than_one_board);
         $crate::catalog_conformance_case!($workbench, what_a_board_holds_is_replaced_not_added_to);
         $crate::catalog_conformance_case!(
             $workbench,
-            one_board_letting_a_piece_go_leaves_the_others_holding_it
+            one_board_letting_a_idea_go_leaves_the_others_holding_it
         );
     };
 }

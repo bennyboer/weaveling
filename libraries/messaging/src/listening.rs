@@ -125,10 +125,10 @@ mod tests {
 
     #[test]
     fn a_name_reads_back_as_it_was_written() {
-        let name = ListenerName::parse("pieces-catalog").expect("a plain name is fine");
+        let name = ListenerName::parse("ideas-catalog").expect("a plain name is fine");
 
-        assert_eq!(name.as_str(), "pieces-catalog");
-        assert_eq!(name.to_string(), "pieces-catalog");
+        assert_eq!(name.as_str(), "ideas-catalog");
+        assert_eq!(name.to_string(), "ideas-catalog");
     }
 
     #[test]
@@ -138,12 +138,7 @@ mod tests {
 
     #[test]
     fn a_name_that_would_not_survive_a_queue_is_refused() {
-        for unspeakable in [
-            "Pieces",
-            "pieces catalog",
-            "pieces.catalog",
-            "pieces_catalog",
-        ] {
+        for unspeakable in ["Ideas", "ideas catalog", "ideas.catalog", "ideas_catalog"] {
             assert_eq!(
                 ListenerName::parse(unspeakable),
                 Err(InvalidListenerName::Malformed),

@@ -5,11 +5,11 @@ CREATE TABLE board_summaries (
 
 CREATE INDEX board_summaries_by_project ON board_summaries (project, board);
 
-CREATE TABLE board_pieces (
+CREATE TABLE board_ideas (
     board       TEXT COLLATE "C" NOT NULL,
-    piece       TEXT COLLATE "C" NOT NULL,
+    idea       TEXT COLLATE "C" NOT NULL,
 
-    PRIMARY KEY (board, piece)
+    PRIMARY KEY (board, idea)
 );
 
-CREATE INDEX board_pieces_by_piece ON board_pieces (piece, board);
+CREATE INDEX board_ideas_by_idea ON board_ideas (idea, board);

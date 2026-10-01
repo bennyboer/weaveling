@@ -9,7 +9,7 @@ mod spot;
 mod board_tests;
 
 pub use board::{
-    Board, BoardCommand, BoardError, BoardEvent, KIND, PieceLink, Placement, PositionedPiece,
+    Board, BoardCommand, BoardError, BoardEvent, IdeaLink, KIND, Placement, PositionedIdea,
     ProjectLink,
 };
 pub use catalog::{BoardCatalog, BoardSummary, CatalogError};

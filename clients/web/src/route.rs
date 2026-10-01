@@ -1,4 +1,4 @@
-use crate::pieces::model::PieceId;
+use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 
 pub const WORKSPACE: &str = "/";
@@ -24,10 +24,10 @@ pub fn outline(project: &str) -> String {
 }
 
 pub fn pool(project: &str) -> String {
-    format!("/projects/{project}/pieces")
+    format!("/projects/{project}/ideas")
 }
 
-pub fn piece_segment(id: &PieceId, named: &str) -> String {
+pub fn idea_segment(id: &IdeaId, named: &str) -> String {
     let slug = slugify(named);
 
     if slug.is_empty() {
@@ -37,8 +37,8 @@ pub fn piece_segment(id: &PieceId, named: &str) -> String {
     }
 }
 
-pub fn piece(project: &str, id: &PieceId, named: &str) -> String {
-    format!("/projects/{project}/pieces/{}", piece_segment(id, named))
+pub fn idea(project: &str, id: &IdeaId, named: &str) -> String {
+    format!("/projects/{project}/ideas/{}", idea_segment(id, named))
 }
 
 pub fn named(segment: &str) -> String {
@@ -61,8 +61,8 @@ fn capitalised(word: &str) -> String {
     }
 }
 
-pub fn piece_id(segment: &str) -> PieceId {
-    PieceId::from(trailing_id(segment))
+pub fn idea_id(segment: &str) -> IdeaId {
+    IdeaId::from(trailing_id(segment))
 }
 
 pub fn project_id(segment: &str) -> ProjectId {

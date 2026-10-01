@@ -3,7 +3,7 @@ use std::sync::Arc;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
 use boards_messaging::{
-    BoardCatalogProjector, DiscardBoardsOnProjectDeleted, PinnedPiecesProjector, UnpinOnDiscard,
+    BoardCatalogProjector, DiscardBoardsOnProjectDeleted, PinnedIdeasProjector, UnpinOnDiscard,
 };
 use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
 use registry::{InMemoryRegistry, Registry};
@@ -70,7 +70,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.catalog.clone(),
         context.clock.clone(),
     );
-    let index = PinnedPiecesProjector::new(
+    let index = PinnedIdeasProjector::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),

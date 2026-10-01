@@ -1,7 +1,0 @@
-[package]
-name = "weaveling-pieces-contract"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-serde = { workspace = true }

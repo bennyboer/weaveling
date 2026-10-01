@@ -3418,9 +3418,9 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-ideas-contract",
  "weaveling-ids",
  "weaveling-messaging",
- "weaveling-pieces-contract",
  "weaveling-projects-contract",
 ]
 
@@ -3463,8 +3463,8 @@ dependencies = [
  "weaveling-boards-wiring",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-ideas-contract",
  "weaveling-messaging",
- "weaveling-pieces-contract",
  "weaveling-registry",
  "weaveling-wiring",
 ]
@@ -3499,9 +3499,9 @@ dependencies = [
  "time",
  "wasm-bindgen",
  "weaveling-boards-contract",
+ "weaveling-ideas-contract",
  "weaveling-outline-contract",
  "weaveling-passages-contract",
- "weaveling-pieces-contract",
  "weaveling-projects-contract",
  "web-sys",
 ]
@@ -3543,6 +3543,118 @@ dependencies = [
  "weaveling-clock",
  "weaveling-messaging",
  "weaveling-test-harness",
+]
+
+[[package]]
+name = "weaveling-ideas-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "time",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-ideas-core",
+ "weaveling-test-harness",
+]
+
+[[package]]
+name = "weaveling-ideas-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "weaveling-ideas-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+]
+
+[[package]]
+name = "weaveling-ideas-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "time",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-ideas-contract",
+ "weaveling-ideas-core",
+ "weaveling-ids",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
+]
+
+[[package]]
+name = "weaveling-ideas-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "tracing",
+ "weaveling-eventsourcing",
+ "weaveling-ideas-contract",
+ "weaveling-ideas-core",
+ "weaveling-serving",
+]
+
+[[package]]
+name = "weaveling-ideas-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "weaveling-eventsourcing",
+ "weaveling-ideas-core",
+]
+
+[[package]]
+name = "weaveling-ideas-tests"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "axum-test",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ideas-catalog",
+ "weaveling-ideas-contract",
+ "weaveling-ideas-core",
+ "weaveling-ideas-messaging",
+ "weaveling-ideas-wiring",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
+ "weaveling-wiring",
+]
+
+[[package]]
+name = "weaveling-ideas-wiring"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ideas-catalog",
+ "weaveling-ideas-core",
+ "weaveling-ideas-messaging",
+ "weaveling-ideas-rest",
+ "weaveling-ideas-store",
+ "weaveling-messaging",
+ "weaveling-wiring",
 ]
 
 [[package]]
@@ -3618,11 +3730,11 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-ideas-contract",
  "weaveling-ids",
  "weaveling-messaging",
  "weaveling-outline-contract",
  "weaveling-outline-core",
- "weaveling-pieces-contract",
  "weaveling-projects-contract",
 ]
 
@@ -3662,13 +3774,13 @@ dependencies = [
  "tokio",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-outline-catalog",
  "weaveling-outline-contract",
  "weaveling-outline-core",
  "weaveling-outline-messaging",
  "weaveling-outline-wiring",
- "weaveling-pieces-contract",
  "weaveling-registry",
  "weaveling-wiring",
 ]
@@ -3716,9 +3828,9 @@ dependencies = [
  "async-trait",
  "thiserror",
  "weaveling-eventpublishing",
+ "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-passages-core",
- "weaveling-pieces-contract",
 ]
 
 [[package]]
@@ -3768,6 +3880,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-clock",
+ "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-passages-contract",
  "weaveling-passages-core",
@@ -3775,7 +3888,6 @@ dependencies = [
  "weaveling-passages-rest",
  "weaveling-passages-store",
  "weaveling-passages-sync",
- "weaveling-pieces-contract",
  "yrs",
 ]
 
@@ -3792,118 +3904,6 @@ dependencies = [
  "weaveling-passages-rest",
  "weaveling-passages-store",
  "weaveling-passages-sync",
- "weaveling-wiring",
-]
-
-[[package]]
-name = "weaveling-pieces-catalog"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "sqlx",
- "time",
- "tokio",
- "weaveling-eventsourcing",
- "weaveling-pieces-core",
- "weaveling-test-harness",
-]
-
-[[package]]
-name = "weaveling-pieces-contract"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "weaveling-pieces-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "thiserror",
- "time",
- "tokio",
- "weaveling-clock",
- "weaveling-eventsourcing",
- "weaveling-ids",
-]
-
-[[package]]
-name = "weaveling-pieces-messaging"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "serde_json",
- "thiserror",
- "time",
- "weaveling-clock",
- "weaveling-eventpublishing",
- "weaveling-eventsourcing",
- "weaveling-ids",
- "weaveling-messaging",
- "weaveling-pieces-contract",
- "weaveling-pieces-core",
- "weaveling-projects-contract",
-]
-
-[[package]]
-name = "weaveling-pieces-rest"
-version = "0.1.0"
-dependencies = [
- "axum",
- "serde",
- "tracing",
- "weaveling-eventsourcing",
- "weaveling-pieces-contract",
- "weaveling-pieces-core",
- "weaveling-serving",
-]
-
-[[package]]
-name = "weaveling-pieces-store"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
- "weaveling-eventsourcing",
- "weaveling-pieces-core",
-]
-
-[[package]]
-name = "weaveling-pieces-tests"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "axum-test",
- "serde_json",
- "time",
- "tokio",
- "weaveling-clock",
- "weaveling-eventsourcing",
- "weaveling-messaging",
- "weaveling-pieces-catalog",
- "weaveling-pieces-contract",
- "weaveling-pieces-core",
- "weaveling-pieces-messaging",
- "weaveling-pieces-wiring",
- "weaveling-projects-contract",
- "weaveling-wiring",
-]
-
-[[package]]
-name = "weaveling-pieces-wiring"
-version = "0.1.0"
-dependencies = [
- "sqlx",
- "weaveling-clock",
- "weaveling-eventsourcing",
- "weaveling-messaging",
- "weaveling-pieces-catalog",
- "weaveling-pieces-core",
- "weaveling-pieces-messaging",
- "weaveling-pieces-rest",
- "weaveling-pieces-store",
  "weaveling-wiring",
 ]
 
@@ -4046,10 +4046,10 @@ dependencies = [
  "weaveling-boards-wiring",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-ideas-wiring",
  "weaveling-messaging",
  "weaveling-outline-wiring",
  "weaveling-passages-wiring",
- "weaveling-pieces-wiring",
  "weaveling-projects-wiring",
  "weaveling-test-harness",
  "weaveling-wiring",

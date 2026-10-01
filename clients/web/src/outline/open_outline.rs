@@ -1,25 +1,25 @@
 use leptos::prelude::*;
 
 use crate::http::ApiError;
+use crate::ideas::model::{Idea, IdeaId};
+use crate::ideas::service as ideas;
 use crate::outline::model::{Outline, Section, SectionId};
 use crate::outline::service;
-use crate::pieces::model::{Piece, PieceId};
-use crate::pieces::service as pieces;
 use crate::projects::model::ProjectId;
 
 #[derive(Clone, Copy)]
 pub struct OpenOutline {
     problem: RwSignal<Option<ApiError>>,
     outline: RwSignal<Option<Outline>>,
-    pool: RwSignal<Option<Vec<Piece>>>,
+    pool: RwSignal<Option<Vec<Idea>>>,
     added: RwSignal<Option<SectionId>>,
     adding: Action<(Option<SectionId>, Option<SectionId>, String), ()>,
     retitling: Action<(SectionId, String), ()>,
     urging: Action<(SectionId, Urge), ()>,
     placing: Action<(SectionId, Option<SectionId>, Option<SectionId>), ()>,
     removing: Action<SectionId, ()>,
-    attaching: Action<(PieceId, SectionId), ()>,
-    detaching: Action<PieceId, ()>,
+    attaching: Action<(IdeaId, SectionId), ()>,
+    detaching: Action<IdeaId, ()>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ impl OpenOutline {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let outline = RwSignal::new(None::<Outline>);
-        let pool = RwSignal::new(None::<Vec<Piece>>);
+        let pool = RwSignal::new(None::<Vec<Idea>>);
         let added = RwSignal::new(None::<SectionId>);
 
         let arrived = move |told: Outline| {
@@ -57,7 +57,7 @@ impl OpenOutline {
                 let id = id.clone();
 
                 async move {
-                    match pieces::list(&id).await {
+                    match ideas::list(&id).await {
                         Ok(found) => pool.set(Some(found)),
                         Err(failure) => problem.set(Some(failure)),
                     }
@@ -167,8 +167,8 @@ impl OpenOutline {
             }
         });
 
-        let attaching = Action::new_local(move |(piece, to): &(PieceId, SectionId)| {
-            let piece = piece.clone();
+        let attaching = Action::new_local(move |(idea, to): &(IdeaId, SectionId)| {
+            let idea = idea.clone();
             let to = to.clone();
 
             async move {
@@ -179,25 +179,25 @@ impl OpenOutline {
                     .sections
                     .iter()
                     .find(|section| section.id == to)
-                    .and_then(|section| section.pieces.last().cloned());
+                    .and_then(|section| section.ideas.last().cloned());
 
-                settled(service::attach(&open.id, &piece, &to, behind).await);
+                settled(service::attach(&open.id, &idea, &to, behind).await);
             }
         });
 
-        let detaching = Action::new_local(move |piece: &PieceId| {
-            let piece = piece.clone();
+        let detaching = Action::new_local(move |idea: &IdeaId| {
+            let idea = idea.clone();
 
             async move {
                 let Some(open) = outline.get_untracked() else {
                     return;
                 };
 
-                match service::detach(&open.id, &piece).await {
+                match service::detach(&open.id, &idea).await {
                     Ok(()) => outline.update(|held| {
                         if let Some(held) = held {
                             for section in &mut held.sections {
-                                section.pieces.retain(|held| held != &piece);
+                                section.ideas.retain(|held| held != &idea);
                             }
                         }
                     }),
@@ -240,14 +240,14 @@ impl OpenOutline {
             .unwrap_or_default()
     }
 
-    pub fn pieces_in(&self, section: &SectionId) -> Vec<PieceId> {
+    pub fn ideas_in(&self, section: &SectionId) -> Vec<IdeaId> {
         self.outline
             .with(|held| {
                 held.as_ref().and_then(|held| {
                     held.sections
                         .iter()
                         .find(|known| &known.id == section)
-                        .map(|known| known.pieces.clone())
+                        .map(|known| known.ideas.clone())
                 })
             })
             .unwrap_or_default()
@@ -279,7 +279,7 @@ impl OpenOutline {
             .unwrap_or_default()
     }
 
-    pub fn unplaced(&self) -> Vec<Piece> {
+    pub fn unplaced(&self) -> Vec<Idea> {
         let Some(open) = self.outline.get() else {
             return Vec::new();
         };
@@ -288,16 +288,16 @@ impl OpenOutline {
             .get()
             .unwrap_or_default()
             .into_iter()
-            .filter(|piece| !open.holds(&piece.id))
+            .filter(|idea| !open.holds(&idea.id))
             .collect()
     }
 
-    pub fn named(&self, piece: &PieceId) -> String {
+    pub fn named(&self, idea: &IdeaId) -> String {
         self.pool
             .get()
             .unwrap_or_default()
             .into_iter()
-            .find(|held| &held.id == piece)
+            .find(|held| &held.id == idea)
             .map(|held| held.shown_as().to_owned())
             .unwrap_or_default()
     }
@@ -354,11 +354,11 @@ impl OpenOutline {
         self.removing.dispatch(section);
     }
 
-    pub fn attach(&self, piece: PieceId, to: SectionId) {
-        self.attaching.dispatch((piece, to));
+    pub fn attach(&self, idea: IdeaId, to: SectionId) {
+        self.attaching.dispatch((idea, to));
     }
 
-    pub fn detach(&self, piece: PieceId) {
-        self.detaching.dispatch(piece);
+    pub fn detach(&self, idea: IdeaId) {
+        self.detaching.dispatch(idea);
     }
 }

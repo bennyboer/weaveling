@@ -3,7 +3,7 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos_router::hooks::use_params_map;
 
-use crate::pieces::pool::{Pool, PoolProps};
+use crate::ideas::pool::{Pool, PoolProps};
 use crate::shell::{Inside, Viewing, masthead};
 
 #[component]
@@ -13,7 +13,7 @@ pub fn OnePool() -> impl IntoView {
     move || {
         params.read().get("project").map(|project| {
             (
-                masthead(Some(Inside::of(&project, Some(Viewing::Pieces)))),
+                masthead(Some(Inside::of(&project, Some(Viewing::Ideas)))),
                 html::main().child(
                     html::div()
                         .class("column")

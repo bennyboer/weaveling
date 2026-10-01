@@ -242,7 +242,7 @@ Two things arrived that were not planned: every feature grew a [`wiring` crate](
 
 **It was blocked on a decision, not on effort.** `projects` was the last feature that was not event-sourced — Phase 1 CRUD over a `ProjectStore` — so there was no `project.deleted` on the wire to listen to. The choice was to event-source `projects` properly or to hand-roll a publish inside `ProjectService::delete`, which would have been a second publishing path bypassing `eventpublishing` that we would have deleted again later. [M11a step 1](#step-1--projects-becomes-an-aggregate--done) settled it the first way, and `project.deleted` is now on the wire.
 
-**And its payoff is still theoretical.** An orphaned piece from a deleted project is unreachable — you cannot navigate to a project that no longer exists — and dies at process restart. It becomes real at [M12](#milestone-12--local-mode), where in-memory *is* the store, which is also about when event-sourcing `projects` starts paying for itself: **deletion is exactly where an author wants an audit log.** The two belong together, so they now live together in [M11a](#milestone-11a--projects-event-sourced-and-the-deletion-cascade).
+**And its payoff is still theoretical.** An orphaned piece from a deleted project is unreachable — you cannot navigate to a project that no longer exists — and dies at process restart. It becomes real at [M13](#milestone-13--local-mode), where the store is a file on the author's own disk, which is also about when event-sourcing `projects` starts paying for itself: **deletion is exactly where an author wants an audit log.** The two belong together, so they now live together in [M11a](#milestone-11a--projects-event-sourced-and-the-deletion-cascade).
 
 ### Milestone 9 — The board ✅
 
@@ -430,7 +430,7 @@ The board grew its waiting strip along the **bottom**; the outline grew its rail
 
 That also settles [the open question about the board's tray](./TODO.md) — it currently spends 80px of the working surface saying "Every piece is on the board", and a right rail can simply be narrow and quiet when empty rather than being a strip that has to justify its height.
 
-**Make it responsive at the same time**, because the answer differs by width. On a narrow screen neither a bottom strip nor a side rail works: the tray wants to be a **drawer** — pulled in from the bottom or the right, over the surface rather than beside it, dismissed when you are done placing. That is the first piece of [M14](#milestone-14--touch-and-small-screens) worth building early, because it is the one the two views must agree on.
+**Make it responsive at the same time**, because the answer differs by width. On a narrow screen neither a bottom strip nor a side rail works: the tray wants to be a **drawer** — pulled in from the bottom or the right, over the surface rather than beside it, dismissed when you are done placing. That is the first piece of [M15](#milestone-15--touch-and-small-screens) worth building early, because it is the one the two views must agree on.
 
 **Done when:** ~~the board and the outline present waiting pieces the same way; the board keeps its full height when nothing is waiting; and at a phone width the tray is a drawer in both.~~ **All three.** 152 browser tests, 633 unit and integration tests.
 
@@ -508,7 +508,7 @@ That also settles [the open question about the board's tray](./TODO.md) — it c
 
 **A codec can refuse a row**, and that turns out to be the interesting part. `event` returns `Option`, so a stored title the domain would no longer accept, or a section id that no longer parses, reads as nothing rather than replaying an aggregate into a state its own rules forbid. Two tests I wrote asserted the wrong invariant and failed honestly: an untitled *piece* and an untitled *section* are both legal, because capture and "Add a section" both start blank and are named afterwards. The invariant that does hold is control characters, and both codecs are tested on it.
 
-**`Codec` moved out from behind the `postgres` feature, because leaving it there quietly broke the build promise.** The codec crates need it and are not themselves optional, so they turned `eventsourcing/postgres` on for the entire workspace through feature unification -- `cargo test --workspace` went from 641 tests to 703 and started requiring Docker without anyone asking it to. `Codec` is a feature's declaration of its stored shape, not a PostgreSQL detail, and [M12's export](#milestone-12--local-mode) will want the same thing, so it belongs in the crate root with `serde_json` as an ordinary dependency. `MessageMapping` stays behind the flag, since it genuinely needs `messaging`.
+**`Codec` moved out from behind the `postgres` feature, because leaving it there quietly broke the build promise.** The codec crates need it and are not themselves optional, so they turned `eventsourcing/postgres` on for the entire workspace through feature unification -- `cargo test --workspace` went from 641 tests to 703 and started requiring Docker without anyone asking it to. `Codec` is a feature's declaration of its stored shape, not a PostgreSQL detail, and [M13's export](#milestone-13--local-mode) will want the same thing, so it belongs in the crate root with `serde_json` as an ordinary dependency. `MessageMapping` stays behind the flag, since it genuinely needs `messaging`.
 
 **The API runs on PostgreSQL, and "one line in one manifest" turned out to be true.** Every feature has a `Ports::postgres` beside its `Ports::in_memory`, `Adapters::postgres` picks them all up, and `main` chooses by cargo feature. `Databases` is five pools -- one per feature -- and `Databases::ready` creates any that are missing and lays down every schema at startup, which closes the hole the compose init script left: a feature added after the volume exists now gets its database from the API rather than from `docker compose down -v`.
 
@@ -536,9 +536,9 @@ That also settles [the open question about the board's tray](./TODO.md) — it c
 
 **Goal:** the last CRUD feature joins the rest, and deleting a project actually leaves nothing behind.
 
-Deferred out of [M8](#milestone-8--messaging-), where the cascade was originally scoped. Sits here because both halves start paying at the same moment: with a durable store — and certainly in [local mode](#milestone-12--local-mode) — an orphan outlives the session, and **deletion is exactly where an author wants an audit log**.
+Deferred out of [M8](#milestone-8--messaging-), where the cascade was originally scoped. Sits here because both halves start paying at the same moment: with a durable store — and certainly in [local mode](#milestone-13--local-mode) — an orphan outlives the session, and **deletion is exactly where an author wants an audit log**.
 
-**Build:** ~~`Project` as an aggregate — `Started`, `Renamed`, `Deleted` — with the catalog, projector and `If-Match` handling that `pieces` already has, so the codebase stops carrying two shapes of feature.~~ Then the cascade itself: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.
+**Build:** ~~`Project` as an aggregate — `Started`, `Renamed`, `Deleted` — with the catalog, projector and `If-Match` handling that `pieces` already has, so the codebase stops carrying two shapes of feature. Then the cascade itself: deleting a project disposes its pieces, boards and passages, tolerating a project that never had a board.~~
 
 #### Step 1 — `projects` becomes an aggregate — done
 
@@ -556,9 +556,19 @@ Deferred out of [M8](#milestone-8--messaging-), where the cascade was originally
 
 **And the postgres service test had to become honest**, the same way [the pieces one did in 6b](#milestone-11--the-real-store): with the store enqueueing rather than publishing, a project written with no relay running is readable by id and absent from the listing. The end-to-end relay test now follows a project through the whole chain as well as a piece, each on its own database.
 
-**The open question is choreography or orchestration.** Each feature listening for `project.deleted` and disposing its own is far simpler and is the right default; a saga with its own state earns its place only if the cascade needs ordering, compensation, or a completion signal an author can see. Decide it against the real requirement rather than in advance — but note that "recoverable and observable when it fails midway" leans toward orchestration, and that a saga that entails another (a `BoardDeletion` inside a `ProjectDeletion`) is a question the `Conversation` id was designed to answer.
+#### Step 2 — the cascade — done
 
-**Done when:** deleting a project leaves nothing behind; a cascade that fails midway is recoverable and observable; the project's own history says who deleted it and when; and `projects` looks like every other feature.
+**Choreography was enough, and [M11b](#milestone-11b--one-flow-in-every-mode) is why.** The argument for a saga was that a cascade failing midway must be "recoverable and observable" — but a durable delivery queue with five bounded retries and a dead letter carrying its root cause already buys exactly that, per step, without a coordinator. So four listeners, each disposing its own and none knowing about the others: `discard-pieces-of-deleted-project`, `discard-boards-of-deleted-project`, `discard-outlines-of-deleted-project`, and `delete-passage-of-discarded-piece`. **What choreography still cannot say is when the whole cascade is *done*** — that, not recoverability, is the thing that would buy a saga its place, and nothing asks for it yet.
+
+**Boards and outline had no way to end.** Neither aggregate had a `Discarded` event at all, so both gained command, event, guard, snapshot field, codec and contract — and both catalogs gained a `forget`, which runs the summary delete and the piece-index delete in **one transaction**, so a crash cannot leave the index naming something that is gone.
+
+**The prose needed the event to carry it.** A passage is reachable only through its piece's `PassageLink`, and passages cannot look a piece up across the seam. The alternative was an index in passages fed by `piece.passage.attached`, whose failure mode is a *silent* leak — a missing entry orphans the prose with nothing to report. So `PieceEvent::Discarded` carries the passage it went with: self-sufficient, nothing to lag, no second projection. An event carrying a fact a different context cannot otherwise obtain is the case the ["what changed, not what it replaced"](../ARCHITECTURE.md#event-sourcing--discipline) rule was never about.
+
+**One sweep is bounded, because one project can hold thousands of pieces.** [ARCHITECTURE says so in as many words](../ARCHITECTURE.md#event-sourcing--discipline), and discarding ten thousand in one handler would block every other listener behind it for the duration, outlive the 30-second claim, and hand the same delivery to a second consumer. So `pieces` takes 100 at a time and publishes `piece.sweep.more` carrying a **cursor** — answering the original message, so the whole sweep stays one conversation. The cursor is load-bearing rather than tidy: relying on the catalog shrinking would loop for ever, because the projector forgets discarded pieces asynchronously and a continuation can arrive before it has caught up. A query-plan test pins the cursored read to the index, since the failure there is silent — correct rows, cost growing with the table.
+
+**And it found one that was nobody's cascade bug.** Both catalog projectors subscribed only to `started`, so a discarded board or outline could never leave its listing — latent since whenever discard-by-any-route arrived, and the cascade merely got there first.
+
+**Done when:** ~~deleting a project leaves nothing behind; a cascade that fails midway is recoverable and observable; the project's own history says who deleted it and when; and `projects` looks like every other feature~~ — all four, proved end to end on PostgreSQL through the real API, with an assertion that nothing dead-lettered.
 
 ---
 
@@ -626,7 +636,7 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 
 ### SQLite backs local mode — decided
 
-**Decided 2026-09-29**, reversing the plan that [M12](#milestone-12--local-mode) was written against. Local mode was going to be *no database*: in-memory stores plus export and import of a project file. It will be **SQLite instead**, one file per feature module and one for messaging — the same database-per-feature shape the server has, with SQLite standing in for PostgreSQL.
+**Decided 2026-09-29**, reversing the plan that [M13](#milestone-13--local-mode) was written against. Local mode was going to be *no database*: in-memory stores plus export and import of a project file. It will be **SQLite instead**, one file per feature module and one for messaging — the same database-per-feature shape the server has, with SQLite standing in for PostgreSQL.
 
 **What decided it was the retry queue, not the event store.** The durability argument for the stores alone was weak: export and import narrows the window, and an author who loses an afternoon has lost an afternoon either way. But [M11b step 2](#milestone-11b--one-flow-in-every-mode) made delivery durable — a listener that refuses is retried up to five times and then dead-lettered, and **that state has to survive a crash or the guarantee is a lie in local mode.** Losing pending retries means losing exactly the messages the mechanism exists to protect: the ones that had not been handled yet. In-memory deliveries would mean local mode has the *shape* of the retry but not the promise, which is the divergence this whole milestone exists to remove.
 
@@ -636,9 +646,48 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 
 **The cost is the schemas, and it is real.** Every feature's `migrations/` is PostgreSQL DDL and each needs a SQLite twin, drifting silently with no compiler to notice. The adapters themselves are ordinary work against conformance suites that already exist — event store, outbox, four catalogs, `PassageStore`, registry, deliveries — which is a lot of implementations but no new design. Dialect drift is mechanical: `TIMESTAMPTZ` becomes TEXT, `JSONB` becomes TEXT, `BIGSERIAL` becomes `INTEGER PRIMARY KEY`, and `COLLATE "C"` is free because SQLite's default collation is already byte order.
 
-**What it does to M12:** export and import stop being the persistence mechanism and become what they always should have been — a way to move a project between machines. An author's work is durable because it is in a file that was written as they worked, not because they remembered to export.
+**What it does to M13:** export and import stop being the persistence mechanism and become what they always should have been — a way to move a project between machines. An author's work is durable because it is in a file that was written as they worked, not because they remembered to export.
 
-### Milestone 12 — Local mode
+### Milestone 12 — Ideas and passages
+
+**Goal:** the pool splits in two, and every view owns what it says about an idea.
+
+**Decided 2026-10-01** and argued in full in [ARCHITECTURE.md](./ARCHITECTURE.md#ideas-and-passages-are-two-pools--decided). In short: a `Piece` is doing two jobs with different lifecycles — a disposable **idea** and a durable **passage** — and the complaint that attaching pieces to sections felt *"very weird"* was the model surfacing rather than an interaction problem.
+
+**It goes before [local mode](#milestone-13--local-mode), and the reason is concrete rather than cautionary.** The first argument for doing it now was that reshaping three event-sourced features is cheapest while no author has durable data — true, but conditional on when a file reaches an author. The decisive one is simpler: **local mode means writing a SQLite adapter for every port we have** — event store, outbox, four catalogs, `PassageStore`, registry, deliveries — and a schema twin for each. Do that first and the pieces half of it gets written twice, because this milestone reshapes exactly those stores. Reshape first, port once.
+
+**Build:**
+
+- **`ideas`** replaces `pieces` as the pool: an id, a name, optionally a kind and a description. No passage link, no position, nothing a view could want to own.
+- **`passages`** stays as it is — already a pool with its own ids and its own feature — and gains the optional idea that prompted it.
+- **The outline arranges passages**, as the board arranges ideas, which keeps *the outline holds structure, never content* true rather than breaking it.
+- **A backlinks read model**, fed by every view's events, answering *idea → where it appears*. It is what makes an inspector one read instead of five, and what lets a new view join by publishing rather than by anyone depending on it.
+- **An inspector on the board** that can set a moment or a character without leaving the view — writing to those features, owning nothing. The board must stay usable with every inspector blank forever.
+
+**The steps, each reviewable alone:**
+
+1. **Rename `pieces` to `ideas`** — directory, crates, `PieceId` to `IdeaId`, `piece.*` routing keys to `idea.*`, the summaries table, the client. Pure vocabulary: 2,097 sites across 126 files and not one behaviour change, so it is reviewed by confirming nothing *but* names moved rather than by reading every hunk.
+2. **A passage belongs to a project** — the project link it has never had, plus `in_project`, and the deletion cascade sweeps passages straight from `project.deleted`.
+3. **The idea loses its passage** — `Idea.passage`, `PassageAttached`, the attach route and `Discarded { passage }` all go.
+4. **The outline arranges passages** rather than ideas.
+5. **The outline also arranges ideas**, as notes beside the content — the first tagged reference.
+6. **A passage names the idea that prompted it**, owned by the passage.
+7. **The backlinks read model.**
+8. **The board inspector**, in the client.
+
+**Step 2 must precede step 3, and the reason is the nastiest failure in the list.** A `Passage` today is `{ id, doc }` — it has no project, and the only route from a project to its prose runs through the piece that links it. That is exactly what [the cascade](#milestone-11a--projects-event-sourced-and-the-deletion-cascade) exploits. Take the passage off the idea first and project deletion silently stops reaching the prose: no error, no dead letter, just a book that outlives everything that could find it.
+
+**Which means steps 2 and 3 partly undo M11a.** `PieceEvent::Discarded { passage }` exists *because* a passage is unreachable except through its piece; give passages their own project and that carrying is dead weight. It was right for the model as it stood, and it is cheap to remove.
+
+**Deliberately out of scope:** a `kind` and a `description` on an idea — both additive, neither needed to prove the model — and anything timeline-shaped, which is what the twenty-ideas spike should inform first.
+
+**Done when:** an idea carries no link to any view; a view gains a new kind of relation without `ideas` changing; the backlinks read model answers in one request; and the board is usable without ever opening an inspector.
+
+**Still unknown, and deliberately not gating this:** how often an idea maps one-to-one onto a passage, and what the timeline wants to hold. Those are ergonomics and they shape the *views*; the structural question was settled on lifecycle. Twenty real ideas on a board will answer them, and that is worth doing before the timeline is designed rather than before this.
+
+---
+
+### Milestone 13 — Local mode
 
 **Goal:** an author runs Weaveling on their own machine with no database and no broker, and their project is a file they own.
 
@@ -648,6 +697,8 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 
 **Local is single-user by definition** — no accounts, no authors on other machines. Two tabs on the same computer still collaborate, because the sync socket is local and knows nothing about deployment.
 
+**It follows [M12](#milestone-12--ideas-and-passages) on purpose**, because local mode writes a SQLite adapter for every port in the codebase and M12 reshapes several of them. Porting first would mean porting the same stores twice.
+
 **Now backed by SQLite** rather than by nothing — see [the decision](#sqlite-backs-local-mode--decided), which changes the goal above: an author's work is durable because it was written to a file as they worked, and export becomes a way to move a project between machines rather than the only thing standing between them and losing an afternoon.
 
 **Depends on** the deferrals that in-memory made free being closed first, since a session now lasts an afternoon rather than a test run: the catalog's dual write, passages never being evicted, and the deletion cascade. See [TODO.md](./TODO.md). Also on [M11b](#milestone-11b--one-flow-in-every-mode), so that local mode relays rather than publishing inline.
@@ -656,7 +707,7 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 
 ---
 
-### Milestone 13 — Two languages
+### Milestone 14 — Two languages
 
 **Goal:** German and English, chosen by the reader rather than the build.
 
@@ -666,7 +717,7 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 
 **Done when:** the whole app reads in German, the choice survives a reload, and the suite still passes in both.
 
-### Milestone 14 — Touch and small screens
+### Milestone 15 — Touch and small screens
 
 **Goal:** the app in a pocket, for the edits that happen away from a desk.
 

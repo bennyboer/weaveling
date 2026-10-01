@@ -2,14 +2,14 @@ use std::sync::Arc;
 
 use eventpublishing::{UnreadableMessage, published_in};
 use eventsourcing::{Agent, ServiceError};
+use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use outline_core::{
-    CatalogError, OutlineCatalog, OutlineError, OutlineService, OutlineServiceError, PieceLink,
+    CatalogError, IdeaLink, OutlineCatalog, OutlineError, OutlineService, OutlineServiceError,
 };
-use pieces_contract::{DISCARDED, PieceEventDTO};
 use thiserror::Error;
 
-const NAME: &str = "detach-discarded-piece";
+const NAME: &str = "detach-discarded-idea";
 
 pub struct DetachOnDiscard {
     outlines: OutlineService,
@@ -35,11 +35,11 @@ impl DetachOnDiscard {
         Self { outlines, catalog }
     }
 
-    async fn detach_everywhere(&self, piece: &PieceLink) -> Result<(), NotDetached> {
-        for outline in self.catalog.outlines_holding(piece).await? {
+    async fn detach_everywhere(&self, idea: &IdeaLink) -> Result<(), NotDetached> {
+        for outline in self.catalog.outlines_holding(idea).await? {
             match self
                 .outlines
-                .detach(&outline.to_string(), piece.clone(), None, &nobody())
+                .detach(&outline.to_string(), idea.clone(), None, &nobody())
                 .await
             {
                 Ok(_) => {}
@@ -52,9 +52,9 @@ impl DetachOnDiscard {
     }
 
     async fn work_through(&self, message: &Message) -> Result<(), NotDetached> {
-        let discarded = published_in::<PieceEventDTO>(message)?;
+        let discarded = published_in::<IdeaEventDTO>(message)?;
 
-        self.detach_everywhere(&PieceLink::from(discarded.aggregate.id.as_str()))
+        self.detach_everywhere(&IdeaLink::from(discarded.aggregate.id.as_str()))
             .await
     }
 }

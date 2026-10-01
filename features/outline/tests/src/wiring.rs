@@ -10,8 +10,8 @@ use registry::InMemoryRegistry;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-outline";
-const INDEXING: &str = "index-attached-pieces";
-const TIDYING: &str = "detach-discarded-piece";
+const INDEXING: &str = "index-attached-ideas";
+const TIDYING: &str = "detach-discarded-idea";
 
 pub struct Wired {
     pub outlines: OutlineService,

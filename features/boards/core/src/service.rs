@@ -9,7 +9,7 @@ use ids::InvalidId;
 use registry::{Registry, RegistryError};
 use thiserror::Error;
 
-use crate::board::{Board, BoardCommand, BoardError, BoardEvent, KIND, PieceLink, ProjectLink};
+use crate::board::{Board, BoardCommand, BoardError, BoardEvent, IdeaLink, KIND, ProjectLink};
 use crate::catalog::CatalogError;
 use crate::id::BoardId;
 use crate::size::Size;
@@ -78,25 +78,20 @@ impl BoardService {
     pub async fn pin(
         &self,
         board: &str,
-        piece: PieceLink,
+        idea: IdeaLink,
         at: Spot,
         size: Size,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, BoardServiceError> {
-        self.carry_out(
-            board,
-            BoardCommand::Pin { piece, at, size },
-            expected,
-            agent,
-        )
-        .await
+        self.carry_out(board, BoardCommand::Pin { idea, at, size }, expected, agent)
+            .await
     }
 
     pub async fn reshape(
         &self,
         board: &str,
-        piece: PieceLink,
+        idea: IdeaLink,
         to: Option<Spot>,
         size: Option<Size>,
         expected: Option<Version>,
@@ -104,7 +99,7 @@ impl BoardService {
     ) -> Result<Version, BoardServiceError> {
         self.carry_out(
             board,
-            BoardCommand::Reshape { piece, to, size },
+            BoardCommand::Reshape { idea, to, size },
             expected,
             agent,
         )
@@ -114,11 +109,11 @@ impl BoardService {
     pub async fn unpin(
         &self,
         board: &str,
-        piece: PieceLink,
+        idea: IdeaLink,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, BoardServiceError> {
-        self.carry_out(board, BoardCommand::Unpin { piece }, expected, agent)
+        self.carry_out(board, BoardCommand::Unpin { idea }, expected, agent)
             .await
     }
 

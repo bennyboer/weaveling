@@ -1,0 +1,15 @@
+[package]
+name = "weaveling-ideas-rest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
+
+ideas-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-ideas-contract" }
+ideas-core = { version = "0.1.0", path = "../../core", package = "weaveling-ideas-core" }

@@ -25,8 +25,8 @@ const SECTION_MOVED: EventName = EventName::of("SECTION_MOVED");
 const SECTION_PROMOTED: EventName = EventName::of("SECTION_PROMOTED");
 const SECTION_DEMOTED: EventName = EventName::of("SECTION_DEMOTED");
 const SECTION_REMOVED: EventName = EventName::of("SECTION_REMOVED");
-const PIECE_ATTACHED: EventName = EventName::of("PIECE_ATTACHED");
-const PIECE_DETACHED: EventName = EventName::of("PIECE_DETACHED");
+const IDEA_ATTACHED: EventName = EventName::of("IDEA_ATTACHED");
+const IDEA_DETACHED: EventName = EventName::of("IDEA_DETACHED");
 const DISCARDED: EventName = EventName::of("DISCARDED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
@@ -34,14 +34,14 @@ const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 pub struct ProjectLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PieceLink(String);
+pub struct IdeaLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlacedSection {
     pub section: SectionId,
     pub parent: Option<SectionId>,
     pub title: SectionTitle,
-    pub pieces: Vec<PieceLink>,
+    pub ideas: Vec<IdeaLink>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,13 +74,13 @@ pub enum OutlineCommand {
     Remove {
         section: SectionId,
     },
-    AttachPiece {
-        piece: PieceLink,
+    AttachIdea {
+        idea: IdeaLink,
         to: SectionId,
-        after: Option<PieceLink>,
+        after: Option<IdeaLink>,
     },
-    DetachPiece {
-        piece: PieceLink,
+    DetachIdea {
+        idea: IdeaLink,
     },
 }
 
@@ -113,13 +113,13 @@ pub enum OutlineEvent {
     SectionRemoved {
         section: SectionId,
     },
-    PieceAttached {
-        piece: PieceLink,
+    IdeaAttached {
+        idea: IdeaLink,
         to: SectionId,
-        after: Option<PieceLink>,
+        after: Option<IdeaLink>,
     },
-    PieceDetached {
-        piece: PieceLink,
+    IdeaDetached {
+        idea: IdeaLink,
     },
     Discarded,
     Snapshotted {
@@ -134,7 +134,7 @@ struct HeldSection {
     title: SectionTitle,
     parent: Option<SectionId>,
     children: Vec<SectionId>,
-    pieces: Vec<PieceLink>,
+    ideas: Vec<IdeaLink>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -159,7 +159,7 @@ pub enum OutlineError {
     WouldContainItself,
     #[error("there is nothing at that place to sit after")]
     NoSuchNeighbour,
-    #[error("this piece is not in the outline")]
+    #[error("this idea is not in the outline")]
     NotAttached,
     #[error("a discarded outline accepts no changes")]
     Discarded,
@@ -189,25 +189,25 @@ impl Display for ProjectLink {
     }
 }
 
-impl PieceLink {
+impl IdeaLink {
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-impl From<String> for PieceLink {
+impl From<String> for IdeaLink {
     fn from(given: String) -> Self {
         Self(given)
     }
 }
 
-impl From<&str> for PieceLink {
+impl From<&str> for IdeaLink {
     fn from(given: &str) -> Self {
         Self(given.to_owned())
     }
 }
 
-impl Display for PieceLink {
+impl Display for IdeaLink {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.0, f)
     }
@@ -245,17 +245,17 @@ impl Outline {
         &self.children
     }
 
-    pub fn pieces_in(&self, section: &SectionId) -> Vec<PieceLink> {
+    pub fn ideas_in(&self, section: &SectionId) -> Vec<IdeaLink> {
         self.sections
             .get(section)
-            .map(|held| held.pieces.clone())
+            .map(|held| held.ideas.clone())
             .unwrap_or_default()
     }
 
-    pub fn section_holding(&self, piece: &PieceLink) -> Option<SectionId> {
+    pub fn section_holding(&self, idea: &IdeaLink) -> Option<SectionId> {
         self.sections
             .iter()
-            .find(|(_, held)| held.pieces.contains(piece))
+            .find(|(_, held)| held.ideas.contains(idea))
             .map(|(section, _)| *section)
     }
 
@@ -269,10 +269,10 @@ impl Outline {
         walked
     }
 
-    pub fn reading_order(&self) -> Vec<PieceLink> {
+    pub fn reading_order(&self) -> Vec<IdeaLink> {
         self.sections()
             .into_iter()
-            .flat_map(|placed| placed.pieces)
+            .flat_map(|placed| placed.ideas)
             .collect()
     }
 
@@ -285,7 +285,7 @@ impl Outline {
             section: *section,
             parent: held.parent,
             title: held.title.clone(),
-            pieces: held.pieces.clone(),
+            ideas: held.ideas.clone(),
         });
 
         for child in &held.children {
@@ -401,7 +401,7 @@ impl Outline {
                 title,
                 parent: None,
                 children: Vec::new(),
-                pieces: Vec::new(),
+                ideas: Vec::new(),
             },
         );
         self.put(section, under, after);
@@ -476,8 +476,8 @@ impl Outline {
         }
     }
 
-    fn attach(&mut self, piece: &PieceLink, to: &SectionId, after: Option<&PieceLink>) {
-        self.detach(piece);
+    fn attach(&mut self, idea: &IdeaLink, to: &SectionId, after: Option<&IdeaLink>) {
+        self.detach(idea);
 
         let Some(held) = self.sections.get_mut(to) else {
             return;
@@ -485,18 +485,18 @@ impl Outline {
         let at = match after {
             None => 0,
             Some(after) => held
-                .pieces
+                .ideas
                 .iter()
                 .position(|held| held == after)
                 .map_or(0, |nth| nth + 1),
         };
 
-        held.pieces.insert(at.min(held.pieces.len()), piece.clone());
+        held.ideas.insert(at.min(held.ideas.len()), idea.clone());
     }
 
-    fn detach(&mut self, piece: &PieceLink) {
+    fn detach(&mut self, idea: &IdeaLink) {
         for held in self.sections.values_mut() {
-            held.pieces.retain(|held| held != piece);
+            held.ideas.retain(|held| held != idea);
         }
     }
 
@@ -511,7 +511,7 @@ impl Outline {
                     title: placed.title.clone(),
                     parent: placed.parent,
                     children: Vec::new(),
-                    pieces: placed.pieces.clone(),
+                    ideas: placed.ideas.clone(),
                 },
             );
         }
@@ -541,8 +541,8 @@ impl Event for OutlineEvent {
             Self::SectionPromoted { .. } => SECTION_PROMOTED,
             Self::SectionDemoted { .. } => SECTION_DEMOTED,
             Self::SectionRemoved { .. } => SECTION_REMOVED,
-            Self::PieceAttached { .. } => PIECE_ATTACHED,
-            Self::PieceDetached { .. } => PIECE_DETACHED,
+            Self::IdeaAttached { .. } => IDEA_ATTACHED,
+            Self::IdeaDetached { .. } => IDEA_DETACHED,
             Self::Discarded => DISCARDED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -694,25 +694,25 @@ impl Aggregate for Outline {
 
                 Ok(vec![OutlineEvent::SectionRemoved { section }])
             }
-            OutlineCommand::AttachPiece { piece, to, after } => {
+            OutlineCommand::AttachIdea { idea, to, after } => {
                 if !self.holds(&to) {
                     return Err(OutlineError::NoSuchSection);
                 }
 
                 if let Some(after) = &after
-                    && (after == &piece || !self.pieces_in(&to).contains(after))
+                    && (after == &idea || !self.ideas_in(&to).contains(after))
                 {
                     return Err(OutlineError::NoSuchNeighbour);
                 }
 
-                Ok(vec![OutlineEvent::PieceAttached { piece, to, after }])
+                Ok(vec![OutlineEvent::IdeaAttached { idea, to, after }])
             }
-            OutlineCommand::DetachPiece { piece } => {
-                if self.section_holding(&piece).is_none() {
+            OutlineCommand::DetachIdea { idea } => {
+                if self.section_holding(&idea).is_none() {
                     return Err(OutlineError::NotAttached);
                 }
 
-                Ok(vec![OutlineEvent::PieceDetached { piece }])
+                Ok(vec![OutlineEvent::IdeaDetached { idea }])
             }
         }
     }
@@ -738,10 +738,8 @@ impl Aggregate for Outline {
             OutlineEvent::SectionPromoted { section } => self.promote(section),
             OutlineEvent::SectionDemoted { section } => self.demote(section),
             OutlineEvent::SectionRemoved { section } => self.remove(section),
-            OutlineEvent::PieceAttached { piece, to, after } => {
-                self.attach(piece, to, after.as_ref())
-            }
-            OutlineEvent::PieceDetached { piece } => self.detach(piece),
+            OutlineEvent::IdeaAttached { idea, to, after } => self.attach(idea, to, after.as_ref()),
+            OutlineEvent::IdeaDetached { idea } => self.detach(idea),
             OutlineEvent::Snapshotted {
                 project,
                 sections,

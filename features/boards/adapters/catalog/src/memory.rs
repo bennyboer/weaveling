@@ -2,14 +2,14 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
-use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, PieceLink, ProjectLink};
+use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, IdeaLink, ProjectLink};
 
 type Listed = HashMap<BoardId, BoardSummary>;
 
 #[derive(Debug, Default)]
 struct Pins {
-    by_board: HashMap<BoardId, Vec<PieceLink>>,
-    by_piece: HashMap<PieceLink, BTreeSet<BoardId>>,
+    by_board: HashMap<BoardId, Vec<IdeaLink>>,
+    by_idea: HashMap<IdeaLink, BTreeSet<BoardId>>,
 }
 
 #[derive(Debug, Default)]
@@ -67,37 +67,37 @@ impl BoardCatalog for InMemoryBoardCatalog {
         Ok(found)
     }
 
-    async fn holds(&self, board: BoardId, pieces: &[PieceLink]) -> Result<(), CatalogError> {
+    async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError> {
         let mut pins = self.write_pins();
-        let arriving: HashSet<&PieceLink> = pieces.iter().collect();
+        let arriving: HashSet<&IdeaLink> = ideas.iter().collect();
         let left_behind = pins
             .by_board
-            .insert(board, pieces.to_vec())
+            .insert(board, ideas.to_vec())
             .unwrap_or_default();
 
-        for gone in left_behind.iter().filter(|piece| !arriving.contains(piece)) {
-            let Some(holding) = pins.by_piece.get_mut(gone) else {
+        for gone in left_behind.iter().filter(|idea| !arriving.contains(idea)) {
+            let Some(holding) = pins.by_idea.get_mut(gone) else {
                 continue;
             };
             holding.remove(&board);
 
             if holding.is_empty() {
-                pins.by_piece.remove(gone);
+                pins.by_idea.remove(gone);
             }
         }
 
-        for held in pieces {
-            pins.by_piece.entry(held.clone()).or_default().insert(board);
+        for held in ideas {
+            pins.by_idea.entry(held.clone()).or_default().insert(board);
         }
 
         Ok(())
     }
 
-    async fn boards_holding(&self, piece: &PieceLink) -> Result<Vec<BoardId>, CatalogError> {
+    async fn boards_holding(&self, idea: &IdeaLink) -> Result<Vec<BoardId>, CatalogError> {
         Ok(self
             .read_pins()
-            .by_piece
-            .get(piece)
+            .by_idea
+            .get(idea)
             .map(|holding| holding.iter().copied().collect())
             .unwrap_or_default())
     }

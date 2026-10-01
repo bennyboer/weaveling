@@ -2,12 +2,12 @@ use std::sync::Arc;
 
 use clock::FixedClock;
 use eventsourcing::{Agent, AgentId};
+use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Message, RoutingKey};
 use outline_contract::{
-    PIECE_ATTACHED, PIECE_DETACHED, SECTION_ADDED, SECTION_MOVED, SECTION_REMOVED, STARTED,
+    IDEA_ATTACHED, IDEA_DETACHED, SECTION_ADDED, SECTION_MOVED, SECTION_REMOVED, STARTED,
 };
-use outline_core::{OutlineCatalog, OutlineId, PieceLink, SectionId, SectionTitle};
-use pieces_contract::{DISCARDED, PieceEventDTO};
+use outline_core::{IdeaLink, OutlineCatalog, OutlineId, SectionId, SectionTitle};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
@@ -25,20 +25,20 @@ fn a_workbench() -> Wired {
     wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
-fn a_piece(named: &str) -> PieceLink {
-    PieceLink::from(named)
+fn a_idea(named: &str) -> IdeaLink {
+    IdeaLink::from(named)
 }
 
 fn titled(what: &str) -> SectionTitle {
     SectionTitle::new(what).expect("the title should be usable")
 }
 
-fn discarded(piece: &str) -> Message {
+fn discarded(idea: &str) -> Message {
     Message::opening(
         RoutingKey::parse(DISCARDED).expect("a declared routing key is fine"),
         json!({
             "event": { "version": 0, "name": "DISCARDED" },
-            "aggregate": { "id": piece, "kind": "piece", "version": 4 },
+            "aggregate": { "id": idea, "kind": "idea", "version": 4 },
             "agent": { "kind": "anonymous", "id": null },
             "occurred_at": "1970-01-01T00:16:40Z",
         }),
@@ -62,7 +62,7 @@ async fn a_chapter(wired: &Wired, outline: &OutlineId, titled_as: &str) -> Secti
         .section
 }
 
-async fn a_book_holding(wired: &Wired, pieces: &[&str]) -> (OutlineId, SectionId) {
+async fn a_book_holding(wired: &Wired, ideas: &[&str]) -> (OutlineId, SectionId) {
     let outline = wired
         .outlines
         .open("project_1", &an_author())
@@ -72,12 +72,12 @@ async fn a_book_holding(wired: &Wired, pieces: &[&str]) -> (OutlineId, SectionId
     let chapter = a_chapter(wired, &outline, "Chapter 1").await;
 
     let mut behind = None;
-    for piece in pieces {
+    for idea in ideas {
         wired
             .outlines
             .attach(
                 &outline.to_string(),
-                a_piece(piece),
+                a_idea(idea),
                 chapter,
                 behind.clone(),
                 None,
@@ -85,7 +85,7 @@ async fn a_book_holding(wired: &Wired, pieces: &[&str]) -> (OutlineId, SectionId
             )
             .await
             .expect("attaching should succeed");
-        behind = Some(a_piece(piece));
+        behind = Some(a_idea(idea));
     }
 
     wired.settle().await;
@@ -102,20 +102,20 @@ async fn reading_order(wired: &Wired, outline: &OutlineId) -> Vec<String> {
         .state
         .reading_order()
         .into_iter()
-        .map(|piece| piece.to_string())
+        .map(|idea| idea.to_string())
         .collect()
 }
 
 #[tokio::test]
-async fn attaching_a_piece_puts_it_in_the_index() {
+async fn attaching_a_idea_puts_it_in_the_index() {
     let wired = a_workbench();
 
-    let (outline, _) = a_book_holding(&wired, &["piece_1"]).await;
+    let (outline, _) = a_book_holding(&wired, &["idea_1"]).await;
 
     assert_eq!(
         wired
             .catalog
-            .outlines_holding(&a_piece("piece_1"))
+            .outlines_holding(&a_idea("idea_1"))
             .await
             .expect("looking should succeed"),
         vec![outline]
@@ -123,13 +123,13 @@ async fn attaching_a_piece_puts_it_in_the_index() {
 }
 
 #[tokio::test]
-async fn detaching_a_piece_takes_it_out_of_the_index() {
+async fn detaching_a_idea_takes_it_out_of_the_index() {
     let wired = a_workbench();
-    let (outline, _) = a_book_holding(&wired, &["piece_1"]).await;
+    let (outline, _) = a_book_holding(&wired, &["idea_1"]).await;
 
     wired
         .outlines
-        .detach(&outline.to_string(), a_piece("piece_1"), None, &an_author())
+        .detach(&outline.to_string(), a_idea("idea_1"), None, &an_author())
         .await
         .expect("detaching should succeed");
     wired.settle().await;
@@ -137,7 +137,7 @@ async fn detaching_a_piece_takes_it_out_of_the_index() {
     assert!(
         wired
             .catalog
-            .outlines_holding(&a_piece("piece_1"))
+            .outlines_holding(&a_idea("idea_1"))
             .await
             .expect("looking should succeed")
             .is_empty()
@@ -145,9 +145,9 @@ async fn detaching_a_piece_takes_it_out_of_the_index() {
 }
 
 #[tokio::test]
-async fn removing_a_section_takes_its_pieces_out_of_the_index() {
+async fn removing_a_section_takes_its_ideas_out_of_the_index() {
     let wired = a_workbench();
-    let (outline, chapter) = a_book_holding(&wired, &["piece_1"]).await;
+    let (outline, chapter) = a_book_holding(&wired, &["idea_1"]).await;
 
     wired
         .outlines
@@ -159,42 +159,42 @@ async fn removing_a_section_takes_its_pieces_out_of_the_index() {
     assert!(
         wired
             .catalog
-            .outlines_holding(&a_piece("piece_1"))
+            .outlines_holding(&a_idea("idea_1"))
             .await
             .expect("looking should succeed")
             .is_empty(),
-        "a removed section returns its pieces to the pool, and the index has to hear about it"
+        "a removed section returns its ideas to the pool, and the index has to hear about it"
     );
 }
 
 #[tokio::test]
-async fn a_discarded_piece_leaves_the_book() {
+async fn a_discarded_idea_leaves_the_book() {
     let wired = a_workbench();
-    let (outline, _) = a_book_holding(&wired, &["piece_1", "piece_2"]).await;
+    let (outline, _) = a_book_holding(&wired, &["idea_1", "idea_2"]).await;
 
     wired
         .tidier
-        .handle(&discarded("piece_1"))
+        .handle(&discarded("idea_1"))
         .await
         .expect("tidying should succeed");
     wired.settle().await;
 
     assert_eq!(
         reading_order(&wired, &outline).await,
-        ["piece_2"],
-        "a discarded piece leaves, and the rest of the chapter reads on"
+        ["idea_2"],
+        "a discarded idea leaves, and the rest of the chapter reads on"
     );
 }
 
 #[tokio::test]
 async fn hearing_the_same_discard_twice_is_harmless() {
     let wired = a_workbench();
-    let (outline, _) = a_book_holding(&wired, &["piece_1"]).await;
+    let (outline, _) = a_book_holding(&wired, &["idea_1"]).await;
 
     for _ in 0..2 {
         wired
             .tidier
-            .handle(&discarded("piece_1"))
+            .handle(&discarded("idea_1"))
             .await
             .expect("a redelivery is not a failure");
     }
@@ -203,20 +203,20 @@ async fn hearing_the_same_discard_twice_is_harmless() {
     assert!(
         reading_order(&wired, &outline).await.is_empty(),
         "a broker redelivers before the index it reads has caught up, so the second detach finds \
-         the piece still listed and must treat an already-detached piece as done"
+         the idea still listed and must treat an already-detached idea as done"
     );
 }
 
 #[tokio::test]
-async fn discarding_a_piece_that_was_never_in_the_book_is_harmless() {
+async fn discarding_a_idea_that_was_never_in_the_book_is_harmless() {
     let wired = a_workbench();
-    a_book_holding(&wired, &["piece_1"]).await;
+    a_book_holding(&wired, &["idea_1"]).await;
 
     wired
         .tidier
-        .handle(&discarded("piece_never_placed"))
+        .handle(&discarded("idea_never_placed"))
         .await
-        .expect("a piece that was only ever in the pool is not a failure");
+        .expect("a idea that was only ever in the pool is not a failure");
 }
 
 #[tokio::test]
@@ -238,12 +238,12 @@ async fn a_discard_that_is_not_a_published_event_is_refused() {
 async fn the_index_hears_everything_that_changes_what_the_book_holds() {
     let wired = a_workbench();
 
-    for changing in [PIECE_ATTACHED, PIECE_DETACHED, SECTION_REMOVED] {
+    for changing in [IDEA_ATTACHED, IDEA_DETACHED, SECTION_REMOVED] {
         assert!(
             wired
                 .indexer
                 .hears(&RoutingKey::parse(changing).expect("a declared key is fine")),
-            "{changing} changes which pieces are in the book, so the index must hear it"
+            "{changing} changes which ideas are in the book, so the index must hear it"
         );
     }
     for quiet in [STARTED, SECTION_ADDED, SECTION_MOVED] {
@@ -265,7 +265,7 @@ async fn the_catalog_projector_hears_only_a_book_being_started() {
             .projector
             .hears(&RoutingKey::parse(STARTED).expect("a declared key is fine"))
     );
-    for quiet in [SECTION_ADDED, SECTION_MOVED, PIECE_ATTACHED] {
+    for quiet in [SECTION_ADDED, SECTION_MOVED, IDEA_ATTACHED] {
         assert!(
             !wired
                 .projector
@@ -287,19 +287,19 @@ async fn the_discard_listener_hears_only_discards() {
     assert!(
         !wired
             .tidier
-            .hears(&RoutingKey::parse("piece.retitled").expect("a plain key is fine")),
-        "nothing else a piece does should take it out of the book"
+            .hears(&RoutingKey::parse("idea.retitled").expect("a plain key is fine")),
+        "nothing else a idea does should take it out of the book"
     );
 }
 
 #[tokio::test]
 async fn what_the_discard_message_says_matches_the_published_shape() {
-    let read: PieceEventDTO = serde_json::from_value(discarded("piece_1").payload["event"].clone())
-        .expect("the fixture should parse as a published piece event");
+    let read: IdeaEventDTO = serde_json::from_value(discarded("idea_1").payload["event"].clone())
+        .expect("the fixture should parse as a published idea event");
 
     assert_eq!(
         read,
-        PieceEventDTO::Discarded { passage: None },
-        "if this stops parsing, the pieces contract moved and this listener is deaf"
+        IdeaEventDTO::Discarded { passage: None },
+        "if this stops parsing, the ideas contract moved and this listener is deaf"
     );
 }

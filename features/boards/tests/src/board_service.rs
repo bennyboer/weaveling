@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_UNPINNED, STARTED};
+use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
 use boards_core::{
-    BoardError, BoardEvent, BoardId, BoardServiceError, KIND, PieceLink, ProjectLink, Size, Spot,
+    BoardError, BoardEvent, BoardId, BoardServiceError, IdeaLink, KIND, ProjectLink, Size, Spot,
 };
 use clock::FixedClock;
 use eventsourcing::{
@@ -19,8 +19,8 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn a_piece() -> PieceLink {
-    PieceLink::from("piece_1")
+fn a_idea() -> IdeaLink {
+    IdeaLink::from("idea_1")
 }
 
 fn a_key(of: &str) -> RoutingKey {
@@ -77,7 +77,7 @@ async fn opening_a_project_that_never_had_a_board_starts_one() {
         opened.standing.state.project(),
         &ProjectLink::from("project_1")
     );
-    assert!(opened.standing.state.pieces().is_empty());
+    assert!(opened.standing.state.ideas().is_empty());
 }
 
 #[tokio::test]
@@ -148,7 +148,7 @@ async fn each_project_gets_a_board_of_its_own() {
 }
 
 #[tokio::test]
-async fn a_pinned_piece_is_there_when_the_board_is_read_again() {
+async fn a_pinned_idea_is_there_when_the_board_is_read_again() {
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
 
@@ -156,7 +156,7 @@ async fn a_pinned_piece_is_there_when_the_board_is_read_again() {
         .boards
         .pin(
             &id.to_string(),
-            a_piece(),
+            a_idea(),
             Spot::at(120, -40),
             Size::CARD,
             None,
@@ -172,20 +172,20 @@ async fn a_pinned_piece_is_there_when_the_board_is_read_again() {
         .expect("reading should succeed");
 
     assert_eq!(
-        standing.state.spot_of(&"piece_1".into()),
+        standing.state.spot_of(&"idea_1".into()),
         Some(Spot::at(120, -40))
     );
 }
 
 #[tokio::test]
-async fn a_moved_piece_keeps_its_new_spot() {
+async fn a_moved_idea_keeps_its_new_spot() {
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
     wired
         .boards
         .pin(
             &id.to_string(),
-            a_piece(),
+            a_idea(),
             Spot::at(10, 10),
             Size::CARD,
             None,
@@ -198,7 +198,7 @@ async fn a_moved_piece_keeps_its_new_spot() {
         .boards
         .reshape(
             &id.to_string(),
-            a_piece(),
+            a_idea(),
             Some(Spot::at(300, 20)),
             None,
             None,
@@ -213,20 +213,20 @@ async fn a_moved_piece_keeps_its_new_spot() {
         .await
         .expect("reading should succeed");
     assert_eq!(
-        standing.state.spot_of(&"piece_1".into()),
+        standing.state.spot_of(&"idea_1".into()),
         Some(Spot::at(300, 20))
     );
 }
 
 #[tokio::test]
-async fn an_unpinned_piece_leaves_the_board() {
+async fn an_unpinned_idea_leaves_the_board() {
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
     wired
         .boards
         .pin(
             &id.to_string(),
-            a_piece(),
+            a_idea(),
             Spot::at(10, 10),
             Size::CARD,
             None,
@@ -237,7 +237,7 @@ async fn an_unpinned_piece_leaves_the_board() {
 
     wired
         .boards
-        .unpin(&id.to_string(), a_piece(), None, &an_author())
+        .unpin(&id.to_string(), a_idea(), None, &an_author())
         .await
         .expect("unpinning should succeed");
 
@@ -246,18 +246,18 @@ async fn an_unpinned_piece_leaves_the_board() {
         .get(&id.to_string())
         .await
         .expect("reading should succeed");
-    assert!(standing.state.pieces().is_empty());
+    assert!(standing.state.ideas().is_empty());
 }
 
 #[tokio::test]
-async fn pinning_the_same_piece_twice_is_refused() {
+async fn pinning_the_same_idea_twice_is_refused() {
     let (wired, _) = a_workbench();
     let id = an_open_board(&wired).await;
     wired
         .boards
         .pin(
             &id.to_string(),
-            a_piece(),
+            a_idea(),
             Spot::ORIGIN,
             Size::CARD,
             None,
@@ -270,7 +270,7 @@ async fn pinning_the_same_piece_twice_is_refused() {
         .boards
         .pin(
             &id.to_string(),
-            a_piece(),
+            a_idea(),
             Spot::at(9, 9),
             Size::CARD,
             None,
@@ -294,7 +294,7 @@ async fn a_move_against_a_stale_version_is_refused() {
         .boards
         .pin(
             &id.to_string(),
-            a_piece(),
+            a_idea(),
             Spot::at(10, 10),
             Size::CARD,
             None,
@@ -307,7 +307,7 @@ async fn a_move_against_a_stale_version_is_refused() {
         .boards
         .reshape(
             &id.to_string(),
-            a_piece(),
+            a_idea(),
             Some(Spot::at(20, 20)),
             None,
             Some(Version::of(1)),
@@ -334,7 +334,7 @@ async fn the_catalog_projector_is_woken_only_by_a_board_being_started() {
         wired.projector.hears(&a_key(STARTED)),
         "it has to hear a start"
     );
-    for quiet in [PIECE_PINNED, PIECE_MOVED, PIECE_UNPINNED] {
+    for quiet in [IDEA_PINNED, IDEA_MOVED, IDEA_UNPINNED] {
         assert!(
             !wired.projector.hears(&a_key(quiet)),
             "which board a project has cannot change on a drop, so {quiet} must not cost a \
@@ -360,7 +360,7 @@ async fn a_board_nobody_started_is_not_found() {
 async fn an_id_that_is_not_a_board_is_refused() {
     let (wired, _) = a_workbench();
 
-    let refused = wired.boards.get("piece_031VkO0hnpeQZUiAB7nDma").await;
+    let refused = wired.boards.get("idea_031VkO0hnpeQZUiAB7nDma").await;
 
     assert!(matches!(refused, Err(BoardServiceError::InvalidId(_))));
 }

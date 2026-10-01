@@ -16,7 +16,7 @@ pub fn laid_out(
             .class("tray-toggle")
             .attr("aria-expanded", move || out.get().to_string())
             .on(ev::click, move |_| out.update(|shown| *shown = !*shown))
-            .child(move || format!("Pieces \u{00b7} {}", waiting())),
+            .child(move || format!("Ideas \u{00b7} {}", waiting())),
         html::aside()
             .class(move || match out.get() {
                 true => "tray pulled-out",
@@ -26,7 +26,7 @@ pub fn laid_out(
                 html::button()
                     .r#type("button")
                     .class("shut")
-                    .attr("aria-label", "Hide the pieces")
+                    .attr("aria-label", "Hide the ideas")
                     .on(ev::click, move |_| out.set(false))
                     .child("\u{00d7}"),
                 kept,

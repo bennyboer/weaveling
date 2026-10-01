@@ -58,15 +58,15 @@ async fn a_feature_is_handed_an_empty_schema_of_its_own() {
 async fn two_features_of_one_fixture_cannot_reach_each_other() {
     let fixture = PostgresFixture::setup().await;
     let outline = fixture.create_schema("outline").await;
-    let pieces = fixture.create_schema("pieces").await;
+    let ideas = fixture.create_schema("ideas").await;
 
     a_table_of_notes(&outline).await;
-    a_table_of_notes(&pieces).await;
+    a_table_of_notes(&ideas).await;
     note(&outline, "in the book").await;
 
     assert_eq!(notes(&outline).await, vec!["in the book".to_owned()]);
     assert!(
-        notes(&pieces).await.is_empty(),
+        notes(&ideas).await.is_empty(),
         "one feature's rows are not another's, which is the whole point of the split"
     );
 
@@ -98,8 +98,8 @@ async fn nothing_written_in_one_fixture_is_visible_in_another() {
 async fn a_cleaned_up_fixture_takes_every_schema_it_made_with_it() {
     let fixture = PostgresFixture::setup().await;
     let outline = fixture.create_schema("outline").await;
-    let _pieces = fixture.create_schema("pieces").await;
-    let named = [fixture.schema_of("outline"), fixture.schema_of("pieces")];
+    let _ideas = fixture.create_schema("ideas").await;
+    let named = [fixture.schema_of("outline"), fixture.schema_of("ideas")];
 
     a_table_of_notes(&outline).await;
     let looking = PostgresFixture::setup().await;

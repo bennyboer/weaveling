@@ -7,9 +7,9 @@ use leptos_router::components::A;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};
 
+use crate::ideas::model::{Idea, IdeaId};
 use crate::outline::model::{Section, SectionId};
 use crate::outline::open_outline::{OpenOutline, Urge};
-use crate::pieces::model::{Piece, PieceId};
 use crate::route;
 use crate::tray::laid_out;
 
@@ -23,7 +23,7 @@ enum Landing {
 #[derive(Clone, Copy)]
 struct Held {
     project: StoredValue<String>,
-    carrying: RwSignal<Option<PieceId>>,
+    carrying: RwSignal<Option<IdeaId>>,
     hauling: RwSignal<Option<SectionId>>,
     landing: RwSignal<Option<Landing>>,
     over: RwSignal<Option<SectionId>>,
@@ -129,13 +129,13 @@ fn branch(section: Section, held: Held) -> AnyView {
         .class("branch")
         .child((row(section, held), move || {
             let shut = held.folded.with(|shut| shut.contains(&folding));
-            let pieces = open.pieces_in(&under);
+            let ideas = open.ideas_in(&under);
 
             (bears(&under, held) && !shut).then(|| {
                 html::ul().class("twigs").child((
-                    pieces
+                    ideas
                         .iter()
-                        .map(|piece| leaf(piece.clone(), held))
+                        .map(|idea| leaf(idea.clone(), held))
                         .collect::<Vec<_>>(),
                     twigs(Some(under.clone()), held),
                 ))
@@ -145,7 +145,7 @@ fn branch(section: Section, held: Held) -> AnyView {
 }
 
 fn bears(section: &SectionId, held: Held) -> bool {
-    !held.open.pieces_in(section).is_empty() || !twigs_under(section, held).is_empty()
+    !held.open.ideas_in(section).is_empty() || !twigs_under(section, held).is_empty()
 }
 
 fn row(section: Section, held: Held) -> impl IntoView {
@@ -227,11 +227,11 @@ fn row(section: Section, held: Held) -> impl IntoView {
         }))
         .attr("data-section", id.to_string())
         .on(ev::click, move |_| {
-            let Some(piece) = held.carrying.get_untracked() else {
+            let Some(idea) = held.carrying.get_untracked() else {
                 return;
             };
 
-            open.attach(piece, leaving.clone());
+            open.attach(idea, leaving.clone());
             held.carrying.set(None);
             held.over.set(None);
         })
@@ -445,14 +445,14 @@ fn landing_at(x: i32, y: i32, borne: &SectionId, held: Held) -> Option<Landing> 
     })
 }
 
-fn leaf(piece: PieceId, held: Held) -> impl IntoView {
+fn leaf(idea: IdeaId, held: Held) -> impl IntoView {
     let open = held.open;
-    let shown = open.named(&piece);
-    let taken = piece.clone();
+    let shown = open.named(&idea);
+    let taken = idea.clone();
     let named = shown.clone();
     let at = held
         .project
-        .with_value(|project| route::piece(project, &piece, &shown));
+        .with_value(|project| route::idea(project, &idea, &shown));
 
     html::li()
         .class("leaf")
@@ -480,29 +480,29 @@ fn kept(held: Held) -> impl IntoView {
             .child(move || format!("Not in the book \u{00b7} {}", open.unplaced().len())),
         html::ul()
             .class("waiting")
-            .attr("aria-label", "Pieces not in the book")
+            .attr("aria-label", "Ideas not in the book")
             .child(move || {
                 open.unplaced()
                     .into_iter()
-                    .map(|piece| carried(piece, held))
+                    .map(|idea| carried(idea, held))
                     .collect::<Vec<_>>()
             }),
         move || {
             (open.ready() && open.unplaced().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child("Every piece has a place in the book.")
+                    .child("Every idea has a place in the book.")
             })
         },
         html::p()
             .class("how")
-            .child("Drag a piece onto a section, or click it and then click where it goes."),
+            .child("Drag a idea onto a section, or click it and then click where it goes."),
     )
 }
 
-fn carried(piece: Piece, held: Held) -> impl IntoView {
-    let shown = piece.shown_as().to_owned();
-    let id = piece.id;
+fn carried(idea: Idea, held: Held) -> impl IntoView {
+    let shown = idea.shown_as().to_owned();
+    let id = idea.id;
     let mine = id.clone();
     let taken = id.clone();
     let dropped = id.clone();

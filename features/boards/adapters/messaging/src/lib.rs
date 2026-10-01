@@ -4,7 +4,7 @@ mod publishing;
 mod sweeping;
 
 pub use discarding::{UnpinOnDiscard, when_discarded};
-pub use pinning::PinnedPiecesProjector;
+pub use pinning::PinnedIdeasProjector;
 
 pub use publishing::{
     BoardEventPublisher, UnreadableBoardEvent, board_in, event_in, every_event, message_for,

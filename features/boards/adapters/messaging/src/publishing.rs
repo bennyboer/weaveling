@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use boards_contract::{
-    BoardEventDTO, DISCARDED, EVERY_BOARD, PIECE_PINNED, PIECE_UNPINNED, STARTED, SizeDTO, SpotDTO,
+    BoardEventDTO, DISCARDED, EVERY_BOARD, IDEA_PINNED, IDEA_UNPINNED, STARTED, SizeDTO, SpotDTO,
 };
 use boards_core::{BoardEvent, BoardId, Size, Spot};
 use eventpublishing::{
@@ -31,11 +31,11 @@ pub fn every_event() -> Subscription {
 }
 
 pub fn when_pinned() -> Subscription {
-    Subscription::parse(PIECE_PINNED).expect("a declared routing key holds no wildcards")
+    Subscription::parse(IDEA_PINNED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_unpinned() -> Subscription {
-    Subscription::parse(PIECE_UNPINNED).expect("a declared routing key holds no wildcards")
+    Subscription::parse(IDEA_UNPINNED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn when_board_discarded() -> Subscription {
@@ -85,24 +85,24 @@ fn body(event: &BoardEvent) -> Option<BoardEventDTO> {
         BoardEvent::Started { project } => BoardEventDTO::Started {
             project: project.to_string(),
         },
-        BoardEvent::PiecePinned { piece, at, size } => BoardEventDTO::PiecePinned {
-            piece: piece.to_string(),
+        BoardEvent::IdeaPinned { idea, at, size } => BoardEventDTO::IdeaPinned {
+            idea: idea.to_string(),
             at: to_spot_dto(*at),
             size: to_size_dto(*size),
         },
-        BoardEvent::PieceMoved { piece, to } => BoardEventDTO::PieceMoved {
-            piece: piece.to_string(),
+        BoardEvent::IdeaMoved { idea, to } => BoardEventDTO::IdeaMoved {
+            idea: idea.to_string(),
             to: to_spot_dto(*to),
         },
-        BoardEvent::PieceResized { piece, to } => BoardEventDTO::PieceResized {
-            piece: piece.to_string(),
+        BoardEvent::IdeaResized { idea, to } => BoardEventDTO::IdeaResized {
+            idea: idea.to_string(),
             to: to_size_dto(*to),
         },
-        BoardEvent::PieceRaised { piece } => BoardEventDTO::PieceRaised {
-            piece: piece.to_string(),
+        BoardEvent::IdeaRaised { idea } => BoardEventDTO::IdeaRaised {
+            idea: idea.to_string(),
         },
-        BoardEvent::PieceUnpinned { piece } => BoardEventDTO::PieceUnpinned {
-            piece: piece.to_string(),
+        BoardEvent::IdeaUnpinned { idea } => BoardEventDTO::IdeaUnpinned {
+            idea: idea.to_string(),
         },
         BoardEvent::Discarded => BoardEventDTO::Discarded,
         BoardEvent::Snapshotted { .. } => return None,
@@ -122,8 +122,8 @@ fn to_size_dto(size: Size) -> SizeDTO {
 
 #[cfg(test)]
 mod tests {
-    use boards_contract::{PIECE_MOVED, PIECE_PINNED, PIECE_RAISED, PIECE_RESIZED, PIECE_UNPINNED};
-    use boards_core::{KIND, PieceLink, PositionedPiece, ProjectLink};
+    use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_RAISED, IDEA_RESIZED, IDEA_UNPINNED};
+    use boards_core::{IdeaLink, KIND, PositionedIdea, ProjectLink};
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
     use serde_json::json;
@@ -154,8 +154,8 @@ mod tests {
     }
 
     fn a_pin() -> BoardEvent {
-        BoardEvent::PiecePinned {
-            piece: PieceLink::from("piece_1"),
+        BoardEvent::IdeaPinned {
+            idea: IdeaLink::from("idea_1"),
             at: Spot::at(120, -40),
             size: Size::of(400, 90),
         }
@@ -169,32 +169,32 @@ mod tests {
                 },
                 STARTED,
             ),
-            (a_pin(), PIECE_PINNED),
+            (a_pin(), IDEA_PINNED),
             (
-                BoardEvent::PieceMoved {
-                    piece: PieceLink::from("piece_1"),
+                BoardEvent::IdeaMoved {
+                    idea: IdeaLink::from("idea_1"),
                     to: Spot::at(7, 8),
                 },
-                PIECE_MOVED,
+                IDEA_MOVED,
             ),
             (
-                BoardEvent::PieceResized {
-                    piece: PieceLink::from("piece_1"),
+                BoardEvent::IdeaResized {
+                    idea: IdeaLink::from("idea_1"),
                     to: Size::of(400, 90),
                 },
-                PIECE_RESIZED,
+                IDEA_RESIZED,
             ),
             (
-                BoardEvent::PieceRaised {
-                    piece: PieceLink::from("piece_1"),
+                BoardEvent::IdeaRaised {
+                    idea: IdeaLink::from("idea_1"),
                 },
-                PIECE_RAISED,
+                IDEA_RAISED,
             ),
             (
-                BoardEvent::PieceUnpinned {
-                    piece: PieceLink::from("piece_1"),
+                BoardEvent::IdeaUnpinned {
+                    idea: IdeaLink::from("idea_1"),
                 },
-                PIECE_UNPINNED,
+                IDEA_UNPINNED,
             ),
         ]
     }
@@ -243,12 +243,12 @@ mod tests {
         );
         for pinning in [
             a_pin(),
-            BoardEvent::PieceMoved {
-                piece: PieceLink::from("piece_1"),
+            BoardEvent::IdeaMoved {
+                idea: IdeaLink::from("idea_1"),
                 to: Spot::ORIGIN,
             },
-            BoardEvent::PieceUnpinned {
-                piece: PieceLink::from("piece_1"),
+            BoardEvent::IdeaUnpinned {
+                idea: IdeaLink::from("idea_1"),
             },
         ] {
             assert!(
@@ -260,15 +260,15 @@ mod tests {
     }
 
     #[test]
-    fn a_pin_carries_the_piece_and_where_it_landed() {
+    fn a_pin_carries_the_idea_and_where_it_landed() {
         let id = a_board();
 
         let told = event_in(&published(&id, a_pin())).expect("what we wrote must be readable");
 
         assert_eq!(
             told.event.body,
-            BoardEventDTO::PiecePinned {
-                piece: "piece_1".to_owned(),
+            BoardEventDTO::IdeaPinned {
+                idea: "idea_1".to_owned(),
                 at: SpotDTO { x: 120, y: -40 },
                 size: SizeDTO {
                     width: 400,
@@ -279,10 +279,10 @@ mod tests {
     }
 
     #[test]
-    fn a_resize_carries_the_piece_and_its_new_extent() {
+    fn a_resize_carries_the_idea_and_its_new_extent() {
         let id = a_board();
-        let stretched = BoardEvent::PieceResized {
-            piece: PieceLink::from("piece_1"),
+        let stretched = BoardEvent::IdeaResized {
+            idea: IdeaLink::from("idea_1"),
             to: Size::of(400, 90),
         };
 
@@ -290,8 +290,8 @@ mod tests {
 
         assert_eq!(
             told.event.body,
-            BoardEventDTO::PieceResized {
-                piece: "piece_1".to_owned(),
+            BoardEventDTO::IdeaResized {
+                idea: "idea_1".to_owned(),
                 to: SizeDTO {
                     width: 400,
                     height: 90,
@@ -320,8 +320,8 @@ mod tests {
         let id = a_board();
         let snapshot = BoardEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
-            pieces: vec![PositionedPiece {
-                piece: PieceLink::from("piece_1"),
+            ideas: vec![PositionedIdea {
+                idea: IdeaLink::from("idea_1"),
                 spot: Spot::ORIGIN,
                 size: Size::CARD,
             }],

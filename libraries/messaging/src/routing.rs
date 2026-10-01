@@ -99,8 +99,8 @@ mod tests {
 
     #[test]
     fn a_key_reads_back_as_it_was_written() {
-        assert_eq!(key("piece.captured").to_string(), "piece.captured");
-        assert_eq!(key("piece.captured").parts(), ["piece", "captured"]);
+        assert_eq!(key("idea.captured").to_string(), "idea.captured");
+        assert_eq!(key("idea.captured").parts(), ["idea", "captured"]);
     }
 
     #[test]
@@ -111,11 +111,11 @@ mod tests {
     #[test]
     fn a_key_with_a_hole_in_it_is_refused() {
         assert_eq!(
-            RoutingKey::parse("piece..captured"),
+            RoutingKey::parse("idea..captured"),
             Err(InvalidRoutingKey::EmptyPart)
         );
         assert_eq!(
-            RoutingKey::parse("piece."),
+            RoutingKey::parse("idea."),
             Err(InvalidRoutingKey::EmptyPart)
         );
     }
@@ -123,39 +123,39 @@ mod tests {
     #[test]
     fn a_published_key_may_not_carry_wildcards() {
         assert_eq!(
-            RoutingKey::parse("piece.*"),
+            RoutingKey::parse("idea.*"),
             Err(InvalidRoutingKey::Wildcard)
         );
         assert_eq!(
-            RoutingKey::parse("piece.#"),
+            RoutingKey::parse("idea.#"),
             Err(InvalidRoutingKey::Wildcard)
         );
     }
 
     #[test]
     fn a_subscription_may_carry_wildcards() {
-        assert!(Subscription::parse("piece.*").is_ok());
+        assert!(Subscription::parse("idea.*").is_ok());
         assert!(Subscription::parse("#").is_ok());
     }
 
     #[test]
     fn an_exact_subscription_covers_only_that_key() {
-        let listening = listening("piece.captured");
+        let listening = listening("idea.captured");
 
-        assert!(listening.covers(&key("piece.captured")));
-        assert!(!listening.covers(&key("piece.retitled")));
-        assert!(!listening.covers(&key("piece.captured.late")));
-        assert!(!listening.covers(&key("piece")));
+        assert!(listening.covers(&key("idea.captured")));
+        assert!(!listening.covers(&key("idea.retitled")));
+        assert!(!listening.covers(&key("idea.captured.late")));
+        assert!(!listening.covers(&key("idea")));
     }
 
     #[test]
     fn a_single_wildcard_stands_for_exactly_one_part() {
-        let listening = listening("piece.*");
+        let listening = listening("idea.*");
 
-        assert!(listening.covers(&key("piece.captured")));
-        assert!(listening.covers(&key("piece.retitled")));
+        assert!(listening.covers(&key("idea.captured")));
+        assert!(listening.covers(&key("idea.retitled")));
         assert!(
-            !listening.covers(&key("piece.captured.late")),
+            !listening.covers(&key("idea.captured.late")),
             "one wildcard must not swallow two parts"
         );
         assert!(!listening.covers(&key("board.captured")));
@@ -165,19 +165,19 @@ mod tests {
     fn a_wildcard_may_sit_anywhere() {
         let listening = listening("*.captured");
 
-        assert!(listening.covers(&key("piece.captured")));
+        assert!(listening.covers(&key("idea.captured")));
         assert!(listening.covers(&key("board.captured")));
-        assert!(!listening.covers(&key("piece.retitled")));
+        assert!(!listening.covers(&key("idea.retitled")));
     }
 
     #[test]
     fn the_open_wildcard_stands_for_any_number_of_parts() {
-        let listening = listening("piece.#");
+        let listening = listening("idea.#");
 
-        assert!(listening.covers(&key("piece.captured")));
-        assert!(listening.covers(&key("piece.captured.late")));
+        assert!(listening.covers(&key("idea.captured")));
+        assert!(listening.covers(&key("idea.captured.late")));
         assert!(
-            listening.covers(&key("piece")),
+            listening.covers(&key("idea")),
             "the open wildcard also stands for nothing at all"
         );
         assert!(!listening.covers(&key("board.captured")));
@@ -187,23 +187,23 @@ mod tests {
     fn everything_is_covered_by_the_open_wildcard_alone() {
         let listening = listening("#");
 
-        assert!(listening.covers(&key("piece.captured")));
+        assert!(listening.covers(&key("idea.captured")));
         assert!(listening.covers(&key("board")));
         assert!(listening.covers(&key("a.very.deeply.nested.key")));
     }
 
     #[test]
     fn the_open_wildcard_works_in_the_middle_too() {
-        let listening = listening("piece.#.late");
+        let listening = listening("idea.#.late");
 
-        assert!(listening.covers(&key("piece.captured.late")));
-        assert!(listening.covers(&key("piece.captured.very.late")));
-        assert!(listening.covers(&key("piece.late")));
-        assert!(!listening.covers(&key("piece.captured")));
+        assert!(listening.covers(&key("idea.captured.late")));
+        assert!(listening.covers(&key("idea.captured.very.late")));
+        assert!(listening.covers(&key("idea.late")));
+        assert!(!listening.covers(&key("idea.captured")));
     }
 
     #[test]
     fn a_subscription_reads_back_as_it_was_written() {
-        assert_eq!(listening("piece.#").to_string(), "piece.#");
+        assert_eq!(listening("idea.#").to_string(), "idea.#");
     }
 }

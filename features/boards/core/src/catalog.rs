@@ -3,7 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use thiserror::Error;
 
-use crate::board::{Board, PieceLink, ProjectLink};
+use crate::board::{Board, IdeaLink, ProjectLink};
 use crate::id::BoardId;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -26,9 +26,9 @@ pub trait BoardCatalog: Send + Sync {
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<BoardSummary>, CatalogError>;
 
-    async fn holds(&self, board: BoardId, pieces: &[PieceLink]) -> Result<(), CatalogError>;
+    async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError>;
 
-    async fn boards_holding(&self, piece: &PieceLink) -> Result<Vec<BoardId>, CatalogError>;
+    async fn boards_holding(&self, idea: &IdeaLink) -> Result<Vec<BoardId>, CatalogError>;
 }
 
 impl BoardSummary {

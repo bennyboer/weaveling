@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachPieceRequest, MoveSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachIdeaRequest, MoveSectionRequest,
     OpenOutlineRequest, OutlineDTO, RetitleSectionRequest,
 };
 use time::{Duration, OffsetDateTime};
@@ -359,16 +359,16 @@ async fn removing_a_section_lifts_its_children_into_its_place() {
 }
 
 #[tokio::test]
-async fn a_piece_is_attached_to_a_section_and_read_back_in_order() {
+async fn a_idea_is_attached_to_a_section_and_read_back_in_order() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let chapter = a_section(&server, &outline.id, "Chapter 1", None, None).await;
 
-    for (piece, after) in [("piece_1", None), ("piece_2", Some("piece_1"))] {
+    for (idea, after) in [("idea_1", None), ("idea_2", Some("idea_1"))] {
         let response = server
-            .post(&format!("/outlines/{}/pieces", outline.id))
-            .json(&AttachPieceRequest {
-                piece: piece.to_owned(),
+            .post(&format!("/outlines/{}/ideas", outline.id))
+            .json(&AttachIdeaRequest {
+                idea: idea.to_owned(),
                 section: chapter.section.clone(),
                 after: after.map(str::to_owned),
             })
@@ -381,11 +381,11 @@ async fn a_piece_is_attached_to_a_section_and_read_back_in_order() {
         .await
         .json();
 
-    assert_eq!(found.sections[0].pieces, vec!["piece_1", "piece_2"]);
+    assert_eq!(found.sections[0].ideas, vec!["idea_1", "idea_2"]);
 }
 
 #[tokio::test]
-async fn attaching_a_piece_that_sits_elsewhere_moves_it() {
+async fn attaching_a_idea_that_sits_elsewhere_moves_it() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let one = a_section(&server, &outline.id, "Chapter 1", None, None).await;
@@ -393,9 +393,9 @@ async fn attaching_a_piece_that_sits_elsewhere_moves_it() {
 
     for section in [&one.section, &two.section] {
         server
-            .post(&format!("/outlines/{}/pieces", outline.id))
-            .json(&AttachPieceRequest {
-                piece: "piece_1".to_owned(),
+            .post(&format!("/outlines/{}/ideas", outline.id))
+            .json(&AttachIdeaRequest {
+                idea: "idea_1".to_owned(),
                 section: section.clone(),
                 after: None,
             })
@@ -408,19 +408,19 @@ async fn attaching_a_piece_that_sits_elsewhere_moves_it() {
         .await
         .json();
 
-    assert!(found.sections[0].pieces.is_empty());
-    assert_eq!(found.sections[1].pieces, vec!["piece_1"]);
+    assert!(found.sections[0].ideas.is_empty());
+    assert_eq!(found.sections[1].ideas, vec!["idea_1"]);
 }
 
 #[tokio::test]
-async fn detaching_a_piece_takes_it_out_of_the_book() {
+async fn detaching_a_idea_takes_it_out_of_the_book() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let chapter = a_section(&server, &outline.id, "Chapter 1", None, None).await;
     server
-        .post(&format!("/outlines/{}/pieces", outline.id))
-        .json(&AttachPieceRequest {
-            piece: "piece_1".to_owned(),
+        .post(&format!("/outlines/{}/ideas", outline.id))
+        .json(&AttachIdeaRequest {
+            idea: "idea_1".to_owned(),
             section: chapter.section.clone(),
             after: None,
         })
@@ -428,7 +428,7 @@ async fn detaching_a_piece_takes_it_out_of_the_book() {
         .assert_status(StatusCode::OK);
 
     server
-        .delete(&format!("/outlines/{}/pieces/piece_1", outline.id))
+        .delete(&format!("/outlines/{}/ideas/idea_1", outline.id))
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
@@ -437,18 +437,18 @@ async fn detaching_a_piece_takes_it_out_of_the_book() {
         .await
         .json();
 
-    assert!(found.sections[0].pieces.is_empty());
+    assert!(found.sections[0].ideas.is_empty());
 }
 
 #[tokio::test]
-async fn a_section_with_no_pieces_is_accepted_because_planning_comes_first() {
+async fn a_section_with_no_ideas_is_accepted_because_planning_comes_first() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
 
     let added = a_section(&server, &outline.id, "Chapter 9", None, None).await;
 
     assert!(
-        added.outline.sections[0].pieces.is_empty(),
+        added.outline.sections[0].ideas.is_empty(),
         "an empty leaf is a hole the view flags, never a refusal the domain makes"
     );
 }

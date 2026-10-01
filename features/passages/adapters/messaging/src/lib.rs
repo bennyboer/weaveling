@@ -1,10 +1,10 @@
 use eventpublishing::{UnreadableMessage, published_in};
+use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use passages_core::{PassageService, PassageServiceError, StoreError};
-use pieces_contract::{DISCARDED, PieceEventDTO};
 use thiserror::Error;
 
-const NAME: &str = "delete-passage-of-discarded-piece";
+const NAME: &str = "delete-passage-of-discarded-idea";
 
 pub struct DeleteOnDiscard {
     passages: PassageService,
@@ -28,9 +28,9 @@ impl DeleteOnDiscard {
     }
 
     async fn work_through(&self, message: &Message) -> Result<(), NotDeleted> {
-        let discarded = published_in::<PieceEventDTO>(message)?;
+        let discarded = published_in::<IdeaEventDTO>(message)?;
 
-        let PieceEventDTO::Discarded {
+        let IdeaEventDTO::Discarded {
             passage: Some(passage),
         } = discarded.event.body
         else {

@@ -1,12 +1,12 @@
 use boards_contract::{
-    BoardDTO, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, ReshapePieceRequest, SizeDTO,
+    BoardDTO, OpenBoardRequest, PinIdeaRequest, PositionedIdeaDTO, ReshapeIdeaRequest, SizeDTO,
     SpotDTO,
 };
 use gloo_net::http::Request;
 
-use crate::boards::model::{Board, BoardId, Placement, PositionedPiece, Size, Spot};
+use crate::boards::model::{Board, BoardId, Placement, PositionedIdea, Size, Spot};
 use crate::http::{ApiError, parsed};
-use crate::pieces::model::PieceId;
+use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 
 const BOARDS: &str = "/api/boards";
@@ -26,13 +26,13 @@ pub async fn open(project: &ProjectId) -> Result<Board, ApiError> {
     Ok(as_board(parsed(response, SUBJECT).await?))
 }
 
-pub async fn pin(board: &BoardId, piece: &PieceId, at: Placement) -> Result<Board, ApiError> {
-    let payload = PinPieceRequest {
-        piece: piece.to_string(),
+pub async fn pin(board: &BoardId, idea: &IdeaId, at: Placement) -> Result<Board, ApiError> {
+    let payload = PinIdeaRequest {
+        idea: idea.to_string(),
         spot: to_spot_dto(at.spot),
         size: to_size_dto(at.size),
     };
-    let response = Request::post(&format!("{BOARDS}/{board}/pieces"))
+    let response = Request::post(&format!("{BOARDS}/{board}/ideas"))
         .json(&payload)
         .map_err(|_| ApiError::Unexpected)?
         .send()
@@ -44,15 +44,15 @@ pub async fn pin(board: &BoardId, piece: &PieceId, at: Placement) -> Result<Boar
 
 pub async fn reshape(
     board: &BoardId,
-    piece: &PieceId,
+    idea: &IdeaId,
     to: Option<Spot>,
     size: Option<Size>,
 ) -> Result<Board, ApiError> {
-    let payload = ReshapePieceRequest {
+    let payload = ReshapeIdeaRequest {
         spot: to.map(to_spot_dto),
         size: size.map(to_size_dto),
     };
-    let response = Request::patch(&format!("{BOARDS}/{board}/pieces/{piece}"))
+    let response = Request::patch(&format!("{BOARDS}/{board}/ideas/{idea}"))
         .json(&payload)
         .map_err(|_| ApiError::Unexpected)?
         .send()
@@ -62,8 +62,8 @@ pub async fn reshape(
     Ok(as_board(parsed(response, SUBJECT).await?))
 }
 
-pub async fn unpin(board: &BoardId, piece: &PieceId) -> Result<(), ApiError> {
-    let response = Request::delete(&format!("{BOARDS}/{board}/pieces/{piece}"))
+pub async fn unpin(board: &BoardId, idea: &IdeaId) -> Result<(), ApiError> {
+    let response = Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}"))
         .send()
         .await
         .map_err(|_| ApiError::Offline)?;
@@ -79,13 +79,13 @@ fn as_board(dto: BoardDTO) -> Board {
     Board {
         id: BoardId::from(dto.id),
         version: dto.version,
-        pieces: dto.pieces.iter().map(as_positioned).collect(),
+        ideas: dto.ideas.iter().map(as_positioned).collect(),
     }
 }
 
-fn as_positioned(dto: &PositionedPieceDTO) -> PositionedPiece {
-    PositionedPiece {
-        piece: PieceId::from(dto.piece.clone()),
+fn as_positioned(dto: &PositionedIdeaDTO) -> PositionedIdea {
+    PositionedIdea {
+        idea: IdeaId::from(dto.idea.clone()),
         spot: Spot {
             x: dto.spot.x,
             y: dto.spot.y,

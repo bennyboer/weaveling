@@ -123,9 +123,9 @@ mod tests {
         assert_eq!(
             beside(
                 "postgres://host/weaveling?sslmode=require&application_name=weaveling",
-                "weaveling_pieces"
+                "weaveling_ideas"
             ),
-            "postgres://host/weaveling_pieces?sslmode=require&application_name=weaveling"
+            "postgres://host/weaveling_ideas?sslmode=require&application_name=weaveling"
         );
     }
 

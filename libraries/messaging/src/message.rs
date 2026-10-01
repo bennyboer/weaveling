@@ -107,8 +107,8 @@ mod tests {
 
     fn an_opening_message() -> Message {
         Message::opening(
-            a_key("piece.captured"),
-            json!({ "piece": "piece_1" }),
+            a_key("idea.captured"),
+            json!({ "idea": "idea_1" }),
             at(1_000),
         )
     }
@@ -148,7 +148,7 @@ mod tests {
         let first = an_opening_message();
         let second = first.answering(a_key("board.pinned"), json!({}), at(1_001));
 
-        let third = second.answering(a_key("piece.settled"), json!({}), at(1_002));
+        let third = second.answering(a_key("idea.settled"), json!({}), at(1_002));
 
         assert_eq!(
             third.conversation, first.conversation,
@@ -194,8 +194,8 @@ mod tests {
     fn a_message_carries_what_it_was_given() {
         let opening = an_opening_message();
 
-        assert_eq!(opening.routing, a_key("piece.captured"));
-        assert_eq!(opening.payload, json!({ "piece": "piece_1" }));
+        assert_eq!(opening.routing, a_key("idea.captured"));
+        assert_eq!(opening.payload, json!({ "idea": "idea_1" }));
         assert_eq!(opening.occurred_at, at(1_000));
     }
 }

@@ -20,11 +20,11 @@ impl From<&BoardId> for AggregateId {
 }
 
 const STARTED: EventName = EventName::of("STARTED");
-const PIECE_PINNED: EventName = EventName::of("PIECE_PINNED");
-const PIECE_MOVED: EventName = EventName::of("PIECE_MOVED");
-const PIECE_RESIZED: EventName = EventName::of("PIECE_RESIZED");
-const PIECE_RAISED: EventName = EventName::of("PIECE_RAISED");
-const PIECE_UNPINNED: EventName = EventName::of("PIECE_UNPINNED");
+const IDEA_PINNED: EventName = EventName::of("IDEA_PINNED");
+const IDEA_MOVED: EventName = EventName::of("IDEA_MOVED");
+const IDEA_RESIZED: EventName = EventName::of("IDEA_RESIZED");
+const IDEA_RAISED: EventName = EventName::of("IDEA_RAISED");
+const IDEA_UNPINNED: EventName = EventName::of("IDEA_UNPINNED");
 const DISCARDED: EventName = EventName::of("DISCARDED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
@@ -32,7 +32,7 @@ const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 pub struct ProjectLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PieceLink(String);
+pub struct IdeaLink(String);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Placement {
@@ -41,8 +41,8 @@ pub struct Placement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PositionedPiece {
-    pub piece: PieceLink,
+pub struct PositionedIdea {
+    pub idea: IdeaLink,
     pub spot: Spot,
     pub size: Size,
 }
@@ -53,17 +53,17 @@ pub enum BoardCommand {
         project: ProjectLink,
     },
     Pin {
-        piece: PieceLink,
+        idea: IdeaLink,
         at: Spot,
         size: Size,
     },
     Reshape {
-        piece: PieceLink,
+        idea: IdeaLink,
         to: Option<Spot>,
         size: Option<Size>,
     },
     Unpin {
-        piece: PieceLink,
+        idea: IdeaLink,
     },
     Discard,
 }
@@ -73,29 +73,29 @@ pub enum BoardEvent {
     Started {
         project: ProjectLink,
     },
-    PiecePinned {
-        piece: PieceLink,
+    IdeaPinned {
+        idea: IdeaLink,
         at: Spot,
         size: Size,
     },
-    PieceMoved {
-        piece: PieceLink,
+    IdeaMoved {
+        idea: IdeaLink,
         to: Spot,
     },
-    PieceResized {
-        piece: PieceLink,
+    IdeaResized {
+        idea: IdeaLink,
         to: Size,
     },
-    PieceRaised {
-        piece: PieceLink,
+    IdeaRaised {
+        idea: IdeaLink,
     },
-    PieceUnpinned {
-        piece: PieceLink,
+    IdeaUnpinned {
+        idea: IdeaLink,
     },
     Discarded,
     Snapshotted {
         project: ProjectLink,
-        pieces: Vec<PositionedPiece>,
+        ideas: Vec<PositionedIdea>,
         discarded: bool,
     },
 }
@@ -103,7 +103,7 @@ pub enum BoardEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board {
     project: ProjectLink,
-    pieces: IndexMap<PieceLink, Placement>,
+    ideas: IndexMap<IdeaLink, Placement>,
     discarded: bool,
 }
 
@@ -113,9 +113,9 @@ pub enum BoardError {
     NotStartedYet,
     #[error("a board cannot be started twice")]
     AlreadyStarted,
-    #[error("this piece is already on the board")]
+    #[error("this idea is already on the board")]
     AlreadyPinned,
-    #[error("this piece is not on the board")]
+    #[error("this idea is not on the board")]
     NotPinned,
     #[error("a card must have width and height")]
     Shapeless,
@@ -147,25 +147,25 @@ impl Display for ProjectLink {
     }
 }
 
-impl PieceLink {
+impl IdeaLink {
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-impl From<String> for PieceLink {
+impl From<String> for IdeaLink {
     fn from(given: String) -> Self {
         Self(given)
     }
 }
 
-impl From<&str> for PieceLink {
+impl From<&str> for IdeaLink {
     fn from(given: &str) -> Self {
         Self(given.to_owned())
     }
 }
 
-impl Display for PieceLink {
+impl Display for IdeaLink {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.0, f)
     }
@@ -180,66 +180,66 @@ impl Board {
         &self.project
     }
 
-    pub fn pieces(&self) -> Vec<PositionedPiece> {
-        self.pieces
+    pub fn ideas(&self) -> Vec<PositionedIdea> {
+        self.ideas
             .iter()
-            .map(|(piece, placement)| PositionedPiece {
-                piece: piece.clone(),
+            .map(|(idea, placement)| PositionedIdea {
+                idea: idea.clone(),
                 spot: placement.spot,
                 size: placement.size,
             })
             .collect()
     }
 
-    pub fn placement_of(&self, piece: &PieceLink) -> Option<Placement> {
-        self.pieces.get(piece).copied()
+    pub fn placement_of(&self, idea: &IdeaLink) -> Option<Placement> {
+        self.ideas.get(idea).copied()
     }
 
-    pub fn spot_of(&self, piece: &PieceLink) -> Option<Spot> {
-        self.placement_of(piece).map(|placement| placement.spot)
+    pub fn spot_of(&self, idea: &IdeaLink) -> Option<Spot> {
+        self.placement_of(idea).map(|placement| placement.spot)
     }
 
-    pub fn size_of(&self, piece: &PieceLink) -> Option<Size> {
-        self.placement_of(piece).map(|placement| placement.size)
+    pub fn size_of(&self, idea: &IdeaLink) -> Option<Size> {
+        self.placement_of(idea).map(|placement| placement.size)
     }
 
-    fn pin(&mut self, piece: &PieceLink, at: Spot, size: Size) {
-        self.pieces
-            .insert(piece.clone(), Placement { spot: at, size });
+    fn pin(&mut self, idea: &IdeaLink, at: Spot, size: Size) {
+        self.ideas
+            .insert(idea.clone(), Placement { spot: at, size });
     }
 
-    fn shift(&mut self, piece: &PieceLink, to: Spot) {
-        if let Some(placement) = self.pieces.get_mut(piece) {
+    fn shift(&mut self, idea: &IdeaLink, to: Spot) {
+        if let Some(placement) = self.ideas.get_mut(idea) {
             placement.spot = to;
         }
     }
 
-    fn resize(&mut self, piece: &PieceLink, to: Size) {
-        if let Some(placement) = self.pieces.get_mut(piece) {
+    fn resize(&mut self, idea: &IdeaLink, to: Size) {
+        if let Some(placement) = self.ideas.get_mut(idea) {
             placement.size = to;
         }
     }
 
-    fn raise(&mut self, piece: &PieceLink) {
-        if let Some(placement) = self.pieces.shift_remove(piece) {
-            self.pieces.insert(piece.clone(), placement);
+    fn raise(&mut self, idea: &IdeaLink) {
+        if let Some(placement) = self.ideas.shift_remove(idea) {
+            self.ideas.insert(idea.clone(), placement);
         }
     }
 
-    fn is_topmost(&self, piece: &PieceLink) -> bool {
-        self.pieces.last().map(|(held, _)| held) == Some(piece)
+    fn is_topmost(&self, idea: &IdeaLink) -> bool {
+        self.ideas.last().map(|(held, _)| held) == Some(idea)
     }
 
-    fn unpin(&mut self, piece: &PieceLink) {
-        self.pieces.shift_remove(piece);
+    fn unpin(&mut self, idea: &IdeaLink) {
+        self.ideas.shift_remove(idea);
     }
 
-    fn holding(pieces: &[PositionedPiece]) -> IndexMap<PieceLink, Placement> {
-        pieces
+    fn holding(ideas: &[PositionedIdea]) -> IndexMap<IdeaLink, Placement> {
+        ideas
             .iter()
             .map(|positioned| {
                 (
-                    positioned.piece.clone(),
+                    positioned.idea.clone(),
                     Placement {
                         spot: positioned.spot,
                         size: positioned.size,
@@ -254,11 +254,11 @@ impl Event for BoardEvent {
     fn name(&self) -> EventName {
         match self {
             Self::Started { .. } => STARTED,
-            Self::PiecePinned { .. } => PIECE_PINNED,
-            Self::PieceMoved { .. } => PIECE_MOVED,
-            Self::PieceResized { .. } => PIECE_RESIZED,
-            Self::PieceRaised { .. } => PIECE_RAISED,
-            Self::PieceUnpinned { .. } => PIECE_UNPINNED,
+            Self::IdeaPinned { .. } => IDEA_PINNED,
+            Self::IdeaMoved { .. } => IDEA_MOVED,
+            Self::IdeaResized { .. } => IDEA_RESIZED,
+            Self::IdeaRaised { .. } => IDEA_RAISED,
+            Self::IdeaUnpinned { .. } => IDEA_UNPINNED,
             Self::Discarded => DISCARDED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -291,16 +291,16 @@ impl Aggregate for Board {
         match event {
             BoardEvent::Started { project } => Some(Self {
                 project: project.clone(),
-                pieces: IndexMap::new(),
+                ideas: IndexMap::new(),
                 discarded: false,
             }),
             BoardEvent::Snapshotted {
                 project,
-                pieces,
+                ideas,
                 discarded,
             } => Some(Self {
                 project: project.clone(),
-                pieces: Self::holding(pieces),
+                ideas: Self::holding(ideas),
                 discarded: *discarded,
             }),
             _ => None,
@@ -315,8 +315,8 @@ impl Aggregate for Board {
         match command {
             BoardCommand::Start { .. } => Err(BoardError::AlreadyStarted),
             BoardCommand::Discard => Ok(vec![BoardEvent::Discarded]),
-            BoardCommand::Pin { piece, at, size } => {
-                if self.placement_of(&piece).is_some() {
+            BoardCommand::Pin { idea, at, size } => {
+                if self.placement_of(&idea).is_some() {
                     return Err(BoardError::AlreadyPinned);
                 }
 
@@ -324,10 +324,10 @@ impl Aggregate for Board {
                     return Err(BoardError::Shapeless);
                 }
 
-                Ok(vec![BoardEvent::PiecePinned { piece, at, size }])
+                Ok(vec![BoardEvent::IdeaPinned { idea, at, size }])
             }
-            BoardCommand::Reshape { piece, to, size } => {
-                let Some(already) = self.placement_of(&piece) else {
+            BoardCommand::Reshape { idea, to, size } => {
+                let Some(already) = self.placement_of(&idea) else {
                     return Err(BoardError::NotPinned);
                 };
 
@@ -338,30 +338,28 @@ impl Aggregate for Board {
                 let mut happened = Vec::new();
 
                 if let Some(to) = to.filter(|to| *to != already.spot) {
-                    happened.push(BoardEvent::PieceMoved {
-                        piece: piece.clone(),
+                    happened.push(BoardEvent::IdeaMoved {
+                        idea: idea.clone(),
                         to,
                     });
 
-                    if !self.is_topmost(&piece) {
-                        happened.push(BoardEvent::PieceRaised {
-                            piece: piece.clone(),
-                        });
+                    if !self.is_topmost(&idea) {
+                        happened.push(BoardEvent::IdeaRaised { idea: idea.clone() });
                     }
                 }
 
                 if let Some(to) = size.filter(|size| *size != already.size) {
-                    happened.push(BoardEvent::PieceResized { piece, to });
+                    happened.push(BoardEvent::IdeaResized { idea, to });
                 }
 
                 Ok(happened)
             }
-            BoardCommand::Unpin { piece } => {
-                if self.placement_of(&piece).is_none() {
+            BoardCommand::Unpin { idea } => {
+                if self.placement_of(&idea).is_none() {
                     return Err(BoardError::NotPinned);
                 }
 
-                Ok(vec![BoardEvent::PieceUnpinned { piece }])
+                Ok(vec![BoardEvent::IdeaUnpinned { idea }])
             }
         }
     }
@@ -369,19 +367,19 @@ impl Aggregate for Board {
     fn apply(&mut self, event: &BoardEvent, _metadata: &EventMetadata) {
         match event {
             BoardEvent::Started { .. } => {}
-            BoardEvent::PiecePinned { piece, at, size } => self.pin(piece, *at, *size),
-            BoardEvent::PieceMoved { piece, to } => self.shift(piece, *to),
-            BoardEvent::PieceResized { piece, to } => self.resize(piece, *to),
-            BoardEvent::PieceRaised { piece } => self.raise(piece),
-            BoardEvent::PieceUnpinned { piece } => self.unpin(piece),
+            BoardEvent::IdeaPinned { idea, at, size } => self.pin(idea, *at, *size),
+            BoardEvent::IdeaMoved { idea, to } => self.shift(idea, *to),
+            BoardEvent::IdeaResized { idea, to } => self.resize(idea, *to),
+            BoardEvent::IdeaRaised { idea } => self.raise(idea),
+            BoardEvent::IdeaUnpinned { idea } => self.unpin(idea),
             BoardEvent::Discarded => self.discarded = true,
             BoardEvent::Snapshotted {
                 project,
-                pieces,
+                ideas,
                 discarded,
             } => {
                 self.project = project.clone();
-                self.pieces = Self::holding(pieces);
+                self.ideas = Self::holding(ideas);
                 self.discarded = *discarded;
             }
         }
@@ -390,7 +388,7 @@ impl Aggregate for Board {
     fn snapshot(&self) -> BoardEvent {
         BoardEvent::Snapshotted {
             project: self.project.clone(),
-            pieces: self.pieces(),
+            ideas: self.ideas(),
             discarded: self.discarded,
         }
     }

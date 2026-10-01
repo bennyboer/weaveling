@@ -23,7 +23,7 @@ pub struct Adapters {
     pub deliveries: Arc<dyn messaging::Deliveries>,
     pub projects: projects_wiring::Ports,
     pub passages: passages_wiring::Ports,
-    pub pieces: pieces_wiring::Ports,
+    pub ideas: ideas_wiring::Ports,
     pub boards: boards_wiring::Ports,
     pub outline: outline_wiring::Ports,
 }
@@ -36,7 +36,7 @@ impl Adapters {
         Self {
             projects: projects_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             passages: passages_wiring::Ports::in_memory(),
-            pieces: pieces_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
+            ideas: ideas_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             boards: boards_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             outline: outline_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             clock,
@@ -59,8 +59,8 @@ impl Adapters {
                 clock.clone(),
             ),
             passages: passages_wiring::Ports::postgres(databases.passages.clone()),
-            pieces: pieces_wiring::Ports::postgres(
-                databases.pieces.clone(),
+            ideas: ideas_wiring::Ports::postgres(
+                databases.ideas.clone(),
                 dispatcher.clone(),
                 clock.clone(),
             ),
@@ -91,7 +91,7 @@ impl Adapters {
     pub fn outboxes(&self) -> Vec<Arc<dyn eventsourcing::Outbox>> {
         vec![
             self.projects.outbox.clone(),
-            self.pieces.outbox.clone(),
+            self.ideas.outbox.clone(),
             self.boards.outbox.clone(),
             self.outline.outbox.clone(),
         ]
@@ -108,7 +108,7 @@ pub fn app(adapters: Adapters) -> Router {
     let features = vec![
         projects_wiring::wire(&adapters.projects, &context),
         passages_wiring::wire(&adapters.passages, &context),
-        pieces_wiring::wire(&adapters.pieces, &context),
+        ideas_wiring::wire(&adapters.ideas, &context),
         boards_wiring::wire(&adapters.boards, &context),
         outline_wiring::wire(&adapters.outline, &context),
     ];

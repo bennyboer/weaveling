@@ -12,7 +12,7 @@ use thiserror::Error;
 use crate::catalog::CatalogError;
 use crate::id::{OutlineId, SectionId};
 use crate::outline::{
-    KIND, Outline, OutlineCommand, OutlineError, OutlineEvent, PieceLink, ProjectLink,
+    IdeaLink, KIND, Outline, OutlineCommand, OutlineError, OutlineEvent, ProjectLink,
 };
 use crate::title::SectionTitle;
 
@@ -188,15 +188,15 @@ impl OutlineService {
     pub async fn attach(
         &self,
         outline: &str,
-        piece: PieceLink,
+        idea: IdeaLink,
         to: SectionId,
-        after: Option<PieceLink>,
+        after: Option<IdeaLink>,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, OutlineServiceError> {
         self.carry_out(
             outline,
-            OutlineCommand::AttachPiece { piece, to, after },
+            OutlineCommand::AttachIdea { idea, to, after },
             expected,
             agent,
         )
@@ -206,13 +206,13 @@ impl OutlineService {
     pub async fn detach(
         &self,
         outline: &str,
-        piece: PieceLink,
+        idea: IdeaLink,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, OutlineServiceError> {
         self.carry_out(
             outline,
-            OutlineCommand::DetachPiece { piece },
+            OutlineCommand::DetachIdea { idea },
             expected,
             agent,
         )

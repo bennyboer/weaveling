@@ -14,4 +14,4 @@ passages-core = { version = "0.1.0", path = "../../core", package = "weaveling-p
 
 # Foreign contracts: another feature's published events. A feature may reach across the seam
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
-pieces-contract = { version = "0.1.0", path = "../../../pieces/contract", package = "weaveling-pieces-contract" }
+ideas-contract = { version = "0.1.0", path = "../../../ideas/contract", package = "weaveling-ideas-contract" }

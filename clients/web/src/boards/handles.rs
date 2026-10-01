@@ -4,7 +4,7 @@ use crate::boards::carrying::Carrying;
 use crate::boards::model::Placement;
 use crate::boards::open_board::OpenBoard;
 use crate::boards::viewport::Viewport;
-use crate::pieces::model::PieceId;
+use crate::ideas::model::IdeaId;
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Naming {
@@ -12,7 +12,7 @@ pub enum Naming {
         at: Placement,
     },
     Renaming {
-        piece: PieceId,
+        idea: IdeaId,
         at: Placement,
         was: String,
     },
@@ -40,15 +40,15 @@ impl Naming {
         }
     }
 
-    fn piece(&self) -> Option<&PieceId> {
+    fn idea(&self) -> Option<&IdeaId> {
         match self {
             Self::Capturing { .. } => None,
-            Self::Renaming { piece, .. } => Some(piece),
+            Self::Renaming { idea, .. } => Some(idea),
         }
     }
 
     pub fn is(&self, other: &Self) -> bool {
-        self.piece() == other.piece()
+        self.idea() == other.idea()
     }
 }
 
@@ -56,7 +56,7 @@ impl Naming {
 pub struct Handles {
     pub viewport: RwSignal<Viewport>,
     pub carrying: RwSignal<Option<Carrying>>,
-    pub selected: RwSignal<Option<PieceId>>,
+    pub selected: RwSignal<Option<IdeaId>>,
     pub naming: RwSignal<Option<Naming>>,
     pub open: OpenBoard,
 }

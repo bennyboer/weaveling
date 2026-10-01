@@ -1,12 +1,12 @@
 use leptos::prelude::*;
 
 use crate::boards::carrying::{CARD, snapped};
-use crate::boards::model::{Board, Placement, PositionedPiece, Size, Spot};
+use crate::boards::model::{Board, Placement, PositionedIdea, Size, Spot};
 use crate::boards::service;
 use crate::boards::viewport::Viewport;
 use crate::http::ApiError;
-use crate::pieces::model::{Piece, PieceId};
-use crate::pieces::service as pieces;
+use crate::ideas::model::{Idea, IdeaId};
+use crate::ideas::service as ideas;
 use crate::projects::model::ProjectId;
 
 const STEP: i64 = 40;
@@ -16,19 +16,19 @@ const COLUMNS: i64 = 3;
 pub struct OpenBoard {
     problem: RwSignal<Option<ApiError>>,
     board: RwSignal<Option<Board>>,
-    pool: RwSignal<Option<Vec<Piece>>>,
+    pool: RwSignal<Option<Vec<Idea>>>,
     capturing: Action<(String, Placement), ()>,
-    pinning: Action<(PieceId, Viewport), ()>,
-    reshaping: Action<(PieceId, Option<Spot>, Option<Size>), ()>,
-    unpinning: Action<PieceId, ()>,
-    retitling: Action<(PieceId, String), ()>,
+    pinning: Action<(IdeaId, Viewport), ()>,
+    reshaping: Action<(IdeaId, Option<Spot>, Option<Size>), ()>,
+    unpinning: Action<IdeaId, ()>,
+    retitling: Action<(IdeaId, String), ()>,
 }
 
 impl OpenBoard {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let board = RwSignal::new(None::<Board>);
-        let pool = RwSignal::new(None::<Vec<Piece>>);
+        let pool = RwSignal::new(None::<Vec<Idea>>);
 
         let arrived = move |open: Board| {
             let known = board.with_untracked(|held| held.as_ref().map(|held| held.version));
@@ -50,7 +50,7 @@ impl OpenBoard {
                 let id = id.clone();
 
                 async move {
-                    match pieces::list(&id).await {
+                    match ideas::list(&id).await {
                         Ok(found) => pool.set(Some(found)),
                         Err(failure) => problem.set(Some(failure)),
                     }
@@ -83,18 +83,18 @@ impl OpenBoard {
                         return;
                     };
 
-                    let caught = match pieces::capture(&project, &title).await {
+                    let caught = match ideas::capture(&project, &title).await {
                         Ok(caught) => caught,
                         Err(failure) => return problem.set(Some(failure)),
                     };
-                    let piece = caught.id.clone();
+                    let idea = caught.id.clone();
                     pool.update(|held| {
                         if let Some(held) = held {
                             held.push(caught);
                         }
                     });
 
-                    match service::pin(&open.id, &piece, at).await {
+                    match service::pin(&open.id, &idea, at).await {
                         Ok(pinned) => arrived(pinned),
                         Err(failure) => problem.set(Some(failure)),
                     }
@@ -102,48 +102,48 @@ impl OpenBoard {
             })
         };
 
-        let pinning = Action::new_local(move |(piece, seen): &(PieceId, Viewport)| {
-            let piece = piece.clone();
+        let pinning = Action::new_local(move |(idea, seen): &(IdeaId, Viewport)| {
+            let idea = idea.clone();
             let at = Placement {
                 spot: next_spot(board.get_untracked().as_ref(), *seen),
                 size: CARD,
             };
-            held(board, &piece, at);
+            held(board, &idea, at);
 
             async move {
                 let Some(open) = board.get_untracked() else {
                     return;
                 };
 
-                match service::pin(&open.id, &piece, at).await {
+                match service::pin(&open.id, &idea, at).await {
                     Ok(pinned) => arrived(pinned),
                     Err(failure) => {
                         problem.set(Some(failure));
-                        taken_off(board, &piece);
+                        taken_off(board, &idea);
                     }
                 }
             }
         });
 
         let reshaping = Action::new_local(
-            move |(piece, to, size): &(PieceId, Option<Spot>, Option<Size>)| {
-                let piece = piece.clone();
+            move |(idea, to, size): &(IdeaId, Option<Spot>, Option<Size>)| {
+                let idea = idea.clone();
                 let to = *to;
                 let size = *size;
-                let was = reshaped(board, &piece, to, size);
+                let was = reshaped(board, &idea, to, size);
 
                 async move {
                     let Some(open) = board.get_untracked() else {
                         return;
                     };
 
-                    match service::reshape(&open.id, &piece, to, size).await {
+                    match service::reshape(&open.id, &idea, to, size).await {
                         Ok(moved) => arrived(moved),
                         Err(failure) => {
                             problem.set(Some(failure));
 
                             if let Some(back) = was {
-                                reshaped(board, &piece, Some(back.spot), Some(back.size));
+                                reshaped(board, &idea, Some(back.spot), Some(back.size));
                             }
                         }
                     }
@@ -151,27 +151,27 @@ impl OpenBoard {
             },
         );
 
-        let unpinning = Action::new_local(move |piece: &PieceId| {
-            let piece = piece.clone();
+        let unpinning = Action::new_local(move |idea: &IdeaId| {
+            let idea = idea.clone();
 
             async move {
                 let Some(open) = board.get_untracked() else {
                     return;
                 };
 
-                match service::unpin(&open.id, &piece).await {
-                    Ok(()) => taken_off(board, &piece),
+                match service::unpin(&open.id, &idea).await {
+                    Ok(()) => taken_off(board, &idea),
                     Err(failure) => problem.set(Some(failure)),
                 }
             }
         });
 
-        let retitling = Action::new_local(move |(piece, title): &(PieceId, String)| {
-            let piece = piece.clone();
+        let retitling = Action::new_local(move |(idea, title): &(IdeaId, String)| {
+            let idea = idea.clone();
             let title = title.clone();
 
             async move {
-                match pieces::retitle(&piece, &title).await {
+                match ideas::retitle(&idea, &title).await {
                     Ok(renamed) => pool.update(|held| {
                         if let Some(held) = held
                             && let Some(known) =
@@ -209,13 +209,13 @@ impl OpenBoard {
         self.problem.set(None);
     }
 
-    pub fn pinned(&self) -> Vec<(Piece, Placement)> {
+    pub fn pinned(&self) -> Vec<(Idea, Placement)> {
         let pool = self.in_pool();
 
         self.board
             .get()
             .map(|open| {
-                open.pieces
+                open.ideas
                     .into_iter()
                     .filter_map(|held| drawn(&held, &pool))
                     .collect()
@@ -223,14 +223,14 @@ impl OpenBoard {
             .unwrap_or_default()
     }
 
-    pub fn unpinned(&self) -> Vec<Piece> {
+    pub fn unpinned(&self) -> Vec<Idea> {
         let Some(held) = self.board.get() else {
             return Vec::new();
         };
 
         self.in_pool()
             .into_iter()
-            .filter(|piece| !held.holds(&piece.id))
+            .filter(|idea| !held.holds(&idea.id))
             .collect()
     }
 
@@ -238,46 +238,44 @@ impl OpenBoard {
         self.capturing.dispatch((title, at));
     }
 
-    pub fn pin(&self, piece: PieceId, seen: Viewport) {
-        self.pinning.dispatch((piece, seen));
+    pub fn pin(&self, idea: IdeaId, seen: Viewport) {
+        self.pinning.dispatch((idea, seen));
     }
 
-    pub fn reshape(&self, piece: PieceId, to: Option<Spot>, size: Option<Size>) {
-        self.reshaping.dispatch((piece, to, size));
+    pub fn reshape(&self, idea: IdeaId, to: Option<Spot>, size: Option<Size>) {
+        self.reshaping.dispatch((idea, to, size));
     }
 
-    pub fn unpin(&self, piece: PieceId) {
-        self.unpinning.dispatch(piece);
+    pub fn unpin(&self, idea: IdeaId) {
+        self.unpinning.dispatch(idea);
     }
 
-    pub fn retitle(&self, piece: PieceId, title: String) {
-        self.retitling.dispatch((piece, title));
+    pub fn retitle(&self, idea: IdeaId, title: String) {
+        self.retitling.dispatch((idea, title));
     }
 
-    fn in_pool(&self) -> Vec<Piece> {
+    fn in_pool(&self) -> Vec<Idea> {
         self.pool.get().unwrap_or_default()
     }
 }
 
-fn drawn(held: &PositionedPiece, pool: &[Piece]) -> Option<(Piece, Placement)> {
-    pool.iter()
-        .find(|piece| piece.id == held.piece)
-        .map(|piece| {
-            (
-                piece.clone(),
-                Placement {
-                    spot: held.spot,
-                    size: held.size,
-                },
-            )
-        })
+fn drawn(held: &PositionedIdea, pool: &[Idea]) -> Option<(Idea, Placement)> {
+    pool.iter().find(|idea| idea.id == held.idea).map(|idea| {
+        (
+            idea.clone(),
+            Placement {
+                spot: held.spot,
+                size: held.size,
+            },
+        )
+    })
 }
 
-fn held(board: RwSignal<Option<Board>>, piece: &PieceId, at: Placement) {
+fn held(board: RwSignal<Option<Board>>, idea: &IdeaId, at: Placement) {
     board.update(|open| {
         if let Some(open) = open {
-            open.pieces.push(PositionedPiece {
-                piece: piece.clone(),
+            open.ideas.push(PositionedIdea {
+                idea: idea.clone(),
                 spot: at.spot,
                 size: at.size,
             });
@@ -285,17 +283,17 @@ fn held(board: RwSignal<Option<Board>>, piece: &PieceId, at: Placement) {
     });
 }
 
-fn taken_off(board: RwSignal<Option<Board>>, piece: &PieceId) {
+fn taken_off(board: RwSignal<Option<Board>>, idea: &IdeaId) {
     board.update(|open| {
         if let Some(open) = open {
-            open.pieces.retain(|held| &held.piece != piece);
+            open.ideas.retain(|held| &held.idea != idea);
         }
     });
 }
 
 fn reshaped(
     board: RwSignal<Option<Board>>,
-    piece: &PieceId,
+    idea: &IdeaId,
     to: Option<Spot>,
     size: Option<Size>,
 ) -> Option<Placement> {
@@ -305,10 +303,10 @@ fn reshaped(
         let Some(open) = open else {
             return;
         };
-        let Some(nth) = open.pieces.iter().position(|held| &held.piece == piece) else {
+        let Some(nth) = open.ideas.iter().position(|held| &held.idea == idea) else {
             return;
         };
-        let held = &mut open.pieces[nth];
+        let held = &mut open.ideas[nth];
 
         was = Some(Placement {
             spot: held.spot,
@@ -324,8 +322,8 @@ fn reshaped(
         }
 
         if to.is_some() {
-            let raised = open.pieces.remove(nth);
-            open.pieces.push(raised);
+            let raised = open.ideas.remove(nth);
+            open.ideas.push(raised);
         }
     });
 
@@ -334,7 +332,7 @@ fn reshaped(
 
 fn next_spot(board: Option<&Board>, seen: Viewport) -> Spot {
     let taken = board
-        .map(|open| open.pieces.iter().map(|held| held.spot).collect::<Vec<_>>())
+        .map(|open| open.ideas.iter().map(|held| held.spot).collect::<Vec<_>>())
         .unwrap_or_default();
     let from = seen.on_board(Spot { x: 0, y: 0 });
     let mut nth = 0;

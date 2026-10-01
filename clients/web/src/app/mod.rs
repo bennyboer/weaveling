@@ -1,7 +1,7 @@
 mod board;
+mod idea;
 mod missing;
 mod outline;
-mod piece;
 mod pool;
 mod workspace;
 
@@ -11,9 +11,9 @@ use leptos_router::components::{Route, Router, Routes};
 use leptos_router::path;
 
 use crate::app::board::OneBoard;
+use crate::app::idea::OneIdea;
 use crate::app::missing::Missing;
 use crate::app::outline::OneOutline;
-use crate::app::piece::OnePiece;
 use crate::app::pool::OnePool;
 use crate::app::workspace::{TheWorkspace, TheWorkspaceProps};
 use crate::projects::overlays::Overlays;
@@ -40,8 +40,8 @@ pub fn App() -> impl IntoView {
                 />
                 <Route path=path!("/projects/:project") view=OneBoard />
                 <Route path=path!("/projects/:project/outline") view=OneOutline />
-                <Route path=path!("/projects/:project/pieces") view=OnePool />
-                <Route path=path!("/projects/:project/pieces/:piece") view=OnePiece />
+                <Route path=path!("/projects/:project/ideas") view=OnePool />
+                <Route path=path!("/projects/:project/ideas/:idea") view=OneIdea />
             </Routes>
         </Router>
     }

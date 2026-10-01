@@ -6,7 +6,7 @@ use eventsourcing::{
 };
 use messaging::Message;
 use outline_core::{
-    KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, PieceLink, ProjectLink, SectionId,
+    IdeaLink, KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, ProjectLink, SectionId,
     SectionTitle,
 };
 use outline_messaging::message_for;
@@ -130,7 +130,7 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
             .outlines
             .attach(
                 &address,
-                PieceLink::from(format!("piece_{nth}").as_str()),
+                IdeaLink::from(format!("idea_{nth}").as_str()),
                 *chapter,
                 None,
                 None,
@@ -271,9 +271,9 @@ async fn a_service_that_never_saw_the_writes_reads_the_same_book_out_of_the_log(
             .state
             .reading_order()
             .iter()
-            .map(|piece| piece.to_string())
+            .map(|idea| idea.to_string())
             .collect::<Vec<_>>(),
-        vec!["piece_0", "piece_1", "piece_2"],
+        vec!["idea_0", "idea_1", "idea_2"],
         "and the book has to read in the same order it did before the promotion"
     );
 }

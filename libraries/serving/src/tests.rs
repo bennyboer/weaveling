@@ -5,10 +5,10 @@ use thiserror::Error;
 
 use super::*;
 
-const KIND: AggregateType = AggregateType::of("piece");
+const KIND: AggregateType = AggregateType::of("idea");
 
 #[derive(Debug, Error)]
-#[error("a piece cannot be captured twice")]
+#[error("a idea cannot be captured twice")]
 struct AlreadyCaptured;
 
 fn asking(with: &str) -> HeaderMap {
@@ -21,9 +21,9 @@ fn asking(with: &str) -> HeaderMap {
     headers
 }
 
-fn a_missing_piece() -> ServiceError<AlreadyCaptured> {
+fn a_missing_idea() -> ServiceError<AlreadyCaptured> {
     ServiceError::NotFound {
-        aggregate: AggregateId::from("piece_1"),
+        aggregate: AggregateId::from("idea_1"),
         kind: KIND,
     }
 }
@@ -78,11 +78,11 @@ fn a_tag_reads_back_as_the_version_it_came_from() {
 
 #[test]
 fn something_that_is_not_there_is_not_found() {
-    let (status, message) = refusal(&a_missing_piece());
+    let (status, message) = refusal(&a_missing_idea());
 
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(
-        message, "there is no piece with id piece_1",
+        message, "there is no idea with id idea_1",
         "the aggregate says its own kind, so the wording cannot drift from the feature"
     );
 }
@@ -92,13 +92,13 @@ fn a_domain_refusal_is_a_conflict() {
     let (status, message) = refusal(&ServiceError::Refused(AlreadyCaptured));
 
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(message, "a piece cannot be captured twice");
+    assert_eq!(message, "a idea cannot be captured twice");
 }
 
 #[test]
 fn a_stale_version_fails_the_precondition() {
     let outdated: ServiceError<AlreadyCaptured> = ServiceError::Store(StoreError::Outdated {
-        aggregate: AggregateId::from("piece_1"),
+        aggregate: AggregateId::from("idea_1"),
         kind: KIND,
         expected: Version::of(1),
     });
@@ -108,14 +108,14 @@ fn a_stale_version_fails_the_precondition() {
     assert_eq!(status, StatusCode::PRECONDITION_FAILED);
     assert_eq!(
         message,
-        "this piece has moved on since the version you asked for"
+        "this idea has moved on since the version you asked for"
     );
 }
 
 #[test]
 fn anything_we_cannot_explain_stays_unexplained() {
     let broken: ServiceError<AlreadyCaptured> = ServiceError::Unusable {
-        aggregate: AggregateId::from("piece_1"),
+        aggregate: AggregateId::from("idea_1"),
         kind: KIND,
     };
 

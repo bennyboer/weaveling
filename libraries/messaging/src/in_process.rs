@@ -231,21 +231,21 @@ mod tests {
     #[tokio::test]
     async fn a_listener_hears_what_it_subscribed_to() {
         let dispatcher = a_workbench();
-        let listener = Overheard::listening("piece.captured");
+        let listener = Overheard::listening("idea.captured");
         dispatcher.listen(listener.clone());
 
         dispatcher
-            .publish(saying("piece.captured"))
+            .publish(saying("idea.captured"))
             .await
             .expect("publishing should succeed");
 
-        assert_eq!(listener.what_it_heard(), vec!["piece.captured"]);
+        assert_eq!(listener.what_it_heard(), vec!["idea.captured"]);
     }
 
     #[tokio::test]
     async fn a_listener_hears_nothing_it_did_not_subscribe_to() {
         let dispatcher = a_workbench();
-        let listener = Overheard::listening("piece.captured");
+        let listener = Overheard::listening("idea.captured");
         dispatcher.listen(listener.clone());
 
         dispatcher
@@ -259,15 +259,15 @@ mod tests {
     #[tokio::test]
     async fn everyone_interested_hears_the_same_message() {
         let dispatcher = a_workbench();
-        let exact = Overheard::named("exact", "piece.captured", Delivery::Kept, false);
-        let wildcard = Overheard::named("wildcard", "piece.*", Delivery::Kept, false);
+        let exact = Overheard::named("exact", "idea.captured", Delivery::Kept, false);
+        let wildcard = Overheard::named("wildcard", "idea.*", Delivery::Kept, false);
         let everything = Overheard::named("everything", "#", Delivery::Kept, false);
         dispatcher.listen(exact.clone());
         dispatcher.listen(wildcard.clone());
         dispatcher.listen(everything.clone());
 
         dispatcher
-            .publish(saying("piece.captured"))
+            .publish(saying("idea.captured"))
             .await
             .expect("publishing should succeed");
 
@@ -280,21 +280,21 @@ mod tests {
     #[should_panic(expected = "is already listening")]
     async fn two_listeners_may_not_share_a_name() {
         let dispatcher = a_workbench();
-        dispatcher.listen(Overheard::listening("piece.captured"));
+        dispatcher.listen(Overheard::listening("idea.captured"));
 
-        dispatcher.listen(Overheard::listening("piece.retitled"));
+        dispatcher.listen(Overheard::listening("idea.retitled"));
     }
 
     #[tokio::test]
     async fn a_listener_may_bind_more_than_one_key() {
         let dispatcher = a_workbench();
-        let listener = Overheard::listening_to_both("board.piece.pinned", "board.piece.unpinned");
+        let listener = Overheard::listening_to_both("board.idea.pinned", "board.idea.unpinned");
         dispatcher.listen(listener.clone());
 
         for routing in [
-            "board.piece.pinned",
-            "board.piece.unpinned",
-            "board.piece.moved",
+            "board.idea.pinned",
+            "board.idea.unpinned",
+            "board.idea.moved",
         ] {
             dispatcher
                 .publish(saying(routing))
@@ -304,7 +304,7 @@ mod tests {
 
         assert_eq!(
             listener.what_it_heard(),
-            vec!["board.piece.pinned", "board.piece.unpinned"],
+            vec!["board.idea.pinned", "board.idea.unpinned"],
             "several bindings on one queue is what a broker does, and the key between them is left \
              out"
         );
@@ -313,11 +313,11 @@ mod tests {
     #[tokio::test]
     async fn a_message_matching_two_bindings_arrives_once() {
         let dispatcher = a_workbench();
-        let listener = Overheard::listening_to_both("board.#", "board.piece.pinned");
+        let listener = Overheard::listening_to_both("board.#", "board.idea.pinned");
         dispatcher.listen(listener.clone());
 
         dispatcher
-            .publish(saying("board.piece.pinned"))
+            .publish(saying("board.idea.pinned"))
             .await
             .expect("publishing should succeed");
 
@@ -333,7 +333,7 @@ mod tests {
         let dispatcher = a_workbench();
 
         dispatcher
-            .publish(saying("piece.captured"))
+            .publish(saying("idea.captured"))
             .await
             .expect("nobody listening is not an error, it is just quiet");
     }
@@ -367,10 +367,10 @@ mod tests {
     #[tokio::test]
     async fn nothing_is_dead_lettered_when_every_listener_copes() {
         let dispatcher = a_workbench();
-        dispatcher.listen(Overheard::listening("piece.captured"));
+        dispatcher.listen(Overheard::listening("idea.captured"));
 
         dispatcher
-            .publish(saying("piece.captured"))
+            .publish(saying("idea.captured"))
             .await
             .expect("publishing should succeed");
 
@@ -399,7 +399,7 @@ mod tests {
             }
 
             fn listens_to(&self) -> Vec<Subscription> {
-                vec![Subscription::parse("piece.captured").expect("a plain pattern is fine")]
+                vec![Subscription::parse("idea.captured").expect("a plain pattern is fine")]
             }
 
             async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
@@ -422,7 +422,7 @@ mod tests {
         }));
 
         dispatcher
-            .publish(saying("piece.captured"))
+            .publish(saying("idea.captured"))
             .await
             .expect("a listener publishing must not deadlock the dispatcher");
         dispatcher.drain().await;
@@ -461,7 +461,7 @@ mod tests {
             seen: Mutex::new(Vec::new()),
         });
         dispatcher.listen(listener.clone());
-        let opening = saying("piece.captured");
+        let opening = saying("idea.captured");
         let conversation = opening.conversation.to_string();
 
         dispatcher

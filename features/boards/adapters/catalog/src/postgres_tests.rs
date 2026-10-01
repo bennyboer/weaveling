@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
-use boards_core::{BoardCatalog, BoardId, PieceLink};
+use boards_core::{BoardCatalog, BoardId, IdeaLink};
 
 use crate::postgres::{PostgresBoardCatalog, migrations};
 use crate::suite::Workbench;
@@ -54,7 +54,7 @@ async fn forgetting_a_board_leaves_no_half_of_it_behind() {
         .expect("remembering should succeed");
     bench
         .store()
-        .holds(board, &[PieceLink::from("piece_1")])
+        .holds(board, &[IdeaLink::from("idea_1")])
         .await
         .expect("indexing should succeed");
 
@@ -68,7 +68,7 @@ async fn forgetting_a_board_leaves_no_half_of_it_behind() {
         .fetch_one(&bench.pool)
         .await
         .expect("counting should succeed");
-    let pins: i64 = sqlx::query_scalar("SELECT count(*) FROM board_pieces")
+    let pins: i64 = sqlx::query_scalar("SELECT count(*) FROM board_ideas")
         .fetch_one(&bench.pool)
         .await
         .expect("counting should succeed");

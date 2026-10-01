@@ -100,9 +100,9 @@ mod tests {
 
     #[test]
     fn an_aggregate_id_keeps_whatever_the_feature_gave_it() {
-        let id = AggregateId::from("piece_019a4f2b");
+        let id = AggregateId::from("idea_019a4f2b");
 
-        assert_eq!(id.as_str(), "piece_019a4f2b");
-        assert_eq!(id.to_string(), "piece_019a4f2b");
+        assert_eq!(id.as_str(), "idea_019a4f2b");
+        assert_eq!(id.to_string(), "idea_019a4f2b");
     }
 }

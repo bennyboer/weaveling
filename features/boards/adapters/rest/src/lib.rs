@@ -6,11 +6,11 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use boards_contract::{
-    BoardDTO, OpenBoardRequest, PinPieceRequest, PositionedPieceDTO, ReshapePieceRequest, SizeDTO,
+    BoardDTO, OpenBoardRequest, PinIdeaRequest, PositionedIdeaDTO, ReshapeIdeaRequest, SizeDTO,
     SpotDTO,
 };
 use boards_core::{
-    Board, BoardError, BoardService, BoardServiceError, PieceLink, PositionedPiece, Size, Spot,
+    Board, BoardError, BoardService, BoardServiceError, IdeaLink, PositionedIdea, Size, Spot,
 };
 use eventsourcing::{Agent, ServiceError, Standing, Version};
 use serving::{Unreadable, demanded, refusal, tag};
@@ -19,11 +19,8 @@ pub fn router(boards: BoardService) -> Router {
     Router::new()
         .route("/boards", post(open))
         .route("/boards/{board}", get(find))
-        .route("/boards/{board}/pieces", post(pin))
-        .route(
-            "/boards/{board}/pieces/{piece}",
-            delete(unpin).patch(reshape),
-        )
+        .route("/boards/{board}/ideas", post(pin))
+        .route("/boards/{board}/ideas/{idea}", delete(unpin).patch(reshape))
         .with_state(boards)
 }
 
@@ -53,12 +50,12 @@ async fn pin(
     State(boards): State<BoardService>,
     Path(board): Path<String>,
     headers: HeaderMap,
-    Json(request): Json<PinPieceRequest>,
+    Json(request): Json<PinIdeaRequest>,
 ) -> Result<Response, ApiError> {
     boards
         .pin(
             &board,
-            PieceLink::from(request.piece.as_str()),
+            IdeaLink::from(request.idea.as_str()),
             as_spot(request.spot),
             as_size(request.size),
             expected(&headers)?,
@@ -75,14 +72,14 @@ async fn pin(
 
 async fn reshape(
     State(boards): State<BoardService>,
-    Path((board, piece)): Path<(String, String)>,
+    Path((board, idea)): Path<(String, String)>,
     headers: HeaderMap,
-    Json(request): Json<ReshapePieceRequest>,
+    Json(request): Json<ReshapeIdeaRequest>,
 ) -> Result<Response, ApiError> {
     boards
         .reshape(
             &board,
-            PieceLink::from(piece.as_str()),
+            IdeaLink::from(idea.as_str()),
             request.spot.map(as_spot),
             request.size.map(as_size),
             expected(&headers)?,
@@ -99,13 +96,13 @@ async fn reshape(
 
 async fn unpin(
     State(boards): State<BoardService>,
-    Path((board, piece)): Path<(String, String)>,
+    Path((board, idea)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     boards
         .unpin(
             &board,
-            PieceLink::from(piece.as_str()),
+            IdeaLink::from(idea.as_str()),
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -144,13 +141,13 @@ fn to_dto(board: &str, held: &Board, version: Version) -> BoardDTO {
         id: board.to_owned(),
         version: version.count(),
         project: held.project().to_string(),
-        pieces: held.pieces().iter().map(to_positioned_dto).collect(),
+        ideas: held.ideas().iter().map(to_positioned_dto).collect(),
     }
 }
 
-fn to_positioned_dto(held: &PositionedPiece) -> PositionedPieceDTO {
-    PositionedPieceDTO {
-        piece: held.piece.to_string(),
+fn to_positioned_dto(held: &PositionedIdea) -> PositionedIdeaDTO {
+    PositionedIdeaDTO {
+        idea: held.idea.to_string(),
         spot: SpotDTO {
             x: held.spot.x,
             y: held.spot.y,

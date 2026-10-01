@@ -4,7 +4,7 @@ The messaging **seam** — the port, the envelope and an in-process dispatcher. 
 
 A `Message` carries its own identity: a `MessageId`, the `Conversation` it belongs to, and what it was `caused_by`. Those exist from the first message rather than being added when a broker arrives, because an id minted late cannot recognise a redelivery of something sent early, and a conversation cannot be reconstructed after the fact.
 
-A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscription`, `piece.#`) and how a refusal should be treated:
+A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscription`, `idea.#`) and how a refusal should be treated:
 
 - **`Delivery::Kept`** — this message matters; a refusal goes to `DeadLetters` to be retried.
 - **`Delivery::Fleeting`** — this message is disposable; a refusal is logged and dropped.

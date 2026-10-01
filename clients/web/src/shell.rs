@@ -10,7 +10,7 @@ use crate::theme;
 pub enum Viewing {
     Board,
     Outline,
-    Pieces,
+    Ideas,
 }
 
 impl Viewing {
@@ -18,7 +18,7 @@ impl Viewing {
         match self {
             Self::Board => "Board",
             Self::Outline => "Outline",
-            Self::Pieces => "Pieces",
+            Self::Ideas => "Ideas",
         }
     }
 
@@ -26,7 +26,7 @@ impl Viewing {
         match self {
             Self::Board => route::board(project),
             Self::Outline => route::outline(project),
-            Self::Pieces => route::pool(project),
+            Self::Ideas => route::pool(project),
         }
     }
 }
@@ -77,7 +77,7 @@ fn whereabouts(inside: Inside) -> impl IntoView {
             .class("views")
             .attr("aria-label", "Views")
             .child(
-                [Viewing::Board, Viewing::Outline, Viewing::Pieces]
+                [Viewing::Board, Viewing::Outline, Viewing::Ideas]
                     .into_iter()
                     .map(|view| tab(view, project.clone(), here))
                     .collect::<Vec<_>>(),

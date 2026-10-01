@@ -315,6 +315,26 @@ The obvious model is a tree of nodes with prose attached, and it is wrong here. 
 
 The fix is a single move: **position is not a property of a piece.** Parent, order, timeline placement and board coordinates all belong to the *view* that arranges pieces, never to the thing arranged.
 
+### Ideas and passages are two pools — decided
+
+**Decided 2026-10-01**, after a year of the single-piece model and one complaint that would not go away. The sections above describe what is built today; this describes what replaces it, and why. Until the work lands, where the two disagree, this wins.
+
+**A piece is doing two jobs and they have different lifecycles.** Today a `Piece` is both a pool-item and a prose container. An **idea** — a character, a what-if, a scrap of dialogue, a title — is disposable: grouped, regrouped and thrown away, and losing one costs an afternoon's thinking. A **passage** is the book: versioned, synced through a CRDT, exported, and losing one is unforgivable. Different durability, different editing model, different value. That is what makes them two pools rather than one type with a flag.
+
+**It also explains a complaint that was treated as an interaction problem.** Attaching pieces to outline sections was called *"very weird"* during [M10](./ROADMAP.md#milestone-10--the-outline) and redesigned twice without the feeling going. It was the model surfacing: attaching an *idea* to a section is a category error, because an idea is a note about what the content should be, not the content. No amount of drag-and-drop fixes that.
+
+**Every link is owned by the relating side, never by the idea.** This is [*position is not a property of a piece*](#the-tree-is-a-view-not-the-model) widened from position to every relation. The timeline stores which moments an idea sits at — many per idea, its table, its problem. The cast stores presence. A passage stores the idea that prompted it. An `Idea` is an id, a name, and perhaps a kind and a description, and **it does not change when a view is added**. The alternative — an idea carrying links to sections, moments and threads — makes the one thing that should never change into a junction table that every new view has to edit.
+
+**"Where does this idea appear" is a read model.** A backlinks projection subscribing to every view's events and answering *idea → where it appears*. It is a projection, so it is rebuildable and owned by no write path, and a new view joins by publishing rather than by anyone depending on it. It is also what makes an inspector one read instead of asking five features a question four of them answer with nothing.
+
+**Editing is orthogonal to ownership.** Selecting an idea on the board and setting a moment or a character from there writes to the timeline and the cast — the board learns nothing and owns nothing but placement. That is the [frontend join](#the-board-renders-through-a-frontend-join) widened, and it is a UI convenience that the model neither grants nor forbids. The board must stay usable with every inspector blank forever: its value is pre-verbal, and an inspector full of fields invites filling them in before the thinking has happened.
+
+**The outline arranges passages**, exactly as the board arranges ideas. This is what keeps [*the outline holds structure, never content*](#the-outline-arranges-sections-not-pieces) true rather than breaking it — passages are already a pool with their own ids and their own feature, so a section referencing one contains nothing.
+
+**The cost, and the thing to watch.** A view that can arrange either pool needs a tagged reference — `Idea(id) | Passage(id)` — rather than two parallel sets of code. That is cheap, but a reference-to-anything is how a model turns to soup, so each view says which kinds it accepts rather than accepting all of them by default.
+
+**What is still unknown** is ergonomics, not structure: how often an idea maps one-to-one onto a passage, and what the timeline wants to hold. Those inform the views. The structural question was settled on lifecycle, which is why it did not wait for them.
+
 ### Pieces are the pool; views arrange them
 
 A **piece** is a unit of the book: an id, a title, and a link to its passage. It begins as an idea shot onto a board and may end as a chapter. That is all it is — it does not know where it sits.

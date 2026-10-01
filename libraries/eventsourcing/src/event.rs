@@ -48,17 +48,17 @@ mod tests {
 
     #[test]
     fn an_event_name_is_nameable_at_compile_time() {
-        const CAPTURED: EventName = EventName::of("PIECE_CAPTURED");
+        const CAPTURED: EventName = EventName::of("IDEA_CAPTURED");
 
-        assert_eq!(CAPTURED.as_str(), "PIECE_CAPTURED");
-        assert_eq!(CAPTURED.to_string(), "PIECE_CAPTURED");
+        assert_eq!(CAPTURED.as_str(), "IDEA_CAPTURED");
+        assert_eq!(CAPTURED.to_string(), "IDEA_CAPTURED");
     }
 
     #[test]
     fn two_event_names_are_distinct() {
         assert_ne!(
-            EventName::of("PIECE_CAPTURED"),
-            EventName::of("PIECE_RETITLED")
+            EventName::of("IDEA_CAPTURED"),
+            EventName::of("IDEA_RETITLED")
         );
     }
 }

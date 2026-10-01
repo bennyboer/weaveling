@@ -177,7 +177,7 @@ mod tests {
 
         assert_ne!(
             format!("{stem}_{}", sanitized("outline")),
-            format!("{stem}_{}", sanitized("pieces"))
+            format!("{stem}_{}", sanitized("ideas"))
         );
     }
 

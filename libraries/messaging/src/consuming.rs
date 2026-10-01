@@ -325,9 +325,9 @@ mod tests {
     #[tokio::test]
     async fn a_listener_that_refuses_once_is_offered_the_message_again() {
         let wired = a_workbench();
-        let fussy = Fussy::refusing("catalogue-piece", 1);
+        let fussy = Fussy::refusing("catalogue-idea", 1);
         wired.dispatcher.listen(fussy.clone());
-        wired.publish("piece.captured").await;
+        wired.publish("idea.captured").await;
 
         wired.consumer().drain(16).await;
         assert_eq!(fussy.how_many(), 0, "the first offer was refused");
@@ -349,11 +349,11 @@ mod tests {
     #[tokio::test]
     async fn a_retry_reaches_only_the_listener_that_refused() {
         let wired = a_workbench();
-        let coping = Fussy::refusing("catalogue-piece", 0);
-        let fussy = Fussy::refusing("unpin-discarded-piece", 1);
+        let coping = Fussy::refusing("catalogue-idea", 0);
+        let fussy = Fussy::refusing("unpin-discarded-idea", 1);
         wired.dispatcher.listen(coping.clone());
         wired.dispatcher.listen(fussy.clone());
-        wired.publish("piece.discarded").await;
+        wired.publish("idea.discarded").await;
 
         wired.consumer().drain(16).await;
         wired
@@ -375,8 +375,8 @@ mod tests {
         let wired = a_workbench();
         wired
             .dispatcher
-            .listen(Fussy::refusing("catalogue-piece", 100));
-        wired.publish("piece.captured").await;
+            .listen(Fussy::refusing("catalogue-idea", 100));
+        wired.publish("idea.captured").await;
 
         let mut now = at(1_000);
         for attempt in 1..=ATTEMPTS {
@@ -393,7 +393,7 @@ mod tests {
         let dead = wired.dead().await;
         assert_eq!(dead.len(), 1);
         assert_eq!(dead[0].attempts, ATTEMPTS);
-        assert_eq!(dead[0].listener.as_str(), "catalogue-piece");
+        assert_eq!(dead[0].listener.as_str(), "catalogue-idea");
         assert!(
             dead[0].why.contains("had not landed"),
             "a dead letter has to say why, or nobody can act on it: {}",
@@ -423,7 +423,7 @@ mod tests {
             .deliveries
             .enqueue(
                 &ListenerName::parse("not-wired-yet").expect("a plain name is fine"),
-                &saying("piece.captured"),
+                &saying("idea.captured"),
             )
             .await
             .expect("enqueuing should succeed");
@@ -441,7 +441,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn a_delivery_is_taken_long_before_the_next_look_would() {
         let wired = a_workbench();
-        let coping = Fussy::refusing("catalogue-piece", 0);
+        let coping = Fussy::refusing("catalogue-idea", 0);
         wired.dispatcher.listen(coping.clone());
 
         let (stopping, stopped) = watch::channel(false);
@@ -456,7 +456,7 @@ mod tests {
         );
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        wired.publish("piece.captured").await;
+        wired.publish("idea.captured").await;
 
         let mut took = false;
         for _ in 0..40 {

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use outline_core::{
-    CatalogError, OutlineCatalog, OutlineId, OutlineSummary, PieceLink, ProjectLink,
+    CatalogError, IdeaLink, OutlineCatalog, OutlineId, OutlineSummary, ProjectLink,
 };
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
@@ -20,16 +20,16 @@ const IN_PROJECT: &str = "
     ORDER BY outline
 ";
 
-const LET_GO: &str = "DELETE FROM outline_pieces WHERE outline = $1";
+const LET_GO: &str = "DELETE FROM outline_ideas WHERE outline = $1";
 
 const HOLD: &str = "
-    INSERT INTO outline_pieces (outline, piece)
+    INSERT INTO outline_ideas (outline, idea)
     SELECT $1, held
     FROM unnest($2::text[]) AS held
     ON CONFLICT DO NOTHING
 ";
 
-const HOLDING: &str = "SELECT outline FROM outline_pieces WHERE piece = $1 ORDER BY outline";
+const HOLDING: &str = "SELECT outline FROM outline_ideas WHERE idea = $1 ORDER BY outline";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations")
@@ -101,8 +101,8 @@ impl OutlineCatalog for PostgresOutlineCatalog {
             .collect()
     }
 
-    async fn holds(&self, outline: OutlineId, pieces: &[PieceLink]) -> Result<(), CatalogError> {
-        let held: Vec<String> = pieces.iter().map(ToString::to_string).collect();
+    async fn holds(&self, outline: OutlineId, ideas: &[IdeaLink]) -> Result<(), CatalogError> {
+        let held: Vec<String> = ideas.iter().map(ToString::to_string).collect();
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(LET_GO)
@@ -121,9 +121,9 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         transaction.commit().await.map_err(unreachable)
     }
 
-    async fn outlines_holding(&self, piece: &PieceLink) -> Result<Vec<OutlineId>, CatalogError> {
+    async fn outlines_holding(&self, idea: &IdeaLink) -> Result<Vec<OutlineId>, CatalogError> {
         let found = sqlx::query(HOLDING)
-            .bind(piece.to_string())
+            .bind(idea.to_string())
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;

@@ -12,7 +12,7 @@ use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Size, Spot};
 use crate::boards::open_board::OpenBoard;
 use crate::boards::viewport::{NEARER, Viewport};
-use crate::pieces::model::{Piece, PieceId};
+use crate::ideas::model::{Idea, IdeaId};
 use crate::route;
 use crate::tray::laid_out;
 
@@ -24,7 +24,7 @@ pub fn TheBoard(project: String) -> impl IntoView {
     let handles = Handles {
         viewport: RwSignal::new(Viewport::RESTING),
         carrying: RwSignal::new(None::<Carrying>),
-        selected: RwSignal::new(None::<PieceId>),
+        selected: RwSignal::new(None::<IdeaId>),
         naming: RwSignal::new(None::<Naming>),
         open,
     };
@@ -60,23 +60,23 @@ fn kept(handles: Handles) -> impl IntoView {
             .child(move || format!("Not on the board \u{00b7} {}", open.unpinned().len())),
         html::ul()
             .class("waiting")
-            .attr("aria-label", "Pieces not on the board")
+            .attr("aria-label", "Ideas not on the board")
             .child(move || {
                 open.unpinned()
                     .into_iter()
-                    .map(|piece| pinnable(piece, handles))
+                    .map(|idea| pinnable(idea, handles))
                     .collect::<Vec<_>>()
             }),
         move || {
             (open.ready() && open.unpinned().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child("Every piece is on the board.")
+                    .child("Every idea is on the board.")
             })
         },
         html::p()
             .class("how")
-            .child("Click a piece to pin it where there is room."),
+            .child("Click a idea to pin it where there is room."),
     )
 }
 
@@ -97,9 +97,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
         }
         let held = selected.get()?;
 
-        open.pinned()
-            .into_iter()
-            .find(|(piece, _)| piece.id == held)
+        open.pinned().into_iter().find(|(idea, _)| idea.id == held)
     };
 
     html::section()
@@ -158,10 +156,10 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
 
                             open.pinned()
                                 .into_iter()
-                                .map(|(piece, at)| {
+                                .map(|(idea, at)| {
                                     card(
-                                        route::piece(&project, &piece.id, &piece.title),
-                                        piece,
+                                        route::idea(&project, &idea.id, &idea.title),
+                                        idea,
                                         at,
                                         handles,
                                     )
@@ -172,11 +170,11 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
                     move || held.get().map(|open| naming(open, handles)),
                 )),
             move || {
-                let (piece, at) = chosen()?;
+                let (idea, at) = chosen()?;
 
                 Some(actions(
-                    route::piece(&project, &piece.id, &piece.title),
-                    piece,
+                    route::idea(&project, &idea.id, &idea.title),
+                    idea,
                     at,
                     handles,
                 ))
@@ -246,9 +244,9 @@ fn zoom_asked(event: &ev::WheelEvent) -> Option<(Spot, f64)> {
     ))
 }
 
-fn pinnable(piece: Piece, handles: Handles) -> impl IntoView {
-    let shown = piece.shown_as().to_owned();
-    let id = piece.id;
+fn pinnable(idea: Idea, handles: Handles) -> impl IntoView {
+    let shown = idea.shown_as().to_owned();
+    let id = idea.id;
 
     html::li().child(
         html::button()

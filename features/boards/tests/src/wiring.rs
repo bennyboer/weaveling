@@ -10,8 +10,8 @@ use registry::InMemoryRegistry;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-board";
-const INDEXING: &str = "index-pinned-pieces";
-const TIDYING: &str = "unpin-discarded-piece";
+const INDEXING: &str = "index-pinned-ideas";
+const TIDYING: &str = "unpin-discarded-idea";
 
 pub struct Wired {
     pub boards: BoardService,

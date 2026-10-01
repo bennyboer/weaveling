@@ -5,7 +5,7 @@ use eventsourcing::{Agent, AgentId, Aggregate, AggregateId, EventMetadata, Versi
 use time::{Duration, OffsetDateTime};
 
 use crate::id::SectionId;
-use crate::outline::{KIND, Outline, OutlineCommand, OutlineError, OutlineEvent, PieceLink};
+use crate::outline::{IdeaLink, KIND, Outline, OutlineCommand, OutlineError, OutlineEvent};
 use crate::title::SectionTitle;
 
 thread_local! {
@@ -42,8 +42,8 @@ fn a_section(named: &str) -> SectionId {
     })
 }
 
-fn a_piece(named: &str) -> PieceLink {
-    PieceLink::from(format!("piece_{named}"))
+fn a_idea(named: &str) -> IdeaLink {
+    IdeaLink::from(format!("idea_{named}"))
 }
 
 fn titled(what: &str) -> SectionTitle {
@@ -99,11 +99,11 @@ impl Book {
         });
     }
 
-    fn attaches(&mut self, piece: &str, to: &str) {
-        let held = self.outline.pieces_in(&a_section(to));
+    fn attaches(&mut self, idea: &str, to: &str) {
+        let held = self.outline.ideas_in(&a_section(to));
 
-        self.does(OutlineCommand::AttachPiece {
-            piece: a_piece(piece),
+        self.does(OutlineCommand::AttachIdea {
+            idea: a_idea(idea),
             to: a_section(to),
             after: held.last().cloned(),
         });
@@ -256,7 +256,7 @@ fn retitling_to_the_same_words_is_not_worth_an_event() {
 }
 
 #[test]
-fn a_section_may_go_unnamed_so_that_it_can_borrow_the_title_of_its_piece() {
+fn a_section_may_go_unnamed_so_that_it_can_borrow_the_title_of_its_idea() {
     let mut book = Book::started();
     book.adds("One", None, None);
 
@@ -531,7 +531,7 @@ fn removing_a_section_lifts_its_children_into_its_place() {
 }
 
 #[test]
-fn removing_a_section_returns_its_pieces_to_the_pool_rather_than_losing_them() {
+fn removing_a_section_returns_its_ideas_to_the_pool_rather_than_losing_them() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
     book.attaches("arrival", "Chapter 1");
@@ -541,11 +541,11 @@ fn removing_a_section_returns_its_pieces_to_the_pool_rather_than_losing_them() {
     });
 
     assert!(book.outline.reading_order().is_empty());
-    assert_eq!(book.outline.section_holding(&a_piece("arrival")), None);
+    assert_eq!(book.outline.section_holding(&a_idea("arrival")), None);
 }
 
 #[test]
-fn a_piece_attached_where_it_already_sits_elsewhere_simply_moves() {
+fn a_idea_attached_where_it_already_sits_elsewhere_simply_moves() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
     book.adds("Chapter 2", None, Some("Chapter 1"));
@@ -553,15 +553,15 @@ fn a_piece_attached_where_it_already_sits_elsewhere_simply_moves() {
 
     book.attaches("rain", "Chapter 2");
 
-    assert!(book.outline.pieces_in(&a_section("Chapter 1")).is_empty());
+    assert!(book.outline.ideas_in(&a_section("Chapter 1")).is_empty());
     assert_eq!(
-        book.outline.section_holding(&a_piece("rain")),
+        book.outline.section_holding(&a_idea("rain")),
         Some(a_section("Chapter 2"))
     );
 }
 
 #[test]
-fn several_pieces_may_sit_in_one_section_in_the_order_they_are_read() {
+fn several_ideas_may_sit_in_one_section_in_the_order_they_are_read() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
 
@@ -571,7 +571,7 @@ fn several_pieces_may_sit_in_one_section_in_the_order_they_are_read() {
 
     assert_eq!(
         book.outline.reading_order(),
-        vec![a_piece("one"), a_piece("two"), a_piece("three")]
+        vec![a_idea("one"), a_idea("two"), a_idea("three")]
     );
 }
 
@@ -590,21 +590,21 @@ fn the_reading_order_walks_the_whole_book_depth_first() {
     assert_eq!(
         book.outline.reading_order(),
         vec![
-            a_piece("epigraph"),
-            a_piece("arrival"),
-            a_piece("rain"),
-            a_piece("after")
+            a_idea("epigraph"),
+            a_idea("arrival"),
+            a_idea("rain"),
+            a_idea("after")
         ]
     );
 }
 
 #[test]
-fn a_piece_that_is_not_in_the_outline_cannot_be_detached() {
+fn a_idea_that_is_not_in_the_outline_cannot_be_detached() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
 
-    let refused = book.refuses(OutlineCommand::DetachPiece {
-        piece: a_piece("nowhere"),
+    let refused = book.refuses(OutlineCommand::DetachIdea {
+        idea: a_idea("nowhere"),
     });
 
     assert_eq!(refused, OutlineError::NotAttached);

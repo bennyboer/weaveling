@@ -1,12 +1,12 @@
 use gloo_net::http::Request;
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachPieceRequest, MoveSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachIdeaRequest, MoveSectionRequest,
     OpenOutlineRequest, OutlineDTO, PlacedSectionDTO, RetitleSectionRequest,
 };
 
 use crate::http::{ApiError, parsed};
+use crate::ideas::model::IdeaId;
 use crate::outline::model::{Outline, OutlineId, Section, SectionId};
-use crate::pieces::model::PieceId;
 use crate::projects::model::ProjectId;
 
 const OUTLINES: &str = "/api/outlines";
@@ -105,16 +105,16 @@ pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<Outline,
 
 pub async fn attach(
     outline: &OutlineId,
-    piece: &PieceId,
+    idea: &IdeaId,
     to: &SectionId,
-    after: Option<PieceId>,
+    after: Option<IdeaId>,
 ) -> Result<Outline, ApiError> {
-    let payload = AttachPieceRequest {
-        piece: piece.to_string(),
+    let payload = AttachIdeaRequest {
+        idea: idea.to_string(),
         section: to.to_string(),
         after: after.map(|after| after.to_string()),
     };
-    let response = Request::post(&format!("{OUTLINES}/{outline}/pieces"))
+    let response = Request::post(&format!("{OUTLINES}/{outline}/ideas"))
         .json(&payload)
         .map_err(|_| ApiError::Unexpected)?
         .send()
@@ -124,8 +124,8 @@ pub async fn attach(
     Ok(as_outline(parsed(response, SUBJECT).await?))
 }
 
-pub async fn detach(outline: &OutlineId, piece: &PieceId) -> Result<(), ApiError> {
-    let response = Request::delete(&format!("{OUTLINES}/{outline}/pieces/{piece}"))
+pub async fn detach(outline: &OutlineId, idea: &IdeaId) -> Result<(), ApiError> {
+    let response = Request::delete(&format!("{OUTLINES}/{outline}/ideas/{idea}"))
         .send()
         .await
         .map_err(|_| ApiError::Offline)?;
@@ -159,6 +159,6 @@ fn as_section(dto: PlacedSectionDTO) -> Section {
         id: SectionId::from(dto.section),
         parent: dto.parent.map(SectionId::from),
         title: dto.title,
-        pieces: dto.pieces.into_iter().map(PieceId::from).collect(),
+        ideas: dto.ideas.into_iter().map(IdeaId::from).collect(),
     }
 }

@@ -18,7 +18,7 @@ async fn a_schema_each(fixture: &PostgresFixture) -> Databases {
     let databases = Databases {
         messaging: fixture.create_schema("messaging").await,
         projects: fixture.create_schema("projects").await,
-        pieces: fixture.create_schema("pieces").await,
+        ideas: fixture.create_schema("ideas").await,
         boards: fixture.create_schema("boards").await,
         outline: fixture.create_schema("outline").await,
         passages: fixture.create_schema("passages").await,
@@ -91,22 +91,22 @@ async fn a_project_written_to_postgres_is_read_back_and_left_waiting_to_be_annou
 }
 
 #[tokio::test]
-async fn a_piece_captured_against_postgres_is_written_and_left_waiting_to_be_announced() {
+async fn a_idea_captured_against_postgres_is_written_and_left_waiting_to_be_announced() {
     let running = a_running_api().await;
     let project = a_project(&running.server, "Capturing").await;
 
     let captured = running
         .server
-        .post("/api/pieces")
+        .post("/api/ideas")
         .json(&json!({ "project": project, "title": "A girl in a wood" }))
         .await;
     captured.assert_status(axum::http::StatusCode::CREATED);
     let id = captured.json::<Value>()["id"]
         .as_str()
-        .expect("a captured piece should carry an id")
+        .expect("a captured idea should carry an id")
         .to_owned();
 
-    let found = running.server.get(&format!("/api/pieces/{id}")).await;
+    let found = running.server.get(&format!("/api/ideas/{id}")).await;
     found.assert_status_ok();
     assert_eq!(
         found.json::<Value>()["title"].as_str(),
@@ -116,13 +116,13 @@ async fn a_piece_captured_against_postgres_is_written_and_left_waiting_to_be_ann
 
     let waiting: Vec<String> =
         sqlx::query_scalar("SELECT routing_key FROM outbox WHERE published_at IS NULL")
-            .fetch_all(&running.databases.pieces)
+            .fetch_all(&running.databases.ideas)
             .await
             .expect("reading the outbox should succeed");
 
     assert_eq!(
         waiting,
-        vec!["piece.captured".to_owned()],
+        vec!["idea.captured".to_owned()],
         "on PostgreSQL the store enqueues and a relay publishes, so the message waits here"
     );
 
@@ -158,7 +158,7 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
 
     running
         .server
-        .post("/api/pieces")
+        .post("/api/ideas")
         .json(&json!({ "project": project, "title": "A girl in a wood" }))
         .await
         .assert_status(axum::http::StatusCode::CREATED);
@@ -177,16 +177,16 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
             &running.databases.projects,
         ),
         (
-            "pieces",
+            "ideas",
             "events",
             "SELECT count(*) FROM events",
-            &running.databases.pieces,
+            &running.databases.ideas,
         ),
         (
-            "pieces",
+            "ideas",
             "outbox",
             "SELECT count(*) FROM outbox",
-            &running.databases.pieces,
+            &running.databases.ideas,
         ),
     ] {
         let held: i64 = sqlx::query_scalar(counting)
@@ -204,7 +204,7 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
 
     assert_eq!(
         elsewhere, 0,
-        "capturing a piece must not write into another feature's database"
+        "capturing a idea must not write into another feature's database"
     );
 
     running.cleanup().await;
@@ -237,7 +237,7 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
 
     let project = a_project(&server, "Relaying").await;
     server
-        .post("/api/pieces")
+        .post("/api/ideas")
         .json(&json!({ "project": project, "title": "A girl in a wood" }))
         .await
         .assert_status(axum::http::StatusCode::CREATED);
@@ -245,13 +245,13 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
     let mut titles = Vec::new();
     for _ in 0..200 {
         titles = server
-            .get(&format!("/api/pieces?project={project}"))
+            .get(&format!("/api/ideas?project={project}"))
             .await
             .json::<Value>()
             .as_array()
             .expect("a listing is an array")
             .iter()
-            .filter_map(|piece| piece["title"].as_str().map(ToOwned::to_owned))
+            .filter_map(|idea| idea["title"].as_str().map(ToOwned::to_owned))
             .collect();
 
         if !titles.is_empty() {
@@ -324,13 +324,13 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
 
     let project = a_project(&server, "Doomed").await;
     let captured = server
-        .post("/api/pieces")
+        .post("/api/ideas")
         .json(&json!({ "project": project, "title": "A girl in a wood" }))
         .await;
     captured.assert_status(axum::http::StatusCode::CREATED);
-    let piece = captured.json::<Value>()["id"]
+    let idea = captured.json::<Value>()["id"]
         .as_str()
-        .expect("a captured piece carries an id")
+        .expect("a captured idea carries an id")
         .to_owned();
 
     let made = server.post("/api/passages").await;
@@ -340,7 +340,7 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
         .expect("a passage carries an id")
         .to_owned();
     server
-        .put(&format!("/api/pieces/{piece}/passage"))
+        .put(&format!("/api/ideas/{idea}/passage"))
         .json(&json!({ "passage": passage }))
         .await
         .assert_status_ok();
@@ -362,12 +362,12 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
 
     assert!(
         until(|| async {
-            !listed(&server, &format!("/api/pieces?project={project}"))
+            !listed(&server, &format!("/api/ideas?project={project}"))
                 .await
                 .is_empty()
         })
         .await,
-        "the piece has to be catalogued before deleting can be shown to sweep it away"
+        "the idea has to be catalogued before deleting can be shown to sweep it away"
     );
 
     server
@@ -377,12 +377,12 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
 
     assert!(
         until(|| async {
-            listed(&server, &format!("/api/pieces?project={project}"))
+            listed(&server, &format!("/api/ideas?project={project}"))
                 .await
                 .is_empty()
         })
         .await,
-        "a deleted project must not leave its pieces behind; with a durable store an orphan \
+        "a deleted project must not leave its ideas behind; with a durable store an orphan \
          outlives the session rather than dying with the process"
     );
 
@@ -412,7 +412,7 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
                 == axum::http::StatusCode::NOT_FOUND
         })
         .await,
-        "the CRDT store holds the only copy of the prose, so a deleted project has to reach          it — the piece's own discard is what carries the passage across the seam"
+        "the CRDT store holds the only copy of the prose, so a deleted project has to reach          it — the idea's own discard is what carries the passage across the seam"
     );
 
     let stuck: Vec<(String, String)> = sqlx::query_as("SELECT listener, why FROM dead_letters")

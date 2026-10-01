@@ -7,16 +7,16 @@ use crate::boards::card::boxed;
 use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Spot};
 use crate::boards::viewport::{NEARER, Viewport};
-use crate::pieces::model::Piece;
+use crate::ideas::model::Idea;
 
 const ROOM_ABOVE: i64 = 42;
 const BAR_GAP: i64 = 8;
 
-pub fn actions(href: String, piece: Piece, at: Placement, handles: Handles) -> impl IntoView {
+pub fn actions(href: String, idea: Idea, at: Placement, handles: Handles) -> impl IntoView {
     let opening = use_navigate();
-    let shown = piece.shown_as().to_owned();
+    let shown = idea.shown_as().to_owned();
     let called = shown.clone();
-    let id = piece.id;
+    let id = idea.id;
     let renamed = id.clone();
     let unpinned = id;
     let alongside = move || {
@@ -44,7 +44,7 @@ pub fn actions(href: String, piece: Piece, at: Placement, handles: Handles) -> i
         .child((
             deed(format!("Rename {shown}"), "\u{270e}", move || {
                 handles.naming.set(Some(Naming::Renaming {
-                    piece: renamed.clone(),
+                    idea: renamed.clone(),
                     at,
                     was: called.clone(),
                 }));
@@ -127,8 +127,8 @@ fn settle(field: NodeRef<html::Textarea>, held: &Naming, handles: Handles) {
     };
 
     match held {
-        Naming::Renaming { piece, was, .. } if &written != was => {
-            handles.open.retitle(piece.clone(), written);
+        Naming::Renaming { idea, was, .. } if &written != was => {
+            handles.open.retitle(idea.clone(), written);
         }
         Naming::Capturing { at } if !written.trim().is_empty() => {
             handles.open.capture(written, *at);

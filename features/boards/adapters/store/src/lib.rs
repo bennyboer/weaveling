@@ -1,4 +1,4 @@
-use boards_core::{BoardEvent, PieceLink, PositionedPiece, ProjectLink, Size, Spot};
+use boards_core::{BoardEvent, IdeaLink, PositionedIdea, ProjectLink, Size, Spot};
 use eventsourcing::Codec;
 use serde::{Deserialize, Serialize};
 
@@ -7,29 +7,29 @@ enum StoredBoardEvent {
     Started {
         project: String,
     },
-    PiecePinned {
-        piece: String,
+    IdeaPinned {
+        idea: String,
         at: StoredSpot,
         size: StoredSize,
     },
-    PieceMoved {
-        piece: String,
+    IdeaMoved {
+        idea: String,
         to: StoredSpot,
     },
-    PieceResized {
-        piece: String,
+    IdeaResized {
+        idea: String,
         to: StoredSize,
     },
-    PieceRaised {
-        piece: String,
+    IdeaRaised {
+        idea: String,
     },
-    PieceUnpinned {
-        piece: String,
+    IdeaUnpinned {
+        idea: String,
     },
     Discarded,
     Snapshotted {
         project: String,
-        pieces: Vec<StoredPositionedPiece>,
+        ideas: Vec<StoredPositionedIdea>,
         discarded: bool,
     },
 }
@@ -47,8 +47,8 @@ struct StoredSize {
 }
 
 #[derive(Serialize, Deserialize)]
-struct StoredPositionedPiece {
-    piece: String,
+struct StoredPositionedIdea {
+    idea: String,
     spot: StoredSpot,
     size: StoredSize,
 }
@@ -103,20 +103,20 @@ impl From<StoredSize> for Size {
     }
 }
 
-impl From<&PositionedPiece> for StoredPositionedPiece {
-    fn from(placed: &PositionedPiece) -> Self {
+impl From<&PositionedIdea> for StoredPositionedIdea {
+    fn from(placed: &PositionedIdea) -> Self {
         Self {
-            piece: placed.piece.as_str().to_owned(),
+            idea: placed.idea.as_str().to_owned(),
             spot: StoredSpot::from(placed.spot),
             size: StoredSize::from(placed.size),
         }
     }
 }
 
-impl From<StoredPositionedPiece> for PositionedPiece {
-    fn from(stored: StoredPositionedPiece) -> Self {
+impl From<StoredPositionedIdea> for PositionedIdea {
+    fn from(stored: StoredPositionedIdea) -> Self {
         Self {
-            piece: PieceLink::from(stored.piece),
+            idea: IdeaLink::from(stored.idea),
             spot: Spot::from(stored.spot),
             size: Size::from(stored.size),
         }
@@ -129,33 +129,33 @@ impl From<&BoardEvent> for StoredBoardEvent {
             BoardEvent::Started { project } => Self::Started {
                 project: project.as_str().to_owned(),
             },
-            BoardEvent::PiecePinned { piece, at, size } => Self::PiecePinned {
-                piece: piece.as_str().to_owned(),
+            BoardEvent::IdeaPinned { idea, at, size } => Self::IdeaPinned {
+                idea: idea.as_str().to_owned(),
                 at: StoredSpot::from(*at),
                 size: StoredSize::from(*size),
             },
-            BoardEvent::PieceMoved { piece, to } => Self::PieceMoved {
-                piece: piece.as_str().to_owned(),
+            BoardEvent::IdeaMoved { idea, to } => Self::IdeaMoved {
+                idea: idea.as_str().to_owned(),
                 to: StoredSpot::from(*to),
             },
-            BoardEvent::PieceResized { piece, to } => Self::PieceResized {
-                piece: piece.as_str().to_owned(),
+            BoardEvent::IdeaResized { idea, to } => Self::IdeaResized {
+                idea: idea.as_str().to_owned(),
                 to: StoredSize::from(*to),
             },
-            BoardEvent::PieceRaised { piece } => Self::PieceRaised {
-                piece: piece.as_str().to_owned(),
+            BoardEvent::IdeaRaised { idea } => Self::IdeaRaised {
+                idea: idea.as_str().to_owned(),
             },
-            BoardEvent::PieceUnpinned { piece } => Self::PieceUnpinned {
-                piece: piece.as_str().to_owned(),
+            BoardEvent::IdeaUnpinned { idea } => Self::IdeaUnpinned {
+                idea: idea.as_str().to_owned(),
             },
             BoardEvent::Discarded => Self::Discarded,
             BoardEvent::Snapshotted {
                 project,
-                pieces,
+                ideas,
                 discarded,
             } => Self::Snapshotted {
                 project: project.as_str().to_owned(),
-                pieces: pieces.iter().map(StoredPositionedPiece::from).collect(),
+                ideas: ideas.iter().map(StoredPositionedIdea::from).collect(),
                 discarded: *discarded,
             },
         }
@@ -168,33 +168,33 @@ impl From<StoredBoardEvent> for BoardEvent {
             StoredBoardEvent::Started { project } => Self::Started {
                 project: ProjectLink::from(project),
             },
-            StoredBoardEvent::PiecePinned { piece, at, size } => Self::PiecePinned {
-                piece: PieceLink::from(piece),
+            StoredBoardEvent::IdeaPinned { idea, at, size } => Self::IdeaPinned {
+                idea: IdeaLink::from(idea),
                 at: Spot::from(at),
                 size: Size::from(size),
             },
-            StoredBoardEvent::PieceMoved { piece, to } => Self::PieceMoved {
-                piece: PieceLink::from(piece),
+            StoredBoardEvent::IdeaMoved { idea, to } => Self::IdeaMoved {
+                idea: IdeaLink::from(idea),
                 to: Spot::from(to),
             },
-            StoredBoardEvent::PieceResized { piece, to } => Self::PieceResized {
-                piece: PieceLink::from(piece),
+            StoredBoardEvent::IdeaResized { idea, to } => Self::IdeaResized {
+                idea: IdeaLink::from(idea),
                 to: Size::from(to),
             },
-            StoredBoardEvent::PieceRaised { piece } => Self::PieceRaised {
-                piece: PieceLink::from(piece),
+            StoredBoardEvent::IdeaRaised { idea } => Self::IdeaRaised {
+                idea: IdeaLink::from(idea),
             },
-            StoredBoardEvent::PieceUnpinned { piece } => Self::PieceUnpinned {
-                piece: PieceLink::from(piece),
+            StoredBoardEvent::IdeaUnpinned { idea } => Self::IdeaUnpinned {
+                idea: IdeaLink::from(idea),
             },
             StoredBoardEvent::Discarded => Self::Discarded,
             StoredBoardEvent::Snapshotted {
                 project,
-                pieces,
+                ideas,
                 discarded,
             } => Self::Snapshotted {
                 project: ProjectLink::from(project),
-                pieces: pieces.into_iter().map(PositionedPiece::from).collect(),
+                ideas: ideas.into_iter().map(PositionedIdea::from).collect(),
                 discarded,
             },
         }
@@ -228,35 +228,35 @@ mod tests {
             BoardEvent::Started {
                 project: ProjectLink::from("project_1"),
             },
-            BoardEvent::PiecePinned {
-                piece: PieceLink::from("piece_1"),
+            BoardEvent::IdeaPinned {
+                idea: IdeaLink::from("idea_1"),
                 at: a_spot(),
                 size: a_size(),
             },
-            BoardEvent::PieceMoved {
-                piece: PieceLink::from("piece_1"),
+            BoardEvent::IdeaMoved {
+                idea: IdeaLink::from("idea_1"),
                 to: a_spot(),
             },
-            BoardEvent::PieceResized {
-                piece: PieceLink::from("piece_1"),
+            BoardEvent::IdeaResized {
+                idea: IdeaLink::from("idea_1"),
                 to: a_size(),
             },
-            BoardEvent::PieceRaised {
-                piece: PieceLink::from("piece_1"),
+            BoardEvent::IdeaRaised {
+                idea: IdeaLink::from("idea_1"),
             },
-            BoardEvent::PieceUnpinned {
-                piece: PieceLink::from("piece_1"),
+            BoardEvent::IdeaUnpinned {
+                idea: IdeaLink::from("idea_1"),
             },
             BoardEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
-                pieces: vec![
-                    PositionedPiece {
-                        piece: PieceLink::from("piece_1"),
+                ideas: vec![
+                    PositionedIdea {
+                        idea: IdeaLink::from("idea_1"),
                         spot: a_spot(),
                         size: a_size(),
                     },
-                    PositionedPiece {
-                        piece: PieceLink::from("piece_2"),
+                    PositionedIdea {
+                        idea: IdeaLink::from("idea_2"),
                         spot: Spot { x: 0, y: 0 },
                         size: a_size(),
                     },
@@ -265,7 +265,7 @@ mod tests {
             },
             BoardEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
-                pieces: Vec::new(),
+                ideas: Vec::new(),
                 discarded: false,
             },
         ] {
@@ -274,13 +274,13 @@ mod tests {
     }
 
     #[test]
-    fn a_snapshot_keeps_its_pieces_in_order() {
+    fn a_snapshot_keeps_its_ideas_in_order() {
         let stacked = BoardEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
-            pieces: ["piece_3", "piece_1", "piece_2"]
+            ideas: ["idea_3", "idea_1", "idea_2"]
                 .into_iter()
-                .map(|named| PositionedPiece {
-                    piece: PieceLink::from(named),
+                .map(|named| PositionedIdea {
+                    idea: IdeaLink::from(named),
                     spot: a_spot(),
                     size: a_size(),
                 })
@@ -291,7 +291,7 @@ mod tests {
         assert_eq!(
             round_trip(stacked.clone()),
             stacked,
-            "the order of a board's pieces is what stacking means, so it cannot be sorted away"
+            "the order of a board's ideas is what stacking means, so it cannot be sorted away"
         );
     }
 
@@ -304,13 +304,13 @@ mod tests {
 
     #[test]
     fn the_stored_shape_names_its_variant() {
-        let written = (codec().body)(&BoardEvent::PieceRaised {
-            piece: PieceLink::from("piece_1"),
+        let written = (codec().body)(&BoardEvent::IdeaRaised {
+            idea: IdeaLink::from("idea_1"),
         });
 
         assert_eq!(
             written,
-            serde_json::json!({ "PieceRaised": { "piece": "piece_1" } })
+            serde_json::json!({ "IdeaRaised": { "idea": "idea_1" } })
         );
     }
 }

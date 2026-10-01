@@ -34,7 +34,7 @@ pub fn a_message(routing: &str) -> Message {
 
 pub async fn an_enqueued_delivery_is_claimed_when_it_is_due(deliveries: &impl Deliveries) {
     deliveries
-        .enqueue(&a_listener("catalogue-piece"), &a_message("piece.captured"))
+        .enqueue(&a_listener("catalogue-idea"), &a_message("idea.captured"))
         .await
         .expect("enqueuing should succeed");
 
@@ -44,13 +44,13 @@ pub async fn an_enqueued_delivery_is_claimed_when_it_is_due(deliveries: &impl De
         .expect("claiming should succeed");
 
     assert_eq!(claimed.len(), 1);
-    assert_eq!(claimed[0].listener, a_listener("catalogue-piece"));
+    assert_eq!(claimed[0].listener, a_listener("catalogue-idea"));
     assert_eq!(claimed[0].attempts, 0);
 }
 
 pub async fn one_message_becomes_one_delivery_per_listener(deliveries: &impl Deliveries) {
-    let message = a_message("piece.discarded");
-    for listener in ["unpin-discarded-piece", "detach-discarded-piece"] {
+    let message = a_message("idea.discarded");
+    for listener in ["unpin-discarded-idea", "detach-discarded-idea"] {
         deliveries
             .enqueue(&a_listener(listener), &message)
             .await
@@ -71,7 +71,7 @@ pub async fn one_message_becomes_one_delivery_per_listener(deliveries: &impl Del
 
 pub async fn a_handled_delivery_is_gone(deliveries: &impl Deliveries) {
     deliveries
-        .enqueue(&a_listener("catalogue-piece"), &a_message("piece.captured"))
+        .enqueue(&a_listener("catalogue-idea"), &a_message("idea.captured"))
         .await
         .expect("enqueuing should succeed");
     let claimed = deliveries
@@ -89,7 +89,7 @@ pub async fn a_handled_delivery_is_gone(deliveries: &impl Deliveries) {
 
 pub async fn a_claimed_delivery_is_not_handed_out_twice(deliveries: &impl Deliveries) {
     deliveries
-        .enqueue(&a_listener("catalogue-piece"), &a_message("piece.captured"))
+        .enqueue(&a_listener("catalogue-idea"), &a_message("idea.captured"))
         .await
         .expect("enqueuing should succeed");
     deliveries
@@ -110,7 +110,7 @@ pub async fn a_claimed_delivery_is_not_handed_out_twice(deliveries: &impl Delive
 
 pub async fn a_refused_delivery_waits_and_counts_the_attempt(deliveries: &impl Deliveries) {
     deliveries
-        .enqueue(&a_listener("catalogue-piece"), &a_message("piece.captured"))
+        .enqueue(&a_listener("catalogue-idea"), &a_message("idea.captured"))
         .await
         .expect("enqueuing should succeed");
     let claimed = deliveries
@@ -147,7 +147,7 @@ pub async fn a_refused_delivery_waits_and_counts_the_attempt(deliveries: &impl D
 
 pub async fn a_delivery_given_up_on_becomes_a_dead_letter(deliveries: &impl Deliveries) {
     deliveries
-        .enqueue(&a_listener("catalogue-piece"), &a_message("piece.captured"))
+        .enqueue(&a_listener("catalogue-idea"), &a_message("idea.captured"))
         .await
         .expect("enqueuing should succeed");
     let claimed = deliveries
@@ -166,7 +166,7 @@ pub async fn a_delivery_given_up_on_becomes_a_dead_letter(deliveries: &impl Deli
         .await
         .expect("reading the dead letters should succeed");
     assert_eq!(dead.len(), 1);
-    assert_eq!(dead[0].listener, a_listener("catalogue-piece"));
+    assert_eq!(dead[0].listener, a_listener("catalogue-idea"));
     assert_eq!(dead[0].why, "it refused five times");
 }
 
