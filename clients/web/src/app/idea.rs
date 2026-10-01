@@ -70,7 +70,7 @@ async fn writing_in(idea: &IdeaId) -> Result<PassageId, ApiError> {
     match found.passage {
         Some(passage) => Ok(passage),
         None => {
-            let started = passages::create().await?;
+            let started = passages::create(&found.project).await?;
 
             ideas::attach_passage(idea, &started)
                 .await?

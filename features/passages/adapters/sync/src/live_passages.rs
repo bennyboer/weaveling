@@ -160,6 +160,7 @@ impl LivePassages {
 
 #[cfg(test)]
 mod tests {
+    use passages_core::ProjectLink;
     use time::{Duration, OffsetDateTime};
     use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
@@ -182,8 +183,12 @@ mod tests {
             .encode_state_as_update_v1(&StateVector::default())
     }
 
+    fn empty_in(id: PassageId) -> Passage {
+        Passage::empty(id, ProjectLink::from("project_1"))
+    }
+
     fn a_live_passage() -> LivePassage {
-        LivePassage::open(Passage::empty(an_id(1_000)))
+        LivePassage::open(empty_in(an_id(1_000)))
     }
 
     fn deliver(passage: &LivePassage, message: Message) -> Reaction {
@@ -231,7 +236,7 @@ mod tests {
             &passage,
             Message::JustHappened(a_paragraph("The loom stood silent.")),
         );
-        let newcomer = Passage::empty(an_id(2_000));
+        let newcomer = empty_in(an_id(2_000));
 
         let reaction = deliver(&passage, Message::WhatDoYouHave(newcomer.state_vector()));
 
@@ -248,7 +253,7 @@ mod tests {
 
         let reaction = deliver(
             &passage,
-            Message::WhatDoYouHave(Passage::empty(an_id(2)).state_vector()),
+            Message::WhatDoYouHave(empty_in(an_id(2)).state_vector()),
         );
 
         assert_eq!(reaction.to_others, None);

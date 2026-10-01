@@ -1,9 +1,19 @@
 use async_trait::async_trait;
-use passages_core::{Passage, PassageId, PassageStore, StoreError};
+use passages_core::{Passage, PassageId, PassageStore, ProjectLink, StoreError};
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
-const REMEMBER: &str = "INSERT INTO passages (passage) VALUES ($1)";
+const REMEMBER: &str = "INSERT INTO passages (passage, project) VALUES ($1, $2)";
+
+const PROJECT_OF: &str = "SELECT project FROM passages WHERE passage = $1";
+
+const IN_PROJECT: &str = "
+    SELECT passage
+    FROM passages
+    WHERE project = $1 AND passage > $2
+    ORDER BY passage
+    LIMIT $3
+";
 
 const WRITE_SNAPSHOT: &str = "
     INSERT INTO passage_updates (passage, is_snapshot, bytes)
@@ -36,7 +46,7 @@ const READ_SINCE_SNAPSHOT: &str = "
     ORDER BY seq
 ";
 
-const HOLD: &str = "SELECT passage FROM passages WHERE passage = $1 FOR UPDATE";
+const HOLD: &str = "SELECT project FROM passages WHERE passage = $1 FOR UPDATE";
 
 const FORGET_BEFORE: &str = "DELETE FROM passage_updates WHERE passage = $1 AND seq < $2";
 
@@ -68,21 +78,21 @@ impl PostgresPassageStore {
     pub async fn compact(&self, id: PassageId) -> Result<bool, StoreError> {
         let mut transaction = self.begin().await?;
 
-        let held = sqlx::query(HOLD)
+        let found: Option<String> = sqlx::query_scalar(HOLD)
             .bind(id.to_string())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(unreachable)?;
-        if held.is_none() {
+        let Some(project) = found else {
             return Err(StoreError::NotFound(id));
-        }
+        };
 
         let parts = self.parts(&mut transaction, id).await?;
         if parts.len() as i64 <= self.compact_after {
             return Ok(false);
         }
 
-        let passage = grown(id, &parts)?;
+        let passage = grown(id, ProjectLink::from(project), &parts)?;
         let collapsed: i64 = sqlx::query_scalar(WRITE_SNAPSHOT)
             .bind(id.to_string())
             .bind(passage.everything())
@@ -124,8 +134,8 @@ impl PostgresPassageStore {
     }
 }
 
-fn grown(id: PassageId, parts: &[Vec<u8>]) -> Result<Passage, StoreError> {
-    let passage = Passage::empty(id);
+fn grown(id: PassageId, project: ProjectLink, parts: &[Vec<u8>]) -> Result<Passage, StoreError> {
+    let passage = Passage::empty(id, project);
 
     for part in parts {
         passage
@@ -156,6 +166,7 @@ impl PassageStore for PostgresPassageStore {
 
         sqlx::query(REMEMBER)
             .bind(id.to_string())
+            .bind(passage.project().to_string())
             .execute(&mut *transaction)
             .await
             .map_err(|failure| match is_taken(&failure) {
@@ -189,13 +200,17 @@ impl PassageStore for PostgresPassageStore {
             .map(|row| row.get::<Vec<u8>, _>("bytes"))
             .collect();
 
-        grown(id, &parts)
+        let project: String = sqlx::query_scalar(PROJECT_OF)
+            .bind(id.to_string())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        grown(id, ProjectLink::from(project), &parts)
     }
 
     async fn apply(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError> {
-        Passage::empty(id)
-            .apply(update)
-            .map_err(|_| StoreError::Unusable(id))?;
+        Passage::readable(update).map_err(|_| StoreError::Unusable(id))?;
 
         let tail: i64 = sqlx::query_scalar(WRITE_UPDATE)
             .bind(id.to_string())
@@ -212,6 +227,30 @@ impl PassageStore for PostgresPassageStore {
         }
 
         Ok(())
+    }
+
+    async fn in_project(
+        &self,
+        project: &ProjectLink,
+        after: Option<PassageId>,
+        at_most: usize,
+    ) -> Result<Vec<PassageId>, StoreError> {
+        let found: Vec<String> = sqlx::query_scalar(IN_PROJECT)
+            .bind(project.to_string())
+            .bind(after.map(|last| last.to_string()).unwrap_or_default())
+            .bind(at_most as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found
+            .iter()
+            .map(|passage| {
+                passage
+                    .parse()
+                    .map_err(|why| StoreError::Backend(Box::new(why)))
+            })
+            .collect()
     }
 
     async fn delete(&self, id: PassageId) -> Result<(), StoreError> {

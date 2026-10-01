@@ -296,3 +296,59 @@ async fn a_passage_survives_being_reloaded_by_a_store_that_never_saw_the_writes(
 
     bench.cleanup().await;
 }
+
+#[tokio::test]
+async fn walking_a_project_comes_out_of_the_index() {
+    let bench = OnPostgres::setup().await;
+    let mut written = Vec::new();
+    for nth in 1..=2_000 {
+        written.push(format!("passage_{nth:0>19}"));
+    }
+
+    sqlx::query(
+        "INSERT INTO passages (passage, project)
+         SELECT held, 'project_' || (ordinality % 8)
+         FROM unnest($1::text[]) WITH ORDINALITY AS held",
+    )
+    .bind(&written)
+    .execute(&bench.pool)
+    .await
+    .expect("seeding should succeed");
+
+    sqlx::query("ANALYZE passages")
+        .execute(&bench.pool)
+        .await
+        .expect("analysing should succeed");
+
+    let plan: Vec<String> = sqlx::query_scalar(
+        "EXPLAIN SELECT passage
+         FROM passages
+         WHERE project = $1 AND passage > $2
+         ORDER BY passage
+         LIMIT $3",
+    )
+    .bind("project_3")
+    .bind("passage_0000000000000000100")
+    .bind(100_i64)
+    .fetch_all(&bench.pool)
+    .await
+    .expect("explaining should succeed");
+    let plan = plan.join("\n");
+
+    assert!(
+        plan.contains("passages_by_project"),
+        "deleting a project sweeps its prose one batch at a time, so the batch must come out \
+         of the index rather than a scan that grows with every book ever written: {plan}"
+    );
+    assert!(
+        !plan.contains("Seq Scan"),
+        "a plan change here is silent — the sweep keeps working and only gets slower: {plan}"
+    );
+    assert!(
+        !plan.contains("Filter:"),
+        "both halves belong in the index condition — a filter means rows are read and then \
+         thrown away, which is the cost the cursor exists to avoid: {plan}"
+    );
+
+    bench.cleanup().await;
+}

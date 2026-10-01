@@ -7,6 +7,8 @@ use passages_sync::{LivePassages, Message};
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
+const A_PROJECT: &str = "project_1";
+
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
@@ -36,7 +38,7 @@ fn a_paragraph(saying: &str) -> Vec<u8> {
 #[tokio::test]
 async fn joining_a_passage_brings_its_stored_prose_back() {
     let (service, live) = a_workbench();
-    let passage = service.create().await.expect("should create");
+    let passage = service.create(A_PROJECT).await.expect("should create");
     let id = passage.id().to_string();
     service
         .apply(&id, &a_paragraph("The loom stood silent."))
@@ -55,7 +57,7 @@ async fn joining_a_passage_brings_its_stored_prose_back() {
 #[tokio::test]
 async fn two_peers_joining_the_same_passage_share_one_document() {
     let (service, live) = a_workbench();
-    let passage = service.create().await.expect("should create");
+    let passage = service.create(A_PROJECT).await.expect("should create");
 
     let ada = live.join(passage.id()).await.expect("ada should join");
     let bo = live.join(passage.id()).await.expect("bo should join");
@@ -72,7 +74,7 @@ async fn two_peers_joining_the_same_passage_share_one_document() {
 #[tokio::test]
 async fn joining_twice_returns_the_very_same_live_passage() {
     let (service, live) = a_workbench();
-    let passage = service.create().await.expect("should create");
+    let passage = service.create(A_PROJECT).await.expect("should create");
 
     let first = live.join(passage.id()).await.expect("should join");
     let second = live.join(passage.id()).await.expect("should join");
@@ -86,7 +88,7 @@ async fn joining_twice_returns_the_very_same_live_passage() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn racing_joins_settle_on_one_live_passage() {
     let (service, live) = a_workbench();
-    let passage = service.create().await.expect("should create");
+    let passage = service.create(A_PROJECT).await.expect("should create");
     let id = passage.id();
 
     let racers: Vec<_> = (0..8)
@@ -116,8 +118,8 @@ async fn racing_joins_settle_on_one_live_passage() {
 #[tokio::test]
 async fn two_different_passages_stay_separate() {
     let (service, live) = a_workbench();
-    let one = service.create().await.expect("should create");
-    let other = service.create().await.expect("should create");
+    let one = service.create(A_PROJECT).await.expect("should create");
+    let other = service.create(A_PROJECT).await.expect("should create");
 
     let first = live.join(one.id()).await.expect("should join");
     let second = live.join(other.id()).await.expect("should join");
@@ -157,7 +159,7 @@ async fn every_peer_gets_a_distinct_id() {
 #[tokio::test]
 async fn an_edit_made_in_a_live_passage_is_handed_to_the_store() {
     let (service, live) = a_workbench();
-    let passage = service.create().await.expect("should create");
+    let passage = service.create(A_PROJECT).await.expect("should create");
     let id = passage.id().to_string();
     let joined = live.join(passage.id()).await.expect("should join");
 
@@ -178,7 +180,7 @@ async fn an_edit_made_in_a_live_passage_is_handed_to_the_store() {
 #[tokio::test]
 async fn a_passage_rejoined_after_everyone_left_still_has_the_prose() {
     let (service, live) = a_workbench();
-    let passage = service.create().await.expect("should create");
+    let passage = service.create(A_PROJECT).await.expect("should create");
     let id = passage.id().to_string();
     {
         let joined = live.join(passage.id()).await.expect("should join");

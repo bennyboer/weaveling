@@ -2,9 +2,15 @@ use std::collections::HashMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
-use passages_core::{Passage, PassageId, PassageStore, StoreError};
+use passages_core::{Passage, PassageId, PassageStore, ProjectLink, StoreError};
 
-type Passages = HashMap<PassageId, Vec<u8>>;
+type Passages = HashMap<PassageId, StoredPassage>;
+
+#[derive(Debug, Clone)]
+struct StoredPassage {
+    project: ProjectLink,
+    state: Vec<u8>,
+}
 
 #[derive(Debug, Default)]
 pub struct InMemoryPassageStore {
@@ -25,8 +31,9 @@ impl InMemoryPassageStore {
     }
 }
 
-fn rehydrate(id: PassageId, stored: &[u8]) -> Result<Passage, StoreError> {
-    Passage::rehydrate(id, stored).map_err(|reason| StoreError::Backend(Box::new(reason)))
+fn rehydrate(id: PassageId, stored: &StoredPassage) -> Result<Passage, StoreError> {
+    Passage::rehydrate(id, stored.project.clone(), &stored.state)
+        .map_err(|reason| StoreError::Backend(Box::new(reason)))
 }
 
 #[async_trait]
@@ -38,7 +45,13 @@ impl PassageStore for InMemoryPassageStore {
             return Err(StoreError::Conflict(passage.id()));
         }
 
-        passages.insert(passage.id(), passage.everything());
+        passages.insert(
+            passage.id(),
+            StoredPassage {
+                project: passage.project().clone(),
+                state: passage.everything(),
+            },
+        );
 
         Ok(())
     }
@@ -62,9 +75,34 @@ impl PassageStore for InMemoryPassageStore {
             .apply(update)
             .map_err(|_| StoreError::Unusable(id))?;
 
-        passages.insert(id, passage.everything());
+        passages.insert(
+            id,
+            StoredPassage {
+                project: stored.project,
+                state: passage.everything(),
+            },
+        );
 
         Ok(())
+    }
+
+    async fn in_project(
+        &self,
+        project: &ProjectLink,
+        after: Option<PassageId>,
+        at_most: usize,
+    ) -> Result<Vec<PassageId>, StoreError> {
+        let mut found: Vec<PassageId> = self
+            .read()
+            .iter()
+            .filter(|(_, stored)| &stored.project == project)
+            .map(|(id, _)| *id)
+            .filter(|id| after.is_none_or(|last| id > &last))
+            .collect();
+        found.sort();
+        found.truncate(at_most);
+
+        Ok(found)
     }
 
     async fn delete(&self, id: PassageId) -> Result<(), StoreError> {

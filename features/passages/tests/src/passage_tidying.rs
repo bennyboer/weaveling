@@ -9,6 +9,8 @@ use passages_store::InMemoryPassageStore;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
+const A_PROJECT: &str = "project_1";
+
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
@@ -33,7 +35,7 @@ fn a_workbench() -> Wired {
 impl Wired {
     async fn a_passage(&self) -> PassageId {
         self.passages
-            .create()
+            .create(A_PROJECT)
             .await
             .expect("creating a passage should succeed")
             .id()

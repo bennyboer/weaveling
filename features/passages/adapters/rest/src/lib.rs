@@ -4,7 +4,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use passages_contract::PassageDTO;
+use passages_contract::{CreatePassageRequest, PassageDTO};
 use passages_core::{Passage, PassageService, PassageServiceError, StoreError};
 
 pub fn router(passages: PassageService) -> Router {
@@ -16,8 +16,9 @@ pub fn router(passages: PassageService) -> Router {
 
 async fn create(
     State(passages): State<PassageService>,
+    Json(request): Json<CreatePassageRequest>,
 ) -> Result<(StatusCode, Json<PassageDTO>), ApiError> {
-    let created = passages.create().await?;
+    let created = passages.create(&request.project).await?;
 
     Ok((StatusCode::CREATED, Json(to_dto(&created))))
 }
@@ -43,6 +44,7 @@ async fn remove(
 fn to_dto(passage: &Passage) -> PassageDTO {
     PassageDTO {
         id: passage.id().to_string(),
+        project: passage.project().to_string(),
         text: passage.text(),
     }
 }

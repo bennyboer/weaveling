@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::passages::model::PassageId;
+use crate::projects::model::ProjectId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IdeaId(String);
@@ -9,6 +10,7 @@ pub struct IdeaId(String);
 pub struct Idea {
     pub id: IdeaId,
     pub version: u64,
+    pub project: ProjectId,
     pub title: String,
     pub passage: Option<PassageId>,
 }

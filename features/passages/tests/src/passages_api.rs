@@ -3,13 +3,15 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
-use passages_contract::{FRAGMENT, PassageDTO};
+use passages_contract::{CreatePassageRequest, FRAGMENT, PassageDTO};
 use passages_core::PassageService;
 use passages_store::InMemoryPassageStore;
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const UNKNOWN_ID: &str = "passage_031VkO0hnpeQZUiAB7nDma";
+
+const A_PROJECT: &str = "project_1";
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -40,7 +42,12 @@ fn a_paragraph(saying: &str) -> Vec<u8> {
 }
 
 async fn a_passage(server: &TestServer) -> PassageDTO {
-    let response = server.post("/passages").await;
+    let response = server
+        .post("/passages")
+        .json(&CreatePassageRequest {
+            project: A_PROJECT.to_owned(),
+        })
+        .await;
     response.assert_status(StatusCode::CREATED);
 
     response.json()

@@ -52,6 +52,7 @@ fn as_idea(dto: IdeaDTO) -> Idea {
     Idea {
         id: IdeaId::from(dto.id),
         version: dto.version,
+        project: ProjectId::from(dto.project),
         title: dto.title,
         passage: dto.passage.map(PassageId::from),
     }

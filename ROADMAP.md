@@ -673,7 +673,17 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 5. **The outline also arranges ideas**, as notes beside the content — the first tagged reference.
 6. **A passage names the idea that prompted it**, owned by the passage.
 7. **The backlinks read model.**
-8. **The board inspector**, in the client.
+8. **The inspector, and the routes it rearranges** — in the client.
+
+**Step 8 is bigger than "add a panel", because step 3 breaks a route.** Today `/projects/{p}/ideas/{idea}` opens the idea's prose: it reads the idea, follows `Idea.passage`, creates one if there is none, and hands you an editor. Every link into an idea in the client points there — the board chrome, the pool, the outline. Step 3 takes that link away, and with it the question that route answers: an idea no longer *has* a passage, it may touch none or five, so there is nothing singular left to open.
+
+So the inspector is not a new surface beside the old one, it is what that route becomes:
+
+- **`/projects/{p}/ideas/{idea}` becomes the inspector** — the idea's name, and its backlinks: the boards it sits on, the passages it touches, the moments and characters it is tied to. One read, from step 7's read model.
+- **The prose gets its own route**, `/projects/{p}/passages/{passage}`, reached from the outline and from the inspector's passage backlinks. The editor itself does not change; only who links to it does.
+- **The panel on the board is the same inspector, docked**, filled from the existing selection.
+
+**The inspector follows selection, not a double-click.** Double-click on a card already means rename in place, and selection already exists (`handles.selected`, set on `focusin`). Hanging the inspector off selection costs no new gesture and takes nothing away: single click inspects, double-click still renames, and the inspector's name field is that same edit rather than a second way to do it. Double-click would have to displace rename to a worse home for no gain.
 
 **Step 2 must precede step 3, and the reason is the nastiest failure in the list.** A `Passage` today is `{ id, doc }` — it has no project, and the only route from a project to its prose runs through the piece that links it. That is exactly what [the cascade](#milestone-11a--projects-event-sourced-and-the-deletion-cascade) exploits. Take the passage off the idea first and project deletion silently stops reaching the prose: no error, no dead letter, just a book that outlives everything that could find it.
 

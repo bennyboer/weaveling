@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
-use crate::{Passage, PassageId};
+use crate::{Passage, PassageId, ProjectLink};
 
 #[derive(Debug, Error)]
 pub enum StoreError {
@@ -24,4 +24,11 @@ pub trait PassageStore: Send + Sync {
     async fn apply(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError>;
 
     async fn delete(&self, id: PassageId) -> Result<(), StoreError>;
+
+    async fn in_project(
+        &self,
+        project: &ProjectLink,
+        after: Option<PassageId>,
+        at_most: usize,
+    ) -> Result<Vec<PassageId>, StoreError>;
 }

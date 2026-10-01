@@ -5,8 +5,8 @@ use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
-use crate::PassageId;
 use crate::projection::plain_text;
+use crate::{PassageId, ProjectLink};
 
 #[derive(Debug, Error)]
 pub enum PassageError {
@@ -19,19 +19,29 @@ pub enum PassageError {
 
 pub struct Passage {
     id: PassageId,
+    project: ProjectLink,
     doc: Doc,
 }
 
 impl Passage {
-    pub fn empty(id: PassageId) -> Self {
+    pub fn empty(id: PassageId, project: ProjectLink) -> Self {
         Passage {
             id,
+            project,
             doc: Doc::new(),
         }
     }
 
-    pub fn rehydrate(id: PassageId, stored: &[u8]) -> Result<Self, PassageError> {
-        let passage = Passage::empty(id);
+    pub fn project(&self) -> &ProjectLink {
+        &self.project
+    }
+
+    pub fn rehydrate(
+        id: PassageId,
+        project: ProjectLink,
+        stored: &[u8],
+    ) -> Result<Self, PassageError> {
+        let passage = Passage::empty(id, project);
         passage.apply(stored)?;
 
         Ok(passage)
@@ -39,6 +49,14 @@ impl Passage {
 
     pub fn id(&self) -> PassageId {
         self.id
+    }
+
+    pub fn readable(update: &[u8]) -> Result<(), PassageError> {
+        Doc::new()
+            .transact_mut()
+            .apply_update(Update::decode_v1(update)?)?;
+
+        Ok(())
     }
 
     pub fn apply(&self, update: &[u8]) -> Result<(), PassageError> {
@@ -87,6 +105,10 @@ mod tests {
     use super::*;
     use crate::projection::FRAGMENT;
 
+    fn a_project() -> ProjectLink {
+        ProjectLink::from("project_1")
+    }
+
     fn an_id() -> PassageId {
         PassageId::generate(OffsetDateTime::UNIX_EPOCH)
     }
@@ -117,17 +139,17 @@ mod tests {
 
     #[test]
     fn a_new_passage_holds_no_prose() {
-        let passage = Passage::empty(an_id());
+        let passage = Passage::empty(an_id(), a_project());
 
         assert_eq!(passage.text(), "");
     }
 
     #[test]
     fn prose_survives_a_trip_through_storage() {
-        let written = Passage::empty(an_id());
+        let written = Passage::empty(an_id(), a_project());
         write(&written, 0, "The loom stood silent.");
 
-        let reloaded = Passage::rehydrate(an_id(), &written.everything())
+        let reloaded = Passage::rehydrate(an_id(), a_project(), &written.everything())
             .expect("what we stored should reload");
 
         assert_eq!(reloaded.text(), "The loom stood silent.");
@@ -135,7 +157,7 @@ mod tests {
 
     #[test]
     fn textblocks_are_separated_by_newlines() {
-        let passage = Passage::empty(an_id());
+        let passage = Passage::empty(an_id(), a_project());
         write(&passage, 0, "The loom stood silent.");
         write(&passage, 1, "She had not touched it since spring.");
 
@@ -147,9 +169,10 @@ mod tests {
 
     #[test]
     fn two_replicas_editing_apart_converge() {
-        let ada = Passage::empty(an_id());
+        let ada = Passage::empty(an_id(), a_project());
         write(&ada, 0, "The loom stood silent.");
-        let bo = Passage::rehydrate(an_id(), &ada.everything()).expect("bo should catch up");
+        let bo = Passage::rehydrate(an_id(), a_project(), &ada.everything())
+            .expect("bo should catch up");
 
         append(&ada, 0, " Ada wrote this.");
         append(&bo, 0, " Bo wrote this.");
@@ -164,11 +187,11 @@ mod tests {
 
     #[test]
     fn applying_the_same_update_twice_changes_nothing() {
-        let passage = Passage::empty(an_id());
+        let passage = Passage::empty(an_id(), a_project());
         write(&passage, 0, "The loom stood silent.");
         let update = passage.everything();
 
-        let replica = Passage::empty(an_id());
+        let replica = Passage::empty(an_id(), a_project());
         replica.apply(&update).expect("first apply");
         replica.apply(&update).expect("second apply");
 
@@ -177,7 +200,7 @@ mod tests {
 
     #[test]
     fn changes_since_asks_only_for_what_is_missing() {
-        let passage = Passage::empty(an_id());
+        let passage = Passage::empty(an_id(), a_project());
         write(&passage, 0, &"a settled paragraph. ".repeat(200));
         let caught_up = passage.state_vector();
         write(&passage, 1, "one late line");
@@ -196,9 +219,9 @@ mod tests {
 
     #[test]
     fn a_fresh_replica_asks_for_everything() {
-        let passage = Passage::empty(an_id());
+        let passage = Passage::empty(an_id(), a_project());
         write(&passage, 0, "The loom stood silent.");
-        let newcomer = Passage::empty(an_id());
+        let newcomer = Passage::empty(an_id(), a_project());
 
         let catch_up = passage
             .changes_since(&newcomer.state_vector())
@@ -209,7 +232,7 @@ mod tests {
 
     #[test]
     fn a_corrupt_update_is_refused_rather_than_applied() {
-        let passage = Passage::empty(an_id());
+        let passage = Passage::empty(an_id(), a_project());
         write(&passage, 0, "The loom stood silent.");
 
         let outcome = passage.apply(&[255, 255, 255, 255]);
@@ -224,7 +247,7 @@ mod tests {
 
     #[test]
     fn a_corrupt_state_vector_is_refused() {
-        let passage = Passage::empty(an_id());
+        let passage = Passage::empty(an_id(), a_project());
 
         assert!(passage.changes_since(&[255, 255, 255, 255]).is_err());
     }

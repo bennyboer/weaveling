@@ -333,7 +333,10 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
         .expect("a captured idea carries an id")
         .to_owned();
 
-    let made = server.post("/api/passages").await;
+    let made = server
+        .post("/api/passages")
+        .json(&json!({ "project": project }))
+        .await;
     made.assert_status(axum::http::StatusCode::CREATED);
     let passage = made.json::<Value>()["id"]
         .as_str()

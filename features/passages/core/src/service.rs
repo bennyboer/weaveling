@@ -4,7 +4,7 @@ use clock::Clock;
 use ids::InvalidId;
 use thiserror::Error;
 
-use crate::{Passage, PassageId, PassageStore, StoreError};
+use crate::{Passage, PassageId, PassageStore, ProjectLink, StoreError};
 
 #[derive(Debug, Error)]
 pub enum PassageServiceError {
@@ -25,8 +25,11 @@ impl PassageService {
         Self { store, clock }
     }
 
-    pub async fn create(&self) -> Result<Passage, PassageServiceError> {
-        let passage = Passage::empty(PassageId::generate(self.clock.now()));
+    pub async fn create(&self, project: &str) -> Result<Passage, PassageServiceError> {
+        let passage = Passage::empty(
+            PassageId::generate(self.clock.now()),
+            ProjectLink::from(project),
+        );
 
         self.store.create(&passage).await?;
 

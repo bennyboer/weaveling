@@ -1,7 +1,10 @@
 CREATE TABLE passages (
-    passage     TEXT        PRIMARY KEY,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    passage     TEXT COLLATE "C" PRIMARY KEY,
+    project     TEXT COLLATE "C" NOT NULL,
+    created_at  TIMESTAMPTZ      NOT NULL DEFAULT NOW()
 );
+
+CREATE INDEX passages_by_project ON passages (project, passage);
 
 CREATE TABLE passage_updates (
     seq         BIGSERIAL   PRIMARY KEY,
