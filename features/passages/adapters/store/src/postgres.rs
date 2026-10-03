@@ -1,11 +1,13 @@
 use async_trait::async_trait;
-use passages_core::{Passage, PassageId, PassageStore, ProjectLink, StoreError};
+use passages_core::{Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError};
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
-const REMEMBER: &str = "INSERT INTO passages (passage, project) VALUES ($1, $2)";
+const REMEMBER: &str = "INSERT INTO passages (passage, project, title) VALUES ($1, $2, $3)";
 
-const PROJECT_OF: &str = "SELECT project FROM passages WHERE passage = $1";
+const KNOWN_AS: &str = "SELECT project, title FROM passages WHERE passage = $1";
+
+const RETITLE: &str = "UPDATE passages SET title = $2 WHERE passage = $1";
 
 const IN_PROJECT: &str = "
     SELECT passage
@@ -167,6 +169,7 @@ impl PassageStore for PostgresPassageStore {
         sqlx::query(REMEMBER)
             .bind(id.to_string())
             .bind(passage.project().to_string())
+            .bind(passage.title().as_str())
             .execute(&mut *transaction)
             .await
             .map_err(|failure| match is_taken(&failure) {
@@ -200,13 +203,14 @@ impl PassageStore for PostgresPassageStore {
             .map(|row| row.get::<Vec<u8>, _>("bytes"))
             .collect();
 
-        let project: String = sqlx::query_scalar(PROJECT_OF)
+        let (project, title): (String, String) = sqlx::query_as(KNOWN_AS)
             .bind(id.to_string())
             .fetch_one(&self.pool)
             .await
             .map_err(unreachable)?;
+        let title = PassageTitle::new(&title).map_err(|why| StoreError::Backend(Box::new(why)))?;
 
-        grown(id, ProjectLink::from(project), &parts)
+        Ok(grown(id, ProjectLink::from(project), &parts)?.titled(title))
     }
 
     async fn apply(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError> {
@@ -227,6 +231,20 @@ impl PassageStore for PostgresPassageStore {
         }
 
         Ok(())
+    }
+
+    async fn retitle(&self, id: PassageId, title: &PassageTitle) -> Result<(), StoreError> {
+        let changed = sqlx::query(RETITLE)
+            .bind(id.to_string())
+            .bind(title.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        match changed.rows_affected() {
+            0 => Err(StoreError::NotFound(id)),
+            _ => Ok(()),
+        }
     }
 
     async fn in_project(

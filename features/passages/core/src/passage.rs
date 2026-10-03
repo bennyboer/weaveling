@@ -6,7 +6,7 @@ use yrs::updates::encoder::Encode;
 use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
 use crate::projection::plain_text;
-use crate::{PassageId, ProjectLink};
+use crate::{PassageId, PassageTitle, ProjectLink};
 
 #[derive(Debug, Error)]
 pub enum PassageError {
@@ -20,6 +20,7 @@ pub enum PassageError {
 pub struct Passage {
     id: PassageId,
     project: ProjectLink,
+    title: PassageTitle,
     doc: Doc,
 }
 
@@ -28,12 +29,21 @@ impl Passage {
         Passage {
             id,
             project,
+            title: PassageTitle::untitled(),
             doc: Doc::new(),
         }
     }
 
+    pub fn titled(self, title: PassageTitle) -> Self {
+        Self { title, ..self }
+    }
+
     pub fn project(&self) -> &ProjectLink {
         &self.project
+    }
+
+    pub fn title(&self) -> &PassageTitle {
+        &self.title
     }
 
     pub fn rehydrate(

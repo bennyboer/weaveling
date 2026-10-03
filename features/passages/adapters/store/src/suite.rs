@@ -1,4 +1,6 @@
-use passages_core::{FRAGMENT, Passage, PassageId, PassageStore, ProjectLink, StoreError};
+use passages_core::{
+    FRAGMENT, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+};
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
@@ -353,6 +355,93 @@ pub async fn a_deleted_passage_leaves_the_listing(store: &impl PassageStore) {
     assert!(found.is_empty());
 }
 
+fn a_title(saying: &str) -> PassageTitle {
+    PassageTitle::new(saying).expect("a plain title is fine")
+}
+
+pub async fn a_new_passage_starts_untitled(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    store
+        .create(&Passage::empty(id, a_project()))
+        .await
+        .expect("create should succeed");
+
+    let found = store.load(id).await.expect("load should find the passage");
+
+    assert!(found.title().is_untitled());
+}
+
+pub async fn a_retitled_passage_keeps_its_title(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    store
+        .create(&Passage::empty(id, a_project()))
+        .await
+        .expect("create should succeed");
+
+    store
+        .retitle(id, &a_title("The loom"))
+        .await
+        .expect("retitle should succeed");
+
+    let found = store.load(id).await.expect("load should find the passage");
+    assert_eq!(found.title(), &a_title("The loom"));
+}
+
+pub async fn retitling_a_missing_passage_is_not_found(store: &impl PassageStore) {
+    let missing = an_id(1_000);
+
+    let error = store
+        .retitle(missing, &a_title("Nowhere"))
+        .await
+        .expect_err("retitle should not find the passage");
+
+    assert!(
+        matches!(&error, StoreError::NotFound(id) if *id == missing),
+        "expected NotFound({missing}), got {error:?}"
+    );
+}
+
+pub async fn retitling_leaves_the_text_as_it_was(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    store
+        .create(&a_passage(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+
+    store
+        .retitle(id, &a_title("The loom"))
+        .await
+        .expect("retitle should succeed");
+
+    let found = store.load(id).await.expect("load should find the passage");
+    assert_eq!(found.text(), "The loom stood silent.");
+}
+
+pub async fn a_title_survives_further_writing(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    store
+        .create(&Passage::empty(id, a_project()))
+        .await
+        .expect("create should succeed");
+    store
+        .retitle(id, &a_title("The loom"))
+        .await
+        .expect("retitle should succeed");
+
+    store
+        .apply(id, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("apply should succeed");
+
+    let found = store.load(id).await.expect("load should find the passage");
+    assert_eq!(
+        found.title(),
+        &a_title("The loom"),
+        "writing rewrites the stored passage, and the title must ride along rather than \
+         reset to untitled with every keystroke"
+    );
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -395,6 +484,11 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!($workbench, listing_resumes_after_the_cursor);
         $crate::suite::conformance_case!($workbench, listing_past_the_last_passage_is_empty);
         $crate::suite::conformance_case!($workbench, a_deleted_passage_leaves_the_listing);
+        $crate::suite::conformance_case!($workbench, a_new_passage_starts_untitled);
+        $crate::suite::conformance_case!($workbench, a_retitled_passage_keeps_its_title);
+        $crate::suite::conformance_case!($workbench, retitling_a_missing_passage_is_not_found);
+        $crate::suite::conformance_case!($workbench, retitling_leaves_the_text_as_it_was);
+        $crate::suite::conformance_case!($workbench, a_title_survives_further_writing);
     };
 }
 

@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
-use passages_core::{Passage, PassageId, PassageStore, ProjectLink, StoreError};
+use passages_core::{Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError};
 
 type Passages = HashMap<PassageId, StoredPassage>;
 
 #[derive(Debug, Clone)]
 struct StoredPassage {
     project: ProjectLink,
+    title: PassageTitle,
     state: Vec<u8>,
 }
 
@@ -33,6 +34,7 @@ impl InMemoryPassageStore {
 
 fn rehydrate(id: PassageId, stored: &StoredPassage) -> Result<Passage, StoreError> {
     Passage::rehydrate(id, stored.project.clone(), &stored.state)
+        .map(|passage| passage.titled(stored.title.clone()))
         .map_err(|reason| StoreError::Backend(Box::new(reason)))
 }
 
@@ -49,6 +51,7 @@ impl PassageStore for InMemoryPassageStore {
             passage.id(),
             StoredPassage {
                 project: passage.project().clone(),
+                title: passage.title().clone(),
                 state: passage.everything(),
             },
         );
@@ -79,9 +82,18 @@ impl PassageStore for InMemoryPassageStore {
             id,
             StoredPassage {
                 project: stored.project,
+                title: stored.title,
                 state: passage.everything(),
             },
         );
+
+        Ok(())
+    }
+
+    async fn retitle(&self, id: PassageId, title: &PassageTitle) -> Result<(), StoreError> {
+        let mut passages = self.write();
+        let stored = passages.get_mut(&id).ok_or(StoreError::NotFound(id))?;
+        stored.title = title.clone();
 
         Ok(())
     }

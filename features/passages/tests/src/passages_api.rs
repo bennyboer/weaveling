@@ -3,7 +3,7 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
-use passages_contract::{CreatePassageRequest, FRAGMENT, PassageDTO};
+use passages_contract::{CreatePassageRequest, FRAGMENT, PassageDTO, RetitlePassageRequest};
 use passages_core::PassageService;
 use passages_store::InMemoryPassageStore;
 use time::{Duration, OffsetDateTime};
@@ -145,4 +145,80 @@ async fn deleting_an_unknown_passage_is_not_found() {
     let response = server.delete(&format!("/passages/{UNKNOWN_ID}")).await;
 
     response.assert_status(StatusCode::NOT_FOUND);
+}
+
+async fn retitled(server: &TestServer, id: &str, title: &str) -> axum_test::TestResponse {
+    server
+        .patch(&format!("/passages/{id}"))
+        .json(&RetitlePassageRequest {
+            title: title.to_owned(),
+        })
+        .await
+}
+
+#[tokio::test]
+async fn a_new_passage_is_reported_untitled() {
+    let server = new_server_with(a_service());
+
+    let created = a_passage(&server).await;
+
+    assert_eq!(
+        created.title, "",
+        "an untitled passage is named by its opening words"
+    );
+}
+
+#[tokio::test]
+async fn a_passage_can_be_retitled_and_read_back() {
+    let server = new_server_with(a_service());
+    let created = a_passage(&server).await;
+
+    let response = retitled(&server, &created.id, "  The loom  ").await;
+
+    response.assert_status_ok();
+    assert_eq!(response.json::<PassageDTO>().title, "The loom");
+    let found: PassageDTO = server
+        .get(&format!("/passages/{}", created.id))
+        .await
+        .json();
+    assert_eq!(found.title, "The loom");
+}
+
+#[tokio::test]
+async fn a_title_the_domain_refuses_is_unprocessable() {
+    let server = new_server_with(a_service());
+    let created = a_passage(&server).await;
+
+    let response = retitled(&server, &created.id, "The\u{7}loom").await;
+
+    response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn retitling_a_passage_nobody_created_is_not_found() {
+    let server = new_server_with(a_service());
+
+    let response = retitled(&server, UNKNOWN_ID, "Nowhere").await;
+
+    response.assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_listing_carries_each_passage_s_title() {
+    let server = new_server_with(a_service());
+    let created = a_passage(&server).await;
+    retitled(&server, &created.id, "The loom")
+        .await
+        .assert_status_ok();
+
+    let listed: Vec<PassageDTO> = server
+        .get(&format!("/passages?project={A_PROJECT}"))
+        .await
+        .json();
+
+    assert_eq!(listed.len(), 1);
+    assert_eq!(
+        listed[0].title, "The loom",
+        "the outline names its leaves from this listing"
+    );
 }

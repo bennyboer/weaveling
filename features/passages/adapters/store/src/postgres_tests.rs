@@ -306,8 +306,8 @@ async fn walking_a_project_comes_out_of_the_index() {
     }
 
     sqlx::query(
-        "INSERT INTO passages (passage, project)
-         SELECT held, 'project_' || (ordinality % 8)
+        "INSERT INTO passages (passage, project, title)
+         SELECT held, 'project_' || (ordinality % 8), ''
          FROM unnest($1::text[]) WITH ORDINALITY AS held",
     )
     .bind(&written)

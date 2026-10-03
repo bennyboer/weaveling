@@ -19,5 +19,11 @@ pub struct CreatePassageRequest {
 pub struct PassageDTO {
     pub id: String,
     pub project: String,
+    pub title: String,
     pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct RetitlePassageRequest {
+    pub title: String,
 }

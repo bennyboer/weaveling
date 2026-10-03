@@ -4,12 +4,16 @@ use clock::Clock;
 use ids::InvalidId;
 use thiserror::Error;
 
-use crate::{Passage, PassageId, PassageStore, ProjectLink, StoreError};
+use crate::{
+    InvalidPassageTitle, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+};
 
 #[derive(Debug, Error)]
 pub enum PassageServiceError {
     #[error(transparent)]
     InvalidId(#[from] InvalidId),
+    #[error(transparent)]
+    Untitled(#[from] InvalidPassageTitle),
     #[error(transparent)]
     Store(#[from] StoreError),
 }
@@ -60,6 +64,15 @@ impl PassageService {
             .store
             .in_project(&ProjectLink::from(project), after, at_most)
             .await?)
+    }
+
+    pub async fn retitle(&self, id: &str, title: &str) -> Result<Passage, PassageServiceError> {
+        let id: PassageId = id.parse()?;
+        let title = PassageTitle::new(title)?;
+
+        self.store.retitle(id, &title).await?;
+
+        Ok(self.store.load(id).await?)
     }
 
     pub async fn delete(&self, id: &str) -> Result<(), PassageServiceError> {
