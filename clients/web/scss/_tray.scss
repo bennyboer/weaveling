@@ -24,6 +24,11 @@
     color: var(--muted);
   }
 
+  .waiting + .tally,
+  .empty + .tally {
+    margin-top: 0.9rem;
+  }
+
   .waiting {
     list-style: none;
     display: flex;
@@ -34,6 +39,9 @@
   }
 
   .waiting button {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
     width: 100%;
     padding: 0.4rem 0.6rem;
     border: 1px solid var(--line);
@@ -48,6 +56,11 @@
 
   .waiting button:hover {
     border-color: var(--muted);
+  }
+
+  .waiting svg {
+    flex-shrink: 0;
+    opacity: 0.55;
   }
 
   .waiting .carrying {

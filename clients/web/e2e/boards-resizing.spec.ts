@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 import { bar, boxOf, corkboard, dragBy, pullBy, select } from "./support/board";
 import {
   anOpenProject,
-  capture,
+  captureIdea,
   onTheBoard,
   openTheBoard,
 } from "./support/shell";
@@ -12,7 +12,7 @@ test("a very long title scrolls inside its card instead of stretching it", async
   page,
 }) => {
   await anOpenProject(page, "LongTitle");
-  await capture(
+  await captureIdea(
     page,
     "Ich habe eine sehr lange Idee. Von einem Buch. Allerdings ist es noch nicht so das ich mir sicher bin ob das eine gute Idee ist.",
   );
@@ -42,7 +42,7 @@ test("a freshly pinned card is drawn at the size the board was told", async ({
   page,
 }) => {
   await anOpenProject(page, "Sized");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -56,7 +56,7 @@ test("dragging the right edge widens a card without moving it", async ({
   page,
 }) => {
   await anOpenProject(page, "Widen");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -78,7 +78,7 @@ test("dragging the right edge widens a card without moving it", async ({
 
 test("dragging the bottom edge makes a card taller", async ({ page }) => {
   await anOpenProject(page, "Taller");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -95,7 +95,7 @@ test("dragging the top-left corner moves and resizes in one gesture", async ({
   page,
 }) => {
   await anOpenProject(page, "Corner");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -122,7 +122,7 @@ test("a card cannot be dragged smaller than it is allowed to be", async ({
   page,
 }) => {
   await anOpenProject(page, "Smallest");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -138,7 +138,7 @@ test("a card cannot be dragged smaller than it is allowed to be", async ({
 
 test("a resize lands on the grid like everything else", async ({ page }) => {
   await anOpenProject(page, "ResizeSnap");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -154,7 +154,7 @@ test("a resized card keeps its size while it is dragged around", async ({
   page,
 }) => {
   await anOpenProject(page, "KeepsSize");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -176,7 +176,7 @@ test("the action bar follows the bottom of a card that has grown", async ({
   page,
 }) => {
   await anOpenProject(page, "BarFollows");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");

@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
 
-import { cardNamed, corkboard, waiting } from "./support/board";
+import { cardNamed, corkboard, waitingIdeas } from "./support/board";
 import {
   aNewProject,
-  capture,
+  captureIdea,
   openThePool,
   openTheBoard,
 } from "./support/shell";
@@ -32,7 +32,7 @@ test("double-clicking the bare board captures an idea and pins it", async ({
 
   await expect(cardNamed(page, "The loom remembers")).toBeVisible();
   await expect(editor(page)).toHaveCount(0);
-  await expect(waiting(page).getByRole("button")).toHaveCount(0);
+  await expect(waitingIdeas(page).getByRole("button")).toHaveCount(0);
 
   await openThePool(page);
 
@@ -99,7 +99,7 @@ test("double-clicking a card edits its title instead of opening it", async ({
 }) => {
   await aNewProject(page, "Retitling");
   await openThePool(page);
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -121,7 +121,7 @@ test("double-clicking a card edits its title instead of opening it", async ({
 test("Enter on a focused card edits its title too", async ({ page }) => {
   await aNewProject(page, "Entering");
   await openThePool(page);
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -138,7 +138,7 @@ test("focusing a card from the keyboard reveals its actions", async ({
 }) => {
   await aNewProject(page, "Focusing");
   await openThePool(page);
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 

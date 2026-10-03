@@ -30,7 +30,7 @@ export async function anOpenProject(
   return title;
 }
 
-export async function capture(page: Page, idea: string) {
+export async function captureIdea(page: Page, idea: string) {
   await page.getByRole("textbox", { name: "What is the idea?" }).fill(idea);
   await page.getByRole("button", { name: "Capture", exact: true }).click();
   await expect(

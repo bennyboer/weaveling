@@ -3,7 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import {
   aLoosePassage,
   aNewProject,
-  capture,
+  captureIdea,
   openTheBoard,
   openTheOutline,
   openThePool,
@@ -13,8 +13,8 @@ const NARROW = { width: 700, height: 800 };
 
 const tray = (page: Page) => page.locator(".tray");
 
-const toggle = (page: Page, holding = "Ideas") =>
-  page.getByRole("button", { name: new RegExp(`^${holding} ·`) });
+const toggle = (page: Page, asking = "Not on the board") =>
+  page.getByRole("button", { name: new RegExp(`^${asking} ·`) });
 
 const placed = (page: Page) =>
   page.evaluate(() => {
@@ -49,8 +49,8 @@ test("both views keep the tray in the same place", async ({ page }) => {
 test("the tally counts what is still waiting", async ({ page }) => {
   await aNewProject(page, "Tallying");
   await openThePool(page);
-  await capture(page, "A first idea");
-  await capture(page, "A second idea");
+  await captureIdea(page, "A first idea");
+  await captureIdea(page, "A second idea");
 
   await openTheBoard(page);
   await expect(tray(page).getByText("Not on the board · 2")).toBeVisible();
@@ -61,8 +61,8 @@ test("the tally counts what is still waiting", async ({ page }) => {
   await expect(tray(page).getByText("Not in the book · 2")).toBeVisible();
   await expect(
     page.locator(".tray-toggle"),
-    "the drawer is shut most of the time, so its own label is the only thing naming what the tray holds, and the two views hold different things",
-  ).toHaveText(/^Passages · 2$/);
+    "the drawer is shut most of the time, so its own label is the only thing saying what is waiting, and the two views wait for different things",
+  ).toHaveText(/^Not in the book · 2$/);
 });
 
 test("a narrow window keeps the tray in a drawer", async ({ page }) => {
@@ -76,7 +76,7 @@ test("a narrow window keeps the tray in a drawer", async ({ page }) => {
   await expect.poll(async () => (await placed(page)).right).toBe(NARROW.width);
   expect((await placed(page)).left).toBeLessThan(NARROW.width);
 
-  await tray(page).getByRole("button", { name: "Hide the ideas" }).click();
+  await tray(page).getByRole("button", { name: "Hide the tray" }).click();
   await awayFromView(page);
 });
 

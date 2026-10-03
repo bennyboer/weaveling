@@ -450,7 +450,7 @@ mod notes {
                 id: "idea_1".to_owned()
             },
             "a subscriber cannot look the id up to find out what it is, so the tag has to \
-             survive the crossing or every note reads as prose"
+             survive the crossing or every note reads as a passage"
         );
     }
 }

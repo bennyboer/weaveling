@@ -3,7 +3,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 export const corkboard = (page: Page) =>
   page.getByRole("region", { name: "Board" });
 
-export const waiting = (page: Page) =>
+export const waitingIdeas = (page: Page) =>
   page.getByRole("list", { name: "Ideas not on the board" });
 
 export const bar = (page: Page) => corkboard(page).locator(".pinned-actions");

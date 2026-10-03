@@ -3,14 +3,14 @@ import { test, expect } from "@playwright/test";
 import { corkboard, dragBy } from "./support/board";
 import {
   anOpenProject,
-  capture,
+  captureIdea,
   onTheBoard,
   openTheBoard,
 } from "./support/shell";
 
 test("a card can be nudged with the arrow keys", async ({ page }) => {
   await anOpenProject(page, "Nudging");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const card = corkboard(page).locator(".pinned");
@@ -34,7 +34,7 @@ test("a card can be nudged with the arrow keys", async ({ page }) => {
 
 test("a nudge survives a reload", async ({ page }) => {
   await anOpenProject(page, "NudgeLasts");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await corkboard(page).locator(".pinned").focus();
@@ -57,7 +57,7 @@ test("a card dragged anywhere on its body lands where it was dropped and stays t
   page,
 }) => {
   await anOpenProject(page, "Dragging");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -77,7 +77,7 @@ test("a card dragged anywhere on its body lands where it was dropped and stays t
 
 test("a cancelled drag puts the card back where it was", async ({ page }) => {
   await anOpenProject(page, "Cancelled");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const card = corkboard(page).locator(".pinned");
@@ -114,7 +114,7 @@ test("a card lands on the grid, however sloppily it is dropped", async ({
   page,
 }) => {
   await anOpenProject(page, "Snapping");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -130,7 +130,7 @@ test("a slip too small to be a drag leaves the card where it was", async ({
   page,
 }) => {
   await anOpenProject(page, "Slipping");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -144,7 +144,7 @@ test("a slip too small to be a drag leaves the card where it was", async ({
 
 test("a card stays selected all the way through a drag", async ({ page }) => {
   await anOpenProject(page, "StaysLit");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const card = corkboard(page).locator(".pinned");
@@ -168,7 +168,7 @@ test("a dropped card does not flash back to where it came from", async ({
   page,
 }) => {
   await anOpenProject(page, "NoFlash");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const card = corkboard(page).locator(".pinned");
@@ -189,7 +189,7 @@ test("a dropped card does not flash back to where it came from", async ({
 
 test("a card can be dragged by its title", async ({ page }) => {
   await anOpenProject(page, "TitleDrag");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const board = page.url();
@@ -209,8 +209,8 @@ test("a card being dragged rides above the ones pinned after it", async ({
   page,
 }) => {
   await anOpenProject(page, "OnTop");
-  await capture(page, "The loom remembers");
-  await capture(page, "She never returned");
+  await captureIdea(page, "The loom remembers");
+  await captureIdea(page, "She never returned");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await page.getByRole("button", { name: "Pin She never returned" }).click();
@@ -243,8 +243,8 @@ test("a card being dragged rides above the ones pinned after it", async ({
 
 test("a dragged card stays in front after it is dropped", async ({ page }) => {
   await anOpenProject(page, "StaysInFront");
-  await capture(page, "The loom remembers");
-  await capture(page, "She never returned");
+  await captureIdea(page, "The loom remembers");
+  await captureIdea(page, "She never returned");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await page.getByRole("button", { name: "Pin She never returned" }).click();

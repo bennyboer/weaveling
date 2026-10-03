@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
 
-import { corkboard, laidOut, select, waiting } from "./support/board";
+import { corkboard, laidOut, select, waitingIdeas } from "./support/board";
 import {
   anOpenProject,
-  capture,
+  captureIdea,
   onTheBoard,
   openTheBoard,
   openThePool,
@@ -23,11 +23,13 @@ test("a captured idea waits beside the board until it is pinned", async ({
   page,
 }) => {
   await anOpenProject(page, "Waiting");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
 
   await openTheBoard(page);
 
-  await expect(waiting(page).getByText("The loom remembers")).toBeVisible();
+  await expect(
+    waitingIdeas(page).getByText("The loom remembers"),
+  ).toBeVisible();
   await expect(corkboard(page).getByText("The loom remembers")).toHaveCount(0);
 });
 
@@ -35,18 +37,20 @@ test("pinning an idea puts it on the board and takes it off the waiting list", a
   page,
 }) => {
   await anOpenProject(page, "Pinning");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
 
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
-  await expect(waiting(page).getByText("The loom remembers")).toHaveCount(0);
+  await expect(waitingIdeas(page).getByText("The loom remembers")).toHaveCount(
+    0,
+  );
 });
 
 test("a pinned idea is placed somewhere on the board", async ({ page }) => {
   await anOpenProject(page, "Placed");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -63,7 +67,7 @@ test("a pinned idea is placed somewhere on the board", async ({ page }) => {
 
 test("pinned ideas survive a reload", async ({ page }) => {
   await anOpenProject(page, "Survives");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
@@ -71,14 +75,16 @@ test("pinned ideas survive a reload", async ({ page }) => {
   await page.reload();
 
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
-  await expect(waiting(page).getByText("The loom remembers")).toHaveCount(0);
+  await expect(waitingIdeas(page).getByText("The loom remembers")).toHaveCount(
+    0,
+  );
 });
 
 test("reopening the board finds the same board rather than a new one", async ({
   page,
 }) => {
   await anOpenProject(page, "Reopen");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
@@ -95,10 +101,12 @@ test("several pinned ideas all appear, each in its own spot", async ({
   await anOpenProject(page, "Several");
   const names = ["One", "Two", "Three", "Four", "Five", "Six"];
   for (const name of names) {
-    await capture(page, name);
+    await captureIdea(page, name);
   }
   await openTheBoard(page);
-  await expect(waiting(page).getByRole("button")).toHaveCount(names.length);
+  await expect(waitingIdeas(page).getByRole("button")).toHaveCount(
+    names.length,
+  );
 
   await page.evaluate(() => {
     for (const button of document.querySelectorAll(".waiting button")) {
@@ -119,8 +127,8 @@ test("a spot freed by unpinning is handed to the next idea", async ({
   page,
 }) => {
   await anOpenProject(page, "Reused");
-  await capture(page, "The loom remembers");
-  await capture(page, "She never returned");
+  await captureIdea(page, "The loom remembers");
+  await captureIdea(page, "She never returned");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await page.getByRole("button", { name: "Pin She never returned" }).click();
@@ -142,8 +150,8 @@ test("a spot freed by unpinning is handed to the next idea", async ({
 
 test("a discarded idea leaves the board", async ({ page }) => {
   await anOpenProject(page, "Discarded");
-  await capture(page, "The loom remembers");
-  await capture(page, "She never returned");
+  await captureIdea(page, "The loom remembers");
+  await captureIdea(page, "She never returned");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
@@ -167,7 +175,9 @@ test("a discarded idea leaves the board", async ({ page }) => {
 
   await onTheBoard(page);
   await expect(corkboard(page).locator(".pinned")).toHaveCount(0);
-  await expect(waiting(page).getByText("She never returned")).toBeVisible();
+  await expect(
+    waitingIdeas(page).getByText("She never returned"),
+  ).toBeVisible();
 });
 
 test("an untitled idea can be pinned", async ({ page }) => {
@@ -187,7 +197,7 @@ test("a placement whose idea was never captured draws nothing", async ({
   page,
 }) => {
   await anOpenProject(page, "Dangling");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
@@ -221,7 +231,7 @@ test("a pinned idea can be unpinned back to the waiting list", async ({
   page,
 }) => {
   await anOpenProject(page, "Unpinning");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
@@ -230,14 +240,16 @@ test("a pinned idea can be unpinned back to the waiting list", async ({
   await page.getByRole("button", { name: "Unpin The loom remembers" }).click();
 
   await expect(corkboard(page).locator(".pinned")).toHaveCount(0);
-  await expect(waiting(page).getByText("The loom remembers")).toBeVisible();
+  await expect(
+    waitingIdeas(page).getByText("The loom remembers"),
+  ).toBeVisible();
 });
 
 test("an unpinned idea stays off the board after a reload", async ({
   page,
 }) => {
   await anOpenProject(page, "UnpinLasts");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -248,7 +260,9 @@ test("an unpinned idea stays off the board after a reload", async ({
   await onTheBoard(page);
 
   await expect(corkboard(page).locator(".pinned")).toHaveCount(0);
-  await expect(waiting(page).getByText("The loom remembers")).toBeVisible();
+  await expect(
+    waitingIdeas(page).getByText("The loom remembers"),
+  ).toBeVisible();
 });
 
 test("freshly pinned ideas land inside the board as it is first shown", async ({
@@ -257,7 +271,7 @@ test("freshly pinned ideas land inside the board as it is first shown", async ({
   await anOpenProject(page, "Layout");
   const names = ["One", "Two", "Three", "Four", "Five", "Six"];
   for (const name of names) {
-    await capture(page, name);
+    await captureIdea(page, name);
   }
   await openTheBoard(page);
 
@@ -283,7 +297,7 @@ test("nothing can be pinned until the board has actually arrived", async ({
   page,
 }) => {
   await anOpenProject(page, "Loading");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
 
   let held: (() => void) | undefined;
   const opening = new Promise<void>((release) => {
@@ -297,13 +311,13 @@ test("nothing can be pinned until the board has actually arrived", async ({
   await openTheBoard(page);
 
   await expect(
-    waiting(page).getByRole("button"),
+    waitingIdeas(page).getByRole("button"),
     "a pin clicked before the board exists would be swallowed",
   ).toHaveCount(0);
 
   held!();
 
-  await expect(waiting(page).getByRole("button")).toHaveCount(1);
+  await expect(waitingIdeas(page).getByRole("button")).toHaveCount(1);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
 });

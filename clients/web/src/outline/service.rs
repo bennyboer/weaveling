@@ -5,7 +5,8 @@ use outline_contract::{
 };
 
 use crate::http::{ApiError, parsed};
-use crate::outline::model::{Outline, OutlineId, Section, SectionId};
+use crate::ideas::model::IdeaId;
+use crate::outline::model::{Attachment, Outline, OutlineId, Section, SectionId};
 use crate::passages::model::PassageId;
 use crate::projects::model::ProjectId;
 
@@ -105,18 +106,14 @@ pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<Outline,
 
 pub async fn attach(
     outline: &OutlineId,
-    passage: &PassageId,
+    attachment: &Attachment,
     to: &SectionId,
-    after: Option<PassageId>,
+    after: Option<Attachment>,
 ) -> Result<Outline, ApiError> {
     let payload = AttachRequest {
-        attachment: AttachmentDTO::Passage {
-            id: passage.to_string(),
-        },
+        attachment: to_dto(attachment),
         section: to.to_string(),
-        after: after.map(|after| AttachmentDTO::Passage {
-            id: after.to_string(),
-        }),
+        after: after.as_ref().map(to_dto),
     };
     let response = Request::post(&format!("{OUTLINES}/{outline}/attachments"))
         .json(&payload)
@@ -128,13 +125,15 @@ pub async fn attach(
     Ok(as_outline(parsed(response, SUBJECT).await?))
 }
 
-pub async fn detach(outline: &OutlineId, passage: &PassageId) -> Result<(), ApiError> {
-    let response = Request::delete(&format!(
-        "{OUTLINES}/{outline}/attachments/passages/{passage}"
-    ))
-    .send()
-    .await
-    .map_err(|_| ApiError::Offline)?;
+pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), ApiError> {
+    let (kind, id) = match attachment {
+        Attachment::Passage(passage) => ("passages", passage.to_string()),
+        Attachment::Idea(idea) => ("ideas", idea.to_string()),
+    };
+    let response = Request::delete(&format!("{OUTLINES}/{outline}/attachments/{kind}/{id}"))
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
 
     if response.ok() {
         return Ok(());
@@ -152,6 +151,24 @@ async fn urged(outline: &OutlineId, section: &SectionId, how: &str) -> Result<Ou
     Ok(as_outline(parsed(response, SUBJECT).await?))
 }
 
+fn to_dto(attachment: &Attachment) -> AttachmentDTO {
+    match attachment {
+        Attachment::Passage(passage) => AttachmentDTO::Passage {
+            id: passage.to_string(),
+        },
+        Attachment::Idea(idea) => AttachmentDTO::Idea {
+            id: idea.to_string(),
+        },
+    }
+}
+
+fn as_attachment(dto: AttachmentDTO) -> Attachment {
+    match dto {
+        AttachmentDTO::Passage { id } => Attachment::Passage(PassageId::from(id)),
+        AttachmentDTO::Idea { id } => Attachment::Idea(IdeaId::from(id)),
+    }
+}
+
 fn as_outline(dto: OutlineDTO) -> Outline {
     Outline {
         id: OutlineId::from(dto.id),
@@ -165,15 +182,6 @@ fn as_section(dto: PlacedSectionDTO) -> Section {
         id: SectionId::from(dto.section),
         parent: dto.parent.map(SectionId::from),
         title: dto.title,
-        // TODO M12 step 5b: an idea attached as a note is dropped here, so the outline
-        // draws only the prose until the client can tell the two kinds apart.
-        passages: dto
-            .attachments
-            .into_iter()
-            .filter_map(|held| match held {
-                AttachmentDTO::Passage { id } => Some(PassageId::from(id)),
-                AttachmentDTO::Idea { .. } => None,
-            })
-            .collect(),
+        attachments: dto.attachments.into_iter().map(as_attachment).collect(),
     }
 }

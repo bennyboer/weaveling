@@ -7,9 +7,8 @@ use leptos_router::components::A;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};
 
-use crate::outline::model::{Section, SectionId};
+use crate::outline::model::{Attachment, Section, SectionId};
 use crate::outline::open_outline::{OpenOutline, Urge};
-use crate::passages::model::{Passage, PassageId};
 use crate::route;
 use crate::tray::laid_out;
 
@@ -23,7 +22,7 @@ enum Landing {
 #[derive(Clone, Copy)]
 struct Held {
     project: StoredValue<String>,
-    carrying: RwSignal<Option<PassageId>>,
+    carrying: RwSignal<Option<Attachment>>,
     hauling: RwSignal<Option<SectionId>>,
     landing: RwSignal<Option<Landing>>,
     over: RwSignal<Option<SectionId>>,
@@ -86,8 +85,7 @@ pub fn TheOutline(project: String) -> impl IntoView {
                 ))
                 .into_any(),
             kept(held).into_any(),
-            "Passages",
-            move || open.unplaced().len(),
+            move || format!("Not in the book \u{00b7} {}", open.waiting_passages().len()),
         ),
     ))
 }
@@ -130,13 +128,13 @@ fn branch(section: Section, held: Held) -> AnyView {
         .class("branch")
         .child((row(section, held), move || {
             let shut = held.folded.with(|shut| shut.contains(&folding));
-            let passages = open.passages_in(&under);
+            let attachments = open.attachments_in(&under);
 
             (bears(&under, held) && !shut).then(|| {
                 html::ul().class("twigs").child((
-                    passages
+                    attachments
                         .iter()
-                        .map(|passage| leaf(passage.clone(), held))
+                        .map(|attachment| leaf(attachment.clone(), held))
                         .collect::<Vec<_>>(),
                     twigs(Some(under.clone()), held),
                 ))
@@ -146,7 +144,7 @@ fn branch(section: Section, held: Held) -> AnyView {
 }
 
 fn bears(section: &SectionId, held: Held) -> bool {
-    !held.open.passages_in(section).is_empty() || !twigs_under(section, held).is_empty()
+    !held.open.attachments_in(section).is_empty() || !twigs_under(section, held).is_empty()
 }
 
 fn row(section: Section, held: Held) -> impl IntoView {
@@ -224,15 +222,15 @@ fn row(section: Section, held: Held) -> impl IntoView {
         .class(("hauled", {
             let mine = landing.clone();
 
-            move || held.hauling.with(|borne| borne.as_ref() == Some(&mine))
+            move || held.hauling.with(|section| section.as_ref() == Some(&mine))
         }))
         .attr("data-section", id.to_string())
         .on(ev::click, move |_| {
-            let Some(passage) = held.carrying.get_untracked() else {
+            let Some(attachment) = held.carrying.get_untracked() else {
                 return;
             };
 
-            open.attach(passage, leaving.clone());
+            open.attach(attachment, leaving.clone());
             held.carrying.set(None);
             held.over.set(None);
         })
@@ -390,20 +388,24 @@ fn grip(section: SectionId, held: Held) -> impl IntoView {
             held.landing.set(None);
         })
         .on(ev::pointermove, move |event| {
-            let Some(borne) = held.hauling.get_untracked() else {
+            let Some(section) = held.hauling.get_untracked() else {
                 return;
             };
 
-            held.landing
-                .set(landing_at(event.client_x(), event.client_y(), &borne, held));
+            held.landing.set(landing_at(
+                event.client_x(),
+                event.client_y(),
+                &section,
+                held,
+            ));
         })
         .on(ev::pointerup, move |_| {
-            let borne = held.hauling.get_untracked();
+            let section = held.hauling.get_untracked();
             let at = held.landing.get_untracked();
             held.hauling.set(None);
             held.landing.set(None);
 
-            let (Some(borne), Some(at)) = (borne, at) else {
+            let (Some(section), Some(at)) = (section, at) else {
                 return;
             };
 
@@ -416,7 +418,7 @@ fn grip(section: SectionId, held: Held) -> impl IntoView {
                 Landing::After(target) => (open.parent_of(&target), Some(target)),
             };
 
-            open.place(borne, under, after);
+            open.place(section, under, after);
         })
         .on(ev::pointercancel, move |_| {
             held.hauling.set(None);
@@ -425,7 +427,7 @@ fn grip(section: SectionId, held: Held) -> impl IntoView {
         .child(mark(Icon::Grip))
 }
 
-fn landing_at(x: i32, y: i32, borne: &SectionId, held: Held) -> Option<Landing> {
+fn landing_at(x: i32, y: i32, section: &SectionId, held: Held) -> Option<Landing> {
     let row = document()
         .element_from_point(x as f32, y as f32)?
         .closest("[data-section]")
@@ -433,7 +435,7 @@ fn landing_at(x: i32, y: i32, borne: &SectionId, held: Held) -> Option<Landing> 
         .flatten()?;
     let target = SectionId::from(row.get_attribute("data-section")?);
 
-    if held.open.would_swallow(borne, &target) {
+    if held.open.would_swallow(section, &target) {
         return None;
     }
 
@@ -447,19 +449,28 @@ fn landing_at(x: i32, y: i32, borne: &SectionId, held: Held) -> Option<Landing> 
     })
 }
 
-fn leaf(passage: PassageId, held: Held) -> impl IntoView {
+fn icon_for(attachment: &Attachment) -> Icon {
+    match attachment {
+        Attachment::Passage(_) => Icon::Passage,
+        Attachment::Idea(_) => Icon::Idea,
+    }
+}
+
+fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
     let open = held.open;
-    let shown = open.named(&passage);
-    let taken = passage.clone();
+    let shown = open.named(&attachment);
+    let taken = attachment.clone();
     let named = shown.clone();
-    let at = held
-        .project
-        .with_value(|project| route::passage(project, &passage));
+    let marked = mark(icon_for(&attachment));
+    let at = held.project.with_value(|project| match &attachment {
+        Attachment::Passage(passage) => route::passage(project, passage),
+        Attachment::Idea(idea) => route::idea(project, idea, &shown),
+    });
 
     html::li()
         .class("leaf")
         .child(html::div().class("row").child((
-            mark(Icon::Written),
+            marked,
             view! {
                 <A href=at attr:class="name">
                     {named}
@@ -479,41 +490,60 @@ fn kept(held: Held) -> impl IntoView {
     (
         html::p()
             .class("tally")
-            .child(move || format!("Not in the book \u{00b7} {}", open.unplaced().len())),
+            .child(move || format!("Not in the book \u{00b7} {}", open.waiting_passages().len())),
         html::ul()
             .class("waiting")
             .attr("aria-label", "Passages not in the book")
             .child(move || {
-                open.unplaced()
+                open.waiting_passages()
                     .into_iter()
-                    .map(|passage| carried(passage, held))
+                    .map(|passage| {
+                        let shown = passage.shown_as();
+
+                        carried(Attachment::Passage(passage.id), shown, held)
+                    })
                     .collect::<Vec<_>>()
             }),
         move || {
-            (open.ready() && open.unplaced().is_empty()).then(|| {
+            (open.ready() && open.waiting_passages().is_empty()).then(|| {
                 html::p()
                     .class("empty")
                     .child("Every passage has a place in the book.")
             })
         },
-        html::p()
-            .class("how")
-            .child("Drag a passage onto a section, or click it and then click where it goes."),
+        html::p().class("tally").child("Ideas"),
+        html::ul()
+            .class("waiting")
+            .attr("aria-label", "Ideas not in the book")
+            .child(move || {
+                open.waiting_ideas()
+                    .into_iter()
+                    .map(|idea| {
+                        let shown = idea.shown_as().to_owned();
+
+                        carried(Attachment::Idea(idea.id), shown, held)
+                    })
+                    .collect::<Vec<_>>()
+            }),
+        html::p().class("how").child(
+            "Drag onto a section, or click it and then click where it goes. A passage becomes \
+             the book; an idea is a note beside it.",
+        ),
     )
 }
 
-fn carried(passage: Passage, held: Held) -> impl IntoView {
-    let shown = passage.shown_as().to_owned();
-    let id = passage.id;
-    let mine = id.clone();
-    let taken = id.clone();
-    let dropped = id.clone();
+fn carried(attachment: Attachment, shown: String, held: Held) -> impl IntoView {
+    let mine = attachment.clone();
+    let taken = attachment.clone();
+    let dropped = attachment;
+    let marked = mark(icon_for(&mine));
 
     html::li().child(
         html::button()
             .r#type("button")
             .class(("carrying", move || {
-                held.carrying.with(|borne| borne.as_ref() == Some(&mine))
+                held.carrying
+                    .with(|attachment| attachment.as_ref() == Some(&mine))
             }))
             .attr("aria-label", format!("Place {shown}"))
             .on(ev::pointerdown, move |event| {
@@ -542,7 +572,7 @@ fn carried(passage: Passage, held: Held) -> impl IntoView {
                 held.carrying.set(None);
                 held.over.set(None);
             })
-            .child(shown),
+            .child((marked, shown)),
     )
 }
 
@@ -671,10 +701,11 @@ enum Icon {
     Promote,
     Demote,
     Remove,
-    Written,
+    Passage,
     Hollow,
     Plus,
     Quill,
+    Idea,
 }
 
 fn mark(icon: Icon) -> impl IntoView {
@@ -687,10 +718,11 @@ fn mark(icon: Icon) -> impl IntoView {
         Icon::Promote => "m15 18-6-6 6-6",
         Icon::Demote => "m9 18 6-6-6-6",
         Icon::Remove => "M18 6 6 18M6 6l12 12",
-        Icon::Written => "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
+        Icon::Passage => "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6",
         Icon::Hollow => "M12 8v4M12 16h.01",
         Icon::Plus => "M12 5v14M5 12h14",
         Icon::Quill => "M17.25 2.25 21.75 6.75 8.25 20.25 2.25 21.75 3.75 15.75z",
+        Icon::Idea => "M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z",
     };
     let ringed = matches!(icon, Icon::Hollow);
 

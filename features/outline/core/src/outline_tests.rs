@@ -48,7 +48,7 @@ fn a_passage(named: &str) -> Attachment {
     Attachment::passage(&format!("passage_{named}"))
 }
 
-fn prose(named: &str) -> PassageLink {
+fn a_passage_link(named: &str) -> PassageLink {
     PassageLink::from(format!("passage_{named}"))
 }
 
@@ -593,7 +593,11 @@ fn several_passages_may_sit_in_one_section_in_the_order_they_are_read() {
 
     assert_eq!(
         book.outline.reading_order(),
-        vec![prose("one"), prose("two"), prose("three")]
+        vec![
+            a_passage_link("one"),
+            a_passage_link("two"),
+            a_passage_link("three")
+        ]
     );
 }
 
@@ -612,10 +616,10 @@ fn the_reading_order_walks_the_whole_book_depth_first() {
     assert_eq!(
         book.outline.reading_order(),
         vec![
-            prose("epigraph"),
-            prose("arrival"),
-            prose("rain"),
-            prose("after")
+            a_passage_link("epigraph"),
+            a_passage_link("arrival"),
+            a_passage_link("rain"),
+            a_passage_link("after")
         ]
     );
 }
@@ -719,7 +723,7 @@ fn a_snapshot_remembers_that_the_outline_was_discarded() {
 }
 
 #[test]
-fn an_idea_sits_in_a_section_as_a_note_beside_the_prose() {
+fn an_idea_sits_in_a_section_as_a_note_beside_the_passages() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
 
@@ -741,7 +745,7 @@ fn a_note_is_not_part_of_the_manuscript() {
 
     assert_eq!(
         book.outline.reading_order(),
-        vec![prose("arrival")],
+        vec![a_passage_link("arrival")],
         "an idea pinned to a chapter is a note to the author, so exporting the book must \
          walk straight past it"
     );
@@ -764,7 +768,7 @@ fn an_idea_and_a_passage_sharing_a_name_are_two_different_attachments() {
 }
 
 #[test]
-fn a_note_can_be_detached_without_touching_the_prose() {
+fn a_note_can_be_detached_without_touching_the_passages() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
     book.attaches_passage("arrival", "Chapter 1");
@@ -781,7 +785,7 @@ fn a_note_can_be_detached_without_touching_the_prose() {
 }
 
 #[test]
-fn the_index_is_told_about_notes_as_well_as_prose() {
+fn the_index_is_told_about_notes_as_well_as_passages() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
     book.attaches_passage("arrival", "Chapter 1");

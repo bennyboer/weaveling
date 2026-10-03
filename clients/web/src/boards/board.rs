@@ -46,8 +46,7 @@ pub fn TheBoard(project: String) -> impl IntoView {
         laid_out(
             corkboard(project, handles).into_any(),
             kept(handles).into_any(),
-            "Ideas",
-            move || open.unpinned().len(),
+            move || format!("Not on the board \u{00b7} {}", open.unpinned().len()),
         ),
     ))
 }

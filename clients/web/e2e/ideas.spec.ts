@@ -7,7 +7,7 @@ const ideas = (page: Page) => page.getByRole("list", { name: "Ideas" });
 const nothingYet = (page: Page) =>
   page.getByText("No ideas yet. Shoot an idea in and see where it goes.");
 
-async function capture(page: Page, idea: string) {
+async function captureIdea(page: Page, idea: string) {
   await page.getByRole("textbox", { name: "What is the idea?" }).fill(idea);
   await page.getByRole("button", { name: "Capture", exact: true }).click();
 }
@@ -22,7 +22,7 @@ test("opening a project shows its pool of ideas", async ({ page }) => {
 test("a captured idea appears in the pool", async ({ page }) => {
   await anOpenProject(page, "Capture");
 
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
 
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
   await expect(nothingYet(page)).toHaveCount(0);
@@ -34,7 +34,7 @@ test("the idea field is emptied once the idea is captured", async ({
   await anOpenProject(page, "Emptied");
   const field = page.getByRole("textbox", { name: "What is the idea?" });
 
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
 
   await expect(field).toHaveValue("");
 });
@@ -63,9 +63,9 @@ test("Enter captures the idea instead of reloading the page", async ({
 test("several ideas are all kept", async ({ page }) => {
   await anOpenProject(page, "Several");
 
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
-  await capture(page, "She never returned");
+  await captureIdea(page, "She never returned");
 
   await expect(ideas(page).getByText("She never returned")).toBeVisible();
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
@@ -73,7 +73,7 @@ test("several ideas are all kept", async ({ page }) => {
 
 test("a reload keeps the project open with its ideas", async ({ page }) => {
   await anOpenProject(page, "Reload");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
 
   await page.reload();
@@ -84,7 +84,7 @@ test("a reload keeps the project open with its ideas", async ({ page }) => {
 
 test("ideas of one project do not leak into another", async ({ page }) => {
   await anOpenProject(page, "Mine");
-  await capture(page, "Only in mine");
+  await captureIdea(page, "Only in mine");
   await expect(ideas(page).getByText("Only in mine")).toBeVisible();
 
   await anOpenProject(page, "Theirs");
@@ -131,7 +131,7 @@ test("all projects returns to the workspace", async ({ page }) => {
 
 test("a project url opened cold shows that project", async ({ page }) => {
   await anOpenProject(page, "Cold");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
   const address = page.url();
 
@@ -181,7 +181,7 @@ test("the address carries a readable slug in front of the id", async ({
 
 test("a stale slug still reaches the project", async ({ page }) => {
   await anOpenProject(page, "Stale");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
   const id = new URL(page.url()).pathname.split("-").pop();
 
@@ -195,7 +195,7 @@ test("an address with no slug at all still reaches the project", async ({
   page,
 }) => {
   await anOpenProject(page, "NoSlug");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
   const id = new URL(page.url()).pathname.split("-").pop();
 
@@ -206,7 +206,7 @@ test("an address with no slug at all still reaches the project", async ({
 
 test("clicking an idea opens it", async ({ page }) => {
   await anOpenProject(page, "Writing");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
 
   await ideas(page).getByRole("link", { name: "The loom remembers" }).click();
 

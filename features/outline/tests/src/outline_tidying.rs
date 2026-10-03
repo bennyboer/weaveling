@@ -267,7 +267,7 @@ async fn a_discarded_idea_leaves_the_book() {
 }
 
 #[tokio::test]
-async fn discarding_an_idea_leaves_the_prose_alone() {
+async fn discarding_an_idea_leaves_the_passages_alone() {
     let wired = a_workbench();
     let (outline, chapter) = a_book_noting(&wired, "idea_1").await;
 

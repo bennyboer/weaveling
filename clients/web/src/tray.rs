@@ -5,8 +5,7 @@ use leptos::{IntoView, ev};
 pub fn laid_out(
     work: AnyView,
     kept: AnyView,
-    holding: &'static str,
-    waiting: impl Fn() -> usize + Send + Sync + 'static,
+    tally: impl Fn() -> String + Send + Sync + 'static,
 ) -> impl IntoView {
     let out = RwSignal::new(false);
 
@@ -17,7 +16,7 @@ pub fn laid_out(
             .class("tray-toggle")
             .attr("aria-expanded", move || out.get().to_string())
             .on(ev::click, move |_| out.update(|shown| *shown = !*shown))
-            .child(move || format!("{holding} \u{00b7} {}", waiting())),
+            .child(tally),
         html::aside()
             .class(move || match out.get() {
                 true => "tray pulled-out",
@@ -27,7 +26,7 @@ pub fn laid_out(
                 html::button()
                     .r#type("button")
                     .class("shut")
-                    .attr("aria-label", format!("Hide the {}", holding.to_lowercase()))
+                    .attr("aria-label", "Hide the tray")
                     .on(ev::click, move |_| out.set(false))
                     .child("\u{00d7}"),
                 kept,

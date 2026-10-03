@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+use crate::ideas::model::IdeaId;
 use crate::passages::model::PassageId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -9,11 +10,17 @@ pub struct OutlineId(String);
 pub struct SectionId(String);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Attachment {
+    Passage(PassageId),
+    Idea(IdeaId),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Section {
     pub id: SectionId,
     pub parent: Option<SectionId>,
     pub title: String,
-    pub passages: Vec<PassageId>,
+    pub attachments: Vec<Attachment>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -48,10 +55,10 @@ impl Display for SectionId {
 }
 
 impl Outline {
-    pub fn holds(&self, passage: &PassageId) -> bool {
+    pub fn holds(&self, attachment: &Attachment) -> bool {
         self.sections
             .iter()
-            .any(|section| section.passages.contains(passage))
+            .any(|section| section.attachments.contains(attachment))
     }
 
     pub fn siblings_of(&self, section: &SectionId) -> Vec<SectionId> {

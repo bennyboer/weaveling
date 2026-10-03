@@ -13,7 +13,7 @@ import {
 } from "./support/board";
 import {
   anOpenProject,
-  capture,
+  captureIdea,
   onTheBoard,
   openTheBoard,
 } from "./support/shell";
@@ -25,7 +25,7 @@ type Page = Parameters<Parameters<typeof test>[1]>[0]["page"];
 
 test("dragging the bare board carries the cards with it", async ({ page }) => {
   await anOpenProject(page, "Panning");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const before = await seenAt(page, "The loom remembers");
@@ -43,7 +43,7 @@ test("dragging the bare board carries the cards with it", async ({ page }) => {
 
 test("an idea pinned beyond the edge can be panned to", async ({ page }) => {
   await anOpenProject(page, "FarAway");
-  await capture(page, "Far away");
+  await captureIdea(page, "Far away");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin Far away" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
@@ -81,7 +81,7 @@ test("a plain wheel leaves the board alone and scrolls the page", async ({
   page,
 }) => {
   await anOpenProject(page, "Wheeling");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const before = await seenAt(page, "The loom remembers");
@@ -103,7 +103,7 @@ test("a plain wheel leaves the board alone and scrolls the page", async ({
 
 test("holding ctrl turns the wheel into a zoom", async ({ page }) => {
   await anOpenProject(page, "Zooming");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const before = await seenAt(page, "The loom remembers");
@@ -130,7 +130,7 @@ test("the zoom controls take the board in and out and back to where it started",
   page,
 }) => {
   await anOpenProject(page, "ZoomControls");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const reading = zooming(page).getByRole("button", { name: "Reset the zoom" });
@@ -159,7 +159,7 @@ test("resetting the zoom keeps the board where it was panned to", async ({
   page,
 }) => {
   await anOpenProject(page, "ResetKeepsPan");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -186,7 +186,7 @@ test("the zoom buttons hold the middle of the board still", async ({
   page,
 }) => {
   await anOpenProject(page, "ZoomFromMiddle");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const board = await corkboard(page).boundingBox();
@@ -222,7 +222,7 @@ test("a card dragged on a zoomed board still lands under the pointer", async ({
   page,
 }) => {
   await anOpenProject(page, "ZoomedDrag");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -248,7 +248,7 @@ test("the action bar keeps its size however far the board is zoomed out", async 
   page,
 }) => {
   await anOpenProject(page, "BarSize");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -270,8 +270,8 @@ test("an idea is pinned where the author is looking, not at the board's origin",
   page,
 }) => {
   await anOpenProject(page, "PinInView");
-  await capture(page, "The loom remembers");
-  await capture(page, "She never returned");
+  await captureIdea(page, "The loom remembers");
+  await captureIdea(page, "She never returned");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
@@ -293,7 +293,7 @@ test("an idea is pinned where the author is looking, not at the board's origin",
 
 test("the board itself does not scroll any more", async ({ page }) => {
   await anOpenProject(page, "NoScroll");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -315,7 +315,7 @@ test("the action bar follows its card when the board is zoomed", async ({
   page,
 }) => {
   await anOpenProject(page, "BarFollowsZoom");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -339,7 +339,7 @@ test("pressing the bare board to pan lets go of the selected card", async ({
   page,
 }) => {
   await anOpenProject(page, "PanDeselects");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -356,7 +356,7 @@ test("the surface the board is drawn on carries no styling of its own", async ({
   page,
 }) => {
   await anOpenProject(page, "BareSurface");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -389,7 +389,7 @@ test("a card can be dragged past the origin onto negative ground", async ({
   page,
 }) => {
   await anOpenProject(page, "BehindOrigin");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(cardNamed(page, "The loom remembers")).toHaveAttribute(
@@ -416,7 +416,7 @@ test("panning the board does not drag a text selection along with it", async ({
   page,
 }) => {
   await anOpenProject(page, "NoSelection");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -436,7 +436,7 @@ test("clicking a selected card never takes its action bar away", async ({
   page,
 }) => {
   await anOpenProject(page, "NoFlash");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");

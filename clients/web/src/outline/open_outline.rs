@@ -2,10 +2,12 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 
 use crate::http::ApiError;
-use crate::outline::model::{Outline, Section, SectionId};
+use crate::ideas::model::Idea;
+use crate::ideas::service as idea_service;
+use crate::outline::model::{Attachment, Outline, Section, SectionId};
 use crate::outline::service;
-use crate::passages::model::{Passage, PassageId};
-use crate::passages::service as passages;
+use crate::passages::model::Passage;
+use crate::passages::service as passage_service;
 use crate::projects::model::ProjectId;
 use crate::route;
 
@@ -13,15 +15,16 @@ use crate::route;
 pub struct OpenOutline {
     problem: RwSignal<Option<ApiError>>,
     outline: RwSignal<Option<Outline>>,
-    pool: RwSignal<Option<Vec<Passage>>>,
+    passages: RwSignal<Option<Vec<Passage>>>,
+    ideas: RwSignal<Option<Vec<Idea>>>,
     added: RwSignal<Option<SectionId>>,
     adding: Action<(Option<SectionId>, Option<SectionId>, String), ()>,
     retitling: Action<(SectionId, String), ()>,
     urging: Action<(SectionId, Urge), ()>,
     placing: Action<(SectionId, Option<SectionId>, Option<SectionId>), ()>,
     removing: Action<SectionId, ()>,
-    attaching: Action<(PassageId, SectionId), ()>,
-    detaching: Action<PassageId, ()>,
+    attaching: Action<(Attachment, SectionId), ()>,
+    detaching: Action<Attachment, ()>,
     writing: Action<SectionId, ()>,
 }
 
@@ -37,7 +40,8 @@ impl OpenOutline {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let outline = RwSignal::new(None::<Outline>);
-        let pool = RwSignal::new(None::<Vec<Passage>>);
+        let passages = RwSignal::new(None::<Vec<Passage>>);
+        let ideas = RwSignal::new(None::<Vec<Idea>>);
         let added = RwSignal::new(None::<SectionId>);
 
         let arrived = move |told: Outline| {
@@ -60,14 +64,30 @@ impl OpenOutline {
                 let id = id.clone();
 
                 async move {
-                    match passages::in_project(&id).await {
-                        Ok(found) => pool.set(Some(found)),
+                    match passage_service::in_project(&id).await {
+                        Ok(found) => passages.set(Some(found)),
                         Err(failure) => problem.set(Some(failure)),
                     }
                 }
             })
         };
         listing.dispatch(());
+
+        let noting = {
+            let id = project.clone();
+
+            Action::new_local(move |()| {
+                let id = id.clone();
+
+                async move {
+                    match idea_service::list(&id).await {
+                        Ok(found) => ideas.set(Some(found)),
+                        Err(failure) => problem.set(Some(failure)),
+                    }
+                }
+            })
+        };
+        noting.dispatch(());
 
         let opening = {
             let id = project.clone();
@@ -170,8 +190,8 @@ impl OpenOutline {
             }
         });
 
-        let attaching = Action::new_local(move |(passage, to): &(PassageId, SectionId)| {
-            let passage = passage.clone();
+        let attaching = Action::new_local(move |(attachment, to): &(Attachment, SectionId)| {
+            let attachment = attachment.clone();
             let to = to.clone();
 
             async move {
@@ -182,25 +202,25 @@ impl OpenOutline {
                     .sections
                     .iter()
                     .find(|section| section.id == to)
-                    .and_then(|section| section.passages.last().cloned());
+                    .and_then(|section| section.attachments.last().cloned());
 
-                settled(service::attach(&open.id, &passage, &to, behind).await);
+                settled(service::attach(&open.id, &attachment, &to, behind).await);
             }
         });
 
-        let detaching = Action::new_local(move |passage: &PassageId| {
-            let passage = passage.clone();
+        let detaching = Action::new_local(move |attachment: &Attachment| {
+            let attachment = attachment.clone();
 
             async move {
                 let Some(open) = outline.get_untracked() else {
                     return;
                 };
 
-                match service::detach(&open.id, &passage).await {
+                match service::detach(&open.id, &attachment).await {
                     Ok(()) => outline.update(|held| {
                         if let Some(held) = held {
                             for section in &mut held.sections {
-                                section.passages.retain(|held| held != &passage);
+                                section.attachments.retain(|held| held != &attachment);
                             }
                         }
                     }),
@@ -218,13 +238,13 @@ impl OpenOutline {
                 let opening = use_navigate();
 
                 async move {
-                    let started = match passages::create(&id).await {
+                    let started = match passage_service::create(&id).await {
                         Ok(started) => started,
                         Err(failure) => return problem.set(Some(failure)),
                     };
 
-                    pool.update(|held| held.get_or_insert_default().push(started.clone()));
-                    attaching.dispatch((started.id.clone(), to));
+                    passages.update(|held| held.get_or_insert_default().push(started.clone()));
+                    attaching.dispatch((Attachment::Passage(started.id.clone()), to));
                     opening(
                         &route::passage(&id.to_string(), &started.id),
                         Default::default(),
@@ -236,7 +256,8 @@ impl OpenOutline {
         Self {
             problem,
             outline,
-            pool,
+            passages,
+            ideas,
             added,
             adding,
             retitling,
@@ -268,14 +289,14 @@ impl OpenOutline {
             .unwrap_or_default()
     }
 
-    pub fn passages_in(&self, section: &SectionId) -> Vec<PassageId> {
+    pub fn attachments_in(&self, section: &SectionId) -> Vec<Attachment> {
         self.outline
             .with(|held| {
                 held.as_ref().and_then(|held| {
                     held.sections
                         .iter()
                         .find(|known| &known.id == section)
-                        .map(|known| known.passages.clone())
+                        .map(|known| known.attachments.clone())
                 })
             })
             .unwrap_or_default()
@@ -307,27 +328,51 @@ impl OpenOutline {
             .unwrap_or_default()
     }
 
-    pub fn unplaced(&self) -> Vec<Passage> {
+    pub fn waiting_passages(&self) -> Vec<Passage> {
         let Some(open) = self.outline.get() else {
             return Vec::new();
         };
 
-        self.pool
+        self.passages
             .get()
             .unwrap_or_default()
             .into_iter()
-            .filter(|passage| !open.holds(&passage.id))
+            .filter(|passage| !open.holds(&Attachment::Passage(passage.id.clone())))
             .collect()
     }
 
-    pub fn named(&self, passage: &PassageId) -> String {
-        self.pool
+    pub fn waiting_ideas(&self) -> Vec<Idea> {
+        let Some(open) = self.outline.get() else {
+            return Vec::new();
+        };
+
+        self.ideas
             .get()
             .unwrap_or_default()
             .into_iter()
-            .find(|held| &held.id == passage)
-            .map(|held| held.shown_as().to_owned())
-            .unwrap_or_default()
+            .filter(|idea| !open.holds(&Attachment::Idea(idea.id.clone())))
+            .collect()
+    }
+
+    pub fn named(&self, attachment: &Attachment) -> String {
+        match attachment {
+            Attachment::Passage(passage) => self
+                .passages
+                .get()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|held| &held.id == passage)
+                .map(|held| held.shown_as())
+                .unwrap_or_default(),
+            Attachment::Idea(idea) => self
+                .ideas
+                .get()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|held| &held.id == idea)
+                .map(|held| held.shown_as().to_owned())
+                .unwrap_or_default(),
+        }
     }
 
     pub fn just_added(&self) -> Option<SectionId> {
@@ -382,12 +427,12 @@ impl OpenOutline {
         self.removing.dispatch(section);
     }
 
-    pub fn attach(&self, passage: PassageId, to: SectionId) {
-        self.attaching.dispatch((passage, to));
+    pub fn attach(&self, attachment: Attachment, to: SectionId) {
+        self.attaching.dispatch((attachment, to));
     }
 
-    pub fn detach(&self, passage: PassageId) {
-        self.detaching.dispatch(passage);
+    pub fn detach(&self, attachment: Attachment) {
+        self.detaching.dispatch(attachment);
     }
 
     pub fn write_in(&self, section: SectionId) {

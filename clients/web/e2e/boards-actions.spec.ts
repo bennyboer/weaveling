@@ -9,14 +9,14 @@ import {
 } from "./support/board";
 import {
   anOpenProject,
-  capture,
+  captureIdea,
   onTheBoard,
   openTheBoard,
 } from "./support/shell";
 
 test("a pinned idea opens from the board", async ({ page }) => {
   await anOpenProject(page, "Writing");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -30,7 +30,7 @@ test("a pinned idea opens from the board", async ({ page }) => {
 
 test("an opened idea leads back to the board", async ({ page }) => {
   await anOpenProject(page, "BackToBoard");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await openTheIdea(page, "The loom remembers");
@@ -47,8 +47,8 @@ test("a single click selects a card, and the bare board deselects it", async ({
   page,
 }) => {
   await anOpenProject(page, "Selecting");
-  await capture(page, "The loom remembers");
-  await capture(page, "She never returned");
+  await captureIdea(page, "The loom remembers");
+  await captureIdea(page, "She never returned");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await page.getByRole("button", { name: "Pin She never returned" }).click();
@@ -72,7 +72,7 @@ test("a single click selects a card, and the bare board deselects it", async ({
 
 test("escape lets go of a selected card", async ({ page }) => {
   await anOpenProject(page, "Escaping");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await corkboard(page).locator(".pinned").click();
@@ -87,7 +87,7 @@ test("clicking a card's title selects it rather than opening it", async ({
   page,
 }) => {
   await anOpenProject(page, "TitleClick");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const board = page.url();
@@ -100,7 +100,7 @@ test("clicking a card's title selects it rather than opening it", async ({
 
 test("selecting a card raises an action bar over it", async ({ page }) => {
   await anOpenProject(page, "Bar");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(bar(page)).toHaveCount(0);
@@ -126,7 +126,7 @@ test("the bar drops below a card that is too near the top edge", async ({
   page,
 }) => {
   await anOpenProject(page, "BarFlip");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   const card = corkboard(page).locator(".pinned");
@@ -147,7 +147,7 @@ test("the bar drops below a card that is too near the top edge", async ({
 
 test("the bar steps aside while a card is being dragged", async ({ page }) => {
   await anOpenProject(page, "BarDrag");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -170,7 +170,7 @@ test("a card can be renamed from its bar, and the new title sticks", async ({
   page,
 }) => {
   await anOpenProject(page, "Renaming");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -195,7 +195,7 @@ test("a card can be renamed from its bar, and the new title sticks", async ({
 
 test("escape abandons a rename and keeps the old title", async ({ page }) => {
   await anOpenProject(page, "RenameEscape");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -223,7 +223,7 @@ test("arrow keys write into a title being renamed instead of moving the card", a
   page,
 }) => {
   await anOpenProject(page, "RenameKeys");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -242,7 +242,7 @@ test("arrow keys write into a title being renamed instead of moving the card", a
 
 test("the bar's open button opens the idea", async ({ page }) => {
   await anOpenProject(page, "BarOpen");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -257,7 +257,7 @@ test("the bar's open button opens the idea", async ({ page }) => {
 
 test("clicking away from a rename keeps what was typed", async ({ page }) => {
   await anOpenProject(page, "RenameAway");
-  await capture(page, "The loom remembers");
+  await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -278,8 +278,8 @@ test("clicking away from a rename keeps what was typed", async ({ page }) => {
 
 test("a rename survives the board changing underneath it", async ({ page }) => {
   await anOpenProject(page, "RenameSturdy");
-  await capture(page, "The loom remembers");
-  await capture(page, "She never returned");
+  await captureIdea(page, "The loom remembers");
+  await captureIdea(page, "She never returned");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -306,8 +306,8 @@ test("a rename survives the board changing underneath it", async ({ page }) => {
 
 test("a failure stays on screen until it is dismissed", async ({ page }) => {
   await anOpenProject(page, "Alarm");
-  await capture(page, "The loom remembers");
-  await capture(page, "She never returned");
+  await captureIdea(page, "The loom remembers");
+  await captureIdea(page, "She never returned");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
