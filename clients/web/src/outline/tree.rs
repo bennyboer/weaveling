@@ -128,19 +128,36 @@ fn branch(section: Section, held: Held) -> AnyView {
         .class("branch")
         .child((row(section, held), move || {
             let shut = held.folded.with(|shut| shut.contains(&folding));
-            let attachments = open.attachments_in(&under);
+            let (passages, ideas): (Vec<Attachment>, Vec<Attachment>) = open
+                .attachments_in(&under)
+                .into_iter()
+                .partition(|attachment| matches!(attachment, Attachment::Passage(_)));
 
             (bears(&under, held) && !shut).then(|| {
                 html::ul().class("twigs").child((
-                    attachments
-                        .iter()
-                        .map(|attachment| leaf(attachment.clone(), held))
-                        .collect::<Vec<_>>(),
+                    group("Passages", passages, held),
+                    group("Ideas", ideas, held),
                     twigs(Some(under.clone()), held),
                 ))
             })
         }))
         .into_any()
+}
+
+fn group(named: &'static str, attachments: Vec<Attachment>, held: Held) -> Option<impl IntoView> {
+    (!attachments.is_empty()).then(|| {
+        html::li().class("kind").child((
+            html::div()
+                .class("row")
+                .child(html::span().class("kind-label").child(named)),
+            html::ul().class("twigs").attr("aria-label", named).child(
+                attachments
+                    .into_iter()
+                    .map(|attachment| leaf(attachment, held))
+                    .collect::<Vec<_>>(),
+            ),
+        ))
+    })
 }
 
 fn bears(section: &SectionId, held: Held) -> bool {

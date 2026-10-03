@@ -64,6 +64,22 @@
     height: 0.95rem;
   }
 
+  .twigs > .kind:last-child::before {
+    bottom: auto;
+    height: 0.8rem;
+  }
+
+  .kind > .row {
+    height: 1.6rem;
+  }
+
+  .kind-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
   .twigs > li > .row::before {
     content: "";
     position: absolute;

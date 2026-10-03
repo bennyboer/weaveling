@@ -532,8 +532,9 @@ test("a note and a passage are drawn with different marks", async ({
   await openTheOutline(page);
   await placeIdea(page, "The loom remembers", "Chapter 1");
 
+  await expect(page.locator(".leaf")).toHaveCount(2);
   const marks = await page
-    .locator(".leaf svg path")
+    .locator(".leaf > .row > svg path")
     .evaluateAll((drawn) => drawn.map((path) => path.getAttribute("d")));
 
   expect(marks).toHaveLength(2);
@@ -575,4 +576,31 @@ test("the tally counts passages with no home, never ideas", async ({
     /^Not in the book · 1$/,
   );
   await expect(waitingIdeas(page).getByRole("button")).toHaveCount(2);
+});
+
+test("a section shows its passages and its ideas as two groups", async ({
+  page,
+}) => {
+  await aNewProject(page, "Grouping");
+  await openThePool(page);
+  await captureIdea(page, "The loom remembers");
+  await openTheOutline(page);
+  await aBookOf(page, ["Chapter 1"]);
+  await page.keyboard.press("Escape");
+  await placeIdea(page, "The loom remembers", "Chapter 1");
+  await page.getByRole("button", { name: "Write in Chapter 1" }).click();
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+
+  await openTheOutline(page);
+
+  await expect(
+    page.locator(".kind-label"),
+    "the idea went in first, so without grouping it would sit above the passage, at a place in the chapter nobody chose",
+  ).toHaveText(["Passages", "Ideas"]);
+  await expect(
+    page.getByRole("list", { name: "Passages", exact: true }),
+  ).toContainText("Empty");
+  await expect(
+    page.getByRole("list", { name: "Ideas", exact: true }),
+  ).toContainText("The loom remembers");
 });
