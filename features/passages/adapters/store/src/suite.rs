@@ -1,6 +1,11 @@
+use std::sync::Mutex;
+
+use messaging::{Message, Publisher, RoutingKey, Undelivered};
 use passages_core::{
-    FRAGMENT, IdeaLink, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+    FRAGMENT, IdeaLink, Passage, PassageChange, PassageId, PassageStore, PassageTitle, ProjectLink,
+    StoreError,
 };
+use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
@@ -12,7 +17,64 @@ pub trait Workbench: Sized {
 
     fn store(&self) -> &Self::Store;
 
+    async fn enqueued(&self) -> Vec<Message>;
+
     async fn cleanup(self);
+}
+
+#[derive(Default)]
+pub struct Heard {
+    messages: Mutex<Vec<Message>>,
+}
+
+#[async_trait::async_trait]
+impl Publisher for Heard {
+    async fn publish(&self, message: Message) -> Result<(), Undelivered> {
+        self.messages
+            .lock()
+            .expect("the heard messages are never poisoned")
+            .push(message);
+
+        Ok(())
+    }
+}
+
+impl Heard {
+    pub fn messages(&self) -> Vec<Message> {
+        self.messages
+            .lock()
+            .expect("the heard messages are never poisoned")
+            .clone()
+    }
+}
+
+pub fn message_for(change: &PassageChange, at: OffsetDateTime) -> Message {
+    let (routing, payload) = match change {
+        PassageChange::IdeaLinked { passage, idea } => (
+            "passage.idea.linked",
+            json!({ "passage": passage.to_string(), "idea": idea.to_string() }),
+        ),
+        PassageChange::IdeaUnlinked { passage, idea } => (
+            "passage.idea.unlinked",
+            json!({ "passage": passage.to_string(), "idea": idea.to_string() }),
+        ),
+        PassageChange::Deleted { passage } => {
+            ("passage.deleted", json!({ "passage": passage.to_string() }))
+        }
+    };
+
+    Message::opening(
+        RoutingKey::parse(routing).expect("a plain key is fine"),
+        payload,
+        at,
+    )
+}
+
+fn told(messages: Vec<Message>) -> Vec<(String, Value)> {
+    messages
+        .into_iter()
+        .map(|message| (message.routing.to_string(), message.payload))
+        .collect()
 }
 
 pub fn at(seconds: i64) -> OffsetDateTime {
@@ -612,6 +674,109 @@ pub async fn linking_leaves_the_title_and_the_text_alone(store: &impl PassageSto
     assert_eq!(found.text(), "The loom stood silent.");
 }
 
+pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+
+    for _ in 0..2 {
+        store
+            .link(id, &an_idea("idea_1"))
+            .await
+            .expect("link should succeed");
+    }
+
+    assert_eq!(
+        told(bench.enqueued().await),
+        vec![(
+            "passage.idea.linked".to_owned(),
+            json!({ "passage": id.to_string(), "idea": "idea_1" })
+        )],
+        "a link that was already there changes nothing, so a listener must not hear it twice"
+    );
+}
+
+pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+    store
+        .link(id, &an_idea("idea_1"))
+        .await
+        .expect("link should succeed");
+
+    store
+        .unlink(id, &an_idea("idea_1"))
+        .await
+        .expect("unlink should succeed");
+    store
+        .unlink(id, &an_idea("idea_never"))
+        .await
+        .expect("unlinking nothing should succeed");
+
+    let heard: Vec<String> = told(bench.enqueued().await)
+        .into_iter()
+        .map(|(routing, _)| routing)
+        .collect();
+    assert_eq!(heard, vec!["passage.idea.linked", "passage.idea.unlinked"]);
+}
+
+pub async fn deleting_a_passage_enqueues_a_message(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+
+    store.delete(id).await.expect("delete should succeed");
+
+    assert_eq!(
+        told(bench.enqueued().await),
+        vec![(
+            "passage.deleted".to_owned(),
+            json!({ "passage": id.to_string() })
+        )],
+        "a passage leaving takes its links with it, and whoever indexed them has to hear so"
+    );
+}
+
+pub async fn a_refused_change_enqueues_nothing(bench: &impl Workbench) {
+    let store = bench.store();
+    let missing = an_id(1_000);
+
+    let _ = store.link(missing, &an_idea("idea_1")).await;
+    let _ = store.unlink(missing, &an_idea("idea_1")).await;
+    let _ = store.delete(missing).await;
+
+    assert!(
+        bench.enqueued().await.is_empty(),
+        "an message_for of something that did not happen sends the listener after a ghost"
+    );
+}
+
+pub async fn writing_and_naming_enqueue_nothing(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+
+    store
+        .apply(id, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("apply should succeed");
+    store
+        .retitle(id, &a_title("The loom"))
+        .await
+        .expect("retitle should succeed");
+    store
+        .unlink_everywhere(&an_idea("idea_1"))
+        .await
+        .expect("unlinking everywhere should succeed");
+
+    assert!(
+        bench.enqueued().await.is_empty(),
+        "only links and deletions concern anyone outside; unlinking a discarded idea \
+         everywhere is answered by whoever heard the discard itself"
+    );
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -620,6 +785,19 @@ macro_rules! conformance_case {
 
             let bench = <$workbench>::setup().await;
             $crate::suite::$case(bench.store()).await;
+            bench.cleanup().await;
+        }
+    };
+}
+
+macro_rules! enqueuing_case {
+    ($workbench:ty, $case:ident) => {
+        #[tokio::test]
+        async fn $case() {
+            use $crate::suite::Workbench;
+
+            let bench = <$workbench>::setup().await;
+            $crate::suite::$case(&bench).await;
             bench.cleanup().await;
         }
     };
@@ -674,7 +852,15 @@ macro_rules! conformance_tests {
         );
         $crate::suite::conformance_case!($workbench, links_survive_further_writing);
         $crate::suite::conformance_case!($workbench, linking_leaves_the_title_and_the_text_alone);
+        $crate::suite::enqueuing_case!($workbench, linking_an_idea_enqueues_one_message);
+        $crate::suite::enqueuing_case!(
+            $workbench,
+            unlinking_enqueues_only_for_a_link_that_was_there
+        );
+        $crate::suite::enqueuing_case!($workbench, deleting_a_passage_enqueues_a_message);
+        $crate::suite::enqueuing_case!($workbench, a_refused_change_enqueues_nothing);
+        $crate::suite::enqueuing_case!($workbench, writing_and_naming_enqueue_nothing);
     };
 }
 
-pub(crate) use {conformance_case, conformance_tests};
+pub(crate) use {conformance_case, conformance_tests, enqueuing_case};

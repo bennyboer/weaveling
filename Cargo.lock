@@ -3826,8 +3826,10 @@ name = "weaveling-passages-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
  "serde_json",
  "thiserror",
+ "time",
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-ideas-contract",
@@ -3853,9 +3855,13 @@ name = "weaveling-passages-store"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde_json",
  "sqlx",
  "time",
  "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
  "weaveling-passages-core",
  "weaveling-test-harness",
  "yrs",

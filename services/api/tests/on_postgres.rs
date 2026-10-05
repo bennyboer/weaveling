@@ -527,3 +527,64 @@ async fn discarding_an_idea_unlinks_it_from_every_passage() {
     relays.stop().await;
     fixture.cleanup().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn linking_an_idea_is_announced_and_relayed() {
+    use eventsourcing::Cadence;
+    use weaveling_service_api::Relays;
+
+    let fixture = PostgresFixture::setup().await;
+    let databases = a_schema_each(&fixture).await;
+    let clock = Arc::new(SystemClock);
+    let adapters = Adapters::postgres(clock, &databases);
+    let outboxes = adapters.outboxes();
+    let consuming = adapters.consuming();
+    let server = TestServer::new(app(adapters));
+
+    let relays = Relays::started(
+        outboxes,
+        consuming,
+        Cadence {
+            deliver_every: std::time::Duration::from_millis(10),
+            sweep_every: std::time::Duration::from_secs(3_600),
+            deliver_at_most: 16,
+            sweep_at_most: 16,
+            kept_for: time::Duration::days(90),
+        },
+    );
+
+    let project = a_project(&server, "Announcing").await;
+    let made = server
+        .post("/api/passages")
+        .json(&json!({ "project": project }))
+        .await;
+    made.assert_status(axum::http::StatusCode::CREATED);
+    let passage = made.json::<Value>()["id"]
+        .as_str()
+        .expect("a passage carries an id")
+        .to_owned();
+
+    server
+        .post(&format!("/api/passages/{passage}/ideas"))
+        .json(&json!({ "idea": "idea_1" }))
+        .await
+        .assert_status_ok();
+
+    assert!(
+        until(|| async {
+            let relayed: Vec<String> = sqlx::query_scalar(
+                "SELECT routing_key FROM outbox WHERE published_at IS NOT NULL ORDER BY entry",
+            )
+            .fetch_all(&databases.passages)
+            .await
+            .expect("reading the passages outbox should succeed");
+
+            relayed == vec!["passage.idea.linked".to_owned()]
+        })
+        .await,
+        "the link is written and announced in one transaction, and the passages outbox is relayed like every other"
+    );
+
+    relays.stop().await;
+    fixture.cleanup().await;
+}

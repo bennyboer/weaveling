@@ -1,3 +1,4 @@
+mod change;
 mod id;
 mod link;
 mod passage;
@@ -6,6 +7,7 @@ mod service;
 mod store;
 mod title;
 
+pub use change::PassageChange;
 pub use id::PassageId;
 pub use link::{IdeaLink, ProjectLink};
 pub use passage::{Passage, PassageError};

@@ -1,6 +1,12 @@
+use std::sync::Arc;
+
+use crate::enqueuing::{Mapping, PassageMessageMapping};
 use async_trait::async_trait;
+use clock::Clock;
+use eventsourcing::{Origin, Version, enqueue};
 use passages_core::{
-    IdeaLink, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+    IdeaLink, Passage, PassageChange, PassageId, PassageStore, PassageTitle, ProjectLink,
+    StoreError,
 };
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Postgres, Row, Transaction};
@@ -76,9 +82,12 @@ pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations")
 }
 
+const KIND: &str = "passage";
+
 pub struct PostgresPassageStore {
     pool: PgPool,
     compact_after: i64,
+    enqueuing: Option<Mapping>,
 }
 
 impl PostgresPassageStore {
@@ -90,7 +99,35 @@ impl PostgresPassageStore {
         Self {
             pool,
             compact_after: updates,
+            enqueuing: None,
         }
+    }
+
+    pub fn enqueuing(self, clock: Arc<dyn Clock>, message_for: PassageMessageMapping) -> Self {
+        Self {
+            enqueuing: Some(Mapping::new(clock, message_for)),
+            ..self
+        }
+    }
+
+    async fn enqueue_change(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        change: PassageChange,
+    ) -> Result<(), StoreError> {
+        let Some(mapping) = &self.enqueuing else {
+            return Ok(());
+        };
+        let passage = change.passage().to_string();
+        let origin = Origin {
+            aggregate: &passage,
+            kind: KIND,
+            version: Version::ZERO,
+        };
+
+        enqueue(transaction, origin, &mapping.message(&change))
+            .await
+            .map_err(unreachable)
     }
 
     pub async fn compact(&self, id: PassageId) -> Result<bool, StoreError> {
@@ -272,37 +309,63 @@ impl PassageStore for PostgresPassageStore {
     }
 
     async fn link(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
-        sqlx::query(LINK)
+        let mut transaction = self.begin().await?;
+
+        let linked = sqlx::query(LINK)
             .bind(id.to_string())
             .bind(idea.as_str())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(|failure| match is_unknown(&failure) {
                 true => StoreError::NotFound(id),
                 false => unreachable(failure),
             })?;
 
-        Ok(())
+        if linked.rows_affected() > 0 {
+            self.enqueue_change(
+                &mut transaction,
+                PassageChange::IdeaLinked {
+                    passage: id,
+                    idea: idea.clone(),
+                },
+            )
+            .await?;
+        }
+
+        transaction.commit().await.map_err(unreachable)
     }
 
     async fn unlink(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
+        let mut transaction = self.begin().await?;
+
         let known: Option<i32> = sqlx::query_scalar(EXISTS)
             .bind(id.to_string())
-            .fetch_optional(&self.pool)
+            .fetch_optional(&mut *transaction)
             .await
             .map_err(unreachable)?;
         if known.is_none() {
             return Err(StoreError::NotFound(id));
         }
 
-        sqlx::query(UNLINK)
+        let unlinked = sqlx::query(UNLINK)
             .bind(id.to_string())
             .bind(idea.as_str())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        if unlinked.rows_affected() > 0 {
+            self.enqueue_change(
+                &mut transaction,
+                PassageChange::IdeaUnlinked {
+                    passage: id,
+                    idea: idea.clone(),
+                },
+            )
+            .await?;
+        }
+
+        transaction.commit().await.map_err(unreachable)
     }
 
     async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
@@ -340,15 +403,20 @@ impl PassageStore for PostgresPassageStore {
     }
 
     async fn delete(&self, id: PassageId) -> Result<(), StoreError> {
+        let mut transaction = self.begin().await?;
+
         let gone = sqlx::query(FORGET)
             .bind(id.to_string())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
-
-        match gone.rows_affected() {
-            0 => Err(StoreError::NotFound(id)),
-            _ => Ok(()),
+        if gone.rows_affected() == 0 {
+            return Err(StoreError::NotFound(id));
         }
+
+        self.enqueue_change(&mut transaction, PassageChange::Deleted { passage: id })
+            .await?;
+
+        transaction.commit().await.map_err(unreachable)
     }
 }

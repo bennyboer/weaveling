@@ -35,7 +35,7 @@ impl Adapters {
 
         Self {
             projects: projects_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
-            passages: passages_wiring::Ports::in_memory(),
+            passages: passages_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             ideas: ideas_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             boards: boards_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             outline: outline_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
@@ -58,7 +58,11 @@ impl Adapters {
                 dispatcher.clone(),
                 clock.clone(),
             ),
-            passages: passages_wiring::Ports::postgres(databases.passages.clone()),
+            passages: passages_wiring::Ports::postgres(
+                databases.passages.clone(),
+                dispatcher.clone(),
+                clock.clone(),
+            ),
             ideas: ideas_wiring::Ports::postgres(
                 databases.ideas.clone(),
                 dispatcher.clone(),
@@ -94,6 +98,7 @@ impl Adapters {
             self.ideas.outbox.clone(),
             self.boards.outbox.clone(),
             self.outline.outbox.clone(),
+            self.passages.outbox.clone(),
         ]
     }
 }

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use eventsourcing::{InMemoryOutbox, Outbox};
 use passages_core::{PassageService, PassageStore};
 use passages_messaging::{DeleteOnProjectDeleted, UnlinkOnDiscard};
 use passages_store::InMemoryPassageStore;
@@ -8,19 +9,41 @@ use wiring::{Context, Wired};
 
 pub struct Ports {
     pub store: Arc<dyn PassageStore>,
+    pub outbox: Arc<dyn Outbox>,
 }
 
 impl Ports {
-    pub fn in_memory() -> Self {
+    pub fn in_memory(
+        publisher: Arc<dyn messaging::Publisher>,
+        clock: Arc<dyn clock::Clock>,
+    ) -> Self {
+        let outbox = Arc::new(InMemoryOutbox::new(publisher, clock.clone()));
+
         Self {
-            store: Arc::new(InMemoryPassageStore::new()),
+            store: Arc::new(InMemoryPassageStore::new().enqueuing_to(
+                outbox.clone(),
+                clock,
+                passages_messaging::message_for,
+            )),
+            outbox,
         }
     }
 
     #[cfg(feature = "postgres")]
-    pub fn postgres(pool: sqlx::PgPool) -> Self {
+    pub fn postgres(
+        pool: sqlx::PgPool,
+        publisher: Arc<dyn messaging::Publisher>,
+        clock: Arc<dyn clock::Clock>,
+    ) -> Self {
+        use eventsourcing::PostgresOutbox;
+        use passages_store::PostgresPassageStore;
+
         Self {
-            store: Arc::new(passages_store::PostgresPassageStore::new(pool)),
+            store: Arc::new(
+                PostgresPassageStore::new(pool.clone())
+                    .enqueuing(clock.clone(), passages_messaging::message_for),
+            ),
+            outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
         }
     }
 }
@@ -45,14 +68,6 @@ pub const NAME: &str = "passages";
 
 #[cfg(feature = "postgres")]
 pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
+    wiring::database::lay_out(NAME, pool, eventsourcing::migrations()).await?;
     wiring::database::lay_out(NAME, pool, passages_store::migrations()).await
-}
-
-#[cfg(feature = "postgres")]
-pub fn outbox(
-    _pool: &sqlx::PgPool,
-    _publisher: Arc<dyn messaging::Publisher>,
-    _clock: Arc<dyn clock::Clock>,
-) -> Option<eventsourcing::PostgresOutbox> {
-    None
 }

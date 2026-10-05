@@ -1,22 +1,49 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use clock::FixedClock;
+use eventsourcing::{Outbox, PostgresOutbox};
+use messaging::Message;
 use passages_core::{IdeaLink, PassageStore, StoreError};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
 use crate::postgres::{PostgresPassageStore, migrations};
-use crate::suite::{Workbench, a_paragraph, a_passage, an_id};
+use crate::suite::{Heard, Workbench, a_paragraph, a_passage, an_id, at, message_for};
 
 struct OnPostgres {
     fixture: PostgresFixture,
     pool: PgPool,
     store: PostgresPassageStore,
+    heard: Arc<Heard>,
 }
 
 struct Compacting(OnPostgres);
 
+fn a_clock() -> Arc<FixedClock> {
+    Arc::new(FixedClock::new(at(2_000)))
+}
+
+fn enqueuing(store: PostgresPassageStore) -> PostgresPassageStore {
+    store.enqueuing(a_clock(), message_for)
+}
+
+async fn relayed(pool: &PgPool, heard: &Arc<Heard>) -> Vec<Message> {
+    PostgresOutbox::new(pool.clone(), heard.clone(), a_clock())
+        .deliver(100)
+        .await
+        .expect("the outbox should deliver");
+
+    heard.messages()
+}
+
 async fn a_migrated_schema() -> (PostgresFixture, PgPool) {
     let fixture = PostgresFixture::setup().await;
     let pool = fixture.create_schema("passages").await;
+    eventsourcing::migrations()
+        .run(&pool)
+        .await
+        .expect("the outbox should lay down in an empty namespace");
     migrations()
         .run(&pool)
         .await
@@ -34,13 +61,18 @@ impl Workbench for OnPostgres {
 
         Self {
             fixture,
-            store: PostgresPassageStore::new(pool.clone()),
+            store: enqueuing(PostgresPassageStore::new(pool.clone())),
             pool,
+            heard: Arc::new(Heard::default()),
         }
     }
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    async fn enqueued(&self) -> Vec<Message> {
+        relayed(&self.pool, &self.heard).await
     }
 
     async fn cleanup(self) {
@@ -57,13 +89,18 @@ impl Workbench for Compacting {
 
         Self(OnPostgres {
             fixture,
-            store: PostgresPassageStore::compacting_after(pool.clone(), 1),
+            store: enqueuing(PostgresPassageStore::compacting_after(pool.clone(), 1)),
             pool,
+            heard: Arc::new(Heard::default()),
         })
     }
 
     fn store(&self) -> &Self::Store {
         &self.0.store
+    }
+
+    async fn enqueued(&self) -> Vec<Message> {
+        relayed(&self.0.pool, &self.0.heard).await
     }
 
     async fn cleanup(self) {

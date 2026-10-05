@@ -1,9 +1,13 @@
 use std::collections::HashMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+use crate::enqueuing::{Mapping, PassageMessageMapping};
 use async_trait::async_trait;
+use clock::Clock;
+use eventsourcing::InMemoryOutbox;
 use passages_core::{
-    IdeaLink, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+    IdeaLink, Passage, PassageChange, PassageId, PassageStore, PassageTitle, ProjectLink,
+    StoreError,
 };
 
 type Passages = HashMap<PassageId, StoredPassage>;
@@ -16,14 +20,33 @@ struct StoredPassage {
     state: Vec<u8>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct InMemoryPassageStore {
     passages: RwLock<Passages>,
+    enqueuing: Option<(Arc<InMemoryOutbox>, Mapping)>,
 }
 
 impl InMemoryPassageStore {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn enqueuing_to(
+        self,
+        outbox: Arc<InMemoryOutbox>,
+        clock: Arc<dyn Clock>,
+        message_for: PassageMessageMapping,
+    ) -> Self {
+        Self {
+            enqueuing: Some((outbox, Mapping::new(clock, message_for))),
+            ..self
+        }
+    }
+
+    fn enqueue_change(&self, change: PassageChange) {
+        if let Some((outbox, mapping)) = &self.enqueuing {
+            outbox.enqueue(mapping.message(&change));
+        }
     }
 
     fn read(&self) -> RwLockReadGuard<'_, Passages> {
@@ -113,6 +136,10 @@ impl PassageStore for InMemoryPassageStore {
 
         if !stored.ideas.contains(idea) {
             stored.ideas.push(idea.clone());
+            self.enqueue_change(PassageChange::IdeaLinked {
+                passage: id,
+                idea: idea.clone(),
+            });
         }
 
         Ok(())
@@ -121,7 +148,15 @@ impl PassageStore for InMemoryPassageStore {
     async fn unlink(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
         let mut passages = self.write();
         let stored = passages.get_mut(&id).ok_or(StoreError::NotFound(id))?;
+        let before = stored.ideas.len();
         stored.ideas.retain(|held| held != idea);
+
+        if stored.ideas.len() < before {
+            self.enqueue_change(PassageChange::IdeaUnlinked {
+                passage: id,
+                idea: idea.clone(),
+            });
+        }
 
         Ok(())
     }
@@ -154,30 +189,56 @@ impl PassageStore for InMemoryPassageStore {
     }
 
     async fn delete(&self, id: PassageId) -> Result<(), StoreError> {
-        self.write()
-            .remove(&id)
-            .map(|_| ())
-            .ok_or(StoreError::NotFound(id))
+        let mut passages = self.write();
+        passages.remove(&id).ok_or(StoreError::NotFound(id))?;
+        self.enqueue_change(PassageChange::Deleted { passage: id });
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::suite::Workbench;
+    use clock::FixedClock;
+    use eventsourcing::Outbox;
+    use messaging::Message;
 
-    struct InMemory(InMemoryPassageStore);
+    use super::*;
+    use crate::suite::{Heard, Workbench, at, message_for};
+
+    struct InMemory {
+        store: InMemoryPassageStore,
+        outbox: Arc<InMemoryOutbox>,
+        heard: Arc<Heard>,
+    }
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemoryPassageStore;
 
         async fn setup() -> Self {
-            Self(InMemoryPassageStore::new())
+            let clock = Arc::new(FixedClock::new(at(2_000)));
+            let heard = Arc::new(Heard::default());
+            let outbox = Arc::new(InMemoryOutbox::new(heard.clone(), clock.clone()));
+
+            Self {
+                store: InMemoryPassageStore::new().enqueuing_to(outbox.clone(), clock, message_for),
+                outbox,
+                heard,
+            }
         }
 
         fn store(&self) -> &Self::Store {
-            &self.0
+            &self.store
+        }
+
+        async fn enqueued(&self) -> Vec<Message> {
+            self.outbox
+                .deliver(100)
+                .await
+                .expect("the in-memory outbox always delivers");
+
+            self.heard.messages()
         }
 
         async fn cleanup(self) {}
