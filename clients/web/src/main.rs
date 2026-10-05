@@ -3,6 +3,7 @@ mod boards;
 mod http;
 mod icons;
 mod ideas;
+mod inputs;
 mod outline;
 mod passages;
 mod projects;

@@ -5,9 +5,10 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlElement, HtmlInputElement};
+use web_sys::HtmlElement;
 
 use crate::icons::{Icon, mark};
+use crate::inputs::typed;
 use crate::outline::model::{Attachment, Section, SectionId};
 use crate::outline::open_outline::{OpenOutline, Urge};
 use crate::route;
@@ -685,12 +686,6 @@ fn shown_or_blank(shown: &str) -> String {
         true => "Untitled".to_owned(),
         false => shown.to_owned(),
     }
-}
-
-fn typed(event: &ev::Event) -> Option<HtmlInputElement> {
-    event
-        .target()
-        .and_then(|it| it.dyn_into::<HtmlInputElement>().ok())
 }
 
 fn settle(event: &ev::Event, section: &SectionId, open: OpenOutline) {
