@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
+use crate::ideas::model::IdeaId;
+
 const OPENING: usize = 40;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -9,6 +11,7 @@ pub struct PassageId(String);
 pub struct Passage {
     pub id: PassageId,
     pub title: String,
+    pub ideas: Vec<IdeaId>,
     pub text: String,
 }
 

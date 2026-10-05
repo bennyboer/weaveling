@@ -57,7 +57,7 @@ impl OpenOutline {
             Err(failure) => problem.set(Some(failure)),
         };
 
-        let listing = {
+        let listing_passages = {
             let id = project.clone();
 
             Action::new_local(move |()| {
@@ -71,9 +71,9 @@ impl OpenOutline {
                 }
             })
         };
-        listing.dispatch(());
+        listing_passages.dispatch(());
 
-        let noting = {
+        let listing_ideas = {
             let id = project.clone();
 
             Action::new_local(move |()| {
@@ -87,7 +87,7 @@ impl OpenOutline {
                 }
             })
         };
-        noting.dispatch(());
+        listing_ideas.dispatch(());
 
         let opening = {
             let id = project.clone();

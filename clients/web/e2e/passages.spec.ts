@@ -173,3 +173,125 @@ test("retitling leaves the editor as it was", async ({ page }) => {
   ).toBe(true);
   await expect(page.getByText("Synced", { exact: true })).toBeVisible();
 });
+
+async function aPassageWithIdeasToLink(
+  page: Page,
+  named: string,
+  ideas: string[],
+) {
+  await aNewProject(page, named);
+  const project = new URL(page.url()).pathname.split("/").pop()!;
+
+  for (const title of ideas) {
+    const captured = await page.request.post(`${API}/ideas`, {
+      data: { project: idIn(project), title },
+    });
+    expect(captured.status()).toBe(201);
+  }
+  const made = await page.request.post(`${API}/passages`, {
+    data: { project: idIn(project) },
+  });
+  const { id: passage } = await made.json();
+
+  await page.goto(`/projects/${project}/passages/${passage}`);
+  await expect(surface(page)).toBeVisible();
+}
+
+const drawnFrom = (page: Page) =>
+  page.getByRole("list", { name: "Drawn from", exact: true });
+
+const linkDialog = (page: Page) =>
+  page.getByRole("dialog", { name: "Link ideas" });
+
+async function linkIdeas(page: Page, ideas: string[]) {
+  await page.getByRole("button", { name: "Link an idea" }).click();
+  for (const idea of ideas) {
+    await linkDialog(page).getByRole("checkbox", { name: idea }).check();
+  }
+  await linkDialog(page).getByRole("button", { name: /^Link/ }).click();
+  await expect(linkDialog(page)).toHaveCount(0);
+}
+
+test("ideas linked from the dialog are listed in the order they were picked", async ({
+  page,
+}) => {
+  await aPassageWithIdeasToLink(page, "Linking", [
+    "A girl in a wood",
+    "The loom remembers",
+    "Her brother's lie",
+  ]);
+
+  await linkIdeas(page, ["Her brother's lie", "A girl in a wood"]);
+
+  await expect(drawnFrom(page).getByRole("listitem")).toHaveText([
+    "Her brother's lie",
+    "A girl in a wood",
+  ]);
+  await page.reload();
+  await expect(
+    drawnFrom(page).getByRole("listitem"),
+    "the links are the passage's own, so they come back from the server rather than living in the page",
+  ).toHaveText(["Her brother's lie", "A girl in a wood"]);
+});
+
+test("an idea can be unlinked again", async ({ page }) => {
+  await aPassageWithIdeasToLink(page, "Unlinking", [
+    "A girl in a wood",
+    "The loom remembers",
+  ]);
+  await linkIdeas(page, ["A girl in a wood", "The loom remembers"]);
+
+  await page.getByRole("button", { name: "Unlink A girl in a wood" }).click();
+
+  await expect(drawnFrom(page).getByRole("listitem")).toHaveText([
+    "The loom remembers",
+  ]);
+});
+
+test("the dialog offers only ideas not yet linked, and finds them by name", async ({
+  page,
+}) => {
+  await aPassageWithIdeasToLink(page, "Offering", [
+    "A girl in a wood",
+    "The loom remembers",
+    "Her brother's lie",
+  ]);
+  await linkIdeas(page, ["A girl in a wood"]);
+
+  await page.getByRole("button", { name: "Link an idea" }).click();
+  await expect(linkDialog(page).getByRole("checkbox")).toHaveCount(2);
+  await page.keyboard.type("loom");
+
+  await expect(
+    linkDialog(page).getByRole("checkbox"),
+    "the search box takes focus on opening, so typing straight away narrows the list",
+  ).toHaveCount(1);
+  await expect(
+    linkDialog(page).getByRole("checkbox", { name: "The loom remembers" }),
+  ).toBeVisible();
+});
+
+test("escape closes the dialog without linking anything", async ({ page }) => {
+  await aPassageWithIdeasToLink(page, "Escaping", ["A girl in a wood"]);
+  await page.getByRole("button", { name: "Link an idea" }).click();
+  await linkDialog(page)
+    .getByRole("checkbox", { name: "A girl in a wood" })
+    .check();
+
+  await page.keyboard.press("Escape");
+
+  await expect(linkDialog(page)).toHaveCount(0);
+  await expect(page.getByText("No ideas linked yet.")).toBeVisible();
+});
+
+test("a linked idea leads to the idea", async ({ page }) => {
+  await aPassageWithIdeasToLink(page, "Leading", ["A girl in a wood"]);
+  await linkIdeas(page, ["A girl in a wood"]);
+
+  await drawnFrom(page).getByRole("link", { name: "A girl in a wood" }).click();
+
+  await expect(page).toHaveURL(/\/ideas\/a-girl-in-a-wood-idea_/);
+  await expect(
+    page.getByRole("heading", { name: "A girl in a wood" }),
+  ).toBeVisible();
+});
