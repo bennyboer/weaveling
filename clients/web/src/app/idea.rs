@@ -49,7 +49,7 @@ pub fn OneIdea() -> impl IntoView {
                 })
             },
             move || match idea.get() {
-                // TODO M12 step 8: the backlinks, and the name editable in place.
+                // TODO M12 step 8: the appearances, and the name editable in place.
                 Some(found) => html::h1().child(found.shown_as().to_owned()).into_any(),
                 None => html::p().class("empty").child("Opening…").into_any(),
             },

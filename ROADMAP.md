@@ -661,7 +661,7 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 - **`ideas`** replaces `pieces` as the pool: an id, a name, optionally a kind and a description. No passage link, no position, nothing a view could want to own.
 - **`passages`** stays as it is — already a pool with its own ids and its own feature — and gains the optional idea that prompted it.
 - **The outline arranges passages**, as the board arranges ideas, which keeps *the outline holds structure, never content* true rather than breaking it.
-- **A backlinks read model**, fed by every view's events, answering *idea → where it appears*. It is what makes an inspector one read instead of five, and what lets a new view join by publishing rather than by anyone depending on it.
+- **An appearances read model** (the `appearances` feature), fed by every view's events, answering *idea → where it appears*. It is what makes an inspector one read instead of five, and what lets a new view join by publishing rather than by anyone depending on it.
 - **An inspector on the board** that can set a moment or a character without leaving the view — writing to those features, owning nothing. The board must stay usable with every inspector blank forever.
 
 **The steps, each reviewable alone:**
@@ -672,7 +672,7 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 4. **The outline arranges passages** rather than ideas. Split in two: **4a** the feature, **4b** the client. A leaf shows the passage’s opening words until [step 6](#milestone-12--ideas-and-passages) gives it a name, and a section gains **write here** — which is where a passage now comes from, since opening an idea used to be the only thing that made one.
 5. **The outline also arranges ideas**, as notes beside the content — the first tagged reference. Split in two: **5a** the feature, **5b** the client. **The two kinds must be told apart on sight**: once a section can hold both, an idea and a passage drawn with the same glyph are indistinguishable, and an idea must not open an editor — clicking one goes to the idea. Flagged from use while the outline held only passages. The tray holds both, in two labelled groups — and the tally counts only prose, because a passage with no home is a to-do while a loose idea is the normal case.
 6. **A passage has a title, and draws on any number of ideas** — both owned by the passage. Split as **6a** the title, **6b** the ideas, each server then client.
-7. **The backlinks read model** — and passages start announcing their links.
+7. **The appearances read model** — and passages start announcing their links.
 8. **The inspector, and the routes it rearranges** — in the client.
 
 **Step 2 must precede step 3, and the reason is the nastiest failure in the list.** A `Passage` today is `{ id, doc }` — it has no project, and the only route from a project to its prose runs through the piece that links it. That is exactly what [the cascade](#milestone-11a--projects-event-sourced-and-the-deletion-cascade) exploits. Take the passage off the idea first and project deletion silently stops reaching the prose: no error, no dead letter, just a book that outlives everything that could find it.
@@ -688,7 +688,7 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 
 **Where a link is made.** Two places. On the passage’s own page, a **Drawn from** section under the editor lists the linked ideas — idea glyph, a link to the idea, × to unlink — with **Link an idea** opening a **dialog**, not a tray: linking is choosing from a list rather than placing something, a tray would sit beside the text for the whole session, and there is no drop target in prose. The dialog searches the project’s ideas, hides the ones already linked, and takes several at once. The second place is the inspector of [step 8](#milestone-12--ideas-and-passages), from the board.
 
-**Step 7 needs passages to speak.** Boards and the outline publish every change, so a projection can follow them. Passages are not event-sourced and publish nothing about links — the only message they send is the sweep’s continuation. **Decided: passages announce `passage.idea.linked` and `passage.idea.unlinked`** through the publisher they already hold, so the backlinks model treats every view alike and a new view joins by publishing rather than by being asked. The alternative — the inspector asking passages directly and merging the answer — was simpler, and made passages the one special case the read model exists to avoid.
+**Step 7 needs passages to speak.** Boards and the outline publish every change, so a projection can follow them. Passages are not event-sourced and publish nothing about links — the only message they send is the sweep’s continuation. **Decided: passages announce `passage.idea.linked` and `passage.idea.unlinked`** through the publisher they already hold, so the appearances model treats every view alike and a new view joins by publishing rather than by being asked. The alternative — the inspector asking passages directly and merging the answer — was simpler, and made passages the one special case the read model exists to avoid.
 
 **Which means steps 2 and 3 partly undo M11a.** `PieceEvent::Discarded { passage }` exists *because* a passage is unreachable except through its piece; give passages their own project and that carrying is dead weight. It was right for the model as it stood, and it is cheap to remove.
 
@@ -696,8 +696,8 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 
 So the inspector is not a new surface beside the old one, it is what that route becomes:
 
-- **`/projects/{p}/ideas/{idea}` becomes the inspector** — the idea's name, and its backlinks: the boards it sits on, the passages it touches, the moments and characters it is tied to. One read, from step 7's read model.
-- **The prose gets its own route**, `/projects/{p}/passages/{passage}`, reached from the outline and from the inspector's passage backlinks. The editor itself does not change; only who links to it does.
+- **`/projects/{p}/ideas/{idea}` becomes the inspector** — the idea's name, and its appearances: the boards it sits on, the passages it touches, the moments and characters it is tied to. One read, from step 7's read model.
+- **The prose gets its own route**, `/projects/{p}/passages/{passage}`, reached from the outline and from the inspector's passage appearances. The editor itself does not change; only who links to it does.
 - **The panel on the board is the same inspector, docked**, filled from the existing selection.
 
 **The inspector follows selection, not a double-click.** Double-click on a card already means rename in place, and selection already exists (`handles.selected`, set on `focusin`). Hanging the inspector off selection costs no new gesture and takes nothing away: single click inspects, double-click still renames, and the inspector's name field is that same edit rather than a second way to do it. Double-click would have to displace rename to a worse home for no gain.
@@ -712,7 +712,7 @@ So the inspector is not a new surface beside the old one, it is what that route 
 
 **Later: controls for the tree as a whole** — collapse everything, expand everything, and whatever else turns out to be worth one click rather than a click per section. Client-only by construction: folding is a `RwSignal` in the view, and it has to stay there — expansion state in the event stream is named in [ARCHITECTURE.md](./ARCHITECTURE.md#the-outline-arranges-sections-not-pieces) as the structural failure of tree-as-model. Whether the fold should survive a reload is a separate question, and the answer there is browser storage, never the aggregate.
 
-**Done when:** an idea carries no link to any view; a view gains a new kind of relation without `ideas` changing; the backlinks read model answers in one request; and the board is usable without ever opening an inspector.
+**Done when:** an idea carries no link to any view; a view gains a new kind of relation without `ideas` changing; the appearances read model answers in one request; and the board is usable without ever opening an inspector.
 
 **Still unknown, and deliberately not gating this:** how often an idea maps one-to-one onto a passage, and what the timeline wants to hold. Those are ergonomics and they shape the *views*; the structural question was settled on lifecycle. Twenty real ideas on a board will answer them, and that is worth doing before the timeline is designed rather than before this.
 

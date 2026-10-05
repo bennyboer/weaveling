@@ -8,4 +8,6 @@ The event store, the service that drives aggregates over it, and — on PostgreS
 
 **The dual write is closed.** `append` writes the event rows and the outbox rows in one transaction and notifies on that same transaction, so there is no window where an event is durable but unannounced — and a rolled-back append announces nothing. `RelayTask` runs two loops per outbox: one delivering, woken by the notification and polling only as a backstop; one sweeping published entries past `KEPT_FOR`. `claimed_until` stops a crashed relay stranding a message, and `FOR UPDATE SKIP LOCKED` is what lets two relays run at all.
 
+**The outbox is not only for events.** `enqueue(transaction, origin, message)` puts a message into the outbox inside *any* writer's transaction, so a feature that is not event-sourced — passages, whose prose is a CRDT — announces its changes with the same guarantee: a change that rolls back is never announced, and one that commits always is. `Origin` records what the message is about (`aggregate`, `kind`, `version`); a writer with no versions passes `Version::ZERO`. The event store's own `append` goes through the same function.
+
 **`PublishingEventStore`** is the decorator for the in-memory case, which has no outbox to protect and publishes inline instead. [M11b](../../ROADMAP.md#milestone-11b--one-flow-in-every-mode) removes that difference.

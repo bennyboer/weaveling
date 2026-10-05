@@ -14,6 +14,7 @@ pub(crate) mod sample;
 #[cfg(test)]
 mod tests;
 
+pub use enqueuing::enqueue;
 pub use outbox::PostgresOutbox;
 
 use crate::outbox::MessageMapping;

@@ -1,7 +1,9 @@
+use messaging::Message;
 use sqlx::{Postgres, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
+use crate::outbox::Origin;
 use crate::postgres::{PostgresEventStore, as_bigint};
 use crate::store::StoreError;
 
@@ -13,6 +15,29 @@ const ENQUEUE: &str = "
          routing_key, payload, occurred_at)
     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ";
+
+pub async fn enqueue(
+    transaction: &mut Transaction<'_, Postgres>,
+    origin: Origin<'_>,
+    message: &Message,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(ENQUEUE)
+        .bind(origin.aggregate)
+        .bind(origin.kind)
+        .bind(as_bigint(origin.version))
+        .bind(message.id.as_uuid())
+        .bind(message.conversation.as_message_id().as_uuid())
+        .bind(message.caused_by.map(|caused| caused.as_uuid()))
+        .bind(message.routing.to_string())
+        .bind(&message.payload)
+        .bind(message.occurred_at)
+        .execute(&mut **transaction)
+        .await?;
+
+    sqlx::query(NOTIFY).execute(&mut **transaction).await?;
+
+    Ok(())
+}
 
 impl<E> PostgresEventStore<E> {
     pub(super) async fn enqueue(
@@ -26,25 +51,14 @@ impl<E> PostgresEventStore<E> {
             return Ok(());
         };
 
-        sqlx::query(ENQUEUE)
-            .bind(aggregate.as_str())
-            .bind(kind.as_str())
-            .bind(as_bigint(happened.metadata.version))
-            .bind(message.id.as_uuid())
-            .bind(message.conversation.as_message_id().as_uuid())
-            .bind(message.caused_by.map(|caused| caused.as_uuid()))
-            .bind(message.routing.to_string())
-            .bind(&message.payload)
-            .bind(message.occurred_at)
-            .execute(&mut **transaction)
-            .await
-            .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;
+        let origin = Origin {
+            aggregate: aggregate.as_str(),
+            kind: kind.as_str(),
+            version: happened.metadata.version,
+        };
 
-        sqlx::query(NOTIFY)
-            .execute(&mut **transaction)
+        enqueue(transaction, origin, &message)
             .await
-            .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;
-
-        Ok(())
+            .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))
     }
 }

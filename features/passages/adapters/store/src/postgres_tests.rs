@@ -376,7 +376,7 @@ async fn deleting_a_passage_takes_its_links_with_it() {
         .expect("counting should succeed");
     assert_eq!(
         links, 0,
-        "a link outliving its passage is a backlink to nothing, and nothing sweeps it later"
+        "a link outliving its passage points at nothing, and nothing sweeps it later"
     );
 
     bench.cleanup().await;

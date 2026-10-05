@@ -4,8 +4,16 @@ use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
 use crate::event::Recorded;
+use crate::version::Version;
 
 pub type MessageMapping<E> = fn(&Recorded<E>) -> Option<Message>;
+
+#[derive(Debug, Clone, Copy)]
+pub struct Origin<'a> {
+    pub aggregate: &'a str,
+    pub kind: &'a str,
+    pub version: Version,
+}
 
 pub const CLAIM_FOR: Duration = Duration::seconds(30);
 

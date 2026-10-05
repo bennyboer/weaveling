@@ -12,9 +12,9 @@ use crate::agent::Agent;
 use crate::aggregate::AggregateId;
 use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
-use crate::outbox::{CLAIM_FOR, Delivered, KEPT_FOR, Outbox};
+use crate::outbox::{CLAIM_FOR, Delivered, KEPT_FOR, Origin, Outbox};
 use crate::postgres::sample::{codec, message_for};
-use crate::postgres::{PostgresEventStore, PostgresOutbox};
+use crate::postgres::{PostgresEventStore, PostgresOutbox, enqueue};
 use crate::store::EventStore;
 use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind};
 use crate::version::Version;
@@ -572,6 +572,71 @@ async fn deleting_takes_no_more_than_it_was_asked_for() {
 
     assert_eq!(first, 2);
     assert_eq!(entries(&wired).await, 1);
+
+    wired.cleanup().await;
+}
+
+fn a_link_message() -> Message {
+    Message::opening(
+        messaging::RoutingKey::parse("passage.idea.linked").expect("a plain key is fine"),
+        serde_json::json!({ "passage": "passage_1", "idea": "idea_1" }),
+        at(2_000),
+    )
+}
+
+fn from_a_passage() -> Origin<'static> {
+    Origin {
+        aggregate: "passage_1",
+        kind: "passage",
+        version: Version::ZERO,
+    }
+}
+
+#[tokio::test]
+async fn a_message_enqueued_beside_any_write_is_relayed_once_that_write_commits() {
+    let wired = Wired::setup().await;
+    let heard = Overheard::listening();
+    let message = a_link_message();
+    let mut transaction = wired.pool.begin().await.expect("a transaction opens");
+
+    enqueue(&mut transaction, from_a_passage(), &message)
+        .await
+        .expect("enqueueing should succeed");
+    transaction.commit().await.expect("the transaction commits");
+    wired
+        .relay(heard.clone())
+        .deliver(10)
+        .await
+        .expect("delivering should succeed");
+
+    assert_eq!(
+        heard.ids_heard(),
+        vec![message.id.as_uuid()],
+        "a writer that is not event-sourced gets the same relay, id and all"
+    );
+
+    wired.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it() {
+    let wired = Wired::setup().await;
+    let mut transaction = wired.pool.begin().await.expect("a transaction opens");
+
+    enqueue(&mut transaction, from_a_passage(), &a_link_message())
+        .await
+        .expect("enqueueing should succeed");
+    transaction
+        .rollback()
+        .await
+        .expect("the transaction rolls back");
+
+    assert_eq!(
+        wired.unpublished().await,
+        0,
+        "the whole point of enqueueing in the writer's transaction: a change that never \
+         happened is never announced"
+    );
 
     wired.cleanup().await;
 }
