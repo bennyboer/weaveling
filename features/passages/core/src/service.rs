@@ -5,7 +5,8 @@ use ids::InvalidId;
 use thiserror::Error;
 
 use crate::{
-    InvalidPassageTitle, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+    IdeaLink, InvalidPassageTitle, Passage, PassageId, PassageStore, PassageTitle, ProjectLink,
+    StoreError,
 };
 
 #[derive(Debug, Error)]
@@ -73,6 +74,26 @@ impl PassageService {
         self.store.retitle(id, &title).await?;
 
         Ok(self.store.load(id).await?)
+    }
+
+    pub async fn link(&self, id: &str, idea: &str) -> Result<Passage, PassageServiceError> {
+        let id: PassageId = id.parse()?;
+
+        self.store.link(id, &IdeaLink::from(idea)).await?;
+
+        Ok(self.store.load(id).await?)
+    }
+
+    pub async fn unlink(&self, id: &str, idea: &str) -> Result<Passage, PassageServiceError> {
+        let id: PassageId = id.parse()?;
+
+        self.store.unlink(id, &IdeaLink::from(idea)).await?;
+
+        Ok(self.store.load(id).await?)
+    }
+
+    pub async fn unlink_everywhere(&self, idea: &str) -> Result<(), PassageServiceError> {
+        Ok(self.store.unlink_everywhere(&IdeaLink::from(idea)).await?)
     }
 
     pub async fn delete(&self, id: &str) -> Result<(), PassageServiceError> {

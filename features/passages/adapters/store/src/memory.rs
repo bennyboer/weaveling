@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
-use passages_core::{Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError};
+use passages_core::{
+    IdeaLink, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+};
 
 type Passages = HashMap<PassageId, StoredPassage>;
 
@@ -10,6 +12,7 @@ type Passages = HashMap<PassageId, StoredPassage>;
 struct StoredPassage {
     project: ProjectLink,
     title: PassageTitle,
+    ideas: Vec<IdeaLink>,
     state: Vec<u8>,
 }
 
@@ -34,7 +37,11 @@ impl InMemoryPassageStore {
 
 fn rehydrate(id: PassageId, stored: &StoredPassage) -> Result<Passage, StoreError> {
     Passage::rehydrate(id, stored.project.clone(), &stored.state)
-        .map(|passage| passage.titled(stored.title.clone()))
+        .map(|passage| {
+            passage
+                .titled(stored.title.clone())
+                .linked_to(stored.ideas.clone())
+        })
         .map_err(|reason| StoreError::Backend(Box::new(reason)))
 }
 
@@ -52,6 +59,7 @@ impl PassageStore for InMemoryPassageStore {
             StoredPassage {
                 project: passage.project().clone(),
                 title: passage.title().clone(),
+                ideas: passage.ideas().to_vec(),
                 state: passage.everything(),
             },
         );
@@ -83,6 +91,7 @@ impl PassageStore for InMemoryPassageStore {
             StoredPassage {
                 project: stored.project,
                 title: stored.title,
+                ideas: stored.ideas,
                 state: passage.everything(),
             },
         );
@@ -94,6 +103,33 @@ impl PassageStore for InMemoryPassageStore {
         let mut passages = self.write();
         let stored = passages.get_mut(&id).ok_or(StoreError::NotFound(id))?;
         stored.title = title.clone();
+
+        Ok(())
+    }
+
+    async fn link(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
+        let mut passages = self.write();
+        let stored = passages.get_mut(&id).ok_or(StoreError::NotFound(id))?;
+
+        if !stored.ideas.contains(idea) {
+            stored.ideas.push(idea.clone());
+        }
+
+        Ok(())
+    }
+
+    async fn unlink(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
+        let mut passages = self.write();
+        let stored = passages.get_mut(&id).ok_or(StoreError::NotFound(id))?;
+        stored.ideas.retain(|held| held != idea);
+
+        Ok(())
+    }
+
+    async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
+        for stored in self.write().values_mut() {
+            stored.ideas.retain(|held| held != idea);
+        }
 
         Ok(())
     }

@@ -451,3 +451,79 @@ where
 
     false
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn discarding_an_idea_unlinks_it_from_every_passage() {
+    use eventsourcing::Cadence;
+    use weaveling_service_api::Relays;
+
+    let fixture = PostgresFixture::setup().await;
+    let databases = a_schema_each(&fixture).await;
+    let clock = Arc::new(SystemClock);
+    let adapters = Adapters::postgres(clock, &databases);
+    let outboxes = adapters.outboxes();
+    let consuming = adapters.consuming();
+    let server = TestServer::new(app(adapters));
+
+    let relays = Relays::started(
+        outboxes,
+        consuming,
+        Cadence {
+            deliver_every: std::time::Duration::from_millis(10),
+            sweep_every: std::time::Duration::from_secs(3_600),
+            deliver_at_most: 16,
+            sweep_at_most: 16,
+            kept_for: time::Duration::days(90),
+        },
+    );
+
+    let project = a_project(&server, "Linking").await;
+    let captured = server
+        .post("/api/ideas")
+        .json(&json!({ "project": project, "title": "A girl in a wood" }))
+        .await;
+    captured.assert_status(axum::http::StatusCode::CREATED);
+    let idea = captured.json::<Value>()["id"]
+        .as_str()
+        .expect("a captured idea carries an id")
+        .to_owned();
+    let made = server
+        .post("/api/passages")
+        .json(&json!({ "project": project }))
+        .await;
+    made.assert_status(axum::http::StatusCode::CREATED);
+    let passage = made.json::<Value>()["id"]
+        .as_str()
+        .expect("a passage carries an id")
+        .to_owned();
+    server
+        .post(&format!("/api/passages/{passage}/ideas"))
+        .json(&json!({ "idea": idea }))
+        .await
+        .assert_status_ok();
+
+    server
+        .delete(&format!("/api/ideas/{idea}"))
+        .await
+        .assert_status(axum::http::StatusCode::NO_CONTENT);
+
+    assert!(
+        until(|| async {
+            server
+                .get(&format!("/api/passages/{passage}"))
+                .await
+                .json::<Value>()["ideas"]
+                .as_array()
+                .is_some_and(Vec::is_empty)
+        })
+        .await,
+        "the passage owns the link, so only a passages listener hearing the discard can drop it"
+    );
+    server
+        .get(&format!("/api/passages/{passage}"))
+        .await
+        .assert_status_ok();
+
+    relays.stop().await;
+    fixture.cleanup().await;
+}

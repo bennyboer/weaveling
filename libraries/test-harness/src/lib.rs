@@ -1,4 +1,5 @@
 use std::env;
+use std::sync::Mutex;
 
 use sqlx::AssertSqlSafe;
 use sqlx::PgPool;
@@ -15,6 +16,7 @@ const HANDFUL: u32 = 5;
 
 pub struct PostgresFixture {
     stem: String,
+    handed_out: Mutex<Vec<PgPool>>,
 }
 
 pub fn database_url() -> String {
@@ -30,6 +32,7 @@ impl PostgresFixture {
 
         Self {
             stem: stem(OffsetDateTime::now_utc()),
+            handed_out: Mutex::new(Vec::new()),
         }
     }
 
@@ -42,7 +45,13 @@ impl PostgresFixture {
             .expect("a fixture schema should be creatable");
         base.close().await;
 
-        connect_to(&schema).await
+        let pool = connect_to(&schema).await;
+        self.handed_out
+            .lock()
+            .expect("the fixture's pool list is never poisoned")
+            .push(pool.clone());
+
+        pool
     }
 
     pub fn schema_of(&self, feature: &str) -> String {
@@ -50,6 +59,14 @@ impl PostgresFixture {
     }
 
     pub async fn cleanup(self) {
+        let handed_out = self
+            .handed_out
+            .into_inner()
+            .expect("the fixture's pool list is never poisoned");
+        for pool in handed_out {
+            pool.close().await;
+        }
+
         let base = connect(1).await;
 
         for schema in schemas_like(&base, &format!(r"{}\_%", self.stem)).await {

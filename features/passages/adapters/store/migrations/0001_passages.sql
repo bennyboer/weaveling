@@ -17,3 +17,13 @@ CREATE TABLE passage_updates (
 
 CREATE INDEX passage_updates_reading ON passage_updates (passage, seq);
 CREATE INDEX passage_updates_snapshots ON passage_updates (passage, seq DESC) WHERE is_snapshot;
+
+CREATE TABLE passage_ideas (
+    seq         BIGSERIAL        PRIMARY KEY,
+    passage     TEXT COLLATE "C" NOT NULL REFERENCES passages (passage) ON DELETE CASCADE,
+    idea        TEXT COLLATE "C" NOT NULL,
+
+    UNIQUE (passage, idea)
+);
+
+CREATE INDEX passage_ideas_by_idea ON passage_ideas (idea);

@@ -20,7 +20,13 @@ pub struct PassageDTO {
     pub id: String,
     pub project: String,
     pub title: String,
+    pub ideas: Vec<String>,
     pub text: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct LinkIdeaRequest {
+    pub idea: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

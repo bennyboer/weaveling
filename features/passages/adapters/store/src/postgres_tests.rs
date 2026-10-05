@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use passages_core::{PassageStore, StoreError};
+use passages_core::{IdeaLink, PassageStore, StoreError};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
@@ -348,6 +348,35 @@ async fn walking_a_project_comes_out_of_the_index() {
         !plan.contains("Filter:"),
         "both halves belong in the index condition — a filter means rows are read and then \
          thrown away, which is the cost the cursor exists to avoid: {plan}"
+    );
+
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn deleting_a_passage_takes_its_links_with_it() {
+    let bench = OnPostgres::setup().await;
+    let id = an_id(1_000);
+    bench
+        .store
+        .create(&a_passage(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+    bench
+        .store
+        .link(id, &IdeaLink::from("idea_1"))
+        .await
+        .expect("link should succeed");
+
+    bench.store.delete(id).await.expect("delete should succeed");
+
+    let links: i64 = sqlx::query_scalar("SELECT count(*) FROM passage_ideas")
+        .fetch_one(&bench.pool)
+        .await
+        .expect("counting should succeed");
+    assert_eq!(
+        links, 0,
+        "a link outliving its passage is a backlink to nothing, and nothing sweeps it later"
     );
 
     bench.cleanup().await;

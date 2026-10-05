@@ -3,7 +3,9 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
-use passages_contract::{CreatePassageRequest, FRAGMENT, PassageDTO, RetitlePassageRequest};
+use passages_contract::{
+    CreatePassageRequest, FRAGMENT, LinkIdeaRequest, PassageDTO, RetitlePassageRequest,
+};
 use passages_core::PassageService;
 use passages_store::InMemoryPassageStore;
 use time::{Duration, OffsetDateTime};
@@ -221,4 +223,51 @@ async fn a_listing_carries_each_passage_s_title() {
         listed[0].title, "The loom",
         "the outline names its leaves from this listing"
     );
+}
+
+async fn linked(server: &TestServer, id: &str, idea: &str) -> axum_test::TestResponse {
+    server
+        .post(&format!("/passages/{id}/ideas"))
+        .json(&LinkIdeaRequest {
+            idea: idea.to_owned(),
+        })
+        .await
+}
+
+#[tokio::test]
+async fn a_new_passage_has_no_linked_ideas() {
+    let server = new_server_with(a_service());
+
+    let created = a_passage(&server).await;
+
+    assert!(created.ideas.is_empty());
+}
+
+#[tokio::test]
+async fn an_idea_can_be_linked_and_unlinked() {
+    let server = new_server_with(a_service());
+    let created = a_passage(&server).await;
+
+    let after_linking = linked(&server, &created.id, "idea_1").await;
+    after_linking.assert_status_ok();
+    assert_eq!(after_linking.json::<PassageDTO>().ideas, vec!["idea_1"]);
+
+    let after_unlinking = server
+        .delete(&format!("/passages/{}/ideas/idea_1", created.id))
+        .await;
+    after_unlinking.assert_status_ok();
+    assert!(after_unlinking.json::<PassageDTO>().ideas.is_empty());
+}
+
+#[tokio::test]
+async fn linking_to_a_passage_nobody_created_is_not_found() {
+    let server = new_server_with(a_service());
+
+    linked(&server, UNKNOWN_ID, "idea_1")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .delete(&format!("/passages/{UNKNOWN_ID}/ideas/idea_1"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }

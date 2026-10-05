@@ -1,5 +1,5 @@
 use passages_core::{
-    FRAGMENT, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+    FRAGMENT, IdeaLink, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
 };
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
@@ -442,6 +442,176 @@ pub async fn a_title_survives_further_writing(store: &impl PassageStore) {
     );
 }
 
+fn an_idea(named: &str) -> IdeaLink {
+    IdeaLink::from(named)
+}
+
+async fn an_empty_passage(store: &impl PassageStore, id: PassageId) {
+    store
+        .create(&Passage::empty(id, a_project()))
+        .await
+        .expect("create should succeed");
+}
+
+pub async fn a_new_passage_has_no_linked_ideas(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+
+    let found = store.load(id).await.expect("load should find the passage");
+
+    assert!(found.ideas().is_empty());
+}
+
+pub async fn linked_ideas_come_back_in_the_order_they_were_linked(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+
+    for idea in ["idea_c", "idea_a", "idea_b"] {
+        store
+            .link(id, &an_idea(idea))
+            .await
+            .expect("link should succeed");
+    }
+
+    let found = store.load(id).await.expect("load should find the passage");
+    assert_eq!(
+        found.ideas(),
+        &[an_idea("idea_c"), an_idea("idea_a"), an_idea("idea_b")],
+        "the author reads this list as the order they reached for the ideas, not the order \
+         the ids happen to sort in"
+    );
+}
+
+pub async fn linking_the_same_idea_twice_is_one_link(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+
+    for _ in 0..2 {
+        store
+            .link(id, &an_idea("idea_1"))
+            .await
+            .expect("a repeated link is not a failure");
+    }
+
+    let found = store.load(id).await.expect("load should find the passage");
+    assert_eq!(found.ideas(), &[an_idea("idea_1")]);
+}
+
+pub async fn unlinking_takes_away_only_that_idea(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+    for idea in ["idea_1", "idea_2"] {
+        store
+            .link(id, &an_idea(idea))
+            .await
+            .expect("link should succeed");
+    }
+
+    store
+        .unlink(id, &an_idea("idea_1"))
+        .await
+        .expect("unlink should succeed");
+
+    let found = store.load(id).await.expect("load should find the passage");
+    assert_eq!(found.ideas(), &[an_idea("idea_2")]);
+}
+
+pub async fn unlinking_an_idea_never_linked_is_harmless(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+
+    store
+        .unlink(id, &an_idea("idea_elsewhere"))
+        .await
+        .expect("nothing to unlink is not a failure");
+}
+
+pub async fn linking_to_a_missing_passage_is_not_found(store: &impl PassageStore) {
+    let missing = an_id(1_000);
+
+    let linked = store.link(missing, &an_idea("idea_1")).await;
+    let unlinked = store.unlink(missing, &an_idea("idea_1")).await;
+
+    assert!(
+        matches!(&linked, Err(StoreError::NotFound(id)) if *id == missing),
+        "expected NotFound({missing}) on link, got {linked:?}"
+    );
+    assert!(
+        matches!(&unlinked, Err(StoreError::NotFound(id)) if *id == missing),
+        "expected NotFound({missing}) on unlink, got {unlinked:?}"
+    );
+}
+
+pub async fn unlinking_an_idea_everywhere_reaches_every_passage(store: &impl PassageStore) {
+    let one = an_id(1_000);
+    let other = an_id(2_000);
+    for id in [one, other] {
+        an_empty_passage(store, id).await;
+        for idea in ["idea_gone", "idea_kept"] {
+            store
+                .link(id, &an_idea(idea))
+                .await
+                .expect("link should succeed");
+        }
+    }
+
+    store
+        .unlink_everywhere(&an_idea("idea_gone"))
+        .await
+        .expect("unlinking everywhere should succeed");
+
+    for id in [one, other] {
+        let found = store.load(id).await.expect("load should find the passage");
+        assert_eq!(
+            found.ideas(),
+            &[an_idea("idea_kept")],
+            "a discarded idea is unlinked from every passage that linked it, and only that idea is"
+        );
+    }
+}
+
+pub async fn links_survive_further_writing(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    an_empty_passage(store, id).await;
+    store
+        .link(id, &an_idea("idea_1"))
+        .await
+        .expect("link should succeed");
+
+    store
+        .apply(id, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("apply should succeed");
+
+    let found = store.load(id).await.expect("load should find the passage");
+    assert_eq!(
+        found.ideas(),
+        &[an_idea("idea_1")],
+        "writing rewrites the stored passage, and the links must ride along"
+    );
+}
+
+pub async fn linking_leaves_the_title_and_the_text_alone(store: &impl PassageStore) {
+    let id = an_id(1_000);
+    store
+        .create(&a_passage(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+    store
+        .retitle(id, &a_title("The loom"))
+        .await
+        .expect("retitle should succeed");
+
+    store
+        .link(id, &an_idea("idea_1"))
+        .await
+        .expect("link should succeed");
+
+    let found = store.load(id).await.expect("load should find the passage");
+    assert_eq!(found.title(), &a_title("The loom"));
+    assert_eq!(found.text(), "The loom stood silent.");
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -489,6 +659,21 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!($workbench, retitling_a_missing_passage_is_not_found);
         $crate::suite::conformance_case!($workbench, retitling_leaves_the_text_as_it_was);
         $crate::suite::conformance_case!($workbench, a_title_survives_further_writing);
+        $crate::suite::conformance_case!($workbench, a_new_passage_has_no_linked_ideas);
+        $crate::suite::conformance_case!(
+            $workbench,
+            linked_ideas_come_back_in_the_order_they_were_linked
+        );
+        $crate::suite::conformance_case!($workbench, linking_the_same_idea_twice_is_one_link);
+        $crate::suite::conformance_case!($workbench, unlinking_takes_away_only_that_idea);
+        $crate::suite::conformance_case!($workbench, unlinking_an_idea_never_linked_is_harmless);
+        $crate::suite::conformance_case!($workbench, linking_to_a_missing_passage_is_not_found);
+        $crate::suite::conformance_case!(
+            $workbench,
+            unlinking_an_idea_everywhere_reaches_every_passage
+        );
+        $crate::suite::conformance_case!($workbench, links_survive_further_writing);
+        $crate::suite::conformance_case!($workbench, linking_leaves_the_title_and_the_text_alone);
     };
 }
 

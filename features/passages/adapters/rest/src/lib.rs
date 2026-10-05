@@ -3,8 +3,8 @@ use axum::Router;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
-use passages_contract::{CreatePassageRequest, PassageDTO, RetitlePassageRequest};
+use axum::routing::{delete, get, post};
+use passages_contract::{CreatePassageRequest, LinkIdeaRequest, PassageDTO, RetitlePassageRequest};
 use passages_core::{Passage, PassageService, PassageServiceError, StoreError};
 use serde::Deserialize;
 
@@ -12,6 +12,8 @@ pub fn router(passages: PassageService) -> Router {
     Router::new()
         .route("/passages", get(list).post(create))
         .route("/passages/{id}", get(find).patch(retitle).delete(remove))
+        .route("/passages/{id}/ideas", post(link))
+        .route("/passages/{id}/ideas/{idea}", delete(unlink))
         .with_state(passages)
 }
 
@@ -64,6 +66,25 @@ async fn retitle(
     Ok(Json(to_dto(&retitled)))
 }
 
+async fn link(
+    State(passages): State<PassageService>,
+    Path(id): Path<String>,
+    Json(request): Json<LinkIdeaRequest>,
+) -> Result<Json<PassageDTO>, ApiError> {
+    let linked = passages.link(&id, &request.idea).await?;
+
+    Ok(Json(to_dto(&linked)))
+}
+
+async fn unlink(
+    State(passages): State<PassageService>,
+    Path((id, idea)): Path<(String, String)>,
+) -> Result<Json<PassageDTO>, ApiError> {
+    let unlinked = passages.unlink(&id, &idea).await?;
+
+    Ok(Json(to_dto(&unlinked)))
+}
+
 async fn remove(
     State(passages): State<PassageService>,
     Path(id): Path<String>,
@@ -78,6 +99,7 @@ fn to_dto(passage: &Passage) -> PassageDTO {
         id: passage.id().to_string(),
         project: passage.project().to_string(),
         title: passage.title().to_string(),
+        ideas: passage.ideas().iter().map(ToString::to_string).collect(),
         text: passage.text(),
     }
 }

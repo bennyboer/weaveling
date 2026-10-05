@@ -1,5 +1,7 @@
 use async_trait::async_trait;
-use passages_core::{Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError};
+use passages_core::{
+    IdeaLink, Passage, PassageId, PassageStore, PassageTitle, ProjectLink, StoreError,
+};
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Postgres, Row, Transaction};
 
@@ -8,6 +10,20 @@ const REMEMBER: &str = "INSERT INTO passages (passage, project, title) VALUES ($
 const KNOWN_AS: &str = "SELECT project, title FROM passages WHERE passage = $1";
 
 const RETITLE: &str = "UPDATE passages SET title = $2 WHERE passage = $1";
+
+const LINK: &str = "
+    INSERT INTO passage_ideas (passage, idea)
+    VALUES ($1, $2)
+    ON CONFLICT (passage, idea) DO NOTHING
+";
+
+const UNLINK: &str = "DELETE FROM passage_ideas WHERE passage = $1 AND idea = $2";
+
+const UNLINK_EVERYWHERE: &str = "DELETE FROM passage_ideas WHERE idea = $1";
+
+const LINKED_IDEAS: &str = "SELECT idea FROM passage_ideas WHERE passage = $1 ORDER BY seq";
+
+const EXISTS: &str = "SELECT 1 FROM passages WHERE passage = $1";
 
 const IN_PROJECT: &str = "
     SELECT passage
@@ -210,7 +226,15 @@ impl PassageStore for PostgresPassageStore {
             .map_err(unreachable)?;
         let title = PassageTitle::new(&title).map_err(|why| StoreError::Backend(Box::new(why)))?;
 
-        Ok(grown(id, ProjectLink::from(project), &parts)?.titled(title))
+        let ideas: Vec<String> = sqlx::query_scalar(LINKED_IDEAS)
+            .bind(id.to_string())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(grown(id, ProjectLink::from(project), &parts)?
+            .titled(title)
+            .linked_to(ideas.into_iter().map(IdeaLink::from).collect()))
     }
 
     async fn apply(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError> {
@@ -245,6 +269,50 @@ impl PassageStore for PostgresPassageStore {
             0 => Err(StoreError::NotFound(id)),
             _ => Ok(()),
         }
+    }
+
+    async fn link(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
+        sqlx::query(LINK)
+            .bind(id.to_string())
+            .bind(idea.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(|failure| match is_unknown(&failure) {
+                true => StoreError::NotFound(id),
+                false => unreachable(failure),
+            })?;
+
+        Ok(())
+    }
+
+    async fn unlink(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
+        let known: Option<i32> = sqlx::query_scalar(EXISTS)
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+        if known.is_none() {
+            return Err(StoreError::NotFound(id));
+        }
+
+        sqlx::query(UNLINK)
+            .bind(id.to_string())
+            .bind(idea.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
+        sqlx::query(UNLINK_EVERYWHERE)
+            .bind(idea.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 
     async fn in_project(
