@@ -375,7 +375,7 @@ So a **section** is its own thing: an id, a title, children, and the pieces atta
 
 **An empty leaf is a warning, never a refusal.** A section with no children and no pieces is a hole in the manuscript, and the view says so — but the aggregate accepts it without complaint. Planning is exactly the act of writing down a structure you have not filled yet, so refusing would break the feature's main use. The same instinct as [`PieceTitle` permitting the empty string](#the-event-catalogue).
 
-**An unnamed section borrows its piece's title.** `SectionTitle` mirrors `PieceTitle` and permits `""`, and a view drawing an unnamed section that holds exactly one piece shows that piece's title. So the common case — a scene that is one piece, named already — costs the author nothing, and the override is there when the table of contents wants different words.
+**An unnamed section is just unnamed.** `SectionTitle` permits `""` so an author can sketch structure before naming it. This once went further — a view drawing an unnamed section that held exactly one piece showed that piece’s title — but that died with the split into two pools ([M12](./ROADMAP.md#milestone-12--ideas-and-passages)): a section now holds passages, and a passage carries its **own** title, so the name of a scene lives on the scene, not on the place it sits. An unnamed section reads as *Untitled*, and that is the prompt to name it.
 
 **Two orderings, not one.** Sections nest and are ordered among their siblings; pieces are ordered within their section. The manuscript is the depth-first walk: at each section, its own pieces, then its children. That is what `reading_order()` returns, and it is what export will mean.
 

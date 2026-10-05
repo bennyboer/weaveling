@@ -66,7 +66,7 @@ mod tests {
     }
 
     #[test]
-    fn a_section_may_go_unnamed_so_it_can_borrow_its_passage_s_title() {
+    fn a_section_may_go_unnamed_while_the_author_sketches_structure() {
         assert!(SectionTitle::new("   ").unwrap().is_unnamed());
         assert!(SectionTitle::unnamed().is_unnamed());
     }

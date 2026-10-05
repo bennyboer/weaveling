@@ -47,7 +47,7 @@ const shape = (page: Page) =>
       .join("\n"),
   );
 
-async function aBookOf(page: Page, sections: string[]) {
+async function addSections(page: Page, sections: string[]) {
   await page.getByRole("button", { name: "Add a section" }).click();
 
   for (const [nth, named] of sections.entries()) {
@@ -108,7 +108,7 @@ test("the add button appends rather than pushing in at the top", async ({
 test("a section can be moved among its siblings", async ({ page }) => {
   await aNewProject(page, "Reordering");
   await openTheOutline(page);
-  await aBookOf(page, ["Kapitel 1", "Kapitel 2", "Kapitel 3"]);
+  await addSections(page, ["Kapitel 1", "Kapitel 2", "Kapitel 3"]);
   await page.keyboard.press("Escape");
 
   await page.getByRole("textbox", { name: "Section Kapitel 3" }).click();
@@ -128,7 +128,7 @@ test("reordering moves sections without rewriting their titles", async ({
 }) => {
   await aNewProject(page, "Intact");
   await openTheOutline(page);
-  await aBookOf(page, ["Kapitel 1", "Kapitel 2", "Kapitel 3"]);
+  await addSections(page, ["Kapitel 1", "Kapitel 2", "Kapitel 3"]);
   await page.keyboard.press("Escape");
 
   await page.getByRole("textbox", { name: "Section Kapitel 3" }).click();
@@ -152,7 +152,7 @@ test("moving is refused at the ends rather than doing nothing", async ({
 }) => {
   await aNewProject(page, "Ends");
   await openTheOutline(page);
-  await aBookOf(page, ["Kapitel 1", "Kapitel 2"]);
+  await addSections(page, ["Kapitel 1", "Kapitel 2"]);
   await page.keyboard.press("Escape");
 
   await expect(
@@ -172,7 +172,7 @@ test("Enter adds a sibling and Tab nests it under the one before", async ({
   await aNewProject(page, "Nesting");
   await openTheOutline(page);
 
-  await aBookOf(page, ["Part One", "Chapter 1"]);
+  await addSections(page, ["Part One", "Chapter 1"]);
   await page.keyboard.press("Tab");
   await expect(manuscript(page).getByRole("textbox")).toHaveCount(2);
 
@@ -184,7 +184,7 @@ test("Enter adds a sibling and Tab nests it under the one before", async ({
 test("Shift+Tab lifts a section back out", async ({ page }) => {
   await aNewProject(page, "Lifting");
   await openTheOutline(page);
-  await aBookOf(page, ["Part One", "Chapter 1"]);
+  await addSections(page, ["Part One", "Chapter 1"]);
   await page.keyboard.press("Tab");
   await expect.poll(() => shape(page)).toContain("  Chapter 1");
 
@@ -200,7 +200,7 @@ test("typing carries on in the same section after it is nested", async ({
 }) => {
   await aNewProject(page, "Carrying");
   await openTheOutline(page);
-  await aBookOf(page, ["Part One", "Chapter"]);
+  await addSections(page, ["Part One", "Chapter"]);
 
   await page.keyboard.press("Tab");
   await expect.poll(() => shape(page)).toContain("  Chapter");
@@ -214,7 +214,7 @@ test("typing carries on in the same section after it is nested", async ({
 test("a title survives a reload", async ({ page }) => {
   await aNewProject(page, "Titling");
   await openTheOutline(page);
-  await aBookOf(page, ["The Silent Loom"]);
+  await addSections(page, ["The Silent Loom"]);
   await page.keyboard.press("Escape");
 
   await page.reload();
@@ -228,7 +228,7 @@ test("a section with nothing in it is flagged without being refused", async ({
   await aNewProject(page, "Holes");
   await openTheOutline(page);
 
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
 
   await expect(page.locator(".hollow")).toHaveCount(1);
@@ -239,7 +239,7 @@ test("a passage is placed from the tray and leaves it", async ({ page }) => {
   await aNewProject(page, "Placing");
   await aLoosePassage(page);
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
 
   await placePassage(page, "Empty", "Chapter 1");
@@ -251,7 +251,7 @@ test("a passage is placed from the tray and leaves it", async ({ page }) => {
 test("writing in a section opens the new passage", async ({ page }) => {
   await aNewProject(page, "Writing");
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
@@ -266,7 +266,7 @@ test("writing in a section opens the new passage", async ({ page }) => {
 test("a passage written in a section is held there", async ({ page }) => {
   await aNewProject(page, "Holding");
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
@@ -281,7 +281,7 @@ test("a passage written in a section is held there", async ({ page }) => {
 test("a passage in the book opens from the outline", async ({ page }) => {
   await aNewProject(page, "Opening");
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
@@ -298,7 +298,7 @@ test("a passage taken out of the book goes back to the tray", async ({
 }) => {
   await aNewProject(page, "Removing");
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
@@ -314,7 +314,7 @@ test("a passage taken out of the book goes back to the tray", async ({
 test("the row menu promotes, demotes and removes", async ({ page }) => {
   await aNewProject(page, "Menus");
   await openTheOutline(page);
-  await aBookOf(page, ["Part One", "Chapter 1"]);
+  await addSections(page, ["Part One", "Chapter 1"]);
   await page.keyboard.press("Escape");
 
   await page.getByRole("button", { name: "Demote Chapter 1" }).click();
@@ -345,7 +345,7 @@ async function haul(page: Page, what: string, onto: string, at: number) {
 test("dragging a section onto another nests it inside", async ({ page }) => {
   await aNewProject(page, "Nesting by drag");
   await openTheOutline(page);
-  await aBookOf(page, ["Kapitel 1", "Kapitel 2"]);
+  await addSections(page, ["Kapitel 1", "Kapitel 2"]);
   await page.keyboard.press("Escape");
 
   await haul(page, "Kapitel 2", "Kapitel 1", 0.5);
@@ -362,7 +362,7 @@ test("dragging a section to the edge of another puts it beside it", async ({
 }) => {
   await aNewProject(page, "Beside by drag");
   await openTheOutline(page);
-  await aBookOf(page, ["Kapitel 1", "Kapitel 2", "Kapitel 3"]);
+  await addSections(page, ["Kapitel 1", "Kapitel 2", "Kapitel 3"]);
   await page.keyboard.press("Escape");
 
   await haul(page, "Kapitel 3", "Kapitel 1", 0.08);
@@ -377,7 +377,7 @@ test("dragging a section to the edge of another puts it beside it", async ({
 test("a section cannot be dragged inside itself", async ({ page }) => {
   await aNewProject(page, "No swallowing");
   await openTheOutline(page);
-  await aBookOf(page, ["Part One", "Chapter 1"]);
+  await addSections(page, ["Part One", "Chapter 1"]);
   await page.keyboard.press("Tab");
   await expect.poll(() => shape(page)).toContain("  Chapter 1");
   await page.keyboard.press("Escape");
@@ -401,7 +401,7 @@ test("a passage can be dragged from the rail onto a section", async ({
   await aNewProject(page, "Dragging");
   await aLoosePassage(page);
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
 
   const chip = page.getByRole("button", { name: "Place Empty" });
@@ -422,7 +422,7 @@ test("the connector under the last child stops at its own row", async ({
 }) => {
   await aNewProject(page, "Connectors");
   await openTheOutline(page);
-  await aBookOf(page, ["Part One", "Chapter 1", "Chapter 2"]);
+  await addSections(page, ["Part One", "Chapter 1", "Chapter 2"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Demote Chapter 1" }).click();
   await expect.poll(() => shape(page)).toContain("  Chapter 1");
@@ -458,7 +458,7 @@ test("folding a section hides what is inside it without changing the book", asyn
 }) => {
   await aNewProject(page, "Folding");
   await openTheOutline(page);
-  await aBookOf(page, ["Part One", "Chapter 1"]);
+  await addSections(page, ["Part One", "Chapter 1"]);
   await page.keyboard.press("Tab");
   await expect.poll(() => shape(page)).toContain("  Chapter 1");
   await page.keyboard.press("Escape");
@@ -485,7 +485,7 @@ test("removing a section lifts its children into its place", async ({
 }) => {
   await aNewProject(page, "Pruning");
   await openTheOutline(page);
-  await aBookOf(page, ["Part One", "Chapter 1"]);
+  await addSections(page, ["Part One", "Chapter 1"]);
   await page.keyboard.press("Tab");
   await expect.poll(() => shape(page)).toContain("  Chapter 1");
   await page.keyboard.press("Escape");
@@ -505,7 +505,7 @@ test("an idea is noted in a section and is not a passage", async ({ page }) => {
   await openThePool(page);
   await captureIdea(page, "The loom remembers");
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
 
   await placeIdea(page, "The loom remembers", "Chapter 1");
@@ -525,7 +525,7 @@ test("a note and a passage are drawn with different marks", async ({
   await openThePool(page);
   await captureIdea(page, "The loom remembers");
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
@@ -549,7 +549,7 @@ test("a note leads to the idea, not to an editor", async ({ page }) => {
   await openThePool(page);
   await captureIdea(page, "The loom remembers");
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await placeIdea(page, "The loom remembers", "Chapter 1");
 
@@ -585,7 +585,7 @@ test("a section shows its passages and its ideas as two groups", async ({
   await openThePool(page);
   await captureIdea(page, "The loom remembers");
   await openTheOutline(page);
-  await aBookOf(page, ["Chapter 1"]);
+  await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await placeIdea(page, "The loom remembers", "Chapter 1");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
@@ -603,4 +603,30 @@ test("a section shows its passages and its ideas as two groups", async ({
   await expect(
     page.getByRole("list", { name: "Ideas", exact: true }),
   ).toContainText("The loom remembers");
+});
+
+test("a titled passage is named by its title in the outline", async ({
+  page,
+}) => {
+  await aNewProject(page, "Naming");
+  await openTheOutline(page);
+  await addSections(page, ["Chapter 1"]);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Write in Chapter 1" }).click();
+  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  const saved = page.waitForResponse(
+    (response) => response.request().method() === "PATCH",
+  );
+  await page
+    .getByRole("textbox", { name: "Passage title" })
+    .fill("The arrival");
+  await page.getByRole("textbox", { name: "Passage title" }).press("Tab");
+  await saved;
+
+  await openTheOutline(page);
+
+  await expect(
+    page.locator(".leaf .name"),
+    "an untitled passage falls back to its opening words; once named, the name wins",
+  ).toHaveText("The arrival");
 });

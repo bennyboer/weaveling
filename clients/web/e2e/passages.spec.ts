@@ -134,3 +134,42 @@ test("a passage the server does not know says so", async ({ page }) => {
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(surface(page)).toHaveCount(0);
 });
+
+const titleField = (page: Page) =>
+  page.getByRole("textbox", { name: "Passage title" });
+
+async function retitle(page: Page, title: string) {
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      response.url().includes("/api/passages/"),
+  );
+  await titleField(page).fill(title);
+  await titleField(page).press("Tab");
+  expect((await saved).status()).toBe(200);
+}
+
+test("a passage's title is kept", async ({ page }) => {
+  await aPassageBeingWritten(page, "Titled");
+
+  await retitle(page, "  The arrival  ");
+  await page.reload();
+
+  await expect(
+    titleField(page),
+    "the server trims the title, and what comes back is what the page shows",
+  ).toHaveValue("The arrival");
+});
+
+test("retitling leaves the editor as it was", async ({ page }) => {
+  await aPassageBeingWritten(page, "Connected");
+  const editing = await surface(page).elementHandle();
+
+  await retitle(page, "The arrival");
+
+  expect(
+    await editing!.evaluate((node) => node.isConnected),
+    "the title lives in its own signal, so naming the passage must not rebuild the editor out from under the author",
+  ).toBe(true);
+  await expect(page.getByText("Synced", { exact: true })).toBeVisible();
+});

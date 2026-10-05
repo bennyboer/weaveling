@@ -8,11 +8,16 @@ pub struct PassageId(String);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Passage {
     pub id: PassageId,
+    pub title: String,
     pub text: String,
 }
 
 impl Passage {
     pub fn shown_as(&self) -> String {
+        if !self.title.trim().is_empty() {
+            return self.title.clone();
+        }
+
         let saying = self.text.split_whitespace().collect::<Vec<_>>().join(" ");
 
         match saying.char_indices().nth(OPENING) {

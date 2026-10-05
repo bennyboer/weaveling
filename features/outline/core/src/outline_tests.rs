@@ -274,7 +274,7 @@ fn retitling_to_the_same_words_is_not_worth_an_event() {
 }
 
 #[test]
-fn a_section_may_go_unnamed_so_that_it_can_borrow_the_title_of_its_passage() {
+fn a_section_may_be_left_unnamed_again() {
     let mut book = Book::started();
     book.adds("One", None, None);
 
