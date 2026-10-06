@@ -838,6 +838,7 @@ fn moving_an_attachment_says_it_left_before_it_says_where_it_went() {
         vec![
             OutlineEvent::Detached {
                 attachment: an_idea("loom"),
+                from: a_section("Chapter 1"),
             },
             OutlineEvent::Attached {
                 attachment: an_idea("loom"),
@@ -851,5 +852,25 @@ fn moving_an_attachment_says_it_left_before_it_says_where_it_went() {
     assert_eq!(
         book.outline.attachments_in(&a_section("Chapter 1")),
         Vec::new()
+    );
+}
+
+#[test]
+fn a_detachment_names_the_section_it_left() {
+    let mut book = Book::started();
+    book.adds("Chapter 1", None, None);
+    book.attaches_idea("loom", "Chapter 1");
+
+    let happened = book.does(OutlineCommand::Detach {
+        attachment: an_idea("loom"),
+    });
+
+    assert_eq!(
+        happened,
+        vec![OutlineEvent::Detached {
+            attachment: an_idea("loom"),
+            from: a_section("Chapter 1"),
+        }],
+        "a listener keyed by section cannot forget a note without being told which section"
     );
 }

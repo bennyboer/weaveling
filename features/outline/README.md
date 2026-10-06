@@ -6,7 +6,7 @@ The linear view: the tree an author shapes a book into.
 
 **`Outline` is an aggregate** — `Started`, `SectionAdded`, `SectionRetitled`, `SectionMoved`, `SectionPromoted`, `SectionDemoted`, `SectionRemoved`, `Attached`, `Detached`. Sections are added relative to their neighbours (`under`, `after`) rather than at an index, because an index is a fact about the list at one moment and would be wrong for anyone who reordered concurrently.
 
-**A move announces where it left.** Attaching something that already sits in a section emits `Detached` and then `Attached`, rather than a lone `Attached` that only names where it went. Anyone keeping their own record of where things sit — [appearances](../appearances) does — learns of the old section from the detach, and needs no memory of their own to find it.
+**A move announces where it left.** Attaching something that already sits in a section emits `Detached` and then `Attached`, rather than a lone `Attached` that only names where it went — and every `Detached` names the section it left (`from`), whether it was a move or a plain detach. Anyone keeping their own record of where things sit — [appearances](../appearances) does — learns of the old section from the detach, and needs no memory of their own to find it.
 
 **A section holds a tagged `Attachment`, not a bare id** — `Passage(id) | Idea(id)`, in one ordered list. A passage is the book’s text; an idea pinned beside it is a **note to the author**, which is why `reading_order()` walks straight past ideas: exporting the book must never pick up the sticky notes. The tag is part of the identity, so an idea and a passage whose ids happen to match are two different attachments.
 

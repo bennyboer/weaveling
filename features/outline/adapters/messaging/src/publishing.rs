@@ -144,8 +144,9 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
             to: to.to_string(),
             after: after.as_ref().map(to_dto),
         },
-        OutlineEvent::Detached { attachment } => OutlineEventDTO::Detached {
+        OutlineEvent::Detached { attachment, from } => OutlineEventDTO::Detached {
             attachment: to_dto(attachment),
+            from: from.to_string(),
         },
         OutlineEvent::Discarded => OutlineEventDTO::Discarded,
         OutlineEvent::Snapshotted { .. } => return None,
@@ -261,6 +262,7 @@ mod tests {
             (
                 OutlineEvent::Detached {
                     attachment: Attachment::passage("passage_1"),
+                    from: a_section(),
                 },
                 DETACHED,
             ),
@@ -451,6 +453,26 @@ mod notes {
             },
             "a subscriber cannot look the id up to find out what it is, so the tag has to \
              survive the crossing or every note reads as a passage"
+        );
+    }
+
+    #[test]
+    fn a_detachment_goes_on_the_wire_with_the_section_it_left() {
+        let left = SectionId::generate(time::OffsetDateTime::UNIX_EPOCH);
+
+        let told = body(&OutlineEvent::Detached {
+            attachment: Attachment::idea("idea_1"),
+            from: left,
+        })
+        .expect("a detachment is published");
+
+        let OutlineEventDTO::Detached { from, .. } = told else {
+            panic!("expected a detachment, got {told:?}");
+        };
+        assert_eq!(
+            from,
+            left.to_string(),
+            "a listener keyed by section has nothing else to forget the note by"
         );
     }
 }

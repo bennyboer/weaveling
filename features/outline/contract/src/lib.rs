@@ -105,7 +105,10 @@ pub enum OutlineEventDTO {
         after: Option<AttachmentDTO>,
     },
     #[serde(rename = "DETACHED")]
-    Detached { attachment: AttachmentDTO },
+    Detached {
+        attachment: AttachmentDTO,
+        from: String,
+    },
     #[serde(rename = "DISCARDED")]
     Discarded,
 }

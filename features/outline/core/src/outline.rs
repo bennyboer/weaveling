@@ -129,6 +129,7 @@ pub enum OutlineEvent {
     },
     Detached {
         attachment: Attachment,
+        from: SectionId,
     },
     Discarded,
     Snapshotted {
@@ -777,11 +778,11 @@ impl Aggregate for Outline {
                     return Err(OutlineError::NoSuchNeighbour);
                 }
 
-                let moving = self.section_holding(&attachment).is_some();
                 let mut decided = Vec::with_capacity(2);
-                if moving {
+                if let Some(from) = self.section_holding(&attachment) {
                     decided.push(OutlineEvent::Detached {
                         attachment: attachment.clone(),
+                        from,
                     });
                 }
                 decided.push(OutlineEvent::Attached {
@@ -793,11 +794,11 @@ impl Aggregate for Outline {
                 Ok(decided)
             }
             OutlineCommand::Detach { attachment } => {
-                if self.section_holding(&attachment).is_none() {
+                let Some(from) = self.section_holding(&attachment) else {
                     return Err(OutlineError::NotAttached);
-                }
+                };
 
-                Ok(vec![OutlineEvent::Detached { attachment }])
+                Ok(vec![OutlineEvent::Detached { attachment, from }])
             }
         }
     }
@@ -828,7 +829,7 @@ impl Aggregate for Outline {
                 to,
                 after,
             } => self.attach(attachment, to, after.as_ref()),
-            OutlineEvent::Detached { attachment } => self.detach(attachment),
+            OutlineEvent::Detached { attachment, .. } => self.detach(attachment),
             OutlineEvent::Snapshotted {
                 project,
                 sections,

@@ -41,6 +41,7 @@ enum StoredOutlineEvent {
     },
     Detached {
         attachment: StoredAttachment,
+        from: String,
     },
     Discarded,
     Snapshotted {
@@ -198,8 +199,9 @@ impl From<&OutlineEvent> for StoredOutlineEvent {
                 to: named(to),
                 after: after.as_ref().map(StoredAttachment::from),
             },
-            OutlineEvent::Detached { attachment } => Self::Detached {
+            OutlineEvent::Detached { attachment, from } => Self::Detached {
                 attachment: StoredAttachment::from(attachment),
+                from: named(from),
             },
             OutlineEvent::Discarded => Self::Discarded,
             OutlineEvent::Snapshotted {
@@ -268,8 +270,9 @@ impl TryFrom<StoredOutlineEvent> for OutlineEvent {
                 to: section(&to)?,
                 after: after.map(Attachment::from),
             },
-            StoredOutlineEvent::Detached { attachment } => Self::Detached {
+            StoredOutlineEvent::Detached { attachment, from } => Self::Detached {
                 attachment: Attachment::from(attachment),
+                from: section(&from)?,
             },
             StoredOutlineEvent::Discarded => Self::Discarded,
             StoredOutlineEvent::Snapshotted {
@@ -357,9 +360,11 @@ mod tests {
             },
             OutlineEvent::Detached {
                 attachment: Attachment::passage("passage_1"),
+                from: chapter,
             },
             OutlineEvent::Detached {
                 attachment: Attachment::idea("idea_1"),
+                from: chapter,
             },
             OutlineEvent::Snapshotted {
                 project: ProjectLink::from("project_1"),
