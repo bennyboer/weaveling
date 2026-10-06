@@ -1,0 +1,21 @@
+# appearances
+
+The answer to *where does this appear?* — for an idea today: in which sections of the outline, and in which passages.
+
+**It is a read model, and owns nothing.** No view writes here. Each view says what it holds — the outline notes an idea in a section, a passage links one — and announces it; this feature listens and keeps the answer in one place. It is a projection, so it is rebuildable from those announcements and nothing else, and a new view joins by announcing rather than by anyone asking it. That is the point of keeping it out of [`ideas`](../ideas): an idea must not change when a view is added. See [*"Where does this idea appear" is a read model*](../../ARCHITECTURE.md#ideas-and-passages-are-two-pools--decided).
+
+**Only places in the book count.** A section and a passage say where an idea is *used*. The board is where ideas are *thought about*, and with one board per project, *this idea is on the board* says almost nothing — so boards are deliberately not places here. They can join later as one more `Place` variant, without a migration, if several boards ever make *find it on board X* worth answering.
+
+**A `Subject` appears at a `Place`.** Today the only subject is an idea. Characters, moments on the timeline, even a passage asking *which sections hold me* have the same shape, so the storage says `subject_type` / `subject_id` and `place_type` / `place_id` and never the word *idea*. The domain stays typed, though: `Subject` and `Place` are enums, and adding a variant means adding its listeners too — with the compiler pointing at every place that has to decide what the new kind may appear in. That is the guard against [a reference-to-anything turning to soup](../../ARCHITECTURE.md#ideas-and-passages-are-two-pools--decided): which pairs exist is said in code, not left open in a table.
+
+**A place names, it does not copy.** `Section(id)` and `Passage(id)` — ids only. A section's title and a passage's title are looked up by whoever shows them, the same [frontend join](../../ARCHITECTURE.md#the-board-renders-through-a-frontend-join) the board uses for card titles; storing them here would mean chasing every rename. And the type is part of a place's identity: a section and a passage whose ids happen to match are two places.
+
+**A move is a forget and a remember.** The outline announces a note moving between sections as `Detached` then `Attached`, never as a bare `Attached` that would leave the old section unnamed — so this feature needs no idea of where a note *was*.
+
+**Forgetting comes in the shapes the views announce.** One appearance (a detach, an unlink), every appearance of a subject (an idea was discarded), and every subject at a place (a section removed, a passage deleted).
+
+**One thing this relies on.** A discarded *outline* is not followed: its announcement does not list its sections, so there is nothing to forget by. That is safe today because an outline is only ever discarded by the project sweep, which discards every idea in the project too, and each idea's discard forgets all of its appearances. If an outline could ever be discarded on its own, its sections' notes would need forgetting another way.
+
+**No project on a row, yet.** The messages this feature hears name an outline, a section or a passage, never the project they belong to — the envelope is `{ id, kind, version }` — so a `project_id` column would need a lookup table of its own. It is planned for when [authorization](../../ROADMAP.md) makes every message name its project: then project deletion becomes a single delete instead of riding the idea sweep, and reads are scoped so an id from another project answers nothing.
+
+**Crates:** `core` (`Subject`, `Place`, the catalog port) · `adapters/catalog` (in-memory and PostgreSQL, one conformance suite for both).

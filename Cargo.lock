@@ -3370,6 +3370,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-appearances-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "tokio",
+ "weaveling-appearances-core",
+ "weaveling-test-harness",
+]
+
+[[package]]
+name = "weaveling-appearances-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+]
+
+[[package]]
 name = "weaveling-boards-catalog"
 version = "0.1.0"
 dependencies = [

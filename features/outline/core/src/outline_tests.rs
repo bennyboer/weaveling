@@ -798,3 +798,58 @@ fn the_index_is_told_about_notes_as_well_as_passages() {
          the reading order would leave every note unreachable"
     );
 }
+
+#[test]
+fn a_first_attachment_is_announced_as_one_event() {
+    let mut book = Book::started();
+    book.adds("Chapter 1", None, None);
+
+    let happened = book.does(OutlineCommand::Attach {
+        attachment: an_idea("loom"),
+        to: a_section("Chapter 1"),
+        after: None,
+    });
+
+    assert_eq!(
+        happened,
+        vec![OutlineEvent::Attached {
+            attachment: an_idea("loom"),
+            to: a_section("Chapter 1"),
+            after: None,
+        }]
+    );
+}
+
+#[test]
+fn moving_an_attachment_says_it_left_before_it_says_where_it_went() {
+    let mut book = Book::started();
+    book.adds("Chapter 1", None, None);
+    book.adds("Chapter 2", None, Some("Chapter 1"));
+    book.attaches_idea("loom", "Chapter 1");
+
+    let happened = book.does(OutlineCommand::Attach {
+        attachment: an_idea("loom"),
+        to: a_section("Chapter 2"),
+        after: None,
+    });
+
+    assert_eq!(
+        happened,
+        vec![
+            OutlineEvent::Detached {
+                attachment: an_idea("loom"),
+            },
+            OutlineEvent::Attached {
+                attachment: an_idea("loom"),
+                to: a_section("Chapter 2"),
+                after: None,
+            },
+        ],
+        "an attachment names only where it goes, so a listener keeping its own record of where \
+         things sit learns of the old place from the detach or not at all"
+    );
+    assert_eq!(
+        book.outline.attachments_in(&a_section("Chapter 1")),
+        Vec::new()
+    );
+}

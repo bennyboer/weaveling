@@ -777,11 +777,20 @@ impl Aggregate for Outline {
                     return Err(OutlineError::NoSuchNeighbour);
                 }
 
-                Ok(vec![OutlineEvent::Attached {
+                let moving = self.section_holding(&attachment).is_some();
+                let mut decided = Vec::with_capacity(2);
+                if moving {
+                    decided.push(OutlineEvent::Detached {
+                        attachment: attachment.clone(),
+                    });
+                }
+                decided.push(OutlineEvent::Attached {
                     attachment,
                     to,
                     after,
-                }])
+                });
+
+                Ok(decided)
             }
             OutlineCommand::Detach { attachment } => {
                 if self.section_holding(&attachment).is_none() {
