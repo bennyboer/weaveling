@@ -5,9 +5,9 @@ use leptos::{IntoView, ev};
 use crate::icons::{Icon, mark};
 use crate::ideas::model::{Idea, IdeaId};
 use crate::inputs::typed;
-use crate::passages::open_passage::OpenPassage;
+use crate::passages::passage_page_state::PassagePageState;
 
-pub fn link_dialog(open: OpenPassage) -> impl IntoView {
+pub fn link_dialog(state: PassagePageState) -> impl IntoView {
     let finding = RwSignal::new(String::new());
     let chosen = RwSignal::new(Vec::<IdeaId>::new());
     let search = NodeRef::<html::Input>::new();
@@ -20,14 +20,15 @@ pub fn link_dialog(open: OpenPassage) -> impl IntoView {
 
     window_event_listener(ev::keydown, move |event| {
         if event.key() == "Escape" {
-            open.stop_picking();
+            state.stop_picking();
         }
     });
 
     let matching = move || {
         let wanted = finding.get().to_lowercase();
 
-        open.waiting_ideas()
+        state
+            .waiting_ideas()
             .into_iter()
             .filter(|idea| idea.shown_as().to_lowercase().contains(wanted.trim()))
             .collect::<Vec<_>>()
@@ -35,7 +36,7 @@ pub fn link_dialog(open: OpenPassage) -> impl IntoView {
 
     html::div()
         .class("overlay")
-        .on(ev::click, move |_| open.stop_picking())
+        .on(ev::click, move |_| state.stop_picking())
         .child(
             html::div()
                 .class("dialog")
@@ -59,7 +60,7 @@ pub fn link_dialog(open: OpenPassage) -> impl IntoView {
                         let found = matching();
 
                         if found.is_empty() {
-                            let why = match open.waiting_ideas().is_empty() {
+                            let why = match state.waiting_ideas().is_empty() {
                                 true => "Every idea in this project is already linked.",
                                 false => "No idea matches.",
                             };
@@ -81,14 +82,14 @@ pub fn link_dialog(open: OpenPassage) -> impl IntoView {
                     html::div().class("dialog-actions").child((
                         html::button()
                             .r#type("button")
-                            .on(ev::click, move |_| open.stop_picking())
+                            .on(ev::click, move |_| state.stop_picking())
                             .child("Cancel"),
                         html::button()
                             .r#type("button")
                             .disabled(move || chosen.with(Vec::is_empty))
                             .on(ev::click, move |_| {
-                                open.link(chosen.get_untracked());
-                                open.stop_picking();
+                                state.link(chosen.get_untracked());
+                                state.stop_picking();
                             })
                             .child(move || match chosen.with(Vec::len) {
                                 0 | 1 => "Link".to_owned(),

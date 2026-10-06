@@ -47,6 +47,8 @@ The shapes each feature repeats:
 - `<Thing>Service`, `<Thing>ServiceError`
 - `InMemory<Thing>Catalog`, `Postgres<Thing>Catalog`
 
+In the client, a view that loads and changes things keeps that in **`<View>State`**, beside the view and named for it — `InspectorState` for `inspector`, `PassagePageState` for the passage page — and the views take it as `state`. Named for the view, not for how it got its data: the inspector's state is the same whether the idea came from the address or, docked on the board, from a selection.
+
 Singular, built on the aggregate's own name — `ProjectEventPublisher`, not `ProjectsEventPublisher`. The crate is plural (`projects_messaging`); the types inside it are not.
 
 ### A contract crate has three suffixes and no fourth

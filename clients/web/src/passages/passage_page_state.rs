@@ -8,7 +8,7 @@ use crate::passages::service as passage_service;
 use crate::route;
 
 #[derive(Clone, Copy)]
-pub struct OpenPassage {
+pub struct PassagePageState {
     project: Memo<String>,
     problem: RwSignal<Option<ApiError>>,
     opened: RwSignal<Option<PassageId>>,
@@ -21,7 +21,7 @@ pub struct OpenPassage {
     unlinking_idea: Action<IdeaId, ()>,
 }
 
-impl OpenPassage {
+impl PassagePageState {
     pub fn open(project: Memo<String>, asked: Memo<Option<String>>) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let opened = RwSignal::new(None::<PassageId>);

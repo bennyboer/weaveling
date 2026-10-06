@@ -12,7 +12,7 @@ use crate::passages::service as passage_service;
 use crate::route;
 
 #[derive(Clone, Copy)]
-pub struct OpenIdea {
+pub struct InspectorState {
     project: Memo<String>,
     problem: RwSignal<Option<ApiError>>,
     opened: RwSignal<Option<Idea>>,
@@ -22,7 +22,7 @@ pub struct OpenIdea {
     retitling_idea: Action<String, ()>,
 }
 
-impl OpenIdea {
+impl InspectorState {
     pub fn open(project: Memo<String>, asked: Memo<Option<String>>) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let opened = RwSignal::new(None::<Idea>);

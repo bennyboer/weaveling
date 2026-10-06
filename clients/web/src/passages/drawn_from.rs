@@ -5,14 +5,14 @@ use leptos_router::components::A;
 
 use crate::icons::{Icon, mark};
 use crate::ideas::model::IdeaId;
-use crate::passages::open_passage::OpenPassage;
+use crate::passages::passage_page_state::PassagePageState;
 use crate::route;
 
-pub fn drawn_from(open: OpenPassage) -> impl IntoView {
+pub fn drawn_from(state: PassagePageState) -> impl IntoView {
     html::section().class("drawn-from").child((
         html::h2().child("Drawn from"),
         move || {
-            let linked_ideas = open.linked_ideas();
+            let linked_ideas = state.linked_ideas();
 
             if linked_ideas.is_empty() {
                 return html::p()
@@ -26,7 +26,7 @@ pub fn drawn_from(open: OpenPassage) -> impl IntoView {
                 .child(
                     linked_ideas
                         .into_iter()
-                        .map(|idea| linked_idea(idea, open))
+                        .map(|idea| linked_idea(idea, state))
                         .collect::<Vec<_>>(),
                 )
                 .into_any()
@@ -34,14 +34,14 @@ pub fn drawn_from(open: OpenPassage) -> impl IntoView {
         html::button()
             .r#type("button")
             .class("link-an-idea")
-            .on(ev::click, move |_| open.start_picking())
+            .on(ev::click, move |_| state.start_picking())
             .child((mark(Icon::Plus), "Link an idea")),
     ))
 }
 
-fn linked_idea(idea: IdeaId, open: OpenPassage) -> impl IntoView {
-    let named = open.named(&idea);
-    let at = route::idea(&open.project(), &idea, &named);
+fn linked_idea(idea: IdeaId, state: PassagePageState) -> impl IntoView {
+    let named = state.named(&idea);
+    let at = route::idea(&state.project(), &idea, &named);
     let shown = named.clone();
 
     html::li().child((
@@ -55,7 +55,7 @@ fn linked_idea(idea: IdeaId, open: OpenPassage) -> impl IntoView {
             .r#type("button")
             .attr("aria-label", format!("Unlink {named}"))
             .attr("title", format!("Unlink {named}"))
-            .on(ev::click, move |_| open.unlink(idea.clone()))
+            .on(ev::click, move |_| state.unlink(idea.clone()))
             .child(mark(Icon::Remove)),
     ))
 }

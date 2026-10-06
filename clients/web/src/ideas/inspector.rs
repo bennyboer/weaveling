@@ -4,37 +4,37 @@ use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 
 use crate::icons::{Icon, mark};
-use crate::ideas::open_idea::OpenIdea;
+use crate::ideas::inspector_state::InspectorState;
 use crate::inputs::typed;
 use crate::route;
 
-pub fn inspector(open: OpenIdea) -> impl IntoView {
-    (name_field(open), appears_in(open))
+pub fn inspector(state: InspectorState) -> impl IntoView {
+    (name_field(state), appears_in(state))
 }
 
-fn name_field(open: OpenIdea) -> impl IntoView {
+fn name_field(state: InspectorState) -> impl IntoView {
     html::h1().class("idea-name").child(
         html::input()
             .r#type("text")
             .attr("aria-label", "Idea name")
             .attr("placeholder", "Untitled")
             .prop("value", move || {
-                open.opened().map(|idea| idea.title).unwrap_or_default()
+                state.opened().map(|idea| idea.title).unwrap_or_default()
             })
             .on(ev::change, move |event| {
                 if let Some(field) = typed(&event) {
-                    open.retitle(field.value());
+                    state.retitle(field.value());
                 }
             }),
     )
 }
 
-fn appears_in(open: OpenIdea) -> impl IntoView {
+fn appears_in(state: InspectorState) -> impl IntoView {
     html::section()
         .class("appears-in")
         .child((html::h2().child("Appears in"), move || {
-            let sections = open.noting_sections();
-            let passages = open.linking_passages();
+            let sections = state.noting_sections();
+            let passages = state.linking_passages();
 
             if sections.is_empty() && passages.is_empty() {
                 return html::p()
@@ -45,7 +45,7 @@ fn appears_in(open: OpenIdea) -> impl IntoView {
                     .into_any();
             }
 
-            let project = open.project();
+            let project = state.project();
             let in_sections = sections
                 .into_iter()
                 .map(|(_, named)| place(Icon::Section, route::outline(&project), named));

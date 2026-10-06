@@ -3,9 +3,9 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
 use crate::inputs::typed;
-use crate::passages::open_passage::OpenPassage;
+use crate::passages::passage_page_state::PassagePageState;
 
-pub fn title_field(open: OpenPassage) -> impl IntoView {
+pub fn title_field(state: PassagePageState) -> impl IntoView {
     html::section().class("about").child(
         html::input()
             .r#type("text")
@@ -15,10 +15,10 @@ pub fn title_field(open: OpenPassage) -> impl IntoView {
                 "placeholder",
                 "Untitled \u{2014} the outline shows its opening words",
             )
-            .prop("value", move || open.title())
+            .prop("value", move || state.title())
             .on(ev::change, move |event| {
                 if let Some(field) = typed(&event) {
-                    open.retitle(field.value());
+                    state.retitle(field.value());
                 }
             }),
     )
