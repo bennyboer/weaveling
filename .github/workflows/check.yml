@@ -33,6 +33,18 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: clients/web/package-lock.json
+
+      - name: bundle the editor
+        working-directory: clients/web
+        run: |
+          npm ci
+          npm run build:js
+
       - name: formatting
         run: cargo fmt --all --check
 

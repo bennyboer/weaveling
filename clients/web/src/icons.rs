@@ -16,6 +16,7 @@ pub enum Icon {
     Plus,
     Quill,
     Idea,
+    Section,
 }
 
 pub fn mark(icon: Icon) -> impl IntoView {
@@ -33,6 +34,7 @@ pub fn mark(icon: Icon) -> impl IntoView {
         Icon::Plus => "M12 5v14M5 12h14",
         Icon::Quill => "M17.25 2.25 21.75 6.75 8.25 20.25 2.25 21.75 3.75 15.75z",
         Icon::Idea => "M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z",
+        Icon::Section => "M4 6h16M8 12h12M8 18h12",
     };
     let ringed = matches!(icon, Icon::Hollow);
 

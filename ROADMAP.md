@@ -700,6 +700,8 @@ So the inspector is not a new surface beside the old one, it is what that route 
 - **The prose gets its own route**, `/projects/{p}/passages/{passage}`, reached from the outline and from the inspector's passage appearances. The editor itself does not change; only who links to it does.
 - **The panel on the board is the same inspector, docked**, filled from the existing selection.
 
+**Step 8 in two reviews.** **8a** — the idea's page becomes the inspector: its name edited in place as the page's heading, and *Appears in* listing the sections and passages, their titles joined in the client from the outline and the project's passages. **8b** — the same inspector docked on the board, following selection.
+
 **The inspector follows selection, not a double-click.** Double-click on a card already means rename in place, and selection already exists (`handles.selected`, set on `focusin`). Hanging the inspector off selection costs no new gesture and takes nothing away: single click inspects, double-click still renames, and the inspector's name field is that same edit rather than a second way to do it. Double-click would have to displace rename to a worse home for no gain.
 
 **Deliberately out of scope:** a `kind` and a `description` on an idea — both additive, neither needed to prove the model — and anything timeline-shaped, which is what the twenty-ideas spike should inform first.

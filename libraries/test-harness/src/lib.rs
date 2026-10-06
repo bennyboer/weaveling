@@ -36,6 +36,24 @@ impl PostgresFixture {
             .acquire_owned()
             .await
             .expect("the fixture turnstile is never closed");
+
+        Self::taking(turn).await
+    }
+
+    pub async fn two() -> (Self, Self) {
+        let mut turns = RUNNING
+            .clone()
+            .acquire_many_owned(2)
+            .await
+            .expect("the fixture turnstile is never closed");
+        let second = turns
+            .split(1)
+            .expect("two turns were taken, so one can be handed on");
+
+        (Self::taking(turns).await, Self::taking(second).await)
+    }
+
+    async fn taking(turn: OwnedSemaphorePermit) -> Self {
         let base = connect(1).await;
 
         drop_stale(&base, OffsetDateTime::now_utc()).await;

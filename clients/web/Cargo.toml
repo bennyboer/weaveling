@@ -31,6 +31,7 @@ time = { workspace = true, features = [
     "wasm-bindgen",
 ] }
 
+appearances-contract = { version = "0.1.0", path = "../../features/appearances/contract", package = "weaveling-appearances-contract" }
 boards-contract = { version = "0.1.0", path = "../../features/boards/contract", package = "weaveling-boards-contract" }
 outline-contract = { version = "0.1.0", path = "../../features/outline/contract", package = "weaveling-outline-contract" }
 ideas-contract = { version = "0.1.0", path = "../../features/ideas/contract", package = "weaveling-ideas-contract" }

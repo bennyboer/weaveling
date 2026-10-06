@@ -3581,6 +3581,7 @@ dependencies = [
  "thiserror",
  "time",
  "wasm-bindgen",
+ "weaveling-appearances-contract",
  "weaveling-boards-contract",
  "weaveling-ideas-contract",
  "weaveling-outline-contract",

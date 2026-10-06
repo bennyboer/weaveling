@@ -222,5 +222,7 @@ test("an untitled idea can still be opened", async ({ page }) => {
 
   await ideas(page).getByRole("link", { name: "Untitled" }).click();
 
-  await expect(page.getByRole("heading", { name: "Untitled" })).toBeVisible();
+  const name = page.getByRole("textbox", { name: "Idea name" });
+  await expect(name).toHaveValue("");
+  await expect(name).toHaveAttribute("placeholder", "Untitled");
 });

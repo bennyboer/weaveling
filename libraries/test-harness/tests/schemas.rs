@@ -75,8 +75,7 @@ async fn two_features_of_one_fixture_cannot_reach_each_other() {
 
 #[tokio::test]
 async fn nothing_written_in_one_fixture_is_visible_in_another() {
-    let mine = PostgresFixture::setup().await;
-    let yours = PostgresFixture::setup().await;
+    let (mine, yours) = PostgresFixture::two().await;
     let ours = mine.create_schema("outline").await;
     let theirs = yours.create_schema("outline").await;
 
@@ -96,13 +95,12 @@ async fn nothing_written_in_one_fixture_is_visible_in_another() {
 
 #[tokio::test]
 async fn a_cleaned_up_fixture_takes_every_schema_it_made_with_it() {
-    let fixture = PostgresFixture::setup().await;
+    let (fixture, looking) = PostgresFixture::two().await;
     let outline = fixture.create_schema("outline").await;
     let _ideas = fixture.create_schema("ideas").await;
     let named = [fixture.schema_of("outline"), fixture.schema_of("ideas")];
 
     a_table_of_notes(&outline).await;
-    let looking = PostgresFixture::setup().await;
     let elsewhere = looking.create_schema("watching").await;
 
     fixture.cleanup().await;

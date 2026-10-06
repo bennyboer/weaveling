@@ -1,4 +1,5 @@
 mod app;
+mod appearances;
 mod boards;
 mod http;
 mod icons;
