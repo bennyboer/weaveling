@@ -11,6 +11,7 @@ pub struct Databases {
     pub boards: PgPool,
     pub outline: PgPool,
     pub passages: PgPool,
+    pub appearances: PgPool,
 }
 
 impl Databases {
@@ -21,6 +22,7 @@ impl Databases {
             boards_wiring::NAME,
             outline_wiring::NAME,
             passages_wiring::NAME,
+            appearances_wiring::NAME,
             MESSAGING,
         ] {
             ensure(server, feature).await?;
@@ -33,6 +35,7 @@ impl Databases {
             boards: connect(server, boards_wiring::NAME).await?,
             outline: connect(server, outline_wiring::NAME).await?,
             passages: connect(server, passages_wiring::NAME).await?,
+            appearances: connect(server, appearances_wiring::NAME).await?,
         };
         databases.lay_out().await?;
 
@@ -45,6 +48,7 @@ impl Databases {
         boards_wiring::lay_out(&self.boards).await?;
         outline_wiring::lay_out(&self.outline).await?;
         passages_wiring::lay_out(&self.passages).await?;
+        appearances_wiring::lay_out(&self.appearances).await?;
         wiring::database::lay_out(MESSAGING, &self.messaging, messaging::migrations()).await
     }
 }

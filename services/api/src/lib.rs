@@ -26,6 +26,7 @@ pub struct Adapters {
     pub ideas: ideas_wiring::Ports,
     pub boards: boards_wiring::Ports,
     pub outline: outline_wiring::Ports,
+    pub appearances: appearances_wiring::Ports,
 }
 
 impl Adapters {
@@ -39,6 +40,7 @@ impl Adapters {
             ideas: ideas_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             boards: boards_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
             outline: outline_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
+            appearances: appearances_wiring::Ports::in_memory(),
             clock,
             dispatcher,
             deliveries,
@@ -78,6 +80,7 @@ impl Adapters {
                 dispatcher.clone(),
                 clock.clone(),
             ),
+            appearances: appearances_wiring::Ports::postgres(databases.appearances.clone()),
             clock,
             dispatcher,
             deliveries,
@@ -116,6 +119,7 @@ pub fn app(adapters: Adapters) -> Router {
         ideas_wiring::wire(&adapters.ideas, &context),
         boards_wiring::wire(&adapters.boards, &context),
         outline_wiring::wire(&adapters.outline, &context),
+        appearances_wiring::wire(&adapters.appearances),
     ];
 
     Router::new()

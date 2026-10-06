@@ -26,6 +26,7 @@ eventsourcing = { version = "0.1.0", path = "../../libraries/eventsourcing", pac
 ### FEATURES ###
 ################
 
+appearances-wiring = { version = "0.1.0", path = "../../features/appearances/wiring", package = "weaveling-appearances-wiring" }
 boards-wiring = { version = "0.1.0", path = "../../features/boards/wiring", package = "weaveling-boards-wiring" }
 outline-wiring = { version = "0.1.0", path = "../../features/outline/wiring", package = "weaveling-outline-wiring" }
 passages-wiring = { version = "0.1.0", path = "../../features/passages/wiring", package = "weaveling-passages-wiring" }
@@ -38,6 +39,7 @@ postgres = [
     "dep:sqlx",
     "eventsourcing/postgres",
     "wiring/postgres",
+    "appearances-wiring/postgres",
     "boards-wiring/postgres",
     "outline-wiring/postgres",
     "ideas-wiring/postgres",

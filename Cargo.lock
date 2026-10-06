@@ -3381,11 +3381,75 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-appearances-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "weaveling-appearances-core"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "thiserror",
+]
+
+[[package]]
+name = "weaveling-appearances-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "weaveling-appearances-core",
+ "weaveling-eventpublishing",
+ "weaveling-ideas-contract",
+ "weaveling-messaging",
+ "weaveling-outline-contract",
+ "weaveling-passages-contract",
+]
+
+[[package]]
+name = "weaveling-appearances-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "tracing",
+ "weaveling-appearances-contract",
+ "weaveling-appearances-core",
+]
+
+[[package]]
+name = "weaveling-appearances-tests"
+version = "0.1.0"
+dependencies = [
+ "axum-test",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-appearances-catalog",
+ "weaveling-appearances-contract",
+ "weaveling-appearances-core",
+ "weaveling-appearances-messaging",
+ "weaveling-appearances-rest",
+ "weaveling-ideas-contract",
+ "weaveling-messaging",
+ "weaveling-outline-contract",
+ "weaveling-passages-contract",
+]
+
+[[package]]
+name = "weaveling-appearances-wiring"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "weaveling-appearances-catalog",
+ "weaveling-appearances-core",
+ "weaveling-appearances-messaging",
+ "weaveling-appearances-rest",
+ "weaveling-wiring",
 ]
 
 [[package]]
@@ -4075,6 +4139,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "weaveling-appearances-wiring",
  "weaveling-boards-wiring",
  "weaveling-clock",
  "weaveling-eventsourcing",

@@ -18,4 +18,8 @@ The answer to *where does this appear?* — for an idea today: in which sections
 
 **No project on a row, yet.** The messages this feature hears name an outline, a section or a passage, never the project they belong to — the envelope is `{ id, kind, version }` — so a `project_id` column would need a lookup table of its own. It is planned for when [authorization](../../ROADMAP.md) makes every message name its project: then project deletion becomes a single delete instead of riding the idea sweep, and reads are scoped so an id from another project answers nothing.
 
-**Crates:** `core` (`Subject`, `Place`, the catalog port) · `adapters/catalog` (in-memory and PostgreSQL, one conformance suite for both).
+**Who it hears.** `index-outline-appearances` takes `ATTACHED` / `DETACHED` of ideas (a passage attached to a section is the book itself, not an appearance) and `SECTION_REMOVED`. `index-passage-appearances` takes `passage.idea.linked`, `passage.idea.unlinked` and `passage.deleted`. `forget-appearances-of-discarded-idea` takes the idea's `DISCARDED`. All are kept deliveries, and all are idempotent — remembering twice is one row, forgetting what is gone is nothing.
+
+**Route:** `GET /api/appearances?idea={id}` → `[{ "type": "passage" | "section", "id" }]`, in one stable order.
+
+**Crates:** `core` (`Subject`, `Place`, the catalog port) · `contract` (`PlaceDTO`) · `adapters/catalog` (in-memory and PostgreSQL, one conformance suite for both) · `adapters/messaging` (the three listeners) · `adapters/rest` · `wiring` · `tests`.

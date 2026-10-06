@@ -22,6 +22,7 @@ async fn a_schema_each(fixture: &PostgresFixture) -> Databases {
         boards: fixture.create_schema("boards").await,
         outline: fixture.create_schema("outline").await,
         passages: fixture.create_schema("passages").await,
+        appearances: fixture.create_schema("appearances").await,
     };
     databases
         .lay_out()
@@ -583,6 +584,118 @@ async fn linking_an_idea_is_announced_and_relayed() {
         })
         .await,
         "the link is written and announced in one transaction, and the passages outbox is relayed like every other"
+    );
+
+    relays.stop().await;
+    fixture.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded() {
+    use eventsourcing::Cadence;
+    use weaveling_service_api::Relays;
+
+    let fixture = PostgresFixture::setup().await;
+    let databases = a_schema_each(&fixture).await;
+    let adapters = Adapters::postgres(Arc::new(SystemClock), &databases);
+    let outboxes = adapters.outboxes();
+    let consuming = adapters.consuming();
+    let server = TestServer::new(app(adapters));
+    let relays = Relays::started(
+        outboxes,
+        consuming,
+        Cadence {
+            deliver_every: std::time::Duration::from_millis(10),
+            sweep_every: std::time::Duration::from_secs(3_600),
+            deliver_at_most: 16,
+            sweep_at_most: 16,
+            kept_for: time::Duration::days(90),
+        },
+    );
+
+    let project = a_project(&server, "Appearing").await;
+    let captured = server
+        .post("/api/ideas")
+        .json(&json!({ "project": project, "title": "A girl in a wood" }))
+        .await;
+    captured.assert_status(axum::http::StatusCode::CREATED);
+    let idea = captured.json::<Value>()["id"]
+        .as_str()
+        .expect("a captured idea carries an id")
+        .to_owned();
+    let opened = server
+        .post("/api/outlines")
+        .json(&json!({ "project": project }))
+        .await;
+    opened.assert_status_ok();
+    let outline = opened.json::<Value>()["id"]
+        .as_str()
+        .expect("an outline carries an id")
+        .to_owned();
+    let added = server
+        .post(&format!("/api/outlines/{outline}/sections"))
+        .json(&json!({ "under": null, "after": null, "title": "Chapter one" }))
+        .await;
+    added.assert_status(axum::http::StatusCode::CREATED);
+    let section = added.json::<Value>()["section"]
+        .as_str()
+        .expect("an added section carries an id")
+        .to_owned();
+    server
+        .post(&format!("/api/outlines/{outline}/attachments"))
+        .json(&json!({
+            "attachment": { "kind": "idea", "id": idea },
+            "section": section,
+            "after": null,
+        }))
+        .await
+        .assert_status_ok();
+    let made = server
+        .post("/api/passages")
+        .json(&json!({ "project": project }))
+        .await;
+    made.assert_status(axum::http::StatusCode::CREATED);
+    let passage = made.json::<Value>()["id"]
+        .as_str()
+        .expect("a passage carries an id")
+        .to_owned();
+    server
+        .post(&format!("/api/passages/{passage}/ideas"))
+        .json(&json!({ "idea": idea }))
+        .await
+        .assert_status_ok();
+
+    let appearances = format!("/api/appearances?idea={idea}");
+    assert!(
+        until(|| async {
+            let mut places: Vec<Value> = server.get(&appearances).await.json();
+            places.sort_by_key(|place| place["type"].to_string());
+
+            places
+                == vec![
+                    json!({ "type": "passage", "id": passage }),
+                    json!({ "type": "section", "id": section }),
+                ]
+        })
+        .await,
+        "appearances hear both the outline and passages, each through its own outbox"
+    );
+
+    server
+        .delete(&format!("/api/ideas/{idea}"))
+        .await
+        .assert_status(axum::http::StatusCode::NO_CONTENT);
+
+    assert!(
+        until(|| async {
+            server
+                .get(&appearances)
+                .await
+                .json::<Vec<Value>>()
+                .is_empty()
+        })
+        .await,
+        "a discarded idea appears nowhere, however many places it was in"
     );
 
     relays.stop().await;

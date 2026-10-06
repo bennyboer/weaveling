@@ -1,10 +1,11 @@
 use std::env;
-use std::sync::Mutex;
+use std::sync::{Arc, LazyLock, Mutex};
 
 use sqlx::AssertSqlSafe;
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use time::OffsetDateTime;
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use uuid::Uuid;
 
 const DATABASE_URL: &str = "DATABASE_URL";
@@ -13,10 +14,15 @@ const PREFIX: &str = "fixture";
 const STALE_AFTER: i64 = 3_600;
 const HEX_LENGTH: usize = 8;
 const HANDFUL: u32 = 5;
+const FIXTURES_AT_ONCE: usize = 2;
+
+static RUNNING: LazyLock<Arc<Semaphore>> =
+    LazyLock::new(|| Arc::new(Semaphore::new(FIXTURES_AT_ONCE)));
 
 pub struct PostgresFixture {
     stem: String,
     handed_out: Mutex<Vec<PgPool>>,
+    _turn: OwnedSemaphorePermit,
 }
 
 pub fn database_url() -> String {
@@ -25,6 +31,11 @@ pub fn database_url() -> String {
 
 impl PostgresFixture {
     pub async fn setup() -> Self {
+        let turn = RUNNING
+            .clone()
+            .acquire_owned()
+            .await
+            .expect("the fixture turnstile is never closed");
         let base = connect(1).await;
 
         drop_stale(&base, OffsetDateTime::now_utc()).await;
@@ -33,6 +44,7 @@ impl PostgresFixture {
         Self {
             stem: stem(OffsetDateTime::now_utc()),
             handed_out: Mutex::new(Vec::new()),
+            _turn: turn,
         }
     }
 

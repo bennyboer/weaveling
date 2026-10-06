@@ -1,0 +1,12 @@
+[package]
+name = "weaveling-appearances-rest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+
+appearances-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-appearances-contract" }
+appearances-core = { version = "0.1.0", path = "../../core", package = "weaveling-appearances-core" }
