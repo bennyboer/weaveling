@@ -807,7 +807,15 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 - **Enter, after Neo.** Once: a new paragraph in the same scene. Twice: the empty paragraph goes and a new scene begins right after this one, in the same section. Three times: a new section after the current one, at the same level, its heading ready to type.
 - **Nesting by Tab and Shift+Tab on a section heading**, the gesture the outline already uses, so one habit serves both views.
 
-**Still open:** where the flow opens — the start of the book, or where the author left off — and showing that a scene is still being saved, since closing the tab in the moment between typing and the save landing loses the last change.
+- **Entered by "Write"** in the masthead's views, beside Board, Outline and Ideas.
+- **A quiet status note in the bottom right**, saying "All saved" or "Saving…" — closing the tab between typing and the save landing loses the last change, so it should be visible without asking for attention — together with a few statistics such as the word count.
+
+- **"Write" lands where the author left off**, and at the start of the book the first time.
+- **Following a scene from an idea opens the writing view at that scene**, rather than a page of its own.
+- **The save status speaks for the whole view**: "Saving…" while any change anywhere in it is in flight.
+- **The word count toggles by a click** between the section the cursor is in (the default) and the whole book.
+
+**Later: a history of the work, and goals for it.** How many words were written and how much time went into writing and planning, day by day, so an author can see their work add up. On top of that, a goal to aim for — words for the day, or for this sitting — that the status note can count towards.
 
 ---
 

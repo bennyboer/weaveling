@@ -10,6 +10,7 @@ import {
 import {
   anOpenProject,
   captureIdea,
+  catalogued,
   onTheBoard,
   openTheBoard,
 } from "./support/shell";
@@ -187,6 +188,7 @@ test("a card can be renamed from its bar, and the new title sticks", async ({
 
   await expect(corkboard(page).locator(".pinned-rename")).toHaveCount(0);
   await expect(corkboard(page).locator(".name")).toHaveText("The loom forgets");
+  await catalogued(page, ["The loom forgets"]);
 
   await page.reload();
   await onTheBoard(page);
@@ -270,6 +272,7 @@ test("clicking away from a rename keeps what was typed", async ({ page }) => {
 
   await expect(corkboard(page).locator(".pinned-rename")).toHaveCount(0);
   await expect(corkboard(page).locator(".name")).toHaveText("The loom forgets");
+  await catalogued(page, ["The loom forgets"]);
 
   await page.reload();
   await onTheBoard(page);
