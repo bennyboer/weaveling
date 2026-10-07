@@ -1,45 +1,37 @@
 use std::sync::Arc;
 
 use clock::SystemClock;
-use outbox::Cadence;
 use tokio::net::TcpListener;
-use weaveling_service_api::{Adapters, Relays, Storage, app};
+use tracing_subscriber::EnvFilter;
+use weaveling_service_api::{Adapters, Backend, Relays, app};
 
-#[cfg(feature = "postgres")]
-fn storage() -> Storage {
-    let server = std::env::var("DATABASE_URL").expect(
-        "DATABASE_URL should name a PostgreSQL server when built with the postgres feature",
-    );
-
-    Storage::Postgres(Arc::new(wiring::ServerDatabases::on(&server)))
-}
-
-#[cfg(not(feature = "postgres"))]
-fn storage() -> Storage {
-    Storage::InMemory
-}
-
-async fn adapters() -> Adapters {
-    Adapters::assembled(storage(), Arc::new(SystemClock))
-        .await
-        .expect("the databases should be reachable and migratable")
-}
+const LOG_LEVEL_UNLESS_TOLD: &str = "info";
 
 async fn serving() -> (axum::Router, Relays) {
-    let adapters = adapters().await;
+    let backend = Backend::from_environment().unwrap_or_else(|why| panic!("{why}"));
+    tracing::info!("keeping the work {backend}");
+    let storage = backend.storage().unwrap_or_else(|why| panic!("{why}"));
+    let adapters = Adapters::assembled(storage, Arc::new(SystemClock))
+        .await
+        .unwrap_or_else(|why| panic!("{why}"));
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let routes = app(adapters);
 
     (
         routes,
-        Relays::started(outboxes, consuming, Cadence::default()),
+        Relays::started(outboxes, consuming, backend.cadence()),
     )
 }
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| EnvFilter::new(LOG_LEVEL_UNLESS_TOLD)),
+        )
+        .init();
 
     let (routes, relays) = serving().await;
 

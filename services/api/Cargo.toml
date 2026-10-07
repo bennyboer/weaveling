@@ -35,6 +35,7 @@ projects-wiring = { version = "0.1.0", path = "../../features/projects/wiring", 
 
 
 [features]
+default = ["postgres", "sqlite"]
 postgres = [
     "dep:sqlx",
     "outbox/postgres",

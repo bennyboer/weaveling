@@ -1,3 +1,4 @@
+mod backend;
 mod relays;
 
 use std::sync::Arc;
@@ -15,6 +16,7 @@ use projects_wiring::ProjectFeature;
 use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context, assemble};
 
+pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
 pub use relays::Relays;
 pub use wiring::{Storage, Unprepared};
 

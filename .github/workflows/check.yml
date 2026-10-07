@@ -7,11 +7,13 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  DATABASE_URL: postgres://weaveling:weaveling@127.0.0.1:5432/weaveling
 
 jobs:
   rust:
     runs-on: ubuntu-latest
+
+    env:
+      DATABASE_URL: postgres://weaveling:weaveling@127.0.0.1:5432/weaveling
 
     services:
       postgres:

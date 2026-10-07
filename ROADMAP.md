@@ -734,7 +734,7 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 
 **Backed by SQLite** — see [the decision](#sqlite-backs-local-mode--decided): one file per feature plus one for messaging, the relay woken by a `tokio::sync::Notify` rather than `LISTEN/NOTIFY`, and a schema twin for every migration.
 
-**One binary, the backend chosen at runtime.** Decided 2026-10-07. Every backend is compiled in and configuration picks: `DATABASE_URL` → PostgreSQL, a data directory → local SQLite, neither → in memory. A third backend does not fit compile-time features — they stop being additive, and `--all-features`, which CI builds, would need a precedence rule — and one binary for every mode is what an author downloads anyway.
+**One binary, the backend chosen at runtime.** Decided 2026-10-07. Every backend is compiled in and configuration picks: `WEAVELING_DATABASE_URL` → PostgreSQL, a data directory → local SQLite, neither → in memory. A third backend does not fit compile-time features — they stop being additive, and `--all-features`, which CI builds, would need a precedence rule — and one binary for every mode is what an author downloads anyway.
 
 **Export moved out, to [M13a](#milestone-13a--moving-a-project-between-machines).** It was here as the only thing standing between an author and a lost afternoon. With SQLite, work is durable because it was written as it happened, and export becomes what it should always have been: a way to move a project between machines.
 
@@ -752,12 +752,19 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 3. **Deliveries and the registry on SQLite.** Retries and dead letters must survive a crash, or the [durable delivery](#milestone-11b--one-flow-in-every-mode) is a lie in local mode.
 4. **The five catalogs on SQLite** — projects, ideas, boards, outline, appearances. Mechanical against existing suites; one commit each, one review.
 5. **The passages store on SQLite** — updates, titles, linked ideas.
-6. **The service runs locally.** `Adapters::local(directory)`, the backend chosen from configuration, the relays started with a short local `Cadence` since the SQLite outbox is polled rather than notified, and the browser suite run against local mode as well as in memory.
+6. **The service runs locally.** Split in three: **6a** `Storage::Sqlite` and every feature on it, proven by the service tests ported to SQLite and a restart from files alone; **6b** the binary choosing at startup — `WEAVELING_DATABASE_URL` for PostgreSQL, `WEAVELING_DATA` for a data directory, neither for memory, both refused — with every backend compiled in and the local relays polling every 100ms, since the SQLite outbox is never notified; **6c** the browser suite run against local mode as well as in memory.
 7. **A refused message reaches the author.** Retries and a durable dead-letter table exist since M11b; in local mode there is no ops staff to read the table, so the client shows what was refused and why.
 
 **Done when:** an author can work with no database server running, stop the process, start it again, and find their ideas, board, outline and passages exactly as they left them; a refused message is shown to them rather than only stored; and the browser suite passes against local mode.
 
 **Later: revisit the wiring again.** Step 0b is good enough to build local mode on, not where it should end. Candidates noticed on the way: every feature now spells its wiring three times over — `Ports`, the free `wire` and `service` its tests use, and the `Feature` impl that mostly delegates to them; each backend adds a `#[cfg]` pair of trait methods with defaults, so the impls grow per backend; and `Storage` is an enum the trait has to keep in step with. Worth a fresh look once SQLite has shown what a third backend really costs.
+
+**Later: two executables, one per audience.** What M13 ends with is one binary that picks its backend from the environment, which is right for us starting it from a terminal and wrong for an author. The target is two executables over the same library:
+
+- **A local one for authors** — SQLite, and local mode without being told: when nothing is configured, the work goes to the platform's data directory (`%APPDATA%\Weaveling`, `~/Library/Application Support/Weaveling`, `~/.local/share/weaveling`). A `--data <directory>` flag moves it, falling back to `WEAVELING_DATA` — `clap` with its `env` support gives both from one declaration, and `--help` makes it discoverable.
+- **A server one** — PostgreSQL, configured by `WEAVELING_DATABASE_URL` as now, since containers and hosting platforms configure by environment and it keeps a connection string out of the process list.
+
+In memory stays what development and the tests run on. `Backend::chosen` survives as the shared core; each executable only decides its default and where its settings come from. This revisits *one binary, the backend chosen at runtime* from the top of this milestone: the runtime choice stays, but the binary each audience runs is narrowed to what that audience needs.
 
 ---
 

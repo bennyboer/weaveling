@@ -160,14 +160,22 @@ Then **open http://localhost:8080** — that's the one you want. Trunk rebuilds 
 
 Start the API first if you care about the first paint; otherwise the client shows its error banner until the API answers and a reload picks it up. Rust changes on the server need a manual restart (or `cargo watch -x 'run -p weaveling-service-api'`); client changes are live.
 
-You can create, rename and delete projects. By default state lives in memory, so restarting the API empties it. To run against PostgreSQL instead:
+**Where the work is kept is chosen at startup**, and one binary carries every option:
+
+- **Nothing set** — in memory, so restarting the API empties it.
+- **`WEAVELING_DATA=<directory>`** — local mode: one SQLite file per feature in that directory, created if missing, so the work survives a restart and is a set of files you own.
+- **`WEAVELING_DATABASE_URL=<server>`** — PostgreSQL.
+
+Setting both is refused rather than guessed. Both names are namespaced on purpose: a `DATABASE_URL` exported for some other project must never steer where an author's work goes. The plain `DATABASE_URL` is read only by the test harness, which is developer tooling and follows the convention.
 
 ```bash
+WEAVELING_DATA=~/weaveling cargo run -p weaveling-service-api
+
 docker compose up -d
-DATABASE_URL=postgres://weaveling:weaveling@127.0.0.1:5432/weaveling   cargo run -p weaveling-service-api --features postgres
+WEAVELING_DATABASE_URL=postgres://weaveling:weaveling@127.0.0.1:5432/weaveling cargo run -p weaveling-service-api
 ```
 
-It creates any missing feature databases, applies every migration at startup, and runs an outbox relay per event-sourced feature — each woken by a PostgreSQL notification when something is appended, and polling every five seconds as a backstop. `ctrl-c` stops the relays before exiting.
+Either way it lays every schema down at startup and runs an outbox relay per feature that announces anything. On PostgreSQL each relay is woken by a notification and polls every five seconds as a backstop; SQLite has nothing to notify, so in local mode the relays poll every 100ms instead. `ctrl-c` stops the relays before exiting.
 
 ### Testing the client
 
