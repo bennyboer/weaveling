@@ -1,9 +1,10 @@
 use async_trait::async_trait;
+use ideas_core::{IdeaCatalog, IdeaId, ProjectLink};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
 use crate::postgres::{PostgresIdeaCatalog, migrations};
-use crate::suite::Workbench;
+use crate::suite::{Workbench, a_summary, at};
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -126,6 +127,33 @@ async fn a_batch_is_read_straight_out_of_the_index() {
         "both halves belong in the index condition — a filter means rows are read and then \
          thrown away, which is the cost the cursor exists to avoid: {plan}"
     );
+
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
+    let bench = OnPostgres::setup().await;
+    bench
+        .store
+        .remember(&a_summary(
+            IdeaId::generate(at(1_000)),
+            "project_1",
+            "The Loom",
+        ))
+        .await
+        .expect("remembering should succeed");
+    sqlx::query("UPDATE idea_summaries SET version = -3")
+        .execute(&bench.pool)
+        .await
+        .expect("editing the table by hand should succeed");
+
+    let found = bench
+        .store
+        .in_project(&ProjectLink::from("project_1"))
+        .await;
+
+    assert!(found.is_err(), "{found:?}");
 
     bench.cleanup().await;
 }

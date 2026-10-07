@@ -21,6 +21,28 @@ pub enum StoreError {
     },
 }
 
+impl StoreError {
+    pub fn backend(
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self::Backend {
+            aggregate: aggregate.clone(),
+            kind,
+            detail: detail.into(),
+        }
+    }
+
+    pub fn outdated(aggregate: &AggregateId, kind: AggregateType, expected: Version) -> Self {
+        Self::Outdated {
+            aggregate: aggregate.clone(),
+            kind,
+            expected,
+        }
+    }
+}
+
 #[async_trait]
 pub trait EventStore<E>: Send + Sync {
     async fn append(

@@ -4,14 +4,13 @@ mod delivering;
 mod in_process;
 mod listening;
 mod message;
+mod routing;
+
 #[cfg(feature = "postgres")]
 mod notifying;
-mod routing;
 
 pub use consuming::DeliveryConsumer;
 pub use deliveries::InMemoryDeliveries;
-#[cfg(feature = "postgres")]
-pub use deliveries::{PostgresDeliveries, migrations};
 pub use delivering::{
     ATTEMPTS, BACKOFF, CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued, again_after,
 };
@@ -21,6 +20,9 @@ pub use listening::{
     Undelivered,
 };
 pub use message::{Conversation, Message, MessageId};
+pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};
+
+#[cfg(feature = "postgres")]
+pub use deliveries::{PostgresDeliveries, migrations};
 #[cfg(feature = "postgres")]
 pub use notifying::{Listening, listening_to};
-pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};

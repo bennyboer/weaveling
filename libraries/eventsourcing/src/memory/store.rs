@@ -90,11 +90,7 @@ where
         let key = (aggregate.clone(), kind);
 
         if reached(streams.get(&key)) != expected {
-            return Err(StoreError::Outdated {
-                aggregate: aggregate.clone(),
-                kind,
-                expected,
-            });
+            return Err(StoreError::outdated(aggregate, kind, expected));
         }
 
         streams

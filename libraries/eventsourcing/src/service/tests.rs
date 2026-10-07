@@ -709,11 +709,7 @@ impl EventStore<SampleEvent> for BalksOnce {
         stream: &[Recorded<SampleEvent>],
     ) -> Result<(), StoreError> {
         if self.balked() {
-            return Err(StoreError::Outdated {
-                aggregate: aggregate.clone(),
-                kind,
-                expected,
-            });
+            return Err(StoreError::outdated(aggregate, kind, expected));
         }
 
         self.inner.append(aggregate, kind, expected, stream).await

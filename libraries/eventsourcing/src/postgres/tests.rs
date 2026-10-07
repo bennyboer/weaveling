@@ -9,11 +9,11 @@ use crate::agent::Agent;
 use crate::aggregate::AggregateId;
 use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
-use crate::postgres::sample::{codec, message_for, nonsense};
 use crate::postgres::{Codec, PostgresEventStore};
 use crate::store::{EventStore, StoreError};
 use crate::testing::Workbench;
 use crate::testing::sample::{SAMPLE, SampleEvent};
+use crate::testing::stored::{codec, message_for, nonsense};
 use crate::version::Version;
 
 struct OnPostgres {
@@ -424,4 +424,26 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     );
 
     fixture.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_version_below_zero_is_a_backend_failure_not_a_huge_version() {
+    let bench = OnPostgres::setup().await;
+    let aggregate = AggregateId::from("sample_negative");
+    a_started_stream(bench.store(), &aggregate).await;
+
+    sqlx::query("UPDATE events SET version = -3, is_snapshot = true WHERE aggregate = $1")
+        .bind(aggregate.as_str())
+        .execute(&bench.pool)
+        .await
+        .expect("editing the table by hand should succeed");
+
+    let found = bench.store().latest_snapshot(&aggregate, SAMPLE).await;
+
+    assert!(
+        matches!(found, Err(StoreError::Backend { .. })),
+        "-3 read as a u64 is eighteen quintillion, a version nothing could ever have written: {found:?}"
+    );
+
+    bench.cleanup().await;
 }

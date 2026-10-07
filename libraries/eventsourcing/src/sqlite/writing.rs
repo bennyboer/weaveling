@@ -1,24 +1,27 @@
-use sqlx::{Postgres, Transaction};
+use sqlx::{Sqlite, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
-use crate::postgres::{PostgresEventStore, agent, as_bigint};
+use crate::outbox::Origin;
+use crate::sqlite::{SqliteEventStore, agent, as_integer, enqueue, instant};
 use crate::store::StoreError;
 use crate::version::Version;
+
+const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
 
 const HEAD: &str = "
     SELECT COALESCE(MAX(version), 0)
     FROM events
-    WHERE aggregate = $1 AND kind = $2
+    WHERE aggregate = ?1 AND kind = ?2
 ";
 
 const WRITE: &str = "
     INSERT INTO events
         (aggregate, kind, version, name, body, body_version, agent, occurred_at, is_snapshot)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
 ";
 
-impl<E> PostgresEventStore<E>
+impl<E> SqliteEventStore<E>
 where
     E: Event,
 {
@@ -35,7 +38,7 @@ where
 
         let mut transaction = self
             .pool
-            .begin()
+            .begin_with(BEGIN_WRITING)
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
@@ -46,14 +49,14 @@ where
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
-        if head != as_bigint(expected) {
+        if head != as_integer(expected) {
             return Err(StoreError::outdated(aggregate, kind, expected));
         }
 
         for happened in events {
             self.insert(&mut transaction, aggregate, kind, expected, happened)
                 .await?;
-            self.enqueue(&mut transaction, aggregate, kind, happened)
+            self.announce(&mut transaction, aggregate, kind, happened)
                 .await?;
         }
 
@@ -65,7 +68,7 @@ where
 
     async fn insert(
         &self,
-        transaction: &mut Transaction<'_, Postgres>,
+        transaction: &mut Transaction<'_, Sqlite>,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
@@ -74,12 +77,12 @@ where
         sqlx::query(WRITE)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
-            .bind(as_bigint(happened.metadata.version))
+            .bind(as_integer(happened.metadata.version))
             .bind(happened.event.name().as_str())
-            .bind((self.codec.body)(&happened.event))
-            .bind(as_bigint(happened.event.version()))
+            .bind((self.codec.body)(&happened.event).to_string())
+            .bind(as_integer(happened.event.version()))
             .bind(agent::encode(&happened.metadata.agent))
-            .bind(happened.metadata.occurred_at)
+            .bind(instant::stored(happened.metadata.occurred_at))
             .bind(happened.metadata.is_snapshot)
             .execute(&mut **transaction)
             .await
@@ -89,6 +92,28 @@ where
             })?;
 
         Ok(())
+    }
+
+    async fn announce(
+        &self,
+        transaction: &mut Transaction<'_, Sqlite>,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        happened: &Recorded<E>,
+    ) -> Result<(), StoreError> {
+        let Some(message) = (self.message_for)(happened) else {
+            return Ok(());
+        };
+
+        let origin = Origin {
+            aggregate: aggregate.as_str(),
+            kind: kind.as_str(),
+            version: happened.metadata.version,
+        };
+
+        enqueue(transaction, origin, &message)
+            .await
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }
 }
 

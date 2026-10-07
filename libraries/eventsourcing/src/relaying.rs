@@ -155,10 +155,10 @@ mod tests {
     use crate::aggregate::AggregateId;
     use crate::event::{Event, Recorded};
     use crate::metadata::EventMetadata;
-    use crate::postgres::sample::{codec, message_for};
     use crate::postgres::{PostgresEventStore, PostgresOutbox};
     use crate::store::EventStore;
     use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind};
+    use crate::testing::stored::{codec, message_for};
     use crate::version::Version;
 
     #[derive(Default)]

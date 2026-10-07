@@ -7,7 +7,7 @@ edition.workspace = true
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-time = { workspace = true }
+time = { workspace = true, features = ["formatting", "parsing"] }
 
 serde_json = { workspace = true }
 sqlx = { workspace = true, optional = true, features = ["uuid"] }
@@ -19,6 +19,7 @@ messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-mes
 
 [features]
 postgres = ["dep:sqlx", "dep:uuid", "messaging/postgres"]
+sqlite = ["dep:sqlx", "dep:uuid", "sqlx/sqlite"]
 
 [dev-dependencies]
 serde = { workspace = true }

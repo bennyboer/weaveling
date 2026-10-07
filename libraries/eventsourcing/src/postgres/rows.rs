@@ -17,14 +17,21 @@ impl<E> PostgresEventStore<E> {
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<Recorded<E>, StoreError> {
-        let version: i64 = column(row, "version", aggregate, kind)?;
+        let stored: i64 = column(row, "version", aggregate, kind)?;
+        let version = u64::try_from(stored).map_err(|_| {
+            StoreError::backend(
+                aggregate,
+                kind,
+                format!("{stored} was written where a version belongs"),
+            )
+        })?;
         let body: Value = column(row, "body", aggregate, kind)?;
         let agent: String = column(row, "agent", aggregate, kind)?;
         let occurred_at: OffsetDateTime = column(row, "occurred_at", aggregate, kind)?;
         let is_snapshot: bool = column(row, "is_snapshot", aggregate, kind)?;
 
         let event = (self.codec.event)(body).ok_or_else(|| {
-            self.backend_error(
+            StoreError::backend(
                 aggregate,
                 kind,
                 format!("version {version} was written in a shape nothing can read"),
@@ -36,7 +43,7 @@ impl<E> PostgresEventStore<E> {
             metadata: EventMetadata {
                 aggregate: aggregate.clone(),
                 kind,
-                version: Version::of(version as u64),
+                version: Version::of(version),
                 agent: agent::decode(&agent),
                 occurred_at,
                 is_snapshot,
@@ -54,7 +61,7 @@ impl<E> PostgresEventStore<E> {
         let found = query_for(statement, aggregate, kind, versions)
             .fetch_all(&self.pool)
             .await
-            .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
         found
             .iter()
@@ -72,7 +79,7 @@ impl<E> PostgresEventStore<E> {
         let found = query_for(statement, aggregate, kind, versions)
             .fetch_optional(&self.pool)
             .await
-            .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
         found
             .map(|row| self.recorded(&row, aggregate, kind))
@@ -106,9 +113,11 @@ fn column<'row, T>(
 where
     T: sqlx::Decode<'row, Postgres> + sqlx::Type<Postgres>,
 {
-    row.try_get(column).map_err(|failure| StoreError::Backend {
-        aggregate: aggregate.clone(),
-        kind,
-        detail: format!("{column} could not be read: {failure}"),
+    row.try_get(column).map_err(|failure| {
+        StoreError::backend(
+            aggregate,
+            kind,
+            format!("{column} could not be read: {failure}"),
+        )
     })
 }

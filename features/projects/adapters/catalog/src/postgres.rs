@@ -51,7 +51,7 @@ fn to_summary(row: &PgRow) -> Result<ProjectSummary, CatalogError> {
 
     Ok(ProjectSummary {
         id: project.parse().map_err(unreachable)?,
-        version: Version::of(version as u64),
+        version: Version::of(u64::try_from(version).map_err(unreachable)?),
         name: ProjectName::new(&name).map_err(unreachable)?,
         created_at,
         updated_at,

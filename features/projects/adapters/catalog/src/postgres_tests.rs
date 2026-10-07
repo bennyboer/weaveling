@@ -1,9 +1,10 @@
 use async_trait::async_trait;
+use projects_core::{ProjectCatalog, ProjectId};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
 use crate::postgres::{PostgresProjectCatalog, migrations};
-use crate::suite::Workbench;
+use crate::suite::{Workbench, a_summary, at};
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -61,6 +62,29 @@ async fn the_id_column_sorts_bytewise_whatever_the_database_locale_is() {
         "the id orders the listing, so it must sort bytewise — base62 ids only sort by age \
          under the C collation, and a glibc locale puts 'a' before 'A'"
     );
+
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
+    let bench = OnPostgres::setup().await;
+    bench
+        .store
+        .remember(&a_summary(
+            ProjectId::generate(at(1_000)),
+            "The Silent Loom",
+        ))
+        .await
+        .expect("remembering should succeed");
+    sqlx::query("UPDATE project_summaries SET version = -3")
+        .execute(&bench.pool)
+        .await
+        .expect("editing the table by hand should succeed");
+
+    let found = bench.store.all().await;
+
+    assert!(found.is_err(), "{found:?}");
 
     bench.cleanup().await;
 }

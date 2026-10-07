@@ -52,7 +52,7 @@ impl<E> PostgresEventStore<E> {
             .bind(as_bigint(through))
             .execute(&self.pool)
             .await
-            .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))?;
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
         Ok(())
     }

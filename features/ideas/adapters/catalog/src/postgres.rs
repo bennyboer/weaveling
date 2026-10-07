@@ -57,7 +57,7 @@ fn to_summary(row: &PgRow) -> Result<IdeaSummary, CatalogError> {
 
     Ok(IdeaSummary {
         id: idea.parse().map_err(unreachable)?,
-        version: Version::of(version as u64),
+        version: Version::of(u64::try_from(version).map_err(unreachable)?),
         project: ProjectLink::from(project.as_str()),
         title: IdeaTitle::new(&title).map_err(unreachable)?,
     })

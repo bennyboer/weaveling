@@ -59,6 +59,6 @@ impl<E> PostgresEventStore<E> {
 
         enqueue(transaction, origin, &message)
             .await
-            .map_err(|failure| self.backend_error(aggregate, kind, failure.to_string()))
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }
 }

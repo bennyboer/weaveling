@@ -3,8 +3,8 @@ use serde_json::Value;
 
 use messaging::{Message, RoutingKey};
 
+use crate::codec::Codec;
 use crate::event::{Event, Recorded};
-use crate::postgres::Codec;
 use crate::testing::sample::{SampleEvent, SampleKind};
 
 #[derive(Serialize, Deserialize)]

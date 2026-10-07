@@ -147,13 +147,9 @@ where
     ) -> Outcome<A> {
         match self.standing(aggregate, None).await? {
             None => Err(self.nothing_there(aggregate)),
-            Some(standing) if standing.version != expected => {
-                Err(ServiceError::Store(StoreError::Outdated {
-                    aggregate: aggregate.clone(),
-                    kind: A::KIND,
-                    expected,
-                }))
-            }
+            Some(standing) if standing.version != expected => Err(ServiceError::Store(
+                StoreError::outdated(aggregate, A::KIND, expected),
+            )),
             Some(standing) => {
                 self.carry_out(aggregate, Some(standing), expected, command, agent)
                     .await

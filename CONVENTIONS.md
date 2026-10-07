@@ -106,6 +106,7 @@ Say why the expectation holds or what breaks if it does not — never restate th
 - Import rather than qualify. `use sqlx::postgres::PgListener;`, never `sqlx::postgres::PgListener` inline. The exception is a one-off `std::time::Duration` beside a `time::Duration` already in scope.
 - `thiserror` for every error type; `#[error(transparent)]` when wrapping another error whole.
 - `expect` carries the reason it cannot fail: `.expect("a plain title is fine")`.
+- Modules and re-exports behind a feature come last, after a blank line and grouped by feature, so what a build leaves out stands apart from what every build has; a feature's test module sits in its feature's group. The blank line is also what keeps rustfmt from sorting them back in.
 
 ## Manifests
 

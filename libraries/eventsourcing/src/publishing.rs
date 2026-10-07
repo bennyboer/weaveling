@@ -41,17 +41,16 @@ where
                 continue;
             }
 
-            self.publishing
-                .publish(happened)
-                .await
-                .map_err(|why| StoreError::Backend {
-                    aggregate: aggregate.clone(),
+            self.publishing.publish(happened).await.map_err(|why| {
+                StoreError::backend(
+                    aggregate,
                     kind,
-                    detail: format!(
+                    format!(
                         "version {} could not be announced: {why}",
                         happened.metadata.version
                     ),
-                })?;
+                )
+            })?;
         }
 
         Ok(())

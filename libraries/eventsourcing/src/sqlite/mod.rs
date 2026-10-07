@@ -1,40 +1,34 @@
 mod enqueuing;
-mod outbox;
+mod instant;
 mod reading;
-mod rows;
 mod schema;
-mod snapshots;
 mod writing;
 
-#[cfg(test)]
-mod outbox_tests;
 #[cfg(test)]
 mod tests;
 
 pub use enqueuing::enqueue;
-pub use outbox::PostgresOutbox;
-
-use crate::outbox::MessageMapping;
-use crate::stored_agent as agent;
 pub use schema::migrations;
 
 use async_trait::async_trait;
-use sqlx::PgPool;
+use sqlx::SqlitePool;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::codec::Codec;
 use crate::event::{Event, Recorded};
+use crate::outbox::MessageMapping;
 use crate::store::{EventStore, StoreError};
+use crate::stored_agent as agent;
 use crate::version::Version;
 
-pub struct PostgresEventStore<E> {
-    pool: PgPool,
+pub struct SqliteEventStore<E> {
+    pool: SqlitePool,
     codec: Codec<E>,
     message_for: MessageMapping<E>,
 }
 
-impl<E> PostgresEventStore<E> {
-    pub fn new(pool: PgPool, codec: Codec<E>, message_for: MessageMapping<E>) -> Self {
+impl<E> SqliteEventStore<E> {
+    pub fn new(pool: SqlitePool, codec: Codec<E>, message_for: MessageMapping<E>) -> Self {
         Self {
             pool,
             codec,
@@ -43,13 +37,13 @@ impl<E> PostgresEventStore<E> {
     }
 }
 
-fn as_bigint(version: Version) -> i64 {
+fn as_integer(version: Version) -> i64 {
     i64::try_from(version.count())
         .expect("no stream reaches nine quintillion events, so a version past i64::MAX is a bug")
 }
 
 #[async_trait]
-impl<E> EventStore<E> for PostgresEventStore<E>
+impl<E> EventStore<E> for SqliteEventStore<E>
 where
     E: Event + Send + Sync,
 {

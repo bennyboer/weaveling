@@ -1,14 +1,17 @@
 mod feature;
-#[cfg(feature = "postgres")]
-pub mod postgres;
-#[cfg(feature = "sqlite")]
-pub mod sqlite;
 mod unprepared;
 
+#[cfg(feature = "postgres")]
+pub mod postgres;
+
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
+
 pub use feature::{Assembled, Feature, Storage, assemble};
+pub use unprepared::Unprepared;
+
 #[cfg(feature = "postgres")]
 pub use postgres::{Databases, ServerDatabases};
-pub use unprepared::Unprepared;
 
 use std::sync::Arc;
 

@@ -1,4 +1,6 @@
 pub mod sample;
+#[cfg(all(test, any(feature = "postgres", feature = "sqlite")))]
+pub(crate) mod stored;
 pub mod suite;
 
 use async_trait::async_trait;
