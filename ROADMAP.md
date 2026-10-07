@@ -712,7 +712,7 @@ So the inspector is not a new surface beside the old one, it is what that route 
 
 **Later: a paged, searched link dialog.** The dialog on the passage page loads every idea in the project and filters in the browser — fine for a book, not for 10k+ ideas. When that bites: a server-side route that searches by title and pages with a cursor, the dialog asking it as the author types. The cursor half already exists — the ideas catalog’s `in_project_after` is what the project sweep pages with; searching by title is the new part, and wants an index of its own (prefix or trigram) rather than a scan.
 
-**Later: rework the wiring.** It has grown unwieldy again. Each feature is named in `services/api` some ten times over — its `Ports` in-memory and on PostgreSQL, its database, its `lay_out`, its `wire`, and its outbox in `outboxes()` — and most of those must be remembered by hand: leaving a feature out of `outboxes()` compiles cleanly and silently stops its messages, which only an end-to-end test catches. And `publisher` and `clock` are threaded through every `Ports` constructor separately. The direction worth trying: each feature hands the service **one value** that knows its ports, schema, outbox and routes, and the service iterates a list instead of naming every feature at every step — so a new feature is one line, and forgetting a part of it stops being possible.
+**Later: rework the wiring** — now [M13 step 0b](#milestone-13--local-mode). It has grown unwieldy again. Each feature is named in `services/api` some ten times over — its `Ports` in-memory and on PostgreSQL, its database, its `lay_out`, its `wire`, and its outbox in `outboxes()` — and most of those must be remembered by hand: leaving a feature out of `outboxes()` compiles cleanly and silently stops its messages, which only an end-to-end test catches. And `publisher` and `clock` are threaded through every `Ports` constructor separately. The direction worth trying: each feature hands the service **one value** that knows its ports, schema, outbox and routes, and the service iterates a list instead of naming every feature at every step — so a new feature is one line, and forgetting a part of it stops being possible.
 
 **Later, with authorization: messages name their project, and appearances store it.** Every published message carries an aggregate's `{ id, kind, version }` and nothing about which project it belongs to, so a projection cannot scope by project without a lookup of its own. Authorization will force the change anyway — once requests are scoped to projects, so is everything announced about them — and the right shape is the envelope, once, in `eventpublishing`, rather than each feature adding it to its payloads. Then [appearances](./features/appearances) gains a `project_id` column: project deletion becomes one `DELETE` on `project.deleted` instead of riding the idea sweep, and reads are scoped to a project, so an id from another project answers nothing. Not before: correctness does not need it today, and a lookup table kept only for this — or a project on some rows and not others — is worse than waiting.
 
@@ -720,7 +720,7 @@ So the inspector is not a new surface beside the old one, it is what that route 
 
 **Done when:** an idea carries no link to any view; a view gains a new kind of relation without `ideas` changing; the appearances read model answers in one request; and the board is usable without ever opening an inspector.
 
-*Done. `Idea` is `{ project, title, discarded }` and nothing else, and the proof of the second criterion is in the history: `features/ideas` has not changed since step 3, while the outline learned to note ideas (5), passages to link them (6b) and appearances to follow both (7). Every link is owned by the side that makes it — the outline's `Attachment`, the passage's `passage_ideas` — and each announces it through its own outbox; passages, not event-sourced, learned to announce in the same transaction as the change. Appearances store `Subject` at `Place` generically and stay typed in the domain, with boards deliberately not places. The client's `/ideas/{idea}` became the inspector, and the board docks the same `InspectorState` at the top of its tray, following selection, with renames meeting in the middle by version. Along the way: `Detached` names the section it left, the outline catalog's columns became `attachment_type` / `attachment_id`, the test fixture closes its pools and takes turns, and a client view keeps its state in a `<View>State` ([CONVENTIONS.md](./CONVENTIONS.md#a-type-is-named-for-what-it-is-spelled-out)). Left for later, as listed above: reordering within a group, tree controls, the two-column passage page, a paged link dialog, the wiring rework, and project ids on messages.*
+*Done. `Idea` is `{ project, title, discarded }` and nothing else, and the proof of the second criterion is in the history: `features/ideas` has not changed since step 3, while the outline learned to note ideas (5), passages to link them (6b) and appearances to follow both (7). Every link is owned by the side that makes it — the outline's `Attachment`, the passage's `passage_ideas` — and each announces it through its own outbox; passages, not event-sourced, learned to announce in the same transaction as the change. Appearances store `Subject` at `Place` generically and stay typed in the domain, with boards deliberately not places. The client's `/ideas/{idea}` became the inspector, and the board docks the same `InspectorState` at the top of its tray, following selection, with renames meeting in the middle by version. Along the way: `Detached` names the section it left, the outline catalog's columns became `attachment_type` / `attachment_id`, the test fixture closes its pools and takes turns, and a client view keeps its state in a `<View>State` ([CONVENTIONS.md](./CONVENTIONS.md#a-type-is-named-for-what-it-is-spelled-out)). Left for later, as listed above: reordering within a group, tree controls, the two-column passage page, a paged link dialog and project ids on messages; the wiring rework moved to M13.*
 
 **Still unknown, and deliberately not gating this:** how often an idea maps one-to-one onto a passage, and what the timeline wants to hold. Those are ergonomics and they shape the *views*; the structural question was settled on lifecycle. Twenty real ideas on a board will answer them, and that is worth doing before the timeline is designed rather than before this.
 
@@ -728,22 +728,44 @@ So the inspector is not a new surface beside the old one, it is what that route 
 
 ### Milestone 13 — Local mode
 
-**Goal:** an author runs Weaveling on their own machine with no database and no broker, and their project is a file they own.
+**Goal:** an author runs Weaveling on their own machine with no database server and no broker, and their work lives in files they own — written as they work, so it survives a restart.
 
 Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two answers to the same question, and the ports mean neither has to win.
 
-**Build:** export a project — the projects rows, every aggregate's event stream with metadata, and each passage's CRDT state via `Passage::everything()` — and import it at startup. The **piece catalog is not exported** — a deliberate choice, not a constraint — so import replays each stream in the file through the projector. That needs no new store capability: the enumeration is the file's contents. Plus a strict `InProcessDispatcher` that surfaces a refused message to the author instead of dead-lettering it for an ops team that does not exist.
+**Backed by SQLite** — see [the decision](#sqlite-backs-local-mode--decided): one file per feature plus one for messaging, the relay woken by a `tokio::sync::Notify` rather than `LISTEN/NOTIFY`, and a schema twin for every migration.
+
+**One binary, the backend chosen at runtime.** Decided 2026-10-07. Every backend is compiled in and configuration picks: `DATABASE_URL` → PostgreSQL, a data directory → local SQLite, neither → in memory. A third backend does not fit compile-time features — they stop being additive, and `--all-features`, which CI builds, would need a precedence rule — and one binary for every mode is what an author downloads anyway.
+
+**Export moved out, to [M13a](#milestone-13a--moving-a-project-between-machines).** It was here as the only thing standing between an author and a lost afternoon. With SQLite, work is durable because it was written as it happened, and export becomes what it should always have been: a way to move a project between machines.
 
 **Local is single-user by definition** — no accounts, no authors on other machines. Two tabs on the same computer still collaborate, because the sync socket is local and knows nothing about deployment.
 
-**It follows [M12](#milestone-12--ideas-and-passages) on purpose**, because local mode writes a SQLite adapter for every port in the codebase and M12 reshapes several of them. Porting first would mean porting the same stores twice.
+**It follows [M12](#milestone-12--ideas-and-passages) on purpose**, because local mode writes a SQLite adapter for every port in the codebase and M12 reshaped several of them. Porting first would have meant porting the same stores twice.
 
-**Now backed by SQLite** rather than by nothing — see [the decision](#sqlite-backs-local-mode--decided), which changes the goal above: an author's work is durable because it was written to a file as they worked, and export becomes a way to move a project between machines rather than the only thing standing between them and losing an afternoon.
+**The steps, each reviewable alone:**
 
-**Depends on** the deferrals that in-memory made free being closed first, since a session now lasts an afternoon rather than a test run: the catalog's dual write, passages never being evicted, and the deletion cascade. See [TODO.md](./TODO.md). Also on [M11b](#milestone-11b--one-flow-in-every-mode), so that local mode relays rather than publishing inline.
+0. **What has to be true first.**
+   - **0a — passages are evicted, and compacted on the way out.** The [open TODO](./TODO.md) with its intended shape: participants counted inside the map's write lock, a sweeper that collects entries idle for a grace period, and a final persist before anything leaves memory. A process that lives as long as an author's afternoon has no restart to save it.
+   - **0b — the wiring is reworked.** Moved here from M12's *later*: each feature hands the service one value that knows its ports, schemas, outbox and routes. Without it a third backend means some ten more edits per feature in `services/api`, and forgetting an outbox keeps compiling.
+1. **Groundwork.** Migrations split into `migrations/postgres/` and `migrations/sqlite/`, sqlx gains its `sqlite` feature, the test harness a `SqliteFixture`, and `wiring::database` lays out one file per feature. No adapter yet.
+2. **The event store and outbox on SQLite.** **2a** events and snapshots, **2b** the outbox and `enqueue`. Claiming is an ordinary `UPDATE … RETURNING`, since one process means one relay.
+3. **Deliveries and the registry on SQLite.** Retries and dead letters must survive a crash, or the [durable delivery](#milestone-11b--one-flow-in-every-mode) is a lie in local mode.
+4. **The five catalogs on SQLite** — projects, ideas, boards, outline, appearances. Mechanical against existing suites; one commit each, one review.
+5. **The passages store on SQLite** — updates, titles, linked ideas.
+6. **The service runs locally.** `Adapters::local(directory)`, the backend chosen from configuration, and the browser suite run against local mode as well as in memory.
+7. **A refused message reaches the author.** Retries and a durable dead-letter table exist since M11b; in local mode there is no ops staff to read the table, so the client shows what was refused and why.
 
-**Done when:** an author can work with no database running, export the project, restart with an empty process, import, and find their pieces and prose exactly as they left them — with the catalog rebuilt rather than restored.
+**Done when:** an author can work with no database server running, stop the process, start it again, and find their ideas, board, outline and passages exactly as they left them; a refused message is shown to them rather than only stored; and the browser suite passes against local mode.
 
+---
+
+### Milestone 13a — Moving a project between machines
+
+**Goal:** a project leaves one installation as a file and arrives in another whole.
+
+**Build:** export a project — the projects rows, every aggregate's event stream with metadata, each passage's CRDT state via `Passage::everything()` and its links — and import it. **Catalogs are not exported**, deliberately: import replays each stream in the file through its projector, so a read model is rebuilt rather than restored, and the file's contents are the enumeration the event store cannot give. That makes import the first wholesale rebuild of a projection, which the [open TODO on enumeration](./TODO.md) notes is otherwise missing.
+
+**Done when:** a project exported from one instance and imported into an empty one has its ideas, board, outline and passages exactly as they were — with every catalog rebuilt by replay.
 ---
 
 ### Milestone 14 — Two languages
