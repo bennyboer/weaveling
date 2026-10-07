@@ -16,3 +16,4 @@ appearances-rest = { version = "0.1.0", path = "../adapters/rest", package = "we
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "appearances-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "appearances-catalog/sqlite"]

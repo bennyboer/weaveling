@@ -25,6 +25,13 @@ impl Ports {
             catalog: Arc::new(appearances_catalog::PostgresAppearanceCatalog::new(pool)),
         }
     }
+
+    #[cfg(feature = "sqlite")]
+    pub fn sqlite(pool: sqlx::SqlitePool) -> Self {
+        Self {
+            catalog: Arc::new(appearances_catalog::SqliteAppearanceCatalog::new(pool)),
+        }
+    }
 }
 
 pub fn wire(ports: &Ports) -> Wired {
@@ -54,6 +61,16 @@ impl Feature for AppearanceFeature {
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![appearances_catalog::postgres::migrations()]
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn on_sqlite(pool: sqlx::SqlitePool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
+        Ok(Ports::sqlite(pool))
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![appearances_catalog::sqlite::migrations()]
     }
 
     fn outbox(_ports: &Ports) -> Option<Arc<dyn Outbox>> {

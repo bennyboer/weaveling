@@ -55,6 +55,27 @@ impl Ports {
             outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
         }
     }
+
+    #[cfg(feature = "sqlite")]
+    pub fn sqlite(
+        pool: sqlx::SqlitePool,
+        publisher: Arc<dyn messaging::Publisher>,
+        clock: Arc<dyn clock::Clock>,
+    ) -> Self {
+        use eventsourcing::SqliteEventStore;
+        use outbox::SqliteOutbox;
+
+        Self {
+            events: Arc::new(SqliteEventStore::new(
+                pool.clone(),
+                boards_store::codec(),
+                boards_messaging::message_for,
+            )),
+            catalog: Arc::new(boards_catalog::SqliteBoardCatalog::new(pool.clone())),
+            registry: Arc::new(registry::SqliteRegistry::new(pool.clone())),
+            outbox: Arc::new(SqliteOutbox::new(pool, publisher, clock)),
+        }
+    }
 }
 
 pub fn service(ports: &Ports, context: &Context) -> BoardService {
@@ -115,6 +136,25 @@ impl Feature for BoardFeature {
             outbox::postgres::migrations(),
             boards_catalog::postgres::migrations(),
             registry::postgres::migrations(),
+        ]
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        Ok(Ports::sqlite(
+            pool,
+            context.publisher.clone(),
+            context.clock.clone(),
+        ))
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![
+            eventsourcing::sqlite::migrations(),
+            outbox::sqlite::migrations(),
+            boards_catalog::sqlite::migrations(),
+            registry::sqlite::migrations(),
         ]
     }
 

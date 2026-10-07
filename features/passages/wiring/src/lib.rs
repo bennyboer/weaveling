@@ -46,6 +46,24 @@ impl Ports {
             outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
         }
     }
+
+    #[cfg(feature = "sqlite")]
+    pub fn sqlite(
+        pool: sqlx::SqlitePool,
+        publisher: Arc<dyn messaging::Publisher>,
+        clock: Arc<dyn clock::Clock>,
+    ) -> Self {
+        use outbox::SqliteOutbox;
+        use passages_store::SqlitePassageStore;
+
+        Self {
+            store: Arc::new(
+                SqlitePassageStore::new(pool.clone())
+                    .enqueuing(clock.clone(), passages_messaging::message_for),
+            ),
+            outbox: Arc::new(SqliteOutbox::new(pool, publisher, clock)),
+        }
+    }
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
@@ -89,6 +107,23 @@ impl Feature for PassageFeature {
         vec![
             outbox::postgres::migrations(),
             passages_store::postgres::migrations(),
+        ]
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        Ok(Ports::sqlite(
+            pool,
+            context.publisher.clone(),
+            context.clock.clone(),
+        ))
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![
+            outbox::sqlite::migrations(),
+            passages_store::sqlite::migrations(),
         ]
     }
 

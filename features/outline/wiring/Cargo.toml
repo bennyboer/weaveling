@@ -21,3 +21,4 @@ outline-store = { version = "0.1.0", path = "../adapters/store", package = "weav
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "registry/postgres", "outline-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "registry/sqlite", "outline-catalog/sqlite"]

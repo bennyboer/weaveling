@@ -28,6 +28,21 @@ pub trait Feature {
         Vec::new()
     }
 
+    #[cfg(feature = "sqlite")]
+    fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Self::Ports, Unprepared> {
+        let _ = (pool, context);
+
+        Err(Unprepared::NotBuiltIn {
+            feature: Self::NAME,
+            backend: "SQLite",
+        })
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
+        Vec::new()
+    }
+
     fn outbox(ports: &Self::Ports) -> Option<Arc<dyn Outbox>>;
 
     fn wire(ports: &Self::Ports, context: &Context) -> Wired;
@@ -37,6 +52,8 @@ pub enum Storage {
     InMemory,
     #[cfg(feature = "postgres")]
     Postgres(Arc<dyn crate::Databases>),
+    #[cfg(feature = "sqlite")]
+    Sqlite(Arc<dyn crate::sqlite::Files>),
 }
 
 pub struct Assembled {
@@ -59,6 +76,15 @@ pub async fn assemble<F: Feature>(
             }
 
             F::on_postgres(pool, context)?
+        }
+        #[cfg(feature = "sqlite")]
+        Storage::Sqlite(files) => {
+            let pool = files.ready(F::NAME).await?;
+            for schema in F::sqlite_schema() {
+                crate::sqlite::lay_out(F::NAME, &pool, schema).await?;
+            }
+
+            F::on_sqlite(pool, context)?
         }
     };
     let wired = F::wire(&ports, context);

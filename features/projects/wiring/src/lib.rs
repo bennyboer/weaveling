@@ -49,6 +49,26 @@ impl Ports {
             outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
         }
     }
+
+    #[cfg(feature = "sqlite")]
+    pub fn sqlite(
+        pool: sqlx::SqlitePool,
+        publisher: Arc<dyn messaging::Publisher>,
+        clock: Arc<dyn clock::Clock>,
+    ) -> Self {
+        use eventsourcing::SqliteEventStore;
+        use outbox::SqliteOutbox;
+
+        Self {
+            events: Arc::new(SqliteEventStore::new(
+                pool.clone(),
+                projects_store::codec(),
+                projects_messaging::message_for,
+            )),
+            catalog: Arc::new(projects_catalog::SqliteProjectCatalog::new(pool.clone())),
+            outbox: Arc::new(SqliteOutbox::new(pool, publisher, clock)),
+        }
+    }
 }
 
 pub fn service(ports: &Ports, context: &Context) -> ProjectService {
@@ -96,6 +116,24 @@ impl Feature for ProjectFeature {
             eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
             projects_catalog::postgres::migrations(),
+        ]
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        Ok(Ports::sqlite(
+            pool,
+            context.publisher.clone(),
+            context.clock.clone(),
+        ))
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![
+            eventsourcing::sqlite::migrations(),
+            outbox::sqlite::migrations(),
+            projects_catalog::sqlite::migrations(),
         ]
     }
 

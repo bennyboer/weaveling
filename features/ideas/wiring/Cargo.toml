@@ -22,3 +22,4 @@ ideas-store = { version = "0.1.0", path = "../adapters/store", package = "weavel
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "ideas-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "ideas-catalog/sqlite"]

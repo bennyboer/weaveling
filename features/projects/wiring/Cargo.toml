@@ -22,3 +22,4 @@ projects-store = { version = "0.1.0", path = "../adapters/store", package = "wea
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "projects-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "projects-catalog/sqlite"]

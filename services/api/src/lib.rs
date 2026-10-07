@@ -18,7 +18,7 @@ use wiring::{Assembled, Context, assemble};
 pub use relays::Relays;
 pub use wiring::{Storage, Unprepared};
 
-#[cfg(feature = "postgres")]
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
 const MESSAGING: &str = "messaging";
 
 pub struct Adapters {
@@ -85,6 +85,13 @@ async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared
             wiring::postgres::lay_out(MESSAGING, &pool, messaging::postgres::migrations()).await?;
 
             Ok(Arc::new(messaging::PostgresDeliveries::new(pool)))
+        }
+        #[cfg(feature = "sqlite")]
+        Storage::Sqlite(files) => {
+            let pool = files.ready(MESSAGING).await?;
+            wiring::sqlite::lay_out(MESSAGING, &pool, messaging::sqlite::migrations()).await?;
+
+            Ok(Arc::new(messaging::SqliteDeliveries::new(pool)))
         }
     }
 }

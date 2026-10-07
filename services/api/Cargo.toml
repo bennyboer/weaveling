@@ -46,6 +46,18 @@ postgres = [
     "passages-wiring/postgres",
     "projects-wiring/postgres",
 ]
+sqlite = [
+    "dep:sqlx",
+    "messaging/sqlite",
+    "outbox/sqlite",
+    "wiring/sqlite",
+    "appearances-wiring/sqlite",
+    "boards-wiring/sqlite",
+    "outline-wiring/sqlite",
+    "ideas-wiring/sqlite",
+    "passages-wiring/sqlite",
+    "projects-wiring/sqlite",
+]
 
 [dev-dependencies]
 async-trait = { workspace = true }

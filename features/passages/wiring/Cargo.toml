@@ -21,3 +21,4 @@ passages-store = { version = "0.1.0", path = "../adapters/store", package = "wea
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "outbox/postgres", "passages-store/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "outbox/sqlite", "passages-store/sqlite"]

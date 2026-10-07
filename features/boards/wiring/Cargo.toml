@@ -23,3 +23,4 @@ boards-store = { version = "0.1.0", path = "../adapters/store", package = "weave
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "registry/postgres", "boards-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "registry/sqlite", "boards-catalog/sqlite"]

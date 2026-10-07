@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use async_trait::async_trait;
 use sqlx::SqlitePool;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
@@ -10,6 +11,30 @@ use crate::Unprepared;
 
 const POOLED: u32 = 5;
 const BUSY_FOR: Duration = Duration::from_secs(5);
+
+#[async_trait]
+pub trait Files: Send + Sync {
+    async fn ready(&self, feature: &str) -> Result<SqlitePool, Unprepared>;
+}
+
+pub struct DataDirectory {
+    directory: PathBuf,
+}
+
+impl DataDirectory {
+    pub fn at(directory: impl Into<PathBuf>) -> Self {
+        Self {
+            directory: directory.into(),
+        }
+    }
+}
+
+#[async_trait]
+impl Files for DataDirectory {
+    async fn ready(&self, feature: &str) -> Result<SqlitePool, Unprepared> {
+        connect(&self.directory, feature).await
+    }
+}
 
 pub fn file_of(directory: &Path, feature: &str) -> PathBuf {
     directory.join(format!("{feature}.sqlite"))
