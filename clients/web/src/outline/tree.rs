@@ -80,6 +80,7 @@ pub fn TheOutline(project: String) -> impl IntoView {
                     html::button()
                         .r#type("button")
                         .class("begin")
+                        .prop("disabled", move || !state.ready())
                         .on(ev::click, move |_| {
                             state.add(None, last_top(state), String::new())
                         })

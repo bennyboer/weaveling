@@ -247,7 +247,13 @@ test("a title survives a reload", async ({ page }) => {
   await aNewProject(page, "Titling");
   await openTheOutline(page);
   await addSections(page, ["The Silent Loom"]);
+  const saved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      response.url().includes("/sections/"),
+  );
   await page.keyboard.press("Escape");
+  await saved;
 
   await page.reload();
 

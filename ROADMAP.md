@@ -800,7 +800,14 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 - **A tray on the right, closed by default.** Opened, it shows everything about the scene the cursor is in — the ideas linked, and later the characters and the rest. The two-column passage page noted under [M12](#milestone-12--ideas-and-passages) is the same idea, now for the whole flow.
 - **Spell checking on a toggle**, so the red lines can be switched off while drafting.
 
-**Questions it raises for the model, to settle before building:** each scene is its own CRDT document with its own sync socket today, so a flow of many scenes means many documents open at once — one editor per scene stacked in a list, or one editor spanning them; where a scene ends while typing; where the flow opens (the start of the book, or where the author left off); and how the reading order is read — it is the outline's `reading_order()`.
+**Leaning design, from the first discussion** (2026-10-08):
+
+- **Several editors that read as one.** Each scene stays its own CRDT document, synced on its own, with its own small editor; the flow stacks them so they read as one text, and arrow keys at a scene's edge carry the cursor into the next or previous one. One editor spanning many scenes would need a binding that splits one ProseMirror document across many Y.Docs — uncharted, and the hardest part of the feature — while stacked editors are how block editors work and fit loading only what is in view: scrolling mounts and unmounts whole scenes. Many visible scenes means many sockets; multiplexing them over one connection is the later fix if that hurts.
+- **A horizontal line marks where one scene ends and the next begins.**
+- **Enter, after Neo.** Once: a new paragraph in the same scene. Twice: the empty paragraph goes and a new scene begins right after this one, in the same section. Three times: a new section after the current one, at the same level, its heading ready to type.
+- **Nesting by Tab and Shift+Tab on a section heading**, the gesture the outline already uses, so one habit serves both views.
+
+**Still open:** where the flow opens — the start of the book, or where the author left off — and showing that a scene is still being saved, since closing the tab in the moment between typing and the save landing loses the last change.
 
 ---
 
