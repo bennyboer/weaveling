@@ -151,3 +151,18 @@
     display: none;
   }
 }
+
+.docked-inspector {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+
+  .idea-name {
+    margin: 0;
+    font-size: 1.25rem;
+  }
+
+  .appears-in {
+    margin-top: 1rem;
+  }
+}

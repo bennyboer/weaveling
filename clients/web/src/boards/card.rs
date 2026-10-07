@@ -72,7 +72,7 @@ pub fn card(href: String, idea: Idea, at: Placement, handles: Handles) -> impl I
             };
             event.prevent_default();
 
-            handles.open.reshape(nudged.clone(), Some(to), None);
+            handles.state.reshape(nudged.clone(), Some(to), None);
         })
         .child((
             name(href, named),
@@ -169,7 +169,7 @@ fn drop_it(handles: Handles) {
     let landed = carried.landing();
 
     if landed != carried.from {
-        handles.open.reshape(
+        handles.state.reshape(
             carried.idea,
             (landed.spot != carried.from.spot).then_some(landed.spot),
             (landed.size != carried.from.size).then_some(landed.size),

@@ -4,14 +4,16 @@ use leptos::{IntoView, ev};
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 
+use crate::boards::board_state::BoardState;
 use crate::boards::card::card;
 use crate::boards::carrying::Carrying;
 use crate::boards::carrying::{CARD, snapped};
 use crate::boards::chrome::{actions, naming, zooming};
 use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Size, Spot};
-use crate::boards::open_board::OpenBoard;
 use crate::boards::viewport::{NEARER, Viewport};
+use crate::ideas::inspector::docked;
+use crate::ideas::inspector_state::InspectorState;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::route;
 use crate::tray::laid_out;
@@ -20,55 +22,74 @@ const DOTS: i64 = 20;
 
 #[component]
 pub fn TheBoard(project: String) -> impl IntoView {
-    let open = OpenBoard::open(&route::project_id(&project));
+    let state = BoardState::open(&route::project_id(&project));
+    let selected = RwSignal::new(None::<IdeaId>);
     let handles = Handles {
         viewport: RwSignal::new(Viewport::RESTING),
         carrying: RwSignal::new(None::<Carrying>),
-        selected: RwSignal::new(None::<IdeaId>),
+        selected,
         naming: RwSignal::new(None::<Naming>),
-        open,
+        state,
     };
+    let inspector = {
+        let project = project.clone();
+
+        InspectorState::inspecting(Memo::new(move |_| project.clone()), selected.into())
+    };
+
+    Effect::new(move || {
+        if let Some(newer) = inspector.opened() {
+            state.adopt(newer);
+        }
+    });
+    Effect::new(move || {
+        if let Some(newer) = selected.get().and_then(|id| state.idea(&id)) {
+            inspector.adopt(newer);
+        }
+    });
 
     html::section().class("board").child((
         move || {
-            open.problem().map(|failure| {
+            state.problem().map(|failure| {
                 html::p().class("problem").role("alert").child((
                     failure.to_string(),
                     html::button()
                         .r#type("button")
                         .class("dismiss")
                         .attr("aria-label", "Dismiss")
-                        .on(ev::click, move |_| open.dismiss())
+                        .on(ev::click, move |_| state.dismiss())
                         .child("\u{00d7}"),
                 ))
             })
         },
         laid_out(
             corkboard(project, handles).into_any(),
-            kept(handles).into_any(),
-            move || format!("Not on the board \u{00b7} {}", open.unpinned().len()),
+            kept(handles, inspector).into_any(),
+            move || format!("Not on the board \u{00b7} {}", state.unpinned().len()),
         ),
     ))
 }
 
-fn kept(handles: Handles) -> impl IntoView {
-    let open = handles.open;
+fn kept(handles: Handles, inspector: InspectorState) -> impl IntoView {
+    let state = handles.state;
 
     (
+        docked(inspector),
         html::p()
             .class("tally")
-            .child(move || format!("Not on the board \u{00b7} {}", open.unpinned().len())),
+            .child(move || format!("Not on the board \u{00b7} {}", state.unpinned().len())),
         html::ul()
             .class("waiting")
             .attr("aria-label", "Ideas not on the board")
             .child(move || {
-                open.unpinned()
+                state
+                    .unpinned()
                     .into_iter()
                     .map(|idea| pinnable(idea, handles))
                     .collect::<Vec<_>>()
             }),
         move || {
-            (open.ready() && open.unpinned().is_empty()).then(|| {
+            (state.ready() && state.unpinned().is_empty()).then(|| {
                 html::p()
                     .class("empty")
                     .child("Every idea is on the board.")
@@ -86,7 +107,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
         carrying,
         selected,
         naming: held,
-        open,
+        state,
     } = handles;
     let board_ref = NodeRef::<html::Section>::new();
     let panning = RwSignal::new(false);
@@ -97,7 +118,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
         }
         let held = selected.get()?;
 
-        open.pinned().into_iter().find(|(idea, _)| idea.id == held)
+        state.pinned().into_iter().find(|(idea, _)| idea.id == held)
     };
 
     html::section()
@@ -154,7 +175,8 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
                         move || {
                             let project = project.clone();
 
-                            open.pinned()
+                            state
+                                .pinned()
                                 .into_iter()
                                 .map(|(idea, at)| {
                                     card(
@@ -254,7 +276,7 @@ fn pinnable(idea: Idea, handles: Handles) -> impl IntoView {
             .attr("aria-label", format!("Pin {shown}"))
             .on(ev::click, move |_| {
                 handles
-                    .open
+                    .state
                     .pin(id.clone(), handles.viewport.get_untracked());
             })
             .child(shown),

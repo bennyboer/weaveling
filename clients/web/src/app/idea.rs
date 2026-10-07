@@ -5,14 +5,20 @@ use leptos_router::hooks::use_params_map;
 
 use crate::ideas::inspector::inspector;
 use crate::ideas::inspector_state::InspectorState;
+use crate::route;
 use crate::shell::{Inside, masthead};
 
 #[component]
 pub fn OneIdea() -> impl IntoView {
     let params = use_params_map();
     let project = Memo::new(move |_| params.read().get("project").unwrap_or_default());
-    let asked = Memo::new(move |_| params.read().get("idea"));
-    let state = InspectorState::open(project, asked);
+    let asked = Signal::derive(move || {
+        params
+            .read()
+            .get("idea")
+            .map(|segment| route::idea_id(&segment))
+    });
+    let state = InspectorState::inspecting(project, asked);
     let ready = Memo::new(move |_| state.opened().is_some());
 
     (

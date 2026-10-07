@@ -10,7 +10,7 @@ use web_sys::HtmlElement;
 use crate::icons::{Icon, mark};
 use crate::inputs::typed;
 use crate::outline::model::{Attachment, Section, SectionId};
-use crate::outline::open_outline::{OpenOutline, Urge};
+use crate::outline::outline_state::{OutlineState, Urge};
 use crate::route;
 use crate::tray::laid_out;
 
@@ -30,7 +30,7 @@ struct Held {
     over: RwSignal<Option<SectionId>>,
     editing: RwSignal<Option<SectionId>>,
     folded: RwSignal<HashSet<SectionId>>,
-    open: OpenOutline,
+    state: OutlineState,
 }
 
 #[component]
@@ -43,20 +43,20 @@ pub fn TheOutline(project: String) -> impl IntoView {
         over: RwSignal::new(None),
         editing: RwSignal::new(None),
         folded: RwSignal::new(HashSet::new()),
-        open: OpenOutline::open(&route::project_id(&project)),
+        state: OutlineState::open(&route::project_id(&project)),
     };
-    let open = held.open;
+    let state = held.state;
 
     html::section().class("outline").child((
         move || {
-            open.problem().map(|failure| {
+            state.problem().map(|failure| {
                 html::p().class("problem").role("alert").child((
                     failure.to_string(),
                     html::button()
                         .r#type("button")
                         .class("dismiss")
                         .attr("aria-label", "Dismiss")
-                        .on(ev::click, move |_| open.dismiss())
+                        .on(ev::click, move |_| state.dismiss())
                         .child("\u{00d7}"),
                 ))
             })
@@ -71,7 +71,7 @@ pub fn TheOutline(project: String) -> impl IntoView {
                         .attr("aria-label", "The manuscript")
                         .child(move || twigs(None, held)),
                     move || {
-                        (open.ready() && open.sections().is_empty()).then(|| {
+                        (state.ready() && state.sections().is_empty()).then(|| {
                             html::p()
                                 .class("empty")
                                 .child("Nothing in the book yet. Add a section to begin.")
@@ -81,32 +81,38 @@ pub fn TheOutline(project: String) -> impl IntoView {
                         .r#type("button")
                         .class("begin")
                         .on(ev::click, move |_| {
-                            open.add(None, last_top(open), String::new())
+                            state.add(None, last_top(state), String::new())
                         })
                         .child((mark(Icon::Plus), "Add a section")),
                 ))
                 .into_any(),
             kept(held).into_any(),
-            move || format!("Not in the book \u{00b7} {}", open.waiting_passages().len()),
+            move || {
+                format!(
+                    "Not in the book \u{00b7} {}",
+                    state.waiting_passages().len()
+                )
+            },
         ),
     ))
 }
 
-fn last_top(open: OpenOutline) -> Option<SectionId> {
-    open.sections()
+fn last_top(state: OutlineState) -> Option<SectionId> {
+    state
+        .sections()
         .iter()
         .rfind(|held| held.parent.is_none())
         .map(|held| held.id.clone())
 }
 
 fn twigs(parent: Option<SectionId>, held: Held) -> AnyView {
-    let open = held.open;
+    let state = held.state;
 
     view! {
         <For
             each=move || {
                 let parent = parent.clone();
-                open.sections()
+                state.sections()
                     .into_iter()
                     .filter(move |section| section.parent == parent)
                     .collect::<Vec<_>>()
@@ -121,7 +127,7 @@ fn twigs(parent: Option<SectionId>, held: Held) -> AnyView {
 }
 
 fn branch(section: Section, held: Held) -> AnyView {
-    let open = held.open;
+    let state = held.state;
     let id = section.id.clone();
     let folding = id.clone();
     let under = id.clone();
@@ -130,7 +136,7 @@ fn branch(section: Section, held: Held) -> AnyView {
         .class("branch")
         .child((row(section, held), move || {
             let shut = held.folded.with(|shut| shut.contains(&folding));
-            let (passages, ideas): (Vec<Attachment>, Vec<Attachment>) = open
+            let (passages, ideas): (Vec<Attachment>, Vec<Attachment>) = state
                 .attachments_in(&under)
                 .into_iter()
                 .partition(|attachment| matches!(attachment, Attachment::Passage(_)));
@@ -163,11 +169,11 @@ fn group(named: &'static str, attachments: Vec<Attachment>, held: Held) -> Optio
 }
 
 fn bears(section: &SectionId, held: Held) -> bool {
-    !held.open.attachments_in(section).is_empty() || !twigs_under(section, held).is_empty()
+    !held.state.attachments_in(section).is_empty() || !twigs_under(section, held).is_empty()
 }
 
 fn row(section: Section, held: Held) -> impl IntoView {
-    let open = held.open;
+    let state = held.state;
     let id = section.id.clone();
     let folding = id.clone();
     let shutting = id.clone();
@@ -187,7 +193,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
     let bearing = id.clone();
 
     Effect::new(move |_| {
-        let wanted = held.open.just_added().or_else(|| held.editing.get());
+        let wanted = held.state.just_added().or_else(|| held.editing.get());
 
         if wanted.as_ref() == Some(&arriving)
             && let Some(field) = field.get()
@@ -199,9 +205,9 @@ fn row(section: Section, held: Held) -> impl IntoView {
             if elsewhere {
                 let _ = field.focus();
 
-                if held.open.just_added().is_some() {
+                if held.state.just_added().is_some() {
                     field.select();
-                    held.open.settled_in();
+                    held.state.settled_in();
                 }
             }
         }
@@ -249,7 +255,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 return;
             };
 
-            open.attach(attachment, leaving.clone());
+            state.attach(attachment, leaving.clone());
             held.carrying.set(None);
             held.over.set(None);
         })
@@ -269,7 +275,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     .r#type("button")
                     .class("fold")
                     .attr("aria-label", move || {
-                        format!("Fold {}", shown_or_blank(&open.title_of(&named)))
+                        format!("Fold {}", shown_or_blank(&state.title_of(&named)))
                     })
                     .attr("aria-expanded", move || {
                         (!held.folded.with(|shut| shut.contains(&told))).to_string()
@@ -296,13 +302,13 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .attr("aria-label", {
                     let mine = labelled.clone();
 
-                    move || format!("Section {}", shown_or_blank(&open.title_of(&mine)))
+                    move || format!("Section {}", shown_or_blank(&state.title_of(&mine)))
                 })
                 .placeholder("Untitled")
                 .prop("value", {
                     let mine = valued.clone();
 
-                    move || open.title_of(&mine)
+                    move || state.title_of(&mine)
                 })
                 .node_ref(field)
                 .on(ev::focusin, {
@@ -313,9 +319,10 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .on(ev::keydown, move |event| match event.key().as_str() {
                     "Enter" => {
                         event.prevent_default();
-                        settle(&event, &named, open);
-                        open.add(
-                            open.sections()
+                        settle(&event, &named, state);
+                        state.add(
+                            state
+                                .sections()
                                 .iter()
                                 .find(|held| held.id == named)
                                 .and_then(|held| held.parent.clone()),
@@ -325,8 +332,8 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     }
                     "Tab" => {
                         event.prevent_default();
-                        settle(&event, &urged, open);
-                        open.urge(
+                        settle(&event, &urged, state);
+                        state.urge(
                             urged.clone(),
                             match event.shift_key() {
                                 true => Urge::Promote,
@@ -336,11 +343,11 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     }
                     "ArrowUp" if event.alt_key() => {
                         event.prevent_default();
-                        open.urge(shuffled.clone(), Urge::Earlier);
+                        state.urge(shuffled.clone(), Urge::Earlier);
                     }
                     "ArrowDown" if event.alt_key() => {
                         event.prevent_default();
-                        open.urge(shuffled.clone(), Urge::Later);
+                        state.urge(shuffled.clone(), Urge::Later);
                     }
                     "Escape" => {
                         held.editing.set(None);
@@ -354,7 +361,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .on(ev::focusout, {
                     let mine = pruned.clone();
 
-                    move |event| settle(&event, &mine, open)
+                    move |event| settle(&event, &mine, state)
                 }),
             move || {
                 (!bears(&hollowed, held)).then(|| {
@@ -369,21 +376,21 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .attr("aria-label", {
                     let mine = toolbarred.clone();
 
-                    move || format!("Actions for {}", shown_or_blank(&open.title_of(&mine)))
+                    move || format!("Actions for {}", shown_or_blank(&state.title_of(&mine)))
                 })
                 .child((
-                    urging(Urge::Earlier, pruned.clone(), open),
-                    urging(Urge::Later, pruned.clone(), open),
-                    urging(Urge::Promote, pruned.clone(), open),
-                    urging(Urge::Demote, pruned.clone(), open),
-                    writing(pruned.clone(), open),
-                    pruning(pruned.clone(), open),
+                    urging(Urge::Earlier, pruned.clone(), state),
+                    urging(Urge::Later, pruned.clone(), state),
+                    urging(Urge::Promote, pruned.clone(), state),
+                    urging(Urge::Demote, pruned.clone(), state),
+                    writing(pruned.clone(), state),
+                    pruning(pruned.clone(), state),
                 )),
         ))
 }
 
 fn grip(section: SectionId, held: Held) -> impl IntoView {
-    let open = held.open;
+    let state = held.state;
     let labelled = section.clone();
     let hauled = section.clone();
 
@@ -391,7 +398,7 @@ fn grip(section: SectionId, held: Held) -> impl IntoView {
         .r#type("button")
         .class("grip")
         .attr("aria-label", move || {
-            format!("Move {}", shown_or_blank(&open.title_of(&labelled)))
+            format!("Move {}", shown_or_blank(&state.title_of(&labelled)))
         })
         .on(ev::pointerdown, move |event| {
             event.stop_propagation();
@@ -430,14 +437,16 @@ fn grip(section: SectionId, held: Held) -> impl IntoView {
 
             let (under, after) = match at {
                 Landing::Into(target) => {
-                    let last = open.landing_into(&target);
+                    let last = state.landing_into(&target);
                     (Some(target), last)
                 }
-                Landing::Before(target) => (open.parent_of(&target), open.landing_before(&target)),
-                Landing::After(target) => (open.parent_of(&target), Some(target)),
+                Landing::Before(target) => {
+                    (state.parent_of(&target), state.landing_before(&target))
+                }
+                Landing::After(target) => (state.parent_of(&target), Some(target)),
             };
 
-            open.place(section, under, after);
+            state.place(section, under, after);
         })
         .on(ev::pointercancel, move |_| {
             held.hauling.set(None);
@@ -454,7 +463,7 @@ fn landing_at(x: i32, y: i32, section: &SectionId, held: Held) -> Option<Landing
         .flatten()?;
     let target = SectionId::from(row.get_attribute("data-section")?);
 
-    if held.open.would_swallow(section, &target) {
+    if held.state.would_swallow(section, &target) {
         return None;
     }
 
@@ -476,8 +485,8 @@ fn icon_for(attachment: &Attachment) -> Icon {
 }
 
 fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
-    let open = held.open;
-    let shown = open.named(&attachment);
+    let state = held.state;
+    let shown = state.named(&attachment);
     let taken = attachment.clone();
     let named = shown.clone();
     let marked = mark(icon_for(&attachment));
@@ -498,23 +507,27 @@ fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
             deed(
                 format!("Take {shown} out of the book"),
                 Icon::Remove,
-                move || open.detach(taken.clone()),
+                move || state.detach(taken.clone()),
             ),
         )))
 }
 
 fn kept(held: Held) -> impl IntoView {
-    let open = held.open;
+    let state = held.state;
 
     (
-        html::p()
-            .class("tally")
-            .child(move || format!("Not in the book \u{00b7} {}", open.waiting_passages().len())),
+        html::p().class("tally").child(move || {
+            format!(
+                "Not in the book \u{00b7} {}",
+                state.waiting_passages().len()
+            )
+        }),
         html::ul()
             .class("waiting")
             .attr("aria-label", "Passages not in the book")
             .child(move || {
-                open.waiting_passages()
+                state
+                    .waiting_passages()
                     .into_iter()
                     .map(|passage| {
                         let shown = passage.shown_as();
@@ -524,7 +537,7 @@ fn kept(held: Held) -> impl IntoView {
                     .collect::<Vec<_>>()
             }),
         move || {
-            (open.ready() && open.waiting_passages().is_empty()).then(|| {
+            (state.ready() && state.waiting_passages().is_empty()).then(|| {
                 html::p()
                     .class("empty")
                     .child("Every passage has a place in the book.")
@@ -535,7 +548,8 @@ fn kept(held: Held) -> impl IntoView {
             .class("waiting")
             .attr("aria-label", "Ideas not in the book")
             .child(move || {
-                open.waiting_ideas()
+                state
+                    .waiting_ideas()
                     .into_iter()
                     .map(|idea| {
                         let shown = idea.shown_as().to_owned();
@@ -587,7 +601,7 @@ fn carried(attachment: Attachment, shown: String, held: Held) -> impl IntoView {
                     return;
                 };
 
-                held.open.attach(dropped.clone(), landing);
+                held.state.attach(dropped.clone(), landing);
                 held.carrying.set(None);
                 held.over.set(None);
             })
@@ -606,14 +620,14 @@ fn section_under(x: i32, y: i32) -> Option<SectionId> {
 }
 
 fn twigs_under(section: &SectionId, held: Held) -> Vec<Section> {
-    held.open
+    held.state
         .sections()
         .into_iter()
         .filter(|held| held.parent.as_ref() == Some(section))
         .collect()
 }
 
-fn urging(urge: Urge, section: SectionId, open: OpenOutline) -> impl IntoView {
+fn urging(urge: Urge, section: SectionId, state: OutlineState) -> impl IntoView {
     let (named, icon) = match urge {
         Urge::Earlier => ("Move earlier", Icon::Earlier),
         Urge::Later => ("Move later", Icon::Later),
@@ -626,46 +640,46 @@ fn urging(urge: Urge, section: SectionId, open: OpenOutline) -> impl IntoView {
     html::button()
         .r#type("button")
         .attr("aria-label", move || {
-            format!("{named} {}", shown_or_blank(&open.title_of(&labelled)))
+            format!("{named} {}", shown_or_blank(&state.title_of(&labelled)))
         })
-        .prop("disabled", move || !open.can(&asked, urge))
+        .prop("disabled", move || !state.can(&asked, urge))
         .on(ev::click, move |event| {
             event.stop_propagation();
-            open.urge(section.clone(), urge);
+            state.urge(section.clone(), urge);
         })
         .child(mark(icon))
 }
 
-fn writing(section: SectionId, open: OpenOutline) -> impl IntoView {
+fn writing(section: SectionId, state: OutlineState) -> impl IntoView {
     let labelled = section.clone();
     let titled = section.clone();
 
     html::button()
         .r#type("button")
         .attr("aria-label", move || {
-            format!("Write in {}", shown_or_blank(&open.title_of(&labelled)))
+            format!("Write in {}", shown_or_blank(&state.title_of(&labelled)))
         })
         .attr("title", move || {
-            format!("Write in {}", shown_or_blank(&open.title_of(&titled)))
+            format!("Write in {}", shown_or_blank(&state.title_of(&titled)))
         })
         .on(ev::click, move |event| {
             event.stop_propagation();
-            open.write_in(section.clone());
+            state.write_in(section.clone());
         })
         .child(mark(Icon::Quill))
 }
 
-fn pruning(section: SectionId, open: OpenOutline) -> impl IntoView {
+fn pruning(section: SectionId, state: OutlineState) -> impl IntoView {
     let labelled = section.clone();
 
     html::button()
         .r#type("button")
         .attr("aria-label", move || {
-            format!("Remove {}", shown_or_blank(&open.title_of(&labelled)))
+            format!("Remove {}", shown_or_blank(&state.title_of(&labelled)))
         })
         .on(ev::click, move |event| {
             event.stop_propagation();
-            open.remove(section.clone());
+            state.remove(section.clone());
         })
         .child(mark(Icon::Remove))
 }
@@ -688,18 +702,18 @@ fn shown_or_blank(shown: &str) -> String {
     }
 }
 
-fn settle(event: &ev::Event, section: &SectionId, open: OpenOutline) {
+fn settle(event: &ev::Event, section: &SectionId, state: OutlineState) {
     let Some(field) = typed(event) else {
         return;
     };
     let written = field.value();
-    let was = open
+    let was = state
         .sections()
         .into_iter()
         .find(|held| &held.id == section)
         .map(|held| held.title);
 
     if was.as_deref() != Some(written.as_str()) {
-        open.retitle(section.clone(), written);
+        state.retitle(section.clone(), written);
     }
 }

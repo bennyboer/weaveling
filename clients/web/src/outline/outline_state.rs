@@ -12,7 +12,7 @@ use crate::projects::model::ProjectId;
 use crate::route;
 
 #[derive(Clone, Copy)]
-pub struct OpenOutline {
+pub struct OutlineState {
     problem: RwSignal<Option<ApiError>>,
     outline: RwSignal<Option<Outline>>,
     passages: RwSignal<Option<Vec<Passage>>>,
@@ -36,7 +36,7 @@ pub enum Urge {
     Demote,
 }
 
-impl OpenOutline {
+impl OutlineState {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let outline = RwSignal::new(None::<Outline>);

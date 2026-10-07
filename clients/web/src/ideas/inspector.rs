@@ -70,3 +70,26 @@ fn place(icon: Icon, at: String, named: String) -> impl IntoView {
         },
     ))
 }
+
+pub fn docked(state: InspectorState) -> impl IntoView {
+    let ready = Memo::new(move |_| state.opened().is_some());
+
+    move || {
+        ready.get().then(|| {
+            html::section()
+                .class("docked-inspector")
+                .attr("aria-label", "Inspector")
+                .child((
+                    move || {
+                        state.problem().map(|failure| {
+                            html::p()
+                                .class("problem")
+                                .role("alert")
+                                .child(failure.to_string())
+                        })
+                    },
+                    inspector(state),
+                ))
+        })
+    }
+}

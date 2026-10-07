@@ -3,7 +3,7 @@ use leptos::prelude::*;
 use crate::appearances::model::Place;
 use crate::appearances::service as appearance_service;
 use crate::http::ApiError;
-use crate::ideas::model::Idea;
+use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as idea_service;
 use crate::outline::model::{Section, SectionId};
 use crate::outline::service as outline_service;
@@ -23,26 +23,30 @@ pub struct InspectorState {
 }
 
 impl InspectorState {
-    pub fn open(project: Memo<String>, asked: Memo<Option<String>>) -> Self {
+    pub fn inspecting(project: Memo<String>, inspected: Signal<Option<IdeaId>>) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let opened = RwSignal::new(None::<Idea>);
         let places = RwSignal::new(Vec::<Place>::new());
         let sections = RwSignal::new(Vec::<Section>::new());
         let passages = RwSignal::new(Vec::<Passage>::new());
 
-        let opening_idea = Action::new_local(move |asked: &String| {
-            let asked = route::idea_id(asked);
+        let opening_idea = Action::new_local(move |asked: &IdeaId| {
+            let asked = asked.clone();
 
             async move {
                 let found = match idea_service::get(&asked).await {
                     Ok(found) => found,
                     Err(failure) => return problem.set(Some(failure)),
                 };
-                match appearance_service::of(&found.id).await {
-                    Ok(found) => places.set(found),
+                let appearing = match appearance_service::of(&asked).await {
+                    Ok(appearing) => appearing,
                     Err(failure) => return problem.set(Some(failure)),
+                };
+                if inspected.get_untracked().as_ref() != Some(&asked) {
+                    return;
                 }
                 problem.set(None);
+                places.set(appearing);
                 opened.set(Some(found));
             }
         });
@@ -81,10 +85,11 @@ impl InspectorState {
             }
         });
 
-        Effect::new(move || {
-            if let Some(asked) = asked.get() {
+        Effect::new(move || match inspected.get() {
+            Some(asked) => {
                 opening_idea.dispatch(asked);
             }
+            None => opened.set(None),
         });
 
         Effect::new(move || {
@@ -116,6 +121,17 @@ impl InspectorState {
 
     pub fn retitle(&self, typed: String) {
         self.retitling_idea.dispatch(typed);
+    }
+
+    pub fn adopt(&self, newer: Idea) {
+        let older = self.opened.with_untracked(|held| {
+            held.as_ref()
+                .is_some_and(|held| held.id == newer.id && held.version < newer.version)
+        });
+
+        if older {
+            self.opened.set(Some(newer));
+        }
     }
 
     pub fn noting_sections(&self) -> Vec<(SectionId, String)> {

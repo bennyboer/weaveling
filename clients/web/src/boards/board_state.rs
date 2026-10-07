@@ -13,7 +13,7 @@ const STEP: i64 = 40;
 const COLUMNS: i64 = 3;
 
 #[derive(Clone, Copy)]
-pub struct OpenBoard {
+pub struct BoardState {
     problem: RwSignal<Option<ApiError>>,
     board: RwSignal<Option<Board>>,
     pool: RwSignal<Option<Vec<Idea>>>,
@@ -24,7 +24,7 @@ pub struct OpenBoard {
     retitling: Action<(IdeaId, String), ()>,
 }
 
-impl OpenBoard {
+impl BoardState {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let board = RwSignal::new(None::<Board>);
@@ -252,6 +252,30 @@ impl OpenBoard {
 
     pub fn retitle(&self, idea: IdeaId, title: String) {
         self.retitling.dispatch((idea, title));
+    }
+
+    pub fn idea(&self, id: &IdeaId) -> Option<Idea> {
+        self.pool
+            .with(|held| held.as_ref()?.iter().find(|known| &known.id == id).cloned())
+    }
+
+    pub fn adopt(&self, newer: Idea) {
+        let older = self.pool.with_untracked(|held| {
+            held.as_ref().is_some_and(|held| {
+                held.iter()
+                    .any(|known| known.id == newer.id && known.version < newer.version)
+            })
+        });
+
+        if older {
+            self.pool.update(|held| {
+                if let Some(held) = held
+                    && let Some(known) = held.iter_mut().find(|known| known.id == newer.id)
+                {
+                    *known = newer;
+                }
+            });
+        }
     }
 
     fn in_pool(&self) -> Vec<Idea> {

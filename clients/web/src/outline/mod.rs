@@ -1,4 +1,4 @@
 pub mod model;
-pub mod open_outline;
+pub mod outline_state;
 pub mod service;
 pub mod tree;

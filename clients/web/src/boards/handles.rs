@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 
+use crate::boards::board_state::BoardState;
 use crate::boards::carrying::Carrying;
 use crate::boards::model::Placement;
-use crate::boards::open_board::OpenBoard;
 use crate::boards::viewport::Viewport;
 use crate::ideas::model::IdeaId;
 
@@ -58,5 +58,5 @@ pub struct Handles {
     pub carrying: RwSignal<Option<Carrying>>,
     pub selected: RwSignal<Option<IdeaId>>,
     pub naming: RwSignal<Option<Naming>>,
-    pub open: OpenBoard,
+    pub state: BoardState,
 }

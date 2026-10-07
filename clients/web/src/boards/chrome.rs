@@ -53,7 +53,7 @@ pub fn actions(href: String, idea: Idea, at: Placement, handles: Handles) -> imp
                 opening(&href, Default::default());
             }),
             deed(format!("Unpin {shown}"), "\u{00d7}", move || {
-                handles.open.unpin(unpinned.clone());
+                handles.state.unpin(unpinned.clone());
             }),
         ))
 }
@@ -116,7 +116,7 @@ pub fn naming(held: Naming, handles: Handles) -> impl IntoView {
 fn settle(field: NodeRef<html::Textarea>, held: &Naming, handles: Handles) {
     if handles
         .naming
-        .with_untracked(|open| !open.as_ref().is_some_and(|open| open.is(held)))
+        .with_untracked(|state| !state.as_ref().is_some_and(|state| state.is(held)))
     {
         return;
     }
@@ -128,10 +128,10 @@ fn settle(field: NodeRef<html::Textarea>, held: &Naming, handles: Handles) {
 
     match held {
         Naming::Renaming { idea, was, .. } if &written != was => {
-            handles.open.retitle(idea.clone(), written);
+            handles.state.retitle(idea.clone(), written);
         }
         Naming::Capturing { at } if !written.trim().is_empty() => {
-            handles.open.capture(written, *at);
+            handles.state.capture(written, *at);
         }
         _ => {}
     }
