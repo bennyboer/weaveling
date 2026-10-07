@@ -648,7 +648,7 @@ The canary was documented as "one test leans on delivery being synchronous, and 
 
 **What it does to M13:** export and import stop being the persistence mechanism and become what they always should have been — a way to move a project between machines. An author's work is durable because it is in a file that was written as they worked, not because they remembered to export.
 
-### Milestone 12 — Ideas and passages
+### Milestone 12 — Ideas and passages ✅
 
 **Goal:** the pool splits in two, and every view owns what it says about an idea.
 
@@ -719,6 +719,8 @@ So the inspector is not a new surface beside the old one, it is what that route 
 **Later: controls for the tree as a whole** — collapse everything, expand everything, and whatever else turns out to be worth one click rather than a click per section. Client-only by construction: folding is a `RwSignal` in the view, and it has to stay there — expansion state in the event stream is named in [ARCHITECTURE.md](./ARCHITECTURE.md#the-outline-arranges-sections-not-pieces) as the structural failure of tree-as-model. Whether the fold should survive a reload is a separate question, and the answer there is browser storage, never the aggregate.
 
 **Done when:** an idea carries no link to any view; a view gains a new kind of relation without `ideas` changing; the appearances read model answers in one request; and the board is usable without ever opening an inspector.
+
+*Done. `Idea` is `{ project, title, discarded }` and nothing else, and the proof of the second criterion is in the history: `features/ideas` has not changed since step 3, while the outline learned to note ideas (5), passages to link them (6b) and appearances to follow both (7). Every link is owned by the side that makes it — the outline's `Attachment`, the passage's `passage_ideas` — and each announces it through its own outbox; passages, not event-sourced, learned to announce in the same transaction as the change. Appearances store `Subject` at `Place` generically and stay typed in the domain, with boards deliberately not places. The client's `/ideas/{idea}` became the inspector, and the board docks the same `InspectorState` at the top of its tray, following selection, with renames meeting in the middle by version. Along the way: `Detached` names the section it left, the outline catalog's columns became `attachment_type` / `attachment_id`, the test fixture closes its pools and takes turns, and a client view keeps its state in a `<View>State` ([CONVENTIONS.md](./CONVENTIONS.md#a-type-is-named-for-what-it-is-spelled-out)). Left for later, as listed above: reordering within a group, tree controls, the two-column passage page, a paged link dialog, the wiring rework, and project ids on messages.*
 
 **Still unknown, and deliberately not gating this:** how often an idea maps one-to-one onto a passage, and what the timeline wants to hold. Those are ergonomics and they shape the *views*; the structural question was settled on lifecycle. Twenty real ideas on a board will answer them, and that is worth doing before the timeline is designed rather than before this.
 

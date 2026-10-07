@@ -23,20 +23,20 @@ const IN_PROJECT: &str = "
 const LET_GO: &str = "DELETE FROM outline_attachments WHERE outline = $1";
 
 const HOLD: &str = "
-    INSERT INTO outline_attachments (outline, kind, attached)
-    SELECT $1, kind, attached
-    FROM unnest($2::text[], $3::text[]) AS held (kind, attached)
+    INSERT INTO outline_attachments (outline, attachment_type, attachment_id)
+    SELECT $1, attachment_type, attachment_id
+    FROM unnest($2::text[], $3::text[]) AS held (attachment_type, attachment_id)
     ON CONFLICT DO NOTHING
 ";
 
 const HOLDING: &str = "
     SELECT outline
     FROM outline_attachments
-    WHERE kind = $1 AND attached = $2
+    WHERE attachment_type = $1 AND attachment_id = $2
     ORDER BY outline
 ";
 
-fn kind_of(attachment: &Attachment) -> &'static str {
+fn attachment_type_of(attachment: &Attachment) -> &'static str {
     match attachment {
         Attachment::Passage(_) => "passage",
         Attachment::Idea(_) => "idea",
@@ -118,8 +118,8 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         outline: OutlineId,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
-        let kinds: Vec<&str> = attachments.iter().map(kind_of).collect();
-        let held: Vec<String> = attachments.iter().map(ToString::to_string).collect();
+        let attachment_types: Vec<&str> = attachments.iter().map(attachment_type_of).collect();
+        let attachment_ids: Vec<String> = attachments.iter().map(ToString::to_string).collect();
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(LET_GO)
@@ -130,8 +130,8 @@ impl OutlineCatalog for PostgresOutlineCatalog {
 
         sqlx::query(HOLD)
             .bind(outline.to_string())
-            .bind(&kinds)
-            .bind(&held)
+            .bind(&attachment_types)
+            .bind(&attachment_ids)
             .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
@@ -144,7 +144,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         attachment: &Attachment,
     ) -> Result<Vec<OutlineId>, CatalogError> {
         let found = sqlx::query(HOLDING)
-            .bind(kind_of(attachment))
+            .bind(attachment_type_of(attachment))
             .bind(attachment.to_string())
             .fetch_all(&self.pool)
             .await

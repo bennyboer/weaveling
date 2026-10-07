@@ -6,11 +6,11 @@ CREATE TABLE outline_summaries (
 CREATE INDEX outline_summaries_by_project ON outline_summaries (project, outline);
 
 CREATE TABLE outline_attachments (
-    outline     TEXT COLLATE "C" NOT NULL,
-    kind        TEXT COLLATE "C" NOT NULL,
-    attached    TEXT COLLATE "C" NOT NULL,
+    outline         TEXT COLLATE "C" NOT NULL,
+    attachment_type TEXT COLLATE "C" NOT NULL,
+    attachment_id   TEXT COLLATE "C" NOT NULL,
 
-    PRIMARY KEY (outline, kind, attached)
+    PRIMARY KEY (outline, attachment_type, attachment_id)
 );
 
-CREATE INDEX outline_attachments_by_attached ON outline_attachments (kind, attached, outline);
+CREATE INDEX outline_attachments_by_attachment ON outline_attachments (attachment_type, attachment_id, outline);
