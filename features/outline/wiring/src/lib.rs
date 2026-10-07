@@ -8,7 +8,7 @@ use outline_messaging::{
     OutlineCatalogProjector,
 };
 use registry::{InMemoryRegistry, Registry};
-use wiring::{Context, Wired};
+use wiring::{Context, Feature, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<OutlineEvent>>,
@@ -87,11 +87,40 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     ])
 }
 
-pub const NAME: &str = "outline";
+pub struct OutlineFeature;
 
-#[cfg(feature = "postgres")]
-pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
-    wiring::database::lay_out(NAME, pool, eventsourcing::migrations()).await?;
-    wiring::database::lay_out(NAME, pool, outline_catalog::migrations()).await?;
-    wiring::database::lay_out(NAME, pool, registry::migrations()).await
+impl Feature for OutlineFeature {
+    const NAME: &'static str = "outline";
+
+    type Ports = Ports;
+
+    fn in_memory(context: &Context) -> Ports {
+        Ports::in_memory(context.publisher.clone(), context.clock.clone())
+    }
+
+    #[cfg(feature = "postgres")]
+    fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        Ok(Ports::postgres(
+            pool,
+            context.publisher.clone(),
+            context.clock.clone(),
+        ))
+    }
+
+    #[cfg(feature = "postgres")]
+    fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![
+            eventsourcing::migrations(),
+            outline_catalog::migrations(),
+            registry::migrations(),
+        ]
+    }
+
+    fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {
+        Some(ports.outbox.clone())
+    }
+
+    fn wire(ports: &Ports, context: &Context) -> Wired {
+        wire(ports, context)
+    }
 }

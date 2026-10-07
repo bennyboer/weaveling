@@ -1,90 +1,63 @@
-#[cfg(feature = "postgres")]
-mod databases;
 mod relays;
 
 use std::sync::Arc;
 
+use appearances_wiring::AppearanceFeature;
 use axum::Router;
 use axum::routing::get;
+use boards_wiring::BoardFeature;
 use clock::Clock;
-use messaging::InProcessDispatcher;
+use ideas_wiring::IdeaFeature;
+use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
+use outline_wiring::OutlineFeature;
+use passages_wiring::PassageFeature;
+use projects_wiring::ProjectFeature;
 use tower_http::trace::TraceLayer;
-use wiring::{Context, Wired};
+use wiring::{Assembled, Context, assemble};
+
+pub use relays::Relays;
+pub use wiring::{Storage, Unprepared};
 
 #[cfg(feature = "postgres")]
-pub use databases::Databases;
-pub use relays::Relays;
-#[cfg(feature = "postgres")]
-pub use wiring::Unprepared;
+const MESSAGING: &str = "messaging";
 
 pub struct Adapters {
-    pub clock: Arc<dyn Clock>,
-    pub dispatcher: Arc<InProcessDispatcher>,
-    pub deliveries: Arc<dyn messaging::Deliveries>,
-    pub projects: projects_wiring::Ports,
-    pub passages: passages_wiring::Ports,
-    pub ideas: ideas_wiring::Ports,
-    pub boards: boards_wiring::Ports,
-    pub outline: outline_wiring::Ports,
-    pub appearances: appearances_wiring::Ports,
+    clock: Arc<dyn Clock>,
+    dispatcher: Arc<InProcessDispatcher>,
+    deliveries: Arc<dyn Deliveries>,
+    features: Vec<Assembled>,
 }
 
 impl Adapters {
-    pub fn in_memory(clock: Arc<dyn Clock>) -> Self {
-        let deliveries = Arc::new(messaging::InMemoryDeliveries::new());
+    pub async fn assembled(storage: Storage, clock: Arc<dyn Clock>) -> Result<Self, Unprepared> {
+        let deliveries = deliveries(&storage).await?;
         let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
+        let context = Context {
+            clock: clock.clone(),
+            publisher: dispatcher.clone(),
+        };
 
-        Self {
-            projects: projects_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
-            passages: passages_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
-            ideas: ideas_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
-            boards: boards_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
-            outline: outline_wiring::Ports::in_memory(dispatcher.clone(), clock.clone()),
-            appearances: appearances_wiring::Ports::in_memory(),
+        let features = vec![
+            assemble::<ProjectFeature>(&storage, &context).await?,
+            assemble::<PassageFeature>(&storage, &context).await?,
+            assemble::<IdeaFeature>(&storage, &context).await?,
+            assemble::<BoardFeature>(&storage, &context).await?,
+            assemble::<OutlineFeature>(&storage, &context).await?,
+            assemble::<AppearanceFeature>(&storage, &context).await?,
+        ];
+
+        Ok(Self {
             clock,
             dispatcher,
             deliveries,
-        }
+            features,
+        })
     }
 
-    #[cfg(feature = "postgres")]
-    pub fn postgres(clock: Arc<dyn Clock>, databases: &Databases) -> Self {
-        let deliveries = Arc::new(messaging::PostgresDeliveries::new(
-            databases.messaging.clone(),
-        ));
-        let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
-
-        Self {
-            projects: projects_wiring::Ports::postgres(
-                databases.projects.clone(),
-                dispatcher.clone(),
-                clock.clone(),
-            ),
-            passages: passages_wiring::Ports::postgres(
-                databases.passages.clone(),
-                dispatcher.clone(),
-                clock.clone(),
-            ),
-            ideas: ideas_wiring::Ports::postgres(
-                databases.ideas.clone(),
-                dispatcher.clone(),
-                clock.clone(),
-            ),
-            boards: boards_wiring::Ports::postgres(
-                databases.boards.clone(),
-                dispatcher.clone(),
-                clock.clone(),
-            ),
-            outline: outline_wiring::Ports::postgres(
-                databases.outline.clone(),
-                dispatcher.clone(),
-                clock.clone(),
-            ),
-            appearances: appearances_wiring::Ports::postgres(databases.appearances.clone()),
-            clock,
-            dispatcher,
-            deliveries,
-        }
+    pub async fn in_memory(clock: Arc<dyn Clock>) -> Self {
+        Self::assembled(Storage::InMemory, clock)
+            .await
+            .expect("nothing kept in memory needs preparing")
     }
 
     pub fn consuming(&self) -> messaging::DeliveryConsumer {
@@ -96,49 +69,40 @@ impl Adapters {
     }
 
     pub fn outboxes(&self) -> Vec<Arc<dyn eventsourcing::Outbox>> {
-        vec![
-            self.projects.outbox.clone(),
-            self.ideas.outbox.clone(),
-            self.boards.outbox.clone(),
-            self.outline.outbox.clone(),
-            self.passages.outbox.clone(),
-        ]
+        self.features
+            .iter()
+            .filter_map(|feature| feature.outbox.clone())
+            .collect()
+    }
+}
+
+async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared> {
+    match storage {
+        Storage::InMemory => Ok(Arc::new(InMemoryDeliveries::new())),
+        #[cfg(feature = "postgres")]
+        Storage::Postgres(databases) => {
+            let pool = databases.ready(MESSAGING).await?;
+            wiring::database::lay_out(MESSAGING, &pool, messaging::migrations()).await?;
+
+            Ok(Arc::new(messaging::PostgresDeliveries::new(pool)))
+        }
     }
 }
 
 pub fn app(adapters: Adapters) -> Router {
-    let dispatcher = adapters.dispatcher.clone();
-    let context = Context {
-        clock: adapters.clock,
-        publisher: dispatcher.clone(),
-    };
-
-    let features = vec![
-        projects_wiring::wire(&adapters.projects, &context),
-        passages_wiring::wire(&adapters.passages, &context),
-        ideas_wiring::wire(&adapters.ideas, &context),
-        boards_wiring::wire(&adapters.boards, &context),
-        outline_wiring::wire(&adapters.outline, &context),
-        appearances_wiring::wire(&adapters.appearances),
-    ];
-
-    Router::new()
-        .nest("/api", assembled(features, &dispatcher))
-        .layer(TraceLayer::new_for_http())
-}
-
-fn assembled(features: Vec<Wired>, dispatcher: &InProcessDispatcher) -> Router {
     let mut api = Router::new().route("/health", get(health));
 
-    for feature in features {
+    for feature in adapters.features {
         api = api.merge(feature.routes);
 
         for listener in feature.listeners {
-            dispatcher.listen(listener);
+            adapters.dispatcher.listen(listener);
         }
     }
 
-    api
+    Router::new()
+        .nest("/api", api)
+        .layer(TraceLayer::new_for_http())
 }
 
 async fn health() -> &'static str {

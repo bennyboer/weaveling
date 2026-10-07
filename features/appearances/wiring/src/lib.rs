@@ -5,7 +5,8 @@ use appearances_core::AppearanceCatalog;
 use appearances_messaging::{
     ForgetDiscardedIdea, OutlineAppearancesProjector, PassageAppearancesProjector,
 };
-use wiring::Wired;
+use eventsourcing::Outbox;
+use wiring::{Context, Feature, Wired};
 
 pub struct Ports {
     pub catalog: Arc<dyn AppearanceCatalog>,
@@ -34,9 +35,32 @@ pub fn wire(ports: &Ports) -> Wired {
     ])
 }
 
-pub const NAME: &str = "appearances";
+pub struct AppearanceFeature;
 
-#[cfg(feature = "postgres")]
-pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
-    wiring::database::lay_out(NAME, pool, appearances_catalog::migrations()).await
+impl Feature for AppearanceFeature {
+    const NAME: &'static str = "appearances";
+
+    type Ports = Ports;
+
+    fn in_memory(_context: &Context) -> Ports {
+        Ports::in_memory()
+    }
+
+    #[cfg(feature = "postgres")]
+    fn on_postgres(pool: sqlx::PgPool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
+        Ok(Ports::postgres(pool))
+    }
+
+    #[cfg(feature = "postgres")]
+    fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![appearances_catalog::migrations()]
+    }
+
+    fn outbox(_ports: &Ports) -> Option<Arc<dyn Outbox>> {
+        None
+    }
+
+    fn wire(ports: &Ports, _context: &Context) -> Wired {
+        wire(ports)
+    }
 }

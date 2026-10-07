@@ -4,7 +4,7 @@ use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
 use projects_catalog::InMemoryProjectCatalog;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectService};
 use projects_messaging::ProjectCatalogProjector;
-use wiring::{Context, Wired};
+use wiring::{Context, Feature, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<ProjectEvent>>,
@@ -68,10 +68,36 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .listening(vec![Arc::new(projector)])
 }
 
-pub const NAME: &str = "projects";
+pub struct ProjectFeature;
 
-#[cfg(feature = "postgres")]
-pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
-    wiring::database::lay_out(NAME, pool, eventsourcing::migrations()).await?;
-    wiring::database::lay_out(NAME, pool, projects_catalog::migrations()).await
+impl Feature for ProjectFeature {
+    const NAME: &'static str = "projects";
+
+    type Ports = Ports;
+
+    fn in_memory(context: &Context) -> Ports {
+        Ports::in_memory(context.publisher.clone(), context.clock.clone())
+    }
+
+    #[cfg(feature = "postgres")]
+    fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        Ok(Ports::postgres(
+            pool,
+            context.publisher.clone(),
+            context.clock.clone(),
+        ))
+    }
+
+    #[cfg(feature = "postgres")]
+    fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![eventsourcing::migrations(), projects_catalog::migrations()]
+    }
+
+    fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {
+        Some(ports.outbox.clone())
+    }
+
+    fn wire(ports: &Ports, context: &Context) -> Wired {
+        wire(ports, context)
+    }
 }

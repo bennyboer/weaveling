@@ -7,8 +7,8 @@ use clock::SystemClock;
 use tower::ServiceExt;
 use weaveling_service_api::{Adapters, app};
 
-fn new_app() -> Router {
-    app(Adapters::in_memory(Arc::new(SystemClock)))
+async fn new_app() -> Router {
+    app(Adapters::in_memory(Arc::new(SystemClock)).await)
 }
 
 async fn get(path: &str) -> (StatusCode, String) {
@@ -35,6 +35,7 @@ async fn post_json(path: &str, body: &str) -> (StatusCode, String) {
 
 async fn reply(request: Request<Body>) -> (StatusCode, String) {
     let response = new_app()
+        .await
         .oneshot(request)
         .await
         .expect("the app should respond");

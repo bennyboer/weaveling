@@ -1,41 +1,80 @@
 #![cfg(feature = "postgres")]
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use axum_test::TestServer;
-use clock::SystemClock;
+use clock::{Clock, SystemClock};
 use serde_json::{Value, json};
+use sqlx::PgPool;
 use test_harness::PostgresFixture;
-use weaveling_service_api::{Adapters, Databases, app};
+use weaveling_service_api::{Adapters, Storage, Unprepared, app};
+use wiring::Databases;
+
+const DATABASES: [&str; 7] = [
+    "messaging",
+    "projects",
+    "ideas",
+    "boards",
+    "outline",
+    "passages",
+    "appearances",
+];
+
+#[derive(Clone)]
+struct SchemaEach {
+    pools: Arc<HashMap<&'static str, PgPool>>,
+}
+
+impl SchemaEach {
+    fn of(&self, database: &str) -> &PgPool {
+        self.pools
+            .get(database)
+            .unwrap_or_else(|| panic!("the fixture should have made a {database} schema"))
+    }
+}
+
+#[async_trait]
+impl Databases for SchemaEach {
+    async fn ready(&self, feature: &str) -> Result<PgPool, Unprepared> {
+        self.pools
+            .get(feature)
+            .cloned()
+            .ok_or_else(|| Unprepared::Unreachable {
+                database: feature.to_owned(),
+                why: "the fixture made no schema for it".to_owned(),
+            })
+    }
+}
 
 struct Running {
     fixture: PostgresFixture,
-    databases: Databases,
+    databases: SchemaEach,
     server: TestServer,
 }
 
-async fn a_schema_each(fixture: &PostgresFixture) -> Databases {
-    let databases = Databases {
-        messaging: fixture.create_schema("messaging").await,
-        projects: fixture.create_schema("projects").await,
-        ideas: fixture.create_schema("ideas").await,
-        boards: fixture.create_schema("boards").await,
-        outline: fixture.create_schema("outline").await,
-        passages: fixture.create_schema("passages").await,
-        appearances: fixture.create_schema("appearances").await,
-    };
-    databases
-        .lay_out()
-        .await
-        .expect("every feature's schema should lay down");
+async fn a_schema_each(fixture: &PostgresFixture) -> SchemaEach {
+    let mut pools = HashMap::new();
+    for database in DATABASES {
+        pools.insert(database, fixture.create_schema(database).await);
+    }
 
-    databases
+    SchemaEach {
+        pools: Arc::new(pools),
+    }
+}
+
+async fn adapters_on(databases: &SchemaEach, clock: Arc<dyn Clock>) -> Adapters {
+    Adapters::assembled(Storage::Postgres(Arc::new(databases.clone())), clock)
+        .await
+        .expect("every feature's schema should lay down")
 }
 
 async fn a_running_api() -> Running {
     let fixture = PostgresFixture::setup().await;
     let databases = a_schema_each(&fixture).await;
-    let server = TestServer::new(app(Adapters::postgres(Arc::new(SystemClock), &databases)));
+    let server = TestServer::new(app(adapters_on(&databases, Arc::new(SystemClock)).await));
 
     Running {
         fixture,
@@ -78,7 +117,7 @@ async fn a_project_written_to_postgres_is_read_back_and_left_waiting_to_be_annou
 
     let waiting: Vec<String> =
         sqlx::query_scalar("SELECT routing_key FROM outbox WHERE published_at IS NULL")
-            .fetch_all(&running.databases.projects)
+            .fetch_all(running.databases.of("projects"))
             .await
             .expect("reading the outbox should succeed");
 
@@ -117,7 +156,7 @@ async fn an_idea_captured_against_postgres_is_written_and_left_waiting_to_be_ann
 
     let waiting: Vec<String> =
         sqlx::query_scalar("SELECT routing_key FROM outbox WHERE published_at IS NULL")
-            .fetch_all(&running.databases.ideas)
+            .fetch_all(running.databases.of("ideas"))
             .await
             .expect("reading the outbox should succeed");
 
@@ -135,11 +174,11 @@ async fn what_was_written_survives_a_second_api_built_on_the_same_databases() {
     let fixture = PostgresFixture::setup().await;
     let databases = a_schema_each(&fixture).await;
 
-    let first = TestServer::new(app(Adapters::postgres(Arc::new(SystemClock), &databases)));
+    let first = TestServer::new(app(adapters_on(&databases, Arc::new(SystemClock)).await));
     let id = a_project(&first, "Outliving").await;
     drop(first);
 
-    let second = TestServer::new(app(Adapters::postgres(Arc::new(SystemClock), &databases)));
+    let second = TestServer::new(app(adapters_on(&databases, Arc::new(SystemClock)).await));
     let found = second.get(&format!("/api/projects/{id}")).await;
 
     found.assert_status_ok();
@@ -169,25 +208,25 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
             "projects",
             "events",
             "SELECT count(*) FROM events",
-            &running.databases.projects,
+            running.databases.of("projects"),
         ),
         (
             "projects",
             "outbox",
             "SELECT count(*) FROM outbox",
-            &running.databases.projects,
+            running.databases.of("projects"),
         ),
         (
             "ideas",
             "events",
             "SELECT count(*) FROM events",
-            &running.databases.ideas,
+            running.databases.of("ideas"),
         ),
         (
             "ideas",
             "outbox",
             "SELECT count(*) FROM outbox",
-            &running.databases.ideas,
+            running.databases.of("ideas"),
         ),
     ] {
         let held: i64 = sqlx::query_scalar(counting)
@@ -199,7 +238,7 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
     }
 
     let elsewhere: i64 = sqlx::query_scalar("SELECT count(*) FROM events")
-        .fetch_one(&running.databases.boards)
+        .fetch_one(running.databases.of("boards"))
         .await
         .expect("counting should succeed");
 
@@ -219,7 +258,7 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
     let fixture = PostgresFixture::setup().await;
     let databases = a_schema_each(&fixture).await;
     let clock = Arc::new(SystemClock);
-    let adapters = Adapters::postgres(clock, &databases);
+    let adapters = adapters_on(&databases, clock).await;
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let server = TestServer::new(app(adapters));
@@ -306,7 +345,7 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
     let fixture = PostgresFixture::setup().await;
     let databases = a_schema_each(&fixture).await;
     let clock = Arc::new(SystemClock);
-    let adapters = Adapters::postgres(clock, &databases);
+    let adapters = adapters_on(&databases, clock).await;
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let server = TestServer::new(app(adapters));
@@ -384,11 +423,11 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
     assert!(
         until(|| async {
             let boards: i64 = sqlx::query_scalar("SELECT count(*) FROM board_summaries")
-                .fetch_one(&databases.boards)
+                .fetch_one(databases.of("boards"))
                 .await
                 .expect("counting should succeed");
             let outlines: i64 = sqlx::query_scalar("SELECT count(*) FROM outline_summaries")
-                .fetch_one(&databases.outline)
+                .fetch_one(databases.of("outline"))
                 .await
                 .expect("counting should succeed");
 
@@ -412,7 +451,7 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
     );
 
     let stuck: Vec<(String, String)> = sqlx::query_as("SELECT listener, why FROM dead_letters")
-        .fetch_all(&databases.messaging)
+        .fetch_all(databases.of("messaging"))
         .await
         .expect("reading the dead letters should succeed");
 
@@ -461,7 +500,7 @@ async fn discarding_an_idea_unlinks_it_from_every_passage() {
     let fixture = PostgresFixture::setup().await;
     let databases = a_schema_each(&fixture).await;
     let clock = Arc::new(SystemClock);
-    let adapters = Adapters::postgres(clock, &databases);
+    let adapters = adapters_on(&databases, clock).await;
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let server = TestServer::new(app(adapters));
@@ -537,7 +576,7 @@ async fn linking_an_idea_is_announced_and_relayed() {
     let fixture = PostgresFixture::setup().await;
     let databases = a_schema_each(&fixture).await;
     let clock = Arc::new(SystemClock);
-    let adapters = Adapters::postgres(clock, &databases);
+    let adapters = adapters_on(&databases, clock).await;
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let server = TestServer::new(app(adapters));
@@ -576,7 +615,7 @@ async fn linking_an_idea_is_announced_and_relayed() {
             let relayed: Vec<String> = sqlx::query_scalar(
                 "SELECT routing_key FROM outbox WHERE published_at IS NOT NULL ORDER BY entry",
             )
-            .fetch_all(&databases.passages)
+            .fetch_all(databases.of("passages"))
             .await
             .expect("reading the passages outbox should succeed");
 
@@ -597,7 +636,7 @@ async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded() {
 
     let fixture = PostgresFixture::setup().await;
     let databases = a_schema_each(&fixture).await;
-    let adapters = Adapters::postgres(Arc::new(SystemClock), &databases);
+    let adapters = adapters_on(&databases, Arc::new(SystemClock)).await;
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let server = TestServer::new(app(adapters));

@@ -5,7 +5,7 @@ use passages_core::{PassageService, PassageStore};
 use passages_messaging::{DeleteOnProjectDeleted, UnlinkOnDiscard};
 use passages_store::InMemoryPassageStore;
 use passages_sync::LivePassages;
-use wiring::{Context, Wired};
+use wiring::{Context, Feature, Wired};
 
 pub struct Ports {
     pub store: Arc<dyn PassageStore>,
@@ -64,10 +64,36 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     .listening(vec![Arc::new(sweep), Arc::new(unlink)])
 }
 
-pub const NAME: &str = "passages";
+pub struct PassageFeature;
 
-#[cfg(feature = "postgres")]
-pub async fn lay_out(pool: &sqlx::PgPool) -> Result<(), wiring::Unprepared> {
-    wiring::database::lay_out(NAME, pool, eventsourcing::migrations()).await?;
-    wiring::database::lay_out(NAME, pool, passages_store::migrations()).await
+impl Feature for PassageFeature {
+    const NAME: &'static str = "passages";
+
+    type Ports = Ports;
+
+    fn in_memory(context: &Context) -> Ports {
+        Ports::in_memory(context.publisher.clone(), context.clock.clone())
+    }
+
+    #[cfg(feature = "postgres")]
+    fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        Ok(Ports::postgres(
+            pool,
+            context.publisher.clone(),
+            context.clock.clone(),
+        ))
+    }
+
+    #[cfg(feature = "postgres")]
+    fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![eventsourcing::migrations(), passages_store::migrations()]
+    }
+
+    fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {
+        Some(ports.outbox.clone())
+    }
+
+    fn wire(ports: &Ports, context: &Context) -> Wired {
+        wire(ports, context)
+    }
 }

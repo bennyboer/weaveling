@@ -3,25 +3,26 @@ use std::sync::Arc;
 use clock::SystemClock;
 use eventsourcing::Cadence;
 use tokio::net::TcpListener;
-use weaveling_service_api::{Adapters, Relays, app};
+use weaveling_service_api::{Adapters, Relays, Storage, app};
 
 #[cfg(feature = "postgres")]
-async fn adapters() -> Adapters {
-    use weaveling_service_api::Databases;
-
+fn storage() -> Storage {
     let server = std::env::var("DATABASE_URL").expect(
         "DATABASE_URL should name a PostgreSQL server when built with the postgres feature",
     );
-    let databases = Databases::ready(&server)
-        .await
-        .expect("the databases should be reachable and migratable");
 
-    Adapters::postgres(Arc::new(SystemClock), &databases)
+    Storage::Postgres(Arc::new(wiring::ServerDatabases::on(&server)))
 }
 
 #[cfg(not(feature = "postgres"))]
+fn storage() -> Storage {
+    Storage::InMemory
+}
+
 async fn adapters() -> Adapters {
-    Adapters::in_memory(Arc::new(SystemClock))
+    Adapters::assembled(storage(), Arc::new(SystemClock))
+        .await
+        .expect("the databases should be reachable and migratable")
 }
 
 async fn serving() -> (axum::Router, Relays) {

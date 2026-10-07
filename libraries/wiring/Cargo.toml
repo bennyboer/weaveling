@@ -4,12 +4,14 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 axum = { workspace = true }
 
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 
 [features]

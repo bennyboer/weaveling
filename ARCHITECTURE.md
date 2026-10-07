@@ -517,7 +517,7 @@ let features = vec![
 
 Merging routes and registering listeners are then loops over that list. Before this, a feature was named three times — once to wire, once in the listener chain, once in the router merge — so adding one meant three edits in three places, and forgetting the middle one would have silently dropped its projections.
 
-**This is deliberately not a `Feature` trait.** A trait would buy dynamic dispatch we have no use for; a shared struct gives the same uniformity with no `dyn`. It is a third *join* library for the same reason as [`eventpublishing`](#the-first-consumer-the-piece-catalog-as-a-projection) and `serving`: `wiring` is where `axum` meets `messaging`, and only wiring crates and the composition root live at that meeting point. The reference implementation lands in the same place — per-feature `*-starter` modules, assembled by the application.
+**This was deliberately not a `Feature` trait — until a third backend.** A trait would have bought dynamic dispatch we had no use for, and a shared struct gave the same uniformity with no `dyn`. *Revised 2026-10-07, M13 step 0b:* by then every feature was named some ten times in `services/api` — its `Ports` twice, its database, its `lay_out`, its `wire`, its outbox in `outboxes()` — and forgetting the outbox kept compiling while its messages silently stopped. Local mode would have added a third round of each. See [below](#one-value-per-feature). It is a third *join* library for the same reason as [`eventpublishing`](#the-first-consumer-the-piece-catalog-as-a-projection) and `serving`: `wiring` is where `axum` meets `messaging`, and only wiring crates and the composition root live at that meeting point. The reference implementation lands in the same place — per-feature `*-starter` modules, assembled by the application.
 
 Two features publish nothing, and carry an empty `listeners` rather than a different return type. That is the trade the loop is bought with, and it costs one `Wired::serving(routes)` call: **uniformity is the point**, and a feature that later grows a listener adds `.listening(…)` without changing its signature.
 
@@ -542,6 +542,26 @@ app(Adapters::in_memory(Arc::new(SystemClock)))
 At M11 that becomes a per-feature `Ports::backed_by(&pool)`, chosen feature by feature rather than in one god-function. It does put the in-memory adapters in the production dependency graph, which is correct: [local mode](#two-ways-to-run-it) ships them as production.
 
 The [pieces test harness](../features/pieces/tests/src/wiring.rs) calls the real `pieces_wiring::wire`, so the API tests exercise production wiring instead of a parallel copy that could drift from it.
+
+### One value per feature
+
+**A feature is now a type that implements `wiring::Feature`**, and the service names it exactly once:
+
+```rust
+let features = vec![
+    assemble::<ProjectFeature>(&storage, &context).await?,
+    assemble::<PassageFeature>(&storage, &context).await?,
+    // …
+];
+```
+
+The trait says what only the feature knows — its `NAME`, its `Ports` in memory and on PostgreSQL, its schema as a list of migrators, its outbox if it has one, and how to `wire` — and `wiring::assemble` does what every feature used to repeat: pick the ports for the `Storage`, ready the feature's database, lay its schema down, and hand back an `Assembled { outbox, routes, listeners }`. The service's outboxes, routes and listeners are all read off that one list, so **a feature cannot be half-registered**: its outbox comes with it or not at all.
+
+**Still no `dyn`.** `assemble` is generic over the feature, so the trait is a compile-time contract with associated types, not an object; what the service keeps is a plain `Vec<Assembled>`. `Ports`, `wire` and `service` stay public beside the impl, because each feature's own wiring tests build on them directly.
+
+**The PostgreSQL methods have defaults** that answer `Unprepared::NotBuiltIn`. Cargo unifies features across a build, so `wiring/postgres` can be on while a feature crate's own `postgres` is off; a trait method existing only under that feature would then be missing from the impl and fail to compile. With a default it is a runtime answer to a misconfiguration instead.
+
+**Where a database comes from is a port too.** `Storage::Postgres` carries an `Arc<dyn Databases>`: `ServerDatabases` creates and connects `weaveling_{feature}` in production, and the PostgreSQL service tests hand out one fixture schema per feature instead — keeping the pools, so a test can still look at a feature's rows.
 
 ## Transactions and Atomicity
 

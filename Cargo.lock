@@ -3449,6 +3449,7 @@ dependencies = [
  "weaveling-appearances-core",
  "weaveling-appearances-messaging",
  "weaveling-appearances-rest",
+ "weaveling-eventsourcing",
  "weaveling-wiring",
 ]
 
@@ -4129,6 +4130,7 @@ dependencies = [
 name = "weaveling-service-api"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
  "serde_json",
@@ -4177,11 +4179,13 @@ dependencies = [
 name = "weaveling-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "sqlx",
  "thiserror",
  "tracing",
  "weaveling-clock",
+ "weaveling-eventsourcing",
  "weaveling-messaging",
 ]
 

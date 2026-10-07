@@ -1,18 +1,36 @@
+use async_trait::async_trait;
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::{AssertSqlSafe, Executor, PgPool};
-use thiserror::Error;
+
+use crate::Unprepared;
 
 const POOLED: u32 = 5;
 
-#[derive(Debug, Error)]
-pub enum Unprepared {
-    #[error("{database} could not be reached: {why}")]
-    Unreachable { database: String, why: String },
-    #[error("{database} could not be created: {why}")]
-    Uncreatable { database: String, why: String },
-    #[error("the schema of {database} could not be laid down: {why}")]
-    Unmigrated { database: String, why: String },
+#[async_trait]
+pub trait Databases: Send + Sync {
+    async fn ready(&self, feature: &str) -> Result<PgPool, Unprepared>;
+}
+
+pub struct ServerDatabases {
+    server: String,
+}
+
+impl ServerDatabases {
+    pub fn on(server: &str) -> Self {
+        Self {
+            server: server.to_owned(),
+        }
+    }
+}
+
+#[async_trait]
+impl Databases for ServerDatabases {
+    async fn ready(&self, feature: &str) -> Result<PgPool, Unprepared> {
+        ensure(&self.server, feature).await?;
+
+        connect(&self.server, feature).await
+    }
 }
 
 pub fn named(feature: &str) -> String {
