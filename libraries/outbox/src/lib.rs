@@ -14,3 +14,6 @@ pub use relaying::{Cadence, RelayTask};
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresOutbox;
+
+#[cfg(feature = "sqlite")]
+pub use sqlite::SqliteOutbox;

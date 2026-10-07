@@ -3,13 +3,13 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use clock::FixedClock;
 use messaging::{Message, Publisher, RoutingKey, Undelivered};
-use sqlx::{PgPool, Row};
-use test_harness::PostgresFixture;
+use sqlx::{Row, SqlitePool};
+use test_harness::SqliteFixture;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::outbox::{CLAIM_FOR, Delivered, KEPT_FOR, Origin, Outbox};
-use crate::postgres::{PostgresOutbox, enqueue};
+use crate::sqlite::{SqliteOutbox, enqueue, instant};
 
 struct Overheard {
     published: Mutex<Vec<Message>>,
@@ -81,16 +81,16 @@ fn from_a_passage() -> Origin<'static> {
 }
 
 struct Wired {
-    fixture: PostgresFixture,
-    pool: PgPool,
+    fixture: SqliteFixture,
+    pool: SqlitePool,
     clock: Arc<FixedClock>,
 }
 
 impl Wired {
     async fn setup() -> Self {
-        let fixture = PostgresFixture::setup().await;
-        let pool = fixture.create_schema("outbox").await;
-        crate::postgres::migrations()
+        let fixture = SqliteFixture::setup();
+        let pool = fixture.create_database("outbox").await;
+        crate::sqlite::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down");
@@ -102,8 +102,8 @@ impl Wired {
         }
     }
 
-    fn relay(&self, publisher: Arc<Overheard>) -> PostgresOutbox {
-        PostgresOutbox::new(self.pool.clone(), publisher, self.clock.clone())
+    fn relay(&self, publisher: Arc<Overheard>) -> SqliteOutbox {
+        SqliteOutbox::new(self.pool.clone(), publisher, self.clock.clone())
     }
 
     async fn waiting_messages(&self, how_many: usize) {
@@ -116,7 +116,7 @@ impl Wired {
         transaction.commit().await.expect("the transaction commits");
     }
 
-    async fn waiting(&self) -> Vec<(String, Option<OffsetDateTime>)> {
+    async fn waiting(&self) -> Vec<(String, Option<String>)> {
         sqlx::query("SELECT routing_key, published_at FROM outbox ORDER BY entry")
             .fetch_all(&self.pool)
             .await
@@ -135,10 +135,13 @@ impl Wired {
     }
 
     async fn message_ids(&self) -> Vec<Uuid> {
-        sqlx::query_scalar("SELECT message_id FROM outbox ORDER BY entry")
+        sqlx::query_scalar::<_, String>("SELECT message_id FROM outbox ORDER BY entry")
             .fetch_all(&self.pool)
             .await
             .expect("reading the outbox should succeed")
+            .iter()
+            .map(|id| Uuid::parse_str(id).expect("a stored id is a uuid"))
+            .collect()
     }
 
     async fn cleanup(self) {
@@ -154,8 +157,8 @@ fn nothing() -> Delivered {
 }
 
 async fn published_long_ago(wired: &Wired, when: OffsetDateTime) {
-    sqlx::query("UPDATE outbox SET published_at = $1")
-        .bind(when)
+    sqlx::query("UPDATE outbox SET published_at = ?1")
+        .bind(instant::stored(when))
         .execute(&wired.pool)
         .await
         .expect("ageing an entry should succeed");
@@ -465,46 +468,53 @@ async fn a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it() {
 }
 
 #[tokio::test]
-async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_database() {
+async fn the_outbox_never_announces_so_the_relay_has_to_poll() {
     let wired = Wired::setup().await;
+    let mut notifications = wired
+        .relay(Overheard::listening())
+        .notifications()
+        .await
+        .expect("asking for notifications is not a failure");
+    wired.waiting_messages(1).await;
 
-    let found: Vec<String> = sqlx::query_scalar(
-        "SELECT tablename::text FROM pg_tables WHERE schemaname = $1 ORDER BY tablename",
-    )
-    .bind(wired.fixture.schema_of("outbox"))
-    .fetch_all(&wired.pool)
-    .await
-    .expect("reading the catalog should succeed");
+    let woken =
+        tokio::time::timeout(std::time::Duration::from_millis(50), notifications.wait()).await;
 
-    assert_eq!(
-        found,
-        vec!["_sqlx_migrations_outbox", "outbox"],
-        "a writer that is not event-sourced gets the outbox without an events table"
+    assert!(
+        woken.is_err(),
+        "nothing wakes the relay in local mode, so a message waits for the next poll"
     );
 
     wired.cleanup().await;
 }
 
-#[tokio::test]
-async fn the_schema_carries_the_indexes_the_queries_rely_on() {
+#[tokio::test(flavor = "multi_thread")]
+async fn a_started_relay_delivers_by_polling_alone() {
     let wired = Wired::setup().await;
+    let heard = Overheard::listening();
+    let relay = crate::relaying::RelayTask::started(
+        Arc::new(wired.relay(heard.clone())),
+        crate::relaying::Cadence {
+            deliver_every: std::time::Duration::from_millis(20),
+            ..crate::relaying::Cadence::default()
+        },
+    );
 
-    let found: Vec<String> = sqlx::query_scalar(
-        "SELECT indexname::text FROM pg_indexes WHERE schemaname = $1 ORDER BY indexname",
-    )
-    .bind(wired.fixture.schema_of("outbox"))
-    .fetch_all(&wired.pool)
-    .await
-    .expect("reading the catalog should succeed");
+    wired.waiting_messages(2).await;
 
-    assert_eq!(
-        found,
-        vec![
-            "_sqlx_migrations_outbox_pkey",
-            "outbox_pkey",
-            "outbox_published",
-            "outbox_waiting",
-        ]
+    let mut delivered = false;
+    for _ in 0..500 {
+        if heard.ids_heard().len() == 2 {
+            delivered = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    relay.stop().await;
+
+    assert!(
+        delivered,
+        "with no notification, the poll alone has to carry every message"
     );
 
     wired.cleanup().await;
