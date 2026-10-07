@@ -14,7 +14,7 @@ use crate::route;
 #[derive(Clone, Copy)]
 pub struct OutlineState {
     problem: RwSignal<Option<ApiError>>,
-    outline: RwSignal<Option<Outline>>,
+    outline: Memo<Option<Outline>>,
     passages: RwSignal<Option<Vec<Passage>>>,
     ideas: RwSignal<Option<Vec<Idea>>>,
     added: RwSignal<Option<SectionId>>,
@@ -39,16 +39,33 @@ pub enum Urge {
 impl OutlineState {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
-        let outline = RwSignal::new(None::<Outline>);
+        let confirmed = RwSignal::new(None::<Outline>);
+        let retitles = RwSignal::new(Vec::<(u64, SectionId, String)>::new());
+        let issued = StoredValue::new(0_u64);
+        let outline = Memo::new(move |_| {
+            confirmed.get().map(|mut open| {
+                retitles.with(|pending| {
+                    for (_, section, title) in pending {
+                        if let Some(held) =
+                            open.sections.iter_mut().find(|held| &held.id == section)
+                        {
+                            held.title = title.clone();
+                        }
+                    }
+                });
+
+                open
+            })
+        });
         let passages = RwSignal::new(None::<Vec<Passage>>);
         let ideas = RwSignal::new(None::<Vec<Idea>>);
         let added = RwSignal::new(None::<SectionId>);
 
         let arrived = move |told: Outline| {
-            let known = outline.with_untracked(|held| held.as_ref().map(|held| held.version));
+            let known = confirmed.with_untracked(|held| held.as_ref().map(|held| held.version));
 
             if known.is_none_or(|known| told.version >= known) {
-                outline.set(Some(told));
+                confirmed.set(Some(told));
             }
         };
 
@@ -125,6 +142,9 @@ impl OutlineState {
         let retitling = Action::new_local(move |(section, title): &(SectionId, String)| {
             let section = section.clone();
             let title = title.clone();
+            let ticket = issued.get_value() + 1;
+            issued.set_value(ticket);
+            retitles.update(|pending| pending.push((ticket, section.clone(), title.clone())));
 
             async move {
                 let Some(open) = outline.get_untracked() else {
@@ -132,6 +152,7 @@ impl OutlineState {
                 };
 
                 settled(service::retitle(&open.id, &section, &title).await);
+                retitles.update(|pending| pending.retain(|(issued, _, _)| *issued != ticket));
             }
         });
 
@@ -217,7 +238,7 @@ impl OutlineState {
                 };
 
                 match service::detach(&open.id, &attachment).await {
-                    Ok(()) => outline.update(|held| {
+                    Ok(()) => confirmed.update(|held| {
                         if let Some(held) = held {
                             for section in &mut held.sections {
                                 section.attachments.retain(|held| held != &attachment);

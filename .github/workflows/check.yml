@@ -86,10 +86,16 @@ jobs:
         working-directory: clients/web
         run: npm test
 
+      - name: test in a browser, in local mode
+        working-directory: clients/web
+        run: npm run test:local
+
       - name: keep the traces of what failed
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-traces
-          path: target/web/e2e
+          path: |
+            target/web/e2e
+            target/web/e2e-local
           retention-days: 14

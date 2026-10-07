@@ -186,7 +186,9 @@ cd clients/web
 npm test
 ```
 
-Playwright starts the API and Trunk if they aren't running and reuses them if they are, so this works whether or not you already have the dev servers up. The suite takes a few seconds.
+Playwright starts the API and Trunk if they aren't running and reuses them if they are, so this works whether or not you already have the dev servers up. The suite takes a few minutes.
+
+`npm run test:local` runs the same suite against local mode: it always starts its own API on a fresh `WEAVELING_DATA` directory under `target/web/local-data/`, so it needs port 3000 free rather than reusing an in-memory server that would test the wrong thing. Local mode is the honest one about timing — its outbox is polled, so a catalog lags a write by a moment, and anything in the client that only worked because answers came back instantly fails here first.
 
 **Editing a migration needs a nudge.** `sqlx::migrate!` bakes the SQL into the binary at compile time and, on stable Rust, cannot tell cargo that the `.sql` files are build inputs — so changing one alone may not trigger a rebuild, and the old schema stays in the binary. Touch any `.rs` in the crate, or run `cargo clean -p weaveling-eventsourcing`. A test asserts the expected indexes exist, so a migration that failed to land fails the suite rather than going unnoticed.
 

@@ -181,6 +181,38 @@ test("Enter adds a sibling and Tab nests it under the one before", async ({
     .toBe(["Part One", "  Chapter 1"].join("\n"));
 });
 
+test("a title still being saved survives a structural answer that predates it", async ({
+  page,
+}) => {
+  await aNewProject(page, "Slow titles");
+  await openTheOutline(page);
+  const saved: string[] = [];
+  await page.route("**/api/outlines/*/sections/*", async (route) => {
+    if (route.request().method() !== "PATCH") {
+      return route.continue();
+    }
+    saved.push(route.request().postDataJSON().title);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.continue();
+  });
+
+  await addSections(page, ["Part One", "Chapter 1"]);
+  await page.keyboard.press("Tab");
+  await expect.poll(() => shape(page)).toContain("  Chapter 1");
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Escape");
+
+  await expect
+    .poll(() => shape(page))
+    .toBe(["Part One", "Chapter 1"].join("\n"));
+  await page.waitForTimeout(800);
+  expect(await shape(page)).toBe(["Part One", "Chapter 1"].join("\n"));
+  expect(
+    saved,
+    "an answer computed before the title landed must not make the field save the old title back",
+  ).not.toContain("");
+});
+
 test("Shift+Tab lifts a section back out", async ({ page }) => {
   await aNewProject(page, "Lifting");
   await openTheOutline(page);
