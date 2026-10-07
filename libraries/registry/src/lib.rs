@@ -25,4 +25,6 @@ pub enum RegistryError {
 #[async_trait]
 pub trait Registry: Send + Sync {
     async fn claim(&self, kind: &str, key: &str, id: &str) -> Result<String, RegistryError>;
+
+    async fn holder(&self, kind: &str, key: &str) -> Result<Option<String>, RegistryError>;
 }

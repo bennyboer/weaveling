@@ -3551,6 +3551,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-outbox",
+ "weaveling-projects-contract",
  "weaveling-registry",
  "weaveling-wiring",
 ]
@@ -3890,6 +3891,7 @@ dependencies = [
  "weaveling-outline-core",
  "weaveling-outline-messaging",
  "weaveling-outline-wiring",
+ "weaveling-projects-contract",
  "weaveling-registry",
  "weaveling-wiring",
 ]

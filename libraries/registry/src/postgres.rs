@@ -11,6 +11,8 @@ const CLAIM: &str = "
     RETURNING id
 ";
 
+const HOLDER: &str = "SELECT id FROM claims WHERE kind = $1 AND key = $2";
+
 const LEDGER: &str = "_sqlx_migrations_claims";
 
 pub fn migrations() -> Migrator {
@@ -46,6 +48,15 @@ impl Registry for PostgresRegistry {
             .map_err(unreachable)?;
 
         held.try_get("id").map_err(unreachable)
+    }
+
+    async fn holder(&self, kind: &str, key: &str) -> Result<Option<String>, RegistryError> {
+        sqlx::query_scalar(HOLDER)
+            .bind(kind)
+            .bind(key)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)
     }
 }
 

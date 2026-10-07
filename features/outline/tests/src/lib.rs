@@ -12,3 +12,6 @@ mod shapes;
 
 #[cfg(test)]
 mod wiring;
+
+#[cfg(test)]
+mod outline_sweeping;

@@ -12,3 +12,6 @@ mod boards_api;
 
 #[cfg(test)]
 mod wiring;
+
+#[cfg(test)]
+mod board_sweeping;

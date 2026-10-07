@@ -1,11 +1,7 @@
-use std::sync::Arc;
-
 use eventpublishing::{UnreadableMessage, published_in};
 use eventsourcing::{Agent, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use outline_core::{
-    CatalogError, OutlineCatalog, OutlineError, OutlineService, OutlineServiceError, ProjectLink,
-};
+use outline_core::{OutlineError, OutlineService, OutlineServiceError, ProjectLink};
 use projects_contract::{DELETED, ProjectEventDTO};
 use thiserror::Error;
 
@@ -13,15 +9,12 @@ const NAME: &str = "discard-outlines-of-deleted-project";
 
 pub struct DiscardOutlinesOnProjectDeleted {
     outlines: OutlineService,
-    catalog: Arc<dyn OutlineCatalog>,
 }
 
 #[derive(Debug, Error)]
 enum NotSwept {
     #[error(transparent)]
     Unreadable(#[from] UnreadableMessage),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
     #[error(transparent)]
     Refused(#[from] OutlineServiceError),
 }
@@ -31,24 +24,24 @@ pub fn when_project_deleted() -> Subscription {
 }
 
 impl DiscardOutlinesOnProjectDeleted {
-    pub fn new(outlines: OutlineService, catalog: Arc<dyn OutlineCatalog>) -> Self {
-        Self { outlines, catalog }
+    pub fn new(outlines: OutlineService) -> Self {
+        Self { outlines }
     }
 
     async fn discard_everything(&self, project: &ProjectLink) -> Result<(), NotSwept> {
-        for summary in self.catalog.in_project(project).await? {
-            match self
-                .outlines
-                .discard(&summary.id.to_string(), None, &nobody())
-                .await
-            {
-                Ok(_) => {}
-                Err(refused) if already_discarded(&refused) => {}
-                Err(refused) => return Err(refused.into()),
-            }
-        }
+        let Some(outline) = self.outlines.outline_of(project.as_str()).await? else {
+            return Ok(());
+        };
 
-        Ok(())
+        match self
+            .outlines
+            .discard(&outline.to_string(), None, &nobody())
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(refused) if already_discarded(&refused) => Ok(()),
+            Err(refused) => Err(refused.into()),
+        }
     }
 
     async fn work_through(&self, message: &Message) -> Result<(), NotSwept> {

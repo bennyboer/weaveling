@@ -1,8 +1,4 @@
-use std::sync::Arc;
-
-use boards_core::{
-    BoardCatalog, BoardError, BoardService, BoardServiceError, CatalogError, ProjectLink,
-};
+use boards_core::{BoardError, BoardService, BoardServiceError, ProjectLink};
 use eventpublishing::{UnreadableMessage, published_in};
 use eventsourcing::{Agent, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
@@ -13,15 +9,12 @@ const NAME: &str = "discard-boards-of-deleted-project";
 
 pub struct DiscardBoardsOnProjectDeleted {
     boards: BoardService,
-    catalog: Arc<dyn BoardCatalog>,
 }
 
 #[derive(Debug, Error)]
 enum NotSwept {
     #[error(transparent)]
     Unreadable(#[from] UnreadableMessage),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
     #[error(transparent)]
     Refused(#[from] BoardServiceError),
 }
@@ -31,24 +24,24 @@ pub fn when_project_deleted() -> Subscription {
 }
 
 impl DiscardBoardsOnProjectDeleted {
-    pub fn new(boards: BoardService, catalog: Arc<dyn BoardCatalog>) -> Self {
-        Self { boards, catalog }
+    pub fn new(boards: BoardService) -> Self {
+        Self { boards }
     }
 
     async fn discard_everything(&self, project: &ProjectLink) -> Result<(), NotSwept> {
-        for summary in self.catalog.in_project(project).await? {
-            match self
-                .boards
-                .discard(&summary.id.to_string(), None, &nobody())
-                .await
-            {
-                Ok(_) => {}
-                Err(refused) if already_discarded(&refused) => {}
-                Err(refused) => return Err(refused.into()),
-            }
-        }
+        let Some(board) = self.boards.board_of(project.as_str()).await? else {
+            return Ok(());
+        };
 
-        Ok(())
+        match self
+            .boards
+            .discard(&board.to_string(), None, &nobody())
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(refused) if already_discarded(&refused) => Ok(()),
+            Err(refused) => Err(refused.into()),
+        }
     }
 
     async fn work_through(&self, message: &Message) -> Result<(), NotSwept> {

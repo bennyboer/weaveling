@@ -127,6 +127,12 @@ impl BoardService {
             .await
     }
 
+    pub async fn board_of(&self, project: &str) -> Result<Option<BoardId>, BoardServiceError> {
+        let held = self.registry.holder(KIND.as_str(), project).await?;
+
+        Ok(held.map(|held| held.parse()).transpose()?)
+    }
+
     async fn claimed_by(&self, project: &str) -> Result<BoardId, BoardServiceError> {
         let mine = BoardId::generate(self.clock.now());
         let held = self

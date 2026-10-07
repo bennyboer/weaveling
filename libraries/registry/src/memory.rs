@@ -26,6 +26,12 @@ impl Registry for InMemoryRegistry {
             .or_insert_with(|| id.to_owned())
             .clone())
     }
+
+    async fn holder(&self, kind: &str, key: &str) -> Result<Option<String>, RegistryError> {
+        let claimed = self.claimed.lock().expect("registry lock poisoned");
+
+        Ok(claimed.get(&(kind.to_owned(), key.to_owned())).cloned())
+    }
 }
 
 #[cfg(test)]

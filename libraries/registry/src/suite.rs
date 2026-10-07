@@ -81,6 +81,51 @@ pub async fn two_kinds_do_not_share_a_key(registry: &impl Registry) {
     );
 }
 
+pub async fn an_unclaimed_key_has_no_holder(registry: &impl Registry) {
+    let held = registry
+        .holder("board", "project_1")
+        .await
+        .expect("asking should succeed");
+
+    assert_eq!(held, None);
+}
+
+pub async fn a_claimed_key_names_its_holder_without_claiming_anything(registry: &impl Registry) {
+    registry
+        .claim("board", "project_1", "board_1")
+        .await
+        .expect("claiming should succeed");
+
+    let held = registry
+        .holder("board", "project_1")
+        .await
+        .expect("asking should succeed");
+
+    assert_eq!(held.as_deref(), Some("board_1"));
+    assert_eq!(
+        registry
+            .holder("board", "project_2")
+            .await
+            .expect("asking should succeed"),
+        None,
+        "asking must never claim, or a sweep would start the board it came to discard"
+    );
+}
+
+pub async fn each_kind_names_its_own_holder(registry: &impl Registry) {
+    registry
+        .claim("board", "project_1", "board_1")
+        .await
+        .expect("claiming should succeed");
+
+    let outline = registry
+        .holder("outline", "project_1")
+        .await
+        .expect("asking should succeed");
+
+    assert_eq!(outline, None);
+}
+
 #[macro_export]
 macro_rules! registry_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -103,5 +148,11 @@ macro_rules! conformance_tests {
         $crate::registry_conformance_case!($workbench, claiming_the_same_key_twice_over_is_stable);
         $crate::registry_conformance_case!($workbench, each_key_is_claimed_on_its_own);
         $crate::registry_conformance_case!($workbench, two_kinds_do_not_share_a_key);
+        $crate::registry_conformance_case!($workbench, an_unclaimed_key_has_no_holder);
+        $crate::registry_conformance_case!(
+            $workbench,
+            a_claimed_key_names_its_holder_without_claiming_anything
+        );
+        $crate::registry_conformance_case!($workbench, each_kind_names_its_own_holder);
     };
 }

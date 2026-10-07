@@ -233,6 +233,15 @@ impl OutlineService {
             .await
     }
 
+    pub async fn outline_of(
+        &self,
+        project: &str,
+    ) -> Result<Option<OutlineId>, OutlineServiceError> {
+        let held = self.registry.holder(KIND.as_str(), project).await?;
+
+        Ok(held.map(|held| held.parse()).transpose()?)
+    }
+
     async fn claimed_by(&self, project: &str) -> Result<OutlineId, OutlineServiceError> {
         let mine = OutlineId::generate(self.clock.now());
         let held = self

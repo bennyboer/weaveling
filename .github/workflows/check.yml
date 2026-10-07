@@ -83,3 +83,11 @@ jobs:
       - name: test in a browser
         working-directory: clients/web
         run: npm test
+
+      - name: keep the traces of what failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: target/web/e2e
+          retention-days: 14

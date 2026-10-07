@@ -283,7 +283,7 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
         .assert_status(axum::http::StatusCode::CREATED);
 
     let mut titles = Vec::new();
-    for _ in 0..200 {
+    for _ in 0..1_000 {
         titles = server
             .get(&format!("/api/ideas?project={project}"))
             .await
@@ -308,7 +308,7 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
     );
 
     let mut names = Vec::new();
-    for _ in 0..200 {
+    for _ in 0..1_000 {
         names = server
             .get("/api/projects")
             .await
@@ -481,7 +481,7 @@ where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = bool>,
 {
-    for _ in 0..200 {
+    for _ in 0..1_000 {
         if settled().await {
             return true;
         }

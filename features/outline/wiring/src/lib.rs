@@ -79,7 +79,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
     let tidy = DetachOnDiscard::new(outlines.clone(), ports.catalog.clone());
-    let sweep = DiscardOutlinesOnProjectDeleted::new(outlines.clone(), ports.catalog.clone());
+    let sweep = DiscardOutlinesOnProjectDeleted::new(outlines.clone());
 
     Wired::serving(outline_rest::router(outlines)).listening(vec![
         Arc::new(catalogue),
