@@ -1,33 +1,33 @@
 use async_trait::async_trait;
-use sqlx::PgPool;
-use test_harness::PostgresFixture;
+use sqlx::SqlitePool;
+use test_harness::SqliteFixture;
 
 use outline_core::{Attachment, OutlineCatalog, OutlineId};
 
-use crate::postgres::{PostgresOutlineCatalog, migrations};
+use crate::sqlite::{SqliteOutlineCatalog, migrations};
 use crate::suite::Workbench;
 
-struct OnPostgres {
-    fixture: PostgresFixture,
-    pool: PgPool,
-    store: PostgresOutlineCatalog,
+struct OnSqlite {
+    fixture: SqliteFixture,
+    pool: SqlitePool,
+    store: SqliteOutlineCatalog,
 }
 
 #[async_trait]
-impl Workbench for OnPostgres {
-    type Store = PostgresOutlineCatalog;
+impl Workbench for OnSqlite {
+    type Store = SqliteOutlineCatalog;
 
     async fn setup() -> Self {
-        let fixture = PostgresFixture::setup().await;
-        let pool: PgPool = fixture.create_schema("outline").await;
+        let fixture = SqliteFixture::setup();
+        let pool: SqlitePool = fixture.create_database("outline").await;
         migrations()
             .run(&pool)
             .await
-            .expect("the schema should lay down in an empty namespace");
+            .expect("the schema should lay down in an empty file");
 
         Self {
             fixture,
-            store: PostgresOutlineCatalog::new(pool.clone()),
+            store: SqliteOutlineCatalog::new(pool.clone()),
             pool,
         }
     }
@@ -41,11 +41,11 @@ impl Workbench for OnPostgres {
     }
 }
 
-crate::conformance_tests!(OnPostgres);
+crate::conformance_tests!(OnSqlite);
 
 #[tokio::test]
 async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
     let outline = OutlineId::generate(crate::suite::at(1_000));
     bench
         .store()

@@ -4040,6 +4040,7 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-projects-core",
  "weaveling-test-harness",

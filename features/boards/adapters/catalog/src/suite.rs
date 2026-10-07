@@ -142,6 +142,27 @@ pub async fn a_pinned_idea_names_the_board_holding_it(catalog: &impl BoardCatalo
     );
 }
 
+pub async fn every_idea_on_a_board_names_it(catalog: &impl BoardCatalog) {
+    let board = BoardId::generate(at(1_000));
+    let ideas = ["idea_1", "idea_2", "idea_3"].map(IdeaLink::from);
+
+    catalog
+        .holds(board, &ideas)
+        .await
+        .expect("indexing should succeed");
+
+    for idea in &ideas {
+        assert_eq!(
+            catalog
+                .boards_holding(idea)
+                .await
+                .expect("looking should succeed"),
+            vec![board],
+            "a board holds every idea it was given, not only the first"
+        );
+    }
+}
+
 pub async fn an_idea_may_sit_on_more_than_one_board(catalog: &impl BoardCatalog) {
     let earliest = BoardId::generate(at(1_000));
     let latest = BoardId::generate(at(2_000));
@@ -309,5 +330,6 @@ macro_rules! conformance_tests {
             $workbench,
             one_board_letting_an_idea_go_leaves_the_others_holding_it
         );
+        $crate::catalog_conformance_case!($workbench, every_idea_on_a_board_names_it);
     };
 }

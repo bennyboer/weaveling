@@ -14,6 +14,7 @@ ideas-core = { version = "0.1.0", path = "../../core", package = "weaveling-idea
 
 [features]
 postgres = ["dep:sqlx"]
+sqlite = ["dep:sqlx", "sqlx/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

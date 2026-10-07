@@ -22,4 +22,4 @@ The answer to *where does this appear?* — for an idea today: in which sections
 
 **Route:** `GET /api/appearances?idea={id}` → `[{ "type": "passage" | "section", "id" }]`, in one stable order.
 
-**Crates:** `core` (`Subject`, `Place`, the catalog port) · `contract` (`PlaceDTO`) · `adapters/catalog` (in-memory and PostgreSQL, one conformance suite for both) · `adapters/messaging` (the three listeners) · `adapters/rest` · `wiring` · `tests`.
+**Crates:** `core` (`Subject`, `Place`, the catalog port) · `contract` (`PlaceDTO`) · `adapters/catalog` (in memory, PostgreSQL and SQLite, one conformance suite for all three) · `adapters/messaging` (the three listeners) · `adapters/rest` · `wiring` · `tests`.

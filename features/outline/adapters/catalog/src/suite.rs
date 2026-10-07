@@ -147,6 +147,31 @@ pub async fn an_attached_passage_names_the_outline_holding_it(catalog: &impl Out
     );
 }
 
+pub async fn everything_in_an_outline_names_it(catalog: &impl OutlineCatalog) {
+    let outline = OutlineId::generate(at(1_000));
+    let held = [
+        Attachment::passage("passage_1"),
+        Attachment::passage("passage_2"),
+        Attachment::idea("idea_1"),
+    ];
+
+    catalog
+        .holds(outline, &held)
+        .await
+        .expect("indexing should succeed");
+
+    for attachment in &held {
+        assert_eq!(
+            catalog
+                .outlines_holding(attachment)
+                .await
+                .expect("looking should succeed"),
+            vec![outline],
+            "an outline holds everything it was given, not only the first"
+        );
+    }
+}
+
 pub async fn a_passage_may_sit_in_more_than_one_outline(catalog: &impl OutlineCatalog) {
     let earliest = OutlineId::generate(at(1_000));
     let latest = OutlineId::generate(at(2_000));
@@ -329,5 +354,6 @@ macro_rules! conformance_tests {
             $workbench,
             one_outline_letting_a_passage_go_leaves_the_others_holding_it
         );
+        $crate::catalog_conformance_case!($workbench, everything_in_an_outline_names_it);
     };
 }
