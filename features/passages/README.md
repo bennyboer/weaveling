@@ -14,4 +14,4 @@ A passage is a CRDT document (`yrs`, the Rust side of Yjs), because prose is edi
 
 Awareness — cursors, selections, who is here — is relayed as opaque bytes and never decoded or stored. Presence is ephemeral by decision, expressed as a dependency arrow: it lives and dies inside `adapters/sync`.
 
-**Crates:** `core` (`Passage`, store port, service) · `contract` · `adapters/store` (in-memory and PostgreSQL, append-only plus compaction) · `adapters/sync` (the `y-websocket` server: sockets, peers, protocol, live passages) · `adapters/rest` · `wiring` · `tests`.
+**Crates:** `core` (`Passage`, store port, service) · `contract` · `adapters/store` (in memory, PostgreSQL and SQLite; append-only plus compaction) · `adapters/sync` (the `y-websocket` server: sockets, peers, protocol, live passages) · `adapters/rest` · `wiring` · `tests`.

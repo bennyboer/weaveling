@@ -5,97 +5,98 @@ use crate::enqueuing::{Mapping, PassageMessageMapping};
 use async_trait::async_trait;
 use clock::Clock;
 use outbox::Origin;
-use outbox::postgres::enqueue;
+use outbox::sqlite::enqueue;
 use passages_core::{
     IdeaLink, Passage, PassageChange, PassageId, PassageStore, PassageTitle, ProjectLink,
     StoreError,
 };
 use sqlx::migrate::Migrator;
-use sqlx::{PgPool, Postgres, Row, Transaction};
+use sqlx::{Row, Sqlite, SqlitePool, Transaction};
 
-const REMEMBER: &str = "INSERT INTO passages (passage, project, title) VALUES ($1, $2, $3)";
+const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
 
-const KNOWN_AS: &str = "SELECT project, title FROM passages WHERE passage = $1";
+const REMEMBER: &str = "INSERT INTO passages (passage, project, title) VALUES (?1, ?2, ?3)";
 
-const RETITLE: &str = "UPDATE passages SET title = $2 WHERE passage = $1";
+const KNOWN_AS: &str = "SELECT project, title FROM passages WHERE passage = ?1";
+
+const RETITLE: &str = "UPDATE passages SET title = ?2 WHERE passage = ?1";
 
 const LINK: &str = "
     INSERT INTO passage_ideas (passage, idea)
-    VALUES ($1, $2)
+    VALUES (?1, ?2)
     ON CONFLICT (passage, idea) DO NOTHING
 ";
 
-const UNLINK: &str = "DELETE FROM passage_ideas WHERE passage = $1 AND idea = $2";
+const UNLINK: &str = "DELETE FROM passage_ideas WHERE passage = ?1 AND idea = ?2";
 
-const UNLINK_EVERYWHERE: &str = "DELETE FROM passage_ideas WHERE idea = $1";
+const UNLINK_EVERYWHERE: &str = "DELETE FROM passage_ideas WHERE idea = ?1";
 
-const LINKED_IDEAS: &str = "SELECT idea FROM passage_ideas WHERE passage = $1 ORDER BY seq";
+const LINKED_IDEAS: &str = "SELECT idea FROM passage_ideas WHERE passage = ?1 ORDER BY seq";
 
-const EXISTS: &str = "SELECT 1 FROM passages WHERE passage = $1";
+const EXISTS: &str = "SELECT project FROM passages WHERE passage = ?1";
 
 const IN_PROJECT: &str = "
     SELECT passage
     FROM passages
-    WHERE project = $1 AND passage > $2
+    WHERE project = ?1 AND passage > ?2
     ORDER BY passage
-    LIMIT $3
+    LIMIT ?3
 ";
 
 const WRITE_SNAPSHOT: &str = "
     INSERT INTO passage_updates (passage, is_snapshot, bytes)
-    VALUES ($1, TRUE, $2)
+    VALUES (?1, TRUE, ?2)
     RETURNING seq
 ";
 
 const WRITE_UPDATE: &str = "
     INSERT INTO passage_updates (passage, is_snapshot, bytes)
-    VALUES ($1, FALSE, $2)
-    RETURNING (
-        SELECT count(*)
-        FROM passage_updates behind
-        WHERE behind.passage = $1 AND behind.seq > COALESCE((
-            SELECT max(newest.seq)
-            FROM passage_updates newest
-            WHERE newest.passage = $1 AND newest.is_snapshot
-        ), 0)
-    ) AS tail
+    VALUES (?1, FALSE, ?2)
+";
+
+const TAIL: &str = "
+    SELECT count(*)
+    FROM passage_updates behind
+    WHERE behind.passage = ?1 AND behind.seq > COALESCE((
+        SELECT max(newest.seq)
+        FROM passage_updates newest
+        WHERE newest.passage = ?1 AND newest.is_snapshot
+    ), 0)
 ";
 
 const READ_SINCE_SNAPSHOT: &str = "
     SELECT bytes
     FROM passage_updates
-    WHERE passage = $1 AND seq >= COALESCE((
+    WHERE passage = ?1 AND seq >= COALESCE((
         SELECT max(seq)
         FROM passage_updates
-        WHERE passage = $1 AND is_snapshot
+        WHERE passage = ?1 AND is_snapshot
     ), 0)
     ORDER BY seq
 ";
 
-const HOLD: &str = "SELECT project FROM passages WHERE passage = $1 FOR UPDATE";
+const FORGET_BEFORE: &str = "DELETE FROM passage_updates WHERE passage = ?1 AND seq < ?2";
 
-const FORGET_BEFORE: &str = "DELETE FROM passage_updates WHERE passage = $1 AND seq < $2";
-
-const FORGET: &str = "DELETE FROM passages WHERE passage = $1";
+const FORGET: &str = "DELETE FROM passages WHERE passage = ?1";
 
 pub fn migrations() -> Migrator {
-    sqlx::migrate!("./migrations/postgres")
+    sqlx::migrate!("./migrations/sqlite")
 }
 
 const KIND: &str = "passage";
 
-pub struct PostgresPassageStore {
-    pool: PgPool,
+pub struct SqlitePassageStore {
+    pool: SqlitePool,
     compact_after: i64,
     enqueuing: Option<Mapping>,
 }
 
-impl PostgresPassageStore {
-    pub fn new(pool: PgPool) -> Self {
+impl SqlitePassageStore {
+    pub fn new(pool: SqlitePool) -> Self {
         Self::compacting_after(pool, COMPACT_AFTER)
     }
 
-    pub fn compacting_after(pool: PgPool, updates: i64) -> Self {
+    pub fn compacting_after(pool: SqlitePool, updates: i64) -> Self {
         Self {
             pool,
             compact_after: updates,
@@ -112,7 +113,7 @@ impl PostgresPassageStore {
 
     async fn enqueue_change(
         &self,
-        transaction: &mut Transaction<'_, Postgres>,
+        transaction: &mut Transaction<'_, Sqlite>,
         change: PassageChange,
     ) -> Result<(), StoreError> {
         let Some(mapping) = &self.enqueuing else {
@@ -131,9 +132,9 @@ impl PostgresPassageStore {
     }
 
     pub async fn compact(&self, id: PassageId) -> Result<bool, StoreError> {
-        let mut transaction = self.begin().await?;
+        let mut transaction = self.begin_writing().await?;
 
-        let found: Option<String> = sqlx::query_scalar(HOLD)
+        let found: Option<String> = sqlx::query_scalar(EXISTS)
             .bind(id.to_string())
             .fetch_optional(&mut *transaction)
             .await
@@ -167,13 +168,16 @@ impl PostgresPassageStore {
         Ok(true)
     }
 
-    async fn begin(&self) -> Result<Transaction<'_, Postgres>, StoreError> {
-        self.pool.begin().await.map_err(unreachable)
+    async fn begin_writing(&self) -> Result<Transaction<'static, Sqlite>, StoreError> {
+        self.pool
+            .begin_with(BEGIN_WRITING)
+            .await
+            .map_err(unreachable)
     }
 
     async fn parts(
         &self,
-        transaction: &mut Transaction<'_, Postgres>,
+        transaction: &mut Transaction<'_, Sqlite>,
         id: PassageId,
     ) -> Result<Vec<Vec<u8>>, StoreError> {
         let found = sqlx::query(READ_SINCE_SNAPSHOT)
@@ -214,10 +218,10 @@ fn is_unknown(failure: &sqlx::Error) -> bool {
 }
 
 #[async_trait]
-impl PassageStore for PostgresPassageStore {
+impl PassageStore for SqlitePassageStore {
     async fn create(&self, passage: &Passage) -> Result<(), StoreError> {
         let id = passage.id();
-        let mut transaction = self.begin().await?;
+        let mut transaction = self.begin_writing().await?;
 
         sqlx::query(REMEMBER)
             .bind(id.to_string())
@@ -277,17 +281,24 @@ impl PassageStore for PostgresPassageStore {
     async fn apply(&self, id: PassageId, update: &[u8]) -> Result<(), StoreError> {
         Passage::readable(update).map_err(|_| StoreError::Unusable(id))?;
 
-        let tail: i64 = sqlx::query_scalar(WRITE_UPDATE)
+        let mut transaction = self.begin_writing().await?;
+        sqlx::query(WRITE_UPDATE)
             .bind(id.to_string())
             .bind(update)
-            .fetch_one(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(|failure| match is_unknown(&failure) {
                 true => StoreError::NotFound(id),
                 false => unreachable(failure),
             })?;
+        let tail: i64 = sqlx::query_scalar(TAIL)
+            .bind(id.to_string())
+            .fetch_one(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        transaction.commit().await.map_err(unreachable)?;
 
-        if tail + 1 > self.compact_after {
+        if tail > self.compact_after {
             self.compact(id).await?;
         }
 
@@ -309,7 +320,7 @@ impl PassageStore for PostgresPassageStore {
     }
 
     async fn link(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
-        let mut transaction = self.begin().await?;
+        let mut transaction = self.begin_writing().await?;
 
         let linked = sqlx::query(LINK)
             .bind(id.to_string())
@@ -336,9 +347,9 @@ impl PassageStore for PostgresPassageStore {
     }
 
     async fn unlink(&self, id: PassageId, idea: &IdeaLink) -> Result<(), StoreError> {
-        let mut transaction = self.begin().await?;
+        let mut transaction = self.begin_writing().await?;
 
-        let known: Option<i32> = sqlx::query_scalar(EXISTS)
+        let known: Option<String> = sqlx::query_scalar(EXISTS)
             .bind(id.to_string())
             .fetch_optional(&mut *transaction)
             .await
@@ -403,7 +414,7 @@ impl PassageStore for PostgresPassageStore {
     }
 
     async fn delete(&self, id: PassageId) -> Result<(), StoreError> {
-        let mut transaction = self.begin().await?;
+        let mut transaction = self.begin_writing().await?;
 
         let gone = sqlx::query(FORGET)
             .bind(id.to_string())

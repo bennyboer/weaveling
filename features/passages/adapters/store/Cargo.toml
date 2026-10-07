@@ -16,6 +16,7 @@ passages-core = { version = "0.1.0", path = "../../core", package = "weaveling-p
 
 [features]
 postgres = ["dep:sqlx", "outbox/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "outbox/sqlite"]
 
 [dev-dependencies]
 serde_json = { workspace = true }

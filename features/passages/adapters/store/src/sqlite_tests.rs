@@ -3,33 +3,33 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use clock::FixedClock;
 use messaging::Message;
-use outbox::{Outbox, PostgresOutbox};
+use outbox::{Outbox, SqliteOutbox};
 use passages_core::{IdeaLink, PassageStore, StoreError};
-use sqlx::PgPool;
-use test_harness::PostgresFixture;
+use sqlx::{Row, SqlitePool};
+use test_harness::SqliteFixture;
 
-use crate::postgres::{PostgresPassageStore, migrations};
+use crate::sqlite::{SqlitePassageStore, migrations};
 use crate::suite::{Heard, Workbench, a_paragraph, a_passage, an_id, at, message_for};
 
-struct OnPostgres {
-    fixture: PostgresFixture,
-    pool: PgPool,
-    store: PostgresPassageStore,
+struct OnSqlite {
+    fixture: SqliteFixture,
+    pool: SqlitePool,
+    store: SqlitePassageStore,
     heard: Arc<Heard>,
 }
 
-struct Compacting(OnPostgres);
+struct Compacting(OnSqlite);
 
 fn a_clock() -> Arc<FixedClock> {
     Arc::new(FixedClock::new(at(2_000)))
 }
 
-fn enqueuing(store: PostgresPassageStore) -> PostgresPassageStore {
+fn enqueuing(store: SqlitePassageStore) -> SqlitePassageStore {
     store.enqueuing(a_clock(), message_for)
 }
 
-async fn relayed(pool: &PgPool, heard: &Arc<Heard>) -> Vec<Message> {
-    PostgresOutbox::new(pool.clone(), heard.clone(), a_clock())
+async fn relayed(pool: &SqlitePool, heard: &Arc<Heard>) -> Vec<Message> {
+    SqliteOutbox::new(pool.clone(), heard.clone(), a_clock())
         .deliver(100)
         .await
         .expect("the outbox should deliver");
@@ -37,31 +37,31 @@ async fn relayed(pool: &PgPool, heard: &Arc<Heard>) -> Vec<Message> {
     heard.messages()
 }
 
-async fn a_migrated_schema() -> (PostgresFixture, PgPool) {
-    let fixture = PostgresFixture::setup().await;
-    let pool = fixture.create_schema("passages").await;
-    outbox::postgres::migrations()
+async fn a_migrated_schema() -> (SqliteFixture, SqlitePool) {
+    let fixture = SqliteFixture::setup();
+    let pool = fixture.create_database("passages").await;
+    outbox::sqlite::migrations()
         .run(&pool)
         .await
-        .expect("the outbox should lay down in an empty namespace");
+        .expect("the outbox should lay down in an empty file");
     migrations()
         .run(&pool)
         .await
-        .expect("the passage schema should lay down in an empty namespace");
+        .expect("the passage schema should lay down in an empty file");
 
     (fixture, pool)
 }
 
 #[async_trait]
-impl Workbench for OnPostgres {
-    type Store = PostgresPassageStore;
+impl Workbench for OnSqlite {
+    type Store = SqlitePassageStore;
 
     async fn setup() -> Self {
         let (fixture, pool) = a_migrated_schema().await;
 
         Self {
             fixture,
-            store: enqueuing(PostgresPassageStore::new(pool.clone())),
+            store: enqueuing(SqlitePassageStore::new(pool.clone())),
             pool,
             heard: Arc::new(Heard::default()),
         }
@@ -82,14 +82,14 @@ impl Workbench for OnPostgres {
 
 #[async_trait]
 impl Workbench for Compacting {
-    type Store = PostgresPassageStore;
+    type Store = SqlitePassageStore;
 
     async fn setup() -> Self {
         let (fixture, pool) = a_migrated_schema().await;
 
-        Self(OnPostgres {
+        Self(OnSqlite {
             fixture,
-            store: enqueuing(PostgresPassageStore::compacting_after(pool.clone(), 1)),
+            store: enqueuing(SqlitePassageStore::compacting_after(pool.clone(), 1)),
             pool,
             heard: Arc::new(Heard::default()),
         })
@@ -108,7 +108,7 @@ impl Workbench for Compacting {
     }
 }
 
-impl OnPostgres {
+impl OnSqlite {
     async fn rows(&self) -> Vec<bool> {
         sqlx::query_scalar("SELECT is_snapshot FROM passage_updates ORDER BY seq")
             .fetch_all(&self.pool)
@@ -125,7 +125,7 @@ impl OnPostgres {
 }
 
 mod appending {
-    crate::suite::conformance_tests!(super::OnPostgres);
+    crate::suite::conformance_tests!(super::OnSqlite);
 }
 
 mod compacting {
@@ -134,7 +134,7 @@ mod compacting {
 
 #[tokio::test]
 async fn an_update_is_one_row_and_never_rewrites_the_passage() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
     let id = an_id(1_000);
     bench
         .store
@@ -159,8 +159,8 @@ async fn an_update_is_one_row_and_never_rewrites_the_passage() {
 
 #[tokio::test]
 async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot() {
-    let bench = OnPostgres::setup().await;
-    let store = PostgresPassageStore::compacting_after(bench.pool.clone(), 3);
+    let bench = OnSqlite::setup().await;
+    let store = SqlitePassageStore::compacting_after(bench.pool.clone(), 3);
     let id = an_id(1_000);
     store
         .create(&a_passage(id, "The loom stood silent."))
@@ -198,7 +198,7 @@ async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot() {
 
 #[tokio::test]
 async fn compacting_a_short_tail_does_nothing() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
     let id = an_id(1_000);
     bench
         .store
@@ -225,7 +225,7 @@ async fn compacting_a_short_tail_does_nothing() {
 
 #[tokio::test]
 async fn compacting_a_passage_that_was_never_created_is_not_found() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
     let never_written = an_id(1_000);
 
     let refused = bench.store.compact(never_written).await;
@@ -240,7 +240,7 @@ async fn compacting_a_passage_that_was_never_created_is_not_found() {
 
 #[tokio::test]
 async fn an_update_nothing_can_read_writes_no_row() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
     let id = an_id(1_000);
     bench
         .store
@@ -265,7 +265,7 @@ async fn an_update_nothing_can_read_writes_no_row() {
 
 #[tokio::test]
 async fn an_update_for_a_passage_that_does_not_exist_writes_no_row() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
 
     let refused = bench
         .store
@@ -283,7 +283,7 @@ async fn an_update_for_a_passage_that_does_not_exist_writes_no_row() {
 
 #[tokio::test]
 async fn deleting_a_passage_takes_its_updates_with_it() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
     let id = an_id(1_000);
     bench
         .store
@@ -309,7 +309,7 @@ async fn deleting_a_passage_takes_its_updates_with_it() {
 
 #[tokio::test]
 async fn a_passage_survives_being_reloaded_by_a_store_that_never_saw_the_writes() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
     let id = an_id(1_000);
     bench
         .store
@@ -322,7 +322,7 @@ async fn a_passage_survives_being_reloaded_by_a_store_that_never_saw_the_writes(
         .await
         .expect("apply should succeed");
 
-    let elsewhere = PostgresPassageStore::new(bench.pool.clone());
+    let elsewhere = SqlitePassageStore::new(bench.pool.clone());
     let found = elsewhere.load(id).await.expect("load should succeed");
 
     assert!(
@@ -336,55 +336,38 @@ async fn a_passage_survives_being_reloaded_by_a_store_that_never_saw_the_writes(
 
 #[tokio::test]
 async fn walking_a_project_comes_out_of_the_index() {
-    let bench = OnPostgres::setup().await;
-    let mut written = Vec::new();
-    for nth in 1..=2_000 {
-        written.push(format!("passage_{nth:0>19}"));
-    }
+    let bench = OnSqlite::setup().await;
 
-    sqlx::query(
-        "INSERT INTO passages (passage, project, title)
-         SELECT held, 'project_' || (ordinality % 8), ''
-         FROM unnest($1::text[]) WITH ORDINALITY AS held",
-    )
-    .bind(&written)
-    .execute(&bench.pool)
-    .await
-    .expect("seeding should succeed");
-
-    sqlx::query("ANALYZE passages")
-        .execute(&bench.pool)
-        .await
-        .expect("analysing should succeed");
-
-    let plan: Vec<String> = sqlx::query_scalar(
-        "EXPLAIN SELECT passage
+    let plan: Vec<String> = sqlx::query(
+        "EXPLAIN QUERY PLAN
+         SELECT passage
          FROM passages
-         WHERE project = $1 AND passage > $2
+         WHERE project = ?1 AND passage > ?2
          ORDER BY passage
-         LIMIT $3",
+         LIMIT ?3",
     )
     .bind("project_3")
     .bind("passage_0000000000000000100")
     .bind(100_i64)
     .fetch_all(&bench.pool)
     .await
-    .expect("explaining should succeed");
-    let plan = plan.join("\n");
+    .expect("explaining should succeed")
+    .iter()
+    .map(|step| step.get::<String, _>("detail"))
+    .collect();
+    let plan = plan.join(
+        "
+",
+    );
 
     assert!(
-        plan.contains("passages_by_project"),
-        "deleting a project sweeps its prose one batch at a time, so the batch must come out \
-         of the index rather than a scan that grows with every book ever written: {plan}"
+        plan.contains("USING COVERING INDEX passages_by_project")
+            || plan.contains("USING INDEX passages_by_project"),
+        "deleting a project sweeps its prose one batch at a time, so the batch must come out of the index: {plan}"
     );
     assert!(
-        !plan.contains("Seq Scan"),
-        "a plan change here is silent — the sweep keeps working and only gets slower: {plan}"
-    );
-    assert!(
-        !plan.contains("Filter:"),
-        "both halves belong in the index condition — a filter means rows are read and then \
-         thrown away, which is the cost the cursor exists to avoid: {plan}"
+        !plan.contains("SCAN passages") && !plan.contains("TEMP B-TREE"),
+        "a scan or a sort here is silent; the sweep keeps working and only gets slower: {plan}"
     );
 
     bench.cleanup().await;
@@ -392,7 +375,7 @@ async fn walking_a_project_comes_out_of_the_index() {
 
 #[tokio::test]
 async fn deleting_a_passage_takes_its_links_with_it() {
-    let bench = OnPostgres::setup().await;
+    let bench = OnSqlite::setup().await;
     let id = an_id(1_000);
     bench
         .store
@@ -421,8 +404,8 @@ async fn deleting_a_passage_takes_its_links_with_it() {
 
 #[tokio::test]
 async fn a_tail_exactly_as_long_as_we_keep_is_left_as_it_is() {
-    let bench = OnPostgres::setup().await;
-    let store = PostgresPassageStore::compacting_after(bench.pool.clone(), 3);
+    let bench = OnSqlite::setup().await;
+    let store = SqlitePassageStore::compacting_after(bench.pool.clone(), 3);
     let id = an_id(1_000);
     store
         .create(&a_passage(id, "The loom stood silent."))
