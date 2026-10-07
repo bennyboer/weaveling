@@ -13,7 +13,7 @@ mod store;
 mod version;
 
 #[cfg(feature = "postgres")]
-mod postgres;
+pub mod postgres;
 
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
@@ -38,7 +38,7 @@ pub use store::{EventStore, StoreError};
 pub use version::Version;
 
 #[cfg(feature = "postgres")]
-pub use postgres::{PostgresEventStore, migrations};
+pub use postgres::PostgresEventStore;
 
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteEventStore;

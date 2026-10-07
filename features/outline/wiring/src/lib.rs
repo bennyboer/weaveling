@@ -112,10 +112,10 @@ impl Feature for OutlineFeature {
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![
-            eventsourcing::migrations(),
+            eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
-            outline_catalog::migrations(),
-            registry::migrations(),
+            outline_catalog::postgres::migrations(),
+            registry::postgres::migrations(),
         ]
     }
 

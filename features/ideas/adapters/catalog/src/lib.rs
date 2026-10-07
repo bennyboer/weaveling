@@ -2,7 +2,7 @@ mod memory;
 pub mod suite;
 
 #[cfg(feature = "postgres")]
-mod postgres;
+pub mod postgres;
 #[cfg(all(test, feature = "postgres"))]
 mod postgres_tests;
 
@@ -14,7 +14,7 @@ mod sqlite_tests;
 pub use memory::InMemoryIdeaCatalog;
 
 #[cfg(feature = "postgres")]
-pub use postgres::{PostgresIdeaCatalog, migrations};
+pub use postgres::PostgresIdeaCatalog;
 
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteIdeaCatalog;

@@ -6,7 +6,7 @@ The event store and the service that drives aggregates over it. The outbox an ap
 
 **Three backends, one conformance suite.** `InMemoryEventStore`, `PostgresEventStore` and `SqliteEventStore` are driven by the same case list through a `Workbench`, so "which store" is never a behavioural question. Storage shape is the feature's own: a `Codec<E>` converts its events to and from the JSON body, which is what keeps stored shapes out of the domain and makes upcasting a `Patch` applied on read rather than a rewrite in place.
 
-**The dual write is closed.** `append` writes the event rows and, through the outbox's `enqueue`, a message for every event its `MessageMapping` publishes — in one transaction, so there is no window where an event is durable but unannounced, and a rolled-back append announces nothing. The outbox's table therefore has to be laid down beside the events: a feature's schema is `eventsourcing::migrations()` and `outbox::postgres::migrations()` together, each with its own ledger.
+**The dual write is closed.** `append` writes the event rows and, through the outbox's `enqueue`, a message for every event its `MessageMapping` publishes — in one transaction, so there is no window where an event is durable but unannounced, and a rolled-back append announces nothing. The outbox's table therefore has to be laid down beside the events: a feature's schema is `eventsourcing::postgres::migrations()` and `outbox::postgres::migrations()` together, each with its own ledger.
 
 **`PublishingEventStore`** is the decorator for the in-memory case, which has no outbox to protect and publishes inline instead. [M11b](../../ROADMAP.md#milestone-11b--one-flow-in-every-mode) removes that difference.
 

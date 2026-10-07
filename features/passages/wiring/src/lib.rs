@@ -86,7 +86,10 @@ impl Feature for PassageFeature {
 
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
-        vec![outbox::postgres::migrations(), passages_store::migrations()]
+        vec![
+            outbox::postgres::migrations(),
+            passages_store::postgres::migrations(),
+        ]
     }
 
     fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {

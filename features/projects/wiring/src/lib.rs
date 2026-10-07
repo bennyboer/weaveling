@@ -93,9 +93,9 @@ impl Feature for ProjectFeature {
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![
-            eventsourcing::migrations(),
+            eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
-            projects_catalog::migrations(),
+            projects_catalog::postgres::migrations(),
         ]
     }
 

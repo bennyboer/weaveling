@@ -8,6 +8,8 @@ mod routing;
 
 #[cfg(feature = "postgres")]
 mod notifying;
+#[cfg(feature = "postgres")]
+pub mod postgres;
 
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
@@ -26,7 +28,7 @@ pub use message::{Conversation, Message, MessageId};
 pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};
 
 #[cfg(feature = "postgres")]
-pub use deliveries::{PostgresDeliveries, migrations};
+pub use deliveries::PostgresDeliveries;
 #[cfg(feature = "postgres")]
 pub use notifying::{Listening, listening_to};
 

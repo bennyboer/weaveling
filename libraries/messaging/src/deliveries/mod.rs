@@ -14,7 +14,7 @@ mod sqlite_tests;
 
 pub use memory::InMemoryDeliveries;
 #[cfg(feature = "postgres")]
-pub use postgres::{PostgresDeliveries, migrations};
+pub use postgres::PostgresDeliveries;
 
 #[cfg(feature = "sqlite")]
 pub use sqlite::SqliteDeliveries;

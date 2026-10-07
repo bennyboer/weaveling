@@ -111,10 +111,10 @@ impl Feature for BoardFeature {
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![
-            eventsourcing::migrations(),
+            eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
-            boards_catalog::migrations(),
-            registry::migrations(),
+            boards_catalog::postgres::migrations(),
+            registry::postgres::migrations(),
         ]
     }
 

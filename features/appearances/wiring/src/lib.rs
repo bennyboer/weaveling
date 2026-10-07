@@ -53,7 +53,7 @@ impl Feature for AppearanceFeature {
 
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
-        vec![appearances_catalog::migrations()]
+        vec![appearances_catalog::postgres::migrations()]
     }
 
     fn outbox(_ports: &Ports) -> Option<Arc<dyn Outbox>> {
