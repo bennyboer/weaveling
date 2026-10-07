@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use time::OffsetDateTime;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProjectId(String);
 
 #[derive(Clone, Debug, PartialEq, Eq)]

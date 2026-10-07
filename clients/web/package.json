@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "test": "playwright test",
+    "test:local": "playwright test --config playwright.local.config.ts",
     "build:js": "node js/build.mjs"
   },
   "devDependencies": {

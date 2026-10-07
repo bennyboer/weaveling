@@ -123,6 +123,39 @@ test("several pinned ideas all appear, each in its own spot", async ({
   );
 });
 
+test("pins still in flight keep their spots while slow answers come back", async ({
+  page,
+}) => {
+  await anOpenProject(page, "Slow answers");
+  const names = ["One", "Two", "Three", "Four", "Five", "Six"];
+  for (const name of names) {
+    await captureIdea(page, name);
+  }
+  await openTheBoard(page);
+  await expect(waitingIdeas(page).getByRole("button")).toHaveCount(
+    names.length,
+  );
+  await page.route("**/api/boards/**", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await route.continue();
+  });
+
+  for (const name of names) {
+    await page.getByRole("button", { name: `Pin ${name}` }).click();
+    await page.waitForTimeout(120);
+  }
+
+  await expect(corkboard(page).locator(".pinned")).toHaveCount(names.length);
+  await page.waitForTimeout(500);
+  const spots = await corkboard(page)
+    .locator(".pinned")
+    .evaluateAll((cards) => cards.map((card) => card.getAttribute("style")));
+  expect(
+    new Set(spots).size,
+    `an answer for an earlier pin must not wipe out the pins still on their way: ${spots.join(" / ")}`,
+  ).toBe(names.length);
+});
+
 test("a spot freed by unpinning is handed to the next idea", async ({
   page,
 }) => {

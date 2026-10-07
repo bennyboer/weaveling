@@ -1,6 +1,6 @@
 import { test, expect, type Page, type WebSocket } from "@playwright/test";
 
-import { aNewProject, openTheBoard } from "./support/shell";
+import { aNewProject, catalogued, openTheBoard } from "./support/shell";
 
 const API = "http://127.0.0.1:3000/api";
 
@@ -188,6 +188,7 @@ async function aPassageWithIdeasToLink(
     });
     expect(captured.status()).toBe(201);
   }
+  await catalogued(page, ideas);
   const made = await page.request.post(`${API}/passages`, {
     data: { project: idIn(project) },
   });

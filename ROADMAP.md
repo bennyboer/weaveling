@@ -768,13 +768,40 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 
 ---
 
-### Milestone 13a — Moving a project between machines
+### Milestone 13b — Passages become scenes
 
-**Goal:** a project leaves one installation as a file and arrives in another whole.
+**Goal:** the word for a piece of the book's prose is *scene*, the word writers already use for it.
 
-**Build:** export a project — the projects rows, every aggregate's event stream with metadata, each passage's CRDT state via `Passage::everything()` and its links — and import it. **Catalogs are not exported**, deliberately: import replays each stream in the file through its projector, so a read model is rebuilt rather than restored, and the file's contents are the enumeration the event store cannot give. That makes import the first wholesale rebuild of a projection, which the [open TODO on enumeration](./TODO.md) notes is otherwise missing.
+**Why.** Looking through existing writing tools, nearly all of them call their units of prose *scenes*, and it reads better than *passage* the longer it is used. Better to match the craft's vocabulary while no author has data under the old word.
 
-**Done when:** a project exported from one instance and imported into an empty one has its ideas, board, outline and passages exactly as they were — with every catalog rebuilt by replay.
+**Build:** a pure rename, the way [M12 step 1](#milestone-12--ideas-and-passages) turned pieces into ideas — the `passages` feature becomes `scenes`: crates, `PassageId` to `SceneId`, `PassageLink` and every other `Passage*` type, the `passage.*` routing keys, tables and migrations, the appearances `Place::Passage`, the sync route, the client and its labels ("Passages not in the book" and the rest), the e2e specs, and the docs. No behaviour changes, so it is reviewed by confirming nothing *but* names moved. Some 1,600 mentions across about 95 Rust files, before the client and the docs.
+
+**Kept on purpose:** stored or library names that never meant *passage* — the CRDT fragment stays `"prose"` and ProseMirror stays ProseMirror.
+
+**Decided 2026-10-07: every piece of prose is a scene**, opening lines and epigraphs included. A chapter's first lines are a scene too rather than a second kind of unit, so this stays a straight rename, not a split.
+
+**Done when:** no code, route, message, table or label says *passage*, and every test passes unchanged in behaviour.
+
+---
+
+### Milestone 13c — The writing view
+
+**Goal:** the place an author actually writes — the heart of the app, discovered early rather than polished late.
+
+**Why now.** Everything so far has been about where scenes live and how they are arranged; the page where prose gets written is still the editor M6 proved could sync, with the metadata stacked underneath. A survey of existing writing tools has produced a list of ideas for it, and they should shape the rest rather than be fitted in afterwards.
+
+**Shape, from the survey** (2026-10-08 — a first overview, more to come):
+
+- **Clean and quiet.** A view that keeps distraction to a minimum; writing is the only thing it asks for.
+- **Big, readable type.** Text scalable by the author, already large by default — around 20px — with a line height of at least 1.5, set in **Lexend** for its readability.
+- **The book as one flow.** Scenes one after another in reading order, with the section names between them, rather than one scene per page.
+- **Only what is in view is loaded.** A book does not fit in a page, so the flow scrolls infinitely *both* ways, loading scenes as they come near and letting go of those far away.
+- **Typing is how a scene begins.** A section with nothing written yet can simply be typed into, and doing so creates its scene.
+- **A tray on the right, closed by default.** Opened, it shows everything about the scene the cursor is in — the ideas linked, and later the characters and the rest. The two-column passage page noted under [M12](#milestone-12--ideas-and-passages) is the same idea, now for the whole flow.
+- **Spell checking on a toggle**, so the red lines can be switched off while drafting.
+
+**Questions it raises for the model, to settle before building:** each scene is its own CRDT document with its own sync socket today, so a flow of many scenes means many documents open at once — one editor per scene stacked in a list, or one editor spanning them; where a scene ends while typing; where the flow opens (the start of the book, or where the author left off); and how the reading order is read — it is the outline's `reading_order()`.
+
 ---
 
 ### Milestone 14 — Two languages
@@ -794,6 +821,18 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 **Build:** the writing view and the workspace are a media query away — they are already a single column. **The board is not.** Pointer events already carry touch, but the resize grips are 7px where a finger needs about 44, `touch-action: none` on the corkboard means the browser will not help, and **pinch-to-zoom is not wired at all** — ctrl-and-wheel is the only zoom, and pinch is *the* gesture on a phone. That is a feature, not a stylesheet.
 
 **Done when:** a piece can be captured, opened and written on a phone; the board pans and pinch-zooms with two fingers; and a card can be moved with a thumb.
+
+### Milestone 13a — Moving a project between machines
+
+**Goal:** a project leaves one installation as a file and arrives in another whole.
+
+**Delayed 2026-10-07.** Not essential while local mode already keeps the work in files an author owns; the writing view comes first, because it is the heart of the app and should be found early.
+
+**Build:** export a project — the projects rows, every aggregate's event stream with metadata, each passage's CRDT state via `Passage::everything()` and its links — and import it. **Catalogs are not exported**, deliberately: import replays each stream in the file through its projector, so a read model is rebuilt rather than restored, and the file's contents are the enumeration the event store cannot give. That makes import the first wholesale rebuild of a projection, which the [open TODO on enumeration](./TODO.md) notes is otherwise missing.
+
+**Done when:** a project exported from one instance and imported into an empty one has its ideas, board, outline and passages exactly as they were — with every catalog rebuilt by replay.
+
+---
 
 ## After Phase 3 (sketch only)
 

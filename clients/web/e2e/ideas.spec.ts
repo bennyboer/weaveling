@@ -1,6 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject, anOpenProject, onTheBoard } from "./support/shell";
+import {
+  aNewProject,
+  anOpenProject,
+  catalogued,
+  onTheBoard,
+} from "./support/shell";
 
 const ideas = (page: Page) => page.getByRole("list", { name: "Ideas" });
 
@@ -133,6 +138,7 @@ test("a project url opened cold shows that project", async ({ page }) => {
   await anOpenProject(page, "Cold");
   await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
+  await catalogued(page, ["The loom remembers"]);
   const address = page.url();
 
   await page.goto(address);

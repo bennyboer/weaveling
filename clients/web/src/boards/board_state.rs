@@ -12,10 +12,34 @@ use crate::projects::model::ProjectId;
 const STEP: i64 = 40;
 const COLUMNS: i64 = 3;
 
+type Ticket = u64;
+
+#[derive(Clone, Debug, PartialEq)]
+enum Intent {
+    Pin {
+        idea: IdeaId,
+        at: Placement,
+    },
+    Reshape {
+        idea: IdeaId,
+        to: Option<Spot>,
+        size: Option<Size>,
+    },
+    Unpin {
+        idea: IdeaId,
+    },
+}
+
+#[derive(Clone, Copy)]
+struct Intentions {
+    pending: RwSignal<Vec<(Ticket, Intent)>>,
+    issued: StoredValue<Ticket>,
+}
+
 #[derive(Clone, Copy)]
 pub struct BoardState {
     problem: RwSignal<Option<ApiError>>,
-    board: RwSignal<Option<Board>>,
+    board: Memo<Option<Board>>,
     pool: RwSignal<Option<Vec<Idea>>>,
     capturing: Action<(String, Placement), ()>,
     pinning: Action<(IdeaId, Viewport), ()>,
@@ -27,14 +51,35 @@ pub struct BoardState {
 impl BoardState {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
-        let board = RwSignal::new(None::<Board>);
+        let confirmed = RwSignal::new(None::<Board>);
+        let intentions = Intentions {
+            pending: RwSignal::new(Vec::new()),
+            issued: StoredValue::new(0),
+        };
+        let board = Memo::new(move |_| {
+            confirmed.get().map(|mut open| {
+                intentions.pending.with(|pending| {
+                    for (_, intent) in pending {
+                        intent.apply(&mut open);
+                    }
+                });
+
+                open
+            })
+        });
         let pool = RwSignal::new(None::<Vec<Idea>>);
 
         let arrived = move |open: Board| {
-            let known = board.with_untracked(|held| held.as_ref().map(|held| held.version));
+            let known = confirmed.with_untracked(|held| held.as_ref().map(|held| held.version));
 
             if known.is_none_or(|known| open.version >= known) {
-                board.set(Some(open));
+                intentions.pending.update(|pending| {
+                    pending.retain(|(_, intent)| match intent {
+                        Intent::Unpin { idea } => open.holds(idea),
+                        Intent::Pin { .. } | Intent::Reshape { .. } => true,
+                    });
+                });
+                confirmed.set(Some(open));
             }
         };
 
@@ -108,7 +153,10 @@ impl BoardState {
                 spot: next_spot(board.get_untracked().as_ref(), *seen),
                 size: CARD,
             };
-            held(board, &idea, at);
+            let ticket = intentions.intend(Intent::Pin {
+                idea: idea.clone(),
+                at,
+            });
 
             async move {
                 let Some(open) = board.get_untracked() else {
@@ -117,11 +165,9 @@ impl BoardState {
 
                 match service::pin(&open.id, &idea, at).await {
                     Ok(pinned) => arrived(pinned),
-                    Err(failure) => {
-                        problem.set(Some(failure));
-                        taken_off(board, &idea);
-                    }
+                    Err(failure) => problem.set(Some(failure)),
                 }
+                intentions.settle(ticket);
             }
         });
 
@@ -130,7 +176,11 @@ impl BoardState {
                 let idea = idea.clone();
                 let to = *to;
                 let size = *size;
-                let was = reshaped(board, &idea, to, size);
+                let ticket = intentions.intend(Intent::Reshape {
+                    idea: idea.clone(),
+                    to,
+                    size,
+                });
 
                 async move {
                     let Some(open) = board.get_untracked() else {
@@ -139,14 +189,9 @@ impl BoardState {
 
                     match service::reshape(&open.id, &idea, to, size).await {
                         Ok(moved) => arrived(moved),
-                        Err(failure) => {
-                            problem.set(Some(failure));
-
-                            if let Some(back) = was {
-                                reshaped(board, &idea, Some(back.spot), Some(back.size));
-                            }
-                        }
+                        Err(failure) => problem.set(Some(failure)),
                     }
+                    intentions.settle(ticket);
                 }
             },
         );
@@ -160,7 +205,9 @@ impl BoardState {
                 };
 
                 match service::unpin(&open.id, &idea).await {
-                    Ok(()) => taken_off(board, &idea),
+                    Ok(()) => {
+                        intentions.intend(Intent::Unpin { idea });
+                    }
                     Err(failure) => problem.set(Some(failure)),
                 }
             }
@@ -295,63 +342,63 @@ fn drawn(held: &PositionedIdea, pool: &[Idea]) -> Option<(Idea, Placement)> {
     })
 }
 
-fn held(board: RwSignal<Option<Board>>, idea: &IdeaId, at: Placement) {
-    board.update(|open| {
-        if let Some(open) = open {
-            open.ideas.push(PositionedIdea {
-                idea: idea.clone(),
-                spot: at.spot,
-                size: at.size,
-            });
-        }
-    });
-}
+impl Intentions {
+    fn intend(self, intent: Intent) -> Ticket {
+        let ticket = self.issued.get_value() + 1;
+        self.issued.set_value(ticket);
 
-fn taken_off(board: RwSignal<Option<Board>>, idea: &IdeaId) {
-    board.update(|open| {
-        if let Some(open) = open {
-            open.ideas.retain(|held| &held.idea != idea);
-        }
-    });
-}
-
-fn reshaped(
-    board: RwSignal<Option<Board>>,
-    idea: &IdeaId,
-    to: Option<Spot>,
-    size: Option<Size>,
-) -> Option<Placement> {
-    let mut was = None;
-
-    board.update(|open| {
-        let Some(open) = open else {
-            return;
-        };
-        let Some(nth) = open.ideas.iter().position(|held| &held.idea == idea) else {
-            return;
-        };
-        let held = &mut open.ideas[nth];
-
-        was = Some(Placement {
-            spot: held.spot,
-            size: held.size,
+        self.pending.update(|pending| {
+            if let Intent::Pin { idea, .. } = &intent {
+                pending.retain(|(_, earlier)| {
+                    !matches!(earlier, Intent::Unpin { idea: unpinned } if unpinned == idea)
+                });
+            }
+            pending.push((ticket, intent));
         });
 
-        if let Some(to) = to {
-            held.spot = to;
-        }
+        ticket
+    }
 
-        if let Some(size) = size {
-            held.size = size;
-        }
+    fn settle(self, ticket: Ticket) {
+        self.pending
+            .update(|pending| pending.retain(|(issued, _)| *issued != ticket));
+    }
+}
 
-        if to.is_some() {
-            let raised = open.ideas.remove(nth);
-            open.ideas.push(raised);
-        }
-    });
+impl Intent {
+    fn apply(&self, open: &mut Board) {
+        match self {
+            Self::Pin { idea, at } => {
+                if !open.holds(idea) {
+                    open.ideas.push(PositionedIdea {
+                        idea: idea.clone(),
+                        spot: at.spot,
+                        size: at.size,
+                    });
+                }
+            }
+            Self::Reshape { idea, to, size } => {
+                let Some(nth) = open.ideas.iter().position(|held| &held.idea == idea) else {
+                    return;
+                };
+                let held = &mut open.ideas[nth];
 
-    was
+                if let Some(to) = to {
+                    held.spot = *to;
+                }
+
+                if let Some(size) = size {
+                    held.size = *size;
+                }
+
+                if to.is_some() {
+                    let raised = open.ideas.remove(nth);
+                    open.ideas.push(raised);
+                }
+            }
+            Self::Unpin { idea } => open.ideas.retain(|held| &held.idea != idea),
+        }
+    }
 }
 
 fn next_spot(board: Option<&Board>, seen: Viewport) -> Spot {

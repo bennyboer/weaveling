@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use crate::projects::model::ProjectId;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IdeaId(String);
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -4,14 +4,13 @@ use crate::http::ApiError;
 use crate::projects::model::{Project, ProjectId};
 use crate::projects::service;
 
-type ProjectListResource = LocalResource<Result<Vec<Project>, ApiError>>;
 type CreateAction = Action<String, Result<Project, ApiError>>;
 type RenameAction = Action<(ProjectId, String), Result<Project, ApiError>>;
 type DeleteAction = Action<ProjectId, Result<(), ApiError>>;
 
 #[derive(Clone, Copy)]
 pub struct Workspace {
-    project_list: ProjectListResource,
+    known: RwSignal<Option<Vec<Project>>>,
     problem: RwSignal<Option<ApiError>>,
     creating: CreateAction,
     renaming: RenameAction,
@@ -26,37 +25,68 @@ impl Default for Workspace {
 
 impl Workspace {
     pub fn new() -> Self {
-        let refetch_projects = Trigger::new();
+        let known = RwSignal::new(None::<Vec<Project>>);
         let problem = RwSignal::new(None);
 
+        let listing = Action::new_local(move |_: &()| async move {
+            match service::list().await {
+                Ok(mut listed) => known.update(|held| {
+                    for written in held.take().unwrap_or_default() {
+                        put(&mut listed, written);
+                    }
+                    *held = Some(listed);
+                }),
+                Err(failure) => {
+                    known.update(|held| {
+                        held.get_or_insert_with(Vec::new);
+                    });
+                    problem.set(Some(failure));
+                }
+            }
+        });
+        listing.dispatch(());
+
         Self {
-            project_list: LocalResource::new(move || {
-                refetch_projects.track();
-                async move { service::list().await }
-            }),
+            known,
             problem,
             creating: Action::new_local(move |name: &String| {
                 let name = name.clone();
-                async move { remember_outcome(problem, refetch_projects, service::create(&name).await) }
+                async move {
+                    let outcome = service::create(&name).await;
+                    if let Ok(created) = &outcome {
+                        keep(known, |held| put(held, created.clone()));
+                    }
+
+                    remember_outcome(problem, outcome)
+                }
             }),
             renaming: Action::new_local(move |(id, name): &(ProjectId, String)| {
                 let (id, name) = (id.clone(), name.clone());
                 async move {
-                    remember_outcome(problem, refetch_projects, service::rename(&id, &name).await)
+                    let outcome = service::rename(&id, &name).await;
+                    if let Ok(renamed) = &outcome {
+                        keep(known, |held| put(held, renamed.clone()));
+                    }
+
+                    remember_outcome(problem, outcome)
                 }
             }),
             deleting: Action::new_local(move |id: &ProjectId| {
                 let id = id.clone();
-                async move { remember_outcome(problem, refetch_projects, service::delete(&id).await) }
+                async move {
+                    let outcome = service::delete(&id).await;
+                    if outcome.is_ok() {
+                        keep(known, |held| held.retain(|project| project.id != id));
+                    }
+
+                    remember_outcome(problem, outcome)
+                }
             }),
         }
     }
 
     pub fn projects(self) -> Vec<Project> {
-        self.project_list
-            .get()
-            .and_then(|listed| listed.ok())
-            .unwrap_or_default()
+        self.known.get().unwrap_or_default()
     }
 
     pub fn problem(self) -> Option<ApiError> {
@@ -64,7 +94,7 @@ impl Workspace {
     }
 
     pub fn loading(self) -> bool {
-        self.project_list.get().is_none()
+        self.known.get().is_none()
     }
 
     pub fn creating(self) -> Signal<bool> {
@@ -106,16 +136,24 @@ where
     Signal::derive(move || action.pending().get())
 }
 
+fn keep(known: RwSignal<Option<Vec<Project>>>, change: impl FnOnce(&mut Vec<Project>)) {
+    known.update(|held| change(held.get_or_insert_with(Vec::new)));
+}
+
+fn put(held: &mut Vec<Project>, project: Project) {
+    match held.iter_mut().find(|known| known.id == project.id) {
+        Some(known) => *known = project,
+        None => held.push(project),
+    }
+    held.sort_by(|one, other| other.id.cmp(&one.id));
+}
+
 fn remember_outcome<T>(
     problem: RwSignal<Option<ApiError>>,
-    refetch_projects: Trigger,
     outcome: Result<T, ApiError>,
 ) -> Result<T, ApiError> {
     match &outcome {
-        Ok(_) => {
-            problem.set(None);
-            refetch_projects.notify();
-        }
+        Ok(_) => problem.set(None),
         Err(failure) => problem.set(Some(failure.clone())),
     }
 

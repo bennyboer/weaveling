@@ -70,3 +70,24 @@ export async function aLoosePassage(page: Page): Promise<string> {
 
   return (await made.json()).id;
 }
+
+export async function catalogued(page: Page, titles: string[]) {
+  const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+
+  await expect
+    .poll(
+      async () =>
+        (
+          await (
+            await page.request.get(
+              `http://127.0.0.1:3000/api/ideas?project=${project}`,
+            )
+          ).json()
+        ).map((idea: { title: string }) => idea.title),
+      {
+        message:
+          "the ideas catalog is a projection, so a fresh page can only show what it has caught up with",
+      },
+    )
+    .toEqual(expect.arrayContaining(titles));
+}

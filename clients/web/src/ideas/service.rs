@@ -3,6 +3,7 @@ use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
 
 use crate::http::{ApiError, parsed};
 use crate::ideas::model::{Idea, IdeaId};
+use crate::ideas::written;
 use crate::projects::model::ProjectId;
 
 const IDEAS: &str = "/api/ideas";
@@ -15,7 +16,10 @@ pub async fn list(project: &ProjectId) -> Result<Vec<Idea>, ApiError> {
         .map_err(|_| ApiError::Offline)?;
     let listed: Vec<IdeaDTO> = parsed(response, SUBJECT).await?;
 
-    Ok(listed.into_iter().map(as_idea).collect())
+    Ok(written::caught_up(
+        project,
+        listed.into_iter().map(as_idea).collect(),
+    ))
 }
 
 pub async fn capture(project: &ProjectId, title: &str) -> Result<Idea, ApiError> {
@@ -30,7 +34,7 @@ pub async fn capture(project: &ProjectId, title: &str) -> Result<Idea, ApiError>
         .await
         .map_err(|_| ApiError::Offline)?;
 
-    Ok(as_idea(parsed(response, SUBJECT).await?))
+    Ok(kept(as_idea(parsed(response, SUBJECT).await?)))
 }
 
 pub async fn retitle(id: &IdeaId, title: &str) -> Result<Idea, ApiError> {
@@ -44,7 +48,13 @@ pub async fn retitle(id: &IdeaId, title: &str) -> Result<Idea, ApiError> {
         .await
         .map_err(|_| ApiError::Offline)?;
 
-    Ok(as_idea(parsed(response, SUBJECT).await?))
+    Ok(kept(as_idea(parsed(response, SUBJECT).await?)))
+}
+
+fn kept(idea: Idea) -> Idea {
+    written::remember(&idea);
+
+    idea
 }
 
 fn as_idea(dto: IdeaDTO) -> Idea {
