@@ -8,6 +8,6 @@ One authoritative answer to "which id owns this key", for the cases where a proj
 
 **Each feature lays the table down in its own database**, so this is a shared mechanism rather than shared data — `kind` keeps a project's board and its outline from shadowing one another within one feature's schema. The migration ledger is `_sqlx_migrations_claims`, because a feature runs the event store, its catalog and this into one schema and sqlx would otherwise see one version 1 modified into another.
 
-Two adapters, one conformance suite. The PostgreSQL one races eight concurrent claims at a single key and asserts all eight are told the same id.
+Three adapters, one conformance suite — in memory, PostgreSQL and SQLite. The two durable ones each race eight concurrent claims at a single key and assert all eight are told the same id; on SQLite the claim is the same single upsert with `RETURNING`.
 
 **The project sweep asks it too, for the same reason.** Discarding a deleted project's board and outline used to start from the catalog, so a board opened a moment before its project was deleted — not catalogued yet — was never found and outlived its project. The claim is written when the board is opened, so `BoardService::board_of` and `OutlineService::outline_of` answer from it and cannot lag.

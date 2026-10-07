@@ -10,6 +10,7 @@ thiserror = { workspace = true }
 
 [features]
 postgres = ["dep:sqlx"]
+sqlite = ["dep:sqlx", "sqlx/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

@@ -2,7 +2,9 @@ use messaging::Message;
 use sqlx::{Sqlite, Transaction};
 
 use crate::outbox::Origin;
-use crate::sqlite::{as_integer, instant};
+use clock::text;
+
+use crate::sqlite::as_integer;
 
 const ENQUEUE: &str = "
     INSERT INTO outbox
@@ -36,7 +38,7 @@ pub async fn enqueue(
         )
         .bind(message.routing.to_string())
         .bind(message.payload.to_string())
-        .bind(instant::stored(message.occurred_at))
+        .bind(text::written(message.occurred_at))
         .execute(&mut **transaction)
         .await?;
 

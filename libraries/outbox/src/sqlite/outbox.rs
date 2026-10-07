@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clock::Clock;
+use clock::text;
 use messaging::{Conversation, Message, MessageId, Notifications, Publisher, RoutingKey};
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
@@ -10,7 +11,6 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::outbox::{CLAIM_FOR, Delivered, Outbox, OutboxError};
-use crate::sqlite::instant;
 
 const CLAIM: &str = "
     UPDATE outbox
@@ -65,7 +65,7 @@ impl SqliteOutbox {
     async fn mark_published(&self, entry: i64) -> Result<(), OutboxError> {
         sqlx::query(MARK_PUBLISHED)
             .bind(entry)
-            .bind(instant::stored(self.clock.now()))
+            .bind(text::written(self.clock.now()))
             .execute(&self.pool)
             .await
             .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
@@ -79,8 +79,8 @@ impl Outbox for SqliteOutbox {
     async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError> {
         let now = self.clock.now();
         let claimed = sqlx::query(CLAIM)
-            .bind(instant::stored(now))
-            .bind(instant::stored(now + CLAIM_FOR))
+            .bind(text::written(now))
+            .bind(text::written(now + CLAIM_FOR))
             .bind(at_most)
             .fetch_all(&self.pool)
             .await
@@ -116,7 +116,7 @@ impl Outbox for SqliteOutbox {
         at_most: i64,
     ) -> Result<u64, OutboxError> {
         let gone = sqlx::query(DELETE_PUBLISHED)
-            .bind(instant::stored(before))
+            .bind(text::written(before))
             .bind(at_most)
             .execute(&self.pool)
             .await
@@ -156,7 +156,7 @@ fn waiting(row: &SqliteRow) -> Result<(i64, Message), OutboxError> {
             caused_by: caused_by
                 .map(|caused| uuid("caused_by", &caused).map(MessageId::of))
                 .transpose()?,
-            occurred_at: instant::read(&occurred_at)
+            occurred_at: text::read(&occurred_at)
                 .ok_or_else(|| unreadable(format!("occurred_at: {occurred_at}")))?,
             payload: serde_json::from_str(&payload)
                 .map_err(|why| unreadable(format!("payload: {why}")))?,

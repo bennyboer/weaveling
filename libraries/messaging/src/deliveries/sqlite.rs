@@ -1,9 +1,12 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
-use serde_json::Value;
+use clock::text;
 use sqlx::migrate::Migrator;
-use sqlx::postgres::PgRow;
-use sqlx::{PgPool, Row};
+use sqlx::sqlite::SqliteRow;
+use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
+use tokio::sync::Notify;
 use uuid::Uuid;
 
 use crate::delivering::{CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued};
@@ -16,46 +19,39 @@ const LEDGER: &str = "_sqlx_migrations_deliveries";
 const ENQUEUE: &str = "
     INSERT INTO deliveries
         (listener, message_id, conversation, caused_by, routing_key, payload, occurred_at, due_at)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
 ";
 
 const CLAIM_DUE: &str = "
-    WITH due AS (
+    UPDATE deliveries
+    SET claimed_until = ?2
+    WHERE delivery IN (
         SELECT delivery
         FROM deliveries
-        WHERE due_at <= $1 AND (claimed_until IS NULL OR claimed_until < $1)
+        WHERE due_at <= ?1 AND (claimed_until IS NULL OR claimed_until < ?1)
         ORDER BY delivery
-        LIMIT $3
-        FOR UPDATE SKIP LOCKED
+        LIMIT ?3
     )
-    UPDATE deliveries
-    SET claimed_until = $2
-    WHERE delivery IN (SELECT delivery FROM due)
     RETURNING delivery, listener, message_id, conversation, caused_by, routing_key, payload,
               occurred_at, attempts
 ";
 
-const HANDLED: &str = "DELETE FROM deliveries WHERE delivery = $1";
+const HANDLED: &str = "DELETE FROM deliveries WHERE delivery = ?1";
 
 const REFUSED: &str = "
     UPDATE deliveries
-    SET attempts = attempts + 1, due_at = $2, claimed_until = NULL, last_refusal = $3
-    WHERE delivery = $1
+    SET attempts = attempts + 1, due_at = ?2, claimed_until = NULL, last_refusal = ?3
+    WHERE delivery = ?1
 ";
 
-const GIVE_UP: &str = "
-    WITH gone AS (
-        DELETE FROM deliveries
-        WHERE delivery = $1
-        RETURNING listener, message_id, conversation, caused_by, routing_key, payload,
-                  occurred_at, attempts
-    )
+const BURY: &str = "
     INSERT INTO dead_letters
         (listener, message_id, conversation, caused_by, routing_key, payload, occurred_at,
          attempts, why)
     SELECT listener, message_id, conversation, caused_by, routing_key, payload, occurred_at,
-           attempts + 1, $2
-    FROM gone
+           attempts + 1, ?2
+    FROM deliveries
+    WHERE delivery = ?1
 ";
 
 const DEAD_LETTERS: &str = "
@@ -67,24 +63,33 @@ const DEAD_LETTERS: &str = "
 
 const WAITING: &str = "SELECT count(*) FROM deliveries";
 
-const CHANNEL: &str = "deliveries_waiting_";
-
-const NOTIFY: &str = "SELECT pg_notify(left('deliveries_waiting_' || current_schema(), 63), '')";
-
 pub fn migrations() -> Migrator {
-    let mut laying = sqlx::migrate!("./migrations/postgres");
+    let mut laying = sqlx::migrate!("./migrations/sqlite");
     laying.dangerous_set_table_name(LEDGER);
 
     laying
 }
 
-pub struct PostgresDeliveries {
-    pool: PgPool,
+pub struct SqliteDeliveries {
+    pool: SqlitePool,
+    waiting: Arc<Notify>,
 }
 
-impl PostgresDeliveries {
-    pub fn new(pool: PgPool) -> Self {
-        Self { pool }
+struct Waiting(Arc<Notify>);
+
+#[async_trait]
+impl Notifications for Waiting {
+    async fn wait(&mut self) {
+        self.0.notified().await;
+    }
+}
+
+impl SqliteDeliveries {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self {
+            pool,
+            waiting: Arc::new(Notify::new()),
+        }
     }
 }
 
@@ -99,32 +104,51 @@ fn unreadable(delivery: i64, why: impl std::fmt::Display) -> DeliveryError {
     }
 }
 
-fn message_in(row: &PgRow, delivery: i64) -> Result<(ListenerName, Message, i32), DeliveryError> {
+fn uuid(delivery: i64, named: &str, written: &str) -> Result<Uuid, DeliveryError> {
+    Uuid::parse_str(written).map_err(|why| unreadable(delivery, format!("{named}: {why}")))
+}
+
+fn message_in(
+    row: &SqliteRow,
+    delivery: i64,
+) -> Result<(ListenerName, Message, i32), DeliveryError> {
     let listener: String = row.try_get("listener").map_err(unreachable)?;
-    let id: Uuid = row.try_get("message_id").map_err(unreachable)?;
-    let conversation: Uuid = row.try_get("conversation").map_err(unreachable)?;
-    let caused_by: Option<Uuid> = row.try_get("caused_by").map_err(unreachable)?;
+    let id: String = row.try_get("message_id").map_err(unreachable)?;
+    let conversation: String = row.try_get("conversation").map_err(unreachable)?;
+    let caused_by: Option<String> = row.try_get("caused_by").map_err(unreachable)?;
     let routing: String = row.try_get("routing_key").map_err(unreachable)?;
-    let payload: Value = row.try_get("payload").map_err(unreachable)?;
-    let occurred_at: OffsetDateTime = row.try_get("occurred_at").map_err(unreachable)?;
+    let payload: String = row.try_get("payload").map_err(unreachable)?;
+    let occurred_at: String = row.try_get("occurred_at").map_err(unreachable)?;
     let attempts: i32 = row.try_get("attempts").map_err(unreachable)?;
 
     Ok((
         ListenerName::parse(&listener).map_err(|why| unreadable(delivery, why))?,
         Message {
-            id: MessageId::of(id),
+            id: MessageId::of(uuid(delivery, "message_id", &id)?),
             routing: RoutingKey::parse(&routing).map_err(|why| unreadable(delivery, why))?,
-            conversation: Conversation::begun_by(MessageId::of(conversation)),
-            caused_by: caused_by.map(MessageId::of),
-            occurred_at,
-            payload,
+            conversation: Conversation::begun_by(MessageId::of(uuid(
+                delivery,
+                "conversation",
+                &conversation,
+            )?)),
+            caused_by: caused_by
+                .map(|caused| uuid(delivery, "caused_by", &caused).map(MessageId::of))
+                .transpose()?,
+            occurred_at: text::read(&occurred_at)
+                .ok_or_else(|| unreadable(delivery, format!("occurred_at: {occurred_at}")))?,
+            payload: serde_json::from_str(&payload)
+                .map_err(|why| unreadable(delivery, format!("payload: {why}")))?,
         },
         attempts,
     ))
 }
 
+fn written_uuid(id: &MessageId) -> String {
+    id.as_uuid().hyphenated().to_string()
+}
+
 #[async_trait]
-impl Deliveries for PostgresDeliveries {
+impl Deliveries for SqliteDeliveries {
     async fn enqueue(
         &self,
         listener: &ListenerName,
@@ -132,20 +156,17 @@ impl Deliveries for PostgresDeliveries {
     ) -> Result<(), DeliveryError> {
         sqlx::query(ENQUEUE)
             .bind(listener.as_str())
-            .bind(message.id.as_uuid())
-            .bind(message.conversation.as_message_id().as_uuid())
-            .bind(message.caused_by.map(|caused| caused.as_uuid()))
+            .bind(written_uuid(&message.id))
+            .bind(written_uuid(&message.conversation.as_message_id()))
+            .bind(message.caused_by.as_ref().map(written_uuid))
             .bind(message.routing.to_string())
-            .bind(&message.payload)
-            .bind(message.occurred_at)
+            .bind(message.payload.to_string())
+            .bind(text::written(message.occurred_at))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
 
-        sqlx::query(NOTIFY)
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
+        self.waiting.notify_one();
 
         Ok(())
     }
@@ -156,8 +177,8 @@ impl Deliveries for PostgresDeliveries {
         at_most: i64,
     ) -> Result<Vec<Queued>, DeliveryError> {
         let claimed = sqlx::query(CLAIM_DUE)
-            .bind(now)
-            .bind(now + CLAIM_FOR)
+            .bind(text::written(now))
+            .bind(text::written(now + CLAIM_FOR))
             .bind(at_most)
             .fetch_all(&self.pool)
             .await
@@ -200,7 +221,7 @@ impl Deliveries for PostgresDeliveries {
     ) -> Result<(), DeliveryError> {
         sqlx::query(REFUSED)
             .bind(delivery)
-            .bind(again_at)
+            .bind(text::written(again_at))
             .bind(why)
             .execute(&self.pool)
             .await
@@ -210,14 +231,21 @@ impl Deliveries for PostgresDeliveries {
     }
 
     async fn give_up(&self, delivery: i64, why: &str) -> Result<(), DeliveryError> {
-        sqlx::query(GIVE_UP)
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+
+        sqlx::query(BURY)
             .bind(delivery)
             .bind(why)
-            .execute(&self.pool)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(HANDLED)
+            .bind(delivery)
+            .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        transaction.commit().await.map_err(unreachable)
     }
 
     async fn dead_letters(&self) -> Result<Vec<DeadLetter>, DeliveryError> {
@@ -252,10 +280,6 @@ impl Deliveries for PostgresDeliveries {
     }
 
     async fn notifications(&self) -> Result<Box<dyn Notifications>, DeliveryError> {
-        let listening = crate::notifying::listening_to(&self.pool, CHANNEL)
-            .await
-            .map_err(unreachable)?;
-
-        Ok(Box::new(listening))
+        Ok(Box::new(Waiting(self.waiting.clone())))
     }
 }

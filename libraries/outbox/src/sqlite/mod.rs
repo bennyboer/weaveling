@@ -1,5 +1,4 @@
 mod enqueuing;
-pub mod instant;
 mod outbox;
 mod schema;
 

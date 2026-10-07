@@ -4,4 +4,4 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-time = { workspace = true }
+time = { workspace = true, features = ["formatting", "parsing"] }

@@ -1,5 +1,6 @@
+use clock::text;
 use outbox::Origin;
-use outbox::sqlite::{enqueue, instant};
+use outbox::sqlite::enqueue;
 use sqlx::{Sqlite, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
@@ -83,7 +84,7 @@ where
             .bind((self.codec.body)(&happened.event).to_string())
             .bind(as_integer(happened.event.version()))
             .bind(agent::encode(&happened.metadata.agent))
-            .bind(instant::stored(happened.metadata.occurred_at))
+            .bind(text::written(happened.metadata.occurred_at))
             .bind(happened.metadata.is_snapshot)
             .execute(&mut **transaction)
             .await

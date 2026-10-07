@@ -203,6 +203,31 @@ pub async fn the_backoff_grows_with_each_attempt(deliveries: &impl Deliveries) {
     );
 }
 
+pub async fn deliveries_are_claimed_in_the_order_they_were_enqueued(deliveries: &impl Deliveries) {
+    let mut enqueued = Vec::new();
+    for nth in 0..6 {
+        let message = a_message(&format!("outline.step_{nth}"));
+        deliveries
+            .enqueue(&a_listener("index-outline-appearances"), &message)
+            .await
+            .expect("enqueuing should succeed");
+        enqueued.push(message.id);
+    }
+
+    let claimed: Vec<_> = deliveries
+        .claim_due(at(1_000), 16)
+        .await
+        .expect("claiming should succeed")
+        .into_iter()
+        .map(|queued| queued.message.id)
+        .collect();
+
+    assert_eq!(
+        claimed, enqueued,
+        "a listener handed a detach before the attach it undoes would end up wrong for good"
+    );
+}
+
 #[macro_export]
 macro_rules! delivery_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -240,5 +265,9 @@ macro_rules! conformance_tests {
         );
         $crate::delivery_conformance_case!($workbench, handling_something_already_gone_is_harmless);
         $crate::delivery_conformance_case!($workbench, the_backoff_grows_with_each_attempt);
+        $crate::delivery_conformance_case!(
+            $workbench,
+            deliveries_are_claimed_in_the_order_they_were_enqueued
+        );
     };
 }

@@ -1,4 +1,4 @@
-use outbox::sqlite::instant;
+use clock::text;
 use serde_json::Value;
 use sqlx::sqlite::{SqliteArguments, SqliteRow};
 use sqlx::{Row, Sqlite};
@@ -156,7 +156,7 @@ impl<E> SqliteEventStore<E> {
         };
         let body: Value = serde_json::from_str(&body).map_err(|_| unreadable("a body"))?;
         let event = (self.codec.event)(body).ok_or_else(|| unreadable("a shape"))?;
-        let occurred_at = instant::read(&occurred_at).ok_or_else(|| unreadable("a time"))?;
+        let occurred_at = text::read(&occurred_at).ok_or_else(|| unreadable("a time"))?;
 
         Ok(Recorded {
             event,

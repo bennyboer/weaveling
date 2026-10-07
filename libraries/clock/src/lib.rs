@@ -1,3 +1,5 @@
+pub mod text;
+
 use std::sync::Mutex;
 
 use time::OffsetDateTime;

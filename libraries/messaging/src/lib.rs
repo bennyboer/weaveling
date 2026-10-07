@@ -9,6 +9,9 @@ mod routing;
 #[cfg(feature = "postgres")]
 mod notifying;
 
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
+
 pub use consuming::DeliveryConsumer;
 pub use deliveries::InMemoryDeliveries;
 pub use delivering::{
@@ -26,3 +29,6 @@ pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};
 pub use deliveries::{PostgresDeliveries, migrations};
 #[cfg(feature = "postgres")]
 pub use notifying::{Listening, listening_to};
+
+#[cfg(feature = "sqlite")]
+pub use deliveries::SqliteDeliveries;

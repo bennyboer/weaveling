@@ -18,6 +18,7 @@ ids = { version = "0.1.0", path = "../ids", package = "weaveling-ids" }
 
 [features]
 postgres = ["dep:sqlx"]
+sqlite = ["dep:sqlx", "sqlx/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

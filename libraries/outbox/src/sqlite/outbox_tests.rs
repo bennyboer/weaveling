@@ -9,7 +9,9 @@ use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 use crate::outbox::{CLAIM_FOR, Delivered, KEPT_FOR, Origin, Outbox};
-use crate::sqlite::{SqliteOutbox, enqueue, instant};
+use clock::text;
+
+use crate::sqlite::{SqliteOutbox, enqueue};
 
 struct Overheard {
     published: Mutex<Vec<Message>>,
@@ -158,7 +160,7 @@ fn nothing() -> Delivered {
 
 async fn published_long_ago(wired: &Wired, when: OffsetDateTime) {
     sqlx::query("UPDATE outbox SET published_at = ?1")
-        .bind(instant::stored(when))
+        .bind(text::written(when))
         .execute(&wired.pool)
         .await
         .expect("ageing an entry should succeed");
