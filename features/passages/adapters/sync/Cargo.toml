@@ -7,7 +7,7 @@ edition.workspace = true
 axum = { workspace = true, features = ["ws"] }
 futures-util = { workspace = true }
 thiserror = { workspace = true }
-tokio = { workspace = true, features = ["rt", "sync"] }
+tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing = { workspace = true }
 yrs = { workspace = true }
 

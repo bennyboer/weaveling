@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use axum::Router;
 use axum::extract::ws::{Message as Frame, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, State};
@@ -10,7 +8,7 @@ use futures_util::StreamExt;
 use passages_core::PassageId;
 use tracing::{debug, warn};
 
-use crate::live_passages::{LivePassage, LivePassages};
+use crate::live_passages::{LivePassages, Presence};
 use crate::peer::Peer;
 
 pub fn router(live: LivePassages) -> Router {
@@ -37,7 +35,7 @@ async fn attach(
     }
 }
 
-async fn stay(socket: WebSocket, passage: Arc<LivePassage>, live: LivePassages) {
+async fn stay(socket: WebSocket, passage: Presence, live: LivePassages) {
     let (sink, mut stream) = socket.split();
     let peer = Peer::arrive(live.next_peer(), sink, &passage);
     let id = passage.id();
@@ -55,7 +53,7 @@ async fn stay(socket: WebSocket, passage: Arc<LivePassage>, live: LivePassages) 
                 peer.deliver(&reaction, &passage);
 
                 if let Some(update) = reaction.to_store
-                    && let Err(problem) = live.persist(id, &update).await
+                    && let Err(problem) = passage.persist(&update).await
                 {
                     warn!(peer = peer.id(), %problem, "an edit reached the passage but not the store");
                 }

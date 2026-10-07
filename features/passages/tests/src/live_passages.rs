@@ -80,7 +80,7 @@ async fn joining_twice_returns_the_very_same_live_passage() {
     let second = live.join(passage.id()).await.expect("should join");
 
     assert!(
-        Arc::ptr_eq(&first, &second),
+        Arc::ptr_eq(first.passage(), second.passage()),
         "a second join must reuse the live passage, not build another"
     );
 }
@@ -110,7 +110,9 @@ async fn racing_joins_settle_on_one_live_passage() {
 
     let first = &joined[0];
     assert!(
-        joined.iter().all(|other| Arc::ptr_eq(first, other)),
+        joined
+            .iter()
+            .all(|other| Arc::ptr_eq(first.passage(), other.passage())),
         "concurrent joiners must not each get their own copy of the document"
     );
 }

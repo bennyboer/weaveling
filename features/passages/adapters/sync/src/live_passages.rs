@@ -1,18 +1,27 @@
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::collections::hash_map::Entry;
+use std::ops::Deref;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::time::{Duration, Instant};
 
-use passages_core::{Passage, PassageError, PassageId, PassageService, PassageServiceError};
+use passages_core::{
+    Passage, PassageError, PassageId, PassageService, PassageServiceError, StoreError,
+};
 use thiserror::Error;
 use tokio::sync::broadcast;
+use tokio::time::interval;
+use tracing::warn;
 
 use crate::protocol::Message;
 
 pub type PeerId = usize;
 
-type Open = HashMap<PassageId, Arc<LivePassage>>;
+type Rooms = HashMap<PassageId, Room>;
 
 const BACKLOG: usize = 256;
+const GRACE: Duration = Duration::from_secs(30);
+const SWEEP_EVERY: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Error)]
 pub enum LivePassageError {
@@ -39,6 +48,7 @@ pub struct Reaction {
 pub struct LivePassage {
     passage: Passage,
     traffic: broadcast::Sender<Overheard>,
+    unsaved: AtomicBool,
 }
 
 impl LivePassage {
@@ -46,6 +56,7 @@ impl LivePassage {
         LivePassage {
             passage,
             traffic: broadcast::channel(BACKLOG).0,
+            unsaved: AtomicBool::new(false),
         }
     }
 
@@ -106,55 +117,209 @@ impl LivePassage {
     }
 }
 
+pub struct Presence {
+    passage: Arc<LivePassage>,
+    shared: Arc<Shared>,
+}
+
+impl Presence {
+    pub fn passage(&self) -> &Arc<LivePassage> {
+        &self.passage
+    }
+
+    pub async fn persist(&self, update: &[u8]) -> Result<(), PassageServiceError> {
+        let persisted = self
+            .shared
+            .service
+            .apply(&self.passage.id().to_string(), update)
+            .await;
+        if persisted.is_err() {
+            self.passage.unsaved.store(true, Ordering::Release);
+        }
+
+        persisted
+    }
+}
+
+impl Deref for Presence {
+    type Target = LivePassage;
+
+    fn deref(&self) -> &LivePassage {
+        &self.passage
+    }
+}
+
+impl Drop for Presence {
+    fn drop(&mut self) {
+        let mut rooms = self.shared.write();
+
+        if let Some(room) = rooms.get_mut(&self.passage.id())
+            && Arc::ptr_eq(&room.passage, &self.passage)
+        {
+            room.present -= 1;
+            if room.present == 0 {
+                room.idle_since = Some(Instant::now());
+            }
+        }
+    }
+}
+
+struct Room {
+    passage: Arc<LivePassage>,
+    present: usize,
+    idle_since: Option<Instant>,
+}
+
+impl Room {
+    fn left_before(&self, idle_before: Instant) -> bool {
+        self.present == 0 && self.idle_since.is_some_and(|since| since <= idle_before)
+    }
+}
+
+struct Shared {
+    rooms: RwLock<Rooms>,
+    peers: AtomicUsize,
+    service: PassageService,
+    sweeping: AtomicBool,
+}
+
+impl Shared {
+    fn read(&self) -> RwLockReadGuard<'_, Rooms> {
+        self.rooms.read().expect("live passages lock poisoned")
+    }
+
+    fn write(&self) -> RwLockWriteGuard<'_, Rooms> {
+        self.rooms.write().expect("live passages lock poisoned")
+    }
+}
+
 #[derive(Clone)]
 pub struct LivePassages {
-    open: Arc<RwLock<Open>>,
-    peers: Arc<AtomicUsize>,
-    service: PassageService,
+    shared: Arc<Shared>,
 }
 
 impl LivePassages {
     pub fn new(service: PassageService) -> Self {
         LivePassages {
-            open: Arc::new(RwLock::new(Open::new())),
-            peers: Arc::new(AtomicUsize::new(1)),
-            service,
+            shared: Arc::new(Shared {
+                rooms: RwLock::new(Rooms::new()),
+                peers: AtomicUsize::new(1),
+                service,
+                sweeping: AtomicBool::new(false),
+            }),
         }
     }
 
-    pub async fn join(&self, id: PassageId) -> Result<Arc<LivePassage>, PassageServiceError> {
-        if let Some(found) = self.find(id) {
-            return Ok(found);
+    pub async fn join(&self, id: PassageId) -> Result<Presence, PassageServiceError> {
+        self.start_sweeping();
+
+        if let Some(entered) = self.enter(id, None) {
+            return Ok(entered);
         }
 
-        let passage = self.service.open(&id.to_string()).await?;
+        let passage = self.shared.service.open(&id.to_string()).await?;
 
-        Ok(self.keep(id, passage))
-    }
-
-    pub async fn persist(&self, id: PassageId, update: &[u8]) -> Result<(), PassageServiceError> {
-        self.service.apply(&id.to_string(), update).await
+        Ok(self
+            .enter(id, Some(passage))
+            .expect("a hydrated passage always finds or makes its room"))
     }
 
     pub fn next_peer(&self) -> PeerId {
-        self.peers.fetch_add(1, Ordering::Relaxed)
+        self.shared.peers.fetch_add(1, Ordering::Relaxed)
     }
 
-    fn find(&self, id: PassageId) -> Option<Arc<LivePassage>> {
-        self.open
+    pub fn is_live(&self, id: PassageId) -> bool {
+        self.shared.read().contains_key(&id)
+    }
+
+    pub async fn sweep(&self, idle_before: Instant) {
+        let idle: Vec<Arc<LivePassage>> = self
+            .shared
             .read()
-            .expect("live passages lock poisoned")
-            .get(&id)
-            .cloned()
+            .values()
+            .filter(|room| room.left_before(idle_before))
+            .map(|room| room.passage.clone())
+            .collect();
+
+        for passage in idle {
+            if self.flushed(&passage).await {
+                self.let_go(&passage, idle_before);
+            }
+        }
     }
 
-    fn keep(&self, id: PassageId, passage: Passage) -> Arc<LivePassage> {
-        self.open
-            .write()
-            .expect("live passages lock poisoned")
-            .entry(id)
-            .or_insert_with(|| Arc::new(LivePassage::open(passage)))
-            .clone()
+    async fn flushed(&self, passage: &LivePassage) -> bool {
+        if !passage.unsaved.swap(false, Ordering::AcqRel) {
+            return true;
+        }
+
+        match self
+            .shared
+            .service
+            .apply(&passage.id().to_string(), &passage.passage.everything())
+            .await
+        {
+            Ok(()) | Err(PassageServiceError::Store(StoreError::NotFound(_))) => true,
+            Err(problem) => {
+                passage.unsaved.store(true, Ordering::Release);
+                warn!(passage = %passage.id(), %problem, "a passage could not be flushed, so it stays live");
+                false
+            }
+        }
+    }
+
+    fn let_go(&self, passage: &Arc<LivePassage>, idle_before: Instant) {
+        let mut rooms = self.shared.write();
+
+        let still_idle = rooms.get(&passage.id()).is_some_and(|room| {
+            Arc::ptr_eq(&room.passage, passage)
+                && room.left_before(idle_before)
+                && !passage.unsaved.load(Ordering::Acquire)
+        });
+        if still_idle {
+            rooms.remove(&passage.id());
+        }
+    }
+
+    fn enter(&self, id: PassageId, hydrated: Option<Passage>) -> Option<Presence> {
+        let mut rooms = self.shared.write();
+
+        let room = match (rooms.entry(id), hydrated) {
+            (Entry::Occupied(found), _) => found.into_mut(),
+            (Entry::Vacant(vacant), Some(passage)) => vacant.insert(Room {
+                passage: Arc::new(LivePassage::open(passage)),
+                present: 0,
+                idle_since: None,
+            }),
+            (Entry::Vacant(_), None) => return None,
+        };
+        room.present += 1;
+
+        Some(Presence {
+            passage: room.passage.clone(),
+            shared: self.shared.clone(),
+        })
+    }
+
+    fn start_sweeping(&self) {
+        if self.shared.sweeping.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        let shared = Arc::downgrade(&self.shared);
+        tokio::spawn(async move {
+            let mut ticks = interval(SWEEP_EVERY);
+            loop {
+                ticks.tick().await;
+                let Some(shared) = shared.upgrade() else {
+                    return;
+                };
+                let idle_before = Instant::now()
+                    .checked_sub(GRACE)
+                    .unwrap_or_else(Instant::now);
+                LivePassages { shared }.sweep(idle_before).await;
+            }
+        });
     }
 }
 

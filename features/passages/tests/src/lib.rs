@@ -1,4 +1,7 @@
 #[cfg(test)]
+mod live_passage_eviction;
+
+#[cfg(test)]
 mod live_passages;
 
 #[cfg(test)]
