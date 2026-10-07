@@ -79,7 +79,7 @@ const FORGET: &str = "DELETE FROM passages WHERE passage = $1";
 pub const COMPACT_AFTER: i64 = 64;
 
 pub fn migrations() -> Migrator {
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("./migrations/postgres")
 }
 
 const KIND: &str = "passage";

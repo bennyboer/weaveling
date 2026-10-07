@@ -82,7 +82,7 @@ async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared
         #[cfg(feature = "postgres")]
         Storage::Postgres(databases) => {
             let pool = databases.ready(MESSAGING).await?;
-            wiring::database::lay_out(MESSAGING, &pool, messaging::migrations()).await?;
+            wiring::postgres::lay_out(MESSAGING, &pool, messaging::migrations()).await?;
 
             Ok(Arc::new(messaging::PostgresDeliveries::new(pool)))
         }

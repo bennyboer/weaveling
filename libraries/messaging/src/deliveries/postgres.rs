@@ -72,7 +72,7 @@ const CHANNEL: &str = "deliveries_waiting_";
 const NOTIFY: &str = "SELECT pg_notify(left('deliveries_waiting_' || current_schema(), 63), '')";
 
 pub fn migrations() -> Migrator {
-    let mut laying = sqlx::migrate!("./migrations");
+    let mut laying = sqlx::migrate!("./migrations/postgres");
     laying.dangerous_set_table_name(LEDGER);
 
     laying

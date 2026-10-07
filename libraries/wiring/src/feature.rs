@@ -55,7 +55,7 @@ pub async fn assemble<F: Feature>(
         Storage::Postgres(databases) => {
             let pool = databases.ready(F::NAME).await?;
             for schema in F::postgres_schema() {
-                crate::database::lay_out(F::NAME, &pool, schema).await?;
+                crate::postgres::lay_out(F::NAME, &pool, schema).await?;
             }
 
             F::on_postgres(pool, context)?

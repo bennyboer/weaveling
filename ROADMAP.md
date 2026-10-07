@@ -747,7 +747,7 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 0. **What has to be true first.**
    - **0a — passages are evicted, and compacted on the way out.** The [open TODO](./TODO.md) with its intended shape: participants counted inside the map's write lock, a sweeper that collects entries idle for a grace period, and a final persist before anything leaves memory. A process that lives as long as an author's afternoon has no restart to save it.
    - **0b — the wiring is reworked.** Moved here from M12's *later*: each feature hands the service one value that knows its ports, schemas, outbox and routes. Without it a third backend means some ten more edits per feature in `services/api`, and forgetting an outbox keeps compiling.
-1. **Groundwork.** Migrations split into `migrations/postgres/` and `migrations/sqlite/`, sqlx gains its `sqlite` feature, the test harness a `SqliteFixture`, and `wiring::database` lays out one file per feature. No adapter yet.
+1. **Groundwork.** Every migration moves into `migrations/postgres/`, with its `migrations/sqlite/` twin arriving beside it in the step that ports that adapter; sqlx gains its `sqlite` feature, the test harness a `SqliteFixture`, and `wiring::sqlite` lays out one file per feature — while `wiring::database` becomes `wiring::postgres`, since there are now two. No adapter yet.
 2. **The event store and outbox on SQLite.** **2a** events and snapshots, **2b** the outbox and `enqueue`. Claiming is an ordinary `UPDATE … RETURNING`, since one process means one relay.
 3. **Deliveries and the registry on SQLite.** Retries and dead letters must survive a crash, or the [durable delivery](#milestone-11b--one-flow-in-every-mode) is a lie in local mode.
 4. **The five catalogs on SQLite** — projects, ideas, boards, outline, appearances. Mechanical against existing suites; one commit each, one review.
@@ -756,6 +756,8 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 7. **A refused message reaches the author.** Retries and a durable dead-letter table exist since M11b; in local mode there is no ops staff to read the table, so the client shows what was refused and why.
 
 **Done when:** an author can work with no database server running, stop the process, start it again, and find their ideas, board, outline and passages exactly as they left them; a refused message is shown to them rather than only stored; and the browser suite passes against local mode.
+
+**Later: revisit the wiring again.** Step 0b is good enough to build local mode on, not where it should end. Candidates noticed on the way: every feature now spells its wiring three times over — `Ports`, the free `wire` and `service` its tests use, and the `Feature` impl that mostly delegates to them; each backend adds a `#[cfg]` pair of trait methods with defaults, so the impls grow per backend; and `Storage` is an enum the trait has to keep in step with. Worth a fresh look once SQLite has shown what a third backend really costs.
 
 ---
 

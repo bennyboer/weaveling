@@ -16,3 +16,7 @@ messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-mes
 
 [features]
 postgres = ["dep:sqlx"]
+sqlite = ["dep:sqlx", "sqlx/sqlite"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

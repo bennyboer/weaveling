@@ -14,7 +14,7 @@ const CLAIM: &str = "
 const LEDGER: &str = "_sqlx_migrations_claims";
 
 pub fn migrations() -> Migrator {
-    let mut laying = sqlx::migrate!("./migrations");
+    let mut laying = sqlx::migrate!("./migrations/postgres");
     laying.dangerous_set_table_name(LEDGER);
 
     laying

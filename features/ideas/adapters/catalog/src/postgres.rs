@@ -32,7 +32,7 @@ const IN_PROJECT: &str = "
 ";
 
 pub fn migrations() -> Migrator {
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("./migrations/postgres")
 }
 
 pub struct PostgresIdeaCatalog {

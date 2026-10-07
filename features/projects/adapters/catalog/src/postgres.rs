@@ -25,7 +25,7 @@ const ALL: &str = "
 ";
 
 pub fn migrations() -> Migrator {
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("./migrations/postgres")
 }
 
 pub struct PostgresProjectCatalog {

@@ -1,3 +1,5 @@
+mod sqlite;
+
 use std::env;
 use std::sync::{Arc, LazyLock, Mutex};
 
@@ -18,6 +20,8 @@ const FIXTURES_AT_ONCE: usize = 2;
 
 static RUNNING: LazyLock<Arc<Semaphore>> =
     LazyLock::new(|| Arc::new(Semaphore::new(FIXTURES_AT_ONCE)));
+
+pub use sqlite::SqliteFixture;
 
 pub struct PostgresFixture {
     stem: String,

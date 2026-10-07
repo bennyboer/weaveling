@@ -30,7 +30,7 @@ const HOLD: &str = "
 const HOLDING: &str = "SELECT board FROM board_ideas WHERE idea = $1 ORDER BY board";
 
 pub fn migrations() -> Migrator {
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("./migrations/postgres")
 }
 
 pub struct PostgresBoardCatalog {

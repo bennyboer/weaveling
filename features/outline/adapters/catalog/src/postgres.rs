@@ -44,7 +44,7 @@ fn attachment_type_of(attachment: &Attachment) -> &'static str {
 }
 
 pub fn migrations() -> Migrator {
-    sqlx::migrate!("./migrations")
+    sqlx::migrate!("./migrations/postgres")
 }
 
 pub struct PostgresOutlineCatalog {
