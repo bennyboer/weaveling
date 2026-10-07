@@ -68,7 +68,7 @@ impl Adapters {
         )
     }
 
-    pub fn outboxes(&self) -> Vec<Arc<dyn eventsourcing::Outbox>> {
+    pub fn outboxes(&self) -> Vec<Arc<dyn outbox::Outbox>> {
         self.features
             .iter()
             .filter_map(|feature| feature.outbox.clone())

@@ -20,7 +20,7 @@ tracing-subscriber = { workspace = true }
 clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
 wiring = { version = "0.1.0", path = "../../libraries/wiring", package = "weaveling-wiring" }
 messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "weaveling-messaging" }
-eventsourcing = { version = "0.1.0", path = "../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+outbox = { version = "0.1.0", path = "../../libraries/outbox", package = "weaveling-outbox" }
 
 ################
 ### FEATURES ###
@@ -37,7 +37,7 @@ projects-wiring = { version = "0.1.0", path = "../../features/projects/wiring", 
 [features]
 postgres = [
     "dep:sqlx",
-    "eventsourcing/postgres",
+    "outbox/postgres",
     "wiring/postgres",
     "appearances-wiring/postgres",
     "boards-wiring/postgres",

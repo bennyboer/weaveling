@@ -5,7 +5,8 @@ use boards_core::{BoardCatalog, BoardEvent, BoardService};
 use boards_messaging::{
     BoardCatalogProjector, DiscardBoardsOnProjectDeleted, PinnedIdeasProjector, UnpinOnDiscard,
 };
-use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
+use eventsourcing::{EventStore, InMemoryEventStore};
+use outbox::{InMemoryOutbox, Outbox};
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, Feature, Wired};
 
@@ -40,7 +41,8 @@ impl Ports {
         publisher: Arc<dyn messaging::Publisher>,
         clock: Arc<dyn clock::Clock>,
     ) -> Self {
-        use eventsourcing::{PostgresEventStore, PostgresOutbox};
+        use eventsourcing::PostgresEventStore;
+        use outbox::PostgresOutbox;
 
         Self {
             events: Arc::new(PostgresEventStore::new(
@@ -110,6 +112,7 @@ impl Feature for BoardFeature {
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![
             eventsourcing::migrations(),
+            outbox::postgres::migrations(),
             boards_catalog::migrations(),
             registry::migrations(),
         ]

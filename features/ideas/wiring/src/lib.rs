@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
+use eventsourcing::{EventStore, InMemoryEventStore};
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaCatalog, IdeaEvent, IdeaService};
 use ideas_messaging::{DiscardOnProjectDeleted, IdeaCatalogProjector};
+use outbox::{InMemoryOutbox, Outbox};
 use wiring::{Context, Feature, Wired};
 
 pub struct Ports {
@@ -35,7 +36,8 @@ impl Ports {
         publisher: Arc<dyn messaging::Publisher>,
         clock: Arc<dyn clock::Clock>,
     ) -> Self {
-        use eventsourcing::{PostgresEventStore, PostgresOutbox};
+        use eventsourcing::PostgresEventStore;
+        use outbox::PostgresOutbox;
 
         Self {
             events: Arc::new(PostgresEventStore::new(
@@ -96,7 +98,11 @@ impl Feature for IdeaFeature {
 
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
-        vec![eventsourcing::migrations(), ideas_catalog::migrations()]
+        vec![
+            eventsourcing::migrations(),
+            outbox::postgres::migrations(),
+            ideas_catalog::migrations(),
+        ]
     }
 
     fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {

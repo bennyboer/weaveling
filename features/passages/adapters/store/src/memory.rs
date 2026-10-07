@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use crate::enqueuing::{Mapping, PassageMessageMapping};
 use async_trait::async_trait;
 use clock::Clock;
-use eventsourcing::InMemoryOutbox;
+use outbox::InMemoryOutbox;
 use passages_core::{
     IdeaLink, Passage, PassageChange, PassageId, PassageStore, PassageTitle, ProjectLink,
     StoreError,
@@ -200,8 +200,8 @@ impl PassageStore for InMemoryPassageStore {
 #[cfg(test)]
 mod tests {
     use clock::FixedClock;
-    use eventsourcing::Outbox;
     use messaging::Message;
+    use outbox::Outbox;
 
     use super::*;
     use crate::suite::{Heard, Workbench, at, message_for};

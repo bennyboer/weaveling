@@ -1,5 +1,3 @@
-mod enqueuing;
-mod instant;
 mod reading;
 mod schema;
 mod writing;
@@ -7,7 +5,6 @@ mod writing;
 #[cfg(test)]
 mod tests;
 
-pub use enqueuing::enqueue;
 pub use schema::migrations;
 
 use async_trait::async_trait;
@@ -16,7 +13,7 @@ use sqlx::SqlitePool;
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::codec::Codec;
 use crate::event::{Event, Recorded};
-use crate::outbox::MessageMapping;
+use crate::message_mapping::MessageMapping;
 use crate::store::{EventStore, StoreError};
 use crate::stored_agent as agent;
 use crate::version::Version;

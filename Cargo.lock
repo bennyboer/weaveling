@@ -3450,7 +3450,7 @@ dependencies = [
  "weaveling-appearances-core",
  "weaveling-appearances-messaging",
  "weaveling-appearances-rest",
- "weaveling-eventsourcing",
+ "weaveling-outbox",
  "weaveling-wiring",
 ]
 
@@ -3550,6 +3550,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-registry",
  "weaveling-wiring",
 ]
@@ -3567,6 +3568,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-registry",
  "weaveling-wiring",
 ]
@@ -3628,6 +3630,7 @@ dependencies = [
  "uuid",
  "weaveling-clock",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-test-harness",
 ]
 
@@ -3723,6 +3726,7 @@ dependencies = [
  "weaveling-ideas-messaging",
  "weaveling-ideas-wiring",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-projects-contract",
  "weaveling-wiring",
 ]
@@ -3740,6 +3744,7 @@ dependencies = [
  "weaveling-ideas-rest",
  "weaveling-ideas-store",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-wiring",
 ]
 
@@ -3766,6 +3771,23 @@ dependencies = [
  "uuid",
  "weaveling-clock",
  "weaveling-ids",
+ "weaveling-test-harness",
+]
+
+[[package]]
+name = "weaveling-outbox"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "sqlx",
+ "thiserror",
+ "time",
+ "tokio",
+ "tracing",
+ "uuid",
+ "weaveling-clock",
+ "weaveling-messaging",
  "weaveling-test-harness",
 ]
 
@@ -3862,6 +3884,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-outline-catalog",
  "weaveling-outline-contract",
  "weaveling-outline-core",
@@ -3879,6 +3902,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-outline-catalog",
  "weaveling-outline-core",
  "weaveling-outline-messaging",
@@ -3946,8 +3970,8 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-clock",
- "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-passages-core",
  "weaveling-test-harness",
  "yrs",
@@ -3996,8 +4020,8 @@ version = "0.1.0"
 dependencies = [
  "sqlx",
  "weaveling-clock",
- "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-passages-core",
  "weaveling-passages-messaging",
  "weaveling-passages-rest",
@@ -4092,6 +4116,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-projects-catalog",
  "weaveling-projects-contract",
  "weaveling-projects-core",
@@ -4108,6 +4133,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-projects-catalog",
  "weaveling-projects-core",
  "weaveling-projects-messaging",
@@ -4146,9 +4172,9 @@ dependencies = [
  "weaveling-appearances-wiring",
  "weaveling-boards-wiring",
  "weaveling-clock",
- "weaveling-eventsourcing",
  "weaveling-ideas-wiring",
  "weaveling-messaging",
+ "weaveling-outbox",
  "weaveling-outline-wiring",
  "weaveling-passages-wiring",
  "weaveling-projects-wiring",
@@ -4187,8 +4213,8 @@ dependencies = [
  "tokio",
  "tracing",
  "weaveling-clock",
- "weaveling-eventsourcing",
  "weaveling-messaging",
+ "weaveling-outbox",
 ]
 
 [[package]]

@@ -2,10 +2,11 @@ use std::sync::Arc;
 
 use axum::Router;
 use clock::Clock;
-use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
+use eventsourcing::InMemoryEventStore;
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaEvent, IdeaService};
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
+use outbox::{InMemoryOutbox, Outbox};
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-idea";

@@ -1,9 +1,10 @@
+use outbox::Origin;
+use outbox::sqlite::{enqueue, instant};
 use sqlx::{Sqlite, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
-use crate::outbox::Origin;
-use crate::sqlite::{SqliteEventStore, agent, as_integer, enqueue, instant};
+use crate::sqlite::{SqliteEventStore, agent, as_integer};
 use crate::store::StoreError;
 use crate::version::Version;
 
@@ -108,7 +109,7 @@ where
         let origin = Origin {
             aggregate: aggregate.as_str(),
             kind: kind.as_str(),
-            version: happened.metadata.version,
+            version: happened.metadata.version.count(),
         };
 
         enqueue(transaction, origin, &message)

@@ -12,6 +12,7 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 
 ideas-core = { version = "0.1.0", path = "../core", package = "weaveling-ideas-core" }
 ideas-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-ideas-messaging" }
@@ -20,4 +21,4 @@ ideas-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "we
 ideas-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-ideas-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "ideas-catalog/postgres"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "ideas-catalog/postgres"]

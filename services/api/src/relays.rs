@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use eventsourcing::{Cadence, Outbox, RelayTask};
 use messaging::DeliveryConsumer;
+use outbox::{Cadence, Outbox, RelayTask};
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
 

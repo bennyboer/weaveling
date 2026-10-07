@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use eventsourcing::{EventStore, InMemoryEventStore, InMemoryOutbox, Outbox};
+use eventsourcing::{EventStore, InMemoryEventStore};
+use outbox::{InMemoryOutbox, Outbox};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineCatalog, OutlineEvent, OutlineService};
 use outline_messaging::{
@@ -41,7 +42,8 @@ impl Ports {
         publisher: Arc<dyn messaging::Publisher>,
         clock: Arc<dyn clock::Clock>,
     ) -> Self {
-        use eventsourcing::{PostgresEventStore, PostgresOutbox};
+        use eventsourcing::PostgresEventStore;
+        use outbox::PostgresOutbox;
 
         Self {
             events: Arc::new(PostgresEventStore::new(
@@ -111,6 +113,7 @@ impl Feature for OutlineFeature {
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
         vec![
             eventsourcing::migrations(),
+            outbox::postgres::migrations(),
             outline_catalog::migrations(),
             registry::migrations(),
         ]

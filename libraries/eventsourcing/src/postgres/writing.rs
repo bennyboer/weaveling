@@ -1,3 +1,5 @@
+use outbox::Origin;
+use outbox::postgres::enqueue;
 use sqlx::{Postgres, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
@@ -53,7 +55,7 @@ where
         for happened in events {
             self.insert(&mut transaction, aggregate, kind, expected, happened)
                 .await?;
-            self.enqueue(&mut transaction, aggregate, kind, happened)
+            self.announce(&mut transaction, aggregate, kind, happened)
                 .await?;
         }
 
@@ -89,6 +91,28 @@ where
             })?;
 
         Ok(())
+    }
+
+    async fn announce(
+        &self,
+        transaction: &mut Transaction<'_, Postgres>,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        happened: &Recorded<E>,
+    ) -> Result<(), StoreError> {
+        let Some(message) = (self.message_for)(happened) else {
+            return Ok(());
+        };
+
+        let origin = Origin {
+            aggregate: aggregate.as_str(),
+            kind: kind.as_str(),
+            version: happened.metadata.version.count(),
+        };
+
+        enqueue(transaction, origin, &message)
+            .await
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }
 }
 

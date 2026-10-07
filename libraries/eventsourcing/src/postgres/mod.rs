@@ -1,5 +1,3 @@
-mod enqueuing;
-mod outbox;
 mod reading;
 mod rows;
 mod schema;
@@ -7,14 +5,11 @@ mod snapshots;
 mod writing;
 
 #[cfg(test)]
-mod outbox_tests;
+mod announcing_tests;
 #[cfg(test)]
 mod tests;
 
-pub use enqueuing::enqueue;
-pub use outbox::PostgresOutbox;
-
-use crate::outbox::MessageMapping;
+use crate::message_mapping::MessageMapping;
 use crate::stored_agent as agent;
 pub use schema::migrations;
 

@@ -11,7 +11,7 @@ tracing = { workspace = true }
 axum = { workspace = true }
 
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
-eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
+outbox = { version = "0.1.0", path = "../outbox", package = "weaveling-outbox" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 
 [features]

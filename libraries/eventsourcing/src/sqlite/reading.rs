@@ -1,3 +1,4 @@
+use outbox::sqlite::instant;
 use serde_json::Value;
 use sqlx::sqlite::{SqliteArguments, SqliteRow};
 use sqlx::{Row, Sqlite};
@@ -5,7 +6,7 @@ use sqlx::{Row, Sqlite};
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
 use crate::metadata::EventMetadata;
-use crate::sqlite::{SqliteEventStore, agent, as_integer, instant};
+use crate::sqlite::{SqliteEventStore, agent, as_integer};
 use crate::store::StoreError;
 use crate::version::Version;
 

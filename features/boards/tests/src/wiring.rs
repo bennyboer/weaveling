@@ -4,8 +4,9 @@ use axum::Router;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardEvent, BoardService};
 use clock::Clock;
-use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
+use eventsourcing::InMemoryEventStore;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
+use outbox::{InMemoryOutbox, Outbox};
 use registry::InMemoryRegistry;
 use wiring::Context;
 

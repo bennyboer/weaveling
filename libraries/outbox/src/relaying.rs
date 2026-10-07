@@ -147,19 +147,13 @@ mod tests {
 
     use async_trait::async_trait;
     use clock::SystemClock;
-    use messaging::{Message, Publisher, Undelivered};
+    use messaging::{Message, Publisher, RoutingKey, Undelivered};
+    use sqlx::PgPool;
     use test_harness::PostgresFixture;
 
     use super::*;
-    use crate::agent::Agent;
-    use crate::aggregate::AggregateId;
-    use crate::event::{Event, Recorded};
-    use crate::metadata::EventMetadata;
-    use crate::postgres::{PostgresEventStore, PostgresOutbox};
-    use crate::store::EventStore;
-    use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind};
-    use crate::testing::stored::{codec, message_for};
-    use crate::version::Version;
+    use crate::outbox::Origin;
+    use crate::postgres::{PostgresOutbox, enqueue};
 
     #[derive(Default)]
     struct Overheard {
@@ -197,32 +191,24 @@ mod tests {
         }
     }
 
-    async fn a_captured_sample(store: &PostgresEventStore<SampleEvent>, aggregate: &AggregateId) {
-        let event = SampleEvent::Created {
-            title: "The Loom".to_owned(),
-            description: "A silent machine.".to_owned(),
-            kind: SampleKind::Ordinary,
-        };
-
-        store
-            .append(
-                aggregate,
-                SAMPLE,
-                Version::ZERO,
-                &[Recorded {
-                    metadata: EventMetadata {
-                        aggregate: aggregate.clone(),
-                        kind: SAMPLE,
-                        version: Version::of(1),
-                        agent: Agent::System,
-                        occurred_at: OffsetDateTime::UNIX_EPOCH,
-                        is_snapshot: event.is_snapshot(),
-                    },
-                    event,
-                }],
-            )
-            .await
-            .expect("appending should succeed");
+    async fn a_waiting_message(pool: &PgPool) {
+        let mut transaction = pool.begin().await.expect("a transaction opens");
+        enqueue(
+            &mut transaction,
+            Origin {
+                aggregate: "passage_1",
+                kind: "passage",
+                version: 0,
+            },
+            &Message::opening(
+                RoutingKey::parse("passage.idea.linked").expect("a plain key is fine"),
+                serde_json::json!({ "passage": "passage_1", "idea": "idea_1" }),
+                OffsetDateTime::UNIX_EPOCH,
+            ),
+        )
+        .await
+        .expect("enqueueing should succeed");
+        transaction.commit().await.expect("the transaction commits");
     }
 
     async fn until(what: impl Fn() -> bool) -> bool {
@@ -246,7 +232,6 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
         let heard = Arc::new(Overheard::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
@@ -257,7 +242,7 @@ mod tests {
             briskly(),
         );
 
-        a_captured_sample(&store, &AggregateId::from("sample_relayed")).await;
+        a_waiting_message(&pool).await;
 
         assert!(
             until(|| heard.how_many() == 1).await,
@@ -277,7 +262,6 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
         let heard = Arc::new(Overheard::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
@@ -288,11 +272,11 @@ mod tests {
             briskly(),
         );
 
-        a_captured_sample(&store, &AggregateId::from("sample_first")).await;
+        a_waiting_message(&pool).await;
         assert!(until(|| heard.how_many() == 1).await);
 
         relay.stop().await;
-        a_captured_sample(&store, &AggregateId::from("sample_second")).await;
+        a_waiting_message(&pool).await;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         assert_eq!(
@@ -323,9 +307,8 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
-        for nth in 0..40 {
-            a_captured_sample(&store, &AggregateId::from(format!("sample_{nth}").as_str())).await;
+        for _ in 0..40 {
+            a_waiting_message(&pool).await;
         }
         sqlx::query("UPDATE outbox SET published_at = NOW() - INTERVAL '200 days'")
             .execute(&pool)
@@ -372,9 +355,8 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
-        for nth in 0..10 {
-            a_captured_sample(&store, &AggregateId::from(format!("sample_{nth}").as_str())).await;
+        for _ in 0..10 {
+            a_waiting_message(&pool).await;
         }
         sqlx::query("UPDATE outbox SET published_at = NOW() - INTERVAL '200 days'")
             .execute(&pool)
@@ -408,9 +390,8 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
-        for nth in 0..3 {
-            a_captured_sample(&store, &AggregateId::from(format!("sample_{nth}").as_str())).await;
+        for _ in 0..3 {
+            a_waiting_message(&pool).await;
         }
         sqlx::query("UPDATE outbox SET published_at = NOW() - INTERVAL '200 days'")
             .execute(&pool)
@@ -464,7 +445,6 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
         let heard = Arc::new(Overheard::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
@@ -476,7 +456,7 @@ mod tests {
         );
 
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-        a_captured_sample(&store, &AggregateId::from("sample_notified")).await;
+        a_waiting_message(&pool).await;
 
         assert!(
             until(|| heard.how_many() == 1).await,

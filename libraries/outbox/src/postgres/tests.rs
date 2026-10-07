@@ -2,22 +2,14 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use clock::FixedClock;
-use messaging::{Message, Publisher, Undelivered};
+use messaging::{Message, Publisher, RoutingKey, Undelivered};
 use sqlx::{PgPool, Row};
 use test_harness::PostgresFixture;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
-use crate::agent::Agent;
-use crate::aggregate::AggregateId;
-use crate::event::{Event, Recorded};
-use crate::metadata::EventMetadata;
 use crate::outbox::{CLAIM_FOR, Delivered, KEPT_FOR, Origin, Outbox};
-use crate::postgres::{PostgresEventStore, PostgresOutbox, enqueue};
-use crate::store::EventStore;
-use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind};
-use crate::testing::stored::{codec, message_for};
-use crate::version::Version;
+use crate::postgres::{PostgresOutbox, enqueue};
 
 struct Overheard {
     published: Mutex<Vec<Message>>,
@@ -72,44 +64,25 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn recorded(aggregate: &AggregateId, version: u64, event: SampleEvent) -> Recorded<SampleEvent> {
-    Recorded {
-        metadata: EventMetadata {
-            aggregate: aggregate.clone(),
-            kind: SAMPLE,
-            version: Version::of(version),
-            agent: Agent::System,
-            occurred_at: at(1_000),
-            is_snapshot: event.is_snapshot(),
-        },
-        event,
-    }
+fn a_link_message() -> Message {
+    Message::opening(
+        RoutingKey::parse("passage.idea.linked").expect("a plain key is fine"),
+        serde_json::json!({ "passage": "passage_1", "idea": "idea_1" }),
+        at(2_000),
+    )
 }
 
-fn a_creation() -> SampleEvent {
-    SampleEvent::Created {
-        title: "The Loom".to_owned(),
-        description: "A silent machine.".to_owned(),
-        kind: SampleKind::Ordinary,
+fn from_a_passage() -> Origin<'static> {
+    Origin {
+        aggregate: "passage_1",
+        kind: "passage",
+        version: 0,
     }
-}
-
-fn a_snapshot() -> SampleEvent {
-    SampleEvent::Snapshotted {
-        title: "The Loom".to_owned(),
-        description: "A silent machine.".to_owned(),
-        deleted: false,
-    }
-}
-
-fn retitled(what: &str) -> SampleEvent {
-    SampleEvent::TitleUpdated(what.to_owned())
 }
 
 struct Wired {
     fixture: PostgresFixture,
     pool: PgPool,
-    store: PostgresEventStore<SampleEvent>,
     clock: Arc<FixedClock>,
 }
 
@@ -124,7 +97,6 @@ impl Wired {
 
         Self {
             fixture,
-            store: PostgresEventStore::new(pool.clone(), codec(), message_for),
             pool,
             clock: Arc::new(FixedClock::new(at(2_000))),
         }
@@ -134,17 +106,14 @@ impl Wired {
         PostgresOutbox::new(self.pool.clone(), publisher, self.clock.clone())
     }
 
-    async fn append(&self, aggregate: &AggregateId, expected: u64, events: Vec<SampleEvent>) {
-        let stream: Vec<_> = events
-            .into_iter()
-            .enumerate()
-            .map(|(nth, event)| recorded(aggregate, expected + nth as u64 + 1, event))
-            .collect();
-
-        self.store
-            .append(aggregate, SAMPLE, Version::of(expected), &stream)
-            .await
-            .expect("appending should succeed");
+    async fn waiting_messages(&self, how_many: usize) {
+        let mut transaction = self.pool.begin().await.expect("a transaction opens");
+        for _ in 0..how_many {
+            enqueue(&mut transaction, from_a_passage(), &a_link_message())
+                .await
+                .expect("enqueueing should succeed");
+        }
+        transaction.commit().await.expect("the transaction commits");
     }
 
     async fn waiting(&self) -> Vec<(String, Option<OffsetDateTime>)> {
@@ -184,120 +153,23 @@ fn nothing() -> Delivered {
     }
 }
 
-#[tokio::test]
-async fn an_append_leaves_a_message_waiting_for_every_publishable_event() {
-    let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_announced");
-
-    wired
-        .append(&aggregate, 0, vec![a_creation(), retitled("Second")])
-        .await;
-
-    let found = wired.waiting().await;
-
-    assert_eq!(
-        found
-            .iter()
-            .map(|(routing, _)| routing.as_str())
-            .collect::<Vec<_>>(),
-        vec!["sample.created", "sample.title_updated"]
-    );
-    assert_eq!(
-        wired.unpublished().await,
-        2,
-        "an append enqueues, it does not publish"
-    );
-
-    wired.cleanup().await;
+async fn published_long_ago(wired: &Wired, when: OffsetDateTime) {
+    sqlx::query("UPDATE outbox SET published_at = $1")
+        .bind(when)
+        .execute(&wired.pool)
+        .await
+        .expect("ageing an entry should succeed");
 }
 
-#[tokio::test]
-async fn an_event_that_publishes_nothing_leaves_nothing_waiting() {
-    let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_quiet");
-
-    wired
-        .append(
-            &aggregate,
-            0,
-            vec![
-                a_creation(),
-                SampleEvent::Corrected("Quietly".to_owned()),
-                a_snapshot(),
-            ],
-        )
-        .await;
-
-    let found = wired.waiting().await;
-
-    assert_eq!(
-        found.len(),
-        1,
-        "a correction and a snapshot are both unpublishable, so only the creation waits: {found:?}"
-    );
-
-    wired.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_refused_append_leaves_no_message_waiting() {
-    let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_rolled_back");
-
-    let refused = wired
-        .store
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::of(7),
-            &[recorded(&aggregate, 8, a_creation())],
-        )
-        .await;
-
-    assert!(refused.is_err());
-    assert!(
-        wired.waiting().await.is_empty(),
-        "the event and its message are written in one transaction or not at all"
-    );
-
-    wired.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_message_beside_an_event_that_rolls_back_goes_with_it() {
-    let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_half_announced");
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
-
-    let refused = wired
-        .store
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::of(1),
-            &[
-                recorded(&aggregate, 2, retitled("Second")),
-                recorded(&aggregate, 1, retitled("Colliding")),
-            ],
-        )
-        .await;
-
-    assert!(refused.is_err());
-    assert_eq!(
-        wired.waiting().await.len(),
-        1,
-        "the surviving message is the first append's, not half of the second's"
-    );
-
-    wired.cleanup().await;
+async fn entries(wired: &Wired) -> usize {
+    wired.waiting().await.len()
 }
 
 #[tokio::test]
 async fn the_relay_publishes_what_is_waiting_and_marks_it() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_relayed");
     let heard = Overheard::listening();
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
+    wired.waiting_messages(1).await;
     let written = wired.message_ids().await;
 
     let delivered = wired
@@ -330,9 +202,8 @@ async fn the_relay_publishes_what_is_waiting_and_marks_it() {
 #[tokio::test]
 async fn the_relay_leaves_nothing_to_do_the_second_time() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_once");
     let heard = Overheard::listening();
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
+    wired.waiting_messages(1).await;
 
     let relay = wired.relay(heard.clone());
     relay.deliver(10).await.expect("the first pass publishes");
@@ -350,8 +221,7 @@ async fn the_relay_leaves_nothing_to_do_the_second_time() {
 #[tokio::test]
 async fn a_message_the_broker_refuses_stays_waiting() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_refused");
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
+    wired.waiting_messages(1).await;
 
     let delivered = wired
         .relay(Overheard::refusing())
@@ -378,9 +248,8 @@ async fn a_message_the_broker_refuses_stays_waiting() {
 #[tokio::test]
 async fn a_retried_message_keeps_the_id_it_was_written_with() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_retried");
     let heard = Overheard::listening();
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
+    wired.waiting_messages(1).await;
     let written = wired.message_ids().await;
 
     wired
@@ -409,9 +278,8 @@ async fn a_retried_message_keeps_the_id_it_was_written_with() {
 #[tokio::test]
 async fn a_claimed_message_is_left_alone_until_the_claim_runs_out() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_claimed");
     let heard = Overheard::listening();
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
+    wired.waiting_messages(1).await;
 
     wired
         .relay(Overheard::refusing())
@@ -455,16 +323,9 @@ async fn a_claimed_message_is_left_alone_until_the_claim_runs_out() {
 #[tokio::test]
 async fn the_relay_takes_no_more_than_it_was_asked_for() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_batched");
     let heard = Overheard::listening();
 
-    wired
-        .append(
-            &aggregate,
-            0,
-            vec![a_creation(), retitled("Second"), retitled("Third")],
-        )
-        .await;
+    wired.waiting_messages(3).await;
 
     let delivered = wired
         .relay(heard.clone())
@@ -478,23 +339,10 @@ async fn the_relay_takes_no_more_than_it_was_asked_for() {
     wired.cleanup().await;
 }
 
-async fn published_long_ago(wired: &Wired, when: OffsetDateTime) {
-    sqlx::query("UPDATE outbox SET published_at = $1")
-        .bind(when)
-        .execute(&wired.pool)
-        .await
-        .expect("ageing an entry should succeed");
-}
-
-async fn entries(wired: &Wired) -> usize {
-    wired.waiting().await.len()
-}
-
 #[tokio::test]
 async fn an_entry_published_longer_ago_than_we_keep_them_is_deleted() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_aged");
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
+    wired.waiting_messages(1).await;
     published_long_ago(&wired, at(2_000) - KEPT_FOR - Duration::days(1)).await;
 
     let gone = wired
@@ -512,8 +360,7 @@ async fn an_entry_published_longer_ago_than_we_keep_them_is_deleted() {
 #[tokio::test]
 async fn an_entry_published_recently_is_kept() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_recent");
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
+    wired.waiting_messages(1).await;
     published_long_ago(&wired, at(2_000) - Duration::days(1)).await;
 
     let gone = wired
@@ -531,8 +378,7 @@ async fn an_entry_published_recently_is_kept() {
 #[tokio::test]
 async fn an_entry_never_published_is_kept_however_old_it_is() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_stuck");
-    wired.append(&aggregate, 0, vec![a_creation()]).await;
+    wired.waiting_messages(1).await;
 
     let gone = wired
         .relay(Overheard::listening())
@@ -554,14 +400,7 @@ async fn an_entry_never_published_is_kept_however_old_it_is() {
 #[tokio::test]
 async fn deleting_takes_no_more_than_it_was_asked_for() {
     let wired = Wired::setup().await;
-    let aggregate = AggregateId::from("sample_sweeping");
-    wired
-        .append(
-            &aggregate,
-            0,
-            vec![a_creation(), retitled("Second"), retitled("Third")],
-        )
-        .await;
+    wired.waiting_messages(3).await;
     published_long_ago(&wired, at(2_000) - KEPT_FOR - Duration::days(1)).await;
 
     let relay = wired.relay(Overheard::listening());
@@ -574,22 +413,6 @@ async fn deleting_takes_no_more_than_it_was_asked_for() {
     assert_eq!(entries(&wired).await, 1);
 
     wired.cleanup().await;
-}
-
-fn a_link_message() -> Message {
-    Message::opening(
-        messaging::RoutingKey::parse("passage.idea.linked").expect("a plain key is fine"),
-        serde_json::json!({ "passage": "passage_1", "idea": "idea_1" }),
-        at(2_000),
-    )
-}
-
-fn from_a_passage() -> Origin<'static> {
-    Origin {
-        aggregate: "passage_1",
-        kind: "passage",
-        version: Version::ZERO,
-    }
 }
 
 #[tokio::test]
@@ -636,6 +459,52 @@ async fn a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it() {
         0,
         "the whole point of enqueueing in the writer's transaction: a change that never \
          happened is never announced"
+    );
+
+    wired.cleanup().await;
+}
+
+#[tokio::test]
+async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_database() {
+    let wired = Wired::setup().await;
+
+    let found: Vec<String> = sqlx::query_scalar(
+        "SELECT tablename::text FROM pg_tables WHERE schemaname = $1 ORDER BY tablename",
+    )
+    .bind(wired.fixture.schema_of("outbox"))
+    .fetch_all(&wired.pool)
+    .await
+    .expect("reading the catalog should succeed");
+
+    assert_eq!(
+        found,
+        vec!["_sqlx_migrations_outbox", "outbox"],
+        "a writer that is not event-sourced gets the outbox without an events table"
+    );
+
+    wired.cleanup().await;
+}
+
+#[tokio::test]
+async fn the_schema_carries_the_indexes_the_queries_rely_on() {
+    let wired = Wired::setup().await;
+
+    let found: Vec<String> = sqlx::query_scalar(
+        "SELECT indexname::text FROM pg_indexes WHERE schemaname = $1 ORDER BY indexname",
+    )
+    .bind(wired.fixture.schema_of("outbox"))
+    .fetch_all(&wired.pool)
+    .await
+    .expect("reading the catalog should succeed");
+
+    assert_eq!(
+        found,
+        vec![
+            "_sqlx_migrations_outbox_pkey",
+            "outbox_pkey",
+            "outbox_published",
+            "outbox_waiting",
+        ]
     );
 
     wired.cleanup().await;

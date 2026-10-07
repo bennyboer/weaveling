@@ -1,5 +1,5 @@
 [package]
-name = "weaveling-eventsourcing"
+name = "weaveling-outbox"
 version.workspace = true
 edition.workspace = true
 
@@ -16,14 +16,12 @@ uuid = { workspace = true, optional = true }
 
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
-outbox = { version = "0.1.0", path = "../outbox", package = "weaveling-outbox" }
 
 [features]
-postgres = ["dep:sqlx", "dep:uuid", "messaging/postgres", "outbox/postgres"]
-sqlite = ["dep:sqlx", "dep:uuid", "sqlx/sqlite", "outbox/sqlite"]
+postgres = ["dep:sqlx", "dep:uuid", "messaging/postgres"]
+sqlite = ["dep:sqlx", "dep:uuid", "sqlx/sqlite"]
 
 [dev-dependencies]
-serde = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 
 test-harness = { version = "0.1.0", path = "../test-harness", package = "weaveling-test-harness" }

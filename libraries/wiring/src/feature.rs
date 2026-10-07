@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use axum::Router;
-use eventsourcing::Outbox;
 use messaging::Listener;
+use outbox::Outbox;
 
 use crate::{Context, Unprepared, Wired};
 

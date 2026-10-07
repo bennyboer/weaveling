@@ -3,7 +3,8 @@ use std::sync::Arc;
 use crate::enqueuing::{Mapping, PassageMessageMapping};
 use async_trait::async_trait;
 use clock::Clock;
-use eventsourcing::{Origin, Version, enqueue};
+use outbox::Origin;
+use outbox::postgres::enqueue;
 use passages_core::{
     IdeaLink, Passage, PassageChange, PassageId, PassageStore, PassageTitle, ProjectLink,
     StoreError,
@@ -122,7 +123,7 @@ impl PostgresPassageStore {
         let origin = Origin {
             aggregate: &passage,
             kind: KIND,
-            version: Version::ZERO,
+            version: 0,
         };
 
         enqueue(transaction, origin, &mapping.message(&change))

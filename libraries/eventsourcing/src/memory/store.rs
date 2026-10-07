@@ -5,10 +5,10 @@ use async_trait::async_trait;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
-use crate::memory::outbox::InMemoryOutbox;
-use crate::outbox::MessageMapping;
+use crate::message_mapping::MessageMapping;
 use crate::store::{EventStore, StoreError};
 use crate::version::Version;
+use outbox::InMemoryOutbox;
 
 type Streams<E> = HashMap<(AggregateId, AggregateType), Vec<Recorded<E>>>;
 

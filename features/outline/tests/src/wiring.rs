@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use axum::Router;
 use clock::Clock;
-use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
+use eventsourcing::InMemoryEventStore;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
+use outbox::{InMemoryOutbox, Outbox};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineEvent, OutlineService};
 use registry::InMemoryRegistry;

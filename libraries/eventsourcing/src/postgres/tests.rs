@@ -28,6 +28,10 @@ async fn ready_for(feature: &str, fixture: &PostgresFixture) -> PgPool {
         .run(&pool)
         .await
         .expect("the event store's schema should lay down in an empty namespace");
+    outbox::postgres::migrations()
+        .run(&pool)
+        .await
+        .expect("the outbox an append writes into should lay down beside it");
 
     pool
 }
@@ -413,6 +417,7 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
         found,
         vec![
             "_sqlx_migrations_events_pkey",
+            "_sqlx_migrations_outbox_pkey",
             "events_pkey",
             "events_snapshots",
             "outbox_pkey",

@@ -1,11 +1,8 @@
 use messaging::Message;
 use sqlx::{Postgres, Transaction};
 
-use crate::aggregate::{AggregateId, AggregateType};
-use crate::event::Recorded;
 use crate::outbox::Origin;
-use crate::postgres::{PostgresEventStore, as_bigint};
-use crate::store::StoreError;
+use crate::postgres::as_bigint;
 
 const NOTIFY: &str = "SELECT pg_notify(left('outbox_waiting_' || current_schema(), 63), '')";
 
@@ -37,28 +34,4 @@ pub async fn enqueue(
     sqlx::query(NOTIFY).execute(&mut **transaction).await?;
 
     Ok(())
-}
-
-impl<E> PostgresEventStore<E> {
-    pub(super) async fn enqueue(
-        &self,
-        transaction: &mut Transaction<'_, Postgres>,
-        aggregate: &AggregateId,
-        kind: AggregateType,
-        happened: &Recorded<E>,
-    ) -> Result<(), StoreError> {
-        let Some(message) = (self.message_for)(happened) else {
-            return Ok(());
-        };
-
-        let origin = Origin {
-            aggregate: aggregate.as_str(),
-            kind: kind.as_str(),
-            version: happened.metadata.version,
-        };
-
-        enqueue(transaction, origin, &message)
-            .await
-            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
-    }
 }

@@ -252,7 +252,7 @@ async fn every_feature_keeps_its_rows_where_it_was_told_to() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
-    use eventsourcing::Cadence;
+    use outbox::Cadence;
     use weaveling_service_api::Relays;
 
     let fixture = PostgresFixture::setup().await;
@@ -339,7 +339,7 @@ async fn a_relay_carries_what_was_captured_all_the_way_to_its_catalog() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn deleting_a_project_sweeps_away_everything_it_held() {
-    use eventsourcing::Cadence;
+    use outbox::Cadence;
     use weaveling_service_api::Relays;
 
     let fixture = PostgresFixture::setup().await;
@@ -494,7 +494,7 @@ where
 
 #[tokio::test(flavor = "multi_thread")]
 async fn discarding_an_idea_unlinks_it_from_every_passage() {
-    use eventsourcing::Cadence;
+    use outbox::Cadence;
     use weaveling_service_api::Relays;
 
     let fixture = PostgresFixture::setup().await;
@@ -570,7 +570,7 @@ async fn discarding_an_idea_unlinks_it_from_every_passage() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn linking_an_idea_is_announced_and_relayed() {
-    use eventsourcing::Cadence;
+    use outbox::Cadence;
     use weaveling_service_api::Relays;
 
     let fixture = PostgresFixture::setup().await;
@@ -631,7 +631,7 @@ async fn linking_an_idea_is_announced_and_relayed() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded() {
-    use eventsourcing::Cadence;
+    use outbox::Cadence;
     use weaveling_service_api::Relays;
 
     let fixture = PostgresFixture::setup().await;

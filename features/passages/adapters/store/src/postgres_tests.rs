@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clock::FixedClock;
-use eventsourcing::{Outbox, PostgresOutbox};
 use messaging::Message;
+use outbox::{Outbox, PostgresOutbox};
 use passages_core::{IdeaLink, PassageStore, StoreError};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
@@ -40,7 +40,7 @@ async fn relayed(pool: &PgPool, heard: &Arc<Heard>) -> Vec<Message> {
 async fn a_migrated_schema() -> (PostgresFixture, PgPool) {
     let fixture = PostgresFixture::setup().await;
     let pool = fixture.create_schema("passages").await;
-    eventsourcing::migrations()
+    outbox::postgres::migrations()
         .run(&pool)
         .await
         .expect("the outbox should lay down in an empty namespace");

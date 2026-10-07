@@ -1,18 +1,13 @@
 use async_trait::async_trait;
-use messaging::{Message, Notifications};
+use messaging::Notifications;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
-
-use crate::event::Recorded;
-use crate::version::Version;
-
-pub type MessageMapping<E> = fn(&Recorded<E>) -> Option<Message>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Origin<'a> {
     pub aggregate: &'a str,
     pub kind: &'a str,
-    pub version: Version,
+    pub version: u64,
 }
 
 pub const CLAIM_FOR: Duration = Duration::seconds(30);

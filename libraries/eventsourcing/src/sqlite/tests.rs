@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use messaging::{Message, RoutingKey};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 use time::{Duration, OffsetDateTime};
@@ -11,8 +10,7 @@ use crate::aggregate::AggregateId;
 use crate::codec::Codec;
 use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
-use crate::outbox::Origin;
-use crate::sqlite::{SqliteEventStore, enqueue};
+use crate::sqlite::SqliteEventStore;
 use crate::store::{EventStore, StoreError};
 use crate::testing::Workbench;
 use crate::testing::sample::{SAMPLE, SampleEvent};
@@ -31,6 +29,10 @@ async fn ready_for(feature: &str, fixture: &SqliteFixture) -> SqlitePool {
         .run(&pool)
         .await
         .expect("the event store's schema should lay down in an empty file");
+    outbox::sqlite::migrations()
+        .run(&pool)
+        .await
+        .expect("the outbox an append writes into should lay down beside it");
 
     pool
 }
@@ -483,72 +485,6 @@ async fn a_refused_append_leaves_no_message_waiting() {
 
     assert!(refused.is_err());
     assert!(waiting(&bench.pool).await.is_empty());
-
-    bench.cleanup().await;
-}
-
-fn a_link_message() -> Message {
-    Message::opening(
-        RoutingKey::parse("passage.idea.linked").expect("a declared routing key is fine"),
-        serde_json::json!({ "passage": "passage_1", "idea": "idea_1" }),
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
-    )
-}
-
-fn from_a_passage() -> Origin<'static> {
-    Origin {
-        aggregate: "passage_1",
-        kind: "passage",
-        version: Version::ZERO,
-    }
-}
-
-#[tokio::test]
-async fn a_message_enqueued_beside_any_write_waits_once_that_write_commits() {
-    let bench = OnSqlite::setup().await;
-    let message = a_link_message();
-    let mut transaction = bench.pool.begin().await.expect("a transaction opens");
-
-    enqueue(&mut transaction, from_a_passage(), &message)
-        .await
-        .expect("enqueueing should succeed");
-    transaction.commit().await.expect("the transaction commits");
-
-    let (id, payload): (String, String) =
-        sqlx::query_as("SELECT message_id, payload FROM outbox WHERE published_at IS NULL")
-            .fetch_one(&bench.pool)
-            .await
-            .expect("the message should be waiting");
-    assert_eq!(
-        id,
-        message.id.as_uuid().hyphenated().to_string(),
-        "a retried message must keep the id it was written with"
-    );
-    assert_eq!(
-        serde_json::from_str::<serde_json::Value>(&payload).expect("the payload is json"),
-        message.payload
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it() {
-    let bench = OnSqlite::setup().await;
-    let mut transaction = bench.pool.begin().await.expect("a transaction opens");
-
-    enqueue(&mut transaction, from_a_passage(), &a_link_message())
-        .await
-        .expect("enqueueing should succeed");
-    transaction
-        .rollback()
-        .await
-        .expect("the transaction rolls back");
-
-    assert!(
-        waiting(&bench.pool).await.is_empty(),
-        "a change that never happened is never announced"
-    );
 
     bench.cleanup().await;
 }

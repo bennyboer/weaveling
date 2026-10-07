@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clock::SystemClock;
-use eventsourcing::Cadence;
+use outbox::Cadence;
 use tokio::net::TcpListener;
 use weaveling_service_api::{Adapters, Relays, Storage, app};
 

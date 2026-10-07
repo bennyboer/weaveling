@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use eventsourcing::{InMemoryOutbox, Outbox};
+use outbox::{InMemoryOutbox, Outbox};
 use passages_core::{PassageService, PassageStore};
 use passages_messaging::{DeleteOnProjectDeleted, UnlinkOnDiscard};
 use passages_store::InMemoryPassageStore;
@@ -35,7 +35,7 @@ impl Ports {
         publisher: Arc<dyn messaging::Publisher>,
         clock: Arc<dyn clock::Clock>,
     ) -> Self {
-        use eventsourcing::PostgresOutbox;
+        use outbox::PostgresOutbox;
         use passages_store::PostgresPassageStore;
 
         Self {
@@ -86,7 +86,7 @@ impl Feature for PassageFeature {
 
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
-        vec![eventsourcing::migrations(), passages_store::migrations()]
+        vec![outbox::postgres::migrations(), passages_store::migrations()]
     }
 
     fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {

@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use axum::Router;
 use clock::Clock;
-use eventsourcing::{InMemoryEventStore, InMemoryOutbox, Outbox};
+use eventsourcing::InMemoryEventStore;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
+use outbox::{InMemoryOutbox, Outbox};
 use projects_catalog::InMemoryProjectCatalog;
 use projects_core::ProjectService;
 use wiring::Context;

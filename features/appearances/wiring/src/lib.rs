@@ -5,7 +5,7 @@ use appearances_core::AppearanceCatalog;
 use appearances_messaging::{
     ForgetDiscardedIdea, OutlineAppearancesProjector, PassageAppearancesProjector,
 };
-use eventsourcing::Outbox;
+use outbox::Outbox;
 use wiring::{Context, Feature, Wired};
 
 pub struct Ports {
