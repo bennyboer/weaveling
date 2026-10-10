@@ -121,6 +121,29 @@
   flex-shrink: 0;
 }
 
+.alarm {
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  color: var(--alarm);
+}
+
+.alarm.pulsing {
+  animation: flashing 0.6s ease-in-out 3;
+}
+
+@keyframes flashing {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alarm.pulsing {
+    animation: none;
+  }
+}
+
 .column {
   width: 100%;
   max-width: 42rem;

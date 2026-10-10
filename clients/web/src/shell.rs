@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, view};
 use leptos_router::components::A;
 
+use crate::refusals::alarm::{AlarmState, alarm};
 use crate::route;
 use crate::theme;
 
@@ -68,6 +69,7 @@ pub fn status_bar() -> impl IntoView {
     html::footer()
         .class("status-bar")
         .attr("aria-label", "Status")
+        .child(alarm(AlarmState::new()))
 }
 
 fn whereabouts(inside: Inside) -> impl IntoView {
