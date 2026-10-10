@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clock::SystemClock;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
-use weaveling_service_api::{Adapters, Backend, Relays, app};
+use weaveling_service_api::{Adapters, Backend, Flakiness, Relays, WEAVELING_FLAKY, app};
 
 const LOG_LEVEL_UNLESS_TOLD: &str = "info";
 
@@ -11,9 +11,13 @@ async fn serving() -> (axum::Router, Relays) {
     let backend = Backend::from_environment().unwrap_or_else(|why| panic!("{why}"));
     tracing::info!("keeping the work {backend}");
     let storage = backend.storage().unwrap_or_else(|why| panic!("{why}"));
-    let adapters = Adapters::assembled(storage, Arc::new(SystemClock))
+    let mut adapters = Adapters::assembled(storage, Arc::new(SystemClock))
         .await
         .unwrap_or_else(|why| panic!("{why}"));
+    if let Some(flakiness) = Flakiness::from_environment().unwrap_or_else(|why| panic!("{why}")) {
+        tracing::warn!("{WEAVELING_FLAKY} is set: listeners refuse messages on purpose");
+        adapters = adapters.refusing_on_purpose(flakiness);
+    }
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let routes = app(adapters);

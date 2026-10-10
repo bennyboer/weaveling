@@ -7,6 +7,7 @@ pub struct RefusalDTO {
     pub routing: String,
     pub attempts: i32,
     pub why: String,
+    pub plainly: Option<String>,
     pub occurred_at: String,
     pub given_up_at: String,
     pub acknowledged_at: Option<String>,

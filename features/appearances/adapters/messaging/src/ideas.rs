@@ -49,6 +49,10 @@ impl Listener for ForgetDiscardedIdea {
         vec![when_idea_discarded()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A discarded idea is still listed where it appeared."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

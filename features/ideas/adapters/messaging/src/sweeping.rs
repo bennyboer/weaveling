@@ -155,6 +155,10 @@ impl Listener for DiscardOnProjectDeleted {
         vec![when_project_deleted(), when_more_to_sweep()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "The ideas of a deleted project were not cleared away."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

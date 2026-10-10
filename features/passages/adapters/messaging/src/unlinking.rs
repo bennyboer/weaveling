@@ -47,6 +47,10 @@ impl Listener for UnlinkOnDiscard {
         vec![when_idea_discarded()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A discarded idea could not be unlinked from its passages."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

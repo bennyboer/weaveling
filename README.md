@@ -177,6 +177,8 @@ WEAVELING_DATABASE_URL=postgres://weaveling:weaveling@127.0.0.1:5432/weaveling c
 
 Either way it lays every schema down at startup and runs an outbox relay per feature that announces anything. On PostgreSQL each relay is woken by a notification and polls every five seconds as a backstop; SQLite has nothing to notify, so in local mode the relays poll every 100ms instead. `ctrl-c` stops the relays before exiting.
 
+**`WEAVELING_FLAKY=<share>`** makes every listener refuse that share of the messages it is handed, from `0` to `1`, so the alarm and its dialog can be tried by hand. A message is given up on only after five refusals in a row, about half a minute with the backoff, so at `0.5` only one in 32 deliveries ends as a refusal; `0.8` shows a third of them. It is for trying things out, never for an author: the log warns at startup when it is set.
+
 ### Testing the client
 
 The client is tested end to end in a real browser, because the two client bugs that actually shipped were browser behavior rather than logic — see [Client conventions](./ARCHITECTURE.md#client-conventions).

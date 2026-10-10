@@ -73,6 +73,10 @@ impl Listener for IdeaCatalogProjector {
         vec![every_event()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A change to an idea did not reach the list of ideas."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

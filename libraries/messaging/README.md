@@ -15,6 +15,8 @@ A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscrip
 
 **A dead letter can be retried or acknowledged, never deleted.** Retrying moves it back into the deliveries, due at once with the whole attempt budget again, and wakes the consumer. Acknowledging marks it seen and keeps it: the listener has still not handled the message, and nothing can yet rebuild what a listener never saw, so throwing it away would make the gap permanent. Both ignore an id that is already gone, because a double click is not an error. The service serves them as `/api/service/refusals`, with the shape in `messaging-contract`, so the author can act on what was refused.
 
+**A listener says what its refusal costs the author.** `when_refused` has no default, so a listener cannot be written without a plain sentence — "A change to an idea did not reach the list of ideas." — and the sentence sits beside the code it describes rather than in a list somewhere that goes stale. The dispatcher answers it by listener name, and `/api/service/refusals` sends it along; a dead letter whose listener is no longer wired gets none, and the client says something general instead.
+
 **A listener's name is its queue name**, so two listeners may not share one — `listen` asserts against it, because a duplicate would quietly eat the other's messages and that is a wiring fault worth failing at startup.
 
 **The consumer is woken, not polled.** `enqueue` notifies — a `tokio::sync::Notify` in memory and on SQLite, `pg_notify` on PostgreSQL — so a new message is taken at once and the 200ms look is a backstop for deliveries that became due again on their own. Without it the retry curve would be decorative: a delivery re-due in 200ms would still wait for the next tick.

@@ -73,6 +73,10 @@ impl Listener for DiscardOutlinesOnProjectDeleted {
         vec![when_project_deleted()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "The outline of a deleted project was not cleared away."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

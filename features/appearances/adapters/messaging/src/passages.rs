@@ -76,6 +76,10 @@ impl Listener for PassageAppearancesProjector {
             .collect()
     }
 
+    fn when_refused(&self) -> &'static str {
+        "Where an idea appears in your passages was not updated."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

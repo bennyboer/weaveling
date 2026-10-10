@@ -73,6 +73,10 @@ impl Listener for ProjectCatalogProjector {
         vec![every_event()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A change to a project did not reach your list of projects."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

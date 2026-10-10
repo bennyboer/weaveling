@@ -69,6 +69,10 @@ impl Listener for OutlineCatalogProjector {
         vec![when_started(), when_outline_discarded()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "An outline did not reach the list of outlines."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

@@ -3,9 +3,10 @@ use std::time::Duration;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos::{IntoView, view};
+use leptos::{IntoView, ev, html};
 
 use crate::icons::{Icon, mark};
+use crate::refusals::dialog::refusals_dialog;
 use crate::refusals::model::Refusal;
 use crate::refusals::service;
 
@@ -16,6 +17,7 @@ pub struct AlarmState {
     refusals: RwSignal<Vec<Refusal>>,
     heard: StoredValue<BTreeSet<i64>>,
     pulsing: RwSignal<bool>,
+    looking: RwSignal<bool>,
 }
 
 impl AlarmState {
@@ -24,21 +26,23 @@ impl AlarmState {
             refusals: RwSignal::new(Vec::new()),
             heard: StoredValue::new(BTreeSet::new()),
             pulsing: RwSignal::new(false),
-        };
-        let ask = move || {
-            spawn_local(async move {
-                if let Ok(found) = service::all().await {
-                    state.arrived(found);
-                }
-            })
+            looking: RwSignal::new(false),
         };
 
-        ask();
-        if let Err(failure) = set_interval(ask, ASK_EVERY) {
+        state.ask();
+        if let Err(failure) = set_interval(move || state.ask(), ASK_EVERY) {
             leptos::logging::error!("the alarm cannot ask again: {failure:?}");
         }
 
         state
+    }
+
+    fn ask(self) {
+        spawn_local(async move {
+            if let Ok(found) = service::all().await {
+                self.arrived(found);
+            }
+        });
     }
 
     fn arrived(self, found: Vec<Refusal>) {
@@ -56,26 +60,71 @@ impl AlarmState {
         self.refusals.set(found);
     }
 
+    pub fn refusals(self) -> Vec<Refusal> {
+        self.refusals.get()
+    }
+
+    fn any(self) -> bool {
+        self.refusals.with(|refusals| !refusals.is_empty())
+    }
+
     fn raised(self) -> bool {
         self.refusals
             .with(|refusals| refusals.iter().any(|refusal| !refusal.acknowledged))
     }
+
+    fn is_pulsing(self) -> bool {
+        self.pulsing.get()
+    }
+
+    fn stop_pulsing(self) {
+        self.pulsing.set(false);
+    }
+
+    fn is_looking(self) -> bool {
+        self.looking.get()
+    }
+
+    fn start_looking(self) {
+        self.looking.set(true);
+    }
+
+    pub fn stop_looking(self) {
+        self.looking.set(false);
+    }
+
+    pub fn retry(self, refusal: i64) {
+        spawn_local(async move {
+            if service::retry(refusal).await.is_ok() {
+                self.ask();
+            }
+        });
+    }
+
+    pub fn acknowledge(self, refusal: i64) {
+        spawn_local(async move {
+            if service::acknowledge(refusal).await.is_ok() {
+                self.ask();
+            }
+        });
+    }
 }
 
 pub fn alarm(state: AlarmState) -> impl IntoView {
-    move || {
-        state.raised().then(|| {
-            view! {
-                <span
-                    class="alarm"
-                    class:pulsing=move || state.pulsing.get()
-                    role="img"
-                    aria-label="Some changes could not be applied"
-                    on:animationend=move |_| state.pulsing.set(false)
-                >
-                    {mark(Icon::Flash)}
-                </span>
-            }
-        })
-    }
+    (
+        move || {
+            state.any().then(|| {
+                html::button()
+                    .r#type("button")
+                    .class("alarm")
+                    .class(("raised", move || state.raised()))
+                    .class(("pulsing", move || state.is_pulsing()))
+                    .attr("aria-label", "Changes that could not be applied")
+                    .on(ev::click, move |_| state.start_looking())
+                    .on(ev::animationend, move |_| state.stop_pulsing())
+                    .child(mark(Icon::Flash))
+            })
+        },
+        move || state.is_looking().then(|| refusals_dialog(state)),
+    )
 }

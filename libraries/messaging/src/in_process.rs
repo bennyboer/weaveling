@@ -34,6 +34,10 @@ impl InProcessDispatcher {
         listeners.push(listener);
     }
 
+    pub fn when_refused(&self, listener: &ListenerName) -> Option<&'static str> {
+        self.named(listener).map(|found| found.when_refused())
+    }
+
     pub(crate) fn named(&self, wanted: &ListenerName) -> Option<Arc<dyn Listener>> {
         self.listeners
             .read()
@@ -104,6 +108,10 @@ mod tests {
 
         fn listens_to(&self) -> Vec<Subscription> {
             self.subscriptions.clone()
+        }
+
+        fn when_refused(&self) -> &'static str {
+            "Nothing an author would miss."
         }
 
         fn delivery(&self) -> Delivery {
@@ -352,6 +360,10 @@ mod tests {
                 vec![Subscription::parse("#").expect("a plain pattern is fine")]
             }
 
+            fn when_refused(&self) -> &'static str {
+                "Nothing an author would miss."
+            }
+
             async fn handle(&self, _message: &Message) -> Result<(), NotHandled> {
                 Ok(())
             }
@@ -402,6 +414,10 @@ mod tests {
                 vec![Subscription::parse("idea.captured").expect("a plain pattern is fine")]
             }
 
+            fn when_refused(&self) -> &'static str {
+                "Nothing an author would miss."
+            }
+
             async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
                 let answer = message.answering(
                     RoutingKey::parse("board.pinned").expect("a plain key is fine"),
@@ -444,6 +460,10 @@ mod tests {
 
             fn listens_to(&self) -> Vec<Subscription> {
                 vec![Subscription::parse("#").expect("a plain pattern is fine")]
+            }
+
+            fn when_refused(&self) -> &'static str {
+                "Nothing an author would miss."
             }
 
             async fn handle(&self, message: &Message) -> Result<(), NotHandled> {

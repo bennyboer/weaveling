@@ -27,6 +27,60 @@
   }
 }
 
+.dialog.refusals {
+  width: 100%;
+  max-width: 34rem;
+  max-height: 80vh;
+  overflow-y: auto;
+
+  .refused {
+    margin: 0 0 1.5rem;
+    padding: 0;
+    list-style: none;
+
+    li {
+      padding: 0.9rem 0;
+      border-top: 1px solid var(--line);
+    }
+
+    li.acknowledged {
+      opacity: 0.55;
+    }
+
+    .plainly {
+      margin: 0 0 0.2rem;
+      color: var(--ink);
+    }
+
+    .when {
+      margin: 0 0 0.5rem;
+      font-size: 0.8rem;
+    }
+
+    details {
+      margin-bottom: 0.6rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    summary {
+      cursor: pointer;
+    }
+
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 0.2rem 0.8rem;
+      margin: 0.5rem 0 0;
+    }
+
+    dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

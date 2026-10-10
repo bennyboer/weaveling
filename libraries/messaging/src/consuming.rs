@@ -220,6 +220,10 @@ mod tests {
             vec![Subscription::parse("#").expect("a plain pattern is fine")]
         }
 
+        fn when_refused(&self) -> &'static str {
+            "Nothing an author would miss."
+        }
+
         fn delivery(&self) -> Delivery {
             self.delivery
         }

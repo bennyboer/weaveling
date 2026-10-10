@@ -8,27 +8,40 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use clock::Clock;
 use clock::text::serialize;
-use messaging::{DeadLetter, Deliveries, DeliveryError};
+use messaging::{DeadLetter, Deliveries, DeliveryError, InProcessDispatcher};
 use messaging_contract::RefusalDTO;
 
 #[derive(Clone)]
 struct Refusals {
     deliveries: Arc<dyn Deliveries>,
+    dispatcher: Arc<InProcessDispatcher>,
     clock: Arc<dyn Clock>,
 }
 
-pub fn router(deliveries: Arc<dyn Deliveries>, clock: Arc<dyn Clock>) -> Router {
+pub fn router(
+    deliveries: Arc<dyn Deliveries>,
+    dispatcher: Arc<InProcessDispatcher>,
+    clock: Arc<dyn Clock>,
+) -> Router {
     Router::new()
         .route("/refusals", get(list))
         .route("/refusals/{id}/acknowledge", post(acknowledge))
         .route("/refusals/{id}/retry", post(retry))
-        .with_state(Refusals { deliveries, clock })
+        .with_state(Refusals {
+            deliveries,
+            dispatcher,
+            clock,
+        })
 }
 
 async fn list(State(refusals): State<Refusals>) -> Result<Json<Vec<RefusalDTO>>, Unserved> {
     let dead = refusals.deliveries.dead_letters().await?;
 
-    Ok(Json(dead.iter().map(to_dto).collect()))
+    Ok(Json(
+        dead.iter()
+            .map(|letter| to_dto(letter, &refusals.dispatcher))
+            .collect(),
+    ))
 }
 
 async fn retry(
@@ -52,13 +65,14 @@ async fn acknowledge(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn to_dto(dead: &DeadLetter) -> RefusalDTO {
+fn to_dto(dead: &DeadLetter, dispatcher: &InProcessDispatcher) -> RefusalDTO {
     RefusalDTO {
         id: dead.id,
         listener: dead.listener.to_string(),
         routing: dead.message.routing.to_string(),
         attempts: dead.attempts,
         why: dead.why.clone(),
+        plainly: dispatcher.when_refused(&dead.listener).map(str::to_owned),
         occurred_at: serialize(dead.message.occurred_at),
         given_up_at: serialize(dead.given_up_at),
         acknowledged_at: dead.acknowledged_at.map(serialize),

@@ -82,6 +82,10 @@ impl Listener for DetachOnDiscard {
         vec![when_discarded()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A discarded idea could not be taken out of the outline."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

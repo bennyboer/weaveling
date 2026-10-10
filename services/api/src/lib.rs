@@ -1,4 +1,5 @@
 mod backend;
+mod flaky;
 mod refusals;
 mod relays;
 
@@ -17,7 +18,10 @@ use projects_wiring::ProjectFeature;
 use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context, assemble};
 
+use crate::flaky::Flaky;
+
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
+pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
 pub use relays::Relays;
 pub use wiring::{Storage, Unprepared};
 
@@ -29,6 +33,7 @@ pub struct Adapters {
     dispatcher: Arc<InProcessDispatcher>,
     deliveries: Arc<dyn Deliveries>,
     features: Vec<Assembled>,
+    flakiness: Option<Flakiness>,
 }
 
 impl Adapters {
@@ -54,6 +59,7 @@ impl Adapters {
             dispatcher,
             deliveries,
             features,
+            flakiness: None,
         })
     }
 
@@ -61,6 +67,13 @@ impl Adapters {
         Self::assembled(Storage::InMemory, clock)
             .await
             .expect("nothing kept in memory needs preparing")
+    }
+
+    pub fn refusing_on_purpose(self, flakiness: Flakiness) -> Self {
+        Self {
+            flakiness: Some(flakiness),
+            ..self
+        }
     }
 
     pub fn consuming(&self) -> messaging::DeliveryConsumer {
@@ -104,6 +117,7 @@ pub fn app(adapters: Adapters) -> Router {
         .route("/health", get(health))
         .merge(refusals::router(
             adapters.deliveries.clone(),
+            adapters.dispatcher.clone(),
             adapters.clock.clone(),
         ));
     let mut api = Router::new().nest("/service", service);
@@ -112,7 +126,10 @@ pub fn app(adapters: Adapters) -> Router {
         api = api.merge(feature.routes);
 
         for listener in feature.listeners {
-            adapters.dispatcher.listen(listener);
+            adapters.dispatcher.listen(match adapters.flakiness {
+                Some(flakiness) => Flaky::wrapping(listener, flakiness),
+                None => listener,
+            });
         }
     }
 
@@ -125,5 +142,7 @@ async fn health() -> &'static str {
     "ok"
 }
 
+#[cfg(test)]
+mod flaky_tests;
 #[cfg(test)]
 mod refusals_tests;

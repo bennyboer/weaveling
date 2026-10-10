@@ -70,6 +70,10 @@ impl Listener for PinnedIdeasProjector {
         vec![when_pinned(), when_unpinned()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A pin did not reach the record of which ideas a board holds."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

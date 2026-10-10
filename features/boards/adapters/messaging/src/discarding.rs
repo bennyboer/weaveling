@@ -82,6 +82,10 @@ impl Listener for UnpinOnDiscard {
         vec![when_discarded()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A discarded idea could not be taken off a board."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

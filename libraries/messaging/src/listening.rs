@@ -47,6 +47,8 @@ pub trait Listener: Send + Sync {
 
     fn listens_to(&self) -> Vec<Subscription>;
 
+    fn when_refused(&self) -> &'static str;
+
     fn hears(&self, routing: &RoutingKey) -> bool {
         self.listens_to().iter().any(|to| to.covers(routing))
     }

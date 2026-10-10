@@ -131,6 +131,10 @@ impl Listener for DeleteOnProjectDeleted {
         vec![when_project_deleted(), when_more_to_sweep()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "The passages of a deleted project were not cleared away."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

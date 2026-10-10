@@ -69,6 +69,10 @@ impl Listener for AttachmentIndexProjector {
         vec![when_attached(), when_detached(), when_section_removed()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A change to the outline did not reach the record of what it holds."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

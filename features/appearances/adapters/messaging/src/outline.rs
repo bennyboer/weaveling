@@ -79,6 +79,10 @@ impl Listener for OutlineAppearancesProjector {
             .collect()
     }
 
+    fn when_refused(&self) -> &'static str {
+        "Where an idea appears in the outline was not updated."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

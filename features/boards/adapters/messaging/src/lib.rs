@@ -80,6 +80,10 @@ impl Listener for BoardCatalogProjector {
         vec![when_started(), when_board_discarded()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "A board did not reach the list of boards."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }

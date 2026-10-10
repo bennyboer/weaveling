@@ -73,6 +73,10 @@ impl Listener for DiscardBoardsOnProjectDeleted {
         vec![when_project_deleted()]
     }
 
+    fn when_refused(&self) -> &'static str {
+        "The board of a deleted project was not cleared away."
+    }
+
     fn delivery(&self) -> Delivery {
         Delivery::Kept
     }
