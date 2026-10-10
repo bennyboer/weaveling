@@ -153,6 +153,45 @@
   }
 }
 
+.refused-note {
+  position: fixed;
+  right: 0.5rem;
+  bottom: 2.1rem;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.55rem 0.6rem 0.55rem 0.9rem;
+  border: 1px solid var(--alarm);
+  border-radius: 0.5rem;
+  background: var(--raised);
+  color: var(--ink);
+  font-size: 0.85rem;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+
+  button {
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+
+  .show {
+    color: var(--alarm);
+    font-weight: 500;
+  }
+
+  .dismiss {
+    display: grid;
+    place-items: center;
+    padding: 0.15rem;
+  }
+
+  button:hover {
+    color: var(--ink);
+  }
+}
+
 .column {
   width: 100%;
   max-width: 42rem;

@@ -257,3 +257,76 @@ test("the dialog closes by its button, by Escape and by clicking outside", async
   await page.mouse.click(5, 5);
   await expect(dialog(page)).toHaveCount(0);
 });
+
+const note = (page: Page) =>
+  page
+    .getByRole("status")
+    .filter({ hasText: "Some changes could not be applied." });
+
+test("a new refusal brings a note pointing at the alarm", async ({ page }) => {
+  await answering(page, () => [refused(1)]);
+
+  await page.goto("/");
+
+  await expect(note(page)).toBeVisible();
+});
+
+test("refusals arriving together bring a single note", async ({ page }) => {
+  await answering(page, () => [refused(1), refused(2), refused(3)]);
+
+  await page.goto("/");
+
+  await expect(note(page)).toHaveCount(1);
+});
+
+test("refusals already acknowledged bring no note", async ({ page }) => {
+  await answering(page, () => [refused(1, true)]);
+  const first = asked(page);
+
+  await page.goto("/");
+  await first;
+  await page.waitForTimeout(A_BEAT);
+
+  await expect(note(page)).toHaveCount(0);
+});
+
+test("the note opens the refusals and goes away", async ({ page }) => {
+  await aServerHolding(page, [refused(1)]);
+  await page.goto("/");
+
+  await note(page).getByRole("button", { name: "Show" }).click();
+
+  await expect(dialog(page)).toBeVisible();
+  await expect(note(page)).toHaveCount(0);
+});
+
+test("a dismissed note stays away for refusals already heard of", async ({
+  page,
+}) => {
+  await answering(page, () => [refused(1)]);
+  await page.goto("/");
+
+  await note(page).getByRole("button", { name: "Dismiss" }).click();
+  await expect(note(page)).toHaveCount(0);
+  await asked(page);
+  await page.waitForTimeout(A_BEAT);
+
+  await expect(note(page)).toHaveCount(0);
+  await expect(
+    alarm(page),
+    "dismissing the note is not acknowledging what was refused",
+  ).toHaveClass(/raised/);
+});
+
+test("a refusal arriving after a dismissal brings the note back", async ({
+  page,
+}) => {
+  let answer = [refused(1)];
+  await answering(page, () => answer);
+  await page.goto("/");
+  await note(page).getByRole("button", { name: "Dismiss" }).click();
+
+  answer = [refused(1), refused(2)];
+
+  await expect(note(page)).toBeVisible({ timeout: 7_000 });
+});

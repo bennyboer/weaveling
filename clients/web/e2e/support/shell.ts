@@ -71,23 +71,35 @@ export async function aLoosePassage(page: Page): Promise<string> {
   return (await made.json()).id;
 }
 
-export async function catalogued(page: Page, titles: string[]) {
+async function cataloguedTitles(page: Page): Promise<string[]> {
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+  const listed = await page.request.get(
+    `http://127.0.0.1:3000/api/ideas?project=${project}`,
+  );
 
+  return (await listed.json()).map((idea: { title: string }) => idea.title);
+}
+
+export async function catalogued(page: Page, titles: string[]) {
+  await expect
+    .poll(() => cataloguedTitles(page), {
+      message:
+        "the ideas catalog is a projection, so a fresh page can only show what it has caught up with",
+    })
+    .toEqual(expect.arrayContaining(titles));
+}
+
+export async function uncatalogued(page: Page, titles: string[]) {
   await expect
     .poll(
       async () =>
-        (
-          await (
-            await page.request.get(
-              `http://127.0.0.1:3000/api/ideas?project=${project}`,
-            )
-          ).json()
-        ).map((idea: { title: string }) => idea.title),
+        (await cataloguedTitles(page)).filter((title) =>
+          titles.includes(title),
+        ),
       {
         message:
-          "the ideas catalog is a projection, so a fresh page can only show what it has caught up with",
+          "the ideas catalog is a projection, so a discard leaves a fresh page only once it has caught up",
       },
     )
-    .toEqual(expect.arrayContaining(titles));
+    .toEqual([]);
 }

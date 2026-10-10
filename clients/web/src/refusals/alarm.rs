@@ -17,6 +17,7 @@ pub struct AlarmState {
     refusals: RwSignal<Vec<Refusal>>,
     heard: StoredValue<BTreeSet<i64>>,
     pulsing: RwSignal<bool>,
+    noting: RwSignal<bool>,
     looking: RwSignal<bool>,
 }
 
@@ -26,6 +27,7 @@ impl AlarmState {
             refusals: RwSignal::new(Vec::new()),
             heard: StoredValue::new(BTreeSet::new()),
             pulsing: RwSignal::new(false),
+            noting: RwSignal::new(false),
             looking: RwSignal::new(false),
         };
 
@@ -56,6 +58,7 @@ impl AlarmState {
             .update_value(|heard| heard.extend(found.iter().map(|refusal| refusal.id)));
         if fresh {
             self.pulsing.set(true);
+            self.noting.set(!self.looking.get_untracked());
         }
         self.refusals.set(found);
     }
@@ -81,11 +84,20 @@ impl AlarmState {
         self.pulsing.set(false);
     }
 
+    fn is_noting(self) -> bool {
+        self.noting.get()
+    }
+
+    fn dismiss_note(self) {
+        self.noting.set(false);
+    }
+
     fn is_looking(self) -> bool {
         self.looking.get()
     }
 
     fn start_looking(self) {
+        self.noting.set(false);
         self.looking.set(true);
     }
 
@@ -125,6 +137,24 @@ pub fn alarm(state: AlarmState) -> impl IntoView {
                     .child(mark(Icon::Flash))
             })
         },
+        move || state.is_noting().then(|| note(state)),
         move || state.is_looking().then(|| refusals_dialog(state)),
     )
+}
+
+fn note(state: AlarmState) -> impl IntoView {
+    html::div().class("refused-note").role("status").child((
+        html::span().child("Some changes could not be applied."),
+        html::button()
+            .r#type("button")
+            .class("show")
+            .on(ev::click, move |_| state.start_looking())
+            .child("Show"),
+        html::button()
+            .r#type("button")
+            .class("dismiss")
+            .attr("aria-label", "Dismiss")
+            .on(ev::click, move |_| state.dismiss_note())
+            .child(mark(Icon::Remove)),
+    ))
 }

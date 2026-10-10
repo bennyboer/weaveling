@@ -4,6 +4,7 @@ import { corkboard, laidOut, select, waitingIdeas } from "./support/board";
 import {
   anOpenProject,
   captureIdea,
+  uncatalogued,
   onTheBoard,
   openTheBoard,
   openThePool,
@@ -203,6 +204,7 @@ test("a discarded idea leaves the board", async ({ page }) => {
     return going.id;
   });
   expect(listed).toBeTruthy();
+  await uncatalogued(page, ["The loom remembers"]);
 
   await page.goto(board);
 
