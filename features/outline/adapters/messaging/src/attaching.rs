@@ -43,7 +43,11 @@ impl AttachmentIndexProjector {
 
     async fn index(&self, outline: &OutlineId) -> Result<(), NotIndexed> {
         let standing = self.events.latest(&AggregateId::from(outline)).await?;
-        let holding: Vec<Attachment> = standing.state.attachments();
+        let holding: Vec<Attachment> = if standing.state.is_discarded() {
+            Vec::new()
+        } else {
+            standing.state.attachments()
+        };
 
         self.catalog.holds(*outline, &holding).await?;
 

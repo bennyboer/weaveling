@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use clock::FixedClock;
-use eventsourcing::{Agent, AgentId};
+use eventsourcing::{Agent, AgentId, AggregateId, EventStore, Version};
 use ideas_contract::DISCARDED as IDEA_DISCARDED;
 use messaging::{Message, RoutingKey};
 use outline_contract::{
     ATTACHED, DETACHED, SECTION_ADDED, SECTION_MOVED, SECTION_REMOVED, STARTED,
 };
-use outline_core::{Attachment, OutlineCatalog, OutlineId, SectionId, SectionTitle};
+use outline_core::{
+    Attachment, KIND, OutlineCatalog, OutlineEvent, OutlineId, SectionId, SectionTitle,
+};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
@@ -315,6 +317,69 @@ async fn discarding_an_idea_no_book_ever_noted_is_harmless() {
         .handle(&discarded("idea_elsewhere"))
         .await
         .expect("an idea in no book is nothing to do");
+}
+
+async fn attached_as_published(wired: &Wired, outline: &OutlineId) -> Message {
+    let recorded = wired
+        .store
+        .read_from(&AggregateId::from(outline), KIND, Version::ZERO)
+        .await
+        .expect("reading should succeed")
+        .into_iter()
+        .find(|recorded| matches!(recorded.event, OutlineEvent::Attached { .. }))
+        .expect("something was attached to the book");
+
+    outline_messaging::message_for(&recorded).expect("an attachment is published")
+}
+
+#[tokio::test]
+async fn a_late_attachment_does_not_bring_back_what_a_discarded_book_held() {
+    let wired = a_workbench();
+    let (outline, _) = a_book_holding(&wired, &["passage_1"]).await;
+    let late = attached_as_published(&wired, &outline).await;
+    wired
+        .outlines
+        .discard(&outline.to_string(), None, &an_author())
+        .await
+        .expect("discarding should succeed");
+    wired.settle().await;
+
+    wired
+        .indexer
+        .handle(&late)
+        .await
+        .expect("an attachment tried again after the discard is not a failure");
+
+    assert!(
+        wired
+            .catalog
+            .outlines_holding(&a_passage("passage_1"))
+            .await
+            .expect("looking should succeed")
+            .is_empty(),
+        "a discarded book still lists what it held, so reading it back must not put that in the index again"
+    );
+}
+
+#[tokio::test]
+async fn discarding_an_idea_still_indexed_in_a_discarded_book_is_harmless() {
+    let wired = a_workbench();
+    let (outline, _) = a_book_holding(&wired, &[]).await;
+    wired
+        .outlines
+        .discard(&outline.to_string(), None, &an_author())
+        .await
+        .expect("discarding should succeed");
+    wired.settle().await;
+    wired
+        .catalog
+        .holds(outline, &[an_idea("idea_1")])
+        .await
+        .expect("holding should succeed");
+
+    wired.tidier.handle(&discarded("idea_1")).await.expect(
+        "a discarded book has nothing left to detach, so this must not end in dead letters",
+    );
 }
 
 #[tokio::test]

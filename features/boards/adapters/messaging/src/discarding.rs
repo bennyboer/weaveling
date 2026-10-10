@@ -43,7 +43,7 @@ impl UnpinOnDiscard {
                 .await
             {
                 Ok(_) => {}
-                Err(refused) if already_unpinned(&refused) => {}
+                Err(refused) if nothing_left_to_unpin(&refused) => {}
                 Err(refused) => return Err(refused.into()),
             }
         }
@@ -59,10 +59,12 @@ impl UnpinOnDiscard {
     }
 }
 
-fn already_unpinned(refused: &BoardServiceError) -> bool {
+fn nothing_left_to_unpin(refused: &BoardServiceError) -> bool {
     matches!(
         refused,
-        BoardServiceError::Events(ServiceError::Refused(BoardError::NotPinned))
+        BoardServiceError::Events(ServiceError::Refused(
+            BoardError::NotPinned | BoardError::Discarded
+        ))
     )
 }
 

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use eventsourcing::{Agent, AgentId};
+use eventsourcing::{Agent, AgentId, AggregateId, EventStore, Version};
 
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
-use boards_core::{BoardCatalog, BoardId, IdeaLink, Size, Spot};
+use boards_core::{BoardCatalog, BoardEvent, BoardId, IdeaLink, KIND, Size, Spot};
 use clock::FixedClock;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Message, RoutingKey};
@@ -170,6 +170,69 @@ async fn discarding_an_idea_nobody_pinned_is_harmless() {
         .handle(&discarded("idea_never_pinned"))
         .await
         .expect("an idea that was never on a board is not a failure");
+}
+
+async fn pinned_as_published(wired: &Wired, board: &BoardId) -> Message {
+    let recorded = wired
+        .store
+        .read_from(&AggregateId::from(board), KIND, Version::ZERO)
+        .await
+        .expect("reading should succeed")
+        .into_iter()
+        .find(|recorded| matches!(recorded.event, BoardEvent::IdeaPinned { .. }))
+        .expect("the board was pinned to");
+
+    boards_messaging::message_for(&recorded).expect("a pin is published")
+}
+
+#[tokio::test]
+async fn a_late_pin_does_not_bring_back_the_ideas_of_a_discarded_board() {
+    let wired = a_workbench();
+    let board = a_board_holding(&wired, &["idea_1"]).await;
+    let late = pinned_as_published(&wired, &board).await;
+    wired
+        .boards
+        .discard(&board.to_string(), None, &an_author())
+        .await
+        .expect("discarding should succeed");
+    wired.settle().await;
+
+    wired
+        .indexer
+        .handle(&late)
+        .await
+        .expect("a pin tried again after the discard is not a failure");
+
+    assert!(
+        wired
+            .catalog
+            .boards_holding(&an_idea("idea_1"))
+            .await
+            .expect("looking should succeed")
+            .is_empty(),
+        "a discarded board still lists its ideas, so reading it back must not put them in the index again"
+    );
+}
+
+#[tokio::test]
+async fn discarding_an_idea_still_indexed_on_a_discarded_board_is_harmless() {
+    let wired = a_workbench();
+    let board = a_board_holding(&wired, &["idea_1"]).await;
+    wired
+        .boards
+        .discard(&board.to_string(), None, &an_author())
+        .await
+        .expect("discarding should succeed");
+    wired.settle().await;
+    wired
+        .catalog
+        .holds(board, &[an_idea("idea_1")])
+        .await
+        .expect("holding should succeed");
+
+    wired.tidier.handle(&discarded("idea_1")).await.expect(
+        "a discarded board has nothing left to unpin, so this must not end in dead letters",
+    );
 }
 
 #[tokio::test]

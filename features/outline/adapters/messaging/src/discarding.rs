@@ -43,7 +43,7 @@ impl DetachOnDiscard {
                 .await
             {
                 Ok(_) => {}
-                Err(refused) if already_detached(&refused) => {}
+                Err(refused) if nothing_left_to_detach(&refused) => {}
                 Err(refused) => return Err(refused.into()),
             }
         }
@@ -59,10 +59,12 @@ impl DetachOnDiscard {
     }
 }
 
-fn already_detached(refused: &OutlineServiceError) -> bool {
+fn nothing_left_to_detach(refused: &OutlineServiceError) -> bool {
     matches!(
         refused,
-        OutlineServiceError::Events(ServiceError::Refused(OutlineError::NotAttached))
+        OutlineServiceError::Events(ServiceError::Refused(
+            OutlineError::NotAttached | OutlineError::Discarded
+        ))
     )
 }
 

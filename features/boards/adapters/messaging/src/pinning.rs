@@ -39,12 +39,16 @@ impl PinnedIdeasProjector {
 
     async fn index(&self, board: &BoardId) -> Result<(), NotIndexed> {
         let standing = self.events.latest(&AggregateId::from(board)).await?;
-        let holding: Vec<IdeaLink> = standing
-            .state
-            .ideas()
-            .into_iter()
-            .map(|positioned| positioned.idea)
-            .collect();
+        let holding: Vec<IdeaLink> = if standing.state.is_discarded() {
+            Vec::new()
+        } else {
+            standing
+                .state
+                .ideas()
+                .into_iter()
+                .map(|positioned| positioned.idea)
+                .collect()
+        };
 
         self.catalog.holds(*board, &holding).await?;
 
