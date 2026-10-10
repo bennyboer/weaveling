@@ -6,18 +6,28 @@ use time::OffsetDateTime;
 
 pub fn message_for(change: &PassageChange, at: OffsetDateTime) -> Message {
     let (routing, payload) = match change {
-        PassageChange::IdeaLinked { passage, idea } => (
+        PassageChange::IdeaLinked {
+            passage,
+            idea,
+            version,
+        } => (
             IDEA_LINKED,
             to_payload(&IdeaLinkDTO {
                 passage: passage.to_string(),
                 idea: idea.to_string(),
+                version: *version,
             }),
         ),
-        PassageChange::IdeaUnlinked { passage, idea } => (
+        PassageChange::IdeaUnlinked {
+            passage,
+            idea,
+            version,
+        } => (
             IDEA_UNLINKED,
             to_payload(&IdeaLinkDTO {
                 passage: passage.to_string(),
                 idea: idea.to_string(),
+                version: *version,
             }),
         ),
         PassageChange::Deleted { passage } => (
@@ -63,6 +73,7 @@ mod tests {
             &PassageChange::IdeaLinked {
                 passage,
                 idea: IdeaLink::from("idea_1"),
+                version: 3,
             },
             at(2_000),
         );
@@ -70,8 +81,8 @@ mod tests {
         assert_eq!(told.routing.to_string(), IDEA_LINKED);
         assert_eq!(
             told.payload,
-            json!({ "passage": passage.to_string(), "idea": "idea_1" }),
-            "a listener cannot ask passages which idea it was, so both ends travel in the message"
+            json!({ "passage": passage.to_string(), "idea": "idea_1", "version": 3 }),
+            "a listener cannot ask passages which idea it was, so both ends travel in the message,              and the version tells a late link from a newer unlink"
         );
         assert_eq!(told.occurred_at, at(2_000));
     }
@@ -82,6 +93,7 @@ mod tests {
             &PassageChange::IdeaUnlinked {
                 passage: a_passage(),
                 idea: IdeaLink::from("idea_1"),
+                version: 4,
             },
             at(2_000),
         );
@@ -108,6 +120,7 @@ mod tests {
                 &PassageChange::IdeaLinked {
                     passage,
                     idea: IdeaLink::from("idea_1"),
+                    version: 3,
                 },
                 at(2_000),
             )
@@ -120,6 +133,7 @@ mod tests {
         .expect("a deletion reads back as the contract says");
 
         assert_eq!(linked.idea, "idea_1");
+        assert_eq!(linked.version, 3);
         assert_eq!(deleted.passage, passage.to_string());
     }
 }

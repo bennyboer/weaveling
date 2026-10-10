@@ -17,6 +17,7 @@ struct StoredPassage {
     project: ProjectLink,
     title: PassageTitle,
     ideas: Vec<IdeaLink>,
+    version: u64,
     state: Vec<u8>,
 }
 
@@ -83,6 +84,7 @@ impl PassageStore for InMemoryPassageStore {
                 project: passage.project().clone(),
                 title: passage.title().clone(),
                 ideas: passage.ideas().to_vec(),
+                version: 0,
                 state: passage.everything(),
             },
         );
@@ -115,6 +117,7 @@ impl PassageStore for InMemoryPassageStore {
                 project: stored.project,
                 title: stored.title,
                 ideas: stored.ideas,
+                version: stored.version + 1,
                 state: passage.everything(),
             },
         );
@@ -126,6 +129,7 @@ impl PassageStore for InMemoryPassageStore {
         let mut passages = self.write();
         let stored = passages.get_mut(&id).ok_or(StoreError::NotFound(id))?;
         stored.title = title.clone();
+        stored.version += 1;
 
         Ok(())
     }
@@ -136,9 +140,11 @@ impl PassageStore for InMemoryPassageStore {
 
         if !stored.ideas.contains(idea) {
             stored.ideas.push(idea.clone());
+            stored.version += 1;
             self.enqueue_change(PassageChange::IdeaLinked {
                 passage: id,
                 idea: idea.clone(),
+                version: stored.version,
             });
         }
 
@@ -152,9 +158,11 @@ impl PassageStore for InMemoryPassageStore {
         stored.ideas.retain(|held| held != idea);
 
         if stored.ideas.len() < before {
+            stored.version += 1;
             self.enqueue_change(PassageChange::IdeaUnlinked {
                 passage: id,
                 idea: idea.clone(),
+                version: stored.version,
             });
         }
 

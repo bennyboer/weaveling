@@ -17,7 +17,7 @@ const REMEMBER: &str = "INSERT INTO passages (passage, project, title) VALUES ($
 
 const KNOWN_AS: &str = "SELECT project, title FROM passages WHERE passage = $1";
 
-const RETITLE: &str = "UPDATE passages SET title = $2 WHERE passage = $1";
+const RETITLE: &str = "UPDATE passages SET title = $2, version = version + 1 WHERE passage = $1";
 
 const LINK: &str = "
     INSERT INTO passage_ideas (passage, idea)
@@ -26,6 +26,8 @@ const LINK: &str = "
 ";
 
 const UNLINK: &str = "DELETE FROM passage_ideas WHERE passage = $1 AND idea = $2";
+
+const BUMP: &str = "UPDATE passages SET version = version + 1 WHERE passage = $1 RETURNING version";
 
 const UNLINK_EVERYWHERE: &str = "DELETE FROM passage_ideas WHERE idea = $1";
 
@@ -48,6 +50,9 @@ const WRITE_SNAPSHOT: &str = "
 ";
 
 const WRITE_UPDATE: &str = "
+    WITH bumped AS (
+        UPDATE passages SET version = version + 1 WHERE passage = $1
+    )
     INSERT INTO passage_updates (passage, is_snapshot, bytes)
     VALUES ($1, FALSE, $2)
     RETURNING (
@@ -201,6 +206,19 @@ fn grown(id: PassageId, project: ProjectLink, parts: &[Vec<u8>]) -> Result<Passa
     Ok(passage)
 }
 
+async fn bumped(
+    transaction: &mut Transaction<'_, Postgres>,
+    id: PassageId,
+) -> Result<u64, StoreError> {
+    let version: i64 = sqlx::query_scalar(BUMP)
+        .bind(id.to_string())
+        .fetch_one(&mut **transaction)
+        .await
+        .map_err(unreachable)?;
+
+    Ok(u64::try_from(version).expect("a version counts up from zero"))
+}
+
 fn unreachable(failure: sqlx::Error) -> StoreError {
     StoreError::Backend(Box::new(failure))
 }
@@ -322,11 +340,13 @@ impl PassageStore for PostgresPassageStore {
             })?;
 
         if linked.rows_affected() > 0 {
+            let version = bumped(&mut transaction, id).await?;
             self.enqueue_change(
                 &mut transaction,
                 PassageChange::IdeaLinked {
                     passage: id,
                     idea: idea.clone(),
+                    version,
                 },
             )
             .await?;
@@ -355,11 +375,13 @@ impl PassageStore for PostgresPassageStore {
             .map_err(unreachable)?;
 
         if unlinked.rows_affected() > 0 {
+            let version = bumped(&mut transaction, id).await?;
             self.enqueue_change(
                 &mut transaction,
                 PassageChange::IdeaUnlinked {
                     passage: id,
                     idea: idea.clone(),
+                    version,
                 },
             )
             .await?;

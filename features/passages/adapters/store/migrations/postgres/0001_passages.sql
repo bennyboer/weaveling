@@ -2,6 +2,7 @@ CREATE TABLE passages (
     passage     TEXT COLLATE "C" PRIMARY KEY,
     project     TEXT COLLATE "C" NOT NULL,
     title       TEXT             NOT NULL,
+    version     BIGINT           NOT NULL DEFAULT 0,
     created_at  TIMESTAMPTZ      NOT NULL DEFAULT NOW()
 );
 

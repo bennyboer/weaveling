@@ -11,6 +11,7 @@ pub const DELETED: &str = "passage.deleted";
 pub struct IdeaLinkDTO {
     pub passage: String,
     pub idea: String,
+    pub version: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

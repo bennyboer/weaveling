@@ -2,9 +2,19 @@ use crate::{IdeaLink, PassageId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PassageChange {
-    IdeaLinked { passage: PassageId, idea: IdeaLink },
-    IdeaUnlinked { passage: PassageId, idea: IdeaLink },
-    Deleted { passage: PassageId },
+    IdeaLinked {
+        passage: PassageId,
+        idea: IdeaLink,
+        version: u64,
+    },
+    IdeaUnlinked {
+        passage: PassageId,
+        idea: IdeaLink,
+        version: u64,
+    },
+    Deleted {
+        passage: PassageId,
+    },
 }
 
 impl PassageChange {

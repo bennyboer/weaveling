@@ -12,6 +12,8 @@ A passage is a CRDT document (`yrs`, the Rust side of Yjs), because prose is edi
 
 **Passages announce, though they are not event-sourced.** Linking an idea, unlinking one and deleting a passage are told to the rest of the app as `passage.idea.linked`, `passage.idea.unlinked` and `passage.deleted`, written into the passages outbox **in the same transaction as the change** — so a change that rolls back is never announced, and one that commits always is. Only a real change is announced: linking an idea twice says so once. Writing and retitling announce nothing; they concern no one outside.
 
+**A passage counts its changes.** It has no event stream to number them, so it keeps a `version` that every change bumps in the same transaction — writing, retitling, linking, unlinking; compaction is not a change, it only rewrites storage. Link messages carry it, because a listener needs it to tell a link tried again late from the unlink that followed it. Bumping locks the passage's row, so two changes racing on one passage get their numbers in the order they commit. Deletion needs no number: nothing comes back from it.
+
 Awareness — cursors, selections, who is here — is relayed as opaque bytes and never decoded or stored. Presence is ephemeral by decision, expressed as a dependency arrow: it lives and dies inside `adapters/sync`.
 
 **Crates:** `core` (`Passage`, store port, service) · `contract` · `adapters/store` (in memory, PostgreSQL and SQLite; append-only plus compaction) · `adapters/sync` (the `y-websocket` server: sockets, peers, protocol, live passages) · `adapters/rest` · `wiring` · `tests`.

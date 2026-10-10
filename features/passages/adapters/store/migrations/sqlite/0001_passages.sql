@@ -2,6 +2,7 @@ CREATE TABLE passages (
     passage     TEXT    PRIMARY KEY,
     project     TEXT    NOT NULL,
     title       TEXT    NOT NULL,
+    version     INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 

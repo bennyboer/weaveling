@@ -50,13 +50,21 @@ impl Heard {
 
 pub fn message_for(change: &PassageChange, at: OffsetDateTime) -> Message {
     let (routing, payload) = match change {
-        PassageChange::IdeaLinked { passage, idea } => (
+        PassageChange::IdeaLinked {
+            passage,
+            idea,
+            version,
+        } => (
             "passage.idea.linked",
-            json!({ "passage": passage.to_string(), "idea": idea.to_string() }),
+            json!({ "passage": passage.to_string(), "idea": idea.to_string(), "version": version }),
         ),
-        PassageChange::IdeaUnlinked { passage, idea } => (
+        PassageChange::IdeaUnlinked {
+            passage,
+            idea,
+            version,
+        } => (
             "passage.idea.unlinked",
-            json!({ "passage": passage.to_string(), "idea": idea.to_string() }),
+            json!({ "passage": passage.to_string(), "idea": idea.to_string(), "version": version }),
         ),
         PassageChange::Deleted { passage } => {
             ("passage.deleted", json!({ "passage": passage.to_string() }))
@@ -690,7 +698,7 @@ pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
         told(bench.enqueued().await),
         vec![(
             "passage.idea.linked".to_owned(),
-            json!({ "passage": id.to_string(), "idea": "idea_1" })
+            json!({ "passage": id.to_string(), "idea": "idea_1", "version": 1 })
         )],
         "a link that was already there changes nothing, so a listener must not hear it twice"
     );
@@ -719,6 +727,63 @@ pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Work
         .map(|(routing, _)| routing)
         .collect();
     assert_eq!(heard, vec!["passage.idea.linked", "passage.idea.unlinked"]);
+}
+
+pub async fn every_change_to_a_passage_counts_up(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    let other = an_id(2_000);
+    an_empty_passage(store, id).await;
+    an_empty_passage(store, other).await;
+
+    store
+        .link(id, &an_idea("idea_1"))
+        .await
+        .expect("link should succeed");
+    store
+        .unlink(id, &an_idea("idea_never"))
+        .await
+        .expect("unlinking nothing should succeed");
+    store
+        .link(other, &an_idea("idea_1"))
+        .await
+        .expect("link should succeed");
+    store
+        .retitle(id, &a_title("The loom"))
+        .await
+        .expect("retitle should succeed");
+    store
+        .apply(id, &a_paragraph("The loom stood silent."))
+        .await
+        .expect("apply should succeed");
+    store
+        .unlink(id, &an_idea("idea_1"))
+        .await
+        .expect("unlink should succeed");
+    store
+        .link(id, &an_idea("idea_1"))
+        .await
+        .expect("link should succeed");
+
+    let versions: Vec<(String, u64)> = told(bench.enqueued().await)
+        .into_iter()
+        .map(|(_, payload)| {
+            (
+                payload["passage"].as_str().expect("a passage").to_owned(),
+                payload["version"].as_u64().expect("a version"),
+            )
+        })
+        .collect();
+    assert_eq!(
+        versions,
+        vec![
+            (id.to_string(), 1),
+            (other.to_string(), 1),
+            (id.to_string(), 4),
+            (id.to_string(), 5),
+        ],
+        "every change to a passage counts, announced or not — retitling and writing too — each          passage on its own, and what changed nothing does not"
+    );
 }
 
 pub async fn deleting_a_passage_enqueues_a_message(bench: &impl Workbench) {
@@ -857,6 +922,7 @@ macro_rules! conformance_tests {
             $workbench,
             unlinking_enqueues_only_for_a_link_that_was_there
         );
+        $crate::suite::enqueuing_case!($workbench, every_change_to_a_passage_counts_up);
         $crate::suite::enqueuing_case!($workbench, deleting_a_passage_enqueues_a_message);
         $crate::suite::enqueuing_case!($workbench, a_refused_change_enqueues_nothing);
         $crate::suite::enqueuing_case!($workbench, writing_and_naming_enqueue_nothing);
