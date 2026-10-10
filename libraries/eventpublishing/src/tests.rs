@@ -13,13 +13,13 @@ use super::*;
 
 const KIND: AggregateType = AggregateType::of("idea");
 const CAPTURED: EventName = EventName::of("CAPTURED");
-const PASSAGE_ATTACHED: EventName = EventName::of("PASSAGE_ATTACHED");
+const SCENE_ATTACHED: EventName = EventName::of("SCENE_ATTACHED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Happened {
     Captured { title: String },
-    PassageAttached,
+    SceneAttached,
     Snapshotted,
 }
 
@@ -28,15 +28,15 @@ enum Happened {
 enum Body {
     #[serde(rename = "CAPTURED")]
     Captured { title: String },
-    #[serde(rename = "PASSAGE_ATTACHED")]
-    PassageAttached,
+    #[serde(rename = "SCENE_ATTACHED")]
+    SceneAttached,
 }
 
 impl Event for Happened {
     fn name(&self) -> EventName {
         match self {
             Self::Captured { .. } => CAPTURED,
-            Self::PassageAttached => PASSAGE_ATTACHED,
+            Self::SceneAttached => SCENE_ATTACHED,
             Self::Snapshotted => SNAPSHOTTED,
         }
     }
@@ -58,7 +58,7 @@ fn body(event: &Happened) -> Option<Body> {
         Happened::Captured { title } => Some(Body::Captured {
             title: title.clone(),
         }),
-        Happened::PassageAttached => Some(Body::PassageAttached),
+        Happened::SceneAttached => Some(Body::SceneAttached),
         Happened::Snapshotted => None,
     }
 }
@@ -120,8 +120,8 @@ fn read(message: &Message) -> PublishedEvent<Body> {
 fn a_routing_key_is_the_kind_and_the_event_name() {
     assert_eq!(routing_for(KIND, CAPTURED).to_string(), "idea.captured");
     assert_eq!(
-        routing_for(KIND, PASSAGE_ATTACHED).to_string(),
-        "idea.passage.attached",
+        routing_for(KIND, SCENE_ATTACHED).to_string(),
+        "idea.scene.attached",
         "an underscore becomes a separator, so a wildcard can select a subtree"
     );
 }
@@ -208,16 +208,16 @@ fn the_body_sits_beside_its_version_on_the_wire() {
 #[test]
 fn an_event_with_nothing_to_say_still_says_its_name() {
     let published = publishing()
-        .message_for(&recorded(Happened::PassageAttached, 2, an_author()))
+        .message_for(&recorded(Happened::SceneAttached, 2, an_author()))
         .expect("an attachment should be published");
 
-    assert_eq!(published.routing.to_string(), "idea.passage.attached");
+    assert_eq!(published.routing.to_string(), "idea.scene.attached");
     assert_eq!(
         published.payload["event"],
-        json!({ "version": 0, "name": "PASSAGE_ATTACHED" }),
+        json!({ "version": 0, "name": "SCENE_ATTACHED" }),
         "a body with no fields must not compact the envelope around it"
     );
-    assert_eq!(read(&published).event.body, Body::PassageAttached);
+    assert_eq!(read(&published).event.body, Body::SceneAttached);
 }
 
 #[test]

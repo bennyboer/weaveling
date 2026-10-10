@@ -1,4 +1,4 @@
-use crate::link::{IdeaLink, PassageLink, SectionLink};
+use crate::link::{IdeaLink, SceneLink, SectionLink};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Subject {
@@ -7,7 +7,7 @@ pub enum Subject {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Place {
-    Passage(PassageLink),
+    Scene(SceneLink),
     Section(SectionLink),
 }
 
@@ -19,8 +19,8 @@ mod tests {
     fn places_of_different_types_never_coincide() {
         assert_ne!(
             Place::Section(SectionLink::from("same_1")),
-            Place::Passage(PassageLink::from("same_1")),
-            "the type is part of the identity, or forgetting a passage could take a section with it"
+            Place::Scene(SceneLink::from("same_1")),
+            "the type is part of the identity, or forgetting a scene could take a section with it"
         );
     }
 }

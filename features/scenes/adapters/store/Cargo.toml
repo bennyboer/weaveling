@@ -1,0 +1,26 @@
+[package]
+name = "weaveling-scenes-store"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+sqlx = { workspace = true, optional = true }
+time = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+outbox = { version = "0.1.0", path = "../../../../libraries/outbox", package = "weaveling-outbox" }
+messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+
+scenes-core = { version = "0.1.0", path = "../../core", package = "weaveling-scenes-core" }
+
+[features]
+postgres = ["dep:sqlx", "outbox/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "outbox/sqlite"]
+
+[dev-dependencies]
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+yrs = { workspace = true }
+
+test-harness = { version = "0.1.0", path = "../../../../libraries/test-harness", package = "weaveling-test-harness" }

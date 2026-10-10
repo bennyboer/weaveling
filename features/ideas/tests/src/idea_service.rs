@@ -177,7 +177,7 @@ async fn fetching_an_idea_that_was_never_captured_is_not_found() {
 #[tokio::test]
 async fn an_id_of_another_kind_is_refused_before_the_store_is_touched() {
     let (service, _) = a_workbench();
-    let theirs = format!("passage_{}", IdeaId::generate(at(1_000)).as_uuid());
+    let theirs = format!("scene_{}", IdeaId::generate(at(1_000)).as_uuid());
 
     assert!(matches!(
         service.get(&theirs).await.expect_err("wrong kind of id"),

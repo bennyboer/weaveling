@@ -1,7 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::ideas::model::IdeaId;
-use crate::passages::model::PassageId;
+use crate::scenes::model::SceneId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct OutlineId(String);
@@ -11,7 +11,7 @@ pub struct SectionId(String);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Attachment {
-    Passage(PassageId),
+    Scene(SceneId),
     Idea(IdeaId),
 }
 

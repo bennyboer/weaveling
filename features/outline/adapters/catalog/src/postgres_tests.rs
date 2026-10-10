@@ -54,7 +54,7 @@ async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
         .expect("remembering should succeed");
     bench
         .store()
-        .holds(outline, &[Attachment::passage("passage_1")])
+        .holds(outline, &[Attachment::scene("scene_1")])
         .await
         .expect("indexing should succeed");
 

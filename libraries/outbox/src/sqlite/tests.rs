@@ -18,16 +18,16 @@ async fn ready(fixture: &SqliteFixture) -> SqlitePool {
 
 fn a_link_message() -> Message {
     Message::opening(
-        RoutingKey::parse("passage.idea.linked").expect("a declared routing key is fine"),
-        serde_json::json!({ "passage": "passage_1", "idea": "idea_1" }),
+        RoutingKey::parse("scene.idea.linked").expect("a declared routing key is fine"),
+        serde_json::json!({ "scene": "scene_1", "idea": "idea_1" }),
         OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
     )
 }
 
-fn from_a_passage() -> Origin<'static> {
+fn from_a_scene() -> Origin<'static> {
     Origin {
-        aggregate: "passage_1",
-        kind: "passage",
+        aggregate: "scene_1",
+        kind: "scene",
         version: 0,
     }
 }
@@ -46,7 +46,7 @@ async fn a_message_enqueued_beside_any_write_waits_once_that_write_commits() {
     let message = a_link_message();
     let mut transaction = pool.begin().await.expect("a transaction opens");
 
-    enqueue(&mut transaction, from_a_passage(), &message)
+    enqueue(&mut transaction, from_a_scene(), &message)
         .await
         .expect("enqueueing should succeed");
     transaction.commit().await.expect("the transaction commits");
@@ -75,7 +75,7 @@ async fn a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it() {
     let pool = ready(&fixture).await;
     let mut transaction = pool.begin().await.expect("a transaction opens");
 
-    enqueue(&mut transaction, from_a_passage(), &a_link_message())
+    enqueue(&mut transaction, from_a_scene(), &a_link_message())
         .await
         .expect("enqueueing should succeed");
     transaction

@@ -37,7 +37,7 @@ const HOLDING: &str = "
 
 fn attachment_type_of(attachment: &Attachment) -> &'static str {
     match attachment {
-        Attachment::Passage(_) => "passage",
+        Attachment::Scene(_) => "scene",
         Attachment::Idea(_) => "idea",
     }
 }

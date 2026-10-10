@@ -1,0 +1,24 @@
+[package]
+name = "weaveling-scenes-wiring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+sqlx = { workspace = true, optional = true }
+
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
+
+scenes-core = { version = "0.1.0", path = "../core", package = "weaveling-scenes-core" }
+scenes-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-scenes-messaging" }
+scenes-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-scenes-rest" }
+scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveling-scenes-sync" }
+scenes-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-scenes-store" }
+
+[features]
+postgres = ["dep:sqlx", "wiring/postgres", "outbox/postgres", "scenes-store/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "outbox/sqlite", "scenes-store/sqlite"]

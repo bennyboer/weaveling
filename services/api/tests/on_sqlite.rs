@@ -18,7 +18,7 @@ const DATABASES: [&str; 7] = [
     "ideas",
     "boards",
     "outline",
-    "passages",
+    "scenes",
     "appearances",
 ];
 
@@ -370,16 +370,16 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
     captured.assert_status(axum::http::StatusCode::CREATED);
 
     let made = server
-        .post("/api/passages")
+        .post("/api/scenes")
         .json(&json!({ "project": project }))
         .await;
     made.assert_status(axum::http::StatusCode::CREATED);
-    let passage = made.json::<Value>()["id"]
+    let scene = made.json::<Value>()["id"]
         .as_str()
-        .expect("a passage carries an id")
+        .expect("a scene carries an id")
         .to_owned();
     server
-        .get(&format!("/api/passages/{passage}"))
+        .get(&format!("/api/scenes/{scene}"))
         .await
         .assert_status_ok();
 
@@ -440,13 +440,13 @@ async fn deleting_a_project_sweeps_away_everything_it_held() {
     assert!(
         until(|| async {
             server
-                .get(&format!("/api/passages/{passage}"))
+                .get(&format!("/api/scenes/{scene}"))
                 .await
                 .status_code()
                 == axum::http::StatusCode::NOT_FOUND
         })
         .await,
-        "the CRDT store holds the only copy of the prose, and nothing points at this passage \
+        "the CRDT store holds the only copy of the prose, and nothing points at this scene \
          but its own project column, so the project's sweep is the only thing that can reach it"
     );
 
@@ -493,7 +493,7 @@ where
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn discarding_an_idea_unlinks_it_from_every_passage() {
+async fn discarding_an_idea_unlinks_it_from_every_scene() {
     use outbox::Cadence;
     use weaveling_service_api::Relays;
 
@@ -528,16 +528,16 @@ async fn discarding_an_idea_unlinks_it_from_every_passage() {
         .expect("a captured idea carries an id")
         .to_owned();
     let made = server
-        .post("/api/passages")
+        .post("/api/scenes")
         .json(&json!({ "project": project }))
         .await;
     made.assert_status(axum::http::StatusCode::CREATED);
-    let passage = made.json::<Value>()["id"]
+    let scene = made.json::<Value>()["id"]
         .as_str()
-        .expect("a passage carries an id")
+        .expect("a scene carries an id")
         .to_owned();
     server
-        .post(&format!("/api/passages/{passage}/ideas"))
+        .post(&format!("/api/scenes/{scene}/ideas"))
         .json(&json!({ "idea": idea }))
         .await
         .assert_status_ok();
@@ -550,17 +550,17 @@ async fn discarding_an_idea_unlinks_it_from_every_passage() {
     assert!(
         until(|| async {
             server
-                .get(&format!("/api/passages/{passage}"))
+                .get(&format!("/api/scenes/{scene}"))
                 .await
                 .json::<Value>()["ideas"]
                 .as_array()
                 .is_some_and(Vec::is_empty)
         })
         .await,
-        "the passage owns the link, so only a passages listener hearing the discard can drop it"
+        "the scene owns the link, so only a scenes listener hearing the discard can drop it"
     );
     server
-        .get(&format!("/api/passages/{passage}"))
+        .get(&format!("/api/scenes/{scene}"))
         .await
         .assert_status_ok();
 
@@ -595,17 +595,17 @@ async fn linking_an_idea_is_announced_and_relayed() {
 
     let project = a_project(&server, "Announcing").await;
     let made = server
-        .post("/api/passages")
+        .post("/api/scenes")
         .json(&json!({ "project": project }))
         .await;
     made.assert_status(axum::http::StatusCode::CREATED);
-    let passage = made.json::<Value>()["id"]
+    let scene = made.json::<Value>()["id"]
         .as_str()
-        .expect("a passage carries an id")
+        .expect("a scene carries an id")
         .to_owned();
 
     server
-        .post(&format!("/api/passages/{passage}/ideas"))
+        .post(&format!("/api/scenes/{scene}/ideas"))
         .json(&json!({ "idea": "idea_1" }))
         .await
         .assert_status_ok();
@@ -615,14 +615,14 @@ async fn linking_an_idea_is_announced_and_relayed() {
             let relayed: Vec<String> = sqlx::query_scalar(
                 "SELECT routing_key FROM outbox WHERE published_at IS NOT NULL ORDER BY entry",
             )
-            .fetch_all(databases.of("passages"))
+            .fetch_all(databases.of("scenes"))
             .await
-            .expect("reading the passages outbox should succeed");
+            .expect("reading the scenes outbox should succeed");
 
-            relayed == vec!["passage.idea.linked".to_owned()]
+            relayed == vec!["scene.idea.linked".to_owned()]
         })
         .await,
-        "the link is written and announced in one transaction, and the passages outbox is relayed like every other"
+        "the link is written and announced in one transaction, and the scenes outbox is relayed like every other"
     );
 
     relays.stop().await;
@@ -690,16 +690,16 @@ async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded() {
         .await
         .assert_status_ok();
     let made = server
-        .post("/api/passages")
+        .post("/api/scenes")
         .json(&json!({ "project": project }))
         .await;
     made.assert_status(axum::http::StatusCode::CREATED);
-    let passage = made.json::<Value>()["id"]
+    let scene = made.json::<Value>()["id"]
         .as_str()
-        .expect("a passage carries an id")
+        .expect("a scene carries an id")
         .to_owned();
     server
-        .post(&format!("/api/passages/{passage}/ideas"))
+        .post(&format!("/api/scenes/{scene}/ideas"))
         .json(&json!({ "idea": idea }))
         .await
         .assert_status_ok();
@@ -712,12 +712,12 @@ async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded() {
 
             places
                 == vec![
-                    json!({ "type": "passage", "id": passage }),
+                    json!({ "type": "scene", "id": scene }),
                     json!({ "type": "section", "id": section }),
                 ]
         })
         .await,
-        "appearances hear both the outline and passages, each through its own outbox"
+        "appearances hear both the outline and scenes, each through its own outbox"
     );
 
     server

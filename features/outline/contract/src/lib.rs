@@ -15,7 +15,7 @@ pub const EVERY_OUTLINE: &str = "outline.#";
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AttachmentDTO {
-    Passage { id: String },
+    Scene { id: String },
     Idea { id: String },
 }
 

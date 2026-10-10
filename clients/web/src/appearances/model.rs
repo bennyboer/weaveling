@@ -1,8 +1,8 @@
 use crate::outline::model::SectionId;
-use crate::passages::model::PassageId;
+use crate::scenes::model::SceneId;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Place {
-    Passage(PassageId),
+    Scene(SceneId),
     Section(SectionId),
 }

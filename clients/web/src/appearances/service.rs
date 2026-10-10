@@ -5,7 +5,7 @@ use crate::appearances::model::Place;
 use crate::http::{ApiError, parsed};
 use crate::ideas::model::IdeaId;
 use crate::outline::model::SectionId;
-use crate::passages::model::PassageId;
+use crate::scenes::model::SceneId;
 
 const APPEARANCES: &str = "/api/appearances";
 const SUBJECT: &str = "appearances";
@@ -22,7 +22,7 @@ pub async fn of(idea: &IdeaId) -> Result<Vec<Place>, ApiError> {
 
 fn as_place(dto: PlaceDTO) -> Place {
     match dto {
-        PlaceDTO::Passage { id } => Place::Passage(PassageId::from(id)),
+        PlaceDTO::Scene { id } => Place::Scene(SceneId::from(id)),
         PlaceDTO::Section { id } => Place::Section(SectionId::from(id)),
     }
 }

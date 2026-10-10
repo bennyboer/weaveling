@@ -88,12 +88,7 @@ pub fn TheOutline(project: String) -> impl IntoView {
                 ))
                 .into_any(),
             kept(held).into_any(),
-            move || {
-                format!(
-                    "Not in the book \u{00b7} {}",
-                    state.waiting_passages().len()
-                )
-            },
+            move || format!("Not in the book \u{00b7} {}", state.waiting_scenes().len()),
         ),
     ))
 }
@@ -137,14 +132,14 @@ fn branch(section: Section, held: Held) -> AnyView {
         .class("branch")
         .child((row(section, held), move || {
             let shut = held.folded.with(|shut| shut.contains(&folding));
-            let (passages, ideas): (Vec<Attachment>, Vec<Attachment>) = state
+            let (scenes, ideas): (Vec<Attachment>, Vec<Attachment>) = state
                 .attachments_in(&under)
                 .into_iter()
-                .partition(|attachment| matches!(attachment, Attachment::Passage(_)));
+                .partition(|attachment| matches!(attachment, Attachment::Scene(_)));
 
             (bears(&under, held) && !shut).then(|| {
                 html::ul().class("twigs").child((
-                    group("Passages", passages, held),
+                    group("Scenes", scenes, held),
                     group("Ideas", ideas, held),
                     twigs(Some(under.clone()), held),
                 ))
@@ -480,7 +475,7 @@ fn landing_at(x: i32, y: i32, section: &SectionId, held: Held) -> Option<Landing
 
 fn icon_for(attachment: &Attachment) -> Icon {
     match attachment {
-        Attachment::Passage(_) => Icon::Passage,
+        Attachment::Scene(_) => Icon::Scene,
         Attachment::Idea(_) => Icon::Idea,
     }
 }
@@ -492,7 +487,7 @@ fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
     let named = shown.clone();
     let marked = mark(icon_for(&attachment));
     let at = held.project.with_value(|project| match &attachment {
-        Attachment::Passage(passage) => route::passage(project, passage),
+        Attachment::Scene(scene) => route::scene(project, scene),
         Attachment::Idea(idea) => route::idea(project, idea, &shown),
     });
 
@@ -517,31 +512,28 @@ fn kept(held: Held) -> impl IntoView {
     let state = held.state;
 
     (
-        html::p().class("tally").child(move || {
-            format!(
-                "Not in the book \u{00b7} {}",
-                state.waiting_passages().len()
-            )
-        }),
+        html::p()
+            .class("tally")
+            .child(move || format!("Not in the book \u{00b7} {}", state.waiting_scenes().len())),
         html::ul()
             .class("waiting")
-            .attr("aria-label", "Passages not in the book")
+            .attr("aria-label", "Scenes not in the book")
             .child(move || {
                 state
-                    .waiting_passages()
+                    .waiting_scenes()
                     .into_iter()
-                    .map(|passage| {
-                        let shown = passage.shown_as();
+                    .map(|scene| {
+                        let shown = scene.shown_as();
 
-                        carried(Attachment::Passage(passage.id), shown, held)
+                        carried(Attachment::Scene(scene.id), shown, held)
                     })
                     .collect::<Vec<_>>()
             }),
         move || {
-            (state.ready() && state.waiting_passages().is_empty()).then(|| {
+            (state.ready() && state.waiting_scenes().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child("Every passage has a place in the book.")
+                    .child("Every scene has a place in the book.")
             })
         },
         html::p().class("tally").child("Ideas"),
@@ -560,7 +552,7 @@ fn kept(held: Held) -> impl IntoView {
                     .collect::<Vec<_>>()
             }),
         html::p().class("how").child(
-            "Drag onto a section, or click it and then click where it goes. A passage becomes \
+            "Drag onto a section, or click it and then click where it goes. A scene becomes \
              the book; an idea is a note beside it.",
         ),
     )

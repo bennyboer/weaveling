@@ -31,7 +31,7 @@ outbox = { version = "0.1.0", path = "../../libraries/outbox", package = "weavel
 appearances-wiring = { version = "0.1.0", path = "../../features/appearances/wiring", package = "weaveling-appearances-wiring" }
 boards-wiring = { version = "0.1.0", path = "../../features/boards/wiring", package = "weaveling-boards-wiring" }
 outline-wiring = { version = "0.1.0", path = "../../features/outline/wiring", package = "weaveling-outline-wiring" }
-passages-wiring = { version = "0.1.0", path = "../../features/passages/wiring", package = "weaveling-passages-wiring" }
+scenes-wiring = { version = "0.1.0", path = "../../features/scenes/wiring", package = "weaveling-scenes-wiring" }
 ideas-wiring = { version = "0.1.0", path = "../../features/ideas/wiring", package = "weaveling-ideas-wiring" }
 projects-wiring = { version = "0.1.0", path = "../../features/projects/wiring", package = "weaveling-projects-wiring" }
 
@@ -46,7 +46,7 @@ postgres = [
     "boards-wiring/postgres",
     "outline-wiring/postgres",
     "ideas-wiring/postgres",
-    "passages-wiring/postgres",
+    "scenes-wiring/postgres",
     "projects-wiring/postgres",
 ]
 sqlite = [
@@ -58,7 +58,7 @@ sqlite = [
     "boards-wiring/sqlite",
     "outline-wiring/sqlite",
     "ideas-wiring/sqlite",
-    "passages-wiring/sqlite",
+    "scenes-wiring/sqlite",
     "projects-wiring/sqlite",
 ]
 

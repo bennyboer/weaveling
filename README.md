@@ -35,70 +35,70 @@ A project is deliberately flexible about scope: it can be a single book, or a wh
 
 Underneath every view is a single shared model — one fabric, seen from different angles.
 
-- A **piece** is the raw material: a fragment of the book, carrying a title and its prose. It knows nothing about where it belongs.
-- The **outline** is the *warp*: the vertical threads, the spine of the book.
-- **Time**, **codex entities**, and **threads** are the *weft*: they run crossways through the pieces.
-- A piece is where warp meets weft — where a character appears, in a scene, at a moment in time.
+- The raw material comes in two kinds. An **idea** is a loose thought — a title, nothing more, and as disposable as it sounds. A **scene** is the prose itself: a stretch of the book's text, with a title if the author wants one. Neither knows where it belongs.
+- The **outline** is the *warp*: the vertical threads, the spine of the book. It arranges scenes into sections, and notes ideas beside them.
+- **Time**, **codex entities**, and **threads** are the *weft*: they run crossways through the scenes.
+- A scene is where warp meets weft — where a character appears, in a section of the book, at a moment in time.
 
 The views are not separate tools stapled together; they are lenses onto the same weave. This is why they stay linked: navigating from one to another is just turning the fabric to catch the light differently.
 
-**No view owns a piece.** The same piece sits somewhere in the outline, at a moment on the timeline, inside two subplots, and on the board where it was born — and none of those is *the* answer to where it is. Which is also why a piece can exist having never been placed at all: unwoven thread is still thread.
+**No view owns a scene or an idea.** The same scene sits in a section of the outline, at a moment on the timeline, inside two subplots, drawing on ideas that were born on the board — and none of those is *the* answer to where it is. Which is also why either can exist having never been placed at all: unwoven thread is still thread.
 
 ## The Views
 
 ### Board view
 
-Where ideas land before they are anything. An infinite surface — closer to a wall of index cards than to a document — on which the author shoots in a fragment, gives it a title or doesn't, and can start writing inside it straight away.
+Where ideas land before they are anything. An infinite surface — closer to a wall of index cards than to a document — on which the author shoots in an idea and gives it a title or doesn't.
 
-Nothing on the board has a place in the book yet. Pieces sit wherever they were dropped, in whatever clusters make sense that day, and spatial memory is allowed to do real work — *the abandoned ideas live bottom-left*. Several authors can brainstorm on one board at once and watch each other move things around.
+Nothing on the board has a place in the book yet. Ideas sit wherever they were dropped, in whatever clusters make sense that day, and spatial memory is allowed to do real work — *the abandoned ideas live bottom-left*. Several authors can brainstorm on one board at once and watch each other move things around.
 
-This is the answer to blank-page paralysis. Capturing a piece demands no decision about where it belongs, so there is no structure to fight before writing a single sentence.
+This is the answer to blank-page paralysis. Capturing an idea demands no decision about where it belongs, so there is no structure to fight before writing a single sentence.
 
 ### Outline view
 
-The book as a hierarchy — the shape a reader would recognise as a table of contents. The author drags pieces in from the board and keeps splitting them as far as the budding idea allows. Detail is added *just in time*, not up front: beginning, main part, ending is a perfectly good outline for a long while.
+The book as a hierarchy — the shape a reader would recognise as a table of contents. The author nests sections as far as the budding book allows, places scenes in them, and notes ideas from the board beside the sections they belong to. Detail is added *just in time*, not up front: beginning, main part, ending is a perfectly good outline for a long while.
 
-The finest useful grain is roughly **one piece per paragraph** — the maximum depth of structural detail.
+The finest grain is **the scene**: sections give the structure, scenes inside them carry the words.
 
-**This is the privileged view.** A book is ultimately linear, so reading — and export — is an in-order walk of the outline, stitching every piece's text together. A piece that is *not* in the outline is simply not in the book yet, which is a feature rather than a gap: the board can hold twenty ideas that may never make it, and none of them has to be deleted to stay out of the way.
+**This is the privileged view.** A book is ultimately linear, so reading — and export — is an in-order walk of the outline, stitching every scene's text together. A scene that is *not* in the outline is simply not in the book yet, which is a feature rather than a gap: the board can hold twenty ideas that may never make it, and none of them has to be deleted to stay out of the way.
 
-**Prose lives on every piece.** A piece can hold text at any level. When a piece that already has text is split, the author decides what happens to that text: move parts of it down into the new children, or leave it on the parent.
+**Prose lives in scenes, never in sections.** A section is structure only; its words are the scenes in it. So reshaping the book moves scenes around rather than cutting text apart.
 
-### Text view
+### Writing view
 
-Where the actual prose is written. Deliberately **distraction-free**: just the text, in a large, comfortable font, so the author can concentrate on the words.
+Where the actual prose is written. Deliberately **distraction-free**: just the text, in a large, comfortable font, so the author can concentrate on the words — the book's scenes one after another, under their section names, as one flow to read and write in.
 
-Linked to every other view: double-clicking a piece — on the board, in the outline, on the timeline — dives into its text. Codex entity names (see below) are **highlighted** inline, so their sheet is one glance away while writing dialogue.
+Linked to every other view: opening a scene — from the outline, from an idea that draws it in, on the timeline — lands right there in the flow. Codex entity names (see below) are **highlighted** inline, so their sheet is one glance away while writing dialogue.
 
 ### Codex
 
-Every book has a cast — and a world. The **Codex** is the compendium of everything in the story: **characters** first and foremost, but also **locations, factions, magic/tech systems, artifacts**, and anything else worth tracking. They share one shape: fields, images, milestones, relations, free text, and back-links to the pieces they appear in.
+Every book has a cast — and a world. The **Codex** is the compendium of everything in the story: **characters** first and foremost, but also **locations, factions, magic/tech systems, artifacts**, and anything else worth tracking. They share one shape: fields, images, milestones, relations, free text, and back-links to the scenes they appear in.
 
 The Codex is linked to the other views:
 
 - Each entity keeps an **alias list** (names, titles, nicknames), used to detect mentions in the prose.
-- In the **text view**, entity names are **highlighted**, so their entry is one glance away.
-- A piece shows which entities appear in it — **detected from the text, or attached manually** by the author.
-- From an entity's entry, the author can see every piece it appears in, and jump straight there.
+- In the **writing view**, entity names are **highlighted**, so their entry is one glance away.
+- A scene shows which entities appear in it — **detected from the text, or attached manually** by the author.
+- From an entity's entry, the author can see every scene it appears in, and jump straight there.
 
 ### Timeline
 
-Especially for historical novels, the fictional story is woven around events that really happened in time. The author can start *in the timeline*, create pieces from there (they join the pool like any other piece, and reach the outline only when the author is ready), and arrange them in correct chronological relation.
+Especially for historical novels, the fictional story is woven around events that really happened in time. The author can start *in the timeline*, create scenes from there (they join the pool like any other scene, and reach the outline only when the author is ready), and arrange them in correct chronological relation.
 
 Time in Weaveling is an **abstract order**, not a calendar:
 
-- Pieces carry **before / after** relations to one another — like a linked list, but pieces may also sit **in parallel** (happening at the same time).
-- Pieces can be tagged into **time buckets** of any precision — "the year 1737", "April 24th 1737", or fuzzy ones like "early spring". Buckets give a place to attach time information without forcing exact dates, so the same model serves real history and invented calendars alike.
+- Scenes carry **before / after** relations to one another — like a linked list, but scenes may also sit **in parallel** (happening at the same time).
+- Scenes can be tagged into **time buckets** of any precision — "the year 1737", "April 24th 1737", or fuzzy ones like "early spring". Buckets give a place to attach time information without forcing exact dates, so the same model serves real history and invented calendars alike.
 
-Because narrative order and chronological order differ (flashbacks, non-linear storytelling), the timeline is a genuine second ordering over the same pieces — not just a re-sort of the outline.
+Because narrative order and chronological order differ (flashbacks, non-linear storytelling), the timeline is a genuine second ordering over the same scenes — not just a re-sort of the outline.
 
 ### Threads
 
-A **thread** is a colored strand followed through the manuscript — a subplot, a motif, a mystery and its clues. Overlaid on the outline, a thread shows which pieces carry it, and where it goes quiet for too long. This is the most literally *Weaveling* view: it lets the author see and tend the individual strands running through the weave.
+A **thread** is a colored strand followed through the manuscript — a subplot, a motif, a mystery and its clues. Overlaid on the outline, a thread shows which scenes carry it, and where it goes quiet for too long. This is the most literally *Weaveling* view: it lets the author see and tend the individual strands running through the weave.
 
 ### Research / Sources
 
-A place to collect references, quotes, images, and links — especially for historical work — and pin them to the pieces they inform. Distinct from the Codex: the Codex is the author's invented world; Research is the real-world material the story draws from.
+A place to collect references, quotes, images, and links — especially for historical work — and pin them to the scenes and ideas they inform. Distinct from the Codex: the Codex is the author's invented world; Research is the real-world material the story draws from.
 
 ## Export
 

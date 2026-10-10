@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import {
-  aLoosePassage,
+  aLooseScene,
   aNewProject,
   captureIdea,
   openTheOutline,
@@ -11,16 +11,16 @@ import {
 const manuscript = (page: Page) =>
   page.getByRole("list", { name: "The manuscript" });
 
-const waitingPassages = (page: Page) =>
-  page.getByRole("list", { name: "Passages not in the book" });
+const waitingScenes = (page: Page) =>
+  page.getByRole("list", { name: "Scenes not in the book" });
 
 const waitingIdeas = (page: Page) =>
   page.getByRole("list", { name: "Ideas not in the book" });
 
 const titles = (page: Page) => page.locator(".branch .title");
 
-async function placePassage(page: Page, passage: string, into: string) {
-  await place(page, passage, into);
+async function placeScene(page: Page, scene: string, into: string) {
+  await place(page, scene, into);
 }
 
 async function placeIdea(page: Page, idea: string, into: string) {
@@ -273,20 +273,20 @@ test("a section with nothing in it is flagged without being refused", async ({
   await expect(titles(page).first()).toHaveValue("Chapter 1");
 });
 
-test("a passage is placed from the tray and leaves it", async ({ page }) => {
+test("a scene is placed from the tray and leaves it", async ({ page }) => {
   await aNewProject(page, "Placing");
-  await aLoosePassage(page);
+  await aLooseScene(page);
   await openTheOutline(page);
   await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
 
-  await placePassage(page, "Empty", "Chapter 1");
+  await placeScene(page, "Empty", "Chapter 1");
 
   await expect(page.locator(".leaf .name")).toHaveText("Empty");
-  await expect(waitingPassages(page).getByRole("button")).toHaveCount(0);
+  await expect(waitingScenes(page).getByRole("button")).toHaveCount(0);
   await expect(page.locator(".hollow")).toHaveCount(0);
 });
-test("writing in a section opens the new passage", async ({ page }) => {
+test("writing in a section opens the new scene", async ({ page }) => {
   await aNewProject(page, "Writing");
   await openTheOutline(page);
   await addSections(page, ["Chapter 1"]);
@@ -298,10 +298,10 @@ test("writing in a section opens the new passage", async ({ page }) => {
     page.locator(".surface .ProseMirror"),
     "the button says write, so it has to leave the author writing rather than appending a blank row they may not even see",
   ).toBeVisible();
-  await expect(page).toHaveURL(/\/passages\/passage_/);
+  await expect(page).toHaveURL(/\/scenes\/scene_/);
 });
 
-test("a passage written in a section is held there", async ({ page }) => {
+test("a scene written in a section is held there", async ({ page }) => {
   await aNewProject(page, "Holding");
   await openTheOutline(page);
   await addSections(page, ["Chapter 1"]);
@@ -313,10 +313,10 @@ test("a passage written in a section is held there", async ({ page }) => {
 
   await expect(page.locator(".leaf .name")).toHaveText("Empty");
   await expect(page.locator(".hollow")).toHaveCount(0);
-  await expect(waitingPassages(page).getByRole("button")).toHaveCount(0);
+  await expect(waitingScenes(page).getByRole("button")).toHaveCount(0);
 });
 
-test("a passage in the book opens from the outline", async ({ page }) => {
+test("a scene in the book opens from the outline", async ({ page }) => {
   await aNewProject(page, "Opening");
   await openTheOutline(page);
   await addSections(page, ["Chapter 1"]);
@@ -329,9 +329,9 @@ test("a passage in the book opens from the outline", async ({ page }) => {
   await page.locator(".leaf").getByRole("link", { name: "Empty" }).click();
 
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
-  await expect(page).toHaveURL(/\/passages\/passage_/);
+  await expect(page).toHaveURL(/\/scenes\/scene_/);
 });
-test("a passage taken out of the book goes back to the tray", async ({
+test("a scene taken out of the book goes back to the tray", async ({
   page,
 }) => {
   await aNewProject(page, "Removing");
@@ -341,13 +341,13 @@ test("a passage taken out of the book goes back to the tray", async ({
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
   await expect(page.locator(".surface .ProseMirror")).toBeVisible();
   await openTheOutline(page);
-  await expect(waitingPassages(page).getByRole("button")).toHaveCount(0);
+  await expect(waitingScenes(page).getByRole("button")).toHaveCount(0);
 
   await page
     .getByRole("button", { name: "Take Empty out of the book" })
     .click();
 
-  await expect(waitingPassages(page).getByRole("button")).toHaveCount(1);
+  await expect(waitingScenes(page).getByRole("button")).toHaveCount(1);
 });
 test("the row menu promotes, demotes and removes", async ({ page }) => {
   await aNewProject(page, "Menus");
@@ -433,11 +433,11 @@ test("a section cannot be dragged inside itself", async ({ page }) => {
     .toBe(["Part One", "  Chapter 1"].join("\n"));
 });
 
-test("a passage can be dragged from the rail onto a section", async ({
+test("a scene can be dragged from the rail onto a section", async ({
   page,
 }) => {
   await aNewProject(page, "Dragging");
-  await aLoosePassage(page);
+  await aLooseScene(page);
   await openTheOutline(page);
   await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
@@ -538,7 +538,7 @@ test("removing a section lifts its children into its place", async ({
     );
 });
 
-test("an idea is noted in a section and is not a passage", async ({ page }) => {
+test("an idea is noted in a section and is not a scene", async ({ page }) => {
   await aNewProject(page, "Noting");
   await openThePool(page);
   await captureIdea(page, "The loom remembers");
@@ -551,12 +551,12 @@ test("an idea is noted in a section and is not a passage", async ({ page }) => {
   await expect(page.locator(".leaf .name")).toHaveText("The loom remembers");
   await expect(waitingIdeas(page).getByRole("button")).toHaveCount(0);
   await expect(
-    waitingPassages(page).getByRole("button"),
-    "the tally is a to-do list for passages with no home, and an idea noted in a chapter is not a passage",
+    waitingScenes(page).getByRole("button"),
+    "the tally is a to-do list for scenes with no home, and an idea noted in a chapter is not a scene",
   ).toHaveCount(0);
 });
 
-test("a note and a passage are drawn with different marks", async ({
+test("a note and a scene are drawn with different marks", async ({
   page,
 }) => {
   await aNewProject(page, "Telling");
@@ -578,7 +578,7 @@ test("a note and a passage are drawn with different marks", async ({
   expect(marks).toHaveLength(2);
   expect(
     new Set(marks).size,
-    "an idea and a passage sitting side by side in a chapter are different kinds of thing, so one glyph for both leaves the author guessing",
+    "an idea and a scene sitting side by side in a chapter are different kinds of thing, so one glyph for both leaves the author guessing",
   ).toBe(2);
 });
 
@@ -600,14 +600,14 @@ test("a note leads to the idea, not to an editor", async ({ page }) => {
   await expect(page.locator(".surface .ProseMirror")).toHaveCount(0);
 });
 
-test("the tally counts passages with no home, never ideas", async ({
+test("the tally counts scenes with no home, never ideas", async ({
   page,
 }) => {
   await aNewProject(page, "Tallying");
   await openThePool(page);
   await captureIdea(page, "A first idea");
   await captureIdea(page, "A second idea");
-  await aLoosePassage(page);
+  await aLooseScene(page);
   await openTheOutline(page);
 
   await expect(page.locator(".tray-toggle")).toHaveText(
@@ -616,7 +616,7 @@ test("the tally counts passages with no home, never ideas", async ({
   await expect(waitingIdeas(page).getByRole("button")).toHaveCount(2);
 });
 
-test("a section shows its passages and its ideas as two groups", async ({
+test("a section shows its scenes and its ideas as two groups", async ({
   page,
 }) => {
   await aNewProject(page, "Grouping");
@@ -633,17 +633,17 @@ test("a section shows its passages and its ideas as two groups", async ({
 
   await expect(
     page.locator(".kind-label"),
-    "the idea went in first, so without grouping it would sit above the passage, at a place in the chapter nobody chose",
-  ).toHaveText(["Passages", "Ideas"]);
+    "the idea went in first, so without grouping it would sit above the scene, at a place in the chapter nobody chose",
+  ).toHaveText(["Scenes", "Ideas"]);
   await expect(
-    page.getByRole("list", { name: "Passages", exact: true }),
+    page.getByRole("list", { name: "Scenes", exact: true }),
   ).toContainText("Empty");
   await expect(
     page.getByRole("list", { name: "Ideas", exact: true }),
   ).toContainText("The loom remembers");
 });
 
-test("a titled passage is named by its title in the outline", async ({
+test("a titled scene is named by its title in the outline", async ({
   page,
 }) => {
   await aNewProject(page, "Naming");
@@ -656,15 +656,15 @@ test("a titled passage is named by its title in the outline", async ({
     (response) => response.request().method() === "PATCH",
   );
   await page
-    .getByRole("textbox", { name: "Passage title" })
+    .getByRole("textbox", { name: "Scene title" })
     .fill("The arrival");
-  await page.getByRole("textbox", { name: "Passage title" }).press("Tab");
+  await page.getByRole("textbox", { name: "Scene title" }).press("Tab");
   await saved;
 
   await openTheOutline(page);
 
   await expect(
     page.locator(".leaf .name"),
-    "an untitled passage falls back to its opening words; once named, the name wins",
+    "an untitled scene falls back to its opening words; once named, the name wins",
   ).toHaveText("The arrival");
 });

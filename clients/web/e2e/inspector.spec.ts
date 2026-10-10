@@ -44,28 +44,28 @@ async function noteInASection(page: Page, idea: string, section: string) {
   expect(attached.status()).toBe(200);
 }
 
-async function linkFromAPassage(page: Page, idea: string, titled: string) {
-  const made = await page.request.post(`${API}/passages`, {
+async function linkFromAScene(page: Page, idea: string, titled: string) {
+  const made = await page.request.post(`${API}/scenes`, {
     data: { project: idIn(projectSegment(page)) },
   });
   expect(made.status()).toBe(201);
-  const { id: passage } = await made.json();
+  const { id: scene } = await made.json();
   expect(
     (
-      await page.request.patch(`${API}/passages/${passage}`, {
+      await page.request.patch(`${API}/scenes/${scene}`, {
         data: { title: titled },
       })
     ).status(),
   ).toBe(200);
   expect(
     (
-      await page.request.post(`${API}/passages/${passage}/ideas`, {
+      await page.request.post(`${API}/scenes/${scene}/ideas`, {
         data: { idea },
       })
     ).status(),
   ).toBe(200);
 
-  return passage as string;
+  return scene as string;
 }
 
 async function inspect(page: Page, idea: string) {
@@ -100,7 +100,7 @@ test("an idea is renamed in place and keeps the name", async ({ page }) => {
   );
 });
 
-test("an idea in no section and no passage says it is not in the book", async ({
+test("an idea in no section and no scene says it is not in the book", async ({
   page,
 }) => {
   await aNewProject(page, "Nowhere");
@@ -112,13 +112,13 @@ test("an idea in no section and no passage says it is not in the book", async ({
   await expect(appearances(page)).toHaveCount(0);
 });
 
-test("an idea shows the sections that note it and the passages that draw on it", async ({
+test("an idea shows the sections that note it and the scenes that draw on it", async ({
   page,
 }) => {
   await aNewProject(page, "Appearing");
   const idea = await anIdea(page, "A girl in a wood");
   await noteInASection(page, idea, "Chapter one");
-  await linkFromAPassage(page, idea, "The clearing");
+  await linkFromAScene(page, idea, "The clearing");
 
   await expect(async () => {
     await inspect(page, idea);
@@ -135,12 +135,12 @@ test("an idea shows the sections that note it and the passages that draw on it",
   ).toBeVisible();
 });
 
-test("a passage the idea appears in opens from the inspector", async ({
+test("a scene the idea appears in opens from the inspector", async ({
   page,
 }) => {
   await aNewProject(page, "Following");
   const idea = await anIdea(page, "A girl in a wood");
-  const passage = await linkFromAPassage(page, idea, "The clearing");
+  const scene = await linkFromAScene(page, idea, "The clearing");
   await expect(async () => {
     await inspect(page, idea);
     await expect(
@@ -150,5 +150,5 @@ test("a passage the idea appears in opens from the inspector", async ({
 
   await appearances(page).getByRole("link", { name: "The clearing" }).click();
 
-  await expect(page).toHaveURL(new RegExp(`/passages/${passage}$`));
+  await expect(page).toHaveURL(new RegExp(`/scenes/${scene}$`));
 });

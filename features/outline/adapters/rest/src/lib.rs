@@ -233,7 +233,7 @@ async fn detach(
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     let attachment = match kind.as_str() {
-        "passages" => Attachment::passage(&attached),
+        "scenes" => Attachment::scene(&attached),
         "ideas" => Attachment::idea(&attached),
         _ => return Err(ApiError::NoSuchKind),
     };
@@ -284,15 +284,15 @@ fn to_dto(outline: &str, held: &Outline, version: Version) -> OutlineDTO {
 
 fn to_attachment(dto: &AttachmentDTO) -> Attachment {
     match dto {
-        AttachmentDTO::Passage { id } => Attachment::passage(id),
+        AttachmentDTO::Scene { id } => Attachment::scene(id),
         AttachmentDTO::Idea { id } => Attachment::idea(id),
     }
 }
 
 fn to_attachment_dto(attachment: &Attachment) -> AttachmentDTO {
     match attachment {
-        Attachment::Passage(passage) => AttachmentDTO::Passage {
-            id: passage.to_string(),
+        Attachment::Scene(scene) => AttachmentDTO::Scene {
+            id: scene.to_string(),
         },
         Attachment::Idea(idea) => AttachmentDTO::Idea {
             id: idea.to_string(),
@@ -352,7 +352,7 @@ impl IntoResponse for ApiError {
             Self::NoSuchKind => {
                 return (
                     StatusCode::NOT_FOUND,
-                    "an outline holds passages and ideas, and nothing else",
+                    "an outline holds scenes and ideas, and nothing else",
                 )
                     .into_response();
             }

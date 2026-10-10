@@ -13,8 +13,8 @@ use clock::Clock;
 use ideas_wiring::IdeaFeature;
 use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use outline_wiring::OutlineFeature;
-use passages_wiring::PassageFeature;
 use projects_wiring::ProjectFeature;
+use scenes_wiring::SceneFeature;
 use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context, assemble};
 
@@ -47,7 +47,7 @@ impl Adapters {
 
         let features = vec![
             assemble::<ProjectFeature>(&storage, &context).await?,
-            assemble::<PassageFeature>(&storage, &context).await?,
+            assemble::<SceneFeature>(&storage, &context).await?,
             assemble::<IdeaFeature>(&storage, &context).await?,
             assemble::<BoardFeature>(&storage, &context).await?,
             assemble::<OutlineFeature>(&storage, &context).await?,

@@ -88,8 +88,8 @@ impl EventPublisher<OutlineEvent> for OutlineEventPublisher {
 
 fn to_dto(attachment: &Attachment) -> AttachmentDTO {
     match attachment {
-        Attachment::Passage(passage) => AttachmentDTO::Passage {
-            id: passage.to_string(),
+        Attachment::Scene(scene) => AttachmentDTO::Scene {
+            id: scene.to_string(),
         },
         Attachment::Idea(idea) => AttachmentDTO::Idea {
             id: idea.to_string(),
@@ -198,7 +198,7 @@ mod tests {
 
     fn attaching_to(section: SectionId) -> OutlineEvent {
         OutlineEvent::Attached {
-            attachment: Attachment::passage("passage_1"),
+            attachment: Attachment::scene("scene_1"),
             to: section,
             after: None,
         }
@@ -261,7 +261,7 @@ mod tests {
             (an_attachment(), ATTACHED),
             (
                 OutlineEvent::Detached {
-                    attachment: Attachment::passage("passage_1"),
+                    attachment: Attachment::scene("scene_1"),
                     from: a_section(),
                 },
                 DETACHED,
@@ -315,7 +315,7 @@ mod tests {
     }
 
     #[test]
-    fn removing_a_section_wakes_the_attachment_index_because_it_detaches_passages() {
+    fn removing_a_section_wakes_the_attachment_index_because_it_detaches_scenes() {
         let listening = [when_attached(), when_detached(), when_section_removed()];
         let removal = routing_for(
             KIND,
@@ -327,13 +327,13 @@ mod tests {
 
         assert!(
             listening.iter().any(|watching| watching.covers(&removal)),
-            "a removed section returns its passages to the pool, so the index would go stale without \
+            "a removed section returns its scenes to the pool, so the index would go stale without \
              it"
         );
     }
 
     #[test]
-    fn an_attachment_carries_the_passage_and_the_section_it_landed_in() {
+    fn an_attachment_carries_the_scene_and_the_section_it_landed_in() {
         let id = an_outline();
         let section = a_section();
 
@@ -343,8 +343,8 @@ mod tests {
         assert_eq!(
             told.event.body,
             OutlineEventDTO::Attached {
-                attachment: AttachmentDTO::Passage {
-                    id: "passage_1".to_owned(),
+                attachment: AttachmentDTO::Scene {
+                    id: "scene_1".to_owned(),
                 },
                 to: section.to_string(),
                 after: None,
@@ -392,7 +392,7 @@ mod tests {
                 section: a_section(),
                 parent: None,
                 title: titled("Part One"),
-                attachments: vec![Attachment::passage("passage_1")],
+                attachments: vec![Attachment::scene("scene_1")],
             }],
             discarded: false,
         };
@@ -452,7 +452,7 @@ mod notes {
                 id: "idea_1".to_owned()
             },
             "a subscriber cannot look the id up to find out what it is, so the tag has to \
-             survive the crossing or every note reads as a passage"
+             survive the crossing or every note reads as a scene"
         );
     }
 

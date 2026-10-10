@@ -64,10 +64,10 @@ features/
   - *Inbound (driving)* adapters call core's public API. Named after the transport: `rest`, later `graphql`, `cli`, `messaging`. No inbound port trait — `ProjectService` is already the interface.
 - **`contract`** — the wire types. Deliberately **not** part of the onion: it is a shared kernel between two *processes*, and it exists as its own crate for a hard technical reason — the WASM client cannot depend on `rest`, because `axum` doesn't compile to WASM. The constraint is **`serde` and nothing else**. Values travel in their primitive wire representations — ids and timestamps as strings — while the rich domain types (`ProjectId`, time types) stay in `core` and the adapter maps between them. This keeps the crate trivially WASM-safe and gives the domain vocabulary exactly one owner. Note that ids arriving *inbound* come through the URL path, which `rest` parses with its own extractor, so contract is almost entirely an outbound-shape concern.
 
-**A constant both processes must agree on lives in *both*, pinned by a test.** The fragment name a passage's prose lives under (`"prose"`) is needed by `core` to project plain text and by the client to write into the same document — and `core` must not reach into `contract` to get it. So each defines its own, and the feature's tests crate, which can see both, asserts they match:
+**A constant both processes must agree on lives in *both*, pinned by a test.** The fragment name a scene's prose lives under (`"prose"`) is needed by `core` to project plain text and by the client to write into the same document — and `core` must not reach into `contract` to get it. So each defines its own, and the feature's tests crate, which can see both, asserts they match:
 
 ```rust
-assert_eq!(passages_core::FRAGMENT, passages_contract::FRAGMENT);
+assert_eq!(scenes_core::FRAGMENT, scenes_contract::FRAGMENT);
 ```
 
 A duplicated literal justified by a test is normally a smell. It wins here because the alternative is worse: one `core → contract` arrow "just for a constant" is the crack DTOs leak through later, and the invariant is only worth having while it is absolute. The failure this test prevents is a silent one — mismatched fragment names mean prose that vanishes with no error anywhere.
@@ -143,11 +143,11 @@ Three practical decisions that follow from the layout:
 - **Cost:** an id leaks its creation time to millisecond precision, and entropy drops from 122 random bits to 74 (still far past any collision concern). Acceptable for a login-gated tool; revisit if ids ever land in public share URLs.
 - **The timestamp is injected, never read inside the domain.** Use `Uuid::new_v7(Timestamp::from_unix(…))` fed by the same `now` the aggregate receives — not `Uuid::now_v7()`, which would smuggle a clock read into `core`. This keeps the domain pure, keeps tests deterministic, and makes an id's embedded timestamp agree with its aggregate's `created_at` by construction rather than by luck.
 
-**Ids are prefixed on the wire and in logs: `project_019a4f…`, `passage_019a4f…`.** The prefix is mechanical — the aggregate's type name, lowercased and singular, plus an underscore — so `piece_`, `thread_` and `codex_` need no decision when they arrive. Inside the server `ProjectId` and `PassageId` are distinct newtypes, so the compiler already prevents mixing them — but the moment an id becomes a string (a URL, a JSON field, a log line, a bug report) that protection is gone. The prefix restores it exactly where it was missing.
+**Ids are prefixed on the wire and in logs: `project_019a4f…`, `scene_019a4f…`.** The prefix is mechanical — the aggregate's type name, lowercased and singular, plus an underscore — so `piece_`, `thread_` and `codex_` need no decision when they arrive. Inside the server `ProjectId` and `SceneId` are distinct newtypes, so the compiler already prevents mixing them — but the moment an id becomes a string (a URL, a JSON field, a log line, a bug report) that protection is gone. The prefix restores it exactly where it was missing.
 
-- **Where it lives: `core`, on `Display`/`FromStr`.** The layering argument says a prefix is a wire concern belonging in `to_dto`; that is overruled because the biggest benefit is *logs*, and `StoreError::NotFound(PassageId)` formats through `Display`. Put the prefix in the adapter and every internal log line still shows a bare UUID.
-- **`FromStr` requires the prefix** rather than accepting either form, in HTTP routes included. Leniency would defeat the point: a bare UUID parses as *any* id type, which is the confusion being eliminated. Sending a project id to `GET /passages/{id}` is now a **400 saying so**, not a 404 indistinguishable from "deleted". Accepting both forms was considered and rejected — it re-opens that hole for bare ids, and strict-then-lenient is a harmless relaxation while lenient-then-strict is a breaking change. The friction it would have saved (pasting a bare id from psql into curl) is answered by the error message instead, which names the prefix it wanted.
-- **`as_uuid()` is unchanged**, so PostgreSQL still stores a native `uuid` — 16 bytes, indexable. The prefix is a presentation form, which does mean **the database and the wire disagree**: a hand-written query returns `019a4f…` and you must prepend `passage_` to use it against the API. Accepted for the log benefit; it will bite someone once.
+- **Where it lives: `core`, on `Display`/`FromStr`.** The layering argument says a prefix is a wire concern belonging in `to_dto`; that is overruled because the biggest benefit is *logs*, and `StoreError::NotFound(SceneId)` formats through `Display`. Put the prefix in the adapter and every internal log line still shows a bare UUID.
+- **`FromStr` requires the prefix** rather than accepting either form, in HTTP routes included. Leniency would defeat the point: a bare UUID parses as *any* id type, which is the confusion being eliminated. Sending a project id to `GET /scenes/{id}` is now a **400 saying so**, not a 404 indistinguishable from "deleted". Accepting both forms was considered and rejected — it re-opens that hole for bare ids, and strict-then-lenient is a harmless relaxation while lenient-then-strict is a breaking change. The friction it would have saved (pasting a bare id from psql into curl) is answered by the error message instead, which names the prefix it wanted.
+- **`as_uuid()` is unchanged**, so PostgreSQL still stores a native `uuid` — 16 bytes, indexable. The prefix is a presentation form, which does mean **the database and the wire disagree**: a hand-written query returns `019a4f…` and you must prepend `scene_` to use it against the API. Accepted for the log benefit; it will bite someone once.
 - **Sortability survives.** The prefix is constant per type, so `ORDER BY id` on the string form is still creation order.
 - **The prefix is for humans, not for dispatch.** Never branch on `id.starts_with(…)` — that is what the newtypes are for.
 
@@ -238,65 +238,65 @@ One wrinkle worth remembering: wasm-bindgen implements `Send`/`Sync` for `JsValu
 
 **Wire compatibility is the point.** Speaking the standard format means the client can use `y-websocket` as-is and we inherit reconnect-with-backoff, resync, and awareness timeouts rather than writing them. It also decouples the halves: either side can be replaced independently, which is exactly the optionality the [Frontend](#frontend--full-stack-rust) escape hatch depends on.
 
-**The server is a participant, not a relay.** A passage that someone is editing is held in memory as a **`LivePassage`** — its own `Doc`, to which every update is applied. That is what lets a peer who was offline for a week be served by the server rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections attach to. One `LivePassage` per passage, and one passage per piece, so the chain from piece to CRDT document is 1:1 the whole way down.
+**The server is a participant, not a relay.** A scene that someone is editing is held in memory as a **`LiveScene`** — its own `Doc`, to which every update is applied. That is what lets a peer who was offline for a week be served by the server rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections attach to. One `LiveScene` per scene, and one scene per piece, so the chain from piece to CRDT document is 1:1 the whole way down.
 
-The "room" vocabulary the spike borrowed from `y-websocket` is deliberately **not** used: there is no room in this domain, only a passage that happens to have people in it. `LivePassages::join(id)` hands out the one live copy, loading it from the store if nobody has it open.
+The "room" vocabulary the spike borrowed from `y-websocket` is deliberately **not** used: there is no room in this domain, only a scene that happens to have people in it. `LiveScenes::join(id)` hands out the one live copy, loading it from the store if nobody has it open.
 
 **Awareness is relayed, never decoded.** The server treats awareness frames as opaque bytes and forwards them; it holds no presence state at all. Late joiners still get cursors, because on join the server broadcasts *query-awareness* and the connected peers republish themselves — an ordinary y-websocket client answers that automatically. This keeps presence genuinely ephemeral, exactly as [Presence is neither](#presence-is-neither) requires.
 
 The known cost of that choice: **the server cannot retract a departed peer's cursor**, because it does not know which client ids a connection spoke for. Stale cursors linger until the client-side timeout (~30 s). The fix is to decode just the awareness header (client id, clock, state) and broadcast a tombstone on disconnect — small, and deliberately deferred.
 
-Two things to revisit before this is production code: an unreadable frame is currently **logged and skipped**, which means a peer sending an unusable update diverges silently rather than being disconnected; and a `LivePassage` is never evicted, so it lives for the process lifetime with no backpressure and no auth on the socket. The eviction race and its intended fix are written up in [TODO.md](./TODO.md).
+Two things to revisit before this is production code: an unreadable frame is currently **logged and skipped**, which means a peer sending an unusable update diverges silently rather than being disconnected; and a `LiveScene` is never evicted, so it lives for the process lifetime with no backpressure and no auth on the socket. The eviction race and its intended fix are written up in [TODO.md](./TODO.md).
 
-### The `passages` feature
+### The `scenes` feature
 
 The spikes proved the technology. This is where it lands in the codebase.
 
-**The feature is `passages`; the aggregate is `Passage`.** It mirrors `projects` / `Project` exactly, so `PassageId`, `PassageStore` and `PassageService` all follow without anyone having to think. `text` was ruled out on collision grounds — `yrs::Text`, `Y.Text` and ProseMirror's text nodes all already exist here, and a `Text` aggregate beside them is a permanent "which one?". `prose` was the runner-up and survives as *vocabulary* (and as the CRDT root key), but it is a mass noun: it does not pluralise like every other feature, and `Prose` makes an awkward type. The word an author would recognize and the word that fits the codebase turned out not to be the same word, and the aggregate name is for us.
+**The feature is `scenes`; the aggregate is `Scene`.** It mirrors `projects` / `Project` exactly, so `SceneId`, `SceneStore` and `SceneService` all follow without anyone having to think. `text` was ruled out on collision grounds — `yrs::Text`, `Y.Text` and ProseMirror's text nodes all already exist here, and a `Text` aggregate beside them is a permanent "which one?". `prose` was the runner-up and survives as *vocabulary* (and as the CRDT root key), but it is a mass noun: it does not pluralise like every other feature, and `Prose` makes an awkward type. The word an author would recognize and the word that fits the codebase turned out not to be the same word, and the aggregate name is for us.
 
-**A passage is its own aggregate because it has its own consistency model.** Structure is event-sourced with optimistic concurrency on a version column; a passage is a CRDT that merges without coordination. One cannot be nested inside the other without one of them being wrong. The feature split is not tidiness — it is the two-speed model made structural.
+**A scene is its own aggregate because it has its own consistency model.** Structure is event-sourced with optimistic concurrency on a version column; a scene is a CRDT that merges without coordination. One cannot be nested inside the other without one of them being wrong. The feature split is not tidiness — it is the two-speed model made structural.
 
-**A passage has its own id; the piece links to it.** `PassageId` is a UUID v7 like every other identifier here — generated when the passage is created, derivable from nothing. Which passages a piece shows is carried by the piece's **event stream**, as `PassageAttached { passage }`.
+**A scene has its own id; the piece links to it.** `SceneId` is a UUID v7 like every other identifier here — generated when the scene is created, derivable from nothing. Which scenes a piece shows is carried by the piece's **event stream**, as `SceneAttached { scene }`.
 
-*Considered and rejected: making a passage's id equal its piece's id.* It is genuinely tempting — the passage becomes derivable, so bringing one into existence needs no coordinating write at all. Two things sank it:
+*Considered and rejected: making a scene's id equal its piece's id.* It is genuinely tempting — the scene becomes derivable, so bringing one into existence needs no coordinating write at all. Two things sank it:
 
-- **It bakes "one passage per piece" into the key.** A piece plausibly wants a body, a synopsis and author's notes (the Scrivener arrangement), or two drafts of the same scene. Any of those needs a discriminator, and we would have to guess its shape *now* — is the second axis a **role** or a **variant**? Guess wrong and the key gets reshaped twice. With an opaque id the semantics live in the link instead, and a link is far cheaper to extend than a key.
-- **The risk it avoided was smaller than it looked.** The worry was a two-phase create across two aggregates with no shared transaction. But **ordering** fixes that, not identity: write the passage first, emit the attachment second. A failure between them leaves an **orphan** — unreferenced bytes a sweep collects — not a **dangle**, which is a reference to something that does not exist. Orphans are benign; this is ordinary referential discipline rather than a new class of bug.
+- **It bakes "one scene per piece" into the key.** A piece plausibly wants a body, a synopsis and author's notes (the Scrivener arrangement), or two drafts of the same scene. Any of those needs a discriminator, and we would have to guess its shape *now* — is the second axis a **role** or a **variant**? Guess wrong and the key gets reshaped twice. With an opaque id the semantics live in the link instead, and a link is far cheaper to extend than a key.
+- **The risk it avoided was smaller than it looked.** The worry was a two-phase create across two aggregates with no shared transaction. But **ordering** fixes that, not identity: write the scene first, emit the attachment second. A failure between them leaves an **orphan** — unreferenced bytes a sweep collects — not a **dangle**, which is a reference to something that does not exist. Orphans are benign; this is ordinary referential discipline rather than a new class of bug.
 
-What independent ids buy is worth more than the one write they cost: prose can **move between pieces carrying its CRDT history**, which is what makes the open split-piece question answerable at all; a passage could exist without a piece if free-floating research notes ever want one; and `PassageId` is a plain v7 newtype exactly like `ProjectId`, with no special rule to remember.
+What independent ids buy is worth more than the one write they cost: prose can **move between pieces carrying its CRDT history**, which is what makes the open split-piece question answerable at all; a scene could exist without a piece if free-floating research notes ever want one; and `SceneId` is a plain v7 newtype exactly like `ProjectId`, with no special rule to remember.
 
-**The link lives on the piece, not on the passage.** "Which writing this piece shows" is a fact about the book's *shape*, so it belongs in the structural history where the audit log can see it. It also keeps the arrows clean: `pieces` holds an opaque id string and never names a passage type, while `passages` never learns what a piece is. Storing an `owner: PieceId` on the passage instead would drag the pool's vocabulary into the passages core and leave attachment out of the audit log.
+**The link lives on the piece, not on the scene.** "Which writing this piece shows" is a fact about the book's *shape*, so it belongs in the structural history where the audit log can see it. It also keeps the arrows clean: `pieces` holds an opaque id string and never names a scene type, while `scenes` never learns what a piece is. Storing an `owner: PieceId` on the scene instead would drag the pool's vocabulary into the scenes core and leave attachment out of the audit log.
 
-This is also what makes multiple passages per piece cheap when we want them: the discriminator arrives as an **event field** — `PassageAttached { passage, role }` — which is the cheapest place in the whole design to add one, given that event versioning and upcasting were planned from day one. No key reshape, no id migration.
+This is also what makes multiple scenes per piece cheap when we want them: the discriminator arrives as an **event field** — `SceneAttached { scene, role }` — which is the cheapest place in the whole design to add one, given that event versioning and upcasting were planned from day one. No key reshape, no id migration.
 
-- **A piece that holds no writing has no passage.** Nothing is allocated until a key is pressed, so grouping pieces ("Part One") cost nothing.
-- **The client never computes a passage id — it asks.** The derivation, the ordering, the link: all of it stays server-side. This is what keeps the scheme changeable without touching a single client.
+- **A piece that holds no writing has no scene.** Nothing is allocated until a key is pressed, so grouping pieces ("Part One") cost nothing.
+- **The client never computes a scene id — it asks.** The derivation, the ordering, the link: all of it stays server-side. This is what keeps the scheme changeable without touching a single client.
 
-Cross-aggregate cleanup runs the other way: deleting a piece must eventually dispose its passages, across two aggregates with no shared transaction. That is the **first real job for the transactional outbox** — eventually consistent by construction rather than by concession — and it is the same sweep that collects orphans.
+Cross-aggregate cleanup runs the other way: deleting a piece must eventually dispose its scenes, across two aggregates with no shared transaction. That is the **first real job for the transactional outbox** — eventually consistent by construction rather than by concession — and it is the same sweep that collects orphans.
 
 **Crate layout**, following the [feature anatomy](#feature-anatomy--the-onion):
 
 ```
-features/passages/
+features/scenes/
 ├── contract/          nearly empty — the wire format is y-protocols, not serde
-├── core/              Passage, the plain-text projection, the PassageStore port
+├── core/              Scene, the plain-text projection, the SceneStore port
 ├── adapters/
 │   ├── store/         in-memory now, PostgreSQL later
-│   └── sync/          the y-protocols codec, LivePassage(s), Peer, the socket
+│   └── sync/          the y-protocols codec, LiveScene(s), Peer, the socket
 └── tests/
 ```
 
 Three placements that are not obvious:
 
-**`yrs` belongs in `core`.** This reads like a violation of *core has no frameworks*, and it isn't: the CRDT **is** the domain model of a passage, not an implementation of it. Swap `yrs` for Automerge and the merge semantics change — that is substance, not a swappable detail. The dividing line that matters: `axum` is transport, `sqlx` is persistence, `yrs` is the thing itself.
+**`yrs` belongs in `core`.** This reads like a violation of *core has no frameworks*, and it isn't: the CRDT **is** the domain model of a scene, not an implementation of it. Swap `yrs` for Automerge and the merge semantics change — that is substance, not a swappable detail. The dividing line that matters: `axum` is transport, `sqlx` is persistence, `yrs` is the thing itself.
 
 **The wire protocol stays in `adapters/sync`.** Core exposes intent — *catch up from this state vector*, *apply this update* — and the adapter does the message framing. Same rule as `rest` mapping DTOs with free functions, and for the same reason: a wire format has no business in the domain.
 
-**Protocol dispatch belongs to the adapter, not to `core`.** The spike suggested a `Room` in core owning "the room's semantics", and building it showed that was already `core::Passage` — `apply`, `changes_since`, `state_vector` *are* the document operations. What is left is deciding, per message, who needs to hear about it, and that is wire-shaped: it lives in `adapters/sync` as `LivePassage::receive`, returning a `Reaction`.
+**Protocol dispatch belongs to the adapter, not to `core`.** The spike suggested a `Room` in core owning "the room's semantics", and building it showed that was already `core::Scene` — `apply`, `changes_since`, `state_vector` *are* the document operations. What is left is deciding, per message, who needs to hear about it, and that is wire-shaped: it lives in `adapters/sync` as `LiveScene::receive`, returning a `Reaction`.
 
 `Reaction` names **three destinations** — `to_sender`, `to_others`, `to_store` — which is what keeps two policies honest and testable rather than accidental: a read must not write (catching a newcomer up stores nothing), and presence must never be persisted (awareness relays and nothing more).
 
-**Per-connection state is a `Peer`, and its lifetime is RAII.** A `LivePassage` is shared by every peer; a `Peer` is one connection — its id, its private outbound channel, and its two pump tasks. `Drop` aborts them. That matters because the shutdown ordering is otherwise load-bearing and invisible: the outbound channel closes only when *every* sender is gone, and missing one leaks a task for the process lifetime. Encoding it in `Drop` makes the mistake unavailable rather than merely documented.
+**Per-connection state is a `Peer`, and its lifetime is RAII.** A `LiveScene` is shared by every peer; a `Peer` is one connection — its id, its private outbound channel, and its two pump tasks. `Drop` aborts them. That matters because the shutdown ordering is otherwise load-bearing and invisible: the outbound channel closes only when *every* sender is gone, and missing one leaks a task for the process lifetime. Encoding it in `Drop` makes the mistake unavailable rather than merely documented.
 
 **Awareness never reaches `core` at all.** It is relayed as opaque bytes and it lives and dies inside `adapters/sync`. Presence is ephemeral by decision; this is that decision expressed as a dependency arrow.
 
@@ -315,29 +315,29 @@ The obvious model is a tree of nodes with prose attached, and it is wrong here. 
 
 The fix is a single move: **position is not a property of a piece.** Parent, order, timeline placement and board coordinates all belong to the *view* that arranges pieces, never to the thing arranged.
 
-### Ideas and passages are two pools — decided
+### Ideas and scenes are two pools — decided
 
 **Decided 2026-10-01**, after a year of the single-piece model and one complaint that would not go away. The sections above describe what is built today; this describes what replaces it, and why. Until the work lands, where the two disagree, this wins.
 
-**A piece is doing two jobs and they have different lifecycles.** Today a `Piece` is both a pool-item and a prose container. An **idea** — a character, a what-if, a scrap of dialogue, a title — is disposable: grouped, regrouped and thrown away, and losing one costs an afternoon's thinking. A **passage** is the book: versioned, synced through a CRDT, exported, and losing one is unforgivable. Different durability, different editing model, different value. That is what makes them two pools rather than one type with a flag.
+**A piece is doing two jobs and they have different lifecycles.** Today a `Piece` is both a pool-item and a prose container. An **idea** — a character, a what-if, a scrap of dialogue, a title — is disposable: grouped, regrouped and thrown away, and losing one costs an afternoon's thinking. A **scene** is the book: versioned, synced through a CRDT, exported, and losing one is unforgivable. Different durability, different editing model, different value. That is what makes them two pools rather than one type with a flag.
 
 **It also explains a complaint that was treated as an interaction problem.** Attaching pieces to outline sections was called *"very weird"* during [M10](./ROADMAP.md#milestone-10--the-outline) and redesigned twice without the feeling going. It was the model surfacing: attaching an *idea* to a section is a category error, because an idea is a note about what the content should be, not the content. No amount of drag-and-drop fixes that.
 
-**Every link is owned by the relating side, never by the idea.** This is [*position is not a property of a piece*](#the-tree-is-a-view-not-the-model) widened from position to every relation. The timeline stores which moments an idea sits at — many per idea, its table, its problem. The cast stores presence. A passage stores the idea that prompted it. An `Idea` is an id, a name, and perhaps a kind and a description, and **it does not change when a view is added**. The alternative — an idea carrying links to sections, moments and threads — makes the one thing that should never change into a junction table that every new view has to edit.
+**Every link is owned by the relating side, never by the idea.** This is [*position is not a property of a piece*](#the-tree-is-a-view-not-the-model) widened from position to every relation. The timeline stores which moments an idea sits at — many per idea, its table, its problem. The cast stores presence. A scene stores the idea that prompted it. An `Idea` is an id, a name, and perhaps a kind and a description, and **it does not change when a view is added**. The alternative — an idea carrying links to sections, moments and threads — makes the one thing that should never change into a junction table that every new view has to edit.
 
 **"Where does this idea appear" is a read model.** An appearances projection (the `appearances` feature) subscribing to every view's events and answering *idea → where it appears*. It is a projection, so it is rebuildable and owned by no write path, and a new view joins by publishing rather than by anyone depending on it. It is also what makes an inspector one read instead of asking five features a question four of them answer with nothing.
 
 **Editing is orthogonal to ownership.** Selecting an idea on the board and setting a moment or a character from there writes to the timeline and the cast — the board learns nothing and owns nothing but placement. That is the [frontend join](#the-board-renders-through-a-frontend-join) widened, and it is a UI convenience that the model neither grants nor forbids. The board must stay usable with every inspector blank forever: its value is pre-verbal, and an inspector full of fields invites filling them in before the thinking has happened.
 
-**The outline arranges passages**, exactly as the board arranges ideas. This is what keeps [*the outline holds structure, never content*](#the-outline-arranges-sections-not-pieces) true rather than breaking it — passages are already a pool with their own ids and their own feature, so a section referencing one contains nothing.
+**The outline arranges scenes**, exactly as the board arranges ideas. This is what keeps [*the outline holds structure, never content*](#the-outline-arranges-sections-not-pieces) true rather than breaking it — scenes are already a pool with their own ids and their own feature, so a section referencing one contains nothing.
 
-**The cost, and the thing to watch.** A view that can arrange either pool needs a tagged reference — `Idea(id) | Passage(id)` — rather than two parallel sets of code. That is cheap, but a reference-to-anything is how a model turns to soup, so each view says which kinds it accepts rather than accepting all of them by default.
+**The cost, and the thing to watch.** A view that can arrange either pool needs a tagged reference — `Idea(id) | Scene(id)` — rather than two parallel sets of code. That is cheap, but a reference-to-anything is how a model turns to soup, so each view says which kinds it accepts rather than accepting all of them by default.
 
-**What is still unknown** is ergonomics, not structure: how often an idea maps one-to-one onto a passage, and what the timeline wants to hold. Those inform the views. The structural question was settled on lifecycle, which is why it did not wait for them.
+**What is still unknown** is ergonomics, not structure: how often an idea maps one-to-one onto a scene, and what the timeline wants to hold. Those inform the views. The structural question was settled on lifecycle, which is why it did not wait for them.
 
 ### Pieces are the pool; views arrange them
 
-A **piece** is a unit of the book: an id, a title, and a link to its passage. It begins as an idea shot onto a board and may end as a chapter. That is all it is — it does not know where it sits.
+A **piece** is a unit of the book: an id, a title, and a link to its scene. It begins as an idea shot onto a board and may end as a chapter. That is all it is — it does not know where it sits.
 
 Each view is its own feature, with its own aggregate and its own invariants:
 
@@ -375,7 +375,7 @@ So a **section** is its own thing: an id, a title, children, and the pieces atta
 
 **An empty leaf is a warning, never a refusal.** A section with no children and no pieces is a hole in the manuscript, and the view says so — but the aggregate accepts it without complaint. Planning is exactly the act of writing down a structure you have not filled yet, so refusing would break the feature's main use. The same instinct as [`PieceTitle` permitting the empty string](#the-event-catalogue).
 
-**An unnamed section is just unnamed.** `SectionTitle` permits `""` so an author can sketch structure before naming it. This once went further — a view drawing an unnamed section that held exactly one piece showed that piece’s title — but that died with the split into two pools ([M12](./ROADMAP.md#milestone-12--ideas-and-passages)): a section now holds passages, and a passage carries its **own** title, so the name of a scene lives on the scene, not on the place it sits. An unnamed section reads as *Untitled*, and that is the prompt to name it.
+**An unnamed section is just unnamed.** `SectionTitle` permits `""` so an author can sketch structure before naming it. This once went further — a view drawing an unnamed section that held exactly one piece showed that piece’s title — but that died with the split into two pools ([M12](./ROADMAP.md#milestone-12--ideas-and-passages)): a section now holds scenes, and a scene carries its **own** title, so the name of a scene lives on the scene, not on the place it sits. An unnamed section reads as *Untitled*, and that is the prompt to name it.
 
 **Two orderings, not one.** Sections nest and are ordered among their siblings; pieces are ordered within their section. The manuscript is the depth-first walk: at each section, its own pieces, then its children. That is what `reading_order()` returns, and it is what export will mean.
 
@@ -394,7 +394,7 @@ So a **section** is its own thing: an id, a title, children, and the pieces atta
 ```
 PieceCaptured   { project, title }
 PieceRetitled   { title }
-PassageAttached { passage }
+SceneAttached { scene }
 PieceDiscarded  { }
 ```
 
@@ -431,7 +431,7 @@ Untitled is stored as `""`, never as `Option<PieceTitle>`. Two representations o
 
 **"Untitled" is a rendering, never a value.** A view draws a placeholder for an empty title; it does not store one. Storing the word would make an author who actually typed "Untitled" indistinguishable from one who typed nothing at all.
 
-**`PassageAttached` is lazy.** A passage is created when the author first opens a piece to write, not when the idea is captured — a fifty-idea brainstorm should not spawn fifty `yrs::Doc`s, particularly while [live passages are never evicted](./TODO.md). This also answers who emits the attachment: the piece, on first write.
+**`SceneAttached` is lazy.** A scene is created when the author first opens a piece to write, not when the idea is captured — a fifty-idea brainstorm should not spawn fifty `yrs::Doc`s, particularly while [live scenes are never evicted](./TODO.md). This also answers who emits the attachment: the piece, on first write.
 
 **Moves commit on drop, not during the drag.** Free placement means dragging, and a drag that emits events writes thousands of records per session, which would make the audit log unreadable — defeating the reason for event-sourcing pieces in the first place. In-flight positions travel as **awareness**: ephemeral by construction, timed out on disconnect. The same division as prose, one level up:
 
@@ -440,7 +440,7 @@ Untitled is stored as `""`, never as `Option<PieceTitle>`. Two representations o
 | prose | cursors (awareness) | text (CRDT) |
 | board | drag in flight (awareness) | placement (events) |
 
-The cost is honest: the board needs its own live channel, since awareness in our stack is bound to `/sync/{passage}` and a board is not a passage. Two live channels carrying different things, unable to share a protocol.
+The cost is honest: the board needs its own live channel, since awareness in our stack is bound to `/sync/{scene}` and a board is not a scene. Two live channels carrying different things, unable to share a protocol.
 
 **Moves must not conflict.** Moves of *different* pieces commute, so `PieceMoved` takes no strict version check, and concurrent drags of the *same* piece are last-drop-wins. Rejecting a move with "someone else moved it, reload" is the wrong answer for a position — no work is lost, the piece simply lands where the last author dropped it. Optimistic concurrency is reserved for the commands where a conflict means the author's intent no longer applies: pinning and unpinning.
 
@@ -454,7 +454,7 @@ This has a property worth stating outright: **the join is the tolerant read mode
 
 Multiple boards per project are supported by the model from the first event; the first version ships one. The rule that keeps that cheap: **a `BoardId` exists from the start, and every board event is addressed to it.** The query is "which boards does this project have?" — a list that happens to hold one element, never a `boardFor(project)` singleton. Keying placements by project id is the shortcut that turns a second board into a migration of every event ever written.
 
-A project cannot create its own board: a feature may not call another feature. So a board is started **on first open** — find-or-start, inside `boards`, under one write guard exactly as [the in-memory passage store does it](#how-an-in-memory-backend-is-atomic). The invariant "a project has a board" is enforced nowhere; it is simply true by the time anyone reads.
+A project cannot create its own board: a feature may not call another feature. So a board is started **on first open** — find-or-start, inside `boards`, under one write guard exactly as [the in-memory scene store does it](#how-an-in-memory-backend-is-atomic). The invariant "a project has a board" is enforced nowhere; it is simply true by the time anyone reads.
 
 The consequence to remember: **a project may legitimately have no board yet.** Anything sweeping a project — deletion above all — must tolerate its absence rather than assume it.
 
@@ -480,13 +480,13 @@ Weaveling ships in two shapes, and the difference is not a build flag on one pro
 
 ### What this does to the in-memory adapters
 
-They stop being scaffolding. `InMemoryEventStore`, `InMemoryPieceCatalog`, `InMemoryPassageStore` and `InProcessDispatcher` become **production code for one of two modes**, which is why every one of them is judged by the same conformance suite as its durable counterpart. The suites were written as a hedge against a database swap; they turn out to be the thing that lets a mode ship without one.
+They stop being scaffolding. `InMemoryEventStore`, `InMemoryPieceCatalog`, `InMemorySceneStore` and `InProcessDispatcher` become **production code for one of two modes**, which is why every one of them is judged by the same conformance suite as its durable counterpart. The suites were written as a hedge against a database swap; they turn out to be the thing that lets a mode ship without one.
 
-It also **withdraws an argument used repeatedly to defer work**: *"it is in-memory, so it dies at process restart"*. That is true of a test run and false of an author who works all afternoon and exports at the end. The [dual write in the piece catalog](./TODO.md), the deletion cascade, and passages that are never evicted all stop being free the moment a session is expected to last, and each is recorded with that consequence noted.
+It also **withdraws an argument used repeatedly to defer work**: *"it is in-memory, so it dies at process restart"*. That is true of a test run and false of an author who works all afternoon and exports at the end. The [dual write in the piece catalog](./TODO.md), the deletion cascade, and scenes that are never evicted all stop being free the moment a session is expected to last, and each is recorded with that consequence noted.
 
 ### Export is what makes it persistent, and it proves the events
 
-An export carries the projects, every aggregate's **event streams with their metadata**, and each passage's CRDT state — the last of which `Passage::everything()` already produces, since a `yrs` update from nothing is exactly a full document.
+An export carries the projects, every aggregate's **event streams with their metadata**, and each scene's CRDT state — the last of which `Scene::everything()` already produces, since a `yrs` update from nothing is exactly a full document.
 
 It deliberately does **not** carry the piece catalog, and that is a **choice rather than a constraint** — derived data can perfectly well be exported as a cache warm. Leaving it out buys a smaller file and makes it impossible to import a catalog that disagrees with the events, at the cost of a rebuild pass on import.
 
@@ -500,7 +500,7 @@ Who reads it is a **deployment matter, never something a feature reads**. `Publi
 
 ## Wiring — each feature assembles itself
 
-`app()` used to build every service by hand: which ports each takes, which listener to register, which routers to merge. Three features made it thirty-five lines and it named `ProjectService`, `PassageService`, `LivePassages`, `PieceService`, `Publishing` and the catalog projector — so adding a feature meant editing the composition root and knowing the feature's insides.
+`app()` used to build every service by hand: which ports each takes, which listener to register, which routers to merge. Three features made it thirty-five lines and it named `ProjectService`, `SceneService`, `LiveScenes`, `PieceService`, `Publishing` and the catalog projector — so adding a feature meant editing the composition root and knowing the feature's insides.
 
 Every feature now has a **`wiring` crate**, a sibling of `contract`, `core`, `adapters` and `tests`. It takes the feature's ports and returns what the feature contributes to the application. `app()` names no service and no adapter.
 
@@ -509,7 +509,7 @@ Every feature now has a **`wiring` crate**, a sibling of `contract`, `core`, `ad
 ```rust
 let features = vec![
     projects_wiring::wire(&adapters.projects, &context),
-    passages_wiring::wire(&adapters.passages, &context),
+    scenes_wiring::wire(&adapters.scenes, &context),
     pieces_wiring::wire(&adapters.pieces, &context),
     boards_wiring::wire(&adapters.boards, &context),
 ];
@@ -521,7 +521,7 @@ Merging routes and registering listeners are then loops over that list. Before t
 
 Two features publish nothing, and carry an empty `listeners` rather than a different return type. That is the trade the loop is bought with, and it costs one `Wired::serving(routes)` call: **uniformity is the point**, and a feature that later grows a listener adds `.listening(…)` without changing its signature.
 
-**Every wiring returns a `Wired`, holding exactly what that feature contributes.** `projects` and `passages` carry only `routes`; `pieces` carries `routes`, its `listeners`, and its service. A struct beats a bare `Router` because the call site reads the same for every feature and a feature that later grows listeners adds a field rather than changing its signature. What is deliberately *not* uniform is the field set: giving `projects` and `passages` an empty `listeners` would pull `libraries/messaging` into two features that publish nothing, to say nothing.
+**Every wiring returns a `Wired`, holding exactly what that feature contributes.** `projects` and `scenes` carry only `routes`; `pieces` carries `routes`, its `listeners`, and its service. A struct beats a bare `Router` because the call site reads the same for every feature and a feature that later grows listeners adds a field rather than changing its signature. What is deliberately *not* uniform is the field set: giving `projects` and `scenes` an empty `listeners` would pull `libraries/messaging` into two features that publish nothing, to say nothing.
 
 **Listeners are returned, not registered.** A feature could take the dispatcher and call `listen` itself, but that would tie the feature crate to `InProcessDispatcher`, a concrete type it has no business knowing. Handing the listeners back leaves the root to decide what they are attached to, which is the same reason `Publisher` arrives as a port rather than a dispatcher.
 
@@ -550,7 +550,7 @@ The [pieces test harness](../features/pieces/tests/src/wiring.rs) calls the real
 ```rust
 let features = vec![
     assemble::<ProjectFeature>(&storage, &context).await?,
-    assemble::<PassageFeature>(&storage, &context).await?,
+    assemble::<SceneFeature>(&storage, &context).await?,
     // …
 ];
 ```
@@ -579,7 +579,7 @@ The version check and the append are atomic *inside* it — PostgreSQL uses a re
 
 **The outbox is an adapter detail.** This is where the reach for transactions usually happens, so it is worth being blunt: the port says *append these events*. The PostgreSQL adapter appends them **and** writes the outbox rows in one transaction, notifies on that same transaction, and a relay woken by that notification publishes from those rows afterwards. The in-memory adapter does **not** get an outbox: a crash there loses the events along with anything queued, so an outbox would be guarding a failure that cannot lose one without the other — it keeps publishing through the service instead. **[M11b](./ROADMAP.md#milestone-11b--one-flow-in-every-mode) overturns this**, for a reason that has nothing to do with durability: publishing inline means local mode and server mode take different paths, so the suite that runs in memory cannot see a bug that depends on a projection being one beat behind. So the two backends differ in where publishing lives, and each feature's `Ports` constructor chooses the store and its publishing together, which is what stops a double-publish or a silent one being wired by hand. Nothing above the port knows either way.
 
-Everything in this design fits the rule already. Cross-aggregate work — deleting a piece disposing its passages — was *chosen* to be eventually consistent through the outbox, and cross-feature work is banned outright.
+Everything in this design fits the rule already. Cross-aggregate work — deleting a piece disposing its scenes — was *chosen* to be eventually consistent through the outbox, and cross-feature work is banned outright.
 
 ### No `Tx` in a port signature
 
@@ -609,14 +609,14 @@ No caller can observe a half-state, and an in-memory operation has no I/O to fai
 
 **What it cannot prove:** that a real backend actually wrapped its statements in a transaction. In-memory tests pass happily while PostgreSQL runs two unwrapped statements. There is no clever fix; the mitigation is that such tests live with the backend, which is already [how the test scopes are split](#repository-structure).
 
-### A worked example: `PassageStore::apply`
+### A worked example: `SceneStore::apply`
 
 `apply(id, update)` takes a delta and lets the backend choose its representation — and the two choices have genuinely different concurrency needs, entirely inside the method:
 
 - **Snapshot backend:** read bytes, merge the update, write bytes. Two concurrent applies both read `S`; one writes `S+A`, the other `S+B`, and **one is lost**. CRDTs do not save you — the loss happens below the merge. This backend needs `SELECT … FOR UPDATE` or a version column.
 - **Append-only log backend:** one insert. Appends commute, so concurrent applies need no locking at all.
 
-Today this is masked because a `LivePassage` is the single holder of the document, so there is one writer per passage per process. That assumption dies the moment a second server instance exists. Either way it stays *inside* `apply`, which is the rule working exactly as intended.
+Today this is masked because a `LiveScene` is the single holder of the document, so there is one writer per scene per process. That assumption dies the moment a second server instance exists. Either way it stays *inside* `apply`, which is the rule working exactly as intended.
 
 ## Event Sourcing — Discipline
 
@@ -757,30 +757,30 @@ clients/web/src/
 ├── app.rs                  composes features
 ├── http.rs                 ApiError + response classification
 ├── projects/               model, service, workspace, overlays, components
-└── passages/               model, service, editor, the wasm-bindgen bridge
+└── scenes/               model, service, editor, the wasm-bindgen bridge
 ```
 
-The alternative — grouping by *kind of thing* — collapses under its own weight quickly. An `ids.rs` holding `ProjectId` and `PassageId` puts two unrelated types together for no reason but that both are ids, and the same instinct would give us `services.rs` and `models.rs` next. Ids live with their feature.
+The alternative — grouping by *kind of thing* — collapses under its own weight quickly. An `ids.rs` holding `ProjectId` and `SceneId` puts two unrelated types together for no reason but that both are ids, and the same instinct would give us `services.rs` and `models.rs` next. Ids live with their feature.
 
 **`contract` stops at `service.rs`.** A DTO may be seen by exactly one file per feature — the service that fetches it — and never by a state holder or a component. Before this rule, `ProjectDTO` reached five of ten client files, and the damage was concrete: `row.rs` parsed RFC 3339 *inside a UI component* and, on a parse failure, rendered the raw wire timestamp to the author. Parsing now happens once in the service, where a malformed response is honestly an `Unexpected`. This is the same reasoning that keeps `contract` out of `core` on the server, applied to the other side of the wire.
 
-**A client model must differ from its DTO, or don't create one.** Otherwise every feature accretes a renamed mirror of its wire type, which is pure ceremony and one more thing to keep in step. `Project` earns its place three times over — a typed `ProjectId` instead of a `String`, an `OffsetDateTime` instead of unparsed text, and no `created_at` at all, since the wire sends it and nothing renders it. The model carries what the UI needs, not what the server happens to say. `passages` has **no** model: a `Passage { id, text }` would have been a no-op mirror, so its service returns a bare `PassageId`.
+**A client model must differ from its DTO, or don't create one.** Otherwise every feature accretes a renamed mirror of its wire type, which is pure ceremony and one more thing to keep in step. `Project` earns its place three times over — a typed `ProjectId` instead of a `String`, an `OffsetDateTime` instead of unparsed text, and no `created_at` at all, since the wire sends it and nothing renders it. The model carries what the UI needs, not what the server happens to say. `scenes` has **no** model: a `Scene { id, text }` would have been a no-op mirror, so its service returns a bare `SceneId`.
 
-**Ids are newtypes, and they do not validate.** `ProjectId(String)` and `PassageId(String)` are tags, not parsers. The point is that `rename(id, name)` — two `String`s in the old signature — becomes a compile error when transposed, which an alias (`type ProjectId = String`) would not have caught, since an alias is documentation rather than a type. They deliberately do *not* check the `passage_` prefix: [the client never computes an id](#the-passages-feature), it echoes back what it was given, and a validating constructor would quietly make the client depend on a format the server should be free to change.
+**Ids are newtypes, and they do not validate.** `ProjectId(String)` and `SceneId(String)` are tags, not parsers. The point is that `rename(id, name)` — two `String`s in the old signature — becomes a compile error when transposed, which an alias (`type ProjectId = String`) would not have caught, since an alias is documentation rather than a type. They deliberately do *not* check the `scene_` prefix: [the client never computes an id](#the-scenes-feature), it echoes back what it was given, and a validating constructor would quietly make the client depend on a format the server should be free to change.
 
 **Ids are declared, not written out.** `ids::id!(PieceId, "piece_")` is the whole of a feature's `id.rs`. Four features had grown byte-identical 136-line copies — the same v7 generation, the same base62 `Display`, the same prefix-stripping `FromStr`, the same nine tests — and every new feature was copying a fifth. The macro generates the type, its impls **and its test module**, so the tests run once per id type against the code that actually backs it, rather than being a copy someone has to remember to keep.
 
-A macro rather than a generic `Id<Kind>`: the generic form needs a marker type per feature (and `Piece` is already the aggregate), hand-written impls to dodge the `PhantomData` derive bounds, and it surfaces as `Id<Pieces>` in every error message. The macro keeps the types genuinely distinct and named, which is the property that matters — a `passage_…` string must not parse as a `PieceId`, and there is a generated test saying so.
+A macro rather than a generic `Id<Kind>`: the generic form needs a marker type per feature (and `Piece` is already the aggregate), hand-written impls to dodge the `PhantomData` derive bounds, and it surfaces as `Id<Pieces>` in every error message. The macro keeps the types genuinely distinct and named, which is the property that matters — a `scene_…` string must not parse as a `PieceId`, and there is a generated test saying so.
 
 The per-feature error types went with it: one `ids::InvalidId` carries the prefix it expected, so the message stays exact while four near-identical error types disappear. It also means `ids` re-exports `Uuid`, `OffsetDateTime` and `Duration` so a feature declaring an id needs no `uuid` dependency at all — three cores dropped theirs.
 
-**Prefer the word the field already has.** Invent a name only where the standard vocabulary has none. This was applied late and cost a wide rename, so it is written down rather than left to taste: `absorb` became `apply` (both on the `Aggregate` trait and on `Passage`, since Yjs calls it `applyUpdate` too), `collapse` became `compact`, `Listener::hear` became `handle`, `Landed` became `Appended` to match the `append` that produced it, and `born` became `from_first`. The invented words read well and taught the reader nothing — worse, one of them was actively misleading: `Unheard` says *nobody heard this*, when it means *one listener refused it while the others coped*, so it argued against the type it named. It is now `NotHandled`.
+**Prefer the word the field already has.** Invent a name only where the standard vocabulary has none. This was applied late and cost a wide rename, so it is written down rather than left to taste: `absorb` became `apply` (both on the `Aggregate` trait and on `Scene`, since Yjs calls it `applyUpdate` too), `collapse` became `compact`, `Listener::hear` became `handle`, `Landed` became `Appended` to match the `append` that produced it, and `born` became `from_first`. The invented words read well and taught the reader nothing — worse, one of them was actively misleading: `Unheard` says *nobody heard this*, when it means *one listener refused it while the others coped*, so it argued against the type it named. It is now `NotHandled`.
 
 What survives the rule is what the field genuinely has no word for: `Recorded<E>` (an event with its metadata), `Standing<A>` (state plus the version it stands at), and `Kept`/`Fleeting`, where the RabbitMQ words *durable* and *transient* describe the queue rather than the question a feature is actually answering — does missing this matter?
 
 **Name a projection for what it projects, and say that it is one.** `PieceCatalog` stays the port, because `Catalog` distinguishes *this* read model from the board's and the outline's, which are also projections over pieces — a `PiecesReadModel` would leave them all needing the distinguishing noun back. What was missing is that it is a projection at all, so the listener carries it: `PieceCatalogProjector`. That is where the CQRS rules bite, and where a reader meets them.
 
-**A type is not prefixed with its own module's name.** `passages::prose::ProseEditor` already says "passage" once, through the path; `PassageEditor` there would say it twice while claiming more than the type does. The `passages` folder holds two editor-ish things, and the useful distinction between them is what each *owns* rather than which language it is written in: `PassageEditor` is the Leptos component — liveness indicator, host element, focus control, and the lifecycle that creates and destroys what sits inside it — while `ProseEditor` is that surface, ProseMirror plus Yjs plus the socket, reached through `wasm-bindgen`. Naming them so that one visibly contains the other matches how the code nests, and it keeps "prose" meaning exactly one thing at every layer: the rich-text content, which is also the `Y.XmlFragment` key and the `class="prose"` section that wraps it. An editor that handled prose *and* a passage's title would need a new name; this one would not.
+**A type is not prefixed with its own module's name.** `scenes::prose::ProseEditor` already says "scene" once, through the path; `SceneEditor` there would say it twice while claiming more than the type does. The `scenes` folder holds two editor-ish things, and the useful distinction between them is what each *owns* rather than which language it is written in: `SceneEditor` is the Leptos component — liveness indicator, host element, focus control, and the lifecycle that creates and destroys what sits inside it — while `ProseEditor` is that surface, ProseMirror plus Yjs plus the socket, reached through `wasm-bindgen`. Naming them so that one visibly contains the other matches how the code nests, and it keeps "prose" meaning exactly one thing at every layer: the rich-text content, which is also the `Y.XmlFragment` key and the `class="prose"` section that wraps it. An editor that handled prose *and* a scene's title would need a new name; this one would not.
 
 **Styles are SCSS, split the way the client is split.** `index.html` carries no `<style>` block and is now eleven lines; the stylesheet lives in `clients/web/scss/` and Trunk compiles it through `<link data-trunk rel="scss">`. This needs no build hook — Trunk fetches dart-sass into its own tool cache exactly as it already does `wasm-bindgen`, so the esbuild hook stays the only JS tooling in the client. The partials mirror the source tree: `_tokens`, `_base` and `_controls` are the shared vocabulary, then `_projects`, `_overlays` and `_prose` follow their features. The compiled CSS lands in `dist/`, outside the watch root, so unlike the JS bundle it carries no rebuild-loop risk.
 
@@ -791,15 +791,15 @@ Two rules that are not obvious from the files:
 
 The port was verified rather than eyeballed: 163 declarations before and 163 after, the only difference being dart-sass unquoting `[contenteditable="false"]`.
 
-**Routes are paths, and `leptos_router` owns them.** `/` is the workspace and `/projects/{id}` is one project's pool; `route.rs` is reduced to the path builders so one place knows the URL shapes, and the route table itself is a `view!` block. Paths rather than query parameters because they *nest* — `?project=x&passage=y` says nothing about how the two relate, while `/projects/{id}/pieces/{id}` states it, and that is the shape the outline and board will need.
+**Routes are paths, and `leptos_router` owns them.** `/` is the workspace and `/projects/{id}` is one project's pool; `route.rs` is reduced to the path builders so one place knows the URL shapes, and the route table itself is a `view!` block. Paths rather than query parameters because they *nest* — `?project=x&scene=y` says nothing about how the two relate, while `/projects/{id}/pieces/{id}` states it, and that is the shape the outline and board will need.
 
 **Navigation is `<A>`, never a button with a callback.** This was hand-rolled first — a `Route` enum, a parser, and `pushState` plus a `popstate` listener — and it was wrong for a reason that had nothing to do with how many routes there are: navigation was `<button on:click>`, so a project could not be ctrl-clicked into a new tab, showed no URL on hover, offered no *copy link address*, and announced itself to a screen reader as a button. That defeats the entire point of moving to paths, which was shareable links. `leptos_router`'s `<A>` renders a real anchor and intercepts only unmodified left-clicks, so the browser's own affordances keep working. The router also handles `popstate`, nested routes, and route matching, which is the pile of work that hand-rolling was quietly signing up for.
 
 The earlier `replaceState` reasoning still stands where it is written, and this supersedes it for routes: with real routes the answer is to handle history properly, not to avoid history entries. **Ids stay in the path, never slugs** — a slug is derived and mutable, and project names are neither unique nor stable; see [TODO.md](./TODO.md) for the decorative-slug pattern that gives readable URLs without making a name into an identity.
 
-**The open passage lives in the URL.** `?passage=<id>` is the whole of that state: a reload reopens the same document, and a second tab pointed at the same address joins it rather than a copy — which is exactly what makes the collaboration testable at all. It is written with `history.replaceState`, not `pushState`, because nothing listens for `popstate` yet, so a Back entry would rewind the address bar while leaving the editor open — a lie about where you are.
+**The open scene lives in the URL.** `?scene=<id>` is the whole of that state: a reload reopens the same document, and a second tab pointed at the same address joins it rather than a copy — which is exactly what makes the collaboration testable at all. It is written with `history.replaceState`, not `pushState`, because nothing listens for `popstate` yet, so a Back entry would rewind the address bar while leaving the editor open — a lie about where you are.
 
-When the address names a passage the server does not know, the client drops the parameter and offers a fresh start instead of mounting an editor. This is not tidiness: the socket would never connect, and ProseMirror would still render an editable, apparently working surface, so every word typed into it would be lost. The client does not inspect the id to decide this — [it does not validate ids](#client-conventions) — it asks the server, which is the only authority on what exists.
+When the address names a scene the server does not know, the client drops the parameter and offers a fresh start instead of mounting an editor. This is not tidiness: the socket would never connect, and ProseMirror would still render an editable, apparently working surface, so every word typed into it would be lost. The client does not inspect the id to decide this — [it does not validate ids](#client-conventions) — it asks the server, which is the only authority on what exists.
 
 **Client tests are end-to-end, in a real browser.** Playwright against `trunk serve` plus the real API — see `clients/web/e2e`. The alternatives were weighed and rejected on evidence: both client bugs that actually shipped in M4 were *browser behavior* — a `<form>` submitting natively and resetting every signal, and an error banner cleared by an unconditional reload. Neither a unit test behind an API port nor a mounted-component test would have caught either; clicking through Chrome did. Adopting `LocalResource`/`Action` also shrinks the unit-testable surface, since what remains in the client is declarative wiring.
 
@@ -830,6 +830,6 @@ Font bundling/licensing for embedded fonts is a concern for both.
 
 Phase 1 is built — the projects slice runs end to end in a browser (see [ROADMAP.md](./ROADMAP.md)).
 
-The prose stack was spiked, measured and proven in all four of its risky places — CRDT semantics, `yrs` ↔ `Yjs` compatibility, the editor in Leptos, and sync over WebSocket — and is now being built for real as the `passages` feature. `contract`, `core`, `adapters/store` and `adapters/sync` exist; the REST read model, the composition root and the client do not yet, so nothing is reachable from a browser.
+The prose stack was spiked, measured and proven in all four of its risky places — CRDT semantics, `yrs` ↔ `Yjs` compatibility, the editor in Leptos, and sync over WebSocket — and is now being built for real as the `scenes` feature. `contract`, `core`, `adapters/store` and `adapters/sync` exist; the REST read model, the composition root and the client do not yet, so nothing is reachable from a browser.
 
-The structure domain and event sourcing are still design, which means a passage currently belongs to no piece — the link waits on pieces existing at all. The solution is still being woven.
+The structure domain and event sourcing are still design, which means a scene currently belongs to no piece — the link waits on pieces existing at all. The solution is still being woven.

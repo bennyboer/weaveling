@@ -33,8 +33,8 @@ async fn places_of(
 
 fn to_dto(place: &Place) -> PlaceDTO {
     match place {
-        Place::Passage(passage) => PlaceDTO::Passage {
-            id: passage.to_string(),
+        Place::Scene(scene) => PlaceDTO::Scene {
+            id: scene.to_string(),
         },
         Place::Section(section) => PlaceDTO::Section {
             id: section.to_string(),

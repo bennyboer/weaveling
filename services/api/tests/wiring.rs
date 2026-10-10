@@ -78,11 +78,11 @@ async fn an_unknown_path_answers_404() {
 }
 
 #[tokio::test]
-async fn the_passages_feature_is_mounted_under_api() {
-    let (status, body) = post_json("/api/passages", r#"{"project":"project_1"}"#).await;
+async fn the_scenes_feature_is_mounted_under_api() {
+    let (status, body) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
 
     assert_eq!(status, StatusCode::CREATED, "body was {body}");
-    assert!(body.contains("passage_"), "body was {body}");
+    assert!(body.contains("scene_"), "body was {body}");
 }
 
 #[tokio::test]
@@ -107,10 +107,10 @@ async fn the_sync_socket_is_mounted_under_api() {
 #[tokio::test]
 async fn the_two_features_do_not_shadow_each_other() {
     let (projects, _) = get("/api/projects").await;
-    let (passages, _) = post_json("/api/passages", r#"{"project":"project_1"}"#).await;
+    let (scenes, _) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
 
     assert_eq!(projects, StatusCode::OK);
-    assert_eq!(passages, StatusCode::CREATED);
+    assert_eq!(scenes, StatusCode::CREATED);
 }
 
 #[tokio::test]
@@ -136,10 +136,10 @@ async fn the_ideas_listing_is_mounted_under_api() {
 #[tokio::test]
 async fn every_feature_answers_without_shadowing_the_others() {
     let (projects, _) = get("/api/projects").await;
-    let (passages, _) = post_json("/api/passages", r#"{"project":"project_1"}"#).await;
+    let (scenes, _) = post_json("/api/scenes", r#"{"project":"project_1"}"#).await;
     let (ideas, _) = get("/api/ideas?project=project_1").await;
 
     assert_eq!(projects, StatusCode::OK);
-    assert_eq!(passages, StatusCode::CREATED);
+    assert_eq!(scenes, StatusCode::CREATED);
     assert_eq!(ideas, StatusCode::OK);
 }

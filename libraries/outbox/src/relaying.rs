@@ -196,13 +196,13 @@ mod tests {
         enqueue(
             &mut transaction,
             Origin {
-                aggregate: "passage_1",
-                kind: "passage",
+                aggregate: "scene_1",
+                kind: "scene",
                 version: 0,
             },
             &Message::opening(
-                RoutingKey::parse("passage.idea.linked").expect("a plain key is fine"),
-                serde_json::json!({ "passage": "passage_1", "idea": "idea_1" }),
+                RoutingKey::parse("scene.idea.linked").expect("a plain key is fine"),
+                serde_json::json!({ "scene": "scene_1", "idea": "idea_1" }),
                 OffsetDateTime::UNIX_EPOCH,
             ),
         )

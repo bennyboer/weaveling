@@ -4,4 +4,4 @@ mod link;
 
 pub use appearance::{Place, Subject};
 pub use catalog::{AppearanceCatalog, CatalogError};
-pub use link::{IdeaLink, PassageLink, SectionLink};
+pub use link::{IdeaLink, SceneLink, SectionLink};

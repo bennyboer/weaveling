@@ -34,14 +34,14 @@ const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 pub struct ProjectLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct PassageLink(String);
+pub struct SceneLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct IdeaLink(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Attachment {
-    Passage(PassageLink),
+    Scene(SceneLink),
     Idea(IdeaLink),
 }
 
@@ -169,7 +169,7 @@ pub enum OutlineError {
     WouldContainItself,
     #[error("there is nothing at that place to sit after")]
     NoSuchNeighbour,
-    #[error("this passage is not in the outline")]
+    #[error("this scene is not in the outline")]
     NotAttached,
     #[error("a discarded outline accepts no changes")]
     Discarded,
@@ -199,25 +199,25 @@ impl Display for ProjectLink {
     }
 }
 
-impl PassageLink {
+impl SceneLink {
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-impl From<String> for PassageLink {
+impl From<String> for SceneLink {
     fn from(given: String) -> Self {
         Self(given)
     }
 }
 
-impl From<&str> for PassageLink {
+impl From<&str> for SceneLink {
     fn from(given: &str) -> Self {
         Self(given.to_owned())
     }
 }
 
-impl Display for PassageLink {
+impl Display for SceneLink {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.0, f)
     }
@@ -248,8 +248,8 @@ impl Display for IdeaLink {
 }
 
 impl Attachment {
-    pub fn passage(id: &str) -> Self {
-        Self::Passage(PassageLink::from(id))
+    pub fn scene(id: &str) -> Self {
+        Self::Scene(SceneLink::from(id))
     }
 
     pub fn idea(id: &str) -> Self {
@@ -258,7 +258,7 @@ impl Attachment {
 
     pub fn as_str(&self) -> &str {
         match self {
-            Self::Passage(passage) => passage.as_str(),
+            Self::Scene(scene) => scene.as_str(),
             Self::Idea(idea) => idea.as_str(),
         }
     }
@@ -333,12 +333,12 @@ impl Outline {
             .collect()
     }
 
-    pub fn reading_order(&self) -> Vec<PassageLink> {
+    pub fn reading_order(&self) -> Vec<SceneLink> {
         self.sections()
             .into_iter()
             .flat_map(|placed| placed.attachments)
             .filter_map(|held| match held {
-                Attachment::Passage(passage) => Some(passage),
+                Attachment::Scene(scene) => Some(scene),
                 Attachment::Idea(_) => None,
             })
             .collect()

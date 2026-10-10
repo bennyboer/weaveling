@@ -21,4 +21,4 @@ appearances-rest = { version = "0.1.0", path = "../adapters/rest", package = "we
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
 ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
 outline-contract = { version = "0.1.0", path = "../../outline/contract", package = "weaveling-outline-contract" }
-passages-contract = { version = "0.1.0", path = "../../passages/contract", package = "weaveling-passages-contract" }
+scenes-contract = { version = "0.1.0", path = "../../scenes/contract", package = "weaveling-scenes-contract" }

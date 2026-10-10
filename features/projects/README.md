@@ -2,7 +2,7 @@
 
 A project is the book an author is working on — the thing everything else hangs off.
 
-It holds almost nothing: a name, when it began, and when it was last touched. What it is *for* is identity and deletion. Every idea, board, outline and passage names a project, and deleting one has to leave nothing behind.
+It holds almost nothing: a name, when it began, and when it was last touched. What it is *for* is identity and deletion. Every idea, board, outline and scene names a project, and deleting one has to leave nothing behind.
 
 **`Project` is an aggregate** — `Started`, `Renamed`, `Deleted` — event-sourced like every other feature since [M11a](../../ROADMAP.md#step-1--projects-becomes-an-aggregate--done). Deletion is why: it is exactly where an author wants history, and `project.deleted` on the wire is what the cascade listens for. A deleted project is gone from the listing and refuses further changes, but its stream stays and still says what it was called and who ended it.
 

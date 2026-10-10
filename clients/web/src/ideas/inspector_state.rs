@@ -7,9 +7,9 @@ use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as idea_service;
 use crate::outline::model::{Section, SectionId};
 use crate::outline::service as outline_service;
-use crate::passages::model::{Passage, PassageId};
-use crate::passages::service as passage_service;
 use crate::route;
+use crate::scenes::model::{Scene, SceneId};
+use crate::scenes::service as scene_service;
 
 #[derive(Clone, Copy)]
 pub struct InspectorState {
@@ -18,7 +18,7 @@ pub struct InspectorState {
     opened: RwSignal<Option<Idea>>,
     places: RwSignal<Vec<Place>>,
     sections: RwSignal<Vec<Section>>,
-    passages: RwSignal<Vec<Passage>>,
+    scenes: RwSignal<Vec<Scene>>,
     retitling_idea: Action<String, ()>,
 }
 
@@ -28,7 +28,7 @@ impl InspectorState {
         let opened = RwSignal::new(None::<Idea>);
         let places = RwSignal::new(Vec::<Place>::new());
         let sections = RwSignal::new(Vec::<Section>::new());
-        let passages = RwSignal::new(Vec::<Passage>::new());
+        let scenes = RwSignal::new(Vec::<Scene>::new());
 
         let opening_idea = Action::new_local(move |asked: &IdeaId| {
             let asked = asked.clone();
@@ -59,8 +59,8 @@ impl InspectorState {
                     Ok(found) => sections.set(found.sections),
                     Err(failure) => return problem.set(Some(failure)),
                 }
-                match passage_service::in_project(&project).await {
-                    Ok(found) => passages.set(found),
+                match scene_service::in_project(&project).await {
+                    Ok(found) => scenes.set(found),
                     Err(failure) => problem.set(Some(failure)),
                 }
             }
@@ -102,7 +102,7 @@ impl InspectorState {
             opened,
             places,
             sections,
-            passages,
+            scenes,
             retitling_idea,
         }
     }
@@ -142,7 +142,7 @@ impl InspectorState {
             .into_iter()
             .filter_map(|place| match place {
                 Place::Section(id) => Some(id),
-                Place::Passage(_) => None,
+                Place::Scene(_) => None,
             })
             .map(|id| {
                 let named = sections
@@ -157,21 +157,21 @@ impl InspectorState {
             .collect()
     }
 
-    pub fn linking_passages(&self) -> Vec<(PassageId, String)> {
-        let passages = self.passages.get();
+    pub fn linking_scenes(&self) -> Vec<(SceneId, String)> {
+        let scenes = self.scenes.get();
 
         self.places
             .get()
             .into_iter()
             .filter_map(|place| match place {
-                Place::Passage(id) => Some(id),
+                Place::Scene(id) => Some(id),
                 Place::Section(_) => None,
             })
             .map(|id| {
-                let named = passages
+                let named = scenes
                     .iter()
-                    .find(|passage| passage.id == id)
-                    .map(Passage::shown_as)
+                    .find(|scene| scene.id == id)
+                    .map(Scene::shown_as)
                     .unwrap_or_else(|| "Untitled".to_owned());
 
                 (id, named)

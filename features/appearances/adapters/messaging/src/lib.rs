@@ -1,7 +1,7 @@
 mod ideas;
 mod outline;
-mod passages;
+mod scenes;
 
 pub use ideas::{ForgetDiscardedIdea, when_idea_discarded};
 pub use outline::OutlineAppearancesProjector;
-pub use passages::PassageAppearancesProjector;
+pub use scenes::SceneAppearancesProjector;

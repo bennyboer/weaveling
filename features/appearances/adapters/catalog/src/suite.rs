@@ -1,4 +1,4 @@
-use appearances_core::{AppearanceCatalog, IdeaLink, PassageLink, Place, SectionLink, Subject};
+use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, SectionLink, Subject};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -19,8 +19,8 @@ fn a_section(named: &str) -> Place {
     Place::Section(SectionLink::from(named))
 }
 
-fn a_passage(named: &str) -> Place {
-    Place::Passage(PassageLink::from(named))
+fn a_scene(named: &str) -> Place {
+    Place::Scene(SceneLink::from(named))
 }
 
 async fn remembered(catalog: &impl AppearanceCatalog, idea: &str, places: &[Place]) {
@@ -47,13 +47,13 @@ pub async fn an_idea_appears_wherever_it_was_remembered(catalog: &impl Appearanc
     remembered(
         catalog,
         "idea_1",
-        &[a_passage("passage_1"), a_section("section_1")],
+        &[a_scene("scene_1"), a_section("section_1")],
     )
     .await;
 
     assert_eq!(
         places_of(catalog, "idea_1").await,
-        vec![a_passage("passage_1"), a_section("section_1")]
+        vec![a_scene("scene_1"), a_section("section_1")]
     );
 }
 
@@ -65,7 +65,7 @@ pub async fn places_come_back_in_one_order_whatever_order_they_were_remembered_i
         "idea_1",
         &[
             a_section("section_2"),
-            a_passage("passage_1"),
+            a_scene("scene_1"),
             a_section("section_1"),
         ],
     )
@@ -74,11 +74,11 @@ pub async fn places_come_back_in_one_order_whatever_order_they_were_remembered_i
     assert_eq!(
         places_of(catalog, "idea_1").await,
         vec![
-            a_passage("passage_1"),
+            a_scene("scene_1"),
             a_section("section_1"),
             a_section("section_2"),
         ],
-        "remembered shuffled on purpose: passages come back before sections, each by id, \
+        "remembered shuffled on purpose: scenes come back before sections, each by id, \
          so both backends answer in the same order"
     );
 }
@@ -102,7 +102,7 @@ pub async fn forgetting_one_place_leaves_the_others(catalog: &impl AppearanceCat
     remembered(
         catalog,
         "idea_1",
-        &[a_section("section_1"), a_passage("passage_1")],
+        &[a_section("section_1"), a_scene("scene_1")],
     )
     .await;
 
@@ -111,10 +111,7 @@ pub async fn forgetting_one_place_leaves_the_others(catalog: &impl AppearanceCat
         .await
         .expect("forgetting should succeed");
 
-    assert_eq!(
-        places_of(catalog, "idea_1").await,
-        vec![a_passage("passage_1")]
-    );
+    assert_eq!(places_of(catalog, "idea_1").await, vec![a_scene("scene_1")]);
 }
 
 pub async fn forgetting_an_idea_leaves_every_other_idea(catalog: &impl AppearanceCatalog) {
@@ -158,18 +155,13 @@ pub async fn forgetting_a_place_reaches_every_idea_in_it(catalog: &impl Appearan
     );
 }
 
-pub async fn a_section_and_a_passage_sharing_an_id_are_different_places(
+pub async fn a_section_and_a_scene_sharing_an_id_are_different_places(
     catalog: &impl AppearanceCatalog,
 ) {
-    remembered(
-        catalog,
-        "idea_1",
-        &[a_section("same_1"), a_passage("same_1")],
-    )
-    .await;
+    remembered(catalog, "idea_1", &[a_section("same_1"), a_scene("same_1")]).await;
 
     catalog
-        .forget_place(&a_passage("same_1"))
+        .forget_place(&a_scene("same_1"))
         .await
         .expect("forgetting should succeed");
 
@@ -310,7 +302,7 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!($workbench, forgetting_a_place_reaches_every_idea_in_it);
         $crate::suite::conformance_case!(
             $workbench,
-            a_section_and_a_passage_sharing_an_id_are_different_places
+            a_section_and_a_scene_sharing_an_id_are_different_places
         );
         $crate::suite::conformance_case!(
             $workbench,

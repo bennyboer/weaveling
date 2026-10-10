@@ -98,14 +98,14 @@ test("the inspector shows where the selected idea appears", async ({
   const ideas = await (
     await page.request.get(`${API}/ideas?project=${project}`)
   ).json();
-  const made = await page.request.post(`${API}/passages`, {
+  const made = await page.request.post(`${API}/scenes`, {
     data: { project },
   });
-  const { id: passage } = await made.json();
-  await page.request.patch(`${API}/passages/${passage}`, {
+  const { id: scene } = await made.json();
+  await page.request.patch(`${API}/scenes/${scene}`, {
     data: { title: "The clearing" },
   });
-  await page.request.post(`${API}/passages/${passage}/ideas`, {
+  await page.request.post(`${API}/scenes/${scene}/ideas`, {
     data: { idea: ideas[0].id },
   });
 

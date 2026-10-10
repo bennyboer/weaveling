@@ -7,8 +7,8 @@ use outline_contract::{
 use crate::http::{ApiError, parsed};
 use crate::ideas::model::IdeaId;
 use crate::outline::model::{Attachment, Outline, OutlineId, Section, SectionId};
-use crate::passages::model::PassageId;
 use crate::projects::model::ProjectId;
+use crate::scenes::model::SceneId;
 
 const OUTLINES: &str = "/api/outlines";
 const SUBJECT: &str = "outline";
@@ -127,7 +127,7 @@ pub async fn attach(
 
 pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), ApiError> {
     let (kind, id) = match attachment {
-        Attachment::Passage(passage) => ("passages", passage.to_string()),
+        Attachment::Scene(scene) => ("scenes", scene.to_string()),
         Attachment::Idea(idea) => ("ideas", idea.to_string()),
     };
     let response = Request::delete(&format!("{OUTLINES}/{outline}/attachments/{kind}/{id}"))
@@ -153,8 +153,8 @@ async fn urged(outline: &OutlineId, section: &SectionId, how: &str) -> Result<Ou
 
 fn to_dto(attachment: &Attachment) -> AttachmentDTO {
     match attachment {
-        Attachment::Passage(passage) => AttachmentDTO::Passage {
-            id: passage.to_string(),
+        Attachment::Scene(scene) => AttachmentDTO::Scene {
+            id: scene.to_string(),
         },
         Attachment::Idea(idea) => AttachmentDTO::Idea {
             id: idea.to_string(),
@@ -164,7 +164,7 @@ fn to_dto(attachment: &Attachment) -> AttachmentDTO {
 
 fn as_attachment(dto: AttachmentDTO) -> Attachment {
     match dto {
-        AttachmentDTO::Passage { id } => Attachment::Passage(PassageId::from(id)),
+        AttachmentDTO::Scene { id } => Attachment::Scene(SceneId::from(id)),
         AttachmentDTO::Idea { id } => Attachment::Idea(IdeaId::from(id)),
     }
 }

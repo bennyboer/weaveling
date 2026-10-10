@@ -118,29 +118,29 @@ pub async fn a_project_lists_its_outlines_in_a_settled_order(catalog: &impl Outl
     );
 }
 
-pub async fn a_passage_nobody_placed_is_in_no_outline(catalog: &impl OutlineCatalog) {
+pub async fn a_scene_nobody_placed_is_in_no_outline(catalog: &impl OutlineCatalog) {
     let found = catalog
-        .outlines_holding(&Attachment::passage("passage_loose"))
+        .outlines_holding(&Attachment::scene("scene_loose"))
         .await
         .expect("looking should succeed");
 
     assert!(
         found.is_empty(),
-        "a passage in the pool and not in the book is not an error, it is simply not in the book yet"
+        "a scene in the pool and not in the book is not an error, it is simply not in the book yet"
     );
 }
 
-pub async fn an_attached_passage_names_the_outline_holding_it(catalog: &impl OutlineCatalog) {
+pub async fn an_attached_scene_names_the_outline_holding_it(catalog: &impl OutlineCatalog) {
     let outline = OutlineId::generate(at(1_000));
 
     catalog
-        .holds(outline, &[Attachment::passage("passage_1")])
+        .holds(outline, &[Attachment::scene("scene_1")])
         .await
         .expect("indexing should succeed");
 
     assert_eq!(
         catalog
-            .outlines_holding(&Attachment::passage("passage_1"))
+            .outlines_holding(&Attachment::scene("scene_1"))
             .await
             .expect("looking should succeed"),
         vec![outline]
@@ -150,8 +150,8 @@ pub async fn an_attached_passage_names_the_outline_holding_it(catalog: &impl Out
 pub async fn everything_in_an_outline_names_it(catalog: &impl OutlineCatalog) {
     let outline = OutlineId::generate(at(1_000));
     let held = [
-        Attachment::passage("passage_1"),
-        Attachment::passage("passage_2"),
+        Attachment::scene("scene_1"),
+        Attachment::scene("scene_2"),
         Attachment::idea("idea_1"),
     ];
 
@@ -172,63 +172,63 @@ pub async fn everything_in_an_outline_names_it(catalog: &impl OutlineCatalog) {
     }
 }
 
-pub async fn a_passage_may_sit_in_more_than_one_outline(catalog: &impl OutlineCatalog) {
+pub async fn a_scene_may_sit_in_more_than_one_outline(catalog: &impl OutlineCatalog) {
     let earliest = OutlineId::generate(at(1_000));
     let latest = OutlineId::generate(at(2_000));
     for outline in [latest, earliest] {
         catalog
-            .holds(outline, &[Attachment::passage("passage_1")])
+            .holds(outline, &[Attachment::scene("scene_1")])
             .await
             .expect("indexing should succeed");
     }
 
     assert_eq!(
         catalog
-            .outlines_holding(&Attachment::passage("passage_1"))
+            .outlines_holding(&Attachment::scene("scene_1"))
             .await
             .expect("looking should succeed"),
         vec![earliest, latest],
-        "one passage sits in at most one section, but the model allows a project several outlines"
+        "one scene sits in at most one section, but the model allows a project several outlines"
     );
 }
 
 pub async fn what_an_outline_holds_is_replaced_not_added_to(catalog: &impl OutlineCatalog) {
     let outline = OutlineId::generate(at(1_000));
     catalog
-        .holds(outline, &[Attachment::passage("passage_1")])
+        .holds(outline, &[Attachment::scene("scene_1")])
         .await
         .expect("indexing should succeed");
 
     catalog
-        .holds(outline, &[Attachment::passage("passage_2")])
+        .holds(outline, &[Attachment::scene("scene_2")])
         .await
         .expect("indexing again should succeed");
 
     assert!(
         catalog
-            .outlines_holding(&Attachment::passage("passage_1"))
+            .outlines_holding(&Attachment::scene("scene_1"))
             .await
             .expect("looking should succeed")
             .is_empty(),
-        "the projector writes the whole set, so a detached passage falls out of the index"
+        "the projector writes the whole set, so a detached scene falls out of the index"
     );
     assert_eq!(
         catalog
-            .outlines_holding(&Attachment::passage("passage_2"))
+            .outlines_holding(&Attachment::scene("scene_2"))
             .await
             .expect("looking should succeed"),
         vec![outline]
     );
 }
 
-pub async fn one_outline_letting_a_passage_go_leaves_the_others_holding_it(
+pub async fn one_outline_letting_a_scene_go_leaves_the_others_holding_it(
     catalog: &impl OutlineCatalog,
 ) {
     let keeping = OutlineId::generate(at(1_000));
     let dropping = OutlineId::generate(at(2_000));
     for outline in [keeping, dropping] {
         catalog
-            .holds(outline, &[Attachment::passage("passage_1")])
+            .holds(outline, &[Attachment::scene("scene_1")])
             .await
             .expect("indexing should succeed");
     }
@@ -240,7 +240,7 @@ pub async fn one_outline_letting_a_passage_go_leaves_the_others_holding_it(
 
     assert_eq!(
         catalog
-            .outlines_holding(&Attachment::passage("passage_1"))
+            .outlines_holding(&Attachment::scene("scene_1"))
             .await
             .expect("looking should succeed"),
         vec![keeping],
@@ -248,7 +248,7 @@ pub async fn one_outline_letting_a_passage_go_leaves_the_others_holding_it(
     );
 }
 
-pub async fn a_forgotten_outline_takes_its_passages_with_it(catalog: &impl OutlineCatalog) {
+pub async fn a_forgotten_outline_takes_its_scenes_with_it(catalog: &impl OutlineCatalog) {
     let outline = OutlineId::generate(at(1_000));
     let elsewhere = OutlineId::generate(at(2_000));
     catalog
@@ -260,11 +260,11 @@ pub async fn a_forgotten_outline_takes_its_passages_with_it(catalog: &impl Outli
         .await
         .expect("remembering should succeed");
     catalog
-        .holds(outline, &[Attachment::passage("passage_1")])
+        .holds(outline, &[Attachment::scene("scene_1")])
         .await
         .expect("indexing should succeed");
     catalog
-        .holds(elsewhere, &[Attachment::passage("passage_1")])
+        .holds(elsewhere, &[Attachment::scene("scene_1")])
         .await
         .expect("indexing should succeed");
 
@@ -282,11 +282,11 @@ pub async fn a_forgotten_outline_takes_its_passages_with_it(catalog: &impl Outli
     );
     assert_eq!(
         catalog
-            .outlines_holding(&Attachment::passage("passage_1"))
+            .outlines_holding(&Attachment::scene("scene_1"))
             .await
             .expect("looking should succeed"),
         vec![elsewhere],
-        "a forgotten outline must take its passages with it, or the index keeps answering for an \
+        "a forgotten outline must take its scenes with it, or the index keeps answering for an \
          outline that is gone — and leave every other outline's alone"
     );
 }
@@ -315,10 +315,7 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
-        $crate::catalog_conformance_case!(
-            $workbench,
-            a_forgotten_outline_takes_its_passages_with_it
-        );
+        $crate::catalog_conformance_case!($workbench, a_forgotten_outline_takes_its_scenes_with_it);
         $crate::catalog_conformance_case!(
             $workbench,
             forgetting_an_outline_nobody_opened_is_harmless
@@ -340,19 +337,19 @@ macro_rules! conformance_tests {
             $workbench,
             a_project_lists_its_outlines_in_a_settled_order
         );
-        $crate::catalog_conformance_case!($workbench, a_passage_nobody_placed_is_in_no_outline);
+        $crate::catalog_conformance_case!($workbench, a_scene_nobody_placed_is_in_no_outline);
         $crate::catalog_conformance_case!(
             $workbench,
-            an_attached_passage_names_the_outline_holding_it
+            an_attached_scene_names_the_outline_holding_it
         );
-        $crate::catalog_conformance_case!($workbench, a_passage_may_sit_in_more_than_one_outline);
+        $crate::catalog_conformance_case!($workbench, a_scene_may_sit_in_more_than_one_outline);
         $crate::catalog_conformance_case!(
             $workbench,
             what_an_outline_holds_is_replaced_not_added_to
         );
         $crate::catalog_conformance_case!(
             $workbench,
-            one_outline_letting_a_passage_go_leaves_the_others_holding_it
+            one_outline_letting_a_scene_go_leaves_the_others_holding_it
         );
         $crate::catalog_conformance_case!($workbench, everything_in_an_outline_names_it);
     };

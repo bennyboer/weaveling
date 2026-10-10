@@ -120,7 +120,7 @@ async fn an_id_of_another_kind_is_a_bad_request() {
     let server = a_server();
 
     server
-        .get("/ideas/passage_031VkO0hnpeQZUiAB7nDma")
+        .get("/ideas/scene_031VkO0hnpeQZUiAB7nDma")
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }

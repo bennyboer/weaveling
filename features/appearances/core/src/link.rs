@@ -33,4 +33,4 @@ macro_rules! link {
 
 link!(IdeaLink);
 link!(SectionLink);
-link!(PassageLink);
+link!(SceneLink);

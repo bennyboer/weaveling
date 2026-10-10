@@ -130,7 +130,7 @@ async fn a_written_book(wired: &Wired) -> (OutlineId, Vec<SectionId>) {
             .outlines
             .attach(
                 &address,
-                Attachment::passage(&format!("passage_{nth}")),
+                Attachment::scene(&format!("scene_{nth}")),
                 *chapter,
                 None,
                 None,
@@ -271,9 +271,9 @@ async fn a_service_that_never_saw_the_writes_reads_the_same_book_out_of_the_log(
             .state
             .reading_order()
             .iter()
-            .map(|passage| passage.to_string())
+            .map(|scene| scene.to_string())
             .collect::<Vec<_>>(),
-        vec!["passage_0", "passage_1", "passage_2"],
+        vec!["scene_0", "scene_1", "scene_2"],
         "and the book has to read in the same order it did before the promotion"
     );
 }

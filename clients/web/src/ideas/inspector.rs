@@ -34,13 +34,13 @@ fn appears_in(state: InspectorState) -> impl IntoView {
         .class("appears-in")
         .child((html::h2().child("Appears in"), move || {
             let sections = state.noting_sections();
-            let passages = state.linking_passages();
+            let scenes = state.linking_scenes();
 
-            if sections.is_empty() && passages.is_empty() {
+            if sections.is_empty() && scenes.is_empty() {
                 return html::p()
                     .class("empty")
                     .child(
-                        "Not in the book yet \u{2014} no section notes it, no passage draws on it.",
+                        "Not in the book yet \u{2014} no section notes it, no scene draws on it.",
                     )
                     .into_any();
             }
@@ -49,13 +49,13 @@ fn appears_in(state: InspectorState) -> impl IntoView {
             let in_sections = sections
                 .into_iter()
                 .map(|(_, named)| place(Icon::Section, route::outline(&project), named));
-            let in_passages = passages
+            let in_scenes = scenes
                 .into_iter()
-                .map(|(id, named)| place(Icon::Passage, route::passage(&project, &id), named));
+                .map(|(id, named)| place(Icon::Scene, route::scene(&project, &id), named));
 
             html::ul()
                 .attr("aria-label", "Appears in")
-                .child(in_sections.chain(in_passages).collect::<Vec<_>>())
+                .child(in_sections.chain(in_scenes).collect::<Vec<_>>())
                 .into_any()
         }))
 }

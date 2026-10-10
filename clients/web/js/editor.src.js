@@ -23,11 +23,11 @@ function endpoint() {
 }
 
 export class ProseEditor {
-  constructor(host, passage, author, color, onConnected) {
+  constructor(host, scene, author, color, onConnected) {
     this.doc = new Y.Doc();
     this.fragment = this.doc.getXmlFragment(FRAGMENT);
 
-    this.provider = new WebsocketProvider(endpoint(), passage, this.doc);
+    this.provider = new WebsocketProvider(endpoint(), scene, this.doc);
     this.provider.awareness.setLocalStateField("user", { name: author, color });
     this.provider.on("status", ({ status }) => onConnected(status === "connected"));
 

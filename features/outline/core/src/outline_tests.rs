@@ -6,7 +6,7 @@ use time::{Duration, OffsetDateTime};
 
 use crate::id::SectionId;
 use crate::outline::{
-    Attachment, KIND, Outline, OutlineCommand, OutlineError, OutlineEvent, PassageLink,
+    Attachment, KIND, Outline, OutlineCommand, OutlineError, OutlineEvent, SceneLink,
 };
 use crate::title::SectionTitle;
 
@@ -44,12 +44,12 @@ fn a_section(named: &str) -> SectionId {
     })
 }
 
-fn a_passage(named: &str) -> Attachment {
-    Attachment::passage(&format!("passage_{named}"))
+fn a_scene(named: &str) -> Attachment {
+    Attachment::scene(&format!("scene_{named}"))
 }
 
-fn a_passage_link(named: &str) -> PassageLink {
-    PassageLink::from(format!("passage_{named}"))
+fn a_scene_link(named: &str) -> SceneLink {
+    SceneLink::from(format!("scene_{named}"))
 }
 
 fn an_idea(named: &str) -> Attachment {
@@ -109,8 +109,8 @@ impl Book {
         });
     }
 
-    fn attaches_passage(&mut self, passage: &str, to: &str) {
-        self.attaches(a_passage(passage), to);
+    fn attaches_scene(&mut self, scene: &str, to: &str) {
+        self.attaches(a_scene(scene), to);
     }
 
     fn attaches_idea(&mut self, idea: &str, to: &str) {
@@ -350,9 +350,9 @@ fn promoting_never_changes_what_the_book_reads_like() {
     book.adds("Arrival", Some("Chapter 1"), None);
     book.adds("Rain", Some("Chapter 1"), Some("Arrival"));
     book.adds("Storm", Some("Chapter 1"), Some("Rain"));
-    book.attaches_passage("arrival", "Arrival");
-    book.attaches_passage("rain", "Rain");
-    book.attaches_passage("storm", "Storm");
+    book.attaches_scene("arrival", "Arrival");
+    book.attaches_scene("rain", "Rain");
+    book.attaches_scene("storm", "Storm");
     let before = book.outline.reading_order();
 
     book.does(OutlineCommand::Promote {
@@ -549,27 +549,27 @@ fn removing_a_section_lifts_its_children_into_its_place() {
 }
 
 #[test]
-fn removing_a_section_returns_its_passages_to_the_pool_rather_than_losing_them() {
+fn removing_a_section_returns_its_scenes_to_the_pool_rather_than_losing_them() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
-    book.attaches_passage("arrival", "Chapter 1");
+    book.attaches_scene("arrival", "Chapter 1");
 
     book.does(OutlineCommand::Remove {
         section: a_section("Chapter 1"),
     });
 
     assert!(book.outline.reading_order().is_empty());
-    assert_eq!(book.outline.section_holding(&a_passage("arrival")), None);
+    assert_eq!(book.outline.section_holding(&a_scene("arrival")), None);
 }
 
 #[test]
-fn a_passage_attached_where_it_already_sits_elsewhere_simply_moves() {
+fn a_scene_attached_where_it_already_sits_elsewhere_simply_moves() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
     book.adds("Chapter 2", None, Some("Chapter 1"));
-    book.attaches_passage("rain", "Chapter 1");
+    book.attaches_scene("rain", "Chapter 1");
 
-    book.attaches_passage("rain", "Chapter 2");
+    book.attaches_scene("rain", "Chapter 2");
 
     assert!(
         book.outline
@@ -577,26 +577,26 @@ fn a_passage_attached_where_it_already_sits_elsewhere_simply_moves() {
             .is_empty()
     );
     assert_eq!(
-        book.outline.section_holding(&a_passage("rain")),
+        book.outline.section_holding(&a_scene("rain")),
         Some(a_section("Chapter 2"))
     );
 }
 
 #[test]
-fn several_passages_may_sit_in_one_section_in_the_order_they_are_read() {
+fn several_scenes_may_sit_in_one_section_in_the_order_they_are_read() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
 
-    book.attaches_passage("one", "Chapter 1");
-    book.attaches_passage("two", "Chapter 1");
-    book.attaches_passage("three", "Chapter 1");
+    book.attaches_scene("one", "Chapter 1");
+    book.attaches_scene("two", "Chapter 1");
+    book.attaches_scene("three", "Chapter 1");
 
     assert_eq!(
         book.outline.reading_order(),
         vec![
-            a_passage_link("one"),
-            a_passage_link("two"),
-            a_passage_link("three")
+            a_scene_link("one"),
+            a_scene_link("two"),
+            a_scene_link("three")
         ]
     );
 }
@@ -608,29 +608,29 @@ fn the_reading_order_walks_the_whole_book_depth_first() {
     book.adds("Chapter 1", Some("Part One"), None);
     book.adds("Chapter 2", Some("Part One"), Some("Chapter 1"));
     book.adds("Part Two", None, Some("Part One"));
-    book.attaches_passage("epigraph", "Part One");
-    book.attaches_passage("arrival", "Chapter 1");
-    book.attaches_passage("rain", "Chapter 2");
-    book.attaches_passage("after", "Part Two");
+    book.attaches_scene("epigraph", "Part One");
+    book.attaches_scene("arrival", "Chapter 1");
+    book.attaches_scene("rain", "Chapter 2");
+    book.attaches_scene("after", "Part Two");
 
     assert_eq!(
         book.outline.reading_order(),
         vec![
-            a_passage_link("epigraph"),
-            a_passage_link("arrival"),
-            a_passage_link("rain"),
-            a_passage_link("after")
+            a_scene_link("epigraph"),
+            a_scene_link("arrival"),
+            a_scene_link("rain"),
+            a_scene_link("after")
         ]
     );
 }
 
 #[test]
-fn a_passage_that_is_not_in_the_outline_cannot_be_detached() {
+fn a_scene_that_is_not_in_the_outline_cannot_be_detached() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
 
     let refused = book.refuses(OutlineCommand::Detach {
-        attachment: a_passage("nowhere"),
+        attachment: a_scene("nowhere"),
     });
 
     assert_eq!(refused, OutlineError::NotAttached);
@@ -644,8 +644,8 @@ fn a_snapshot_rebuilds_the_same_book() {
     book.adds("Arrival", Some("Chapter 1"), None);
     book.adds("Chapter 2", Some("Part One"), Some("Chapter 1"));
     book.adds("Part Two", None, Some("Part One"));
-    book.attaches_passage("arrival", "Arrival");
-    book.attaches_passage("rain", "Chapter 2");
+    book.attaches_scene("arrival", "Arrival");
+    book.attaches_scene("rain", "Chapter 2");
 
     let rebuilt = Outline::from_first(&book.outline.snapshot(), &a_metadata())
         .expect("a snapshot should raise an outline");
@@ -723,16 +723,16 @@ fn a_snapshot_remembers_that_the_outline_was_discarded() {
 }
 
 #[test]
-fn an_idea_sits_in_a_section_as_a_note_beside_the_passages() {
+fn an_idea_sits_in_a_section_as_a_note_beside_the_scenes() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
 
-    book.attaches_passage("arrival", "Chapter 1");
+    book.attaches_scene("arrival", "Chapter 1");
     book.attaches_idea("foreshadow-the-loom", "Chapter 1");
 
     assert_eq!(
         book.outline.attachments_in(&a_section("Chapter 1")),
-        vec![a_passage("arrival"), an_idea("foreshadow-the-loom")]
+        vec![a_scene("arrival"), an_idea("foreshadow-the-loom")]
     );
 }
 
@@ -741,37 +741,37 @@ fn a_note_is_not_part_of_the_manuscript() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
     book.attaches_idea("foreshadow-the-loom", "Chapter 1");
-    book.attaches_passage("arrival", "Chapter 1");
+    book.attaches_scene("arrival", "Chapter 1");
 
     assert_eq!(
         book.outline.reading_order(),
-        vec![a_passage_link("arrival")],
+        vec![a_scene_link("arrival")],
         "an idea pinned to a chapter is a note to the author, so exporting the book must \
          walk straight past it"
     );
 }
 
 #[test]
-fn an_idea_and_a_passage_sharing_a_name_are_two_different_attachments() {
+fn an_idea_and_a_scene_sharing_a_name_are_two_different_attachments() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
 
-    book.attaches(Attachment::passage("same_1"), "Chapter 1");
+    book.attaches(Attachment::scene("same_1"), "Chapter 1");
     book.attaches(Attachment::idea("same_1"), "Chapter 1");
 
     assert_eq!(
         book.outline.attachments_in(&a_section("Chapter 1")).len(),
         2,
         "the tag is part of the identity, or attaching an idea would silently move the \
-         passage whose id happens to match"
+         scene whose id happens to match"
     );
 }
 
 #[test]
-fn a_note_can_be_detached_without_touching_the_passages() {
+fn a_note_can_be_detached_without_touching_the_scenes() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
-    book.attaches_passage("arrival", "Chapter 1");
+    book.attaches_scene("arrival", "Chapter 1");
     book.attaches_idea("foreshadow-the-loom", "Chapter 1");
 
     book.does(OutlineCommand::Detach {
@@ -780,20 +780,20 @@ fn a_note_can_be_detached_without_touching_the_passages() {
 
     assert_eq!(
         book.outline.attachments_in(&a_section("Chapter 1")),
-        vec![a_passage("arrival")]
+        vec![a_scene("arrival")]
     );
 }
 
 #[test]
-fn the_index_is_told_about_notes_as_well_as_passages() {
+fn the_index_is_told_about_notes_as_well_as_scenes() {
     let mut book = Book::started();
     book.adds("Chapter 1", None, None);
-    book.attaches_passage("arrival", "Chapter 1");
+    book.attaches_scene("arrival", "Chapter 1");
     book.attaches_idea("foreshadow-the-loom", "Chapter 1");
 
     assert_eq!(
         book.outline.attachments(),
-        vec![a_passage("arrival"), an_idea("foreshadow-the-loom")],
+        vec![a_scene("arrival"), an_idea("foreshadow-the-loom")],
         "the index is what lets a discarded idea find the books holding it, so feeding it \
          the reading order would leave every note unreachable"
     );

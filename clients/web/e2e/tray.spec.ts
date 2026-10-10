@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import {
-  aLoosePassage,
+  aLooseScene,
   aNewProject,
   captureIdea,
   openTheBoard,
@@ -55,8 +55,8 @@ test("the tally counts what is still waiting", async ({ page }) => {
   await openTheBoard(page);
   await expect(tray(page).getByText("Not on the board · 2")).toBeVisible();
 
-  await aLoosePassage(page);
-  await aLoosePassage(page);
+  await aLooseScene(page);
+  await aLooseScene(page);
   await openTheOutline(page);
   await expect(tray(page).getByText("Not in the book · 2")).toBeVisible();
   await expect(

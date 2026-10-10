@@ -1,6 +1,6 @@
 use crate::ideas::model::IdeaId;
-use crate::passages::model::PassageId;
 use crate::projects::model::ProjectId;
+use crate::scenes::model::SceneId;
 
 pub const WORKSPACE: &str = "/";
 
@@ -28,8 +28,8 @@ pub fn pool(project: &str) -> String {
     format!("/projects/{project}/ideas")
 }
 
-pub fn passage(project: &str, id: &PassageId) -> String {
-    format!("/projects/{project}/passages/{id}")
+pub fn scene(project: &str, id: &SceneId) -> String {
+    format!("/projects/{project}/scenes/{id}")
 }
 
 pub fn idea_segment(id: &IdeaId, named: &str) -> String {

@@ -27,8 +27,8 @@ fn a_workbench() -> Wired {
     wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
-fn a_passage(named: &str) -> Attachment {
-    Attachment::passage(named)
+fn a_scene(named: &str) -> Attachment {
+    Attachment::scene(named)
 }
 
 fn an_idea(named: &str) -> Attachment {
@@ -68,7 +68,7 @@ async fn a_chapter(wired: &Wired, outline: &OutlineId, titled_as: &str) -> Secti
         .section
 }
 
-async fn a_book_holding(wired: &Wired, passages: &[&str]) -> (OutlineId, SectionId) {
+async fn a_book_holding(wired: &Wired, scenes: &[&str]) -> (OutlineId, SectionId) {
     let outline = wired
         .outlines
         .open("project_1", &an_author())
@@ -78,12 +78,12 @@ async fn a_book_holding(wired: &Wired, passages: &[&str]) -> (OutlineId, Section
     let chapter = a_chapter(wired, &outline, "Chapter 1").await;
 
     let mut behind = None;
-    for passage in passages {
+    for scene in scenes {
         wired
             .outlines
             .attach(
                 &outline.to_string(),
-                a_passage(passage),
+                a_scene(scene),
                 chapter,
                 behind.clone(),
                 None,
@@ -91,7 +91,7 @@ async fn a_book_holding(wired: &Wired, passages: &[&str]) -> (OutlineId, Section
             )
             .await
             .expect("attaching should succeed");
-        behind = Some(a_passage(passage));
+        behind = Some(a_scene(scene));
     }
 
     wired.settle().await;
@@ -100,15 +100,15 @@ async fn a_book_holding(wired: &Wired, passages: &[&str]) -> (OutlineId, Section
 }
 
 #[tokio::test]
-async fn attaching_a_passage_puts_it_in_the_index() {
+async fn attaching_a_scene_puts_it_in_the_index() {
     let wired = a_workbench();
 
-    let (outline, _) = a_book_holding(&wired, &["passage_1"]).await;
+    let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
 
     assert_eq!(
         wired
             .catalog
-            .outlines_holding(&a_passage("passage_1"))
+            .outlines_holding(&a_scene("scene_1"))
             .await
             .expect("looking should succeed"),
         vec![outline]
@@ -116,18 +116,13 @@ async fn attaching_a_passage_puts_it_in_the_index() {
 }
 
 #[tokio::test]
-async fn detaching_a_passage_takes_it_out_of_the_index() {
+async fn detaching_a_scene_takes_it_out_of_the_index() {
     let wired = a_workbench();
-    let (outline, _) = a_book_holding(&wired, &["passage_1"]).await;
+    let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
 
     wired
         .outlines
-        .detach(
-            &outline.to_string(),
-            a_passage("passage_1"),
-            None,
-            &an_author(),
-        )
+        .detach(&outline.to_string(), a_scene("scene_1"), None, &an_author())
         .await
         .expect("detaching should succeed");
     wired.settle().await;
@@ -135,7 +130,7 @@ async fn detaching_a_passage_takes_it_out_of_the_index() {
     assert!(
         wired
             .catalog
-            .outlines_holding(&a_passage("passage_1"))
+            .outlines_holding(&a_scene("scene_1"))
             .await
             .expect("looking should succeed")
             .is_empty()
@@ -143,9 +138,9 @@ async fn detaching_a_passage_takes_it_out_of_the_index() {
 }
 
 #[tokio::test]
-async fn removing_a_section_takes_its_passages_out_of_the_index() {
+async fn removing_a_section_takes_its_scenes_out_of_the_index() {
     let wired = a_workbench();
-    let (outline, chapter) = a_book_holding(&wired, &["passage_1"]).await;
+    let (outline, chapter) = a_book_holding(&wired, &["scene_1"]).await;
 
     wired
         .outlines
@@ -157,11 +152,11 @@ async fn removing_a_section_takes_its_passages_out_of_the_index() {
     assert!(
         wired
             .catalog
-            .outlines_holding(&a_passage("passage_1"))
+            .outlines_holding(&a_scene("scene_1"))
             .await
             .expect("looking should succeed")
             .is_empty(),
-        "a removed section returns its passages to the pool, and the index has to hear about it"
+        "a removed section returns its scenes to the pool, and the index has to hear about it"
     );
 }
 
@@ -174,7 +169,7 @@ async fn the_index_hears_everything_that_changes_what_the_book_holds() {
             wired
                 .indexer
                 .hears(&RoutingKey::parse(changing).expect("a declared key is fine")),
-            "{changing} changes which passages are in the book, so the index must hear it"
+            "{changing} changes which scenes are in the book, so the index must hear it"
         );
     }
     for quiet in [STARTED, SECTION_ADDED, SECTION_MOVED] {
@@ -207,7 +202,7 @@ async fn the_catalog_projector_hears_only_a_book_being_started() {
 }
 
 async fn a_book_noting(wired: &Wired, idea: &str) -> (OutlineId, SectionId) {
-    let (outline, chapter) = a_book_holding(wired, &["passage_1"]).await;
+    let (outline, chapter) = a_book_holding(wired, &["scene_1"]).await;
 
     wired
         .outlines
@@ -215,7 +210,7 @@ async fn a_book_noting(wired: &Wired, idea: &str) -> (OutlineId, SectionId) {
             &outline.to_string(),
             an_idea(idea),
             chapter,
-            Some(a_passage("passage_1")),
+            Some(a_scene("scene_1")),
             None,
             &an_author(),
         )
@@ -263,13 +258,13 @@ async fn a_discarded_idea_leaves_the_book() {
         .expect("reading should succeed");
     assert_eq!(
         standing.state.attachments_in(&chapter),
-        vec![a_passage("passage_1")],
+        vec![a_scene("scene_1")],
         "a note about an idea nobody kept is a reference to nothing"
     );
 }
 
 #[tokio::test]
-async fn discarding_an_idea_leaves_the_passages_alone() {
+async fn discarding_an_idea_leaves_the_scenes_alone() {
     let wired = a_workbench();
     let (outline, chapter) = a_book_noting(&wired, "idea_1").await;
 
@@ -287,7 +282,7 @@ async fn discarding_an_idea_leaves_the_passages_alone() {
     assert_eq!(
         standing.state.reading_order().len(),
         1,
-        "ideas are disposable and passages are the book, so throwing one away must never \
+        "ideas are disposable and scenes are the book, so throwing one away must never \
          reach the other"
     );
     assert!(!standing.state.attachments_in(&chapter).is_empty());
@@ -335,7 +330,7 @@ async fn attached_as_published(wired: &Wired, outline: &OutlineId) -> Message {
 #[tokio::test]
 async fn a_late_attachment_does_not_bring_back_what_a_discarded_book_held() {
     let wired = a_workbench();
-    let (outline, _) = a_book_holding(&wired, &["passage_1"]).await;
+    let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
     let late = attached_as_published(&wired, &outline).await;
     wired
         .outlines
@@ -353,7 +348,7 @@ async fn a_late_attachment_does_not_bring_back_what_a_discarded_book_held() {
     assert!(
         wired
             .catalog
-            .outlines_holding(&a_passage("passage_1"))
+            .outlines_holding(&a_scene("scene_1"))
             .await
             .expect("looking should succeed")
             .is_empty(),

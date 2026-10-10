@@ -139,18 +139,16 @@ mod tests {
     #[tokio::test]
     async fn foreign_keys_are_enforced_on_every_connection() {
         let directory = a_directory("keys");
-        let pool = connect(&directory, "passages")
-            .await
-            .expect("should connect");
+        let pool = connect(&directory, "scenes").await.expect("should connect");
         sqlx::raw_sql(
-            "CREATE TABLE passages (passage TEXT PRIMARY KEY);
-             CREATE TABLE passage_ideas (passage TEXT NOT NULL REFERENCES passages (passage));",
+            "CREATE TABLE scenes (scene TEXT PRIMARY KEY);
+             CREATE TABLE scene_ideas (scene TEXT NOT NULL REFERENCES scenes (scene));",
         )
         .execute(&pool)
         .await
         .expect("should create");
 
-        let orphan = sqlx::query("INSERT INTO passage_ideas (passage) VALUES ('nowhere')")
+        let orphan = sqlx::query("INSERT INTO scene_ideas (scene) VALUES ('nowhere')")
             .execute(&pool)
             .await;
 

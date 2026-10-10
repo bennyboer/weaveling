@@ -3408,7 +3408,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-outline-contract",
- "weaveling-passages-contract",
+ "weaveling-scenes-contract",
 ]
 
 [[package]]
@@ -3438,7 +3438,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-outline-contract",
- "weaveling-passages-contract",
+ "weaveling-scenes-contract",
 ]
 
 [[package]]
@@ -3591,8 +3591,8 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-messaging-contract",
  "weaveling-outline-contract",
- "weaveling-passages-contract",
  "weaveling-projects-contract",
+ "weaveling-scenes-contract",
  "web-sys",
 ]
 
@@ -3924,124 +3924,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "weaveling-passages-contract"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "weaveling-passages-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "thiserror",
- "time",
- "weaveling-clock",
- "weaveling-ids",
- "yrs",
-]
-
-[[package]]
-name = "weaveling-passages-messaging"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "serde",
- "serde_json",
- "thiserror",
- "time",
- "weaveling-clock",
- "weaveling-eventpublishing",
- "weaveling-ideas-contract",
- "weaveling-messaging",
- "weaveling-passages-contract",
- "weaveling-passages-core",
- "weaveling-projects-contract",
-]
-
-[[package]]
-name = "weaveling-passages-rest"
-version = "0.1.0"
-dependencies = [
- "axum",
- "serde",
- "tracing",
- "weaveling-passages-contract",
- "weaveling-passages-core",
-]
-
-[[package]]
-name = "weaveling-passages-store"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "serde_json",
- "sqlx",
- "time",
- "tokio",
- "weaveling-clock",
- "weaveling-messaging",
- "weaveling-outbox",
- "weaveling-passages-core",
- "weaveling-test-harness",
- "yrs",
-]
-
-[[package]]
-name = "weaveling-passages-sync"
-version = "0.1.0"
-dependencies = [
- "axum",
- "futures-util",
- "thiserror",
- "time",
- "tokio",
- "tracing",
- "weaveling-passages-core",
- "yrs",
-]
-
-[[package]]
-name = "weaveling-passages-tests"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "axum",
- "axum-test",
- "serde_json",
- "time",
- "tokio",
- "weaveling-clock",
- "weaveling-ideas-contract",
- "weaveling-messaging",
- "weaveling-passages-contract",
- "weaveling-passages-core",
- "weaveling-passages-messaging",
- "weaveling-passages-rest",
- "weaveling-passages-store",
- "weaveling-passages-sync",
- "weaveling-projects-contract",
- "yrs",
-]
-
-[[package]]
-name = "weaveling-passages-wiring"
-version = "0.1.0"
-dependencies = [
- "sqlx",
- "weaveling-clock",
- "weaveling-messaging",
- "weaveling-outbox",
- "weaveling-passages-core",
- "weaveling-passages-messaging",
- "weaveling-passages-rest",
- "weaveling-passages-store",
- "weaveling-passages-sync",
- "weaveling-wiring",
-]
-
-[[package]]
 name = "weaveling-projects-catalog"
 version = "0.1.0"
 dependencies = [
@@ -4166,6 +4048,124 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-scenes-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "weaveling-scenes-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "time",
+ "weaveling-clock",
+ "weaveling-ids",
+ "yrs",
+]
+
+[[package]]
+name = "weaveling-scenes-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "time",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-ideas-contract",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
+ "weaveling-scenes-contract",
+ "weaveling-scenes-core",
+]
+
+[[package]]
+name = "weaveling-scenes-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "tracing",
+ "weaveling-scenes-contract",
+ "weaveling-scenes-core",
+]
+
+[[package]]
+name = "weaveling-scenes-store"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "sqlx",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-messaging",
+ "weaveling-outbox",
+ "weaveling-scenes-core",
+ "weaveling-test-harness",
+ "yrs",
+]
+
+[[package]]
+name = "weaveling-scenes-sync"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "futures-util",
+ "thiserror",
+ "time",
+ "tokio",
+ "tracing",
+ "weaveling-scenes-core",
+ "yrs",
+]
+
+[[package]]
+name = "weaveling-scenes-tests"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "axum-test",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-ideas-contract",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
+ "weaveling-scenes-contract",
+ "weaveling-scenes-core",
+ "weaveling-scenes-messaging",
+ "weaveling-scenes-rest",
+ "weaveling-scenes-store",
+ "weaveling-scenes-sync",
+ "yrs",
+]
+
+[[package]]
+name = "weaveling-scenes-wiring"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "weaveling-clock",
+ "weaveling-messaging",
+ "weaveling-outbox",
+ "weaveling-scenes-core",
+ "weaveling-scenes-messaging",
+ "weaveling-scenes-rest",
+ "weaveling-scenes-store",
+ "weaveling-scenes-sync",
+ "weaveling-wiring",
+]
+
+[[package]]
 name = "weaveling-service-api"
 version = "0.1.0"
 dependencies = [
@@ -4189,8 +4189,8 @@ dependencies = [
  "weaveling-messaging-contract",
  "weaveling-outbox",
  "weaveling-outline-wiring",
- "weaveling-passages-wiring",
  "weaveling-projects-wiring",
+ "weaveling-scenes-wiring",
  "weaveling-test-harness",
  "weaveling-wiring",
 ]

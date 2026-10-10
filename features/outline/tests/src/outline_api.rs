@@ -358,23 +358,23 @@ async fn removing_a_section_lifts_its_children_into_its_place() {
     );
 }
 
-fn a_passage(id: &str) -> AttachmentDTO {
-    AttachmentDTO::Passage { id: id.to_owned() }
+fn a_scene(id: &str) -> AttachmentDTO {
+    AttachmentDTO::Scene { id: id.to_owned() }
 }
 
 #[tokio::test]
-async fn a_passage_is_attached_to_a_section_and_read_back_in_order() {
+async fn a_scene_is_attached_to_a_section_and_read_back_in_order() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let chapter = a_section(&server, &outline.id, "Chapter 1", None, None).await;
 
-    for (passage, after) in [("passage_1", None), ("passage_2", Some("passage_1"))] {
+    for (scene, after) in [("scene_1", None), ("scene_2", Some("scene_1"))] {
         let response = server
             .post(&format!("/outlines/{}/attachments", outline.id))
             .json(&AttachRequest {
-                attachment: a_passage(passage),
+                attachment: a_scene(scene),
                 section: chapter.section.clone(),
-                after: after.map(a_passage),
+                after: after.map(a_scene),
             })
             .await;
         response.assert_status(StatusCode::OK);
@@ -387,12 +387,12 @@ async fn a_passage_is_attached_to_a_section_and_read_back_in_order() {
 
     assert_eq!(
         found.sections[0].attachments,
-        vec![a_passage("passage_1"), a_passage("passage_2")]
+        vec![a_scene("scene_1"), a_scene("scene_2")]
     );
 }
 
 #[tokio::test]
-async fn attaching_a_passage_that_sits_elsewhere_moves_it() {
+async fn attaching_a_scene_that_sits_elsewhere_moves_it() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let one = a_section(&server, &outline.id, "Chapter 1", None, None).await;
@@ -402,8 +402,8 @@ async fn attaching_a_passage_that_sits_elsewhere_moves_it() {
         server
             .post(&format!("/outlines/{}/attachments", outline.id))
             .json(&AttachRequest {
-                attachment: AttachmentDTO::Passage {
-                    id: "passage_1".to_owned(),
+                attachment: AttachmentDTO::Scene {
+                    id: "scene_1".to_owned(),
                 },
                 section: section.clone(),
                 after: None,
@@ -418,19 +418,19 @@ async fn attaching_a_passage_that_sits_elsewhere_moves_it() {
         .json();
 
     assert!(found.sections[0].attachments.is_empty());
-    assert_eq!(found.sections[1].attachments, vec![a_passage("passage_1")]);
+    assert_eq!(found.sections[1].attachments, vec![a_scene("scene_1")]);
 }
 
 #[tokio::test]
-async fn detaching_a_passage_takes_it_out_of_the_book() {
+async fn detaching_a_scene_takes_it_out_of_the_book() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
     let chapter = a_section(&server, &outline.id, "Chapter 1", None, None).await;
     server
         .post(&format!("/outlines/{}/attachments", outline.id))
         .json(&AttachRequest {
-            attachment: AttachmentDTO::Passage {
-                id: "passage_1".to_owned(),
+            attachment: AttachmentDTO::Scene {
+                id: "scene_1".to_owned(),
             },
             section: chapter.section.clone(),
             after: None,
@@ -440,7 +440,7 @@ async fn detaching_a_passage_takes_it_out_of_the_book() {
 
     server
         .delete(&format!(
-            "/outlines/{}/attachments/passages/passage_1",
+            "/outlines/{}/attachments/scenes/scene_1",
             outline.id
         ))
         .await
@@ -455,7 +455,7 @@ async fn detaching_a_passage_takes_it_out_of_the_book() {
 }
 
 #[tokio::test]
-async fn a_section_with_no_passages_is_accepted_because_planning_comes_first() {
+async fn a_section_with_no_scenes_is_accepted_because_planning_comes_first() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
 

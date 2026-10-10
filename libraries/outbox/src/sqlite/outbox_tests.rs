@@ -68,16 +68,16 @@ fn at(seconds: i64) -> OffsetDateTime {
 
 fn a_link_message() -> Message {
     Message::opening(
-        RoutingKey::parse("passage.idea.linked").expect("a plain key is fine"),
-        serde_json::json!({ "passage": "passage_1", "idea": "idea_1" }),
+        RoutingKey::parse("scene.idea.linked").expect("a plain key is fine"),
+        serde_json::json!({ "scene": "scene_1", "idea": "idea_1" }),
         at(2_000),
     )
 }
 
-fn from_a_passage() -> Origin<'static> {
+fn from_a_scene() -> Origin<'static> {
     Origin {
-        aggregate: "passage_1",
-        kind: "passage",
+        aggregate: "scene_1",
+        kind: "scene",
         version: 0,
     }
 }
@@ -111,7 +111,7 @@ impl Wired {
     async fn waiting_messages(&self, how_many: usize) {
         let mut transaction = self.pool.begin().await.expect("a transaction opens");
         for _ in 0..how_many {
-            enqueue(&mut transaction, from_a_passage(), &a_link_message())
+            enqueue(&mut transaction, from_a_scene(), &a_link_message())
                 .await
                 .expect("enqueueing should succeed");
         }
@@ -427,7 +427,7 @@ async fn a_message_enqueued_beside_any_write_is_relayed_once_that_write_commits(
     let message = a_link_message();
     let mut transaction = wired.pool.begin().await.expect("a transaction opens");
 
-    enqueue(&mut transaction, from_a_passage(), &message)
+    enqueue(&mut transaction, from_a_scene(), &message)
         .await
         .expect("enqueueing should succeed");
     transaction.commit().await.expect("the transaction commits");
@@ -451,7 +451,7 @@ async fn a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it() {
     let wired = Wired::setup().await;
     let mut transaction = wired.pool.begin().await.expect("a transaction opens");
 
-    enqueue(&mut transaction, from_a_passage(), &a_link_message())
+    enqueue(&mut transaction, from_a_scene(), &a_link_message())
         .await
         .expect("enqueueing should succeed");
     transaction

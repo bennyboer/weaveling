@@ -61,9 +61,9 @@ export async function openThePool(page: Page) {
   ).toBeVisible();
 }
 
-export async function aLoosePassage(page: Page): Promise<string> {
+export async function aLooseScene(page: Page): Promise<string> {
   const project = new URL(page.url()).pathname.split("/")[2];
-  const made = await page.request.post("http://127.0.0.1:3000/api/passages", {
+  const made = await page.request.post("http://127.0.0.1:3000/api/scenes", {
     data: { project: project.split("-").pop() },
   });
   expect(made.status()).toBe(201);

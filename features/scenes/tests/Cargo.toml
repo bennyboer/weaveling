@@ -1,0 +1,27 @@
+[package]
+name = "weaveling-scenes-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+async-trait = { workspace = true }
+axum = { workspace = true }
+axum-test = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }
+serde_json = { workspace = true }
+yrs = { workspace = true }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+scenes-contract = { version = "0.1.0", path = "../contract", package = "weaveling-scenes-contract" }
+scenes-core = { version = "0.1.0", path = "../core", package = "weaveling-scenes-core" }
+scenes-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-scenes-messaging" }
+scenes-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-scenes-rest" }
+scenes-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-scenes-store" }
+scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveling-scenes-sync" }
+
+# Foreign contracts: another feature's published events. A feature may reach across the seam
+# for a `contract` crate and nothing else — never its `core`, never its adapters.
+ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }

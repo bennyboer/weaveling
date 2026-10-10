@@ -1,6 +1,6 @@
 use eventsourcing::Codec;
 use outline_core::{
-    Attachment, IdeaLink, OutlineEvent, PassageLink, PlacedSection, ProjectLink, SectionId,
+    Attachment, IdeaLink, OutlineEvent, PlacedSection, ProjectLink, SceneLink, SectionId,
     SectionTitle,
 };
 use serde::{Deserialize, Serialize};
@@ -61,14 +61,14 @@ struct StoredPlacedSection {
 
 #[derive(Serialize, Deserialize)]
 enum StoredAttachment {
-    Passage(String),
+    Scene(String),
     Idea(String),
 }
 
 impl From<&Attachment> for StoredAttachment {
     fn from(attachment: &Attachment) -> Self {
         match attachment {
-            Attachment::Passage(passage) => Self::Passage(passage.as_str().to_owned()),
+            Attachment::Scene(scene) => Self::Scene(scene.as_str().to_owned()),
             Attachment::Idea(idea) => Self::Idea(idea.as_str().to_owned()),
         }
     }
@@ -77,7 +77,7 @@ impl From<&Attachment> for StoredAttachment {
 impl From<StoredAttachment> for Attachment {
     fn from(stored: StoredAttachment) -> Self {
         match stored {
-            StoredAttachment::Passage(passage) => Self::Passage(PassageLink::from(passage)),
+            StoredAttachment::Scene(scene) => Self::Scene(SceneLink::from(scene)),
             StoredAttachment::Idea(idea) => Self::Idea(IdeaLink::from(idea)),
         }
     }
@@ -344,22 +344,22 @@ mod tests {
             OutlineEvent::SectionDemoted { section: chapter },
             OutlineEvent::SectionRemoved { section: chapter },
             OutlineEvent::Attached {
-                attachment: Attachment::passage("passage_1"),
+                attachment: Attachment::scene("scene_1"),
                 to: chapter,
-                after: Some(Attachment::passage("passage_2")),
+                after: Some(Attachment::scene("scene_2")),
             },
             OutlineEvent::Attached {
                 attachment: Attachment::idea("idea_1"),
                 to: chapter,
-                after: Some(Attachment::passage("passage_1")),
+                after: Some(Attachment::scene("scene_1")),
             },
             OutlineEvent::Attached {
-                attachment: Attachment::passage("passage_1"),
+                attachment: Attachment::scene("scene_1"),
                 to: chapter,
                 after: None,
             },
             OutlineEvent::Detached {
-                attachment: Attachment::passage("passage_1"),
+                attachment: Attachment::scene("scene_1"),
                 from: chapter,
             },
             OutlineEvent::Detached {
@@ -380,9 +380,9 @@ mod tests {
                         parent: Some(part),
                         title: a_title("Chapter One"),
                         attachments: vec![
-                            Attachment::passage("passage_1"),
+                            Attachment::scene("scene_1"),
                             Attachment::idea("idea_1"),
-                            Attachment::passage("passage_2"),
+                            Attachment::scene("scene_2"),
                         ],
                     },
                 ],
@@ -394,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn a_snapshot_keeps_the_reading_order_of_its_sections_and_their_passages() {
+    fn a_snapshot_keeps_the_reading_order_of_its_sections_and_their_scenes() {
         let shape = OutlineEvent::Snapshotted {
             project: ProjectLink::from("project_1"),
             sections: (1..=4)
@@ -403,8 +403,8 @@ mod tests {
                     parent: None,
                     title: a_title(&format!("Section {nth}")),
                     attachments: vec![
-                        Attachment::passage(&format!("passage_{nth}b")),
-                        Attachment::passage(&format!("passage_{nth}a")),
+                        Attachment::scene(&format!("scene_{nth}b")),
+                        Attachment::scene(&format!("scene_{nth}a")),
                     ],
                 })
                 .collect(),

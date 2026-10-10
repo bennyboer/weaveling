@@ -6,16 +6,16 @@ use crate::ideas::model::Idea;
 use crate::ideas::service as idea_service;
 use crate::outline::model::{Attachment, Outline, Section, SectionId};
 use crate::outline::service;
-use crate::passages::model::Passage;
-use crate::passages::service as passage_service;
 use crate::projects::model::ProjectId;
 use crate::route;
+use crate::scenes::model::Scene;
+use crate::scenes::service as scene_service;
 
 #[derive(Clone, Copy)]
 pub struct OutlineState {
     problem: RwSignal<Option<ApiError>>,
     outline: Memo<Option<Outline>>,
-    passages: RwSignal<Option<Vec<Passage>>>,
+    scenes: RwSignal<Option<Vec<Scene>>>,
     ideas: RwSignal<Option<Vec<Idea>>>,
     added: RwSignal<Option<SectionId>>,
     adding: Action<(Option<SectionId>, Option<SectionId>, String), ()>,
@@ -57,7 +57,7 @@ impl OutlineState {
                 open
             })
         });
-        let passages = RwSignal::new(None::<Vec<Passage>>);
+        let scenes = RwSignal::new(None::<Vec<Scene>>);
         let ideas = RwSignal::new(None::<Vec<Idea>>);
         let added = RwSignal::new(None::<SectionId>);
 
@@ -74,21 +74,21 @@ impl OutlineState {
             Err(failure) => problem.set(Some(failure)),
         };
 
-        let listing_passages = {
+        let listing_scenes = {
             let id = project.clone();
 
             Action::new_local(move |()| {
                 let id = id.clone();
 
                 async move {
-                    match passage_service::in_project(&id).await {
-                        Ok(found) => passages.set(Some(found)),
+                    match scene_service::in_project(&id).await {
+                        Ok(found) => scenes.set(Some(found)),
                         Err(failure) => problem.set(Some(failure)),
                     }
                 }
             })
         };
-        listing_passages.dispatch(());
+        listing_scenes.dispatch(());
 
         let listing_ideas = {
             let id = project.clone();
@@ -259,15 +259,15 @@ impl OutlineState {
                 let opening = use_navigate();
 
                 async move {
-                    let started = match passage_service::create(&id).await {
+                    let started = match scene_service::create(&id).await {
                         Ok(started) => started,
                         Err(failure) => return problem.set(Some(failure)),
                     };
 
-                    passages.update(|held| held.get_or_insert_default().push(started.clone()));
-                    attaching.dispatch((Attachment::Passage(started.id.clone()), to));
+                    scenes.update(|held| held.get_or_insert_default().push(started.clone()));
+                    attaching.dispatch((Attachment::Scene(started.id.clone()), to));
                     opening(
-                        &route::passage(&id.to_string(), &started.id),
+                        &route::scene(&id.to_string(), &started.id),
                         Default::default(),
                     );
                 }
@@ -277,7 +277,7 @@ impl OutlineState {
         Self {
             problem,
             outline,
-            passages,
+            scenes,
             ideas,
             added,
             adding,
@@ -349,16 +349,16 @@ impl OutlineState {
             .unwrap_or_default()
     }
 
-    pub fn waiting_passages(&self) -> Vec<Passage> {
+    pub fn waiting_scenes(&self) -> Vec<Scene> {
         let Some(open) = self.outline.get() else {
             return Vec::new();
         };
 
-        self.passages
+        self.scenes
             .get()
             .unwrap_or_default()
             .into_iter()
-            .filter(|passage| !open.holds(&Attachment::Passage(passage.id.clone())))
+            .filter(|scene| !open.holds(&Attachment::Scene(scene.id.clone())))
             .collect()
     }
 
@@ -377,12 +377,12 @@ impl OutlineState {
 
     pub fn named(&self, attachment: &Attachment) -> String {
         match attachment {
-            Attachment::Passage(passage) => self
-                .passages
+            Attachment::Scene(scene) => self
+                .scenes
                 .get()
                 .unwrap_or_default()
                 .into_iter()
-                .find(|held| &held.id == passage)
+                .find(|held| &held.id == scene)
                 .map(|held| held.shown_as())
                 .unwrap_or_default(),
             Attachment::Idea(idea) => self

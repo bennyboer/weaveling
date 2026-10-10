@@ -1,4 +1,4 @@
-use appearances_core::{AppearanceCatalog, CatalogError, PassageLink, Place, SectionLink, Subject};
+use appearances_core::{AppearanceCatalog, CatalogError, Place, SceneLink, SectionLink, Subject};
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
@@ -6,7 +6,7 @@ use sqlx::{Row, SqlitePool};
 
 const IDEA: &str = "idea";
 
-const PASSAGE: &str = "passage";
+const SCENE: &str = "scene";
 const SECTION: &str = "section";
 
 const MARK: &str = "
@@ -93,7 +93,7 @@ fn subject_type_and_id(subject: &Subject) -> (&'static str, &str) {
 
 fn place_type_and_id(place: &Place) -> (&'static str, &str) {
     match place {
-        Place::Passage(passage) => (PASSAGE, passage.as_str()),
+        Place::Scene(scene) => (SCENE, scene.as_str()),
         Place::Section(section) => (SECTION, section.as_str()),
     }
 }
@@ -103,7 +103,7 @@ fn place_from(row: &SqliteRow) -> Result<Place, CatalogError> {
     let place_id: String = row.try_get("place_id").map_err(unreachable)?;
 
     match place_type.as_str() {
-        PASSAGE => Ok(Place::Passage(PassageLink::from(place_id))),
+        SCENE => Ok(Place::Scene(SceneLink::from(place_id))),
         SECTION => Ok(Place::Section(SectionLink::from(place_id))),
         unknown => Err(CatalogError::Backend(
             format!("an appearance at a type of place nothing writes: {unknown}").into(),

@@ -2,8 +2,8 @@ mod board;
 mod idea;
 mod missing;
 mod outline;
-mod passage;
 mod pool;
+mod scene;
 mod workspace;
 
 use leptos::prelude::*;
@@ -15,8 +15,8 @@ use crate::app::board::OneBoard;
 use crate::app::idea::OneIdea;
 use crate::app::missing::Missing;
 use crate::app::outline::OneOutline;
-use crate::app::passage::OnePassage;
 use crate::app::pool::OnePool;
+use crate::app::scene::OneScene;
 use crate::app::workspace::{TheWorkspace, TheWorkspaceProps};
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
@@ -46,8 +46,8 @@ pub fn App() -> impl IntoView {
                 <Route path=path!("/projects/:project/ideas") view=OnePool />
                 <Route path=path!("/projects/:project/ideas/:idea") view=OneIdea />
                 <Route
-                    path=path!("/projects/:project/passages/:passage")
-                    view=OnePassage
+                    path=path!("/projects/:project/scenes/:scene")
+                    view=OneScene
                 />
             </Routes>
             {status_bar()}

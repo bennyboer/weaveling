@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{AppearanceCatalog, IdeaLink, PassageLink, Place, SectionLink, Subject};
+use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, SectionLink, Subject};
 use axum_test::TestServer;
 
 fn an_idea(id: &str) -> Subject {
@@ -26,7 +26,7 @@ async fn an_idea_answers_with_every_place_it_appears() {
     let catalog = Arc::new(InMemoryAppearanceCatalog::new());
     for place in [
         Place::Section(SectionLink::from("section_1")),
-        Place::Passage(PassageLink::from("passage_1")),
+        Place::Scene(SceneLink::from("scene_1")),
     ] {
         catalog
             .remember(&an_idea("idea_1"), &place, 1)
@@ -41,8 +41,8 @@ async fn an_idea_answers_with_every_place_it_appears() {
     assert_eq!(
         response.json::<Vec<PlaceDTO>>(),
         vec![
-            PlaceDTO::Passage {
-                id: "passage_1".to_owned()
+            PlaceDTO::Scene {
+                id: "scene_1".to_owned()
             },
             PlaceDTO::Section {
                 id: "section_1".to_owned()
@@ -61,6 +61,6 @@ async fn a_place_goes_on_the_wire_tagged_with_its_type() {
     assert_eq!(
         wire,
         serde_json::json!({ "type": "section", "id": "section_1" }),
-        "the client tells a section from a passage by this tag alone"
+        "the client tells a section from a scene by this tag alone"
     );
 }
