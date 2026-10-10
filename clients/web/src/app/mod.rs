@@ -20,6 +20,7 @@ use crate::app::pool::OnePool;
 use crate::app::workspace::{TheWorkspace, TheWorkspaceProps};
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
+use crate::shell::status_bar;
 
 #[component]
 pub fn App() -> impl IntoView {
@@ -49,6 +50,7 @@ pub fn App() -> impl IntoView {
                     view=OnePassage
                 />
             </Routes>
+            {status_bar()}
         </Router>
     }
 }

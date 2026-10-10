@@ -105,6 +105,22 @@
   }
 }
 
+.status-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  height: 1.6rem;
+  padding: 0 1.75rem;
+  border-top: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
 .column {
   width: 100%;
   max-width: 42rem;

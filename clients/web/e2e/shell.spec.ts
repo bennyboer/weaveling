@@ -1,7 +1,16 @@
 import { test, expect } from "@playwright/test";
 
 import { corkboard } from "./support/board";
-import { aNewProject, openThePool, views } from "./support/shell";
+import {
+  aNewProject,
+  captureIdea,
+  openTheOutline,
+  openThePool,
+  views,
+} from "./support/shell";
+
+const statusBar = (page: import("@playwright/test").Page) =>
+  page.getByRole("contentinfo", { name: "Status" });
 
 const laidOut = (page: import("@playwright/test").Page) =>
   page.evaluate(() => {
@@ -21,13 +30,16 @@ const laidOut = (page: import("@playwright/test").Page) =>
       window: { width: innerWidth, height: innerHeight },
       scrollHeight: document.documentElement.scrollHeight,
       masthead: box(".masthead"),
+      statusBar: box(".status-bar"),
       corkboard: box(".corkboard"),
       column: box(".column"),
       tray: box(".tray"),
     };
   });
 
-test("the board fills the window under the masthead", async ({ page }) => {
+test("the board fills the window between the masthead and the status bar", async ({
+  page,
+}) => {
   await aNewProject(page, "Filling");
 
   const seen = await laidOut(page);
@@ -36,8 +48,57 @@ test("the board fills the window under the masthead", async ({ page }) => {
   expect(seen.masthead!.top).toBe(0);
   expect(seen.corkboard!.left).toBe(0);
   expect(seen.corkboard!.top).toBe(seen.masthead!.height);
+  expect(seen.corkboard!.top + seen.corkboard!.height).toBe(
+    seen.statusBar!.top,
+  );
   expect(seen.corkboard!.width + seen.tray!.width).toBe(seen.window.width);
   expect(seen.scrollHeight).toBe(seen.window.height);
+});
+
+test("the status bar sits along the bottom of every view", async ({ page }) => {
+  const atTheBottom = async () => {
+    await expect(statusBar(page)).toBeVisible();
+    const seen = await laidOut(page);
+    expect(seen.statusBar!.left).toBe(0);
+    expect(seen.statusBar!.width).toBe(seen.window.width);
+    expect(seen.statusBar!.top + seen.statusBar!.height).toBe(
+      seen.window.height,
+    );
+  };
+
+  await page.goto("/");
+  await atTheBottom();
+  await aNewProject(page, "Footing");
+  await atTheBottom();
+  await openTheOutline(page);
+  await atTheBottom();
+  await openThePool(page);
+  await atTheBottom();
+});
+
+test("the status bar never hides the end of a long page", async ({ page }) => {
+  await page.setViewportSize({ width: 1000, height: 420 });
+  await aNewProject(page, "Long");
+  await openThePool(page);
+  for (const nth of [1, 2, 3, 4, 5, 6, 7, 8]) {
+    await captureIdea(page, `Thread ${nth}`);
+  }
+
+  await expect(
+    statusBar(page),
+    "a long page must not push the bar out of sight",
+  ).toBeInViewport();
+
+  await page.mouse.wheel(0, 5_000);
+
+  const content = page.locator("main");
+  await expect(statusBar(page)).toBeInViewport();
+  const contentSeen = (await content.boundingBox())!;
+  const barSeen = (await statusBar(page).boundingBox())!;
+  expect(
+    contentSeen.y + contentSeen.height,
+    "scrolled to the end, the page must end above the bar rather than under it",
+  ).toBeLessThanOrEqual(barSeen.y + 1);
 });
 
 test("the pool keeps a narrow column in the middle", async ({ page }) => {

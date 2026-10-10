@@ -64,6 +64,12 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
     ))
 }
 
+pub fn status_bar() -> impl IntoView {
+    html::footer()
+        .class("status-bar")
+        .attr("aria-label", "Status")
+}
+
 fn whereabouts(inside: Inside) -> impl IntoView {
     let Inside {
         project,
