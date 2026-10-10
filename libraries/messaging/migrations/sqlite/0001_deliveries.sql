@@ -26,5 +26,6 @@ CREATE TABLE dead_letters (
     occurred_at     TEXT    NOT NULL,
     attempts        INTEGER NOT NULL,
     why             TEXT    NOT NULL,
-    given_up_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+    given_up_at     TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+    acknowledged_at TEXT
 );

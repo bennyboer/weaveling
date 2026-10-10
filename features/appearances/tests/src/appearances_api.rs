@@ -29,7 +29,7 @@ async fn an_idea_answers_with_every_place_it_appears() {
         Place::Passage(PassageLink::from("passage_1")),
     ] {
         catalog
-            .remember(&an_idea("idea_1"), &place)
+            .remember(&an_idea("idea_1"), &place, 1)
             .await
             .expect("remembering should succeed");
     }

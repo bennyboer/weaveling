@@ -8,6 +8,9 @@ use thiserror::Error;
 
 const NAME: &str = "index-passage-appearances";
 
+// TODO step C: passages announce no version yet, so every link counts as the newest
+const UNVERSIONED: u64 = 0;
+
 pub struct PassageAppearancesProjector {
     catalog: Arc<dyn AppearanceCatalog>,
 }
@@ -32,13 +35,13 @@ impl PassageAppearancesProjector {
             IDEA_LINKED => {
                 let link: IdeaLinkDTO = from_value(payload)?;
                 self.catalog
-                    .remember(&an_idea(link.idea), &a_passage(link.passage))
+                    .remember(&an_idea(link.idea), &a_passage(link.passage), UNVERSIONED)
                     .await?;
             }
             IDEA_UNLINKED => {
                 let link: IdeaLinkDTO = from_value(payload)?;
                 self.catalog
-                    .forget(&an_idea(link.idea), &a_passage(link.passage))
+                    .forget(&an_idea(link.idea), &a_passage(link.passage), UNVERSIONED)
                     .await?;
             }
             DELETED => {

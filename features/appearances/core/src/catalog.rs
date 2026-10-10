@@ -13,9 +13,19 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait AppearanceCatalog: Send + Sync {
-    async fn remember(&self, subject: &Subject, place: &Place) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        subject: &Subject,
+        place: &Place,
+        version: u64,
+    ) -> Result<(), CatalogError>;
 
-    async fn forget(&self, subject: &Subject, place: &Place) -> Result<(), CatalogError>;
+    async fn forget(
+        &self,
+        subject: &Subject,
+        place: &Place,
+        version: u64,
+    ) -> Result<(), CatalogError>;
 
     async fn forget_subject(&self, subject: &Subject) -> Result<(), CatalogError>;
 

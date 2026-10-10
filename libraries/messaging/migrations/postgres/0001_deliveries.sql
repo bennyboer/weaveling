@@ -26,5 +26,6 @@ CREATE TABLE dead_letters (
     occurred_at     TIMESTAMPTZ NOT NULL,
     attempts        INTEGER     NOT NULL,
     why             TEXT        NOT NULL,
-    given_up_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    given_up_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    acknowledged_at TIMESTAMPTZ
 );

@@ -107,6 +107,21 @@ fn unnoted(idea: &str, section: &str) -> Message {
     )
 }
 
+fn at_version(mut message: Message, version: u64) -> Message {
+    message.payload["aggregate"]["version"] = json!(version);
+
+    message
+}
+
+fn removed(section: &str) -> Message {
+    from_the_outline(
+        SECTION_REMOVED,
+        OutlineEventDTO::SectionRemoved {
+            section: section.to_owned(),
+        },
+    )
+}
+
 fn from_passages(routing: &str, payload: Value) -> Message {
     Message::opening(
         RoutingKey::parse(routing).expect("a declared routing key is fine"),
@@ -318,6 +333,82 @@ async fn hearing_the_same_message_twice_is_harmless() {
         vec![a_passage("passage_1"), a_section("section_1")],
         "deliveries are at least once, so a redelivery must not make an idea appear twice"
     );
+}
+
+#[tokio::test]
+async fn a_note_tried_again_after_it_was_taken_out_stays_out() {
+    let wired = a_workbench();
+    let late = at_version(noted("idea_1", "section_1"), 2);
+    wired
+        .hears(
+            &wired.outline,
+            at_version(unnoted("idea_1", "section_1"), 3),
+        )
+        .await;
+
+    wired.hears(&wired.outline, late).await;
+
+    assert!(
+        wired.places_of("idea_1").await.is_empty(),
+        "an attachment that failed and was tried again after its detachment is older news"
+    );
+}
+
+#[tokio::test]
+async fn a_removal_tried_again_after_a_new_note_leaves_the_note() {
+    let wired = a_workbench();
+    let late = at_version(unnoted("idea_1", "section_1"), 3);
+    wired
+        .hears(&wired.outline, at_version(noted("idea_1", "section_1"), 2))
+        .await;
+    wired
+        .hears(&wired.outline, at_version(noted("idea_1", "section_1"), 4))
+        .await;
+
+    wired.hears(&wired.outline, late).await;
+
+    assert_eq!(
+        wired.places_of("idea_1").await,
+        vec![a_section("section_1")]
+    );
+}
+
+#[tokio::test]
+async fn a_note_tried_again_after_its_section_was_removed_stays_gone() {
+    let wired = a_workbench();
+    let late = at_version(noted("idea_1", "section_1"), 2);
+    wired
+        .hears(&wired.outline, at_version(removed("section_1"), 3))
+        .await;
+
+    wired.hears(&wired.outline, late).await;
+
+    assert!(wired.places_of("idea_1").await.is_empty());
+}
+
+#[tokio::test]
+async fn a_note_tried_again_after_its_idea_was_discarded_stays_gone() {
+    let wired = a_workbench();
+    let late = noted("idea_1", "section_1");
+    wired.hears(&wired.ideas, discarded("idea_1")).await;
+
+    wired.hears(&wired.outline, late).await;
+
+    assert!(
+        wired.places_of("idea_1").await.is_empty(),
+        "the discard comes from the idea's stream, so no outline version can outrank it"
+    );
+}
+
+#[tokio::test]
+async fn a_link_tried_again_after_its_passage_was_deleted_stays_gone() {
+    let wired = a_workbench();
+    let late = linked("idea_1", "passage_1");
+    wired.hears(&wired.passages, deleted("passage_1")).await;
+
+    wired.hears(&wired.passages, late).await;
+
+    assert!(wired.places_of("idea_1").await.is_empty());
 }
 
 #[tokio::test]

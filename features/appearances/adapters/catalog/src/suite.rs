@@ -26,7 +26,7 @@ fn a_passage(named: &str) -> Place {
 async fn remembered(catalog: &impl AppearanceCatalog, idea: &str, places: &[Place]) {
     for place in places {
         catalog
-            .remember(&an_idea(idea), place)
+            .remember(&an_idea(idea), place, 1)
             .await
             .expect("remembering should succeed");
     }
@@ -107,7 +107,7 @@ pub async fn forgetting_one_place_leaves_the_others(catalog: &impl AppearanceCat
     .await;
 
     catalog
-        .forget(&an_idea("idea_1"), &a_section("section_1"))
+        .forget(&an_idea("idea_1"), &a_section("section_1"), 2)
         .await
         .expect("forgetting should succeed");
 
@@ -182,7 +182,7 @@ pub async fn a_section_and_a_passage_sharing_an_id_are_different_places(
 
 pub async fn forgetting_what_was_never_remembered_is_harmless(catalog: &impl AppearanceCatalog) {
     catalog
-        .forget(&an_idea("idea_1"), &a_section("section_1"))
+        .forget(&an_idea("idea_1"), &a_section("section_1"), 1)
         .await
         .expect("forgetting nothing is not a failure");
     catalog
@@ -193,6 +193,81 @@ pub async fn forgetting_what_was_never_remembered_is_harmless(catalog: &impl App
         .forget_place(&a_section("section_1"))
         .await
         .expect("forgetting nothing is not a failure");
+}
+
+async fn seen(catalog: &impl AppearanceCatalog, at: &Place, changes: &[(bool, u64)]) {
+    for (present, version) in changes {
+        if *present {
+            catalog
+                .remember(&an_idea("idea_1"), at, *version)
+                .await
+                .expect("remembering should succeed");
+        } else {
+            catalog
+                .forget(&an_idea("idea_1"), at, *version)
+                .await
+                .expect("forgetting should succeed");
+        }
+    }
+}
+
+pub async fn a_late_remembering_does_not_undo_a_later_forgetting(catalog: &impl AppearanceCatalog) {
+    seen(
+        catalog,
+        &a_section("section_1"),
+        &[(true, 1), (false, 3), (true, 2)],
+    )
+    .await;
+
+    assert!(
+        places_of(catalog, "idea_1").await.is_empty(),
+        "an attachment tried again after its detachment must not put the idea back"
+    );
+}
+
+pub async fn a_late_forgetting_does_not_undo_a_later_remembering(catalog: &impl AppearanceCatalog) {
+    seen(
+        catalog,
+        &a_section("section_1"),
+        &[(true, 1), (false, 2), (true, 3), (false, 2)],
+    )
+    .await;
+
+    assert_eq!(
+        places_of(catalog, "idea_1").await,
+        vec![a_section("section_1")],
+        "a detachment tried again after the idea was attached anew must not take it away"
+    );
+}
+
+pub async fn nothing_comes_back_to_a_forgotten_place(catalog: &impl AppearanceCatalog) {
+    seen(catalog, &a_section("section_1"), &[(true, 1)]).await;
+    catalog
+        .forget_place(&a_section("section_1"))
+        .await
+        .expect("forgetting should succeed");
+
+    seen(catalog, &a_section("section_1"), &[(true, 9)]).await;
+
+    assert!(
+        places_of(catalog, "idea_1").await.is_empty(),
+        "a removed section is gone for good, whatever arrives about it later"
+    );
+}
+
+pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &impl AppearanceCatalog) {
+    seen(catalog, &a_section("section_1"), &[(true, 1)]).await;
+    catalog
+        .forget_subject(&an_idea("idea_1"))
+        .await
+        .expect("forgetting should succeed");
+
+    seen(catalog, &a_section("section_2"), &[(true, 9)]).await;
+
+    assert!(
+        places_of(catalog, "idea_1").await.is_empty(),
+        "a discarded idea is gone for good, and its versions come from other streams, so only          remembering that it went can keep it out"
+    );
 }
 
 macro_rules! conformance_case {
@@ -221,6 +296,16 @@ macro_rules! conformance_tests {
             remembering_the_same_place_twice_is_one_appearance
         );
         $crate::suite::conformance_case!($workbench, forgetting_one_place_leaves_the_others);
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_late_remembering_does_not_undo_a_later_forgetting
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_late_forgetting_does_not_undo_a_later_remembering
+        );
+        $crate::suite::conformance_case!($workbench, nothing_comes_back_to_a_forgotten_place);
+        $crate::suite::conformance_case!($workbench, a_forgotten_idea_comes_back_nowhere);
         $crate::suite::conformance_case!($workbench, forgetting_an_idea_leaves_every_other_idea);
         $crate::suite::conformance_case!($workbench, forgetting_a_place_reaches_every_idea_in_it);
         $crate::suite::conformance_case!(

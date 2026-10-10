@@ -26,16 +26,27 @@ impl OutlineAppearancesProjector {
     }
 
     async fn index(&self, message: &Message) -> Result<(), NotIndexed> {
-        match published_in::<OutlineEventDTO>(message)?.event.body {
+        let published = published_in::<OutlineEventDTO>(message)?;
+        let version = published.aggregate.version;
+
+        match published.event.body {
             OutlineEventDTO::Attached {
                 attachment: AttachmentDTO::Idea { id },
                 to,
                 ..
-            } => self.catalog.remember(&an_idea(id), &a_section(to)).await?,
+            } => {
+                self.catalog
+                    .remember(&an_idea(id), &a_section(to), version)
+                    .await?
+            }
             OutlineEventDTO::Detached {
                 attachment: AttachmentDTO::Idea { id },
                 from,
-            } => self.catalog.forget(&an_idea(id), &a_section(from)).await?,
+            } => {
+                self.catalog
+                    .forget(&an_idea(id), &a_section(from), version)
+                    .await?
+            }
             OutlineEventDTO::SectionRemoved { section } => {
                 self.catalog.forget_place(&a_section(section)).await?
             }
