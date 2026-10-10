@@ -726,7 +726,7 @@ So the inspector is not a new surface beside the old one, it is what that route 
 
 ---
 
-### Milestone 13 — Local mode
+### Milestone 13 — Local mode ✅
 
 **Goal:** an author runs Weaveling on their own machine with no database server and no broker, and their work lives in files they own — written as they work, so it survives a restart.
 
@@ -767,6 +767,8 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 
 **Done when:** an author can work with no database server running, stop the process, start it again, and find their ideas, board, outline and scenes exactly as they left them; a refused message is shown to them rather than only stored; and the browser suite passes against local mode.
 
+*Done. `WEAVELING_DATA` keeps the work in one SQLite file per feature and survives a restart from those files alone; every port has a SQLite adapter behind the same conformance suite as PostgreSQL; the wiring hands the service one value per feature; the outbox became a library of its own; scenes are evicted and compacted on the way out. Refused messages reach the author through the status bar's alarm, a note and a dialog — with **Try again** made safe first by versioning appearances and scene links, and by teaching two indexes to forget what was discarded — and every listener says in plain words what its refusal costs. The browser suite runs in memory and in local mode, in CI as well. Left open, as listed below: the wiring rework, two executables, waking the SQLite relay, refusals scoped to the project and gathered across services, version guards on the catalog upserts, and [the ideas sweep race](./TODO.md).*
+
 **Later: reconsider waking the SQLite relay.** Local mode should not feel slower than a server, yet its outbox is the one place still polled: up to 100ms between a write committing and its message leaving, on every hop — a capture reaching the catalog, a link reaching appearances — while PostgreSQL wakes its relay the moment the append commits, and the SQLite deliveries already wake their consumer through a `Notify`. [The decision](#sqlite-backs-local-mode--decided) to poll rested on two things: `enqueue` is a free function inside the writer's transaction with nothing to wake, and SQLite's commit hook fires before the commit is visible. Neither rules out waking after the commit. Candidates: the outbox hands each writer an enqueuer that holds its `Notify` and returns a `#[must_use]` receipt the writer fires once it has committed — it fits the wiring's one value per feature, and since CI denies warnings, forgetting the receipt fails the build instead of quietly falling back to polling; or the store notifies the outbox after each committed append. The poll then stays as a backstop, as it is on PostgreSQL. Worth deciding before the [local executable](#milestone-13--local-mode) ships to authors, because the client's read-your-writes workarounds only cover the lag and do not remove it.
 
 **Later: refused messages scoped to the project.** Step 7 shows every refused message, from every project, to whoever asks. Better is the open project's only, and once there is authorization it is a must. It waits on [messages naming their project](#milestone-12--ideas-and-passages): then a dead letter can carry its project, and the route answers per project.
@@ -790,7 +792,7 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 
 ---
 
-### Milestone 13b — Passages become scenes
+### Milestone 13b — Passages become scenes ✅
 
 **Goal:** the word for a piece of the book's prose is *scene*, the word writers already use for it.
 
@@ -838,6 +840,24 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 - **Following a scene from an idea opens the writing view at that scene**, rather than a page of its own.
 - **The save status speaks for the whole view**: "Saving…" while any change anywhere in it is in flight.
 - **The word count toggles by a click** between the section the cursor is in (the default) and the whole book.
+
+**Design decided 2026-10-10**, from three mockups:
+
+- **The manuscript column is the view.** One centred column of about 680px, part and section headings inline in Newsreader, a thin line between scenes, an empty section inviting the first words. The tray is closed down to a "This scene" tab on the right edge.
+- **The book rail and the open tray come from the second mockup.** A narrow list of parts and sections on the left, the current one marked, for finding one's way in a long book; the tray, opened, shows the scene's title, the ideas it draws on, and later its characters. Both are opened by the author, never forced on them.
+- **Focus is a mode, and a later one.** The masthead shrinks to a breadcrumb, section names move into the margin, and all but the paragraph being written fades back.
+
+**Slices**, each its own review:
+
+1. **"Write" and an empty view** — the masthead entry, the route, the manuscript column with the book's sections in order as headings and nothing else yet.
+2. **Scenes in the flow** — each scene's prose in its own editor under its section, a line between scenes, the cursor carried across scene edges by the arrow keys.
+3. **Typing makes scenes** — an empty section takes the first words as a new scene; Enter twice starts the next scene, three times a new section.
+4. **The status note** — "All saved" / "Saving…" for the whole view, and the word count toggling between section and book.
+5. **Where you left off, and following a scene there** — "Write" lands where the author left off, and a scene followed from an idea or the outline opens the view at it.
+6. **Only what is in view** — the flow loads scenes as they come near and lets go of those far away, both ways.
+7. **The tray** — the scene's title and the ideas it draws on, opened from the tab.
+8. **The book rail** and **the spelling toggle**.
+9. **Focus mode.**
 
 **Later: a history of the work, and goals for it.** How many words were written and how much time went into writing and planning, day by day, so an author can see their work add up. On top of that, a goal to aim for — words for the day, or for this sitting — that the status note can count towards.
 
