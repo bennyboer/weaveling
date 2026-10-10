@@ -1,6 +1,7 @@
 use time::{Duration, OffsetDateTime};
+use tokio::time::timeout;
 
-use crate::delivering::{ATTEMPTS, Deliveries, again_after};
+use crate::delivering::{ATTEMPTS, DeadLetter, Deliveries, again_after};
 use crate::listening::ListenerName;
 use crate::message::Message;
 use crate::routing::RoutingKey;
@@ -156,7 +157,7 @@ pub async fn a_delivery_given_up_on_becomes_a_dead_letter(deliveries: &impl Deli
         .expect("claiming should succeed");
 
     deliveries
-        .give_up(claimed[0].id, "it refused five times")
+        .give_up(claimed[0].id, "it refused five times", at(1_001))
         .await
         .expect("dead-lettering should succeed");
 
@@ -168,6 +169,187 @@ pub async fn a_delivery_given_up_on_becomes_a_dead_letter(deliveries: &impl Deli
     assert_eq!(dead.len(), 1);
     assert_eq!(dead[0].listener, a_listener("catalogue-idea"));
     assert_eq!(dead[0].why, "it refused five times");
+    assert_eq!(
+        dead[0].given_up_at,
+        at(1_001),
+        "an author told something was refused needs to know when, to tell it from what they did since"
+    );
+    assert_eq!(dead[0].acknowledged_at, None);
+}
+
+async fn a_dead_letter(deliveries: &impl Deliveries, routing: &str) -> DeadLetter {
+    deliveries
+        .enqueue(&a_listener("catalogue-idea"), &a_message(routing))
+        .await
+        .expect("enqueuing should succeed");
+    let claimed = deliveries
+        .claim_due(at(1_000), 16)
+        .await
+        .expect("claiming should succeed");
+    deliveries
+        .give_up(claimed[0].id, "it refused five times", at(1_001))
+        .await
+        .expect("dead-lettering should succeed");
+
+    deliveries
+        .dead_letters()
+        .await
+        .expect("reading the dead letters should succeed")
+        .into_iter()
+        .find(|dead| dead.message.routing.to_string() == routing)
+        .expect("the message given up on is a dead letter")
+}
+
+pub async fn a_retried_dead_letter_is_delivered_afresh(deliveries: &impl Deliveries) {
+    let dead = a_dead_letter(deliveries, "idea.captured").await;
+
+    deliveries
+        .retry(dead.id, at(2_000))
+        .await
+        .expect("retrying should succeed");
+
+    assert!(
+        deliveries
+            .dead_letters()
+            .await
+            .expect("reading the dead letters should succeed")
+            .is_empty(),
+        "a retried message is offered again, not kept beside its new delivery"
+    );
+    assert!(
+        deliveries
+            .claim_due(at(1_999), 16)
+            .await
+            .expect("claiming should succeed")
+            .is_empty()
+    );
+    let again = deliveries
+        .claim_due(at(2_000), 16)
+        .await
+        .expect("claiming should succeed");
+    assert_eq!(again.len(), 1);
+    assert_eq!(again[0].listener, dead.listener);
+    assert_eq!(again[0].message, dead.message);
+    assert_eq!(
+        again[0].attempts, 0,
+        "a retry gets the whole budget, or a message refused until it died would die again on its \
+         first refusal"
+    );
+}
+
+pub async fn a_retried_dead_letter_wakes_whoever_is_waiting(deliveries: &impl Deliveries) {
+    let dead = a_dead_letter(deliveries, "idea.captured").await;
+    let mut notifications = deliveries
+        .notifications()
+        .await
+        .expect("asking for notifications is not a failure");
+    let _enqueued = timeout(std::time::Duration::from_millis(100), notifications.wait()).await;
+
+    deliveries
+        .retry(dead.id, at(2_000))
+        .await
+        .expect("retrying should succeed");
+    let woken = timeout(std::time::Duration::from_secs(1), notifications.wait()).await;
+
+    assert!(
+        woken.is_ok(),
+        "the author pressed Try again and is watching, so it has to go now rather than at the next poll"
+    );
+}
+
+pub async fn an_acknowledged_dead_letter_is_kept_and_marked(deliveries: &impl Deliveries) {
+    let acknowledged = a_dead_letter(deliveries, "idea.captured").await;
+    let untouched = a_dead_letter(deliveries, "idea.retitled").await;
+
+    deliveries
+        .acknowledge(acknowledged.id, at(3_000))
+        .await
+        .expect("acknowledging should succeed");
+
+    let dead = deliveries
+        .dead_letters()
+        .await
+        .expect("reading the dead letters should succeed");
+    assert_eq!(
+        dead,
+        vec![
+            DeadLetter {
+                acknowledged_at: Some(at(3_000)),
+                ..acknowledged
+            },
+            untouched,
+        ],
+        "acknowledging only quiets the alarm; the message stays, to be retried or repaired later, \
+         since nothing can rebuild what a listener never saw"
+    );
+    assert_eq!(deliveries.waiting().await.expect("counting"), 0);
+}
+
+pub async fn acknowledging_again_keeps_the_first_moment(deliveries: &impl Deliveries) {
+    let dead = a_dead_letter(deliveries, "idea.captured").await;
+
+    deliveries
+        .acknowledge(dead.id, at(3_000))
+        .await
+        .expect("acknowledging should succeed");
+    deliveries
+        .acknowledge(dead.id, at(4_000))
+        .await
+        .expect("acknowledging again should succeed");
+
+    let acknowledged = deliveries
+        .dead_letters()
+        .await
+        .expect("reading the dead letters should succeed");
+    assert_eq!(acknowledged[0].acknowledged_at, Some(at(3_000)));
+}
+
+pub async fn an_acknowledged_dead_letter_can_still_be_retried(deliveries: &impl Deliveries) {
+    let dead = a_dead_letter(deliveries, "idea.captured").await;
+    deliveries
+        .acknowledge(dead.id, at(3_000))
+        .await
+        .expect("acknowledging should succeed");
+
+    deliveries
+        .retry(dead.id, at(4_000))
+        .await
+        .expect("retrying should succeed");
+
+    assert!(
+        deliveries
+            .dead_letters()
+            .await
+            .expect("reading the dead letters should succeed")
+            .is_empty()
+    );
+    assert_eq!(
+        deliveries
+            .claim_due(at(4_000), 16)
+            .await
+            .expect("claiming should succeed")
+            .len(),
+        1
+    );
+}
+
+pub async fn retrying_one_dead_letter_leaves_the_others(deliveries: &impl Deliveries) {
+    let kept = a_dead_letter(deliveries, "idea.captured").await;
+    let retried = a_dead_letter(deliveries, "idea.retitled").await;
+
+    deliveries
+        .retry(retried.id, at(2_000))
+        .await
+        .expect("retrying should succeed");
+
+    assert_eq!(
+        deliveries
+            .dead_letters()
+            .await
+            .expect("reading the dead letters should succeed"),
+        vec![kept]
+    );
+    assert_eq!(deliveries.waiting().await.expect("counting"), 1);
 }
 
 pub async fn handling_something_already_gone_is_harmless(deliveries: &impl Deliveries) {
@@ -180,9 +362,17 @@ pub async fn handling_something_already_gone_is_harmless(deliveries: &impl Deliv
         .await
         .expect("nacking an unknown delivery should not fail");
     deliveries
-        .give_up(404, "nothing")
+        .give_up(404, "nothing", at(1_000))
         .await
         .expect("dead-lettering an unknown delivery should not fail");
+    deliveries
+        .retry(404, at(1_000))
+        .await
+        .expect("retrying twice, as a double click does, should not fail");
+    deliveries
+        .acknowledge(404, at(1_000))
+        .await
+        .expect("acknowledging an unknown dead letter should not fail");
 }
 
 pub async fn the_backoff_grows_with_each_attempt(deliveries: &impl Deliveries) {
@@ -263,6 +453,21 @@ macro_rules! conformance_tests {
             $workbench,
             a_delivery_given_up_on_becomes_a_dead_letter
         );
+        $crate::delivery_conformance_case!($workbench, a_retried_dead_letter_is_delivered_afresh);
+        $crate::delivery_conformance_case!(
+            $workbench,
+            a_retried_dead_letter_wakes_whoever_is_waiting
+        );
+        $crate::delivery_conformance_case!(
+            $workbench,
+            an_acknowledged_dead_letter_is_kept_and_marked
+        );
+        $crate::delivery_conformance_case!($workbench, acknowledging_again_keeps_the_first_moment);
+        $crate::delivery_conformance_case!(
+            $workbench,
+            an_acknowledged_dead_letter_can_still_be_retried
+        );
+        $crate::delivery_conformance_case!($workbench, retrying_one_dead_letter_leaves_the_others);
         $crate::delivery_conformance_case!($workbench, handling_something_already_gone_is_harmless);
         $crate::delivery_conformance_case!($workbench, the_backoff_grows_with_each_attempt);
         $crate::delivery_conformance_case!(

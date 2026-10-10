@@ -49,7 +49,7 @@ async fn reply(request: Request<Body>) -> (StatusCode, String) {
 
 #[tokio::test]
 async fn the_health_check_answers_ok() {
-    let (status, body) = get("/api/health").await;
+    let (status, body) = get("/api/service/health").await;
 
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body, "ok");
@@ -83,6 +83,14 @@ async fn the_passages_feature_is_mounted_under_api() {
 
     assert_eq!(status, StatusCode::CREATED, "body was {body}");
     assert!(body.contains("passage_"), "body was {body}");
+}
+
+#[tokio::test]
+async fn the_refusals_are_mounted_under_the_service() {
+    let (status, body) = get("/api/service/refusals").await;
+
+    assert_eq!(status, StatusCode::OK, "body was {body}");
+    assert_eq!(body, "[]");
 }
 
 #[tokio::test]

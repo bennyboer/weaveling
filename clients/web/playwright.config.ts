@@ -15,7 +15,7 @@ export default defineConfig({
     {
       command: "cargo run -p weaveling-service-api",
       cwd: "../..",
-      url: "http://127.0.0.1:3000/api/health",
+      url: "http://127.0.0.1:3000/api/service/health",
       reuseExistingServer: true,
       timeout: 180_000,
     },

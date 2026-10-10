@@ -47,19 +47,37 @@ const REFUSED: &str = "
 const BURY: &str = "
     INSERT INTO dead_letters
         (listener, message_id, conversation, caused_by, routing_key, payload, occurred_at,
-         attempts, why)
+         attempts, why, given_up_at)
     SELECT listener, message_id, conversation, caused_by, routing_key, payload, occurred_at,
-           attempts + 1, ?2
+           attempts + 1, ?2, ?3
     FROM deliveries
     WHERE delivery = ?1
 ";
 
 const DEAD_LETTERS: &str = "
-    SELECT listener, message_id, conversation, caused_by, routing_key, payload, occurred_at,
-           attempts, why
+    SELECT dead_letter, listener, message_id, conversation, caused_by, routing_key, payload,
+           occurred_at, attempts, why, given_up_at, acknowledged_at
     FROM dead_letters
     ORDER BY dead_letter
 ";
+
+const REQUEUE: &str = "
+    INSERT INTO deliveries
+        (listener, message_id, conversation, caused_by, routing_key, payload, occurred_at, due_at)
+    SELECT listener, message_id, conversation, caused_by, routing_key, payload, occurred_at, ?2
+    FROM dead_letters
+    WHERE dead_letter = ?1
+";
+
+const UNBURY: &str = "DELETE FROM dead_letters WHERE dead_letter = ?1";
+
+const ACKNOWLEDGE: &str = "
+    UPDATE dead_letters
+    SET acknowledged_at = coalesce(acknowledged_at, ?2)
+    WHERE dead_letter = ?1
+";
+
+const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
 
 const WAITING: &str = "SELECT count(*) FROM deliveries";
 
@@ -230,12 +248,18 @@ impl Deliveries for SqliteDeliveries {
         Ok(())
     }
 
-    async fn give_up(&self, delivery: i64, why: &str) -> Result<(), DeliveryError> {
+    async fn give_up(
+        &self,
+        delivery: i64,
+        why: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), DeliveryError> {
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(BURY)
             .bind(delivery)
             .bind(why)
+            .bind(text::written(at))
             .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
@@ -257,17 +281,68 @@ impl Deliveries for SqliteDeliveries {
         found
             .iter()
             .map(|row| {
-                let (listener, message, attempts) = message_in(row, 0)?;
+                let id: i64 = row.try_get("dead_letter").map_err(unreachable)?;
+                let (listener, message, attempts) = message_in(row, id)?;
                 let why: String = row.try_get("why").map_err(unreachable)?;
+                let given_up_at: String = row.try_get("given_up_at").map_err(unreachable)?;
+                let acknowledged_at: Option<String> =
+                    row.try_get("acknowledged_at").map_err(unreachable)?;
 
                 Ok(DeadLetter {
+                    id,
                     listener,
                     message,
                     attempts,
                     why,
+                    given_up_at: text::read(&given_up_at)
+                        .ok_or_else(|| unreadable(id, format!("given_up_at: {given_up_at}")))?,
+                    acknowledged_at: acknowledged_at
+                        .map(|written| {
+                            text::read(&written).ok_or_else(|| {
+                                unreadable(id, format!("acknowledged_at: {written}"))
+                            })
+                        })
+                        .transpose()?,
                 })
             })
             .collect()
+    }
+
+    async fn retry(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError> {
+        let mut transaction = self
+            .pool
+            .begin_with(BEGIN_WRITING)
+            .await
+            .map_err(unreachable)?;
+
+        sqlx::query(REQUEUE)
+            .bind(dead_letter)
+            .bind(text::written(at))
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(UNBURY)
+            .bind(dead_letter)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+
+        transaction.commit().await.map_err(unreachable)?;
+
+        self.waiting.notify_one();
+
+        Ok(())
+    }
+
+    async fn acknowledge(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError> {
+        sqlx::query(ACKNOWLEDGE)
+            .bind(dead_letter)
+            .bind(text::written(at))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 
     async fn waiting(&self) -> Result<usize, DeliveryError> {

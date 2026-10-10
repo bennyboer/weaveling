@@ -22,6 +22,7 @@ struct Queues {
     deliveries: Vec<QueuedDelivery>,
     dead_letters: Vec<DeadLetter>,
     last_id: i64,
+    last_dead_letter: i64,
 }
 
 #[derive(Default)]
@@ -128,23 +129,33 @@ impl Deliveries for InMemoryDeliveries {
         Ok(())
     }
 
-    async fn give_up(&self, delivery: i64, why: &str) -> Result<(), DeliveryError> {
+    async fn give_up(
+        &self,
+        delivery: i64,
+        why: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), DeliveryError> {
         let mut queues = self.queues();
 
-        let Some(at) = queues
+        let Some(nth) = queues
             .deliveries
             .iter()
             .position(|queued| queued.id == delivery)
         else {
             return Ok(());
         };
-        let gone = queues.deliveries.remove(at);
+        let gone = queues.deliveries.remove(nth);
+        queues.last_dead_letter += 1;
+        let id = queues.last_dead_letter;
 
         queues.dead_letters.push(DeadLetter {
+            id,
             listener: gone.listener,
             message: gone.message,
             attempts: gone.attempts + 1,
             why: why.to_owned(),
+            given_up_at: at,
+            acknowledged_at: None,
         });
 
         Ok(())
@@ -152,6 +163,48 @@ impl Deliveries for InMemoryDeliveries {
 
     async fn dead_letters(&self) -> Result<Vec<DeadLetter>, DeliveryError> {
         Ok(self.queues().dead_letters.clone())
+    }
+
+    async fn retry(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError> {
+        let mut queues = self.queues();
+
+        let Some(nth) = queues
+            .dead_letters
+            .iter()
+            .position(|dead| dead.id == dead_letter)
+        else {
+            return Ok(());
+        };
+        let revived = queues.dead_letters.remove(nth);
+        queues.last_id += 1;
+        let id = queues.last_id;
+
+        queues.deliveries.push(QueuedDelivery {
+            id,
+            listener: revived.listener,
+            message: revived.message,
+            attempts: 0,
+            due_at: at,
+            claimed_until: None,
+        });
+        drop(queues);
+
+        self.waiting.notify_one();
+
+        Ok(())
+    }
+
+    async fn acknowledge(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError> {
+        if let Some(found) = self
+            .queues()
+            .dead_letters
+            .iter_mut()
+            .find(|dead| dead.id == dead_letter)
+        {
+            found.acknowledged_at.get_or_insert(at);
+        }
+
+        Ok(())
     }
 
     async fn waiting(&self) -> Result<usize, DeliveryError> {

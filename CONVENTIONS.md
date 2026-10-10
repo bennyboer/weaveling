@@ -108,6 +108,10 @@ Say why the expectation holds or what breaks if it does not — never restate th
 - `expect` carries the reason it cannot fail: `.expect("a plain title is fine")`.
 - Modules and re-exports behind a feature come last, after a blank line and grouped by feature, so what a build leaves out stands apart from what every build has; a feature's test module sits in its feature's group. The blank line is also what keeps rustfmt from sorting them back in.
 
+## HTTP
+
+- A feature owns `/api/{its noun}`, plural: `/api/ideas`, `/api/boards`. Whatever the service serves about itself — its health, the messages it refused — lives under `/api/service/`, so no feature may be called `service`. A path says whose endpoint it is.
+
 ## Manifests
 
 - Dependencies are grouped: workspace crates, then this feature's own crates, then **foreign contracts** under a comment saying what they are. A feature may reach across the seam for another feature's `contract` crate and nothing else — never its `core`, never its adapters — and the grouping is what makes an accidental `pieces-core` in a `boards` manifest obvious on sight.

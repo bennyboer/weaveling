@@ -20,6 +20,11 @@ pub fn read(written: &str) -> Option<OffsetDateTime> {
     OffsetDateTime::parse(written, &Rfc3339).ok()
 }
 
+pub fn serialize(at: OffsetDateTime) -> String {
+    at.format(&Rfc3339)
+        .expect("an instant from the clock is always representable as RFC 3339")
+}
+
 #[cfg(test)]
 mod tests {
     use time::Duration;
@@ -53,6 +58,14 @@ mod tests {
             earlier < later,
             "SQLite compares these as strings, so a claim's expiry relies on the width being fixed"
         );
+    }
+
+    #[test]
+    fn a_serialized_instant_is_rfc3339_and_reads_back() {
+        let then = at(1_759_000_000, 0);
+
+        assert_eq!(serialize(then), "2025-09-27T19:06:40Z");
+        assert_eq!(read(&serialize(then)), Some(then));
     }
 
     #[test]

@@ -5,12 +5,11 @@ use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
+use clock::text::serialize;
 use eventsourcing::{Agent, Standing, Version};
 use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
 use projects_core::{Project, ProjectService, ProjectServiceError, ProjectSummary};
 use serving::{Unreadable, demanded, refusal, tag};
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 
 pub fn router(projects: ProjectService) -> Router {
     Router::new()
@@ -30,8 +29,8 @@ fn to_dto(summary: &ProjectSummary) -> ProjectDTO {
         id: summary.id.to_string(),
         version: summary.version.count(),
         name: summary.name.to_string(),
-        created_at: to_rfc3339(summary.created_at),
-        updated_at: to_rfc3339(summary.updated_at),
+        created_at: serialize(summary.created_at),
+        updated_at: serialize(summary.updated_at),
     }
 }
 
@@ -100,16 +99,11 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Re
             id: id.to_owned(),
             version: standing.version.count(),
             name: project.name().to_string(),
-            created_at: to_rfc3339(project.created_at()),
-            updated_at: to_rfc3339(project.updated_at()),
+            created_at: serialize(project.created_at()),
+            updated_at: serialize(project.updated_at()),
         }),
     )
         .into_response()
-}
-
-fn to_rfc3339(at: OffsetDateTime) -> String {
-    at.format(&Rfc3339)
-        .expect("a project timestamp should be representable as RFC 3339")
 }
 
 enum ApiError {

@@ -1,7 +1,5 @@
 use eventsourcing::{Agent, EventMetadata};
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
-use time::format_description::well_known::Rfc3339;
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct PublishedEvent<B> {
@@ -58,9 +56,4 @@ impl PublishedAgent {
             },
         }
     }
-}
-
-pub fn as_rfc3339(at: OffsetDateTime) -> String {
-    at.format(&Rfc3339)
-        .expect("a timestamp from the clock is always formattable")
 }

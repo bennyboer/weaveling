@@ -1,14 +1,13 @@
 use std::sync::Arc;
 
+use clock::text::serialize;
 use eventsourcing::{AggregateType, Event, EventName, Recorded};
 use messaging::{Message, Publisher, RoutingKey, Undelivered};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 
-use crate::published::{
-    PublishedAgent, PublishedAggregate, PublishedBody, PublishedEvent, as_rfc3339,
-};
+use crate::published::{PublishedAgent, PublishedAggregate, PublishedBody, PublishedEvent};
 
 const SEPARATOR: &str = ".";
 
@@ -50,7 +49,7 @@ where
         },
         aggregate: PublishedAggregate::of(&happened.metadata),
         agent: PublishedAgent::of(&happened.metadata.agent),
-        occurred_at: as_rfc3339(happened.metadata.occurred_at),
+        occurred_at: serialize(happened.metadata.occurred_at),
     };
     let payload = serde_json::to_value(published)
         .expect("a published event is plain data and cannot fail to serialize");

@@ -31,10 +31,13 @@ pub struct Queued {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeadLetter {
+    pub id: i64,
     pub listener: ListenerName,
     pub message: Message,
     pub attempts: i32,
     pub why: String,
+    pub given_up_at: OffsetDateTime,
+    pub acknowledged_at: Option<OffsetDateTime>,
 }
 
 #[async_trait]
@@ -60,9 +63,18 @@ pub trait Deliveries: Send + Sync {
         again_at: OffsetDateTime,
     ) -> Result<(), DeliveryError>;
 
-    async fn give_up(&self, delivery: i64, why: &str) -> Result<(), DeliveryError>;
+    async fn give_up(
+        &self,
+        delivery: i64,
+        why: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), DeliveryError>;
 
     async fn dead_letters(&self) -> Result<Vec<DeadLetter>, DeliveryError>;
+
+    async fn retry(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError>;
+
+    async fn acknowledge(&self, dead_letter: i64, at: OffsetDateTime) -> Result<(), DeliveryError>;
 
     async fn waiting(&self) -> Result<usize, DeliveryError>;
 

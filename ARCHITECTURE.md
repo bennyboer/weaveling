@@ -492,11 +492,11 @@ It deliberately does **not** carry the piece catalog, and that is a **choice rat
 
 That pass needs no new machinery: the export already holds every piece's event stream, so **the importer carries the enumeration** and can feed each stream through the projector as it reads. It is worth being precise about this, because it means local mode is *not* the thing that forces a general rebuild-from-events — [that debt has a different trigger](./TODO.md).
 
-### The messaging policy differs, the port does not
+### Who reads a refusal differs, the flow does not
 
-In served mode a refused message goes to [dead letters](#messaging--the-seam-now-the-transport-later) for something to retry. In local mode there is no ops team and no retry loop, and the person who caused the failure is sitting right there — so a strict dispatcher that surfaces the refusal is the better answer.
+Every mode runs [one flow](./ROADMAP.md#milestone-11b--one-flow-in-every-mode): a refused message is retried with a growing backoff and, once the attempts run out, set aside as a [dead letter](#messaging--the-seam-now-the-transport-later). What differs is who reads it. A server has someone running it; local mode has no ops team, and the person who caused the failure is sitting right there — so the client shows the author what was refused, and lets them try again or let it go.
 
-That is a **deployment policy, never something a feature reads**. `Publisher` keeps the one error a broker can honestly report, because a feature must behave identically in both modes: publisher confirms say only that the *broker* accepted a message, and consumer acks go to the broker rather than back. Anything richer would be an in-process-only guarantee, and the mode existing makes that stricter rather than looser — code has to survive both.
+Who reads it is a **deployment matter, never something a feature reads**. `Publisher` keeps the one error a broker can honestly report, because a feature must behave identically in both modes: publisher confirms say only that the *broker* accepted a message, and consumer acks go to the broker rather than back. Anything richer would be an in-process-only guarantee, and the mode existing makes that stricter rather than looser — code has to survive both.
 
 ## Wiring — each feature assembles itself
 

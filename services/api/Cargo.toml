@@ -20,6 +20,7 @@ tracing-subscriber = { workspace = true }
 clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
 wiring = { version = "0.1.0", path = "../../libraries/wiring", package = "weaveling-wiring" }
 messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "weaveling-messaging" }
+messaging-contract = { version = "0.1.0", path = "../../libraries/messaging-contract", package = "weaveling-messaging-contract" }
 outbox = { version = "0.1.0", path = "../../libraries/outbox", package = "weaveling-outbox" }
 
 ################
@@ -65,5 +66,6 @@ async-trait = { workspace = true }
 tower = { workspace = true }
 axum-test = { workspace = true }
 serde_json = { workspace = true }
+time = { workspace = true, features = ["macros"] }
 sqlx = { workspace = true }
 test-harness = { version = "0.1.0", path = "../../libraries/test-harness", package = "weaveling-test-harness" }

@@ -1,4 +1,5 @@
 mod backend;
+mod refusals;
 mod relays;
 
 use std::sync::Arc;
@@ -99,7 +100,13 @@ async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared
 }
 
 pub fn app(adapters: Adapters) -> Router {
-    let mut api = Router::new().route("/health", get(health));
+    let service = Router::new()
+        .route("/health", get(health))
+        .merge(refusals::router(
+            adapters.deliveries.clone(),
+            adapters.clock.clone(),
+        ));
+    let mut api = Router::new().nest("/service", service);
 
     for feature in adapters.features {
         api = api.merge(feature.routes);
@@ -117,3 +124,6 @@ pub fn app(adapters: Adapters) -> Router {
 async fn health() -> &'static str {
     "ok"
 }
+
+#[cfg(test)]
+mod refusals_tests;

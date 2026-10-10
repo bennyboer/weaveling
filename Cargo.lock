@@ -3612,6 +3612,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",
 ]
@@ -3773,6 +3774,13 @@ dependencies = [
  "weaveling-clock",
  "weaveling-ids",
  "weaveling-test-harness",
+]
+
+[[package]]
+name = "weaveling-messaging-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -4088,8 +4096,8 @@ name = "weaveling-projects-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
- "time",
  "tracing",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-projects-contract",
  "weaveling-projects-core",
@@ -4177,6 +4185,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-ideas-wiring",
  "weaveling-messaging",
+ "weaveling-messaging-contract",
  "weaveling-outbox",
  "weaveling-outline-wiring",
  "weaveling-passages-wiring",

@@ -154,7 +154,7 @@ impl DeliveryConsumer {
                     error = %why,
                     "a listener refused a message until the attempts ran out"
                 );
-                self.settled(self.deliveries.give_up(queued.id, &why).await);
+                self.settled(self.deliveries.give_up(queued.id, &why, now).await);
             } else {
                 tracing::warn!(
                     listener = %queued.listener,
