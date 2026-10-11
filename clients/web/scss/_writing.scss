@@ -35,6 +35,22 @@
     margin-top: 0;
   }
 
+  .scene .ProseMirror {
+    outline: none;
+    white-space: break-spaces;
+    word-wrap: break-word;
+
+    p {
+      margin: 0 0 1.1rem;
+    }
+  }
+
+  .between-scenes {
+    margin: 1.9rem 0;
+    border: none;
+    border-top: 1px solid var(--line);
+  }
+
   .empty {
     color: var(--muted);
   }

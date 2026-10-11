@@ -4,6 +4,7 @@ use leptos_router::components::A;
 
 use crate::outline::model::{Outline, Section};
 use crate::route;
+use crate::writing::scene_in_flow::scene_in_flow;
 use crate::writing::write_state::WriteState;
 
 const UNTITLED: &str = "Untitled section";
@@ -28,12 +29,14 @@ pub fn WriteView(project: String) -> impl IntoView {
             move || {
                 let outlined = outlined.clone();
 
-                state.outline().map(|outline| book(outline, outlined))
+                state
+                    .outline()
+                    .map(|outline| book(outline, outlined, state))
             },
         ))
 }
 
-fn book(outline: Outline, outlined: String) -> AnyView {
+fn book(outline: Outline, outlined: String, state: WriteState) -> AnyView {
     let read = outline.in_reading_order();
 
     if read.is_empty() {
@@ -48,9 +51,24 @@ fn book(outline: Outline, outlined: String) -> AnyView {
     }
 
     read.into_iter()
-        .map(|(depth, section)| heading(depth, section))
+        .map(|(depth, section)| (heading(depth, section), scenes_of(section, state)))
         .collect::<Vec<_>>()
         .into_any()
+}
+
+fn scenes_of(section: &Section, state: WriteState) -> Vec<AnyView> {
+    section
+        .scenes()
+        .into_iter()
+        .enumerate()
+        .flat_map(|(nth, scene)| {
+            let divided = (nth > 0).then(|| html::hr().class("between-scenes").into_any());
+
+            divided
+                .into_iter()
+                .chain([scene_in_flow(scene, state).into_any()])
+        })
+        .collect()
 }
 
 fn heading(depth: usize, section: &Section) -> AnyView {

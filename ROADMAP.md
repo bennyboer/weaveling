@@ -858,7 +858,7 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 **Slices**, each its own review:
 
 1. **"Write" and an empty view** — the masthead entry, the route, the manuscript column with the book's sections in order as headings and nothing else yet. *Done: `/projects/{p}/write`, the column at 20px Lexend, sections read depth-first and set as `h2`–`h4` in Newsreader, and an unshaped book pointing to the outline.*
-2. **Scenes in the flow** — each scene's prose in its own editor under its section, a line between scenes, the cursor carried across scene edges by the arrow keys.
+2. **Scenes in the flow** — each scene's prose in its own editor under its section, a line between scenes, the cursor carried across scene edges by the arrow keys. *Done: one ProseMirror editor and one sync connection per scene, the write state holding them in the book's reading order; an arrow key at a scene's first or last line — or left and right at its very start and end — hands the cursor to the neighbouring scene, across section headings too; so do the word and paragraph jumps (Ctrl, or Cmd and Alt on a Mac), but only from a scene's very start or end. Where the cursor is gets read from the browser's own selection, since ProseMirror's copy can lag a key behind. Every scene in the book is mounted for now; slice 6 trims that to what is in view.*
 3. **Typing makes scenes, and sections** — an empty section takes the first words as a new scene; Enter twice starts the next scene, three times a new section; an empty book starts with its first heading; headings are renamed in place.
 3b. **The margin** — scene titles beside their scenes, the "+" and the ⋮ with their menus.
 4. **The status note** — "All saved" / "Saving…" for the whole view, and the word count toggling between section and book.
@@ -867,6 +867,7 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 7. **The tray** — the scene's title and the ideas it draws on, opened from the tab.
 8. **The book rail** and **the spelling toggle**.
 9. **Focus mode.**
+10. **Selecting across scenes.** Stacked editors cannot carry a text selection from one into the next, so selection beyond a scene becomes *scene-level*, the way block editors do it: Shift+Up at a scene's top, or Shift+Down at its end, selects whole scenes as highlighted blocks and each further press takes in the next; Ctrl+A selects the scene, pressed again the whole book. Copy copies their text in reading order. Cut and delete would be structural — scenes leaving the book — so they wait.
 
 **Later: where "Write" sits among the views.** It is the heart of the app, yet it comes last in the masthead, after Board, Outline and Ideas, because it was added last. Worth reconsidering whether it should come first — and with it, which view a project opens on, which today is the board. Not urgent; revisit once the writing view is something an author can actually work in.
 

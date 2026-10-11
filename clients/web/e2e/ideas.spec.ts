@@ -80,6 +80,7 @@ test("a reload keeps the project open with its ideas", async ({ page }) => {
   await anOpenProject(page, "Reload");
   await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
+  await catalogued(page, ["The loom remembers"]);
 
   await page.reload();
 
