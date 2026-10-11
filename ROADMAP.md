@@ -847,17 +847,28 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 - **The book rail and the open tray come from the second mockup.** A narrow list of parts and sections on the left, the current one marked, for finding one's way in a long book; the tray, opened, shows the scene's title, the ideas it draws on, and later its characters. Both are opened by the author, never forced on them.
 - **Focus is a mode, and a later one.** The masthead shrinks to a breadcrumb, section names move into the margin, and all but the paragraph being written fades back.
 
+**Structure from the flow, decided 2026-10-11.** Sections are not only made in the outline: the author can shape the book while writing it, and the outline stays the place for seeing the whole and for moving things around.
+
+- **A heading is its own small field, not part of a scene.** It belongs to the outline aggregate — renamed with a version check, saved after a pause or on leaving it — while a scene's text is a CRDT merged keystroke by keystroke. Two authors renaming one heading at once: the last one wins, and that is acceptable.
+- **An empty book starts with its first heading**, ready to type, and the first scene below it — no detour through the outline.
+- **A "+" in the margin** beside the scene or section the cursor is in, shown on hover or for the current one: *new scene above / below*, *new section above / below*, a section at the same level, nested by Tab afterwards. Enter three times stays the keyboard way.
+- **A ⋮ in the margin** opens what can be done to the thing beside it. On a section, *Remove section*: its scenes return to the pool rather than being lost, as removing one in the outline does, and a section still holding scenes asks first. On a scene: *Rename*, *Take out of the book*, which keeps its text in the pool, and *Delete scene*, which asks first.
+- **Scene titles in the left margin**, level with the top of their scene, as in the focus mockup — so what a scene is about stays in sight while it is written. Read-only there, so a stray click never lands in it; renaming goes through the ⋮, and an untitled scene shows its opening words, faded. The "+" and the ⋮ live in the same margin, so the text column holds nothing but prose. On a narrow screen the margin folds above its scene.
+
 **Slices**, each its own review:
 
 1. **"Write" and an empty view** — the masthead entry, the route, the manuscript column with the book's sections in order as headings and nothing else yet. *Done: `/projects/{p}/write`, the column at 20px Lexend, sections read depth-first and set as `h2`–`h4` in Newsreader, and an unshaped book pointing to the outline.*
 2. **Scenes in the flow** — each scene's prose in its own editor under its section, a line between scenes, the cursor carried across scene edges by the arrow keys.
-3. **Typing makes scenes** — an empty section takes the first words as a new scene; Enter twice starts the next scene, three times a new section.
+3. **Typing makes scenes, and sections** — an empty section takes the first words as a new scene; Enter twice starts the next scene, three times a new section; an empty book starts with its first heading; headings are renamed in place.
+3b. **The margin** — scene titles beside their scenes, the "+" and the ⋮ with their menus.
 4. **The status note** — "All saved" / "Saving…" for the whole view, and the word count toggling between section and book.
 5. **Where you left off, and following a scene there** — "Write" lands where the author left off, and a scene followed from an idea or the outline opens the view at it.
 6. **Only what is in view** — the flow loads scenes as they come near and lets go of those far away, both ways.
 7. **The tray** — the scene's title and the ideas it draws on, opened from the tab.
 8. **The book rail** and **the spelling toggle**.
 9. **Focus mode.**
+
+**Later: where "Write" sits among the views.** It is the heart of the app, yet it comes last in the masthead, after Board, Outline and Ideas, because it was added last. Worth reconsidering whether it should come first — and with it, which view a project opens on, which today is the board. Not urgent; revisit once the writing view is something an author can actually work in.
 
 **Later: a history of the work, and goals for it.** How many words were written and how much time went into writing and planning, day by day, so an author can see their work add up. On top of that, a goal to aim for — words for the day, or for this sitting — that the status note can count towards.
 
