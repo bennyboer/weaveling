@@ -10,7 +10,7 @@ use crate::projects::workspace::Workspace;
 use crate::shell::masthead;
 
 #[component]
-pub fn TheWorkspace(workspace: Workspace, overlays: Overlays) -> impl IntoView {
+pub fn WorkspacePage(workspace: Workspace, overlays: Overlays) -> impl IntoView {
     (
         masthead(None),
         html::main().child(html::div().class("column").child((

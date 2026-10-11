@@ -7,7 +7,7 @@ use crate::ideas::pool::{Pool, PoolProps};
 use crate::shell::{Inside, Viewing, masthead};
 
 #[component]
-pub fn OnePool() -> impl IntoView {
+pub fn IdeasPage() -> impl IntoView {
     let params = use_params_map();
 
     move || {

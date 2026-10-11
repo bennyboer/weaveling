@@ -7,7 +7,7 @@ use crate::route;
 use crate::shell::masthead;
 
 #[component]
-pub fn Missing() -> impl IntoView {
+pub fn MissingPage() -> impl IntoView {
     (
         masthead(None),
         html::main().child(

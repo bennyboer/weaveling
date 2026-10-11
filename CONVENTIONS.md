@@ -47,6 +47,8 @@ The shapes each feature repeats:
 - `<Thing>Service`, `<Thing>ServiceError`
 - `InMemory<Thing>Catalog`, `Postgres<Thing>Catalog`
 
+In the client, a component is named for its role. A **`<Thing>Page`** is what a route mounts: it reads the address, puts the masthead above and hands plain values down — `BoardPage`, `IdeasPage`, `WritePage`, each in `app/`, in a file named for it. A **`<Thing>View`** is what a page shows, taking plain values rather than the router, so it can be mounted elsewhere too — `BoardView`, `OutlineView`, `WriteView`, in its feature's module. Not `OneBoard` / `TheBoard`: an article says nothing about which of the two a component is.
+
 In the client, a view that loads and changes things keeps that in **`<View>State`**, beside the view and named for it — `InspectorState` for `inspector`, `ScenePageState` for the scene page — and the views take it as `state`. Named for the view, not for how it got its data: the inspector's state is the same whether the idea came from the address or, docked on the board, from a selection.
 
 Singular, built on the aggregate's own name — `ProjectEventPublisher`, not `ProjectsEventPublisher`. The crate is plural (`projects_messaging`); the types inside it are not.

@@ -1,0 +1,41 @@
+.writing {
+  width: 100%;
+  max-width: 42.5rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 5rem;
+  font: 300 1.25rem/1.6 var(--reading);
+
+  h2,
+  h3,
+  h4 {
+    font-family: var(--heading);
+    font-weight: 500;
+    letter-spacing: 0;
+  }
+
+  h2 {
+    margin: 3rem 0 1.5rem;
+    font-size: 2.1rem;
+    line-height: 1.15;
+  }
+
+  h3 {
+    margin: 2.5rem 0 1.25rem;
+    font-size: 1.5rem;
+    line-height: 1.2;
+  }
+
+  h4 {
+    margin: 2rem 0 1rem;
+    font-size: 1.25rem;
+    line-height: 1.25;
+  }
+
+  > :first-child {
+    margin-top: 0;
+  }
+
+  .empty {
+    color: var(--muted);
+  }
+}

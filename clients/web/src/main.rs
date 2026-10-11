@@ -14,6 +14,7 @@ mod scenes;
 mod shell;
 mod theme;
 mod tray;
+mod writing;
 
 use leptos::prelude::*;
 

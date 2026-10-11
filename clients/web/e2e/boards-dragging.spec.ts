@@ -267,6 +267,7 @@ test("a dragged card stays in front after it is dropped", async ({ page }) => {
 
   await page.reload();
   await onTheBoard(page);
+  await expect(cards).toHaveCount(2);
   const afterwards = await page.evaluate(() => {
     const drawn = [...document.querySelectorAll(".pinned")];
 

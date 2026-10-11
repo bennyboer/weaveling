@@ -21,7 +21,7 @@ use crate::tray::laid_out;
 const DOTS: i64 = 20;
 
 #[component]
-pub fn TheBoard(project: String) -> impl IntoView {
+pub fn BoardView(project: String) -> impl IntoView {
     let state = BoardState::open(&route::project_id(&project));
     let selected = RwSignal::new(None::<IdeaId>);
     let handles = Handles {

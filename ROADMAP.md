@@ -849,7 +849,7 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 
 **Slices**, each its own review:
 
-1. **"Write" and an empty view** — the masthead entry, the route, the manuscript column with the book's sections in order as headings and nothing else yet.
+1. **"Write" and an empty view** — the masthead entry, the route, the manuscript column with the book's sections in order as headings and nothing else yet. *Done: `/projects/{p}/write`, the column at 20px Lexend, sections read depth-first and set as `h2`–`h4` in Newsreader, and an unshaped book pointing to the outline.*
 2. **Scenes in the flow** — each scene's prose in its own editor under its section, a line between scenes, the cursor carried across scene edges by the arrow keys.
 3. **Typing makes scenes** — an empty section takes the first words as a new scene; Enter twice starts the next scene, three times a new section.
 4. **The status note** — "All saved" / "Saving…" for the whole view, and the word count toggling between section and book.

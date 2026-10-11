@@ -9,7 +9,7 @@ use crate::route;
 use crate::shell::{Inside, masthead};
 
 #[component]
-pub fn OneIdea() -> impl IntoView {
+pub fn IdeaPage() -> impl IntoView {
     let params = use_params_map();
     let project = Memo::new(move |_| params.read().get("project").unwrap_or_default());
     let asked = Signal::derive(move || {

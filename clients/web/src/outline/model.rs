@@ -61,6 +61,29 @@ impl Outline {
             .any(|section| section.attachments.contains(attachment))
     }
 
+    pub fn in_reading_order(&self) -> Vec<(usize, &Section)> {
+        let mut read = Vec::with_capacity(self.sections.len());
+        self.read_under(None, 0, &mut read);
+
+        read
+    }
+
+    fn read_under<'a>(
+        &'a self,
+        parent: Option<&SectionId>,
+        depth: usize,
+        read: &mut Vec<(usize, &'a Section)>,
+    ) {
+        for section in self
+            .sections
+            .iter()
+            .filter(|held| held.parent.as_ref() == parent)
+        {
+            read.push((depth, section));
+            self.read_under(Some(&section.id), depth + 1, read);
+        }
+    }
+
     pub fn siblings_of(&self, section: &SectionId) -> Vec<SectionId> {
         let parent = self.parent_of(section);
 
@@ -144,5 +167,65 @@ impl Outline {
             .iter()
             .find(|held| &held.id == section)
             .and_then(|held| held.parent.clone())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn a_section(id: &str, parent: Option<&str>) -> Section {
+        Section {
+            id: SectionId::from(id.to_owned()),
+            parent: parent.map(|parent| SectionId::from(parent.to_owned())),
+            title: id.to_owned(),
+            attachments: Vec::new(),
+        }
+    }
+
+    fn an_outline(sections: Vec<Section>) -> Outline {
+        Outline {
+            id: OutlineId::from("outline_1".to_owned()),
+            version: 1,
+            sections,
+        }
+    }
+
+    fn read(outline: &Outline) -> Vec<(usize, &str)> {
+        outline
+            .in_reading_order()
+            .into_iter()
+            .map(|(depth, section)| (depth, section.title.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn a_book_is_read_depth_first_with_each_section_before_its_children() {
+        let outline = an_outline(vec![
+            a_section("part_1", None),
+            a_section("part_2", None),
+            a_section("chapter_1", Some("part_1")),
+            a_section("scene_a", Some("chapter_1")),
+            a_section("chapter_2", Some("part_1")),
+            a_section("chapter_3", Some("part_2")),
+        ]);
+
+        assert_eq!(
+            read(&outline),
+            vec![
+                (0, "part_1"),
+                (1, "chapter_1"),
+                (2, "scene_a"),
+                (1, "chapter_2"),
+                (0, "part_2"),
+                (1, "chapter_3"),
+            ],
+            "the outline keeps sections flat, so a child stored after the next part is still read inside its own"
+        );
+    }
+
+    #[test]
+    fn an_empty_book_has_nothing_to_read() {
+        assert!(an_outline(Vec::new()).in_reading_order().is_empty());
     }
 }

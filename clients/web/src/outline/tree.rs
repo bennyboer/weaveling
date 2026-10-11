@@ -34,7 +34,7 @@ struct Held {
 }
 
 #[component]
-pub fn TheOutline(project: String) -> impl IntoView {
+pub fn OutlineView(project: String) -> impl IntoView {
     let held = Held {
         project: StoredValue::new(project.clone()),
         carrying: RwSignal::new(None),

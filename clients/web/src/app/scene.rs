@@ -10,7 +10,7 @@ use crate::scenes::title_field::title_field;
 use crate::shell::{Inside, masthead};
 
 #[component]
-pub fn OneScene() -> impl IntoView {
+pub fn ScenePage() -> impl IntoView {
     let params = use_params_map();
     let project = Memo::new(move |_| params.read().get("project").unwrap_or_default());
     let asked = Memo::new(move |_| params.read().get("scene"));

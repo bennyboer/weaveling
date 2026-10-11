@@ -1,23 +1,25 @@
 mod board;
 mod idea;
+mod ideas;
 mod missing;
 mod outline;
-mod pool;
 mod scene;
 mod workspace;
+mod write;
 
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::path;
 
-use crate::app::board::OneBoard;
-use crate::app::idea::OneIdea;
-use crate::app::missing::Missing;
-use crate::app::outline::OneOutline;
-use crate::app::pool::OnePool;
-use crate::app::scene::OneScene;
-use crate::app::workspace::{TheWorkspace, TheWorkspaceProps};
+use crate::app::board::BoardPage;
+use crate::app::idea::IdeaPage;
+use crate::app::ideas::IdeasPage;
+use crate::app::missing::MissingPage;
+use crate::app::outline::OutlinePage;
+use crate::app::scene::ScenePage;
+use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
+use crate::app::write::WritePage;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
 use crate::shell::status_bar;
@@ -36,18 +38,19 @@ pub fn App() -> impl IntoView {
 
     view! {
         <Router>
-            <Routes fallback=Missing>
+            <Routes fallback=MissingPage>
                 <Route
                     path=path!("/")
-                    view=move || TheWorkspace(TheWorkspaceProps { workspace, overlays })
+                    view=move || WorkspacePage(WorkspacePageProps { workspace, overlays })
                 />
-                <Route path=path!("/projects/:project") view=OneBoard />
-                <Route path=path!("/projects/:project/outline") view=OneOutline />
-                <Route path=path!("/projects/:project/ideas") view=OnePool />
-                <Route path=path!("/projects/:project/ideas/:idea") view=OneIdea />
+                <Route path=path!("/projects/:project") view=BoardPage />
+                <Route path=path!("/projects/:project/outline") view=OutlinePage />
+                <Route path=path!("/projects/:project/ideas") view=IdeasPage />
+                <Route path=path!("/projects/:project/write") view=WritePage />
+                <Route path=path!("/projects/:project/ideas/:idea") view=IdeaPage />
                 <Route
                     path=path!("/projects/:project/scenes/:scene")
-                    view=OneScene
+                    view=ScenePage
                 />
             </Routes>
             {status_bar()}
