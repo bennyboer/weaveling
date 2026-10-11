@@ -36,6 +36,7 @@ export async function captureIdea(page: Page, idea: string) {
   await expect(
     page.getByRole("list", { name: "Ideas" }).getByText(idea),
   ).toBeVisible();
+  await catalogued(page, [idea]);
 }
 
 export async function onTheBoard(page: Page) {

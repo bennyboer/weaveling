@@ -1,6 +1,14 @@
 import { test, expect } from "@playwright/test";
 
-import { bar, boxOf, corkboard, dragBy, pullBy, select } from "./support/board";
+import {
+  boardSaves,
+  bar,
+  boxOf,
+  corkboard,
+  dragBy,
+  pullBy,
+  select,
+} from "./support/board";
 import {
   anOpenProject,
   captureIdea,
@@ -57,6 +65,7 @@ test("dragging the right edge widens a card without moving it", async ({
 }) => {
   await anOpenProject(page, "Widen");
   await captureIdea(page, "The loom remembers");
+  const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -68,6 +77,7 @@ test("dragging the right edge widens a card without moving it", async ({
     /left: 40px; top: 40px; width: 230px; height: 84px;/,
   );
 
+  await saved();
   await page.reload();
   await onTheBoard(page);
   await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
@@ -96,6 +106,7 @@ test("dragging the top-left corner moves and resizes in one gesture", async ({
 }) => {
   await anOpenProject(page, "Corner");
   await captureIdea(page, "The loom remembers");
+  const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
@@ -110,6 +121,7 @@ test("dragging the top-left corner moves and resizes in one gesture", async ({
     /left: 15px; top: 20px; width: 193px; height: 104px;/,
   );
 
+  await saved();
   await page.reload();
   await onTheBoard(page);
   await expect(corkboard(page).locator(".pinned")).toHaveAttribute(

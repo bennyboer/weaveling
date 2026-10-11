@@ -190,6 +190,7 @@ test("a stale slug still reaches the project", async ({ page }) => {
   await anOpenProject(page, "Stale");
   await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
+  await catalogued(page, ["The loom remembers"]);
   const id = new URL(page.url()).pathname.split("-").pop();
 
   await page.goto(`/projects/something-else-entirely-${id}`);
@@ -204,6 +205,7 @@ test("an address with no slug at all still reaches the project", async ({
   await anOpenProject(page, "NoSlug");
   await captureIdea(page, "The loom remembers");
   await expect(ideas(page).getByText("The loom remembers")).toBeVisible();
+  await catalogued(page, ["The loom remembers"]);
   const id = new URL(page.url()).pathname.split("-").pop();
 
   await page.goto(`/projects/${id}`);

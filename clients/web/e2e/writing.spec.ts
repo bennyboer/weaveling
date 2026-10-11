@@ -303,7 +303,10 @@ test("a word jump at a scene's edge carries on into the next scene", async ({
   await page.keyboard.press("Home");
   await page.keyboard.press("ControlOrMeta+ArrowUp");
   await page.keyboard.type(" Back.");
-  await expect(scene(page, second), "the jump should have left this scene").not.toContainText("Back.");
+  await expect(
+    scene(page, second),
+    "the jump should have left this scene",
+  ).not.toContainText("Back.");
   await expect(scene(page, first)).toContainText("silent. Back.");
 });
 

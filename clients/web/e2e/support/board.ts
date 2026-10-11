@@ -1,4 +1,9 @@
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+} from "@playwright/test";
 
 export const corkboard = (page: Page) =>
   page.getByRole("region", { name: "Board" });
@@ -106,4 +111,27 @@ export async function pullBy(
   await page.mouse.down();
   await page.mouse.move(from.x + x, from.y + y, { steps: 8 });
   await page.mouse.up();
+}
+
+export function boardSaves(page: Page): () => Promise<void> {
+  let inFlight = 0;
+  const writing = (request: Request) =>
+    request.method() !== "GET" && request.url().includes("/api/boards");
+  const done = (request: Request) => {
+    if (writing(request)) inFlight -= 1;
+  };
+
+  page.on("request", (request) => {
+    if (writing(request)) inFlight += 1;
+  });
+  page.on("requestfinished", done);
+  page.on("requestfailed", done);
+
+  return () =>
+    expect
+      .poll(() => inFlight, {
+        message:
+          "the board shows a change before it is saved, so a reload has to wait for the save",
+      })
+      .toBe(0);
 }

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { corkboard, dragBy } from "./support/board";
+import { boardSaves, corkboard, dragBy } from "./support/board";
 import {
   anOpenProject,
   captureIdea,
@@ -35,6 +35,7 @@ test("a card can be nudged with the arrow keys", async ({ page }) => {
 test("a nudge survives a reload", async ({ page }) => {
   await anOpenProject(page, "NudgeLasts");
   await captureIdea(page, "The loom remembers");
+  const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await corkboard(page).locator(".pinned").focus();
@@ -44,6 +45,7 @@ test("a nudge survives a reload", async ({ page }) => {
     /left: 45px/,
   );
 
+  await saved();
   await page.reload();
   await onTheBoard(page);
 
@@ -58,6 +60,7 @@ test("a card dragged anywhere on its body lands where it was dropped and stays t
 }) => {
   await anOpenProject(page, "Dragging");
   await captureIdea(page, "The loom remembers");
+  const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
 
@@ -67,6 +70,7 @@ test("a card dragged anywhere on its body lands where it was dropped and stays t
     "style",
     /left: 160px; top: 130px;/,
   );
+  await saved();
   await page.reload();
   await onTheBoard(page);
   await expect(corkboard(page).locator(".pinned")).toHaveAttribute(
@@ -245,6 +249,7 @@ test("a dragged card stays in front after it is dropped", async ({ page }) => {
   await anOpenProject(page, "StaysInFront");
   await captureIdea(page, "The loom remembers");
   await captureIdea(page, "She never returned");
+  const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await page.getByRole("button", { name: "Pin She never returned" }).click();
@@ -265,6 +270,7 @@ test("a dragged card stays in front after it is dropped", async ({ page }) => {
     "the card you just moved should be drawn last, so it sits in front",
   ).toBe("The loom remembers");
 
+  await saved();
   await page.reload();
   await onTheBoard(page);
   await expect(cards).toHaveCount(2);

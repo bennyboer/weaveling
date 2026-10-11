@@ -1,6 +1,12 @@
 import { test, expect } from "@playwright/test";
 
-import { corkboard, laidOut, select, waitingIdeas } from "./support/board";
+import {
+  boardSaves,
+  corkboard,
+  laidOut,
+  select,
+  waitingIdeas,
+} from "./support/board";
 import {
   anOpenProject,
   captureIdea,
@@ -69,10 +75,12 @@ test("a pinned idea is placed somewhere on the board", async ({ page }) => {
 test("pinned ideas survive a reload", async ({ page }) => {
   await anOpenProject(page, "Survives");
   await captureIdea(page, "The loom remembers");
+  const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
 
+  await saved();
   await page.reload();
 
   await expect(corkboard(page).getByText("The loom remembers")).toBeVisible();
@@ -285,12 +293,14 @@ test("an unpinned idea stays off the board after a reload", async ({
 }) => {
   await anOpenProject(page, "UnpinLasts");
   await captureIdea(page, "The loom remembers");
+  const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await select(page, "The loom remembers");
   await page.getByRole("button", { name: "Unpin The loom remembers" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(0);
 
+  await saved();
   await page.reload();
   await onTheBoard(page);
 

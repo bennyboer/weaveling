@@ -1,6 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 import {
+  boardSaves,
   bar,
   cardNamed,
   corkboard,
@@ -390,6 +391,7 @@ test("a card can be dragged past the origin onto negative ground", async ({
 }) => {
   await anOpenProject(page, "BehindOrigin");
   await captureIdea(page, "The loom remembers");
+  const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(cardNamed(page, "The loom remembers")).toHaveAttribute(
@@ -404,6 +406,7 @@ test("a card can be dragged past the origin onto negative ground", async ({
     "the board runs in every direction, so a card may sit behind the origin",
   ).toHaveAttribute("style", /left: -55px; top: -30px;/);
 
+  await saved();
   await page.reload();
   await onTheBoard(page);
   await expect(cardNamed(page, "The loom remembers")).toHaveAttribute(

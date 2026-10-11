@@ -102,6 +102,7 @@ Say why the expectation holds or what breaks if it does not — never restate th
 - A test's assembled world is a **`Wired`**, built by **`a_workbench()`** — the feature test wirings, and the library ones. Once a helper bundles more than a value, it is that, not a new name per file.
 - A behaviour two backends must share is a **conformance suite**: free functions taking `&impl Trait`, a `Workbench` trait (`setup`/`store`/`cleanup`), and a `conformance_tests!` macro each backend invokes. One case list, both implementations.
 - A guard worth having is worth proving load-bearing — break it deliberately and watch the test fail.
+- A browser test that reloads waits first for whatever the reload will read, because the client shows a change before it is stored: the ideas catalog (`catalogued`, `uncatalogued` — `captureIdea` already waits), a board change being saved (`boardSaves`), a scene's prose reaching the server (poll its text). Local mode is where a missing wait shows, since its catalogs lag a moment behind.
 
 ## Rust
 

@@ -62,11 +62,18 @@ test("typed prose reaches the server's own projection", async ({
 });
 
 test("prose survives a reload", async ({ page }) => {
-  await aSceneBeingWritten(page, "Survives");
+  const { scene } = await aSceneBeingWritten(page, "Survives");
 
   await surface(page).click();
   await page.keyboard.type("She had not touched it since spring.");
   await expect(surface(page)).toContainText("since spring");
+
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`${API}/scenes/${scene}`)).json()).text,
+    )
+    .toContain("since spring");
 
   await page.reload();
 
