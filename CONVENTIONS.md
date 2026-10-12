@@ -102,6 +102,8 @@ Say why the expectation holds or what breaks if it does not — never restate th
 - A test's assembled world is a **`Wired`**, built by **`a_workbench()`** — the feature test wirings, and the library ones. Once a helper bundles more than a value, it is that, not a new name per file.
 - A behaviour two backends must share is a **conformance suite**: free functions taking `&impl Trait`, a `Workbench` trait (`setup`/`store`/`cleanup`), and a `conformance_tests!` macro each backend invokes. One case list, both implementations.
 - A guard worth having is worth proving load-bearing — break it deliberately and watch the test fail.
+- Browser tests run side by side — four at a time, two on CI — against one server. Each works in a project of its own with a name no other test uses, and never assumes it is alone: no counting every project, no relying on what the server held before it started.
+- On a developer's machine a failed browser test is tried once more, and one that passes the second time is reported as **flaky**, not passed — treat it as a finding. The retry exists for Windows, which keeps the connections of a whole run lingering for minutes, so a run straight after another can fail to load a page (`ERR_NO_BUFFER_SPACE`). CI never retries.
 - A browser test that reloads waits first for whatever the reload will read, because the client shows a change before it is stored: the ideas catalog (`catalogued`, `uncatalogued` — `captureIdea` already waits), a board change being saved (`boardSaves`), a scene's prose reaching the server (poll its text). Local mode is where a missing wait shows, since its catalogs lag a moment behind.
 
 ## Rust

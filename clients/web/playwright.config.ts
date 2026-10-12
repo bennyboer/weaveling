@@ -3,8 +3,9 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   outputDir: "../../target/web/e2e",
-  fullyParallel: false,
-  workers: 1,
+  fullyParallel: true,
+  workers: process.env.CI ? 2 : 4,
+  retries: process.env.CI ? 0 : 1,
   reporter: [["list"]],
   use: {
     baseURL: "http://127.0.0.1:8080",
@@ -20,7 +21,7 @@ export default defineConfig({
       timeout: 180_000,
     },
     {
-      command: "trunk serve",
+      command: "trunk serve --no-autoreload",
       url: "http://127.0.0.1:8080",
       reuseExistingServer: true,
       timeout: 180_000,

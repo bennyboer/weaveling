@@ -865,6 +865,10 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 4. **The status note** — "All saved" / "Saving…" for the whole view, and the word count toggling between section and book.
 5. **Where you left off, and following a scene there** — "Write" lands where the author left off, and a scene followed from an idea or the outline opens the view at it.
 6. **Only what is in view** — the flow loads scenes as they come near and lets go of those far away, both ways.
+   - **Proved by a stress test first, before and after:** a book of 10,000 scenes across a few hundred sections, measured in the browser — time until the first lines can be typed into, memory, open connections, and whether scrolling stays smooth. Today every scene mounts its own editor and opens its own connection, so this is expected to fail outright; the test is what shows the viewport fixed it rather than moved it.
+   - **The viewport:** only scenes within a margin of the visible area have a live editor and connection; the rest are placeholders of the right height. A scene's height is measured once it has been shown and kept, so scrolling back does not jump; one never shown is estimated from its length in the listing. Scenes scrolled far away are let go — editor destroyed, connection closed — after their last change has been sent.
+   - **Kept working across it:** the cursor walk crosses into a scene that is not mounted yet by mounting it first; where the author left off and following a scene from elsewhere (slice 5) scroll to a placeholder and mount it.
+   - **If connections still hurt:** many visible scenes still mean many sockets, so multiplexing every scene over one connection is the follow-up, once the stress test shows it matters.
 7. **The tray** — the scene's title and the ideas it draws on, opened from the tab.
 8. **The book rail** and **the spelling toggle**.
 9. **Focus mode.**
