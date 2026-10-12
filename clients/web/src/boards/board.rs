@@ -4,7 +4,7 @@ use leptos::{IntoView, ev};
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 
-use crate::boards::board_state::BoardState;
+use crate::boards::board_view_state::BoardViewState;
 use crate::boards::card::card;
 use crate::boards::carrying::Carrying;
 use crate::boards::carrying::{CARD, snapped};
@@ -22,7 +22,7 @@ const DOTS: i64 = 20;
 
 #[component]
 pub fn BoardView(project: String) -> impl IntoView {
-    let state = BoardState::open(&route::project_id(&project));
+    let state = BoardViewState::open(&route::project_id(&project));
     let selected = RwSignal::new(None::<IdeaId>);
     let handles = Handles {
         viewport: RwSignal::new(Viewport::RESTING),

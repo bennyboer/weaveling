@@ -6,7 +6,8 @@ use leptos::{IntoView, ev, html};
 use web_sys::{HtmlDivElement, KeyboardEvent, Node};
 
 use crate::outline::model::{Section, SectionId};
-use crate::writing::write_state::{Stop, Towards, WriteState};
+use crate::writing::walk::{Stop, Towards};
+use crate::writing::write_view_state::WriteViewState;
 
 const SAVE_AFTER: Duration = Duration::from_millis(700);
 
@@ -14,12 +15,12 @@ pub const UNTITLED: &str = "Untitled section";
 
 const FIRST: &str = "Your book's first section";
 
-pub fn section_heading(depth: usize, section: Section, state: WriteState) -> impl IntoView {
+pub fn section_heading(depth: usize, section: Section, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let id = section.id.clone();
     let written = match section.title.as_str() {
-        "" if state.takes_focus(&id) => {
-            let carried = state.first_words();
+        "" if state.beginnings.takes_focus(&id) => {
+            let carried = state.beginnings.first_words();
             focus_when_mounted(host);
 
             carried
@@ -42,7 +43,7 @@ pub fn section_heading(depth: usize, section: Section, state: WriteState) -> imp
 
         if saved.with_value(|before| before != &title) {
             saved.set_value(title.clone());
-            state.retitle(id, title);
+            state.structure.retitle(id, title);
         }
     };
 
@@ -53,14 +54,16 @@ pub fn section_heading(depth: usize, section: Section, state: WriteState) -> imp
 
         move || {
             if let Some(shown) = host.get() {
-                state.heading_at(id.clone(), (*shown).clone());
+                state
+                    .walk
+                    .line_at(Stop::Heading(id.clone()), (*shown).clone());
             }
         }
     });
     on_cleanup({
         let id = id.clone();
 
-        move || state.heading_gone(&id)
+        move || state.walk.line_gone(&Stop::Heading(id.clone()))
     });
 
     html::div()
@@ -90,11 +93,11 @@ pub fn section_heading(depth: usize, section: Section, state: WriteState) -> imp
         })
         .on(ev::keydown, move |event| {
             leave_on_enter(&event, host);
-            walk_on(&event, host, &id, state);
+            walk_on(&event, host, Stop::Heading(id.clone()), state);
         })
 }
 
-fn walk_on(event: &KeyboardEvent, host: NodeRef<Div>, section: &SectionId, state: WriteState) {
+pub fn walk_on(event: &KeyboardEvent, host: NodeRef<Div>, from: Stop, state: WriteViewState) {
     let Some(shown) = host.get_untracked() else {
         return;
     };
@@ -107,7 +110,7 @@ fn walk_on(event: &KeyboardEvent, host: NodeRef<Div>, section: &SectionId, state
         _ => return,
     };
 
-    if state.leave(&Stop::Heading(section.clone()), towards) {
+    if state.walk.leave(&from, towards) {
         event.prevent_default();
     }
 }
@@ -137,7 +140,7 @@ fn caret_at_edges(shown: &HtmlDivElement) -> (bool, bool) {
     (offset == 0, offset >= whole)
 }
 
-pub fn first_heading(state: WriteState) -> impl IntoView {
+pub fn first_heading(state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
 
     html::div()
@@ -150,14 +153,16 @@ pub fn first_heading(state: WriteState) -> impl IntoView {
         .node_ref(host)
         .on(ev::input, move |_| {
             if let Some(shown) = host.get_untracked() {
-                state.first_words_are(shown.text_content().unwrap_or_default());
+                state
+                    .beginnings
+                    .first_words_are(shown.text_content().unwrap_or_default());
             }
-            state.begin();
+            state.beginnings.begin();
         })
         .on(ev::keydown, move |event| leave_on_enter(&event, host))
 }
 
-fn leave_on_enter(event: &KeyboardEvent, host: NodeRef<Div>) {
+pub fn leave_on_enter(event: &KeyboardEvent, host: NodeRef<Div>) {
     if event.key() == "Enter" {
         event.prevent_default();
 

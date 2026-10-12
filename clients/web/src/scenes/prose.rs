@@ -21,6 +21,9 @@ extern "C" {
     #[wasm_bindgen(method)]
     pub fn focus(this: &ProseEditor);
 
+    #[wasm_bindgen(method)]
+    pub fn seed(this: &ProseEditor, text: &str);
+
     #[wasm_bindgen(method, js_name = focusStart)]
     pub fn focus_start(this: &ProseEditor);
 

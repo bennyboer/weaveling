@@ -37,7 +37,7 @@ struct Intentions {
 }
 
 #[derive(Clone, Copy)]
-pub struct BoardState {
+pub struct BoardViewState {
     problem: RwSignal<Option<ApiError>>,
     board: Memo<Option<Board>>,
     pool: RwSignal<Option<Vec<Idea>>>,
@@ -48,7 +48,7 @@ pub struct BoardState {
     retitling: Action<(IdeaId, String), ()>,
 }
 
-impl BoardState {
+impl BoardViewState {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let confirmed = RwSignal::new(None::<Board>);

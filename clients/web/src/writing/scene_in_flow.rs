@@ -6,12 +6,13 @@ use wasm_bindgen::closure::Closure;
 
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
-use crate::writing::write_state::{Stop, Towards, WriteState};
+use crate::writing::walk::{Stop, Towards};
+use crate::writing::write_view_state::WriteViewState;
 
 const AUTHOR: &str = "You";
 const COLOUR: &str = "#f59e0b";
 
-pub fn scene_in_flow(scene: SceneId, state: WriteState) -> impl IntoView {
+pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let kept =
         StoredValue::new_local(None::<(Closure<dyn Fn(bool)>, Closure<dyn Fn(String) -> bool>)>);
@@ -36,12 +37,15 @@ pub fn scene_in_flow(scene: SceneId, state: WriteState) -> impl IntoView {
                         _ => Towards::After,
                     };
 
-                    state.leave(&Stop::Scene(scene.clone()), towards)
+                    state.walk.leave(&Stop::Scene(scene.clone()), towards)
                 }
             });
             editor.on_leaving(&leaving);
+            if let Some(carried) = state.beginnings.words_to_carry(&scene) {
+                editor.seed(&carried);
+            }
 
-            state.writing_in(scene.clone(), editor);
+            state.walk.writing_in(scene.clone(), editor);
             kept.set_value(Some((connected, leaving)));
         }
     });
@@ -50,7 +54,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteState) -> impl IntoView {
         let scene = scene.clone();
 
         move || {
-            if let Some(editor) = state.done_with(&scene) {
+            if let Some(editor) = state.walk.done_with(&scene) {
                 editor.destroy();
             }
             kept.set_value(None);

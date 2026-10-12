@@ -66,6 +66,19 @@
     }
   }
 
+  .opening {
+    min-height: 1.6em;
+    outline: none;
+    caret-color: var(--accent);
+  }
+
+  .opening:empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
   .between-scenes {
     margin: 1.9rem 0;
     border: none;

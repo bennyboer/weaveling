@@ -99,6 +99,13 @@ export class ProseEditor {
     return state.selection.empty ? state.selection.from : null;
   }
 
+  seed(text) {
+    const { state } = this.view;
+
+    this.view.dispatch(state.tr.insertText(text, Selection.atEnd(state.doc).from));
+    this.focusEnd();
+  }
+
   focusStart() {
     this.focusAt(Selection.atStart(this.view.state.doc));
   }

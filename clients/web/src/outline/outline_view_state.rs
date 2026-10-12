@@ -12,7 +12,7 @@ use crate::scenes::model::Scene;
 use crate::scenes::service as scene_service;
 
 #[derive(Clone, Copy)]
-pub struct OutlineState {
+pub struct OutlineViewState {
     problem: RwSignal<Option<ApiError>>,
     outline: Memo<Option<Outline>>,
     scenes: RwSignal<Option<Vec<Scene>>>,
@@ -36,7 +36,7 @@ pub enum Urge {
     Demote,
 }
 
-impl OutlineState {
+impl OutlineViewState {
     pub fn open(project: &ProjectId) -> Self {
         let problem = RwSignal::new(None::<ApiError>);
         let confirmed = RwSignal::new(None::<Outline>);

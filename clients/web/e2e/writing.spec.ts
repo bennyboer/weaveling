@@ -103,6 +103,16 @@ const savedTitles = async (page: Page) =>
     (section: { title: string }) => section.title,
   );
 
+const beginning = (page: Page) =>
+  flow(page).getByRole("textbox", { name: "A new scene" });
+
+const scenesOf = async (page: Page) =>
+  (await projectsOutline(page)).sections.map(
+    (section: { title: string; attachments: { kind: string }[] }) =>
+      section.attachments.filter((attached) => attached.kind === "scene")
+        .length,
+  );
+
 const heading = (page: Page, named: string) =>
   flow(page).getByRole("heading", { name: named });
 
@@ -496,7 +506,7 @@ test("down from a heading goes into its first scene, up from there comes back", 
   await expect.poll(() => savedTitles(page)).toEqual(["Part One, Revised"]);
 });
 
-test("a section with no scenes leads straight on to the next heading", async ({
+test("an empty section's writing line sits between its heading and the next", async ({
   page,
 }) => {
   await aNewProject(page, "Hollow");
@@ -505,7 +515,10 @@ test("a section with no scenes leads straight on to the next heading", async ({
   await heading(page, "Part One").click();
 
   await page.keyboard.press("ArrowDown");
+  await expect(beginning(page).first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await expect(heading(page, "Part Two")).toBeFocused();
+  await page.keyboard.press("ArrowUp");
   await page.keyboard.press("ArrowUp");
   await expect(heading(page, "Part One")).toBeFocused();
 });
@@ -529,4 +542,99 @@ test("left and right leave a heading only from its very edge", async ({
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.type("The end.");
   await expect(scene(page, scenes["Part One"][0])).toContainText("The end.");
+});
+
+test("typing into an empty section begins a scene there", async ({ page }) => {
+  await aNewProject(page, "Begun");
+  await aBookWithScenes(page, { "Part One": 0 });
+  await openTheWritingView(page);
+  await expect(beginning(page)).toHaveAttribute(
+    "data-placeholder",
+    "An empty scene. Start writing…",
+  );
+
+  await beginning(page).click();
+  await page.keyboard.type("The loom stood silent.");
+
+  await expect(beginning(page)).toHaveCount(0);
+  await expect(flow(page).locator(".scene .ProseMirror")).toContainText(
+    "The loom stood silent.",
+  );
+  await expect.poll(() => scenesOf(page)).toEqual([1]);
+  await page.keyboard.type(" Still writing.");
+  await expect(flow(page).locator(".scene .ProseMirror")).toContainText(
+    "The loom stood silent. Still writing.",
+  );
+});
+
+test("words typed while the scene is being made are kept", async ({ page }) => {
+  await aNewProject(page, "Patient");
+  await aBookWithScenes(page, { "Part One": 0 });
+  await page.route("**/api/scenes", async (route) => {
+    if (route.request().method() === "POST") {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+    await route.continue();
+  });
+  await openTheWritingView(page);
+
+  await beginning(page).click();
+  await page.keyboard.type("Nothing typed in the wait is lost.");
+
+  await expect(flow(page).locator(".scene .ProseMirror")).toHaveText(
+    "Nothing typed in the wait is lost.",
+  );
+  await expect
+    .poll(async () => {
+      const outline = await projectsOutline(page);
+      const scene = outline.sections[0].attachments[0]?.id;
+
+      return scene
+        ? (await (await page.request.get(`${API}/scenes/${scene}`)).json()).text
+        : "";
+    })
+    .toBe("Nothing typed in the wait is lost.");
+});
+
+test("an empty book is written from its first heading into its first scene", async ({
+  page,
+}) => {
+  await aNewProject(page, "Blank");
+  await openTheWritingView(page);
+
+  await flow(page).getByRole("heading").click();
+  await page.keyboard.type("Part One");
+  await expect.poll(() => savedTitles(page)).toEqual(["Part One"]);
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.type("It began with a loom.");
+
+  await expect
+    .poll(async () => {
+      const scene = (await projectsOutline(page)).sections[0].attachments[0]
+        ?.id;
+
+      return scene
+        ? (await (await page.request.get(`${API}/scenes/${scene}`)).json()).text
+        : "";
+    })
+    .toContain("It began with a loom.");
+  await page.reload();
+  await expect(flow(page).locator(".scene .ProseMirror")).toContainText(
+    "It began with a loom.",
+  );
+});
+
+test("Enter on an empty section's writing line does nothing yet", async ({
+  page,
+}) => {
+  await aNewProject(page, "Patience");
+  await aBookWithScenes(page, { "Part One": 0 });
+  await openTheWritingView(page);
+
+  await beginning(page).click();
+  await page.keyboard.press("Enter");
+
+  await expect(beginning(page)).toBeFocused();
+  await expect(beginning(page)).toHaveText("");
+  expect(await scenesOf(page)).toEqual([0]);
 });

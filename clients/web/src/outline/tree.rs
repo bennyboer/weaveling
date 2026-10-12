@@ -10,7 +10,7 @@ use web_sys::HtmlElement;
 use crate::icons::{Icon, mark};
 use crate::inputs::typed;
 use crate::outline::model::{Attachment, Section, SectionId};
-use crate::outline::outline_state::{OutlineState, Urge};
+use crate::outline::outline_view_state::{OutlineViewState, Urge};
 use crate::route;
 use crate::tray::laid_out;
 
@@ -30,7 +30,7 @@ struct Held {
     over: RwSignal<Option<SectionId>>,
     editing: RwSignal<Option<SectionId>>,
     folded: RwSignal<HashSet<SectionId>>,
-    state: OutlineState,
+    state: OutlineViewState,
 }
 
 #[component]
@@ -43,7 +43,7 @@ pub fn OutlineView(project: String) -> impl IntoView {
         over: RwSignal::new(None),
         editing: RwSignal::new(None),
         folded: RwSignal::new(HashSet::new()),
-        state: OutlineState::open(&route::project_id(&project)),
+        state: OutlineViewState::open(&route::project_id(&project)),
     };
     let state = held.state;
 
@@ -93,7 +93,7 @@ pub fn OutlineView(project: String) -> impl IntoView {
     ))
 }
 
-fn last_top(state: OutlineState) -> Option<SectionId> {
+fn last_top(state: OutlineViewState) -> Option<SectionId> {
     state
         .sections()
         .iter()
@@ -621,7 +621,7 @@ fn twigs_under(section: &SectionId, held: Held) -> Vec<Section> {
         .collect()
 }
 
-fn urging(urge: Urge, section: SectionId, state: OutlineState) -> impl IntoView {
+fn urging(urge: Urge, section: SectionId, state: OutlineViewState) -> impl IntoView {
     let (named, icon) = match urge {
         Urge::Earlier => ("Move earlier", Icon::Earlier),
         Urge::Later => ("Move later", Icon::Later),
@@ -644,7 +644,7 @@ fn urging(urge: Urge, section: SectionId, state: OutlineState) -> impl IntoView 
         .child(mark(icon))
 }
 
-fn writing(section: SectionId, state: OutlineState) -> impl IntoView {
+fn writing(section: SectionId, state: OutlineViewState) -> impl IntoView {
     let labelled = section.clone();
     let titled = section.clone();
 
@@ -663,7 +663,7 @@ fn writing(section: SectionId, state: OutlineState) -> impl IntoView {
         .child(mark(Icon::Quill))
 }
 
-fn pruning(section: SectionId, state: OutlineState) -> impl IntoView {
+fn pruning(section: SectionId, state: OutlineViewState) -> impl IntoView {
     let labelled = section.clone();
 
     html::button()
@@ -696,7 +696,7 @@ fn shown_or_blank(shown: &str) -> String {
     }
 }
 
-fn settle(event: &ev::Event, section: &SectionId, state: OutlineState) {
+fn settle(event: &ev::Event, section: &SectionId, state: OutlineViewState) {
     let Some(field) = typed(event) else {
         return;
     };
