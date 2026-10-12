@@ -14,8 +14,13 @@ const COLOUR: &str = "#f59e0b";
 
 pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
-    let kept =
-        StoredValue::new_local(None::<(Closure<dyn Fn(bool)>, Closure<dyn Fn(String) -> bool>)>);
+    let kept = StoredValue::new_local(
+        None::<(
+            Closure<dyn Fn(bool)>,
+            Closure<dyn Fn(String) -> bool>,
+            Closure<dyn Fn()>,
+        )>,
+    );
     let named = scene.to_string();
 
     Effect::new({
@@ -41,12 +46,18 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 }
             });
             editor.on_leaving(&leaving);
+            let breaking = Closure::<dyn Fn()>::new({
+                let scene = scene.clone();
+
+                move || state.beginnings.start_pending_scene_after(&scene)
+            });
+            editor.on_breaking(&breaking);
             if let Some(carried) = state.beginnings.words_to_carry(&scene) {
                 editor.seed(&carried);
             }
 
             state.walk.writing_in(scene.clone(), editor);
-            kept.set_value(Some((connected, leaving)));
+            kept.set_value(Some((connected, leaving, breaking)));
         }
     });
 

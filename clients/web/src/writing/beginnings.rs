@@ -11,12 +11,19 @@ use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
 use crate::writing::structure::Structure;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Pending {
+    Scene { section: SectionId, after: SceneId },
+    Section { after: SectionId },
+}
+
 #[derive(Clone, Copy)]
 pub struct Beginnings {
     structure: Structure,
     problems: Problems,
-    beginning: StoredValue<bool>,
-    first_words: StoredValue<String>,
+    pending: RwSignal<Option<Pending>>,
+    beginning_section: StoredValue<bool>,
+    section_words: StoredValue<String>,
     focus_next: StoredValue<Option<SectionId>>,
     opening: StoredValue<HashSet<SectionId>>,
     opening_words: StoredValue<HashMap<SectionId, String>>,
@@ -28,8 +35,9 @@ impl Beginnings {
         Self {
             structure,
             problems,
-            beginning: StoredValue::new(false),
-            first_words: StoredValue::new(String::new()),
+            pending: RwSignal::new(None),
+            beginning_section: StoredValue::new(false),
+            section_words: StoredValue::new(String::new()),
             focus_next: StoredValue::new(None),
             opening: StoredValue::new(HashSet::new()),
             opening_words: StoredValue::new(HashMap::new()),
@@ -37,40 +45,86 @@ impl Beginnings {
         }
     }
 
-    pub fn begin(self) {
-        if self.beginning.get_value() {
+    pub fn start_pending_scene_after(self, scene: &SceneId) {
+        if let Some(section) = self.structure.section_holding(scene) {
+            self.pending.set(Some(Pending::Scene {
+                section,
+                after: scene.clone(),
+            }));
+        }
+    }
+
+    pub fn start_pending_section_after(self, section: &SectionId) {
+        self.pending.set(Some(Pending::Section {
+            after: section.clone(),
+        }));
+    }
+
+    pub fn drop_pending(self, pending: &Pending) {
+        if self
+            .pending
+            .with_untracked(|held| held.as_ref() == Some(pending))
+        {
+            self.pending.set(None);
+        }
+    }
+
+    pub fn pending_scene_after(self, scene: &SceneId) -> Option<Pending> {
+        self.pending.with(|pending| match pending {
+            Some(Pending::Scene { after, .. }) if after == scene => pending.clone(),
+            _ => None,
+        })
+    }
+
+    pub fn pending_section_below(self, section: &SectionId) -> Option<Pending> {
+        let after = self.pending.with(|pending| match pending {
+            Some(Pending::Section { after }) => Some(after.clone()),
+            _ => None,
+        })?;
+
+        (self.structure.end_of_block(&after).as_ref() == Some(section))
+            .then_some(Pending::Section { after })
+    }
+
+    pub fn begin_section(self, after: Option<SectionId>) {
+        if self.beginning_section.get_value() {
             return;
         }
         let Some(outline) = self.structure.id() else {
             return;
         };
-        self.beginning.set_value(true);
+        self.beginning_section.set_value(true);
+        let under = after
+            .as_ref()
+            .and_then(|after| self.structure.parent_of(after));
 
         spawn_local(async move {
-            match service::add(&outline, None, None, "").await {
+            match service::add(&outline, under, after, "").await {
                 Ok((section, opened)) => {
                     self.focus_next.set_value(Some(section.clone()));
+                    self.pending.set(None);
                     self.structure.adopt(opened);
+                    self.beginning_section.set_value(false);
 
-                    let typed = self.first_words.get_value();
+                    let typed = self.section_words.get_value();
                     if !typed.trim().is_empty() {
                         self.structure.retitle(section, typed);
                     }
                 }
                 Err(failure) => {
-                    self.beginning.set_value(false);
+                    self.beginning_section.set_value(false);
                     self.problems.report(failure);
                 }
             }
         });
     }
 
-    pub fn first_words_are(self, typed: String) {
-        self.first_words.set_value(typed);
+    pub fn section_words_are(self, typed: String) {
+        self.section_words.set_value(typed);
     }
 
-    pub fn first_words(self) -> String {
-        self.first_words.get_value()
+    pub fn section_words(self) -> String {
+        self.section_words.get_value()
     }
 
     pub fn takes_focus(self, section: &SectionId) -> bool {
@@ -85,7 +139,7 @@ impl Beginnings {
         wanted
     }
 
-    pub fn begin_scene(self, section: SectionId) {
+    pub fn begin_scene(self, section: SectionId, after: Option<SceneId>) {
         let started = self
             .opening
             .try_update_value(|opening| opening.insert(section.clone()))
@@ -103,8 +157,18 @@ impl Beginnings {
             self.opened
                 .update_value(|opened| _ = opened.insert(made.id.clone(), section.clone()));
 
-            match service::attach(&outline, &Attachment::Scene(made.id), &section, None).await {
-                Ok(placed) => self.structure.adopt(placed),
+            match service::attach(
+                &outline,
+                &Attachment::Scene(made.id),
+                &section,
+                after.map(Attachment::Scene),
+            )
+            .await
+            {
+                Ok(placed) => {
+                    self.pending.set(None);
+                    self.structure.adopt(placed);
+                }
                 Err(failure) => self.could_not_begin(&section, failure),
             }
         });

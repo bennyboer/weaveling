@@ -32,6 +32,7 @@ export class ProseEditor {
     this.provider.on("status", ({ status }) => onConnected(status === "connected"));
 
     this.leaving = () => false;
+    this.breaking = () => {};
 
     this.view = new EditorView(host, {
       state: EditorState.create({
@@ -42,6 +43,7 @@ export class ProseEditor {
           yUndoPlugin(),
           keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-Shift-z": redo }),
           keymap({
+            Enter: (state, dispatch) => this.breakAtEnd(state, dispatch),
             ArrowUp: (state, _, view) => this.leave(state, view, "before", "up"),
             ArrowLeft: (state, _, view) => this.leave(state, view, "before", "left"),
             ArrowDown: (state, _, view) => this.leave(state, view, "after", "down"),
@@ -65,6 +67,25 @@ export class ProseEditor {
       [`${modifier}-ArrowRight`]: across("after"),
       [`${modifier}-ArrowDown`]: across("after"),
     };
+  }
+
+  onBreaking(breaking) {
+    this.breaking = breaking;
+  }
+
+  breakAtEnd(state, dispatch) {
+    const { selection, doc } = state;
+    const { $from } = selection;
+    const last = $from.depth === 1 && $from.index(0) === doc.childCount - 1;
+
+    if (!selection.empty || !last || doc.childCount < 2 || $from.parent.content.size > 0) {
+      return false;
+    }
+
+    dispatch(state.tr.delete($from.before(1), $from.after(1)));
+    this.breaking();
+
+    return true;
   }
 
   onLeaving(leaving) {

@@ -3,8 +3,11 @@ use leptos::{IntoView, html};
 
 use crate::outline::model::{Section, SectionId};
 use crate::route;
+use crate::scenes::model::SceneId;
+use crate::writing::beginnings::Pending;
+use crate::writing::heading::pending_heading;
 use crate::writing::heading::{first_heading, section_heading};
-use crate::writing::opening::opening;
+use crate::writing::opening::{opening, pending_scene};
 use crate::writing::scene_in_flow::scene_in_flow;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -51,15 +54,31 @@ fn section_in_flow(depth: usize, section: Section, state: WriteViewState) -> imp
         move |_| state.structure.scenes_of(&id).is_empty()
     });
     let waiting = id.clone();
+    let below = Memo::new({
+        let id = id.clone();
+
+        move |_| state.beginnings.pending_section_below(&id)
+    });
 
     html::section().class("in-flow").child((
         section_heading(depth, section, state),
         html::div().class("scenes").child(scenes_of(id, state)),
         move || empty.get().then(|| opening(waiting.clone(), state)),
+        move || {
+            below.get().map(|pending| match pending {
+                Pending::Section { after } => {
+                    let depth = state.structure.depth_of(&after);
+
+                    pending_heading(after, depth, state).into_any()
+                }
+                Pending::Scene { .. } => ().into_any(),
+            })
+        },
     ))
 }
 
 fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {
+    let holding = section.clone();
     view! {
         <For
             each=move || state.structure.scenes_of(&section)
@@ -68,8 +87,23 @@ fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {
         >
             <div class="scene-slot">
                 <hr class="between-scenes" />
-                {scene_in_flow(scene, state)}
+                {scene_in_flow(scene.clone(), state)}
+                {pending_after(holding.clone(), scene, state)}
             </div>
         </For>
+    }
+}
+
+fn pending_after(section: SectionId, scene: SceneId, state: WriteViewState) -> impl IntoView {
+    let wanted = Memo::new({
+        let scene = scene.clone();
+
+        move |_| state.beginnings.pending_scene_after(&scene).is_some()
+    });
+
+    move || {
+        wanted
+            .get()
+            .then(|| pending_scene(section.clone(), scene.clone(), state))
     }
 }

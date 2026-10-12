@@ -62,25 +62,24 @@ impl Walk {
             .structure
             .read_untracked(stops_in_reading_order)
             .unwrap_or_default();
-        let Some(next) = neighbour(&read, from, towards) else {
-            return false;
-        };
 
-        match next {
-            Stop::Scene(scene) => self
-                .editors
-                .with_value(|editors| match editors.get(&scene) {
-                    Some(editor) => {
-                        match towards {
-                            Towards::Before => editor.focus_end(),
-                            Towards::After => editor.focus_start(),
-                        }
+        neighbour(&read, from, towards).is_some_and(|next| self.arrive(&next, towards))
+    }
 
-                        true
+    pub fn arrive(self, at: &Stop, towards: Towards) -> bool {
+        match at {
+            Stop::Scene(scene) => self.editors.with_value(|editors| match editors.get(scene) {
+                Some(editor) => {
+                    match towards {
+                        Towards::Before => editor.focus_end(),
+                        Towards::After => editor.focus_start(),
                     }
-                    None => false,
-                }),
-            line => self.lines.with_value(|lines| match lines.get(&line) {
+
+                    true
+                }
+                None => false,
+            }),
+            line => self.lines.with_value(|lines| match lines.get(line) {
                 Some(shown) => {
                     caret_in(shown, towards);
 
@@ -89,6 +88,23 @@ impl Walk {
                 None => false,
             }),
         }
+    }
+
+    pub fn last_stop_in(self, section: &SectionId) -> Option<Stop> {
+        let read = self
+            .structure
+            .read_untracked(stops_in_reading_order)
+            .unwrap_or_default();
+        let start = read
+            .iter()
+            .position(|stop| stop == &Stop::Heading(section.clone()))?;
+
+        read[start..]
+            .iter()
+            .enumerate()
+            .take_while(|(nth, stop)| *nth == 0 || !matches!(stop, Stop::Heading(_)))
+            .last()
+            .map(|(_, stop)| stop.clone())
     }
 }
 

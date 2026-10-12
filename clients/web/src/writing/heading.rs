@@ -6,6 +6,7 @@ use leptos::{IntoView, ev, html};
 use web_sys::{HtmlDivElement, KeyboardEvent, Node};
 
 use crate::outline::model::{Section, SectionId};
+use crate::writing::beginnings::Pending;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
@@ -15,12 +16,14 @@ pub const UNTITLED: &str = "Untitled section";
 
 const FIRST: &str = "Your book's first section";
 
+const NEXT: &str = "A new section";
+
 pub fn section_heading(depth: usize, section: Section, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let id = section.id.clone();
     let written = match section.title.as_str() {
         "" if state.beginnings.takes_focus(&id) => {
-            let carried = state.beginnings.first_words();
+            let carried = state.beginnings.section_words();
             focus_when_mounted(host);
 
             carried
@@ -92,7 +95,15 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
             move |_| save(id.clone())
         })
         .on(ev::keydown, move |event| {
-            leave_on_enter(&event, host);
+            if event.key() == "Enter" {
+                event.prevent_default();
+
+                if !state.walk.leave(&Stop::Heading(id.clone()), Towards::After)
+                    && let Some(shown) = host.get_untracked()
+                {
+                    let _ = shown.blur();
+                }
+            }
             walk_on(&event, host, Stop::Heading(id.clone()), state);
         })
 }
@@ -141,35 +152,86 @@ fn caret_at_edges(shown: &HtmlDivElement) -> (bool, bool) {
 }
 
 pub fn first_heading(state: WriteViewState) -> impl IntoView {
-    let host: NodeRef<Div> = NodeRef::new();
-
-    html::div()
-        .class("heading level-2")
-        .role("heading")
-        .attr("aria-level", "2")
-        .attr("contenteditable", "plaintext-only")
-        .attr("spellcheck", "false")
-        .attr("data-placeholder", FIRST)
-        .node_ref(host)
-        .on(ev::input, move |_| {
-            if let Some(shown) = host.get_untracked() {
-                state
-                    .beginnings
-                    .first_words_are(shown.text_content().unwrap_or_default());
-            }
-            state.beginnings.begin();
-        })
-        .on(ev::keydown, move |event| leave_on_enter(&event, host))
+    new_heading(None, 0, state)
 }
 
-pub fn leave_on_enter(event: &KeyboardEvent, host: NodeRef<Div>) {
-    if event.key() == "Enter" {
-        event.prevent_default();
+pub fn pending_heading(after: SectionId, depth: usize, state: WriteViewState) -> impl IntoView {
+    new_heading(Some(after), depth, state)
+}
 
-        if let Some(shown) = host.get_untracked() {
-            let _ = shown.blur();
-        }
+fn new_heading(after: Option<SectionId>, depth: usize, state: WriteViewState) -> impl IntoView {
+    let host: NodeRef<Div> = NodeRef::new();
+    let level = depth.min(2) + 2;
+    let pending = after.clone().map(|after| Pending::Section { after });
+
+    if pending.is_some() {
+        focus_when_mounted(host);
     }
+
+    html::div()
+        .class(format!("heading level-{level} new"))
+        .role("heading")
+        .attr("aria-level", level.to_string())
+        .attr("contenteditable", "plaintext-only")
+        .attr("spellcheck", "false")
+        .attr(
+            "data-placeholder",
+            if after.is_some() { NEXT } else { FIRST },
+        )
+        .node_ref(host)
+        .on(ev::input, {
+            let after = after.clone();
+
+            move |_| {
+                if let Some(shown) = host.get_untracked() {
+                    state
+                        .beginnings
+                        .section_words_are(shown.text_content().unwrap_or_default());
+                }
+                state.beginnings.begin_section(after.clone());
+            }
+        })
+        .on(ev::blur, {
+            let pending = pending.clone();
+
+            move |_| {
+                let empty = host
+                    .get_untracked()
+                    .is_none_or(|shown| shown.text_content().unwrap_or_default().is_empty());
+
+                if let (true, Some(pending)) = (empty, &pending) {
+                    state.beginnings.drop_pending(pending);
+                }
+            }
+        })
+        .on(ev::keydown, move |event| {
+            if event.key() == "Enter" {
+                event.prevent_default();
+            }
+            let Some(after) = &after else {
+                return;
+            };
+            let towards = match event.key().as_str() {
+                "ArrowUp" => Towards::Before,
+                "ArrowDown" => Towards::After,
+                _ => return,
+            };
+            let Some(last) = state
+                .structure
+                .end_of_block(after)
+                .and_then(|end| state.walk.last_stop_in(&end))
+            else {
+                return;
+            };
+            let moved = match towards {
+                Towards::Before => state.walk.arrive(&last, Towards::Before),
+                Towards::After => state.walk.leave(&last, Towards::After),
+            };
+
+            if moved {
+                event.prevent_default();
+            }
+        })
 }
 
 fn focus_when_mounted(host: NodeRef<Div>) {

@@ -113,6 +113,22 @@ const scenesOf = async (page: Page) =>
         .length,
   );
 
+const sceneOrder = async (page: Page) =>
+  (await projectsOutline(page)).sections.map(
+    (section: {
+      title: string;
+      attachments: { kind: string; id: string }[];
+    }) => [
+      section.title,
+      section.attachments
+        .filter((attached) => attached.kind === "scene")
+        .map((attached) => attached.id),
+    ],
+  );
+
+const newScene = (page: Page) =>
+  flow(page).getByRole("textbox", { name: "A new scene" });
+
 const heading = (page: Page, named: string) =>
   flow(page).getByRole("heading", { name: named });
 
@@ -624,17 +640,143 @@ test("an empty book is written from its first heading into its first scene", asy
   );
 });
 
-test("Enter on an empty section's writing line does nothing yet", async ({
+test("Enter twice at a scene's end begins the next scene right after it", async ({
   page,
 }) => {
-  await aNewProject(page, "Patience");
-  await aBookWithScenes(page, { "Part One": 0 });
+  await aNewProject(page, "Twice");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await page.keyboard.type("The loom stood silent.");
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(newScene(page)).toBeFocused();
+  await page.keyboard.type("Morning came.");
+
+  await expect.poll(async () => (await sceneOrder(page))[0][1].length).toBe(3);
+  const order = (await sceneOrder(page))[0][1];
+  expect(order[0]).toBe(first);
+  expect(order[2], "the new scene goes between, not at the end").toBe(second);
+  await expect(scene(page, order[1])).toContainText("Morning came.");
+  await expect(
+    scene(page, first),
+    "the empty paragraph left by the first Enter goes",
+  ).toHaveText("The loom stood silent.");
+});
+
+test("Enter three times begins a new section after this one, at its level", async ({
+  page,
+}) => {
+  await aNewProject(page, "Thrice");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+    { title: "Chapter 1", under: "Part One" },
+    { title: "Scene notes", under: "Chapter 1" },
+  ]);
   await openTheWritingView(page);
 
-  await beginning(page).click();
+  await heading(page, "Chapter 1").click();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(":focus")).toHaveAttribute(
+    "aria-label",
+    "A new scene",
+  );
+  await page.keyboard.press("Enter");
+  await expect(
+    flow(page).locator('[data-placeholder="A new section"]'),
+  ).toBeFocused();
+  await page.keyboard.type("Chapter 2");
+
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One", "Chapter 1", "Scene notes", "Chapter 2", "Part Two"]);
+  await expect(flow(page).getByRole("heading")).toHaveText([
+    "Part One",
+    "Chapter 1",
+    "Scene notes",
+    "Chapter 2",
+    "Part Two",
+  ]);
+  await expect(
+    flow(page).getByRole("heading", { name: "Chapter 2", level: 3 }),
+    "a new section sits beside the one it follows, after everything nested inside it",
+  ).toBeVisible();
+  await expect(heading(page, "Chapter 2")).toBeFocused();
+});
+
+test("a line begun by Enter and left empty goes away and makes nothing", async ({
+  page,
+}) => {
+  await aNewProject(page, "Abandoned");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  await scene(page, scenes["Part One"][0]).click();
+  await page.keyboard.type("Only this.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(newScene(page)).toBeFocused();
+
+  await heading(page, "Part One").click();
+
+  await expect(newScene(page)).toHaveCount(0);
+  await page.waitForTimeout(300);
+  expect((await sceneOrder(page))[0][1]).toEqual([scenes["Part One"][0]]);
+});
+
+test("up from a line begun by Enter goes back to the end of the scene", async ({
+  page,
+}) => {
+  await aNewProject(page, "Back");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  await scene(page, scenes["Part One"][0]).click();
+  await page.keyboard.type("The loom stood silent.");
+  await page.keyboard.press("Enter");
   await page.keyboard.press("Enter");
 
-  await expect(beginning(page)).toBeFocused();
-  await expect(beginning(page)).toHaveText("");
-  expect(await scenesOf(page)).toEqual([0]);
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.type(" Still.");
+
+  await expect(scene(page, scenes["Part One"][0])).toHaveText(
+    "The loom stood silent. Still.",
+  );
+  await expect(newScene(page)).toHaveCount(0);
+});
+
+test("Enter on an empty line in the middle of a scene stays a paragraph", async ({
+  page,
+}) => {
+  await aNewProject(page, "Middle");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const written = scene(page, scenes["Part One"][0]);
+  await openTheWritingView(page);
+  await written.click();
+  await page.keyboard.type("First.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Last.");
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("End");
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+
+  await expect(newScene(page)).toHaveCount(0);
+  await expect(written.locator("p")).toHaveCount(4);
+});
+
+test("Enter in a heading moves on into its section", async ({ page }) => {
+  await aNewProject(page, "Onward");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  await heading(page, "Part One").click();
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Straight in.");
+
+  await expect(scene(page, scenes["Part One"][0])).toContainText(
+    "Straight in.",
+  );
 });

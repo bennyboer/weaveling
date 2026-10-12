@@ -73,6 +73,47 @@ impl Structure {
         })
     }
 
+    pub fn section_holding(self, scene: &SceneId) -> Option<SectionId> {
+        self.read_untracked(|book| {
+            book.sections
+                .iter()
+                .find(|section| section.scenes().contains(scene))
+                .map(|section| section.id.clone())
+        })
+        .flatten()
+    }
+
+    pub fn parent_of(self, section: &SectionId) -> Option<SectionId> {
+        self.read_untracked(|book| book.parent_of(section))
+            .flatten()
+    }
+
+    pub fn depth_of(self, section: &SectionId) -> usize {
+        self.read_untracked(|book| {
+            book.in_reading_order()
+                .into_iter()
+                .find(|(_, held)| &held.id == section)
+                .map(|(depth, _)| depth)
+        })
+        .flatten()
+        .unwrap_or(0)
+    }
+
+    pub fn end_of_block(self, section: &SectionId) -> Option<SectionId> {
+        self.outline.with(|outline| {
+            let book = outline.as_ref()?;
+            let read = book.in_reading_order();
+            let start = read.iter().position(|(_, held)| &held.id == section)?;
+            let (depth, _) = read[start];
+
+            read[start..]
+                .iter()
+                .take_while(|(nested, held)| &held.id == section || *nested > depth)
+                .last()
+                .map(|(_, held)| held.id.clone())
+        })
+    }
+
     pub fn read_untracked<T>(self, reading: impl FnOnce(&Outline) -> T) -> Option<T> {
         self.outline
             .with_untracked(|outline| outline.as_ref().map(reading))
