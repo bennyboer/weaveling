@@ -303,3 +303,22 @@ test("a linked idea leads to the idea", async ({ page }) => {
     page.getByRole("heading", { name: "A girl in a wood" }),
   ).toBeVisible();
 });
+
+test("a key pressed right after moving the cursor acts where the cursor now is", async ({
+  page,
+}) => {
+  await aSceneBeingWritten(page, "Quick");
+  await surface(page).click();
+  await page.keyboard.type("First.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Last.");
+
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+
+  await expect(
+    surface(page).locator("p"),
+    "the browser moves the cursor at once and tells the editor a moment later, so a fast Enter must not split where the cursor was",
+  ).toHaveText(["First.", "", "Last."]);
+});

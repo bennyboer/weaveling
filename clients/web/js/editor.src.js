@@ -1,6 +1,6 @@
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
-import { EditorState, Selection, TextSelection } from "prosemirror-state";
+import { EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { Schema } from "prosemirror-model";
 import { schema as basic } from "prosemirror-schema-basic";
@@ -34,10 +34,35 @@ export class ProseEditor {
     this.leaving = () => false;
     this.breaking = () => {};
 
+    const editor = this;
+
     this.view = new EditorView(host, {
+      dispatchTransaction: function (tr) {
+        if (!tr.selectionSet && !tr.docChanged) {
+          const shown = editor.shownSelection(tr.doc);
+
+          if (shown && !shown.eq(tr.selection)) {
+            tr.setSelection(shown);
+          }
+        }
+        this.updateState(this.state.apply(tr));
+      },
       state: EditorState.create({
         schema,
         plugins: [
+          new Plugin({
+            props: {
+              handleKeyDown: (view) => {
+                const shown = this.shownSelection(view.state.doc);
+
+                if (shown && !shown.eq(view.state.selection)) {
+                  view.dispatch(view.state.tr.setSelection(shown));
+                }
+
+                return false;
+              },
+            },
+          }),
           ySyncPlugin(this.fragment),
           yCursorPlugin(this.provider.awareness),
           yUndoPlugin(),
@@ -110,6 +135,27 @@ export class ProseEditor {
     return atEdge && this.leaving(towards);
   }
 
+  shownSelection(doc) {
+    const view = this.view;
+    const shown = view?.root.getSelection();
+
+    if (!view || !view.hasFocus() || !shown || shown.rangeCount === 0) {
+      return null;
+    }
+    if (!view.dom.contains(shown.anchorNode) || !view.dom.contains(shown.focusNode)) {
+      return null;
+    }
+
+    try {
+      const anchor = view.posAtDOM(shown.anchorNode, shown.anchorOffset);
+      const head = view.posAtDOM(shown.focusNode, shown.focusOffset);
+
+      return TextSelection.between(doc.resolve(anchor), doc.resolve(head));
+    } catch {
+      return null;
+    }
+  }
+
   cursor(state, view) {
     const shown = view.root.getSelection();
 
@@ -140,6 +186,7 @@ export class ProseEditor {
 
     this.view.dispatch(state.tr.setSelection(TextSelection.near(selection.$from)));
     this.view.focus();
+    this.view.input.lastFocus = 0;
   }
 
   destroy() {

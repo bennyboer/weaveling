@@ -71,6 +71,15 @@ async function aBookWithScenes(page: Page, sections: Record<string, number>) {
   return scenes;
 }
 
+async function aFrame(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise((settled) =>
+        requestAnimationFrame(() => setTimeout(settled)),
+      ),
+  );
+}
+
 const scene = (page: Page, id: string) =>
   flow(page).locator(`[data-scene="${id}"] .ProseMirror`);
 
@@ -339,7 +348,8 @@ test("a word jump at a scene's edge carries on into the next scene", async ({
   await page.keyboard.type("Forward.");
   await expect(scene(page, second)).toContainText("Forward.");
 
-  await scene(page, second).click({ position: { x: 1, y: 8 } });
+  await page.keyboard.press("Home");
+  await aFrame(page);
   await page.keyboard.press("ControlOrMeta+ArrowUp");
   await page.keyboard.type(" Back.");
   await expect(
