@@ -21,13 +21,19 @@ impl Scene {
             return self.title.clone();
         }
 
-        let saying = self.text.split_whitespace().collect::<Vec<_>>().join(" ");
-
-        match saying.char_indices().nth(OPENING) {
-            None if saying.is_empty() => "Empty".to_owned(),
-            None => saying,
-            Some((cut, _)) => format!("{}…", saying[..cut].trim_end()),
+        match opening_of(&self.text) {
+            opening if opening.is_empty() => "Empty".to_owned(),
+            opening => opening,
         }
+    }
+}
+
+pub fn opening_of(text: &str) -> String {
+    let saying = text.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    match saying.char_indices().nth(OPENING) {
+        None => saying,
+        Some((cut, _)) => format!("{}…", saying[..cut].trim_end()),
     }
 }
 

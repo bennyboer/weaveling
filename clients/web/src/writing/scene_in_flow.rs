@@ -19,6 +19,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn(bool)>,
             Closure<dyn Fn(String) -> bool>,
             Closure<dyn Fn()>,
+            Closure<dyn Fn(String)>,
         )>,
     );
     let named = scene.to_string();
@@ -52,12 +53,18 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 move || state.beginnings.start_pending_scene_after(&scene)
             });
             editor.on_breaking(&breaking);
+            let changed = Closure::<dyn Fn(String)>::new({
+                let scene = scene.clone();
+
+                move |text: String| state.labels.opening_is(scene.clone(), text)
+            });
+            editor.on_changed(&changed);
             if let Some(carried) = state.beginnings.words_to_carry(&scene) {
                 editor.seed(&carried);
             }
 
             state.walk.writing_in(scene.clone(), editor);
-            kept.set_value(Some((connected, leaving, breaking)));
+            kept.set_value(Some((connected, leaving, breaking, changed)));
         }
     });
 

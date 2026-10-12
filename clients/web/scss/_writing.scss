@@ -79,6 +79,38 @@
     pointer-events: none;
   }
 
+  .scene-row {
+    position: relative;
+  }
+
+  .scene-label {
+    position: absolute;
+    top: 0;
+    right: calc(100% + 2.5rem);
+    width: 12rem;
+    margin: 0;
+    font: italic 400 1rem/2rem var(--heading);
+    color: var(--muted);
+    text-align: right;
+    overflow-wrap: anywhere;
+    user-select: none;
+  }
+
+  .scene-label.untitled {
+    opacity: 0.6;
+  }
+
+  @media (max-width: 72rem) {
+    .scene-label {
+      position: static;
+      width: auto;
+      margin-bottom: 0.25rem;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      text-align: left;
+    }
+  }
+
   .between-scenes {
     margin: 1.9rem 0;
     border: none;

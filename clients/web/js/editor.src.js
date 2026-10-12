@@ -22,6 +22,10 @@ function endpoint() {
   return `${scheme}//${window.location.host}/api/sync`;
 }
 
+function openingWordsOf(doc) {
+  return doc.textBetween(0, Math.min(doc.content.size, 400), " ");
+}
+
 export class ProseEditor {
   constructor(host, scene, author, color, onConnected) {
     this.doc = new Y.Doc();
@@ -33,6 +37,7 @@ export class ProseEditor {
 
     this.leaving = () => false;
     this.breaking = () => {};
+    this.changed = () => {};
 
     const editor = this;
 
@@ -46,6 +51,10 @@ export class ProseEditor {
           }
         }
         this.updateState(this.state.apply(tr));
+
+        if (tr.docChanged) {
+          editor.changed(openingWordsOf(this.state.doc));
+        }
       },
       state: EditorState.create({
         schema,
@@ -92,6 +101,11 @@ export class ProseEditor {
       [`${modifier}-ArrowRight`]: across("after"),
       [`${modifier}-ArrowDown`]: across("after"),
     };
+  }
+
+  onChanged(changed) {
+    this.changed = changed;
+    changed(openingWordsOf(this.view.state.doc));
   }
 
   onBreaking(breaking) {

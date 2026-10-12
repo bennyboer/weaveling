@@ -87,7 +87,10 @@ fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {
         >
             <div class="scene-slot">
                 <hr class="between-scenes" />
-                {scene_in_flow(scene.clone(), state)}
+                <div class="scene-row">
+                    {scene_label(scene.clone(), state)}
+                    {scene_in_flow(scene.clone(), state)}
+                </div>
                 {pending_after(holding.clone(), scene, state)}
             </div>
         </For>
@@ -106,4 +109,13 @@ fn pending_after(section: SectionId, scene: SceneId, state: WriteViewState) -> i
             .get()
             .then(|| pending_scene(section.clone(), scene.clone(), state))
     }
+}
+
+fn scene_label(scene: SceneId, state: WriteViewState) -> impl IntoView {
+    let label = Memo::new(move |_| state.labels.of_scene(&scene));
+
+    html::p()
+        .class("scene-label")
+        .class(("untitled", move || label.with(|label| !label.titled)))
+        .child(move || label.with(|label| label.shown.clone()))
 }

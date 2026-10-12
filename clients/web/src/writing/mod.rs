@@ -1,5 +1,6 @@
 mod beginnings;
 mod heading;
+mod labels;
 mod opening;
 mod problems;
 mod scene_in_flow;

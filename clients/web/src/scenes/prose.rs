@@ -30,6 +30,9 @@ extern "C" {
     #[wasm_bindgen(method, js_name = focusEnd)]
     pub fn focus_end(this: &ProseEditor);
 
+    #[wasm_bindgen(method, js_name = onChanged)]
+    pub fn on_changed(this: &ProseEditor, changed: &Closure<dyn Fn(String)>);
+
     #[wasm_bindgen(method, js_name = onBreaking)]
     pub fn on_breaking(this: &ProseEditor, breaking: &Closure<dyn Fn()>);
 

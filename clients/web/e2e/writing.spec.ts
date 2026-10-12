@@ -790,3 +790,83 @@ test("Enter in a heading moves on into its section", async ({ page }) => {
     "Straight in.",
   );
 });
+
+const label = (page: Page, id: string) =>
+  flow(page).locator(`.scene-row:has([data-scene="${id}"]) .scene-label`);
+
+async function titled(page: Page, scene: string, title: string) {
+  const renamed = await page.request.patch(`${API}/scenes/${scene}`, {
+    data: { title },
+  });
+  expect(renamed.ok()).toBe(true);
+}
+
+test("a scene's title stands in the margin, level with the scene", async ({
+  page,
+}) => {
+  await aNewProject(page, "Margin");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await titled(page, scenes["Part One"][0], "The arrival");
+  await openTheWritingView(page);
+
+  await expect(label(page, scenes["Part One"][0])).toHaveText("The arrival");
+  await expect(label(page, scenes["Part One"][0])).not.toHaveClass(/untitled/);
+  const shown = (await label(page, scenes["Part One"][0]).boundingBox())!;
+  const written = (await scene(page, scenes["Part One"][0]).boundingBox())!;
+  expect(Math.abs(shown.y - written.y)).toBeLessThanOrEqual(4);
+  expect(
+    shown.x + shown.width,
+    "the margin keeps the text column to itself",
+  ).toBeLessThan(written.x);
+});
+
+test("an untitled scene shows its opening words, and they follow the writing", async ({
+  page,
+}) => {
+  await aNewProject(page, "Opening");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  const shown = label(page, scenes["Part One"][0]);
+  await expect(shown).toHaveText("");
+
+  await scene(page, scenes["Part One"][0]).click();
+  await page.keyboard.type("The loom stood silent.");
+
+  await expect(shown).toHaveText("The loom stood silent.");
+  await expect(shown).toHaveClass(/untitled/);
+  await page.keyboard.type(" It had stood so since spring, under dust.");
+  await expect(shown, "a margin holds a few words, not the scene").toHaveText(
+    "The loom stood silent. It had stood so s…",
+  );
+});
+
+test("on a narrow window the margin folds above its scene", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 900 });
+  await aNewProject(page, "Narrow");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await titled(page, scenes["Part One"][0], "The arrival");
+  await openTheWritingView(page);
+
+  await expect(label(page, scenes["Part One"][0])).toHaveText("The arrival");
+  const shown = (await label(page, scenes["Part One"][0]).boundingBox())!;
+  const written = (await scene(page, scenes["Part One"][0]).boundingBox())!;
+  expect(shown.y + shown.height).toBeLessThanOrEqual(written.y + 1);
+  expect(Math.abs(shown.x - written.x)).toBeLessThanOrEqual(2);
+});
+
+test("a scene's title in the margin is only to be read", async ({ page }) => {
+  await aNewProject(page, "ReadOnly");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await titled(page, scenes["Part One"][0], "The arrival");
+  await openTheWritingView(page);
+
+  await label(page, scenes["Part One"][0]).click();
+  await page.keyboard.type("x");
+
+  await expect(label(page, scenes["Part One"][0])).toHaveText("The arrival");
+  await expect(label(page, scenes["Part One"][0])).not.toHaveAttribute(
+    "contenteditable",
+  );
+});
