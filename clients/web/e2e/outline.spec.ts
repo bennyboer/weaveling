@@ -668,3 +668,48 @@ test("a titled scene is named by its title in the outline", async ({
     "an untitled scene falls back to its opening words; once named, the name wins",
   ).toHaveText("The arrival");
 });
+
+test("a title being typed survives a slower answer about another section", async ({
+  page,
+}) => {
+  await aNewProject(page, "Overtaken");
+  await openTheOutline(page);
+  await page.route("**/api/outlines/*/sections/*", async (route) => {
+    if (route.request().method() === "PATCH") {
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+    await route.continue();
+  });
+  const firstRenamed = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      response.request().postData()?.includes("Kapitel 1") === true,
+  );
+
+  await addSections(page, ["Kapitel 1", "Kapitel 2"]);
+  await firstRenamed;
+
+  await expect(
+    titles(page).last(),
+    "the rename of Kapitel 1 lands while Kapitel 2 is being typed, and must not wipe it",
+  ).toHaveValue("Kapitel 2");
+  await page.keyboard.press("Escape");
+  await expect
+    .poll(async () => {
+      const project = new URL(page.url()).pathname
+        .split("/")[2]
+        .split("-")
+        .pop();
+      const opened = await page.request.post(
+        "http://127.0.0.1:3000/api/outlines",
+        {
+          data: { project },
+        },
+      );
+
+      return (await opened.json()).sections.map(
+        (section: { title: string }) => section.title,
+      );
+    })
+    .toEqual(["Kapitel 1", "Kapitel 2"]);
+});

@@ -6,7 +6,7 @@ use wasm_bindgen::closure::Closure;
 
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
-use crate::writing::write_state::{Towards, WriteState};
+use crate::writing::write_state::{Stop, Towards, WriteState};
 
 const AUTHOR: &str = "You";
 const COLOUR: &str = "#f59e0b";
@@ -36,7 +36,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteState) -> impl IntoView {
                         _ => Towards::After,
                     };
 
-                    state.leave(&scene, towards)
+                    state.leave(&Stop::Scene(scene.clone()), towards)
                 }
             });
             editor.on_leaving(&leaving);

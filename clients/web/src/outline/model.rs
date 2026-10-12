@@ -80,13 +80,6 @@ impl Outline {
         read
     }
 
-    pub fn scenes_in_reading_order(&self) -> Vec<SceneId> {
-        self.in_reading_order()
-            .into_iter()
-            .flat_map(|(_, section)| section.scenes())
-            .collect()
-    }
-
     fn read_under<'a>(
         &'a self,
         parent: Option<&SectionId>,
@@ -240,33 +233,6 @@ mod tests {
                 (1, "chapter_3"),
             ],
             "the outline keeps sections flat, so a child stored after the next part is still read inside its own"
-        );
-    }
-
-    #[test]
-    fn a_book_s_scenes_are_read_section_by_section_leaving_ideas_out() {
-        let scene = |id: &str| Attachment::Scene(SceneId::from(id.to_owned()));
-        let mut part = a_section("part_1", None);
-        part.attachments = vec![
-            scene("scene_1"),
-            Attachment::Idea(IdeaId::from("idea_1".to_owned())),
-        ];
-        let mut later = a_section("part_2", None);
-        later.attachments = vec![scene("scene_3")];
-        let mut inside = a_section("chapter_1", Some("part_1"));
-        inside.attachments = vec![scene("scene_2")];
-        let outline = an_outline(vec![part, later, inside]);
-
-        let read: Vec<String> = outline
-            .scenes_in_reading_order()
-            .iter()
-            .map(|scene| scene.to_string())
-            .collect();
-
-        assert_eq!(
-            read,
-            vec!["scene_1", "scene_2", "scene_3"],
-            "the cursor walks the book in this order, so a chapter's scenes come before the next part's"
         );
     }
 

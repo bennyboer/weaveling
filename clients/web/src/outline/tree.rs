@@ -303,8 +303,9 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .placeholder("Untitled")
                 .prop("value", {
                     let mine = valued.clone();
+                    let own = Memo::new(move |_| state.title_of(&mine));
 
-                    move || state.title_of(&mine)
+                    move || own.get()
                 })
                 .node_ref(field)
                 .on(ev::focusin, {

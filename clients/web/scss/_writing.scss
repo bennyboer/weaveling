@@ -5,40 +5,61 @@
   padding: 3.5rem 1.5rem 5rem;
   font: 300 1.25rem/1.6 var(--reading);
 
-  h2,
-  h3,
-  h4 {
+  .heading {
     font-family: var(--heading);
     font-weight: 500;
     letter-spacing: 0;
+    outline: none;
+    caret-color: var(--accent);
   }
 
-  h2 {
+  .heading:empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  .level-2 {
     margin: 3rem 0 1.5rem;
     font-size: 2.1rem;
     line-height: 1.15;
   }
 
-  h3 {
+  .level-3 {
     margin: 2.5rem 0 1.25rem;
     font-size: 1.5rem;
     line-height: 1.2;
   }
 
-  h4 {
+  .level-4 {
     margin: 2rem 0 1rem;
     font-size: 1.25rem;
     line-height: 1.25;
   }
 
-  > :first-child {
+  .in-flow:first-of-type .heading,
+  > .heading:first-child {
     margin-top: 0;
   }
 
+  .scene-slot:first-child .between-scenes {
+    display: none;
+  }
+
   .scene .ProseMirror {
+    min-height: 1.6em;
     outline: none;
     white-space: break-spaces;
     word-wrap: break-word;
+
+    > p:only-child:has(> br.ProseMirror-trailingBreak:only-child)::before {
+      content: "An empty scene. Start writing…";
+      position: absolute;
+      color: var(--muted);
+      opacity: 0.6;
+      pointer-events: none;
+    }
 
     p {
       margin: 0 0 1.1rem;

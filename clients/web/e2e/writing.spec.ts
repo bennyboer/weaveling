@@ -76,16 +76,35 @@ const scene = (page: Page, id: string) =>
 
 const laidOut = (page: Page) =>
   flow(page).evaluate((book) =>
-    [...book.children].map((part) =>
-      part.matches("h2, h3, h4")
-        ? `heading ${part.textContent}`
-        : part.matches(".scene")
-          ? `scene ${part.getAttribute("data-scene")}`
-          : part.matches("hr")
-            ? "line"
-            : part.tagName,
-    ),
+    [...book.querySelectorAll("[role=heading], hr.between-scenes, .scene")]
+      .filter(
+        (part) => !part.matches("hr") || (part as HTMLElement).offsetParent,
+      )
+      .map((part) =>
+        part.matches("[role=heading]")
+          ? `heading ${part.textContent}`
+          : part.matches(".scene")
+            ? `scene ${part.getAttribute("data-scene")}`
+            : "line",
+      ),
   );
+
+async function projectsOutline(page: Page) {
+  const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+  const opened = await page.request.post(`${API}/outlines`, {
+    data: { project },
+  });
+
+  return opened.json();
+}
+
+const savedTitles = async (page: Page) =>
+  (await projectsOutline(page)).sections.map(
+    (section: { title: string }) => section.title,
+  );
+
+const heading = (page: Page, named: string) =>
+  flow(page).getByRole("heading", { name: named });
 
 test("Write sits beside the other views and opens the book", async ({
   page,
@@ -98,16 +117,6 @@ test("Write sits beside the other views and opens the book", async ({
   await expect(
     views(page).getByRole("link", { name: "Write", exact: true }),
   ).toHaveClass(/here/);
-});
-
-test("an unshaped book points to the outline", async ({ page }) => {
-  await aNewProject(page, "Unshaped");
-
-  await openTheWritingView(page);
-
-  await expect(flow(page)).toContainText("This book has no sections yet.");
-  await flow(page).getByRole("link", { name: "the outline" }).click();
-  await expect(page).toHaveURL(/\/outline$/);
 });
 
 test("the book's sections read in order, nested as headings", async ({
@@ -150,9 +159,11 @@ test("an untitled section still has a heading to find it by", async ({
 
   await openTheWritingView(page);
 
-  await expect(flow(page).getByRole("heading")).toHaveText([
+  await expect(flow(page).getByRole("heading")).toHaveText([""]);
+  await expect(flow(page).getByRole("heading")).toHaveAttribute(
+    "data-placeholder",
     "Untitled section",
-  ]);
+  );
 });
 
 test("the book survives a reload of the writing view", async ({ page }) => {
@@ -236,7 +247,7 @@ test("the arrow keys carry the cursor from one scene into the next and back", as
   ).toContainText("The loom stood silent. Dust.");
 });
 
-test("the cursor crosses from a section's last scene into the next section's first", async ({
+test("the cursor crosses a section's heading on its way to the next section", async ({
   page,
 }) => {
   await aNewProject(page, "Sections");
@@ -245,6 +256,8 @@ test("the cursor crosses from a section's last scene into the next section's fir
   await scene(page, scenes["Part One"][0]).click();
 
   await page.keyboard.press("ArrowRight");
+  await expect(heading(page, "Part Two")).toBeFocused();
+  await page.keyboard.press("ArrowDown");
   await page.keyboard.type("Across the heading.");
 
   await expect(scene(page, scenes["Part Two"][0])).toContainText(
@@ -300,7 +313,7 @@ test("a word jump at a scene's edge carries on into the next scene", async ({
   await page.keyboard.type("Forward.");
   await expect(scene(page, second)).toContainText("Forward.");
 
-  await page.keyboard.press("Home");
+  await scene(page, second).click({ position: { x: 1, y: 8 } });
   await page.keyboard.press("ControlOrMeta+ArrowUp");
   await page.keyboard.type(" Back.");
   await expect(
@@ -323,4 +336,197 @@ test("a word jump inside a scene stays a word jump", async ({ page }) => {
 
   await expect(scene(page, second)).toContainText("stood very silent");
   await expect(scene(page, first)).not.toContainText("very");
+});
+
+test("an empty book starts with its first heading", async ({ page }) => {
+  await aNewProject(page, "Beginning");
+  await openTheWritingView(page);
+  const first = flow(page).getByRole("heading");
+  await expect(first).toHaveAttribute(
+    "data-placeholder",
+    "Your book's first section",
+  );
+
+  await first.click();
+  await page.keyboard.type("Part One");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => savedTitles(page), {
+      message: "typing into an empty book makes its first section",
+    })
+    .toEqual(["Part One"]);
+  await page.reload();
+  await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);
+});
+
+test("words typed while the first section is being made are kept", async ({
+  page,
+}) => {
+  await aNewProject(page, "Quick");
+  await page.route("**/api/outlines/*/sections", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    await route.continue();
+  });
+  await openTheWritingView(page);
+
+  await flow(page).getByRole("heading").click();
+  await page.keyboard.type("The Workshop");
+
+  await expect(flow(page).getByRole("heading")).toHaveText(["The Workshop"]);
+  await expect.poll(() => savedTitles(page)).toEqual(["The Workshop"]);
+});
+
+test("a heading is renamed where it stands", async ({ page }) => {
+  await aNewProject(page, "Renaming");
+  await aBookShaped(page, [{ title: "Part One" }]);
+  await openTheWritingView(page);
+
+  await heading(page, "Part One").click();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("The Beginning");
+  await page.keyboard.press("Enter");
+
+  await expect(flow(page).getByRole("heading")).toHaveText(["The Beginning"]);
+  await expect.poll(() => savedTitles(page)).toEqual(["The Beginning"]);
+});
+
+test("a heading being typed is saved after a pause, even before leaving it", async ({
+  page,
+}) => {
+  await aNewProject(page, "Pausing");
+  await aBookShaped(page, [{ title: "Part" }]);
+  await openTheWritingView(page);
+
+  await heading(page, "Part").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" One");
+
+  await expect.poll(() => savedTitles(page)).toEqual(["Part One"]);
+  await expect(heading(page, "Part One")).toBeFocused();
+});
+
+test("Enter leaves a heading rather than breaking it", async ({ page }) => {
+  await aNewProject(page, "Entering");
+  await aBookShaped(page, [{ title: "Part One" }]);
+  await openTheWritingView(page);
+
+  await heading(page, "Part One").click();
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+
+  await expect(heading(page, "Part One")).not.toBeFocused();
+  expect(await heading(page, "Part One").textContent()).toBe("Part One");
+});
+
+test("a scene being written is left alone while its section is renamed", async ({
+  page,
+}) => {
+  await aNewProject(page, "Undisturbed");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const written = scene(page, scenes["Part One"][0]);
+  await openTheWritingView(page);
+  await written.click();
+  await page.keyboard.type("The loom stood silent.");
+  await written.evaluate((editor) => {
+    (editor as HTMLElement & { marked?: boolean }).marked = true;
+  });
+
+  await heading(page, "Part One").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(", Revised");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => savedTitles(page)).toEqual(["Part One, Revised"]);
+
+  expect(
+    await written.evaluate(
+      (editor) => (editor as HTMLElement & { marked?: boolean }).marked,
+    ),
+    "a renamed outline must not rebuild the scenes around it",
+  ).toBe(true);
+  await expect(written).toContainText("The loom stood silent.");
+});
+
+test("an empty scene can be seen and clicked into", async ({ page }) => {
+  await aNewProject(page, "Empty");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  const empty = scene(page, scenes["Part One"][0]);
+
+  await expect(empty).toBeVisible();
+  expect(
+    await empty.evaluate(
+      (editor) =>
+        getComputedStyle(editor.querySelector("p")!, "::before").content,
+    ),
+  ).toBe('"An empty scene. Start writing…"');
+  expect((await empty.boundingBox())!.height).toBeGreaterThan(20);
+
+  await empty.click();
+  await page.keyboard.type("A first line.");
+
+  expect(
+    await empty.evaluate(
+      (editor) =>
+        getComputedStyle(editor.querySelector("p")!, "::before").content,
+    ),
+    "the invitation goes once there are words",
+  ).toBe("none");
+});
+
+test("down from a heading goes into its first scene, up from there comes back", async ({
+  page,
+}) => {
+  await aNewProject(page, "Down");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  await heading(page, "Part One").click();
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.type("Below the heading.");
+  await expect(scene(page, scenes["Part One"][0])).toContainText(
+    "Below the heading.",
+  );
+
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowUp");
+  await expect(heading(page, "Part One")).toBeFocused();
+  await page.keyboard.type(", Revised");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => savedTitles(page)).toEqual(["Part One, Revised"]);
+});
+
+test("a section with no scenes leads straight on to the next heading", async ({
+  page,
+}) => {
+  await aNewProject(page, "Hollow");
+  await aBookWithScenes(page, { "Part One": 0, "Part Two": 0 });
+  await openTheWritingView(page);
+  await heading(page, "Part One").click();
+
+  await page.keyboard.press("ArrowDown");
+  await expect(heading(page, "Part Two")).toBeFocused();
+  await page.keyboard.press("ArrowUp");
+  await expect(heading(page, "Part One")).toBeFocused();
+});
+
+test("left and right leave a heading only from its very edge", async ({
+  page,
+}) => {
+  await aNewProject(page, "Edges");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 0 });
+  await openTheWritingView(page);
+  await heading(page, "Part Two").click();
+  await page.keyboard.press("End");
+
+  await page.keyboard.press("ArrowLeft");
+  await expect(
+    heading(page, "Part Two"),
+    "inside a heading the arrow moves through its letters",
+  ).toBeFocused();
+
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.type("The end.");
+  await expect(scene(page, scenes["Part One"][0])).toContainText("The end.");
 });

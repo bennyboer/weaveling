@@ -19,6 +19,7 @@ web-sys = { workspace = true, features = [
     "History",
     "HtmlElement",
     "Location",
+    "Selection",
     "Storage",
     "UrlSearchParams",
     "Window",

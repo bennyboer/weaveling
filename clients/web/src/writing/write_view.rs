@@ -1,18 +1,17 @@
 use leptos::prelude::*;
 use leptos::{IntoView, html};
-use leptos_router::components::A;
 
-use crate::outline::model::{Outline, Section};
+use crate::outline::model::{Section, SectionId};
 use crate::route;
+use crate::writing::heading::{first_heading, section_heading};
 use crate::writing::scene_in_flow::scene_in_flow;
 use crate::writing::write_state::WriteState;
-
-const UNTITLED: &str = "Untitled section";
 
 #[component]
 pub fn WriteView(project: String) -> impl IntoView {
     let state = WriteState::open(&route::project_id(&project));
-    let outlined = route::outline(&project);
+    let open = Memo::new(move |_| state.is_open());
+    let unshaped = Memo::new(move |_| state.is_unshaped());
 
     html::article()
         .class("writing")
@@ -26,60 +25,43 @@ pub fn WriteView(project: String) -> impl IntoView {
                         .child(failure.to_string())
                 })
             },
-            move || {
-                let outlined = outlined.clone();
-
-                state
-                    .outline()
-                    .map(|outline| book(outline, outlined, state))
-            },
+            move || unshaped.get().then(|| first_heading(state)),
+            move || open.get().then(|| book(state)),
         ))
 }
 
-fn book(outline: Outline, outlined: String, state: WriteState) -> AnyView {
-    let read = outline.in_reading_order();
-
-    if read.is_empty() {
-        return html::p()
-            .class("empty")
-            .child((
-                "This book has no sections yet. Shape it in ",
-                view! { <A href=outlined>"the outline"</A> },
-                " first.",
-            ))
-            .into_any();
+fn book(state: WriteState) -> impl IntoView {
+    view! {
+        <For
+            each=move || state.sections()
+            key=|(depth, section)| (section.id.clone(), *depth)
+            let:((depth, section))
+        >
+            {section_in_flow(depth, section, state)}
+        </For>
     }
-
-    read.into_iter()
-        .map(|(depth, section)| (heading(depth, section), scenes_of(section, state)))
-        .collect::<Vec<_>>()
-        .into_any()
 }
 
-fn scenes_of(section: &Section, state: WriteState) -> Vec<AnyView> {
-    section
-        .scenes()
-        .into_iter()
-        .enumerate()
-        .flat_map(|(nth, scene)| {
-            let divided = (nth > 0).then(|| html::hr().class("between-scenes").into_any());
+fn section_in_flow(depth: usize, section: Section, state: WriteState) -> impl IntoView {
+    let id = section.id.clone();
 
-            divided
-                .into_iter()
-                .chain([scene_in_flow(scene, state).into_any()])
-        })
-        .collect()
+    html::section().class("in-flow").child((
+        section_heading(depth, section, state),
+        html::div().class("scenes").child(scenes_of(id, state)),
+    ))
 }
 
-fn heading(depth: usize, section: &Section) -> AnyView {
-    let shown = match section.title.trim() {
-        "" => UNTITLED.to_owned(),
-        titled => titled.to_owned(),
-    };
-
-    match depth {
-        0 => html::h2().child(shown).into_any(),
-        1 => html::h3().child(shown).into_any(),
-        _ => html::h4().child(shown).into_any(),
+fn scenes_of(section: SectionId, state: WriteState) -> impl IntoView {
+    view! {
+        <For
+            each=move || state.scenes_of(&section)
+            key=|scene| scene.clone()
+            let:scene
+        >
+            <div class="scene-slot">
+                <hr class="between-scenes" />
+                {scene_in_flow(scene, state)}
+            </div>
+        </For>
     }
 }
