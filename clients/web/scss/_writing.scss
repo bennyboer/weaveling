@@ -43,10 +43,6 @@
     margin-top: 0;
   }
 
-  .scene-slot:first-child .between-scenes {
-    display: none;
-  }
-
   .scene .ProseMirror {
     min-height: 1.6em;
     outline: none;
@@ -91,8 +87,8 @@
     display: flex;
     align-items: flex-start;
     justify-content: flex-end;
-    gap: 0.5rem;
-    width: 14rem;
+    gap: 0.25rem;
+    width: 16rem;
   }
 
   .heading-margin {
@@ -101,6 +97,7 @@
     right: calc(100% + 0.5rem);
     display: flex;
     align-items: center;
+    gap: 0.25rem;
     height: 1lh;
     margin: 0;
     font-family: var(--heading);
@@ -115,7 +112,7 @@
   .scene-label {
     flex: 1;
     min-width: 0;
-    margin: 0;
+    margin: 0 0.5rem 0 0;
     font: italic 400 1rem/2rem var(--heading);
     color: var(--muted);
     text-align: right;
@@ -159,6 +156,9 @@
     svg {
       width: 1.25rem;
       height: 1.25rem;
+    }
+
+    &.dotted svg {
       stroke-width: 3.5;
     }
 
@@ -170,6 +170,7 @@
 
   .scene-row:hover .menu-button,
   .heading-row:hover .menu-button,
+  .reach:hover .menu-button,
   .menu-button:focus-visible,
   .menu-button[aria-expanded="true"] {
     opacity: 1;
@@ -205,6 +206,27 @@
   }
 
   @media (max-width: 72rem) {
+    .reach {
+      left: 0;
+
+      &::after {
+        left: 2.5rem;
+      }
+
+      .margin-actions {
+        left: 0;
+      }
+
+      .menu-button {
+        opacity: 0;
+      }
+
+      &:hover .menu-button,
+      .menu-button[aria-expanded="true"] {
+        opacity: 1;
+      }
+    }
+
     .scene-margin {
       position: relative;
       right: auto;
@@ -237,9 +259,72 @@
   }
 
   .between-scenes {
-    margin: 1.9rem 0;
+    margin: 0;
     border: none;
     border-top: 1px solid var(--line);
+  }
+
+  .insertion {
+    position: relative;
+  }
+
+  .insertion.below-a-scene {
+    padding: 1.9rem 0;
+  }
+
+  .scene-slot:last-child .insertion.below-a-scene {
+    padding: 0;
+
+    .between-scenes {
+      display: none;
+    }
+  }
+
+  .insertion:has(.menu) {
+    z-index: 10;
+  }
+
+  .insertion:has(.reach:hover, [aria-expanded="true"]) .between-scenes {
+    visibility: hidden;
+  }
+
+  .reach {
+    position: absolute;
+    inset: 0 0 0 -16rem;
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 16rem;
+      right: 0;
+      border-top: 1px solid var(--accent);
+      opacity: 0;
+      transition: opacity 120ms;
+      pointer-events: none;
+    }
+
+    &:hover::after,
+    &:has([aria-expanded="true"])::after {
+      opacity: 0.7;
+    }
+
+    .margin-actions {
+      position: absolute;
+      top: 50%;
+      left: 13.5rem;
+      translate: 0 -50%;
+    }
+  }
+
+  .insertion:not(.below-a-scene) .reach {
+    top: auto;
+    height: 1rem;
+  }
+
+  .scene-slot:last-child .insertion .reach {
+    bottom: auto;
+    height: 2rem;
   }
 
   .empty {

@@ -4,18 +4,27 @@ use web_sys::HtmlElement;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 use crate::writing::asking::Asking;
+use crate::writing::bringing_back::Landing;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Marked {
     Scene(SceneId),
     Section(SectionId),
+    Gap(Landing),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Menu {
+    Adding,
+    Changing,
 }
 
 #[derive(Clone, Copy)]
 pub struct Margin {
-    open: RwSignal<Option<Marked>>,
+    open: RwSignal<Option<(Marked, Menu)>>,
     renaming: RwSignal<Option<SceneId>>,
     asking: RwSignal<Option<Asking>>,
+    bringing_back: RwSignal<Option<Landing>>,
     writing: StoredValue<Option<HtmlElement>, LocalStorage>,
 }
 
@@ -25,17 +34,19 @@ impl Margin {
             open: RwSignal::new(None),
             renaming: RwSignal::new(None),
             asking: RwSignal::new(None),
+            bringing_back: RwSignal::new(None),
             writing: StoredValue::new_local(None),
         }
     }
 
-    pub fn is_open(self, marked: &Marked) -> bool {
-        self.open.with(|open| open.as_ref() == Some(marked))
+    pub fn is_open(self, marked: &Marked, menu: Menu) -> bool {
+        self.open
+            .with(|open| open.as_ref() == Some(&(marked.clone(), menu)))
     }
 
     pub fn open_from(self, marked: Marked, writing: HtmlElement) {
         self.writing.set_value(Some(writing));
-        self.open.set(Some(marked));
+        self.open.set(Some((marked, Menu::Changing)));
     }
 
     pub fn opened_by_keys(self) -> bool {
@@ -54,13 +65,14 @@ impl Margin {
         self.close();
     }
 
-    pub fn toggle(self, marked: Marked) {
+    pub fn toggle(self, marked: Marked, menu: Menu) {
         self.writing.set_value(None);
+        let wanted = (marked, menu);
         let already_open = self
             .open
-            .with_untracked(|open| open.as_ref() == Some(&marked));
+            .with_untracked(|open| open.as_ref() == Some(&wanted));
 
-        self.open.set((!already_open).then_some(marked));
+        self.open.set((!already_open).then_some(wanted));
     }
 
     pub fn close(self) {
@@ -100,10 +112,22 @@ impl Margin {
         self.asking.set(Some(question));
     }
 
+    pub fn landing(self) -> Option<Landing> {
+        self.bringing_back.get()
+    }
+
+    pub fn bring_back_to(self, landing: Landing) {
+        self.close();
+        self.bringing_back.set(Some(landing));
+    }
+
     pub fn return_to_writing(self) {
         self.close();
         if self.asking.with_untracked(Option::is_some) {
             self.asking.set(None);
+        }
+        if self.bringing_back.with_untracked(Option::is_some) {
+            self.bringing_back.set(None);
         }
         self.refocus_writing();
     }

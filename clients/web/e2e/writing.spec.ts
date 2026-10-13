@@ -1244,3 +1244,117 @@ test("the writing view's dialogs speak in the same type as every other dialog", 
   });
   expect(type, "a dialog is not part of the book's text").toEqual(everywhere);
 });
+
+const gapBelow = (page: Page, id: string) =>
+  flow(page).locator(`.insertion[data-after="${id}"]`);
+
+const gapAtStartOf = (page: Page, named: string) =>
+  flow(page)
+    .locator(".in-flow")
+    .filter({ has: page.getByRole("heading", { name: named }) })
+    .locator(".insertion:not(.below-a-scene)");
+
+const addHere = (gap: ReturnType<Page["locator"]>) =>
+  gap.getByRole("button", { name: "Add here" });
+
+const bringingBack = (page: Page) =>
+  page.getByRole("dialog", { name: "Bring back a scene" });
+
+test("a scene taken out of the book can be brought back below another", async ({
+  page,
+}) => {
+  await aNewProject(page, "BringBack");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await titled(page, first, "The arrival");
+  await titled(page, second, "The storm");
+  await openTheWritingView(page);
+
+  await sceneActions(page, first).click();
+  await menuItem(page, "Take out of the book").click();
+  await expect(scene(page, first)).toHaveCount(0);
+
+  await addHere(gapBelow(page, second)).click();
+  await menuItem(page, "Bring back a scene…").click();
+  await expect(
+    bringingBack(page).getByRole("button"),
+    "only scenes outside the book are offered",
+  ).toHaveText(["The arrival", "Cancel"]);
+  await bringingBack(page).getByRole("button", { name: "The arrival" }).click();
+
+  await expect(bringingBack(page)).toHaveCount(0);
+  await expect(scene(page, first)).toBeVisible();
+  expect(await sceneOrder(page)).toEqual([["Part One", [second, first]]]);
+});
+
+test("a heading's + brings a scene back to the start of its section", async ({
+  page,
+}) => {
+  await aNewProject(page, "BringBackFirst");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const [placed] = scenes["Part One"];
+  const loose = await aLooseScene(page);
+  await titled(page, loose, "The prologue");
+  await openTheWritingView(page);
+
+  await addHere(gapAtStartOf(page, "Part One")).click();
+  await menuItem(page, "Bring back a scene…").click();
+  await bringingBack(page)
+    .getByRole("button", { name: "The prologue" })
+    .click();
+
+  await expect(scene(page, loose)).toBeVisible();
+  expect(await sceneOrder(page)).toEqual([["Part One", [loose, placed]]]);
+});
+
+test("with every scene in the book there is nothing to bring back", async ({
+  page,
+}) => {
+  await aNewProject(page, "NothingBack");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, scenes["Part One"][0])).click();
+  await menuItem(page, "Bring back a scene…").click();
+  await expect(bringingBack(page)).toContainText(
+    "Every scene is in the book already.",
+  );
+  await bringingBack(page).getByRole("button", { name: "Cancel" }).click();
+
+  await expect(bringingBack(page)).toHaveCount(0);
+});
+
+test("a gap's + shows only when the pointer comes near the gap", async ({
+  page,
+}) => {
+  await aNewProject(page, "NearTheGap");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+  const plus = addHere(gapBelow(page, first));
+
+  await scene(page, first).hover();
+  await expect(plus).toHaveCSS("opacity", "0");
+  await expect(addHere(gapBelow(page, second))).toHaveCSS("opacity", "0");
+
+  await gapBelow(page, first).locator(".reach").hover();
+  await expect(plus).toHaveCSS("opacity", "1");
+});
+
+test("the gap between two scenes leaves the writing clickable", async ({
+  page,
+}) => {
+  await aNewProject(page, "ClickThrough");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+
+  for (const id of [first, second]) {
+    const written = (await scene(page, id).boundingBox())!;
+    const hit = await page.evaluate(
+      ([x, y]) => document.elementFromPoint(x, y)?.closest(".reach") === null,
+      [written.x + 20, written.y + 4],
+    );
+    expect(hit, "a scene's first line belongs to the scene").toBe(true);
+  }
+});

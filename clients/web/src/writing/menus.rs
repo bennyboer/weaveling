@@ -8,7 +8,8 @@ use crate::icons::{Icon, mark};
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 use crate::writing::asking::Asking;
-use crate::writing::margin::Marked;
+use crate::writing::bringing_back::Landing;
+use crate::writing::margin::{Marked, Menu};
 use crate::writing::write_view_state::WriteViewState;
 
 pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
@@ -28,25 +29,31 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 scene_label(scene.clone(), state).into_any()
             }
         },
-        actions("Scene actions", marked, state, move || {
-            let rename = chosen.clone();
-            let take_out = chosen.clone();
-            let delete = chosen.clone();
+        margin_menu(
+            "Scene actions",
+            Icon::More,
+            (marked, Menu::Changing),
+            state,
+            move || {
+                let rename = chosen.clone();
+                let take_out = chosen.clone();
+                let delete = chosen.clone();
 
-            (
-                item("Rename", false, move || {
-                    state.margin.start_renaming(rename.clone())
-                }),
-                item("Take out of the book", false, move || {
-                    state.margin.close();
-                    state.structure.take_out(take_out.clone());
-                }),
-                item("Delete scene", true, move || {
-                    state.margin.ask(Asking::DeleteScene(delete.clone()))
-                }),
-            )
-                .into_any()
-        }),
+                (
+                    item("Rename", false, move || {
+                        state.margin.start_renaming(rename.clone())
+                    }),
+                    item("Take out of the book", false, move || {
+                        state.margin.close();
+                        state.structure.take_out(take_out.clone());
+                    }),
+                    item("Delete scene", true, move || {
+                        state.margin.ask(Asking::DeleteScene(delete.clone()))
+                    }),
+                )
+                    .into_any()
+            },
+        ),
     ))
 }
 
@@ -55,33 +62,71 @@ pub fn section_margin(section: SectionId, level: usize, state: WriteViewState) -
 
     html::div()
         .class(format!("heading-margin level-{level}"))
-        .child(actions("Section actions", marked, state, move || {
-            let removed = section.clone();
+        .child((margin_menu(
+            "Section actions",
+            Icon::More,
+            (marked, Menu::Changing),
+            state,
+            move || {
+                let removed = section.clone();
 
-            item("Remove section", false, move || {
-                let holds_scenes = untrack(|| !state.structure.scenes_of(&removed).is_empty());
+                item("Remove section", false, move || {
+                    let holds_scenes = untrack(|| !state.structure.scenes_of(&removed).is_empty());
 
-                if holds_scenes {
-                    state.margin.ask(Asking::RemoveSection(removed.clone()));
-                } else {
-                    state.margin.close();
-                    state.structure.remove(removed.clone());
-                }
-            })
-            .into_any()
-        }))
+                    if holds_scenes {
+                        state.margin.ask(Asking::RemoveSection(removed.clone()));
+                    } else {
+                        state.margin.close();
+                        state.structure.remove(removed.clone());
+                    }
+                })
+                .into_any()
+            },
+        ),))
 }
 
-fn actions(
+pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
+    let marked = Marked::Gap(landing.clone());
+    let after = landing.after.as_ref().map(ToString::to_string);
+    let first_in = landing.after.is_none().then(|| landing.section.to_string());
+
+    let below_a_scene = after.is_some();
+
+    html::div()
+        .class("insertion")
+        .class(("below-a-scene", below_a_scene))
+        .attr("data-after", after)
+        .attr("data-first-in", first_in)
+        .child((
+            below_a_scene.then(|| html::hr().class("between-scenes")),
+            html::div().class("reach").child(margin_menu(
+                "Add here",
+                Icon::Plus,
+                (marked, Menu::Adding),
+                state,
+                move || {
+                    let here = landing.clone();
+
+                    item("Bring back a scene…", false, move || {
+                        state.margin.bring_back_to(here.clone())
+                    })
+                    .into_any()
+                },
+            )),
+        ))
+}
+
+fn margin_menu(
     named: &'static str,
-    marked: Marked,
+    icon: Icon,
+    (marked, menu_kind): (Marked, Menu),
     state: WriteViewState,
     items: impl Fn() -> AnyView + Send + Sync + 'static,
 ) -> impl IntoView {
     let open = Memo::new({
         let marked = marked.clone();
 
-        move |_| state.margin.is_open(&marked)
+        move |_| state.margin.is_open(&marked, menu_kind)
     });
     let menu: NodeRef<Div> = NodeRef::new();
 
@@ -99,12 +144,15 @@ fn actions(
         .child((
             html::button()
                 .class("menu-button")
+                .class(("dotted", matches!(icon, Icon::More)))
                 .attr("aria-label", named)
                 .attr("aria-haspopup", "menu")
                 .attr("aria-expanded", move || open.get().to_string())
                 .attr("tabindex", "-1")
-                .on(ev::click, move |_| state.margin.toggle(marked.clone()))
-                .child(mark(Icon::More)),
+                .on(ev::click, move |_| {
+                    state.margin.toggle(marked.clone(), menu_kind)
+                })
+                .child(mark(icon)),
             move || {
                 open.get().then(|| {
                     html::div()

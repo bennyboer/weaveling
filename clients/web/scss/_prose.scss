@@ -187,6 +187,19 @@
     flex: none;
   }
 
+  .choices .choice {
+    display: block;
+    width: 100%;
+    padding: 0.35rem 0.25rem;
+    border: none;
+    border-radius: 6px;
+    text-align: left;
+  }
+
+  .choices .choice:hover {
+    background: var(--raised);
+  }
+
   .empty {
     margin: 0 0 1rem;
     color: var(--muted);

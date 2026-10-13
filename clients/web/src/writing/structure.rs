@@ -137,6 +137,30 @@ impl Structure {
         });
     }
 
+    pub fn holds(self, scene: &SceneId) -> bool {
+        self.read_untracked(|book| {
+            book.sections
+                .iter()
+                .any(|section| section.scenes().contains(scene))
+        })
+        .unwrap_or(false)
+    }
+
+    pub fn bring_back(self, scene: SceneId, to: SectionId, after: Option<SceneId>) {
+        let Some(outline) = self.id() else {
+            return;
+        };
+
+        spawn_local(async move {
+            let behind = after.map(Attachment::Scene);
+
+            match service::attach(&outline, &Attachment::Scene(scene), &to, behind).await {
+                Ok(placed) => self.adopt(placed),
+                Err(failure) => self.problems.report(failure),
+            }
+        });
+    }
+
     pub fn take_out(self, scene: SceneId) {
         let Some(outline) = self.id() else {
             return;
