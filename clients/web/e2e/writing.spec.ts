@@ -1913,3 +1913,99 @@ test("a scene begun by typing is all saved once its first words are stored", asy
     "The loom stood silent.",
   );
 });
+
+async function holding(page: Page, method: string, url: string) {
+  let release!: () => void;
+  const released = new Promise<void>((done) => (release = done));
+  let asked = 0;
+
+  await page.route(url, async (route) => {
+    if (route.request().method() !== method) {
+      return route.fallback();
+    }
+    asked += 1;
+    await released;
+    await route.continue();
+  });
+
+  return { asked: () => asked, release };
+}
+
+async function savingUntilReleased(
+  page: Page,
+  held: Awaited<ReturnType<typeof holding>>,
+) {
+  await expect.poll(held.asked).toBeGreaterThan(0);
+  await page.waitForTimeout(1000);
+  await expect(
+    statusNote(page),
+    "the change has not reached the server yet",
+  ).toHaveText("Saving…");
+
+  held.release();
+  await expect(statusNote(page)).toHaveText("All saved");
+}
+
+test("a heading being typed is saving from the first key until the server has its title", async ({
+  page,
+}) => {
+  await aNewProject(page, "SavingHeading");
+  await aBookShaped(page, [{ title: "Part One" }]);
+  await openTheWritingView(page);
+  const held = await holding(page, "PATCH", "**/api/outlines/*/sections/*");
+
+  await heading(page, "Part One").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" and more");
+  await expect(statusNote(page)).toHaveText("Saving…");
+  expect(held.asked(), "saving before the title is even sent").toBe(0);
+
+  await savingUntilReleased(page, held);
+  expect(await savedTitles(page)).toEqual(["Part One and more"]);
+});
+
+test("a scene renamed in the margin is saving until the server has its title", async ({
+  page,
+}) => {
+  await aNewProject(page, "SavingTitle");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const [arrival] = scenes["Part One"];
+  await openTheWritingView(page);
+  await expect(scene(page, arrival)).toBeVisible();
+  const held = await holding(page, "PATCH", "**/api/scenes/*");
+
+  await sceneActions(page, arrival).click();
+  await menuItem(page, "Rename").click();
+  await flow(page)
+    .getByRole("textbox", { name: "Scene title" })
+    .fill("The departure");
+  await page.keyboard.press("Enter");
+  await expect(statusNote(page)).toHaveText("Saving…");
+
+  await savingUntilReleased(page, held);
+  expect((await (await sceneOnServer(page, arrival)).json()).title).toBe(
+    "The departure",
+  );
+});
+
+test("a change to the book's shape is saving until the server has made it", async ({
+  page,
+}) => {
+  await aNewProject(page, "SavingShape");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+  await expect(scene(page, first)).toBeVisible();
+  const held = await holding(
+    page,
+    "DELETE",
+    "**/api/outlines/*/attachments/**",
+  );
+
+  await sceneActions(page, first).click();
+  await menuItem(page, "Take out of the book").click();
+  await expect(statusNote(page)).toHaveText("Saving…");
+
+  await savingUntilReleased(page, held);
+  expect(await sceneOrder(page)).toEqual([["Part One", [second]]]);
+});

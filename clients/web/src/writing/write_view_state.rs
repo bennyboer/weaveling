@@ -21,16 +21,17 @@ pub struct WriteViewState {
 impl WriteViewState {
     pub fn open(project: &ProjectId) -> Self {
         let problems = Problems::none();
-        let structure = Structure::open(project, problems);
+        let saving = Saving::nothing();
+        let structure = Structure::open(project, problems, saving);
 
         Self {
             problems,
             structure,
             walk: Walk::through(structure),
             beginnings: Beginnings::of(structure, problems),
-            labels: Labels::of(project, problems),
+            labels: Labels::of(project, problems, saving),
             margin: Margin::closed(),
-            saving: Saving::nothing(),
+            saving,
         }
     }
 }

@@ -7,6 +7,7 @@ use crate::projects::model::ProjectId;
 use crate::scenes::model::{SceneId, opening_of};
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
+use crate::writing::saving::Saving;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Label {
@@ -19,14 +20,16 @@ pub struct Labels {
     titles: RwSignal<HashMap<SceneId, String>>,
     openings: RwSignal<HashMap<SceneId, String>>,
     problems: Problems,
+    saving: Saving,
 }
 
 impl Labels {
-    pub fn of(project: &ProjectId, problems: Problems) -> Self {
+    pub fn of(project: &ProjectId, problems: Problems, saving: Saving) -> Self {
         let labels = Self {
             titles: RwSignal::new(HashMap::new()),
             openings: RwSignal::new(HashMap::new()),
             problems,
+            saving,
         };
         let project = project.clone();
 
@@ -69,6 +72,7 @@ impl Labels {
         }
         self.titles
             .update(|titles| _ = titles.insert(scene.clone(), title.clone()));
+        self.saving.write_begun();
 
         spawn_local(async move {
             if let Err(failure) = scenes::retitle(&scene, &title).await {
@@ -76,6 +80,7 @@ impl Labels {
                     .update(|titles| _ = titles.insert(scene, before));
                 self.problems.report(failure);
             }
+            self.saving.write_done();
         });
     }
 

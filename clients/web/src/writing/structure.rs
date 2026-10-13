@@ -10,6 +10,7 @@ use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
+use crate::writing::saving::Saving;
 
 type Write = Pin<Box<dyn Future<Output = ()>>>;
 
@@ -25,16 +26,18 @@ pub struct Structure {
     writes: StoredValue<VecDeque<Write>, LocalStorage>,
     writing: StoredValue<bool>,
     problems: Problems,
+    saving: Saving,
 }
 
 impl Structure {
-    pub fn open(project: &ProjectId, problems: Problems) -> Self {
+    pub fn open(project: &ProjectId, problems: Problems, saving: Saving) -> Self {
         let structure = Self {
             project: StoredValue::new(project.clone()),
             outline: RwSignal::new(None),
             writes: StoredValue::new_local(VecDeque::new()),
             writing: StoredValue::new(false),
             problems,
+            saving,
         };
         let project = project.clone();
 
@@ -290,6 +293,7 @@ impl Structure {
     }
 
     pub fn in_turn(self, write: impl Future<Output = ()> + 'static) {
+        self.saving.write_begun();
         self.writes
             .update_value(|writes| writes.push_back(Box::pin(write)));
 
@@ -301,6 +305,7 @@ impl Structure {
         spawn_local(async move {
             while let Some(next) = self.writes.try_update_value(VecDeque::pop_front).flatten() {
                 next.await;
+                self.saving.write_done();
             }
             _ = self.writing.try_update_value(|writing| *writing = false);
         });

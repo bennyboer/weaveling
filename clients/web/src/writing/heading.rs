@@ -54,6 +54,7 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
     let save = move |id: SectionId| {
         if let Some(handle) = waiting.get_value() {
             handle.clear();
+            state.saving.write_done();
         }
         waiting.set_value(None);
 
@@ -84,7 +85,13 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
     on_cleanup({
         let id = id.clone();
 
-        move || state.walk.line_gone(&Stop::Heading(id.clone()))
+        move || {
+            state.walk.line_gone(&Stop::Heading(id.clone()));
+            if let Some(handle) = waiting.get_value() {
+                handle.clear();
+                state.saving.write_done();
+            }
+        }
     });
 
     html::div()
@@ -100,8 +107,9 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
             let id = id.clone();
 
             move |_| {
-                if let Some(handle) = waiting.get_value() {
-                    handle.clear();
+                match waiting.get_value() {
+                    Some(handle) => handle.clear(),
+                    None => state.saving.write_begun(),
                 }
                 let id = id.clone();
                 waiting.set_value(set_timeout(move || save(id), SAVE_AFTER).ok());
