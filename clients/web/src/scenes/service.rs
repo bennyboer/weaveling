@@ -1,7 +1,7 @@
 use gloo_net::http::Request;
 use scenes_contract::{CreateSceneRequest, LinkIdeaRequest, RetitleSceneRequest, SceneDTO};
 
-use crate::http::{ApiError, parsed};
+use crate::http::{ApiError, checked, parsed};
 use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::{Scene, SceneId};
@@ -53,6 +53,15 @@ pub async fn unlink(id: &SceneId, idea: &IdeaId) -> Result<Scene, ApiError> {
         .map_err(|_| ApiError::Offline)?;
 
     Ok(as_scene(parsed(response, SUBJECT).await?))
+}
+
+pub async fn delete(id: &SceneId) -> Result<(), ApiError> {
+    let response = Request::delete(&format!("{SCENES}/{id}"))
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
+
+    checked(response, SUBJECT).await.map(|_| ())
 }
 
 pub async fn in_project(project: &ProjectId) -> Result<Vec<Scene>, ApiError> {

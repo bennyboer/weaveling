@@ -47,6 +47,17 @@ const shape = (page: Page) =>
       .join("\n"),
   );
 
+async function savedTitles(page: Page) {
+  const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+  const opened = await page.request.post("http://127.0.0.1:3000/api/outlines", {
+    data: { project },
+  });
+
+  return (await opened.json()).sections.map(
+    (section: { title: string }) => section.title,
+  );
+}
+
 async function addSections(page: Page, sections: string[]) {
   await page.getByRole("button", { name: "Add a section" }).click();
 
@@ -133,7 +144,9 @@ test("reordering moves sections without rewriting their titles", async ({
 
   await page.getByRole("textbox", { name: "Section Kapitel 3" }).click();
   await page.keyboard.press("Alt+ArrowUp");
-  await expect.poll(() => shape(page)).toContain("Kapitel 2");
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Kapitel 1", "Kapitel 3", "Kapitel 2"]);
 
   await page.reload();
   await expect(titles(page)).toHaveCount(3);
@@ -556,9 +569,7 @@ test("an idea is noted in a section and is not a scene", async ({ page }) => {
   ).toHaveCount(0);
 });
 
-test("a note and a scene are drawn with different marks", async ({
-  page,
-}) => {
+test("a note and a scene are drawn with different marks", async ({ page }) => {
   await aNewProject(page, "Telling");
   await openThePool(page);
   await captureIdea(page, "The loom remembers");
@@ -600,9 +611,7 @@ test("a note leads to the idea, not to an editor", async ({ page }) => {
   await expect(page.locator(".surface .ProseMirror")).toHaveCount(0);
 });
 
-test("the tally counts scenes with no home, never ideas", async ({
-  page,
-}) => {
+test("the tally counts scenes with no home, never ideas", async ({ page }) => {
   await aNewProject(page, "Tallying");
   await openThePool(page);
   await captureIdea(page, "A first idea");
@@ -655,9 +664,7 @@ test("a titled scene is named by its title in the outline", async ({
   const saved = page.waitForResponse(
     (response) => response.request().method() === "PATCH",
   );
-  await page
-    .getByRole("textbox", { name: "Scene title" })
-    .fill("The arrival");
+  await page.getByRole("textbox", { name: "Scene title" }).fill("The arrival");
   await page.getByRole("textbox", { name: "Scene title" }).press("Tab");
   await saved;
 
@@ -695,21 +702,6 @@ test("a title being typed survives a slower answer about another section", async
   ).toHaveValue("Kapitel 2");
   await page.keyboard.press("Escape");
   await expect
-    .poll(async () => {
-      const project = new URL(page.url()).pathname
-        .split("/")[2]
-        .split("-")
-        .pop();
-      const opened = await page.request.post(
-        "http://127.0.0.1:3000/api/outlines",
-        {
-          data: { project },
-        },
-      );
-
-      return (await opened.json()).sections.map(
-        (section: { title: string }) => section.title,
-      );
-    })
+    .poll(() => savedTitles(page))
     .toEqual(["Kapitel 1", "Kapitel 2"]);
 });

@@ -1,6 +1,7 @@
 use crate::projects::model::ProjectId;
 use crate::writing::beginnings::Beginnings;
 use crate::writing::labels::Labels;
+use crate::writing::margin::Margin;
 use crate::writing::problems::Problems;
 use crate::writing::structure::Structure;
 use crate::writing::walk::Walk;
@@ -12,6 +13,7 @@ pub struct WriteViewState {
     pub walk: Walk,
     pub beginnings: Beginnings,
     pub labels: Labels,
+    pub margin: Margin,
 }
 
 impl WriteViewState {
@@ -25,6 +27,7 @@ impl WriteViewState {
             walk: Walk::through(structure),
             beginnings: Beginnings::of(structure, problems),
             labels: Labels::of(project, problems),
+            margin: Margin::closed(),
         }
     }
 }

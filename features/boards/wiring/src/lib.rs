@@ -96,6 +96,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let index = PinnedIdeasProjector::new(
         ports.events.clone(),
         ports.catalog.clone(),
+        boards.clone(),
         context.clock.clone(),
     );
     let unpin_discarded_ideas = UnpinOnDiscard::new(boards.clone(), ports.catalog.clone());

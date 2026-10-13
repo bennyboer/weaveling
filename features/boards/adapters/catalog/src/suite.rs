@@ -289,6 +289,87 @@ pub async fn forgetting_a_board_nobody_opened_is_harmless(catalog: &impl BoardCa
         .expect("forgetting an unknown board should not fail");
 }
 
+fn an_idea(id: &str) -> IdeaLink {
+    IdeaLink::from(id)
+}
+
+async fn gone_but_held_by(catalog: &impl BoardCatalog, board: BoardId) -> Vec<IdeaLink> {
+    catalog
+        .gone_but_held(board)
+        .await
+        .expect("looking for what is gone should succeed")
+}
+
+async fn marked_gone(catalog: &impl BoardCatalog, idea: &str) {
+    catalog
+        .mark_gone(&an_idea(idea))
+        .await
+        .expect("marking gone should succeed");
+}
+
+async fn pinned(catalog: &impl BoardCatalog, board: BoardId, ideas: &[&str]) {
+    let ideas: Vec<IdeaLink> = ideas.iter().map(|idea| an_idea(idea)).collect();
+    catalog
+        .holds(board, &ideas)
+        .await
+        .expect("indexing should succeed");
+}
+
+pub async fn nothing_pinned_is_gone_until_marked(catalog: &impl BoardCatalog) {
+    let board = BoardId::generate(at(1_000));
+    pinned(catalog, board, &["idea_1"]).await;
+
+    assert!(gone_but_held_by(catalog, board).await.is_empty());
+}
+
+pub async fn a_pinned_idea_marked_gone_is_named(catalog: &impl BoardCatalog) {
+    let board = BoardId::generate(at(1_000));
+    pinned(catalog, board, &["idea_1", "idea_2"]).await;
+
+    marked_gone(catalog, "idea_1").await;
+
+    assert_eq!(
+        gone_but_held_by(catalog, board).await,
+        vec![an_idea("idea_1")]
+    );
+}
+
+pub async fn an_idea_marked_gone_before_it_was_pinned_is_named(catalog: &impl BoardCatalog) {
+    let board = BoardId::generate(at(1_000));
+    marked_gone(catalog, "idea_1").await;
+
+    pinned(catalog, board, &["idea_1"]).await;
+
+    assert_eq!(
+        gone_but_held_by(catalog, board).await,
+        vec![an_idea("idea_1")],
+        "the discard may be heard before the pin is indexed"
+    );
+}
+
+pub async fn a_gone_idea_let_go_is_no_longer_named(catalog: &impl BoardCatalog) {
+    let board = BoardId::generate(at(1_000));
+    pinned(catalog, board, &["idea_1"]).await;
+    marked_gone(catalog, "idea_1").await;
+
+    pinned(catalog, board, &[]).await;
+
+    assert!(gone_but_held_by(catalog, board).await.is_empty());
+}
+
+pub async fn marking_the_same_idea_gone_twice_is_harmless(catalog: &impl BoardCatalog) {
+    let board = BoardId::generate(at(1_000));
+    pinned(catalog, board, &["idea_1"]).await;
+
+    marked_gone(catalog, "idea_1").await;
+    marked_gone(catalog, "idea_1").await;
+
+    assert_eq!(
+        gone_but_held_by(catalog, board).await,
+        vec![an_idea("idea_1")]
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -331,5 +412,13 @@ macro_rules! conformance_tests {
             one_board_letting_an_idea_go_leaves_the_others_holding_it
         );
         $crate::catalog_conformance_case!($workbench, every_idea_on_a_board_names_it);
+        $crate::catalog_conformance_case!($workbench, nothing_pinned_is_gone_until_marked);
+        $crate::catalog_conformance_case!($workbench, a_pinned_idea_marked_gone_is_named);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_idea_marked_gone_before_it_was_pinned_is_named
+        );
+        $crate::catalog_conformance_case!($workbench, a_gone_idea_let_go_is_no_longer_named);
+        $crate::catalog_conformance_case!($workbench, marking_the_same_idea_gone_twice_is_harmless);
     };
 }

@@ -28,6 +28,16 @@ const HOLD: &str = "
 
 const HOLDING: &str = "SELECT board FROM board_ideas WHERE idea = ?1 ORDER BY board";
 
+const GONE: &str = "INSERT INTO gone_ideas (idea) VALUES (?1) ON CONFLICT DO NOTHING";
+
+const GONE_BUT_HELD: &str = "
+    SELECT held.idea
+    FROM board_ideas held
+    JOIN gone_ideas gone ON gone.idea = held.idea
+    WHERE held.board = ?1
+    ORDER BY held.idea
+";
+
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/sqlite")
 }
@@ -132,6 +142,33 @@ impl BoardCatalog for SqliteBoardCatalog {
                 let board: String = row.try_get("board").map_err(unreachable)?;
 
                 board.parse().map_err(unreachable)
+            })
+            .collect()
+    }
+
+    async fn mark_gone(&self, idea: &IdeaLink) -> Result<(), CatalogError> {
+        sqlx::query(GONE)
+            .bind(idea.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn gone_but_held(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {
+        let found = sqlx::query(GONE_BUT_HELD)
+            .bind(board.to_string())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found
+            .iter()
+            .map(|row| {
+                let idea: String = row.try_get("idea").map_err(unreachable)?;
+
+                Ok(IdeaLink::from(idea.as_str()))
             })
             .collect()
     }

@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
-use boards_core::{Board, BoardCatalog, BoardError, BoardEvent, BoardId, CatalogError, IdeaLink};
+use boards_core::{
+    Board, BoardCatalog, BoardError, BoardEvent, BoardId, BoardService, CatalogError, IdeaLink,
+};
 use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use thiserror::Error;
 
+use crate::letting_go::{NotLetGo, let_go_of_what_is_gone};
 use crate::publishing::{UnreadableBoardEvent, board_in, when_pinned, when_unpinned};
 
 const NAME: &str = "index-pinned-ideas";
@@ -13,6 +16,7 @@ const NAME: &str = "index-pinned-ideas";
 pub struct PinnedIdeasProjector {
     events: EventSourcingService<Board>,
     catalog: Arc<dyn BoardCatalog>,
+    boards: BoardService,
 }
 
 #[derive(Debug, Error)]
@@ -23,34 +27,39 @@ enum NotIndexed {
     Events(#[from] ServiceError<BoardError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    NotLetGo(#[from] NotLetGo),
 }
 
 impl PinnedIdeasProjector {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
         catalog: Arc<dyn BoardCatalog>,
+        boards: BoardService,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: EventSourcingService::new(store, clock),
             catalog,
+            boards,
         }
     }
 
     async fn index(&self, board: &BoardId) -> Result<(), NotIndexed> {
         let standing = self.events.latest(&AggregateId::from(board)).await?;
-        let holding: Vec<IdeaLink> = if standing.state.is_discarded() {
-            Vec::new()
-        } else {
-            standing
-                .state
-                .ideas()
-                .into_iter()
-                .map(|positioned| positioned.idea)
-                .collect()
-        };
+        if standing.state.is_discarded() {
+            self.catalog.holds(*board, &[]).await?;
+            return Ok(());
+        }
 
+        let holding: Vec<IdeaLink> = standing
+            .state
+            .ideas()
+            .into_iter()
+            .map(|positioned| positioned.idea)
+            .collect();
         self.catalog.holds(*board, &holding).await?;
+        let_go_of_what_is_gone(&self.boards, self.catalog.as_ref(), *board).await?;
 
         Ok(())
     }

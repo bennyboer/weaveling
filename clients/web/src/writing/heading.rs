@@ -18,6 +18,10 @@ const FIRST: &str = "Your book's first section";
 
 const NEXT: &str = "A new section";
 
+pub fn level_of(depth: usize) -> usize {
+    depth.min(2) + 2
+}
+
 pub fn section_heading(depth: usize, section: Section, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let id = section.id.clone();
@@ -50,7 +54,7 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
         }
     };
 
-    let level = depth.min(2) + 2;
+    let level = level_of(depth);
 
     Effect::new({
         let id = id.clone();
@@ -161,7 +165,7 @@ pub fn pending_heading(after: SectionId, depth: usize, state: WriteViewState) ->
 
 fn new_heading(after: Option<SectionId>, depth: usize, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
-    let level = depth.min(2) + 2;
+    let level = level_of(depth);
     let pending = after.clone().map(|after| Pending::Section { after });
 
     if pending.is_some() {

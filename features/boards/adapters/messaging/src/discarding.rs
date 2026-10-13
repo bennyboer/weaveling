@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use boards_core::{
-    BoardCatalog, BoardError, BoardService, BoardServiceError, CatalogError, IdeaLink,
-};
+use boards_core::{BoardCatalog, BoardService, IdeaLink};
 use eventpublishing::{UnreadableMessage, published_in};
-use eventsourcing::{Agent, ServiceError};
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use thiserror::Error;
+
+use crate::letting_go::{NotLetGo, let_go_everywhere};
 
 const NAME: &str = "unpin-discarded-idea";
 
@@ -21,9 +20,7 @@ enum NotUnpinned {
     #[error(transparent)]
     Unreadable(#[from] UnreadableMessage),
     #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Boards(#[from] BoardServiceError),
+    NotLetGo(#[from] NotLetGo),
 }
 
 pub fn when_discarded() -> Subscription {
@@ -35,41 +32,18 @@ impl UnpinOnDiscard {
         Self { boards, catalog }
     }
 
-    async fn unpin_everywhere(&self, idea: &IdeaLink) -> Result<(), NotUnpinned> {
-        for board in self.catalog.boards_holding(idea).await? {
-            match self
-                .boards
-                .unpin(&board.to_string(), idea.clone(), None, &nobody())
-                .await
-            {
-                Ok(_) => {}
-                Err(refused) if nothing_left_to_unpin(&refused) => {}
-                Err(refused) => return Err(refused.into()),
-            }
-        }
-
-        Ok(())
-    }
-
     async fn work_through(&self, message: &Message) -> Result<(), NotUnpinned> {
         let discarded = published_in::<IdeaEventDTO>(message)?;
 
-        self.unpin_everywhere(&IdeaLink::from(discarded.aggregate.id.as_str()))
-            .await
+        let_go_everywhere(
+            &self.boards,
+            self.catalog.as_ref(),
+            &IdeaLink::from(discarded.aggregate.id.as_str()),
+        )
+        .await?;
+
+        Ok(())
     }
-}
-
-fn nothing_left_to_unpin(refused: &BoardServiceError) -> bool {
-    matches!(
-        refused,
-        BoardServiceError::Events(ServiceError::Refused(
-            BoardError::NotPinned | BoardError::Discarded
-        ))
-    )
-}
-
-fn nobody() -> Agent {
-    Agent::System
 }
 
 #[async_trait::async_trait]

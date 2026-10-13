@@ -1,0 +1,59 @@
+use boards_core::{
+    BoardCatalog, BoardError, BoardId, BoardService, BoardServiceError, CatalogError, IdeaLink,
+};
+use eventsourcing::{Agent, ServiceError};
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum NotLetGo {
+    #[error(transparent)]
+    Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    Boards(#[from] BoardServiceError),
+}
+
+pub async fn let_go_everywhere(
+    boards: &BoardService,
+    catalog: &dyn BoardCatalog,
+    gone: &IdeaLink,
+) -> Result<(), NotLetGo> {
+    catalog.mark_gone(gone).await?;
+
+    for board in catalog.boards_holding(gone).await? {
+        let_go(boards, board, gone).await?;
+    }
+
+    Ok(())
+}
+
+pub async fn let_go_of_what_is_gone(
+    boards: &BoardService,
+    catalog: &dyn BoardCatalog,
+    board: BoardId,
+) -> Result<(), NotLetGo> {
+    for gone in catalog.gone_but_held(board).await? {
+        let_go(boards, board, &gone).await?;
+    }
+
+    Ok(())
+}
+
+async fn let_go(boards: &BoardService, board: BoardId, gone: &IdeaLink) -> Result<(), NotLetGo> {
+    match boards
+        .unpin(&board.to_string(), gone.clone(), None, &Agent::System)
+        .await
+    {
+        Ok(_) => Ok(()),
+        Err(refused) if nothing_left_to_unpin(&refused) => Ok(()),
+        Err(refused) => Err(refused.into()),
+    }
+}
+
+fn nothing_left_to_unpin(refused: &BoardServiceError) -> bool {
+    matches!(
+        refused,
+        BoardServiceError::Events(ServiceError::Refused(
+            BoardError::NotPinned | BoardError::Discarded
+        ))
+    )
+}

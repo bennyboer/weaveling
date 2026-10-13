@@ -29,6 +29,10 @@ pub trait BoardCatalog: Send + Sync {
     async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError>;
 
     async fn boards_holding(&self, idea: &IdeaLink) -> Result<Vec<BoardId>, CatalogError>;
+
+    async fn mark_gone(&self, idea: &IdeaLink) -> Result<(), CatalogError>;
+
+    async fn gone_but_held(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError>;
 }
 
 impl BoardSummary {

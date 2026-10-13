@@ -1,4 +1,5 @@
 mod discarding;
+mod letting_go;
 mod pinning;
 mod publishing;
 mod sweeping;

@@ -21,7 +21,8 @@ export default defineConfig({
       timeout: 180_000,
     },
     {
-      command: "trunk serve --no-autoreload",
+      command:
+        "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && trunk serve --no-autoreload",
       url: "http://127.0.0.1:8080",
       reuseExistingServer: true,
       timeout: 180_000,

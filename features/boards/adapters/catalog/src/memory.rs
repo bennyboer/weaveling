@@ -10,6 +10,7 @@ type Listed = HashMap<BoardId, BoardSummary>;
 struct Pins {
     by_board: HashMap<BoardId, Vec<IdeaLink>>,
     by_idea: HashMap<IdeaLink, BTreeSet<BoardId>>,
+    gone: HashSet<IdeaLink>,
 }
 
 #[derive(Debug, Default)]
@@ -100,6 +101,27 @@ impl BoardCatalog for InMemoryBoardCatalog {
             .get(idea)
             .map(|holding| holding.iter().copied().collect())
             .unwrap_or_default())
+    }
+
+    async fn mark_gone(&self, idea: &IdeaLink) -> Result<(), CatalogError> {
+        self.write_pins().gone.insert(idea.clone());
+
+        Ok(())
+    }
+
+    async fn gone_but_held(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {
+        let pins = self.read_pins();
+        let mut found: Vec<IdeaLink> = pins
+            .by_board
+            .get(&board)
+            .into_iter()
+            .flatten()
+            .filter(|held| pins.gone.contains(held))
+            .cloned()
+            .collect();
+        found.sort_by(|one, other| one.as_str().cmp(other.as_str()));
+
+        Ok(found)
     }
 }
 

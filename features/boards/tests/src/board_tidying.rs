@@ -83,6 +83,41 @@ async fn pinned_on(wired: &Wired, board: &BoardId) -> Vec<String> {
 }
 
 #[tokio::test]
+async fn an_idea_discarded_before_its_pin_was_indexed_still_leaves_the_board() {
+    let wired = a_workbench();
+    let board = wired
+        .boards
+        .open("project_1", &an_author())
+        .await
+        .expect("opening should succeed")
+        .id;
+    wired
+        .boards
+        .pin(
+            &board.to_string(),
+            an_idea("idea_1"),
+            Spot::at(0, 0),
+            Size::CARD,
+            None,
+            &an_author(),
+        )
+        .await
+        .expect("pinning should succeed");
+
+    wired
+        .on_idea_discarded
+        .handle(&discarded("idea_1"))
+        .await
+        .expect("hearing the discard first should succeed");
+    wired.settle().await;
+
+    assert!(
+        pinned_on(&wired, &board).await.is_empty(),
+        "the index learns of the pin late, and must let go of what is already gone"
+    );
+}
+
+#[tokio::test]
 async fn pinning_an_idea_puts_it_in_the_index() {
     let wired = a_workbench();
 

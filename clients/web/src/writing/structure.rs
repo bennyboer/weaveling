@@ -1,10 +1,11 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::outline::model::{Outline, OutlineId, Section, SectionId};
+use crate::outline::model::{Attachment, Outline, OutlineId, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
+use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
 
 #[derive(Clone, Copy)]
@@ -134,6 +135,56 @@ impl Structure {
                 Err(failure) => self.problems.report(failure),
             }
         });
+    }
+
+    pub fn take_out(self, scene: SceneId) {
+        let Some(outline) = self.id() else {
+            return;
+        };
+
+        spawn_local(async move {
+            match service::detach(&outline, &Attachment::Scene(scene)).await {
+                Ok(()) => self.refresh().await,
+                Err(failure) => self.problems.report(failure),
+            }
+        });
+    }
+
+    pub fn delete(self, scene: SceneId) {
+        let Some(outline) = self.id() else {
+            return;
+        };
+
+        spawn_local(async move {
+            if let Err(failure) = service::detach(&outline, &Attachment::Scene(scene.clone())).await
+            {
+                return self.problems.report(failure);
+            }
+            if let Err(failure) = scenes::delete(&scene).await {
+                self.problems.report(failure);
+            }
+            self.refresh().await;
+        });
+    }
+
+    pub fn remove(self, section: SectionId) {
+        let Some(outline) = self.id() else {
+            return;
+        };
+
+        spawn_local(async move {
+            match service::remove(&outline, &section).await {
+                Ok(removed) => self.adopt(removed),
+                Err(failure) => self.problems.report(failure),
+            }
+        });
+    }
+
+    async fn refresh(self) {
+        match service::open(&self.project()).await {
+            Ok(opened) => self.adopt(opened),
+            Err(failure) => self.problems.report(failure),
+        }
     }
 
     pub fn adopt(self, arrived: Outline) {

@@ -18,6 +18,7 @@ pub struct Label {
 pub struct Labels {
     titles: RwSignal<HashMap<SceneId, String>>,
     openings: RwSignal<HashMap<SceneId, String>>,
+    problems: Problems,
 }
 
 impl Labels {
@@ -25,6 +26,7 @@ impl Labels {
         let labels = Self {
             titles: RwSignal::new(HashMap::new()),
             openings: RwSignal::new(HashMap::new()),
+            problems,
         };
         let project = project.clone();
 
@@ -36,7 +38,7 @@ impl Labels {
                         .map(|scene| (scene.id, scene.title))
                         .collect(),
                 ),
-                Err(failure) => problems.report(failure),
+                Err(failure) => labels.problems.report(failure),
             }
         });
 
@@ -53,6 +55,28 @@ impl Labels {
             self.openings
                 .update(|openings| _ = openings.insert(scene, opening));
         }
+    }
+
+    pub fn title_of(self, scene: &SceneId) -> String {
+        self.titles
+            .with_untracked(|titles| titles.get(scene).cloned().unwrap_or_default())
+    }
+
+    pub fn rename(self, scene: SceneId, title: String) {
+        let before = self.title_of(&scene);
+        if before == title {
+            return;
+        }
+        self.titles
+            .update(|titles| _ = titles.insert(scene.clone(), title.clone()));
+
+        spawn_local(async move {
+            if let Err(failure) = scenes::retitle(&scene, &title).await {
+                self.titles
+                    .update(|titles| _ = titles.insert(scene, before));
+                self.problems.report(failure);
+            }
+        });
     }
 
     pub fn of_scene(self, scene: &SceneId) -> Label {
