@@ -36,6 +36,9 @@ extern "C" {
     #[wasm_bindgen(method, js_name = onBreaking)]
     pub fn on_breaking(this: &ProseEditor, breaking: &Closure<dyn Fn()>);
 
+    #[wasm_bindgen(method, js_name = onCounted)]
+    pub fn on_counted(this: &ProseEditor, counted: &Closure<dyn Fn(u32)>);
+
     #[wasm_bindgen(method, js_name = onSaving)]
     pub fn on_saving(this: &ProseEditor, saving: &Closure<dyn Fn(bool)>);
 

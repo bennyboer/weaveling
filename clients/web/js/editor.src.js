@@ -25,6 +25,13 @@ function endpoint() {
   return `${scheme}//${window.location.host}/api/sync`;
 }
 
+function wordsIn(doc) {
+  return doc
+    .textBetween(0, doc.content.size, " ", " ")
+    .split(/\s+/)
+    .filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
+}
+
 function openingWordsOf(doc) {
   return doc.textBetween(0, Math.min(doc.content.size, 400), " ");
 }
@@ -41,6 +48,7 @@ export class ProseEditor {
     this.leaving = () => false;
     this.breaking = () => {};
     this.changed = () => {};
+    this.counted = () => {};
     this.saving = () => {};
     this.awaitSaving();
 
@@ -59,6 +67,7 @@ export class ProseEditor {
 
         if (tr.docChanged) {
           editor.changed(openingWordsOf(this.state.doc));
+          editor.counted(wordsIn(this.state.doc));
         }
       },
       state: EditorState.create({
@@ -130,6 +139,11 @@ export class ProseEditor {
     this.breaking();
 
     return true;
+  }
+
+  onCounted(counted) {
+    this.counted = counted;
+    counted(wordsIn(this.view.state.doc));
   }
 
   onSaving(saving) {

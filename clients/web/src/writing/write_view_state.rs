@@ -6,6 +6,7 @@ use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
 use crate::writing::structure::Structure;
 use crate::writing::walk::Walk;
+use crate::writing::word_count::WordCount;
 
 #[derive(Clone, Copy)]
 pub struct WriteViewState {
@@ -16,6 +17,7 @@ pub struct WriteViewState {
     pub labels: Labels,
     pub margin: Margin,
     pub saving: Saving,
+    pub word_count: WordCount,
 }
 
 impl WriteViewState {
@@ -32,6 +34,7 @@ impl WriteViewState {
             labels: Labels::of(project, problems, saving),
             margin: Margin::closed(),
             saving,
+            word_count: WordCount::of(structure),
         }
     }
 }

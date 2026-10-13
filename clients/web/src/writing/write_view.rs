@@ -1,5 +1,7 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
+use wasm_bindgen::JsCast;
+use web_sys::{Element, FocusEvent};
 
 use crate::outline::model::{Section, SectionId};
 use crate::route;
@@ -34,6 +36,11 @@ pub fn WriteView(project: String) -> impl IntoView {
     let book_view = html::article()
         .class("writing")
         .attr("aria-label", "The book")
+        .on(ev::focusin, move |event| {
+            if let Some(section) = section_around(&event) {
+                state.word_count.writing_in(section);
+            }
+        })
         .child((
             move || {
                 state.problems.latest().map(|failure| {
@@ -53,6 +60,17 @@ pub fn WriteView(project: String) -> impl IntoView {
         bringing_back(state),
         status_note(state),
     )
+}
+
+fn section_around(event: &FocusEvent) -> Option<SectionId> {
+    event
+        .target()?
+        .dyn_into::<Element>()
+        .ok()?
+        .closest("[data-section]")
+        .ok()??
+        .get_attribute("data-section")
+        .map(SectionId::from)
 }
 
 fn book(state: WriteViewState) -> impl IntoView {
@@ -85,27 +103,30 @@ fn section_in_flow(depth: usize, section: Section, state: WriteViewState) -> imp
         move |_| state.beginnings.pending_section_below(&id)
     });
 
-    html::section().class("in-flow").child((
-        html::div()
-            .class("heading-row")
-            .attr("data-section", id.to_string())
-            .child((
-                section_heading(depth, section, state),
-                section_margin(id.clone(), level_of(depth), state),
-            )),
-        html::div().class("scenes").child(scenes_of(id, state)),
-        move || empty.get().then(|| opening(waiting.clone(), state)),
-        move || {
-            below.get().map(|pending| match pending {
-                Pending::Section { after } => {
-                    let depth = state.structure.depth_of(&after);
+    html::section()
+        .class("in-flow")
+        .attr("data-section", id.to_string())
+        .child((
+            html::div()
+                .class("heading-row")
+                .attr("data-section", id.to_string())
+                .child((
+                    section_heading(depth, section, state),
+                    section_margin(id.clone(), level_of(depth), state),
+                )),
+            html::div().class("scenes").child(scenes_of(id, state)),
+            move || empty.get().then(|| opening(waiting.clone(), state)),
+            move || {
+                below.get().map(|pending| match pending {
+                    Pending::Section { after } => {
+                        let depth = state.structure.depth_of(&after);
 
-                    pending_heading(after, depth, state).into_any()
-                }
-                Pending::Scene { .. } => ().into_any(),
-            })
-        },
-    ))
+                        pending_heading(after, depth, state).into_any()
+                    }
+                    Pending::Scene { .. } => ().into_any(),
+                })
+            },
+        ))
 }
 
 fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {

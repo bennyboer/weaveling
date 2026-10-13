@@ -121,6 +121,61 @@ impl Structure {
         .unwrap_or_default()
     }
 
+    pub fn first_section(self) -> Option<SectionId> {
+        self.outline.with(|outline| {
+            outline
+                .as_ref()?
+                .in_reading_order()
+                .first()
+                .map(|(_, section)| section.id.clone())
+        })
+    }
+
+    pub fn title_of(self, section: &SectionId) -> Option<String> {
+        self.outline.with(|outline| {
+            outline
+                .as_ref()?
+                .sections
+                .iter()
+                .find(|held| &held.id == section)
+                .map(|held| held.title.clone())
+        })
+    }
+
+    pub fn scenes_within(self, section: &SectionId) -> Vec<SceneId> {
+        self.outline.with(|outline| {
+            let Some(book) = outline.as_ref() else {
+                return Vec::new();
+            };
+            let read = book.in_reading_order();
+            let Some(start) = read.iter().position(|(_, held)| &held.id == section) else {
+                return Vec::new();
+            };
+            let (depth, _) = read[start];
+
+            read[start..]
+                .iter()
+                .enumerate()
+                .take_while(|(nth, (nested, _))| *nth == 0 || *nested > depth)
+                .flat_map(|(_, (_, held))| held.scenes())
+                .collect()
+        })
+    }
+
+    pub fn every_scene(self) -> Vec<SceneId> {
+        self.outline.with(|outline| {
+            outline
+                .as_ref()
+                .map(|book| {
+                    book.in_reading_order()
+                        .into_iter()
+                        .flat_map(|(_, section)| section.scenes())
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+    }
+
     pub fn last_section(self) -> Option<SectionId> {
         self.outline.with(|outline| {
             outline

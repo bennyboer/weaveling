@@ -362,12 +362,33 @@
   z-index: 6;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 1.25rem;
   height: 1.6rem;
-  margin: 0;
   color: var(--muted);
   font-size: 0.75rem;
-  pointer-events: none;
+
+  .word-count {
+    max-width: 22rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    font: inherit;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+
+    &:hover {
+      color: var(--ink);
+    }
+  }
+
+  .save-state {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+  }
 
   svg {
     width: 0.85rem;

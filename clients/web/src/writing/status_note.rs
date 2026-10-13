@@ -1,9 +1,10 @@
 use std::time::Duration;
 
 use leptos::prelude::*;
-use leptos::{IntoView, html};
+use leptos::{IntoView, ev, html};
 
 use crate::icons::{Icon, mark};
+use crate::writing::word_count::Counted;
 use crate::writing::write_view_state::WriteViewState;
 
 const SETTLE: Duration = Duration::from_millis(500);
@@ -32,11 +33,55 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
         }
     });
 
-    html::p().class("status-note").child(move || {
-        if shown_saving.get() {
-            (mark(Icon::Saving), html::span().child("Saving…"))
-        } else {
-            (mark(Icon::Saved), html::span().child("All saved"))
-        }
-    })
+    html::div().class("status-note").child((
+        html::button()
+            .r#type("button")
+            .class("word-count")
+            .attr("title", move || match state.word_count.counted() {
+                Counted::Section => "Count the whole book",
+                Counted::Book => "Count the section being written",
+            })
+            .on(ev::click, move |_| state.word_count.toggle())
+            .child(move || counted(state)),
+        html::span().class("save-state").child(move || {
+            if shown_saving.get() {
+                (mark(Icon::Saving), html::span().child("Saving…"))
+            } else {
+                (mark(Icon::Saved), html::span().child("All saved"))
+            }
+        }),
+    ))
+}
+
+fn counted(state: WriteViewState) -> String {
+    let words = in_words(state.word_count.words());
+
+    match state.word_count.counted() {
+        Counted::Book => format!("{words} in the book"),
+        Counted::Section => match state
+            .word_count
+            .section()
+            .and_then(|section| state.structure.title_of(&section))
+            .filter(|title| !title.trim().is_empty())
+        {
+            Some(title) => format!("{words} in “{title}”"),
+            None => format!("{words} in this section"),
+        },
+    }
+}
+
+fn in_words(count: usize) -> String {
+    let digits = count.to_string();
+    let grouped = digits
+        .as_bytes()
+        .rchunks(3)
+        .rev()
+        .map(|group| String::from_utf8_lossy(group).into_owned())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    match count {
+        1 => "1 word".to_owned(),
+        _ => format!("{grouped} words"),
+    }
 }
