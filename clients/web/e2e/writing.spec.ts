@@ -317,6 +317,39 @@ test("moving up inside a scene stays in it", async ({ page }) => {
   await expect(scene(page, first)).not.toContainText("Still here.");
 });
 
+test("an arrow key just after a scene takes focus is not undone, even on a busy page", async ({
+  page,
+}) => {
+  await aNewProject(page, "Busy");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const written = scene(page, scenes["Part One"][0]);
+  await openTheWritingView(page);
+  await written.click();
+  await page.keyboard.type("First line.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Second line.");
+
+  for (let round = 0; round < 15; round++) {
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("End");
+    await written.evaluate((editor) => (editor as HTMLElement).blur());
+    await written.evaluate((editor) => {
+      (editor as HTMLElement).focus();
+      setTimeout(() => {
+        const until = performance.now() + 80;
+        while (performance.now() < until) {}
+      }, 5);
+    });
+    await page.keyboard.press("ArrowUp");
+    await page.keyboard.type("X");
+  }
+
+  await expect(written.locator("p")).toHaveText([
+    `First line.${"X".repeat(15)}`,
+    "Second line.",
+  ]);
+});
+
 test("the first scene's top and the last scene's end lead nowhere", async ({
   page,
 }) => {

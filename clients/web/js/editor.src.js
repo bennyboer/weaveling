@@ -84,6 +84,9 @@ export class ProseEditor {
 
                 return false;
               },
+              handleDOMEvents: {
+                focus: (view) => this.focusedWhereTheBrowserPutIt(view),
+              },
             },
           }),
           ySyncPlugin(this.fragment),
@@ -103,6 +106,17 @@ export class ProseEditor {
         ],
       }),
     });
+  }
+
+  focusedWhereTheBrowserPutIt(view) {
+    if (!view.focused) {
+      view.domObserver.stop();
+      view.dom.classList.add("ProseMirror-focused");
+      view.domObserver.start();
+      view.focused = true;
+    }
+
+    return false;
   }
 
   jumping(modifier) {
