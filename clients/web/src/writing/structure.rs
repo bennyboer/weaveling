@@ -1,3 +1,6 @@
+use std::collections::VecDeque;
+use std::pin::Pin;
+
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
@@ -8,6 +11,8 @@ use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
 
+type Write = Pin<Box<dyn Future<Output = ()>>>;
+
 enum Shift {
     In,
     Out,
@@ -17,6 +22,8 @@ enum Shift {
 pub struct Structure {
     project: StoredValue<ProjectId>,
     outline: RwSignal<Option<Outline>>,
+    writes: StoredValue<VecDeque<Write>, LocalStorage>,
+    writing: StoredValue<bool>,
     problems: Problems,
 }
 
@@ -25,6 +32,8 @@ impl Structure {
         let structure = Self {
             project: StoredValue::new(project.clone()),
             outline: RwSignal::new(None),
+            writes: StoredValue::new_local(VecDeque::new()),
+            writing: StoredValue::new(false),
             problems,
         };
         let project = project.clone();
@@ -109,6 +118,21 @@ impl Structure {
         .unwrap_or_default()
     }
 
+    pub fn last_section(self) -> Option<SectionId> {
+        self.outline.with(|outline| {
+            outline
+                .as_ref()?
+                .in_reading_order()
+                .last()
+                .map(|(_, section)| section.id.clone())
+        })
+    }
+
+    pub fn ends_in_a_scene(self) -> bool {
+        self.last_section()
+            .is_some_and(|last| !self.scenes_of(&last).is_empty())
+    }
+
     pub fn parent_of(self, section: &SectionId) -> Option<SectionId> {
         self.read_untracked(|book| book.parent_of(section))
             .flatten()
@@ -154,7 +178,7 @@ impl Structure {
             return;
         };
 
-        spawn_local(async move {
+        self.in_turn(async move {
             match service::retitle(&outline, &section, &title).await {
                 Ok(renamed) => self.adopt(renamed),
                 Err(failure) => self.problems.report(failure),
@@ -176,7 +200,7 @@ impl Structure {
             return;
         };
 
-        spawn_local(async move {
+        self.in_turn(async move {
             let behind = after.map(Attachment::Scene);
 
             match service::attach(&outline, &Attachment::Scene(scene), &to, behind).await {
@@ -209,7 +233,7 @@ impl Structure {
             return;
         };
 
-        spawn_local(async move {
+        self.in_turn(async move {
             let moved = match towards {
                 Shift::In => service::demote(&outline, &section).await,
                 Shift::Out => service::promote(&outline, &section).await,
@@ -227,7 +251,7 @@ impl Structure {
             return;
         };
 
-        spawn_local(async move {
+        self.in_turn(async move {
             match service::detach(&outline, &Attachment::Scene(scene)).await {
                 Ok(()) => self.refresh().await,
                 Err(failure) => self.problems.report(failure),
@@ -240,7 +264,7 @@ impl Structure {
             return;
         };
 
-        spawn_local(async move {
+        self.in_turn(async move {
             if let Err(failure) = service::detach(&outline, &Attachment::Scene(scene.clone())).await
             {
                 return self.problems.report(failure);
@@ -257,11 +281,28 @@ impl Structure {
             return;
         };
 
-        spawn_local(async move {
+        self.in_turn(async move {
             match service::remove(&outline, &section).await {
                 Ok(removed) => self.adopt(removed),
                 Err(failure) => self.problems.report(failure),
             }
+        });
+    }
+
+    pub fn in_turn(self, write: impl Future<Output = ()> + 'static) {
+        self.writes
+            .update_value(|writes| writes.push_back(Box::pin(write)));
+
+        if self.writing.get_value() {
+            return;
+        }
+        self.writing.set_value(true);
+
+        spawn_local(async move {
+            while let Some(next) = self.writes.try_update_value(VecDeque::pop_front).flatten() {
+                next.await;
+            }
+            _ = self.writing.try_update_value(|writing| *writing = false);
         });
     }
 

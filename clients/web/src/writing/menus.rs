@@ -127,6 +127,8 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
                     let fresh = landing.clone();
                     let here = landing.clone();
                     let ending = landing.clone();
+                    let nested_at_the_end = ends_the_book(&landing, state)
+                        && untrack(|| state.structure.depth_of(&landing.section)) > 0;
 
                     (
                         item("New scene", false, move || {
@@ -137,6 +139,12 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
                             item("New section", false, move || {
                                 state.margin.close();
                                 new_section_after_scenes_of(&ending.section, state);
+                            })
+                        }),
+                        nested_at_the_end.then(|| {
+                            item("New top-level section", false, move || {
+                                state.margin.close();
+                                new_section_at_the_end(state);
                             })
                         }),
                         item("Bring back a scene…", false, move || {
@@ -163,11 +171,10 @@ pub fn book_edge(edge: Edge, state: WriteViewState) -> impl IntoView {
             move || {
                 item("New section", false, move || {
                     state.margin.close();
-                    let after = match edge {
-                        Edge::Start => None,
-                        Edge::End => state.structure.top_level().last().cloned(),
-                    };
-                    state.beginnings.new_section_at(None, after);
+                    match edge {
+                        Edge::Start => state.beginnings.new_section_at(None, None),
+                        Edge::End => new_section_at_the_end(state),
+                    }
                 })
                 .into_any()
             },
@@ -177,6 +184,17 @@ pub fn book_edge(edge: Edge, state: WriteViewState) -> impl IntoView {
 fn ends_its_section(landing: &Landing, state: WriteViewState) -> bool {
     landing.after.is_some()
         && untrack(|| state.structure.scenes_of(&landing.section).last() == landing.after.as_ref())
+}
+
+fn ends_the_book(landing: &Landing, state: WriteViewState) -> bool {
+    ends_its_section(landing, state)
+        && untrack(|| state.structure.last_section()).as_ref() == Some(&landing.section)
+}
+
+fn new_section_at_the_end(state: WriteViewState) {
+    state
+        .beginnings
+        .new_section_at(None, state.structure.top_level().last().cloned());
 }
 
 fn new_section_after_scenes_of(section: &SectionId, state: WriteViewState) {

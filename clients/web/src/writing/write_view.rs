@@ -15,6 +15,7 @@ use crate::writing::menus::{
 };
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
 use crate::writing::scene_in_flow::scene_in_flow;
+use crate::writing::status_note::status_note;
 use crate::writing::write_view_state::WriteViewState;
 
 #[component]
@@ -46,10 +47,17 @@ pub fn WriteView(project: String) -> impl IntoView {
             move || open.get().then(|| book(state)),
         ));
 
-    (book_view, asking(state), bringing_back(state))
+    (
+        book_view,
+        asking(state),
+        bringing_back(state),
+        status_note(state),
+    )
 }
 
 fn book(state: WriteViewState) -> impl IntoView {
+    let ends_in_a_scene = Memo::new(move |_| state.structure.ends_in_a_scene());
+
     view! {
         {book_edge(Edge::Start, state)}
         <For
@@ -59,7 +67,7 @@ fn book(state: WriteViewState) -> impl IntoView {
         >
             {section_in_flow(depth, section, state)}
         </For>
-        {book_edge(Edge::End, state)}
+        {move || (!ends_in_a_scene.get()).then(|| book_edge(Edge::End, state))}
     }
 }
 

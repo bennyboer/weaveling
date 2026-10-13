@@ -3,6 +3,7 @@ use crate::writing::beginnings::Beginnings;
 use crate::writing::labels::Labels;
 use crate::writing::margin::Margin;
 use crate::writing::problems::Problems;
+use crate::writing::saving::Saving;
 use crate::writing::structure::Structure;
 use crate::writing::walk::Walk;
 
@@ -14,6 +15,7 @@ pub struct WriteViewState {
     pub beginnings: Beginnings,
     pub labels: Labels,
     pub margin: Margin,
+    pub saving: Saving,
 }
 
 impl WriteViewState {
@@ -28,6 +30,7 @@ impl WriteViewState {
             beginnings: Beginnings::of(structure, problems),
             labels: Labels::of(project, problems),
             margin: Margin::closed(),
+            saving: Saving::nothing(),
         }
     }
 }

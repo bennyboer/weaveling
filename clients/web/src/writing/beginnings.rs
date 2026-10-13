@@ -1,7 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
 
 use crate::http::ApiError;
 use crate::outline::model::{Attachment, SectionId};
@@ -129,7 +128,7 @@ impl Beginnings {
         };
         self.beginning_section.set_value(true);
 
-        spawn_local(async move {
+        self.structure.in_turn(async move {
             match service::add(&outline, under, after, "").await {
                 Ok((section, opened)) => {
                     self.focus_next.set_value(Some(section.clone()));
@@ -180,7 +179,7 @@ impl Beginnings {
         };
         let project = self.structure.project();
 
-        spawn_local(async move {
+        self.structure.in_turn(async move {
             let made = match scenes::create(&project).await {
                 Ok(made) => made,
                 Err(failure) => return self.could_not_begin(&section, failure),

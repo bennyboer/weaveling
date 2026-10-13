@@ -1152,11 +1152,21 @@ test("the margin lines up with the letters beside it", async ({ page }) => {
 
       return box.top + box.height / 2;
     };
+    const bar = (shown: Element) => {
+      const box = shown.getBoundingClientRect();
+      const drawn = getComputedStyle(shown, "::after");
+
+      return (
+        box.top +
+        (parseFloat(drawn.top) + box.height - parseFloat(drawn.bottom)) / 2
+      );
+    };
 
     return {
       headings: [...book.querySelectorAll(".heading-row")].map((row) => ({
         capitals: letters(row.querySelector(".heading")!).capitals,
         button: middle(row.querySelector(".menu-button")!),
+        bar: bar(row.querySelector(".heading")!),
       })),
       scene: (() => {
         const row = book.querySelector(".scene-row")!;
@@ -1172,10 +1182,14 @@ test("the margin lines up with the letters beside it", async ({ page }) => {
     };
   });
 
-  for (const { capitals, button } of measured.headings) {
+  for (const { capitals, button, bar } of measured.headings) {
     expect(
       Math.abs(button - capitals),
       "a heading's ⋮ sits on its capitals",
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(bar - capitals),
+      "a heading's bar is centred on its capitals",
     ).toBeLessThanOrEqual(1);
   }
   expect(
@@ -1622,6 +1636,55 @@ test("after everything, New section ends the book at the top level", async ({
   ).toBeVisible();
 });
 
+test("a book ending in a scene has one gap at its end, not two", async ({
+  page,
+}) => {
+  await aNewProject(page, "OneGapAtTheEnd");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  await expect(scene(page, scenes["Part One"][0])).toBeVisible();
+
+  await expect(bookEnd(page)).toHaveCount(0);
+  await addHere(gapBelow(page, scenes["Part One"][0])).click();
+  await expect(menuItem(page, "New section")).toBeVisible();
+  await expect(
+    menuItem(page, "New top-level section"),
+    "a section at its level already is one",
+  ).toHaveCount(0);
+});
+
+test("the last gap of a book ending in a nested section can still end the book at the top level", async ({
+  page,
+}) => {
+  await aNewProject(page, "NestedEnd");
+  const { outline, ids } = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Chapter 1", under: "Part One" },
+  ]);
+  const placed = await aLooseScene(page);
+  await page.request.post(`${API}/outlines/${outline}/attachments`, {
+    data: {
+      attachment: { kind: "scene", id: placed },
+      section: ids["Chapter 1"],
+      after: null,
+    },
+  });
+  await openTheWritingView(page);
+  await expect(scene(page, placed)).toBeVisible();
+  await expect(bookEnd(page)).toHaveCount(0);
+
+  await addHere(gapBelow(page, placed)).click();
+  await menuItem(page, "New top-level section").click();
+  await aNewSectionNamed(page, "Epilogue");
+
+  expect(await savedTitles(page)).toEqual([
+    "Part One",
+    "Chapter 1",
+    "Epilogue",
+  ]);
+  await expect(headingAt(page, "Epilogue", 2)).toBeVisible();
+});
+
 const headingAt = (page: Page, named: string, level: number) =>
   flow(page).getByRole("heading", { name: named, level });
 
@@ -1721,4 +1784,132 @@ test("a section's menu nests and lifts it, offering only what is possible", asyn
   );
   await menuItem(page, "Lift out a level").click();
   await expect(headingAt(page, "Part Two", 2)).toBeVisible();
+});
+
+const statusNote = (page: Page) => page.locator(".status-note");
+
+async function holdingWhatIsWritten(page: Page) {
+  const held: (string | Buffer)[] = [];
+  const servers: { send: (frame: string | Buffer) => void }[] = [];
+  let holding = false;
+
+  await page.routeWebSocket(/\/api\/sync\//, (socket) => {
+    const server = socket.connectToServer();
+    servers.push(server);
+
+    socket.onMessage((frame) =>
+      holding ? held.push(frame) : server.send(frame),
+    );
+  });
+
+  return {
+    hold: () => {
+      holding = true;
+    },
+    held: () => held.length,
+    release: () => {
+      holding = false;
+      held.splice(0).forEach((frame) => servers[0].send(frame));
+    },
+  };
+}
+
+test("the status note sits in the status bar, at its right", async ({
+  page,
+}) => {
+  await aNewProject(page, "Noted");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+
+  const note = (await statusNote(page).boundingBox())!;
+  const bar = (await page.locator(".status-bar").boundingBox())!;
+  const wide = page.viewportSize()!.width;
+
+  expect(note.y).toBeGreaterThanOrEqual(bar.y);
+  expect(note.y + note.height).toBeLessThanOrEqual(bar.y + bar.height + 0.5);
+  expect(wide - (note.x + note.width)).toBeLessThanOrEqual(16);
+});
+
+test("the status note makes room for the alarm beside it", async ({
+  page,
+}) => {
+  await page.route("**/api/service/refusals", (route) =>
+    route.fulfill({
+      json: [
+        {
+          id: 1,
+          listener: "catalogue-idea",
+          routing: "idea.captured",
+          attempts: 5,
+          why: "the projection had not landed",
+          plainly: "A change to an idea did not reach the list of ideas.",
+          occurred_at: "2026-10-10T09:00:00Z",
+          given_up_at: "2026-10-10T09:01:00Z",
+          acknowledged_at: null,
+        },
+      ],
+    }),
+  );
+  await aNewProject(page, "Alarmed");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  const alarm = page.getByRole("button", {
+    name: "Changes that could not be applied",
+  });
+  await expect(alarm).toBeVisible();
+
+  const note = (await statusNote(page).boundingBox())!;
+  const raised = (await alarm.boundingBox())!;
+
+  expect(note.x + note.width).toBeLessThan(raised.x);
+});
+
+test("the status note says Saving… until the server has stored what was written", async ({
+  page,
+}) => {
+  const sync = await holdingWhatIsWritten(page);
+  await aNewProject(page, "Saving");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  const written = scenes["Part One"][0];
+  await expect(statusNote(page)).toHaveText("All saved");
+
+  sync.hold();
+  await scene(page, written).click();
+  await page.keyboard.type("Held back.");
+  await expect(statusNote(page)).toHaveText("Saving…");
+  await expect.poll(sync.held).toBeGreaterThan(0);
+  await page.waitForTimeout(1000);
+  await expect(
+    statusNote(page),
+    "nothing written has reached the server yet",
+  ).toHaveText("Saving…");
+
+  sync.release();
+  await expect(statusNote(page)).toHaveText("All saved");
+  const stored = await (await page.request.get(`${API}/scenes/${written}`)).json();
+  expect(stored.text, "All saved only once it is stored").toContain(
+    "Held back.",
+  );
+});
+
+test("a scene begun by typing is all saved once its first words are stored", async ({
+  page,
+}) => {
+  await aNewProject(page, "Begun saved");
+  await aBookWithScenes(page, { "Part One": 0 });
+  await openTheWritingView(page);
+
+  await beginning(page).click();
+  await page.keyboard.type("The loom stood silent.");
+  await expect(flow(page).locator(".scene .ProseMirror")).toContainText(
+    "The loom stood silent.",
+  );
+
+  await expect(statusNote(page)).toHaveText("All saved");
+  const [begun] = (await projectsOutline(page)).sections[0].attachments;
+  const stored = await (await page.request.get(`${API}/scenes/${begun.id}`)).json();
+  expect(stored.text, "All saved only once it is stored").toContain(
+    "The loom stood silent.",
+  );
 });

@@ -1,5 +1,8 @@
 import * as Y from "yjs";
-import { WebsocketProvider } from "y-websocket";
+import { WebsocketProvider, messageSync } from "y-websocket";
+import { messageYjsSyncStep2, writeSyncStep1 } from "y-protocols/sync";
+import * as encoding from "lib0/encoding";
+import * as decoding from "lib0/decoding";
 import { EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { Schema } from "prosemirror-model";
@@ -38,6 +41,8 @@ export class ProseEditor {
     this.leaving = () => false;
     this.breaking = () => {};
     this.changed = () => {};
+    this.saving = () => {};
+    this.awaitSaving();
 
     const editor = this;
 
@@ -125,6 +130,80 @@ export class ProseEditor {
     this.breaking();
 
     return true;
+  }
+
+  onSaving(saving) {
+    this.saving = saving;
+    saving(this.isSaving());
+  }
+
+  awaitSaving() {
+    this.changes = 0;
+    this.stored = 0;
+    this.asked = [];
+    this.wasSaving = false;
+
+    this.doc.on("update", (_, origin) => {
+      if (origin !== this.provider) {
+        this.changes += 1;
+        this.tellSaving();
+        this.askWhatIsStored();
+      }
+    });
+    this.provider.on("status", ({ status }) => {
+      this.asked = status === "connected" ? [this.stored] : [];
+    });
+
+    const handleSync = this.provider.messageHandlers[messageSync];
+
+    this.provider.messageHandlers[messageSync] = (encoder, decoder, provider, fromServer, kind) => {
+      const answer = fromServer && decoding.peekVarUint(decoder) === messageYjsSyncStep2;
+
+      handleSync(encoder, decoder, provider, fromServer, kind);
+
+      if (answer) {
+        this.answered();
+      }
+    };
+  }
+
+  askWhatIsStored() {
+    const { ws, wsconnected } = this.provider;
+
+    if (this.asked.length > 0 || !wsconnected || this.stored === this.changes) {
+      return;
+    }
+
+    const encoder = encoding.createEncoder();
+    encoding.writeVarUint(encoder, messageSync);
+    writeSyncStep1(encoder, this.doc);
+    this.asked.push(this.changes);
+    ws.send(encoding.toUint8Array(encoder));
+  }
+
+  answered() {
+    const covered = this.asked.shift();
+
+    if (covered === undefined) {
+      return;
+    }
+
+    this.stored = Math.max(this.stored, covered);
+    this.tellSaving();
+    this.askWhatIsStored();
+  }
+
+  isSaving() {
+    return this.stored < this.changes;
+  }
+
+  tellSaving() {
+    const saving = this.isSaving();
+
+    if (saving !== this.wasSaving) {
+      this.wasSaving = saving;
+      this.saving(saving);
+    }
   }
 
   onLeaving(leaving) {
