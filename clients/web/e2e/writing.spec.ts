@@ -1358,3 +1358,72 @@ test("the gap between two scenes leaves the writing clickable", async ({
     expect(hit, "a scene's first line belongs to the scene").toBe(true);
   }
 });
+
+async function aBookWithLooseScenes(page: Page, titles: string[]) {
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const loose: Record<string, string> = {};
+
+  for (const title of titles) {
+    loose[title] = await aLooseScene(page);
+    await titled(page, loose[title], title);
+  }
+
+  return { placed: scenes["Part One"][0], loose };
+}
+
+const offered = (page: Page) =>
+  bringingBack(page)
+    .getByRole("list", { name: "Scenes not in the book" })
+    .getByRole("button");
+
+test("the scenes to bring back can be narrowed by what they are called", async ({
+  page,
+}) => {
+  await aNewProject(page, "FindScene");
+  const { placed } = await aBookWithLooseScenes(page, [
+    "The storm",
+    "A letter",
+    "The stranger",
+  ]);
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, placed)).click();
+  await menuItem(page, "Bring back a scene…").click();
+  const finding = bringingBack(page).getByRole("searchbox", {
+    name: "Find a scene",
+  });
+  await expect(finding).toBeFocused();
+  await expect(offered(page)).toHaveCount(3);
+
+  await page.keyboard.type("the st");
+  await expect(offered(page)).toHaveText(["The storm", "The stranger"]);
+  await page.keyboard.type("orm");
+  await expect(offered(page)).toHaveText(["The storm"]);
+  await finding.fill("nothing like it");
+  await expect(bringingBack(page)).toContainText("No scene matches.");
+});
+
+test("Enter in the search brings back the first scene that matches", async ({
+  page,
+}) => {
+  await aNewProject(page, "EnterBack");
+  const { placed, loose } = await aBookWithLooseScenes(page, [
+    "The storm",
+    "A letter",
+  ]);
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, placed)).click();
+  await menuItem(page, "Bring back a scene…").click();
+  await expect(
+    bringingBack(page).getByRole("searchbox", { name: "Find a scene" }),
+  ).toBeFocused();
+  await page.keyboard.type("letter");
+  await page.keyboard.press("Enter");
+
+  await expect(bringingBack(page)).toHaveCount(0);
+  await expect(scene(page, loose["A letter"])).toBeVisible();
+  expect(await sceneOrder(page)).toEqual([
+    ["Part One", [placed, loose["A letter"]]],
+  ]);
+});

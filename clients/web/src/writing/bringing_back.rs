@@ -1,7 +1,9 @@
+use leptos::html::Input;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{IntoView, ev, html};
 
+use crate::inputs::typed;
 use crate::outline::model::SectionId;
 use crate::scenes::model::{Scene, SceneId};
 use crate::scenes::service as scenes;
@@ -42,11 +44,26 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
         }
     });
 
-    let goes = if landing.after.is_some() {
-        "The one you choose goes in below this scene."
-    } else {
-        "The one you choose goes in at the start of this section."
+    let finding = RwSignal::new(String::new());
+    let search: NodeRef<Input> = NodeRef::new();
+
+    Effect::new(move || {
+        if let Some(field) = search.get() {
+            let _ = field.focus();
+        }
+    });
+
+    let matching = move || {
+        let wanted = finding.get().trim().to_lowercase();
+
+        waiting
+            .get()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|scene| scene.shown_as().to_lowercase().contains(&wanted))
+            .collect::<Vec<_>>()
     };
+    let first_landing = landing.clone();
 
     html::div()
         .class("overlay")
@@ -66,19 +83,58 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
                             .class("empty")
                             .child("Every scene is in the book already.")
                             .into_any(),
-                        Some(outside) => (
-                            html::p().child(format!("These scenes are not in the book. {goes}")),
-                            html::ul()
+                        Some(_) => {
+                            let entering = first_landing.clone();
+
+                            (
+                                html::p().child(
+                                    "These scenes are not in the book. The one you choose goes in where you clicked.",
+                                ),
+                                html::input()
+                                    .r#type("search")
+                                    .attr("aria-label", "Find a scene")
+                                    .attr("placeholder", "Find a scene")
+                                    .node_ref(search)
+                                    .on(ev::input, move |event| {
+                                        if let Some(field) = typed(&event) {
+                                            finding.set(field.value());
+                                        }
+                                    })
+                                    .on(ev::keydown, move |event| {
+                                        if event.key() == "Enter"
+                                            && let Some(first) =
+                                                untrack(matching).into_iter().next()
+                                        {
+                                            event.prevent_default();
+                                            choose(first.id, entering.clone(), state);
+                                        }
+                                    }),
+                            )
+                                .into_any()
+                        }
+                    },
+                    move || {
+                        let found = matching();
+
+                        match waiting.with(|waiting| {
+                            waiting.as_ref().is_some_and(|outside| !outside.is_empty())
+                        }) {
+                            false => ().into_any(),
+                            true if found.is_empty() => html::p()
+                                .class("empty")
+                                .child("No scene matches.")
+                                .into_any(),
+                            true => html::ul()
                                 .class("choices")
                                 .attr("aria-label", "Scenes not in the book")
                                 .child(
-                                    outside
+                                    found
                                         .into_iter()
                                         .map(|scene| choice(scene, landing.clone(), state))
                                         .collect::<Vec<_>>(),
-                                ),
-                        )
-                            .into_any(),
+                                )
+                                .into_any(),
+                        }
                     },
                     html::div().class("dialog-actions").child(
                         html::button()
@@ -97,13 +153,15 @@ fn choice(scene: Scene, landing: Landing, state: WriteViewState) -> impl IntoVie
         html::button()
             .class("choice")
             .on(ev::click, move |_| {
-                state.margin.return_to_writing();
-                state.structure.bring_back(
-                    chosen.clone(),
-                    landing.section.clone(),
-                    landing.after.clone(),
-                );
+                choose(chosen.clone(), landing.clone(), state)
             })
             .child(shown),
     )
+}
+
+fn choose(scene: SceneId, landing: Landing, state: WriteViewState) {
+    state.margin.return_to_writing();
+    state
+        .structure
+        .bring_back(scene, landing.section, landing.after);
 }
