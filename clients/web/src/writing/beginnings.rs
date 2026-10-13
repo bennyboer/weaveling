@@ -108,6 +108,19 @@ impl Beginnings {
     }
 
     pub fn begin_section(self, after: Option<SectionId>) {
+        let under = after
+            .as_ref()
+            .and_then(|after| self.structure.parent_of(after));
+
+        self.begin_section_at(under, after);
+    }
+
+    pub fn new_section_at(self, under: Option<SectionId>, after: Option<SectionId>) {
+        self.section_words.set_value(String::new());
+        self.begin_section_at(under, after);
+    }
+
+    fn begin_section_at(self, under: Option<SectionId>, after: Option<SectionId>) {
         if self.beginning_section.get_value() {
             return;
         }
@@ -115,9 +128,6 @@ impl Beginnings {
             return;
         };
         self.beginning_section.set_value(true);
-        let under = after
-            .as_ref()
-            .and_then(|after| self.structure.parent_of(after));
 
         spawn_local(async move {
             match service::add(&outline, under, after, "").await {

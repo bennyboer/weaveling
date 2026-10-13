@@ -327,6 +327,16 @@
     height: 2rem;
   }
 
+  .insertion.book-start .reach {
+    height: 2rem;
+  }
+
+  .insertion.book-end .reach {
+    top: 2rem;
+    bottom: auto;
+    height: 2rem;
+  }
+
   .empty {
     color: var(--muted);
   }

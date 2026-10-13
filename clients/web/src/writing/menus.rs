@@ -9,7 +9,7 @@ use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
-use crate::writing::margin::{Marked, Menu};
+use crate::writing::margin::{Edge, Marked, Menu};
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
@@ -108,11 +108,18 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
                 move || {
                     let fresh = landing.clone();
                     let here = landing.clone();
+                    let ending = landing.clone();
 
                     (
                         item("New scene", false, move || {
                             state.margin.close();
                             begin_scene_at(&fresh, state);
+                        }),
+                        ends_its_section(&landing, state).then(|| {
+                            item("New section", false, move || {
+                                state.margin.close();
+                                new_section_after_scenes_of(&ending.section, state);
+                            })
                         }),
                         item("Bring back a scene…", false, move || {
                             state.margin.bring_back_to(here.clone())
@@ -122,6 +129,46 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
                 },
             )),
         ))
+}
+
+pub fn book_edge(edge: Edge, state: WriteViewState) -> impl IntoView {
+    html::div()
+        .class(match edge {
+            Edge::Start => "insertion book-start",
+            Edge::End => "insertion book-end",
+        })
+        .child(html::div().class("reach").child(margin_menu(
+            "Add here",
+            Icon::Plus,
+            (Marked::Edge(edge), Menu::Adding),
+            state,
+            move || {
+                item("New section", false, move || {
+                    state.margin.close();
+                    let after = match edge {
+                        Edge::Start => None,
+                        Edge::End => state.structure.top_level().last().cloned(),
+                    };
+                    state.beginnings.new_section_at(None, after);
+                })
+                .into_any()
+            },
+        )))
+}
+
+fn ends_its_section(landing: &Landing, state: WriteViewState) -> bool {
+    landing.after.is_some()
+        && untrack(|| state.structure.scenes_of(&landing.section).last() == landing.after.as_ref())
+}
+
+fn new_section_after_scenes_of(section: &SectionId, state: WriteViewState) {
+    if state.structure.has_children(section) {
+        state.beginnings.new_section_at(Some(section.clone()), None);
+    } else {
+        state
+            .beginnings
+            .new_section_at(state.structure.parent_of(section), Some(section.clone()));
+    }
 }
 
 fn begin_scene_at(landing: &Landing, state: WriteViewState) {

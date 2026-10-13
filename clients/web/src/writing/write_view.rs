@@ -9,7 +9,10 @@ use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
 use crate::writing::heading::pending_heading;
 use crate::writing::heading::{first_heading, level_of, section_heading};
-use crate::writing::menus::{insertion, open_menu_where_writing, scene_margin, section_margin};
+use crate::writing::margin::Edge;
+use crate::writing::menus::{
+    book_edge, insertion, open_menu_where_writing, scene_margin, section_margin,
+};
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
 use crate::writing::scene_in_flow::scene_in_flow;
 use crate::writing::write_view_state::WriteViewState;
@@ -48,6 +51,7 @@ pub fn WriteView(project: String) -> impl IntoView {
 
 fn book(state: WriteViewState) -> impl IntoView {
     view! {
+        {book_edge(Edge::Start, state)}
         <For
             each=move || state.structure.sections()
             key=|(depth, section)| (section.id.clone(), *depth)
@@ -55,6 +59,7 @@ fn book(state: WriteViewState) -> impl IntoView {
         >
             {section_in_flow(depth, section, state)}
         </For>
+        {book_edge(Edge::End, state)}
     }
 }
 

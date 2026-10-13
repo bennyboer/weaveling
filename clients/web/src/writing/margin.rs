@@ -11,6 +11,13 @@ pub enum Marked {
     Scene(SceneId),
     Section(SectionId),
     Gap(Landing),
+    Edge(Edge),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Edge {
+    Start,
+    End,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

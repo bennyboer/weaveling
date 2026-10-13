@@ -84,6 +84,26 @@ impl Structure {
         .flatten()
     }
 
+    pub fn has_children(self, section: &SectionId) -> bool {
+        self.read_untracked(|book| {
+            book.sections
+                .iter()
+                .any(|held| held.parent.as_ref() == Some(section))
+        })
+        .unwrap_or(false)
+    }
+
+    pub fn top_level(self) -> Vec<SectionId> {
+        self.read_untracked(|book| {
+            book.in_reading_order()
+                .into_iter()
+                .filter(|(depth, _)| *depth == 0)
+                .map(|(_, section)| section.id.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+    }
+
     pub fn parent_of(self, section: &SectionId) -> Option<SectionId> {
         self.read_untracked(|book| book.parent_of(section))
             .flatten()

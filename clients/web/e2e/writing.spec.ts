@@ -1494,3 +1494,130 @@ test("a new scene left empty goes away and makes nothing", async ({ page }) => {
   await expect(newScene(page)).toHaveCount(0);
   expect(await sceneOrder(page)).toEqual([["Part One", [first, second]]]);
 });
+
+const bookStart = (page: Page) => flow(page).locator(".insertion.book-start");
+
+const bookEnd = (page: Page) => flow(page).locator(".insertion.book-end");
+
+async function aNewSectionNamed(page: Page, title: string) {
+  await expect(page.locator(":focus")).toHaveAttribute("role", "heading");
+  await page.keyboard.type(title);
+  await expect.poll(() => savedTitles(page)).toContain(title);
+}
+
+test("New section after a section's last scene starts the next one at its level", async ({
+  page,
+}) => {
+  await aNewProject(page, "NewSectionAfter");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 0 });
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, scenes["Part One"][0])).click();
+  await menuItem(page, "New section").click();
+  await aNewSectionNamed(page, "Interlude");
+
+  expect(await savedTitles(page)).toEqual([
+    "Part One",
+    "Interlude",
+    "Part Two",
+  ]);
+  await expect(
+    flow(page).getByRole("heading", { name: "Interlude", level: 2 }),
+  ).toBeVisible();
+});
+
+test("New section after the scenes of a section with subsections starts its first subsection", async ({
+  page,
+}) => {
+  await aNewProject(page, "NewSubsection");
+  const { outline, ids } = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Chapter 1", under: "Part One" },
+  ]);
+  const placed = await aLooseScene(page);
+  await page.request.post(`${API}/outlines/${outline}/attachments`, {
+    data: {
+      attachment: { kind: "scene", id: placed },
+      section: ids["Part One"],
+      after: null,
+    },
+  });
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, placed)).click();
+  await menuItem(page, "New section").click();
+  await aNewSectionNamed(page, "Prelude");
+
+  expect(await savedTitles(page)).toEqual(["Part One", "Prelude", "Chapter 1"]);
+  await expect(
+    flow(page).getByRole("heading", { name: "Prelude", level: 3 }),
+    "it sits where the gap was, so it nests beside the subsections",
+  ).toBeVisible();
+});
+
+test("New section is offered only where nothing has to move", async ({
+  page,
+}) => {
+  await aNewProject(page, "OnlyAtTheEnd");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, first)).click();
+  await expect(menuItem(page, "New scene")).toBeVisible();
+  await expect(menuItem(page, "New section")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await addHere(gapAtStartOf(page, "Part One")).click();
+  await expect(menuItem(page, "New section")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await addHere(gapBelow(page, second)).click();
+  await expect(menuItem(page, "New section")).toBeVisible();
+});
+
+test("before the first section, New section begins the book", async ({
+  page,
+}) => {
+  await aNewProject(page, "NewFirstSection");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Chapter 1", under: "Part One" },
+  ]);
+  await openTheWritingView(page);
+
+  await addHere(bookStart(page)).click();
+  await expect(menuItem(page, "New scene")).toHaveCount(0);
+  await menuItem(page, "New section").click();
+  await aNewSectionNamed(page, "Prologue");
+
+  expect(await savedTitles(page)).toEqual([
+    "Prologue",
+    "Part One",
+    "Chapter 1",
+  ]);
+});
+
+test("after everything, New section ends the book at the top level", async ({
+  page,
+}) => {
+  await aNewProject(page, "NewLastSection");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Chapter 1", under: "Part One" },
+  ]);
+  await openTheWritingView(page);
+
+  await addHere(bookEnd(page)).click();
+  await menuItem(page, "New section").click();
+  await aNewSectionNamed(page, "Epilogue");
+
+  expect(await savedTitles(page)).toEqual([
+    "Part One",
+    "Chapter 1",
+    "Epilogue",
+  ]);
+  await expect(
+    flow(page).getByRole("heading", { name: "Epilogue", level: 2 }),
+  ).toBeVisible();
+});
