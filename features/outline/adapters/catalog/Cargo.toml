@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
+thiserror = { workspace = true }
 time = { workspace = true }
 
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }

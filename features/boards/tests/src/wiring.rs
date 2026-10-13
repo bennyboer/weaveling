@@ -12,7 +12,7 @@ use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-board";
 const INDEXING: &str = "index-pinned-ideas";
-const TIDYING: &str = "unpin-discarded-idea";
+const UNPINNING_DISCARDED_IDEAS: &str = "unpin-discarded-idea";
 
 pub struct Wired {
     pub boards: BoardService,
@@ -24,7 +24,7 @@ pub struct Wired {
     pub catalog: Arc<InMemoryBoardCatalog>,
     pub projector: Arc<dyn Listener>,
     pub indexer: Arc<dyn Listener>,
-    pub tidier: Arc<dyn Listener>,
+    pub on_idea_discarded: Arc<dyn Listener>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
@@ -63,7 +63,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     };
     let projector = named(CATALOGUING);
     let indexer = named(INDEXING);
-    let tidier = named(TIDYING);
+    let on_idea_discarded = named(UNPINNING_DISCARDED_IDEAS);
 
     Wired {
         boards: boards_wiring::service(&ports, &context),
@@ -75,7 +75,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         catalog,
         projector,
         indexer,
-        tidier,
+        on_idea_discarded,
     }
 }
 

@@ -2,7 +2,7 @@
 
 The linear view: the tree an author shapes a book into.
 
-**The outline arranges sections, not content.** A section is a place in the book with a title of its own; a scene or an idea is *attached* to a section. That indirection is what keeps content off the tree — a section can exist before anything fills it, and a scene can be attached, detached and reattached without the tree changing shape. See [the rule in full](../../ARCHITECTURE.md#the-outline-arranges-sections-not-pieces).
+**The outline arranges sections, not content.** A section is a place in the book with a title of its own; a scene or an idea is *attached* to a section. That indirection is what keeps content off the tree — a section can exist before anything fills it, and a scene can be attached, detached and reattached without the tree changing shape. See [the rule in full](../../ARCHITECTURE.md#the-outline-arranges-sections-not-scenes).
 
 **`Outline` is an aggregate** — `Started`, `SectionAdded`, `SectionRetitled`, `SectionMoved`, `SectionPromoted`, `SectionDemoted`, `SectionRemoved`, `Attached`, `Detached`. Sections are added relative to their neighbours (`under`, `after`) rather than at an index, because an index is a fact about the list at one moment and would be wrong for anyone who reordered concurrently.
 

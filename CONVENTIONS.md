@@ -6,13 +6,13 @@ How this codebase is written, so that a reviewer never has to explain the same t
 
 ### The register depends on the layer
 
-Weaveling's domain language is deliberate — a piece is *captured*, a project is *started*, an outline *attaches* a piece to a section — and that language belongs in the domain: aggregates, commands, events, errors, and the service methods an author's action maps onto. `capture`, `retitle`, `discard` are right, and `create`, `update`, `delete` would be worse.
+Weaveling's domain language is deliberate — an idea is *captured*, a project is *started*, an outline *attaches* a scene to a section — and that language belongs in the domain: aggregates, commands, events, errors, and the service methods an author's action maps onto. `capture`, `retitle`, `discard` are right, and `create`, `update`, `delete` would be worse.
 
 **Below the domain it is the wrong register.** Adapters, wiring and libraries are plumbing, and plumbing wants a plain technical name that says what the thing produces or does. Evocative naming there does not add meaning; it hides the type.
 
 | Layer | Register | Example |
 | --- | --- | --- |
-| `core` — aggregate, command, event, error, service | The domain's own words | `PieceCommand::Capture`, `ProjectEvent::Started` |
+| `core` — aggregate, command, event, error, service | The domain's own words | `IdeaCommand::Capture`, `ProjectEvent::Started` |
 | `adapters/*`, `wiring`, `libraries/*` | Plain and technical | `to_dto`, `to_response`, `ProjectEventPublisher` |
 | Test function names | A sentence that states the claim | `a_notification_delivers_long_before_the_next_poll_would` |
 | Test helpers | Read at the call site, article-prefixed | `a_title()`, `an_author()`, `at(1_000)` |
@@ -57,17 +57,17 @@ Singular, built on the aggregate's own name — `ProjectEventPublisher`, not `Pr
 
 Everything in a `contract` crate crosses a process boundary, and the suffix says which direction:
 
-- **`*Request`** — a REST body coming in: `CapturePieceRequest`, `OpenBoardRequest`.
+- **`*Request`** — a REST body coming in: `CaptureIdeaRequest`, `OpenBoardRequest`.
 - **`*Response`** — a REST body going out that is not a resource: `AddedSectionResponse`.
-- **`*DTO`** — everything else on the wire: resources (`PieceDTO`), value objects (`SpotDTO`), event payloads (`PieceEventDTO`) and message payloads (`MoreToSweepDTO`).
+- **`*DTO`** — everything else on the wire: resources (`IdeaDTO`), value objects (`SpotDTO`), event payloads (`IdeaEventDTO`) and message payloads (`MoreToSweepDTO`).
 
-`DTO` mostly earns its place as *disambiguation* — `Piece`/`PieceDTO`, `PieceEvent`/`PieceEventDTO` — but it marks a wire shape even where no domain type shares the name, because one unmarked type among a dozen reads as an oversight rather than a decision.
+`DTO` mostly earns its place as *disambiguation* — `Idea`/`IdeaDTO`, `IdeaEvent`/`IdeaEventDTO` — but it marks a wire shape even where no domain type shares the name, because one unmarked type among a dozen reads as an oversight rather than a decision.
 
-**One suffix, never a pile of them.** `MoreToSweepMsgPayloadDTO` says *data crossing a boundary* three times, and a `Pieces` in the name stutters against `pieces_contract`. Spelling out what a thing **is** is the rule; stacking what it **is made of** is not.
+**One suffix, never a pile of them.** `MoreToSweepMsgPayloadDTO` says *data crossing a boundary* three times, and an `Ideas` in the name stutters against `ideas_contract`. Spelling out what a thing **is** is the rule; stacking what it **is made of** is not.
 
 ### Reading something out of something else
 
-`<thing>_in(<source>)` when a value is extracted from a message or envelope: `project_in(message)`, `piece_in(message)`, `event_in(message)`, `published_in(message)`. This is distinct from `to_*`, which converts a whole value rather than picking one out.
+`<thing>_in(<source>)` when a value is extracted from a message or envelope: `project_in(message)`, `idea_in(message)`, `event_in(message)`, `published_in(message)`. This is distinct from `to_*`, which converts a whole value rather than picking one out.
 
 ### Where participles do belong
 
@@ -119,7 +119,7 @@ Say why the expectation holds or what breaks if it does not — never restate th
 
 ## Manifests
 
-- Dependencies are grouped: workspace crates, then this feature's own crates, then **foreign contracts** under a comment saying what they are. A feature may reach across the seam for another feature's `contract` crate and nothing else — never its `core`, never its adapters — and the grouping is what makes an accidental `pieces-core` in a `boards` manifest obvious on sight.
+- Dependencies are grouped: workspace crates, then this feature's own crates, then **foreign contracts** under a comment saying what they are. A feature may reach across the seam for another feature's `contract` crate and nothing else — never its `core`, never its adapters — and the grouping is what makes an accidental `ideas-core` in a `boards` manifest obvious on sight.
 
 ## SQL
 

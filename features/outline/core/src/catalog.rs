@@ -36,6 +36,10 @@ pub trait OutlineCatalog: Send + Sync {
         &self,
         attachment: &Attachment,
     ) -> Result<Vec<OutlineId>, CatalogError>;
+
+    async fn mark_gone(&self, attachment: &Attachment) -> Result<(), CatalogError>;
+
+    async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError>;
 }
 
 impl OutlineSummary {

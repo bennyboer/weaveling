@@ -4,10 +4,11 @@ use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use outline_core::{
-    Attachment, CatalogError, Outline, OutlineCatalog, OutlineError, OutlineEvent, OutlineId,
+    CatalogError, Outline, OutlineCatalog, OutlineError, OutlineEvent, OutlineId, OutlineService,
 };
 use thiserror::Error;
 
+use crate::letting_go::{NotLetGo, let_go_of_what_is_gone};
 use crate::publishing::{
     UnreadableOutlineEvent, outline_in, when_attached, when_detached, when_section_removed,
 };
@@ -17,6 +18,7 @@ const NAME: &str = "index-attachments";
 pub struct AttachmentIndexProjector {
     events: EventSourcingService<Outline>,
     catalog: Arc<dyn OutlineCatalog>,
+    outlines: OutlineService,
 }
 
 #[derive(Debug, Error)]
@@ -27,29 +29,35 @@ enum NotIndexed {
     Events(#[from] ServiceError<OutlineError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    NotLetGo(#[from] NotLetGo),
 }
 
 impl AttachmentIndexProjector {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
         catalog: Arc<dyn OutlineCatalog>,
+        outlines: OutlineService,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: EventSourcingService::new(store, clock),
             catalog,
+            outlines,
         }
     }
 
     async fn index(&self, outline: &OutlineId) -> Result<(), NotIndexed> {
         let standing = self.events.latest(&AggregateId::from(outline)).await?;
-        let holding: Vec<Attachment> = if standing.state.is_discarded() {
-            Vec::new()
-        } else {
-            standing.state.attachments()
-        };
+        if standing.state.is_discarded() {
+            self.catalog.holds(*outline, &[]).await?;
+            return Ok(());
+        }
 
-        self.catalog.holds(*outline, &holding).await?;
+        self.catalog
+            .holds(*outline, &standing.state.attachments())
+            .await?;
+        let_go_of_what_is_gone(&self.outlines, self.catalog.as_ref(), *outline).await?;
 
         Ok(())
     }

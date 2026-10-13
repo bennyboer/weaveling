@@ -10,6 +10,7 @@ use outline_contract::{
 use outline_core::{
     Attachment, KIND, OutlineCatalog, OutlineEvent, OutlineId, SectionId, SectionTitle,
 };
+use scenes_contract::{DELETED as SCENE_DELETED, SceneDeletedDTO};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
@@ -246,7 +247,7 @@ async fn a_discarded_idea_leaves_the_book() {
     let (outline, chapter) = a_book_noting(&wired, "idea_1").await;
 
     wired
-        .tidier
+        .on_idea_discarded
         .handle(&discarded("idea_1"))
         .await
         .expect("tidying should succeed");
@@ -269,7 +270,7 @@ async fn discarding_an_idea_leaves_the_scenes_alone() {
     let (outline, chapter) = a_book_noting(&wired, "idea_1").await;
 
     wired
-        .tidier
+        .on_idea_discarded
         .handle(&discarded("idea_1"))
         .await
         .expect("tidying should succeed");
@@ -295,7 +296,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 
     for _ in 0..2 {
         wired
-            .tidier
+            .on_idea_discarded
             .handle(&discarded("idea_1"))
             .await
             .expect("a redelivery is not a failure");
@@ -308,7 +309,7 @@ async fn discarding_an_idea_no_book_ever_noted_is_harmless() {
     a_book_noting(&wired, "idea_1").await;
 
     wired
-        .tidier
+        .on_idea_discarded
         .handle(&discarded("idea_elsewhere"))
         .await
         .expect("an idea in no book is nothing to do");
@@ -372,9 +373,13 @@ async fn discarding_an_idea_still_indexed_in_a_discarded_book_is_harmless() {
         .await
         .expect("holding should succeed");
 
-    wired.tidier.handle(&discarded("idea_1")).await.expect(
-        "a discarded book has nothing left to detach, so this must not end in dead letters",
-    );
+    wired
+        .on_idea_discarded
+        .handle(&discarded("idea_1"))
+        .await
+        .expect(
+            "a discarded book has nothing left to detach, so this must not end in dead letters",
+        );
 }
 
 #[tokio::test]
@@ -387,7 +392,166 @@ async fn a_discard_that_is_not_a_published_event_is_refused() {
     );
 
     assert!(
-        wired.tidier.handle(&nonsense).await.is_err(),
+        wired.on_idea_discarded.handle(&nonsense).await.is_err(),
         "a message the listener cannot act on belongs in dead letters, not silently dropped"
+    );
+}
+
+fn scene_deleted(scene: &str) -> Message {
+    Message::opening(
+        RoutingKey::parse(SCENE_DELETED).expect("a declared routing key is fine"),
+        serde_json::to_value(SceneDeletedDTO {
+            scene: scene.to_owned(),
+        })
+        .expect("a deletion is plain data"),
+        at(1_000),
+    )
+}
+
+#[tokio::test]
+async fn a_deleted_scene_is_taken_out_of_the_book() {
+    let wired = a_workbench();
+    let (outline, chapter) = a_book_holding(&wired, &["scene_1", "scene_2"]).await;
+
+    wired
+        .on_scene_deleted
+        .handle(&scene_deleted("scene_1"))
+        .await
+        .expect("taking it out should succeed");
+
+    let standing = wired
+        .outlines
+        .get(&outline.to_string())
+        .await
+        .expect("reading should succeed");
+    assert_eq!(
+        standing.state.attachments_in(&chapter),
+        vec![a_scene("scene_2")],
+        "a book that still held a deleted scene would point at nothing"
+    );
+}
+
+async fn placed_but_not_yet_indexed(wired: &Wired, held: Attachment) -> (OutlineId, SectionId) {
+    let outline = wired
+        .outlines
+        .open("project_1", &an_author())
+        .await
+        .expect("opening should succeed")
+        .id;
+    let chapter = a_chapter(wired, &outline, "Chapter 1").await;
+    wired
+        .outlines
+        .attach(
+            &outline.to_string(),
+            held,
+            chapter,
+            None,
+            None,
+            &an_author(),
+        )
+        .await
+        .expect("attaching should succeed");
+
+    (outline, chapter)
+}
+
+#[tokio::test]
+async fn a_scene_deleted_before_its_placement_was_indexed_still_leaves_the_book() {
+    let wired = a_workbench();
+    let (outline, chapter) = placed_but_not_yet_indexed(&wired, a_scene("scene_1")).await;
+
+    wired
+        .on_scene_deleted
+        .handle(&scene_deleted("scene_1"))
+        .await
+        .expect("hearing the deletion first should succeed");
+    wired.settle().await;
+
+    let standing = wired
+        .outlines
+        .get(&outline.to_string())
+        .await
+        .expect("reading should succeed");
+    assert!(
+        standing.state.attachments_in(&chapter).is_empty(),
+        "the index learns of the placement late, and must let go of what is already gone"
+    );
+}
+
+#[tokio::test]
+async fn an_idea_discarded_before_its_placement_was_indexed_still_leaves_the_book() {
+    let wired = a_workbench();
+    let (outline, chapter) = placed_but_not_yet_indexed(&wired, an_idea("idea_1")).await;
+
+    wired
+        .on_idea_discarded
+        .handle(&discarded("idea_1"))
+        .await
+        .expect("hearing the discard first should succeed");
+    wired.settle().await;
+
+    let standing = wired
+        .outlines
+        .get(&outline.to_string())
+        .await
+        .expect("reading should succeed");
+    assert!(
+        standing.state.attachments_in(&chapter).is_empty(),
+        "the index learns of the placement late, and must let go of what is already gone"
+    );
+}
+
+#[tokio::test]
+async fn hearing_the_same_scene_deletion_twice_is_harmless() {
+    let wired = a_workbench();
+    a_book_holding(&wired, &["scene_1"]).await;
+
+    for _ in 0..2 {
+        wired
+            .on_scene_deleted
+            .handle(&scene_deleted("scene_1"))
+            .await
+            .expect("a redelivery is not a failure");
+    }
+}
+
+#[tokio::test]
+async fn deleting_a_scene_no_book_held_is_harmless() {
+    let wired = a_workbench();
+    a_book_holding(&wired, &["scene_1"]).await;
+
+    wired
+        .on_scene_deleted
+        .handle(&scene_deleted("scene_never_placed"))
+        .await
+        .expect("a scene outside every book is not a failure");
+}
+
+#[tokio::test]
+async fn a_scene_deletion_that_is_not_shaped_like_one_is_refused() {
+    let wired = a_workbench();
+    let nonsense = Message::opening(
+        RoutingKey::parse(SCENE_DELETED).expect("a declared routing key is fine"),
+        json!({ "nothing": "useful" }),
+        at(1_000),
+    );
+
+    assert!(wired.on_scene_deleted.handle(&nonsense).await.is_err());
+}
+
+#[tokio::test]
+async fn the_scene_deletion_listener_hears_only_deletions() {
+    let wired = a_workbench();
+
+    assert!(
+        wired
+            .on_scene_deleted
+            .hears(&RoutingKey::parse(SCENE_DELETED).expect("a plain key is fine"))
+    );
+    assert!(
+        !wired
+            .on_scene_deleted
+            .hears(&RoutingKey::parse("scene.idea.linked").expect("a plain key is fine")),
+        "linking an idea leaves a scene where it is in the book"
     );
 }

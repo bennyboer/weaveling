@@ -1,4 +1,6 @@
 mod memory;
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
+mod rows;
 pub mod suite;
 
 #[cfg(feature = "postgres")]

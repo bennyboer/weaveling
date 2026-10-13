@@ -298,6 +298,108 @@ pub async fn forgetting_an_outline_nobody_opened_is_harmless(catalog: &impl Outl
         .expect("forgetting an unknown outline should not fail");
 }
 
+async fn gone_but_held_by(catalog: &impl OutlineCatalog, outline: OutlineId) -> Vec<Attachment> {
+    catalog
+        .gone_but_held(outline)
+        .await
+        .expect("looking for what is gone should succeed")
+}
+
+async fn marked_gone(catalog: &impl OutlineCatalog, attachment: Attachment) {
+    catalog
+        .mark_gone(&attachment)
+        .await
+        .expect("marking gone should succeed");
+}
+
+pub async fn nothing_held_is_gone_until_marked(catalog: &impl OutlineCatalog) {
+    let outline = OutlineId::generate(at(1_000));
+    catalog
+        .holds(outline, &[Attachment::scene("scene_1")])
+        .await
+        .expect("indexing should succeed");
+
+    assert!(gone_but_held_by(catalog, outline).await.is_empty());
+}
+
+pub async fn a_held_scene_marked_gone_is_named(catalog: &impl OutlineCatalog) {
+    let outline = OutlineId::generate(at(1_000));
+    catalog
+        .holds(
+            outline,
+            &[Attachment::scene("scene_1"), Attachment::scene("scene_2")],
+        )
+        .await
+        .expect("indexing should succeed");
+
+    marked_gone(catalog, Attachment::scene("scene_1")).await;
+
+    assert_eq!(
+        gone_but_held_by(catalog, outline).await,
+        vec![Attachment::scene("scene_1")]
+    );
+}
+
+pub async fn a_scene_marked_gone_before_it_was_held_is_named(catalog: &impl OutlineCatalog) {
+    let outline = OutlineId::generate(at(1_000));
+    marked_gone(catalog, Attachment::scene("scene_1")).await;
+
+    catalog
+        .holds(outline, &[Attachment::scene("scene_1")])
+        .await
+        .expect("indexing should succeed");
+
+    assert_eq!(
+        gone_but_held_by(catalog, outline).await,
+        vec![Attachment::scene("scene_1")],
+        "the deletion may be heard before the attachment is indexed"
+    );
+}
+
+pub async fn a_gone_scene_let_go_is_no_longer_named(catalog: &impl OutlineCatalog) {
+    let outline = OutlineId::generate(at(1_000));
+    catalog
+        .holds(outline, &[Attachment::scene("scene_1")])
+        .await
+        .expect("indexing should succeed");
+    marked_gone(catalog, Attachment::scene("scene_1")).await;
+
+    catalog
+        .holds(outline, &[])
+        .await
+        .expect("indexing should succeed");
+
+    assert!(gone_but_held_by(catalog, outline).await.is_empty());
+}
+
+pub async fn marking_the_same_scene_gone_twice_is_harmless(catalog: &impl OutlineCatalog) {
+    let outline = OutlineId::generate(at(1_000));
+    catalog
+        .holds(outline, &[Attachment::scene("scene_1")])
+        .await
+        .expect("indexing should succeed");
+
+    marked_gone(catalog, Attachment::scene("scene_1")).await;
+    marked_gone(catalog, Attachment::scene("scene_1")).await;
+
+    assert_eq!(
+        gone_but_held_by(catalog, outline).await,
+        vec![Attachment::scene("scene_1")]
+    );
+}
+
+pub async fn a_gone_idea_is_not_mistaken_for_a_scene_of_the_same_id(catalog: &impl OutlineCatalog) {
+    let outline = OutlineId::generate(at(1_000));
+    catalog
+        .holds(outline, &[Attachment::scene("shared_1")])
+        .await
+        .expect("indexing should succeed");
+
+    marked_gone(catalog, Attachment::idea("shared_1")).await;
+
+    assert!(gone_but_held_by(catalog, outline).await.is_empty());
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -352,5 +454,20 @@ macro_rules! conformance_tests {
             one_outline_letting_a_scene_go_leaves_the_others_holding_it
         );
         $crate::catalog_conformance_case!($workbench, everything_in_an_outline_names_it);
+        $crate::catalog_conformance_case!($workbench, nothing_held_is_gone_until_marked);
+        $crate::catalog_conformance_case!($workbench, a_held_scene_marked_gone_is_named);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_scene_marked_gone_before_it_was_held_is_named
+        );
+        $crate::catalog_conformance_case!($workbench, a_gone_scene_let_go_is_no_longer_named);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            marking_the_same_scene_gone_twice_is_harmless
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_gone_idea_is_not_mistaken_for_a_scene_of_the_same_id
+        );
     };
 }

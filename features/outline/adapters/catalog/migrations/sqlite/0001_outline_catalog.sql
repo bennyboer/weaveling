@@ -14,3 +14,10 @@ CREATE TABLE outline_attachments (
 );
 
 CREATE INDEX outline_attachments_by_attachment ON outline_attachments (attachment_type, attachment_id, outline);
+
+CREATE TABLE gone_attachments (
+    attachment_type TEXT NOT NULL,
+    attachment_id   TEXT NOT NULL,
+
+    PRIMARY KEY (attachment_type, attachment_id)
+);

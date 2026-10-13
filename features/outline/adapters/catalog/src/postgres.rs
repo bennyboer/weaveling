@@ -5,6 +5,8 @@ use outline_core::{
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
 
+use crate::rows::{attachment_from, attachment_type_of};
+
 const REMEMBER: &str = "
     INSERT INTO outline_summaries (outline, project)
     VALUES ($1, $2)
@@ -36,12 +38,21 @@ const HOLDING: &str = "
     ORDER BY outline
 ";
 
-fn attachment_type_of(attachment: &Attachment) -> &'static str {
-    match attachment {
-        Attachment::Scene(_) => "scene",
-        Attachment::Idea(_) => "idea",
-    }
-}
+const GONE: &str = "
+    INSERT INTO gone_attachments (attachment_type, attachment_id)
+    VALUES ($1, $2)
+    ON CONFLICT DO NOTHING
+";
+
+const GONE_BUT_HELD: &str = "
+    SELECT held.attachment_type, held.attachment_id
+    FROM outline_attachments held
+    JOIN gone_attachments gone
+        ON gone.attachment_type = held.attachment_type
+        AND gone.attachment_id = held.attachment_id
+    WHERE held.outline = $1
+    ORDER BY held.attachment_id, held.attachment_type
+";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/postgres")
@@ -156,6 +167,36 @@ impl OutlineCatalog for PostgresOutlineCatalog {
                 let outline: String = row.try_get("outline").map_err(unreachable)?;
 
                 outline.parse().map_err(unreachable)
+            })
+            .collect()
+    }
+
+    async fn mark_gone(&self, attachment: &Attachment) -> Result<(), CatalogError> {
+        sqlx::query(GONE)
+            .bind(attachment_type_of(attachment))
+            .bind(attachment.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError> {
+        let found = sqlx::query(GONE_BUT_HELD)
+            .bind(outline.to_string())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found
+            .iter()
+            .map(|row| {
+                let attachment_type: String =
+                    row.try_get("attachment_type").map_err(unreachable)?;
+                let attachment_id: String = row.try_get("attachment_id").map_err(unreachable)?;
+
+                attachment_from(&attachment_type, &attachment_id)
             })
             .collect()
     }

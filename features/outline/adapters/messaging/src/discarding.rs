@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
 use eventpublishing::{UnreadableMessage, published_in};
-use eventsourcing::{Agent, ServiceError};
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use outline_core::{
-    Attachment, CatalogError, OutlineCatalog, OutlineError, OutlineService, OutlineServiceError,
-};
+use outline_core::{Attachment, OutlineCatalog, OutlineService};
 use thiserror::Error;
+
+use crate::letting_go::{NotLetGo, let_go_everywhere};
 
 const NAME: &str = "detach-discarded-idea";
 
@@ -21,9 +20,7 @@ enum NotDetached {
     #[error(transparent)]
     Unreadable(#[from] UnreadableMessage),
     #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Outlines(#[from] OutlineServiceError),
+    NotLetGo(#[from] NotLetGo),
 }
 
 pub fn when_discarded() -> Subscription {
@@ -35,41 +32,18 @@ impl DetachOnDiscard {
         Self { outlines, catalog }
     }
 
-    async fn detach_everywhere(&self, note: &Attachment) -> Result<(), NotDetached> {
-        for outline in self.catalog.outlines_holding(note).await? {
-            match self
-                .outlines
-                .detach(&outline.to_string(), note.clone(), None, &nobody())
-                .await
-            {
-                Ok(_) => {}
-                Err(refused) if nothing_left_to_detach(&refused) => {}
-                Err(refused) => return Err(refused.into()),
-            }
-        }
-
-        Ok(())
-    }
-
     async fn work_through(&self, message: &Message) -> Result<(), NotDetached> {
         let discarded = published_in::<IdeaEventDTO>(message)?;
 
-        self.detach_everywhere(&Attachment::idea(&discarded.aggregate.id))
-            .await
+        let_go_everywhere(
+            &self.outlines,
+            self.catalog.as_ref(),
+            &Attachment::idea(&discarded.aggregate.id),
+        )
+        .await?;
+
+        Ok(())
     }
-}
-
-fn nothing_left_to_detach(refused: &OutlineServiceError) -> bool {
-    matches!(
-        refused,
-        OutlineServiceError::Events(ServiceError::Refused(
-            OutlineError::NotAttached | OutlineError::Discarded
-        ))
-    )
-}
-
-fn nobody() -> Agent {
-    Agent::System
 }
 
 #[async_trait::async_trait]

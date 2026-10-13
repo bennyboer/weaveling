@@ -3807,6 +3807,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "sqlx",
+ "thiserror",
  "time",
  "tokio",
  "weaveling-eventsourcing",
@@ -3854,6 +3855,7 @@ dependencies = [
  "weaveling-outline-contract",
  "weaveling-outline-core",
  "weaveling-projects-contract",
+ "weaveling-scenes-contract",
 ]
 
 [[package]]
@@ -3902,6 +3904,7 @@ dependencies = [
  "weaveling-outline-wiring",
  "weaveling-projects-contract",
  "weaveling-registry",
+ "weaveling-scenes-contract",
  "weaveling-wiring",
 ]
 

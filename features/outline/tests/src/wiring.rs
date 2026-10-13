@@ -12,7 +12,8 @@ use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-outline";
 const INDEXING: &str = "index-attachments";
-const TIDYING: &str = "detach-discarded-idea";
+const DETACHING_DISCARDED_IDEAS: &str = "detach-discarded-idea";
+const DETACHING_DELETED_SCENES: &str = "detach-deleted-scene";
 
 pub struct Wired {
     pub outlines: OutlineService,
@@ -25,7 +26,8 @@ pub struct Wired {
     pub catalog: Arc<InMemoryOutlineCatalog>,
     pub projector: Arc<dyn Listener>,
     pub indexer: Arc<dyn Listener>,
-    pub tidier: Arc<dyn Listener>,
+    pub on_idea_discarded: Arc<dyn Listener>,
+    pub on_scene_deleted: Arc<dyn Listener>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
@@ -87,7 +89,8 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     };
     let projector = named(CATALOGUING);
     let indexer = named(INDEXING);
-    let tidier = named(TIDYING);
+    let on_idea_discarded = named(DETACHING_DISCARDED_IDEAS);
+    let on_scene_deleted = named(DETACHING_DELETED_SCENES);
 
     Wired {
         outlines: outline_wiring::service(&ports, &context),
@@ -100,7 +103,8 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
         catalog,
         projector,
         indexer,
-        tidier,
+        on_idea_discarded,
+        on_scene_deleted,
     }
 }
 

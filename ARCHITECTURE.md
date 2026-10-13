@@ -29,7 +29,7 @@ weaveling/
 
 Today's libraries are `clock`, `ids`, `eventsourcing`, `messaging`, `eventpublishing` and `serving`. The last two are the only ones that depend on other libraries, and for the same reason: each is a **join**. `eventpublishing` turns aggregate events into published messages; `serving` turns event-sourcing outcomes into HTTP — `If-Match` into a `Version`, a `Version` into an `ETag`, and a `ServiceError` into a status code.
 
-**`serving::refusal` maps a domain refusal to 409, and that is a default a feature may override.** 409 is right when the caller could resolve the conflict and retry — pinning a piece that is already pinned, capturing a piece twice. It is wrong when the refusal means the addressed thing is simply *not there*: `PATCH /boards/{board}/pieces/{piece}` for a piece that was never pinned is refused as `NotPinned`, and the honest answer is **404**, because the URL names a placement that does not exist. So the feature's adapter matches that one refusal before falling through to the library. The rule: the library knows HTTP, the feature knows which of its own refusals mean *absent* rather than *conflicting*.
+**`serving::refusal` maps a domain refusal to 409, and that is a default a feature may override.** 409 is right when the caller could resolve the conflict and retry — pinning an idea that is already pinned. It is wrong when the refusal means the addressed thing is simply *not there*: `PATCH /boards/{board}/ideas/{idea}` for an idea that was never pinned is refused as `NotPinned`, and the honest answer is **404**, because the URL names a placement that does not exist. So the feature's adapter matches that one refusal before falling through to the library. The rule: the library knows HTTP, the feature knows which of its own refusals mean *absent* rather than *conflicting*.
 
 **Why many crates:** in Rust a crate boundary *is* an enforced dependency rule. "Persistence must not leak into business logic" stops being a code-review convention and becomes a compile error, because the crate simply doesn't list the dependency. Crates also give parallel compilation and caching.
 
@@ -37,7 +37,7 @@ Today's libraries are `clock`, `ids`, `eventsourcing`, `messaging`, `eventpublis
 
 ### Feature anatomy — the onion
 
-Each feature is a slice of the domain (project management, pieces, board, timeline, …) and is internally an **onion**: a pure core, wrapped in a ring of adapters.
+Each feature is a slice of the domain (project management, ideas, scenes, board, timeline, …) and is internally an **onion**: a pure core, wrapped in a ring of adapters.
 
 ```
 features/
@@ -105,9 +105,9 @@ Feature tests are written **from a business perspective**: they assert observabl
 | `features` | libraries, own contract (adapters only — never `core`) | **other features** |
 | `libraries` | libraries (shallowly) | features, services |
 
-The **feature → feature** ban is the load-bearing one. When two features want the same thing there are exactly two legal moves: the *service* composes them, or the shared concept sinks into a `libraries/` crate. (First real case: `pieces` and `boards`, resolved by neither move — the client joins them, which is legal because `clients` may depend on contract crates. See [the board join](#the-board-renders-through-a-frontend-join).)
+The **feature → feature** ban is the load-bearing one. When two features want the same thing there are exactly two legal moves: the *service* composes them, or the shared concept sinks into a `libraries/` crate. (First real case: `ideas` and `boards`, resolved by neither move — the client joins them, which is legal because `clients` may depend on contract crates. See [the board join](#the-board-renders-through-a-frontend-join).)
 
-**Each feature owns its own database, and that is what makes the ban physical.** The crate table above is enforced by the compiler; it says nothing about the store underneath, and a foreign key crossing a feature boundary is the one way to re-couple two features that no Rust rule would catch. So every feature gets its **own PostgreSQL database** on the shared cluster, not a schema and not a shared one — because PostgreSQL refuses a cross-database reference outright (`cross-database references are not implemented`), so the join and the foreign key are not merely forbidden, they are unwritable. Which is also why cross-feature references are opaque link types — `PieceLink`, `ProjectLink` — declared by the feature doing the referring, never imported from the feature being referred to.
+**Each feature owns its own database, and that is what makes the ban physical.** The crate table above is enforced by the compiler; it says nothing about the store underneath, and a foreign key crossing a feature boundary is the one way to re-couple two features that no Rust rule would catch. So every feature gets its **own PostgreSQL database** on the shared cluster, not a schema and not a shared one — because PostgreSQL refuses a cross-database reference outright (`cross-database references are not implemented`), so the join and the foreign key are not merely forbidden, they are unwritable. Which is also why cross-feature references are opaque link types — `IdeaLink`, `ProjectLink` — declared by the feature doing the referring, never imported from the feature being referred to.
 
 This is the same reasoning as the crate boundary rather than an extra rule: two things that must not know about each other are kept where they *cannot*. It costs a connection pool per feature and a set of migrations per feature; it buys a feature that can be lifted into its own service with `pg_dump`, and it removes the whole class of schema decisions that quietly weld two features together.
 
@@ -139,11 +139,11 @@ Three practical decisions that follow from the layout:
 
 **UUID v7** ([RFC 9562](https://www.rfc-editor.org/rfc/rfc9562), 2024) everywhere — not v4. A 48-bit Unix-millisecond prefix followed by 74 random bits, so ids are lexicographically sortable and sort order equals creation order.
 
-- **Why:** monotonic keys append at the right edge of a B-tree instead of scattering inserts across it — fewer page splits, less dirtied cache, less WAL. Postgres uses heap tables rather than a clustered index, so the effect is milder than the MySQL horror stories, but the primary-key index still pays. This is irrelevant for projects (dozens per user) and decisive for **pieces** (thousands per book) and the **event log** (append-only, the most insert-heavy table in the whole design). Setting one convention now beats choosing per entity later. Bonus: `ORDER BY id` *is* creation order, so cursor pagination needs no extra column.
+- **Why:** monotonic keys append at the right edge of a B-tree instead of scattering inserts across it — fewer page splits, less dirtied cache, less WAL. Postgres uses heap tables rather than a clustered index, so the effect is milder than the MySQL horror stories, but the primary-key index still pays. This is irrelevant for projects (dozens per user) and decisive for **ideas and scenes** (thousands per book) and the **event log** (append-only, the most insert-heavy table in the whole design). Setting one convention now beats choosing per entity later. Bonus: `ORDER BY id` *is* creation order, so cursor pagination needs no extra column.
 - **Cost:** an id leaks its creation time to millisecond precision, and entropy drops from 122 random bits to 74 (still far past any collision concern). Acceptable for a login-gated tool; revisit if ids ever land in public share URLs.
 - **The timestamp is injected, never read inside the domain.** Use `Uuid::new_v7(Timestamp::from_unix(…))` fed by the same `now` the aggregate receives — not `Uuid::now_v7()`, which would smuggle a clock read into `core`. This keeps the domain pure, keeps tests deterministic, and makes an id's embedded timestamp agree with its aggregate's `created_at` by construction rather than by luck.
 
-**Ids are prefixed on the wire and in logs: `project_019a4f…`, `scene_019a4f…`.** The prefix is mechanical — the aggregate's type name, lowercased and singular, plus an underscore — so `piece_`, `thread_` and `codex_` need no decision when they arrive. Inside the server `ProjectId` and `SceneId` are distinct newtypes, so the compiler already prevents mixing them — but the moment an id becomes a string (a URL, a JSON field, a log line, a bug report) that protection is gone. The prefix restores it exactly where it was missing.
+**Ids are prefixed on the wire and in logs: `project_019a4f…`, `scene_019a4f…`.** The prefix is mechanical — the aggregate's type name, lowercased and singular, plus an underscore — so `thread_` and `codex_` need no decision when they arrive. Inside the server `ProjectId` and `SceneId` are distinct newtypes, so the compiler already prevents mixing them — but the moment an id becomes a string (a URL, a JSON field, a log line, a bug report) that protection is gone. The prefix restores it exactly where it was missing.
 
 - **Where it lives: `core`, on `Display`/`FromStr`.** The layering argument says a prefix is a wire concern belonging in `to_dto`; that is overruled because the biggest benefit is *logs*, and `StoreError::NotFound(SceneId)` formats through `Display`. Put the prefix in the adapter and every internal log line still shows a bare UUID.
 - **`FromStr` requires the prefix** rather than accepting either form, in HTTP routes included. Leniency would defeat the point: a bare UUID parses as *any* id type, which is the confusion being eliminated. Sending a project id to `GET /scenes/{id}` is now a **400 saying so**, not a 404 indistinguishable from "deleted". Accepting both forms was considered and rejected — it re-opens that hole for bare ids, and strict-then-lenient is a harmless relaxation while lenient-then-strict is a breaking change. The friction it would have saved (pasting a bare id from psql into curl) is answered by the error message instead, which names the prefix it wanted.
@@ -159,20 +159,20 @@ The single most important architectural decision. The domain splits into two reg
 
 Coarse-grained, relatively low-frequency changes where history has real value:
 
-- capture, retitle and discard pieces
+- capture, retitle and discard ideas
 - pin, move and unpin them on a board
-- place pieces in the outline, or reorder what is already there
-- attach a codex entity to a piece
+- place scenes in the outline, or reorder what is already there
+- attach a codex entity to an idea
 - add or route a thread
 - set time buckets and before/after relations
 
-The vocabulary is settled in [Pieces and views](#pieces-and-views--the-non-linear-model): pieces are the pool, and each view owns its own arrangement of them.
+The vocabulary is settled in [Ideas, scenes and views](#ideas-scenes-and-views--the-non-linear-model): ideas and scenes are the two pools, and each view owns its own arrangement of them.
 
 This regime uses **event-sourcing + CQRS**. It buys us a full audit ("who changed what"), time-travel, a natural basis for merging structural changes between collaborators, and undo/redo whenever we want it. Note the ordering: the audit log is what we are actually building for, and **undo/redo is deliberately not on the roadmap yet** — event sourcing keeps the option free, which is different from the feature being in scope.
 
 ### 2. Prose — CRDT
 
-The actual typing inside a piece is character-level, high-frequency, and needs **intention-preserving merge** when multiple authors edit the same paragraph at once. Event-sourcing does **not** solve this on its own, and routing keystrokes through command validation + projections would make typing laggy.
+The actual typing inside a scene is character-level, high-frequency, and needs **intention-preserving merge** when multiple authors edit the same paragraph at once. Event-sourcing does **not** solve this on its own, and routing keystrokes through command validation + projections would make typing laggy.
 
 Prose therefore uses a **CRDT**:
 
@@ -193,11 +193,11 @@ Unlike the rest of this document, these decisions are **backed by running spikes
 
 **Editor: ProseMirror.** Chosen over Quill for **decorations** — a presentation layer painted *over* the document rather than into it. Spellcheck squiggles, codex mention highlights, thread anchors and later "who wrote this" are all views, not content: they must not end up in the CRDT, in the export, or in another author's replica. Quill's Delta model has no equivalent — highlighting a word means writing a format attribute into the content. ProseMirror also brings a real schema, which is what makes "an author may put a table here" a checkable statement. Licensing: ProseMirror, `y-prosemirror` and Yjs are all MIT, so a proprietary product is fine.
 
-**Shared type: `Y.XmlFragment`, not `Y.Text`.** A piece holds whatever the author put in it. `Y.Text` models one flat run of characters with marks and cannot express block structure at all. `y-prosemirror` maps a ProseMirror document onto an `XmlFragment` of `XmlElement`s and `XmlText`s — that is the thing we store, sync and persist.
+**Shared type: `Y.XmlFragment`, not `Y.Text`.** A scene holds whatever the author put in it. `Y.Text` models one flat run of characters with marks and cannot express block structure at all. `y-prosemirror` maps a ProseMirror document onto an `XmlFragment` of `XmlElement`s and `XmlText`s — that is the thing we store, sync and persist.
 
-**Piece granularity belongs to the author.** A piece is *not* defined to be a paragraph. One piece per chapter is legal; one per paragraph is the likelier default; nothing in the system may assume either. The consequence is that **merge granularity follows piece granularity**: two authors inside one piece share a CRDT and contend, two authors in sibling pieces never touch. Coarser pieces mean more contention — an author's trade-off, not a constraint we impose.
+**Scene granularity belongs to the author.** A scene is *not* defined to be a paragraph. One scene per chapter is legal, and so is one per paragraph; nothing in the system may assume either. The consequence is that **merge granularity follows scene granularity**: two authors inside one scene share a CRDT and contend, two authors in sibling scenes never touch. Coarser scenes mean more contention — an author's trade-off, not a constraint we impose.
 
-**One CRDT document per piece.** Not one per book. A book-sized document means every reader loads the entire history and every keystroke touches one hot object. Per piece keeps updates small, allows lazy loading during an in-order walk, and makes compaction a per-piece job that can run incrementally.
+**One CRDT document per scene.** Not one per book. A book-sized document means every reader loads the entire history and every keystroke touches one hot object. Per scene keeps updates small, allows lazy loading during an in-order walk, and makes compaction a per-scene job that can run incrementally.
 
 **Images are references, not bytes.** An `image` node carries a `src` into blob storage. Bytes embedded in a CRDT are bytes in *every* replica forever — including the tombstoned ones nobody can see. This is the same decision as blobs under [Supporting Concerns](#supporting-concerns-noted-for-later), arrived at from the opposite direction.
 
@@ -238,7 +238,7 @@ One wrinkle worth remembering: wasm-bindgen implements `Send`/`Sync` for `JsValu
 
 **Wire compatibility is the point.** Speaking the standard format means the client can use `y-websocket` as-is and we inherit reconnect-with-backoff, resync, and awareness timeouts rather than writing them. It also decouples the halves: either side can be replaced independently, which is exactly the optionality the [Frontend](#frontend--full-stack-rust) escape hatch depends on.
 
-**The server is a participant, not a relay.** A scene that someone is editing is held in memory as a **`LiveScene`** — its own `Doc`, to which every update is applied. That is what lets a peer who was offline for a week be served by the server rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections attach to. One `LiveScene` per scene, and one scene per piece, so the chain from piece to CRDT document is 1:1 the whole way down.
+**The server is a participant, not a relay.** A scene that someone is editing is held in memory as a **`LiveScene`** — its own `Doc`, to which every update is applied. That is what lets a peer who was offline for a week be served by the server rather than by whichever other client happens to be connected, and it is the hook that persistence, compaction and search projections attach to. One `LiveScene` per scene, so the chain from scene to CRDT document is 1:1 the whole way down.
 
 The "room" vocabulary the spike borrowed from `y-websocket` is deliberately **not** used: there is no room in this domain, only a scene that happens to have people in it. `LiveScenes::join(id)` hands out the one live copy, loading it from the store if nobody has it open.
 
@@ -256,23 +256,21 @@ The spikes proved the technology. This is where it lands in the codebase.
 
 **A scene is its own aggregate because it has its own consistency model.** Structure is event-sourced with optimistic concurrency on a version column; a scene is a CRDT that merges without coordination. One cannot be nested inside the other without one of them being wrong. The feature split is not tidiness — it is the two-speed model made structural.
 
-**A scene has its own id; the piece links to it.** `SceneId` is a UUID v7 like every other identifier here — generated when the scene is created, derivable from nothing. Which scenes a piece shows is carried by the piece's **event stream**, as `SceneAttached { scene }`.
+**A scene has its own id, and it is a pool of its own.** `SceneId` is a UUID v7 like every other identifier here — generated when the scene is created, derivable from nothing. A scene belongs to a project, carries its own title, and links to the ideas it draws on. Nothing else holds it; the outline only points at it.
 
-*Considered and rejected: making a scene's id equal its piece's id.* It is genuinely tempting — the scene becomes derivable, so bringing one into existence needs no coordinating write at all. Two things sank it:
+*Considered and rejected, back when a scene hung off a piece (the pool's single kind before [it split in two](#ideas-and-scenes-are-two-pools--decided)): making a scene's id equal its piece's id.* It was genuinely tempting — the scene becomes derivable, so bringing one into existence needs no coordinating write at all. Two things sank it:
 
-- **It bakes "one scene per piece" into the key.** A piece plausibly wants a body, a synopsis and author's notes (the Scrivener arrangement), or two drafts of the same scene. Any of those needs a discriminator, and we would have to guess its shape *now* — is the second axis a **role** or a **variant**? Guess wrong and the key gets reshaped twice. With an opaque id the semantics live in the link instead, and a link is far cheaper to extend than a key.
-- **The risk it avoided was smaller than it looked.** The worry was a two-phase create across two aggregates with no shared transaction. But **ordering** fixes that, not identity: write the scene first, emit the attachment second. A failure between them leaves an **orphan** — unreferenced bytes a sweep collects — not a **dangle**, which is a reference to something that does not exist. Orphans are benign; this is ordinary referential discipline rather than a new class of bug.
+- **It bakes "one scene per piece" into the key.** A piece plausibly wanted a body, a synopsis and author's notes (the Scrivener arrangement), or two drafts of the same scene. Any of those needs a discriminator, and we would have had to guess its shape up front. With an opaque id the semantics live in the link instead, and a link is far cheaper to extend than a key.
+- **The risk it avoided was smaller than it looked.** The worry was a two-phase create across two aggregates with no shared transaction. But **ordering** fixes that, not identity: write the scene first, emit the reference second. A failure between them leaves an **orphan** — unreferenced bytes a sweep collects — not a **dangle**, which is a reference to something that does not exist. Orphans are benign; this is ordinary referential discipline rather than a new class of bug.
 
-What independent ids buy is worth more than the one write they cost: prose can **move between pieces carrying its CRDT history**, which is what makes the open split-piece question answerable at all; a scene could exist without a piece if free-floating research notes ever want one; and `SceneId` is a plain v7 newtype exactly like `ProjectId`, with no special rule to remember.
+The independent id is what made the later split cheap: when ideas and scenes became two pools, scenes already had ids of their own, and nothing had to be re-keyed.
 
-**The link lives on the piece, not on the scene.** "Which writing this piece shows" is a fact about the book's *shape*, so it belongs in the structural history where the audit log can see it. It also keeps the arrows clean: `pieces` holds an opaque id string and never names a scene type, while `scenes` never learns what a piece is. Storing an `owner: PieceId` on the scene instead would drag the pool's vocabulary into the scenes core and leave attachment out of the audit log.
+**The link to an idea lives on the scene.** This reverses the first design, where a piece held `SceneAttached { scene }`. Once there were two pools the rule became [*the relating side owns the link*](#ideas-and-scenes-are-two-pools--decided): a scene draws on ideas, so the scene stores them, and `ideas` never learns what a scene is. Linking and unlinking are published (`scene.idea.linked`, `scene.idea.unlinked`), which is how the appearances projection answers *idea → where it appears*.
 
-This is also what makes multiple scenes per piece cheap when we want them: the discriminator arrives as an **event field** — `SceneAttached { scene, role }` — which is the cheapest place in the whole design to add one, given that event versioning and upcasting were planned from day one. No key reshape, no id migration.
-
-- **A piece that holds no writing has no scene.** Nothing is allocated until a key is pressed, so grouping pieces ("Part One") cost nothing.
+- **A scene is made when there is writing for it.** In the writing view the first words typed into an empty section become a new scene, so sketching structure allocates no `yrs::Doc`s.
 - **The client never computes a scene id — it asks.** The derivation, the ordering, the link: all of it stays server-side. This is what keeps the scheme changeable without touching a single client.
 
-Cross-aggregate cleanup runs the other way: deleting a piece must eventually dispose its scenes, across two aggregates with no shared transaction. That is the **first real job for the transactional outbox** — eventually consistent by construction rather than by concession — and it is the same sweep that collects orphans.
+Cross-feature cleanup runs through the **transactional outbox**, eventually consistent by construction rather than by concession: discarding an idea unlinks it from every scene (`unlink-discarded-idea`), deleting a scene takes it out of the outline (`detach-deleted-scene`), and deleting a project deletes its scenes (`delete-scenes-of-deleted-project`).
 
 **Crate layout**, following the [feature anatomy](#feature-anatomy--the-onion):
 
@@ -300,9 +298,9 @@ Three placements that are not obvious:
 
 **Awareness never reaches `core` at all.** It is relayed as opaque bytes and it lives and dies inside `adapters/sync`. Presence is ephemeral by decision; this is that decision expressed as a dependency arrow.
 
-## Pieces and views — the non-linear model
+## Ideas, scenes and views — the non-linear model
 
-Weaveling is text in many views, not one hierarchy with prose hanging off it. This section settles what a piece is, why the outline is a view rather than the model, and what each view is allowed to own.
+Weaveling is text in many views, not one hierarchy with prose hanging off it. This section settles what ideas and scenes are, why the outline is a view rather than the model, and what each view is allowed to own.
 
 ### The tree is a view, not the model
 
@@ -313,71 +311,71 @@ The obvious model is a tree of nodes with prose attached, and it is wrong here. 
 - The only reordering primitive was "swap two nodes", guarded so a parent could not be swapped with its child. No author thinks *swap these two scenes*; they think *move this after that*, or *promote this scene to a chapter*. Swap is what is cheap when children are a list and one aggregate owns the whole map — mechanism dictating domain vocabulary.
 - Its structure module was ~3,300 lines. Its timeline was an empty page. There was no prose anywhere. It built the container thoroughly and never reached either the content or the second view.
 
-The fix is a single move: **position is not a property of a piece.** Parent, order, timeline placement and board coordinates all belong to the *view* that arranges pieces, never to the thing arranged.
+The fix is a single move: **position is not a property of what is arranged.** Parent, order, timeline placement and board coordinates all belong to the *view* that arranges ideas and scenes, never to the thing arranged.
 
 ### Ideas and scenes are two pools — decided
 
-**Decided 2026-10-01**, after a year of the single-piece model and one complaint that would not go away. The sections above describe what is built today; this describes what replaces it, and why. Until the work lands, where the two disagree, this wins.
+**Decided 2026-10-01**, after a year of the single-piece model and one complaint that would not go away, and built in [M12](./ROADMAP.md#milestone-12--ideas-and-passages) (where scenes were still called passages). Until then the pool held one kind of thing, a **piece**. This is the record of why it became two.
 
-**A piece is doing two jobs and they have different lifecycles.** Today a `Piece` is both a pool-item and a prose container. An **idea** — a character, a what-if, a scrap of dialogue, a title — is disposable: grouped, regrouped and thrown away, and losing one costs an afternoon's thinking. A **scene** is the book: versioned, synced through a CRDT, exported, and losing one is unforgivable. Different durability, different editing model, different value. That is what makes them two pools rather than one type with a flag.
+**A piece was doing two jobs and they had different lifecycles.** A `Piece` was both a pool-item and a prose container. An **idea** — a character, a what-if, a scrap of dialogue, a title — is disposable: grouped, regrouped and thrown away, and losing one costs an afternoon's thinking. A **scene** is the book: versioned, synced through a CRDT, exported, and losing one is unforgivable. Different durability, different editing model, different value. That is what makes them two pools rather than one type with a flag.
 
 **It also explains a complaint that was treated as an interaction problem.** Attaching pieces to outline sections was called *"very weird"* during [M10](./ROADMAP.md#milestone-10--the-outline) and redesigned twice without the feeling going. It was the model surfacing: attaching an *idea* to a section is a category error, because an idea is a note about what the content should be, not the content. No amount of drag-and-drop fixes that.
 
-**Every link is owned by the relating side, never by the idea.** This is [*position is not a property of a piece*](#the-tree-is-a-view-not-the-model) widened from position to every relation. The timeline stores which moments an idea sits at — many per idea, its table, its problem. The cast stores presence. A scene stores the idea that prompted it. An `Idea` is an id, a name, and perhaps a kind and a description, and **it does not change when a view is added**. The alternative — an idea carrying links to sections, moments and threads — makes the one thing that should never change into a junction table that every new view has to edit.
+**Every link is owned by the relating side, never by the idea.** This is [*position is not a property of what is arranged*](#the-tree-is-a-view-not-the-model) widened from position to every relation. The timeline stores which moments an idea sits at — many per idea, its table, its problem. The cast stores presence. A scene stores the idea that prompted it. An `Idea` is an id, a name, and perhaps a kind and a description, and **it does not change when a view is added**. The alternative — an idea carrying links to sections, moments and threads — makes the one thing that should never change into a junction table that every new view has to edit.
 
 **"Where does this idea appear" is a read model.** An appearances projection (the `appearances` feature) subscribing to every view's events and answering *idea → where it appears*. It is a projection, so it is rebuildable and owned by no write path, and a new view joins by publishing rather than by anyone depending on it. It is also what makes an inspector one read instead of asking five features a question four of them answer with nothing.
 
 **Editing is orthogonal to ownership.** Selecting an idea on the board and setting a moment or a character from there writes to the timeline and the cast — the board learns nothing and owns nothing but placement. That is the [frontend join](#the-board-renders-through-a-frontend-join) widened, and it is a UI convenience that the model neither grants nor forbids. The board must stay usable with every inspector blank forever: its value is pre-verbal, and an inspector full of fields invites filling them in before the thinking has happened.
 
-**The outline arranges scenes**, exactly as the board arranges ideas. This is what keeps [*the outline holds structure, never content*](#the-outline-arranges-sections-not-pieces) true rather than breaking it — scenes are already a pool with their own ids and their own feature, so a section referencing one contains nothing.
+**The outline arranges scenes**, exactly as the board arranges ideas. This is what keeps [*the outline holds structure, never content*](#the-outline-arranges-sections-not-scenes) true rather than breaking it — scenes are already a pool with their own ids and their own feature, so a section referencing one contains nothing.
 
 **The cost, and the thing to watch.** A view that can arrange either pool needs a tagged reference — `Idea(id) | Scene(id)` — rather than two parallel sets of code. That is cheap, but a reference-to-anything is how a model turns to soup, so each view says which kinds it accepts rather than accepting all of them by default.
 
 **What is still unknown** is ergonomics, not structure: how often an idea maps one-to-one onto a scene, and what the timeline wants to hold. Those inform the views. The structural question was settled on lifecycle, which is why it did not wait for them.
 
-### Pieces are the pool; views arrange them
+### Ideas and scenes are the pools; views arrange them
 
-A **piece** is a unit of the book: an id, a title, and a link to its scene. It begins as an idea shot onto a board and may end as a chapter. That is all it is — it does not know where it sits.
+An **idea** is an id, a title and the project it belongs to: a character, a what-if, a scrap of dialogue. A **scene** is a unit of the book: an id, a title, its prose and the ideas it draws on. Neither knows where it sits.
 
 Each view is its own feature, with its own aggregate and its own invariants:
 
-| view | arranges pieces by | invariants |
-|---|---|---|
-| `board` | free 2D placement | none — an infinite surface |
-| `outline` | sections that nest, holding pieces | acyclic; a piece sits in at most one section |
-| `timeline` | temporal relation | orderable, nestable buckets |
-| `threads` | named sequences | a piece may be in many |
-| `cast` | character presence | many-to-many |
+| view | arranges | by | invariants |
+|---|---|---|---|
+| `board` | ideas | free 2D placement | none — an infinite surface |
+| `outline` | scenes, with ideas as notes beside them | sections that nest | acyclic; a scene sits in at most one section |
+| `timeline` | ideas and scenes | temporal relation | orderable, nestable buckets |
+| `threads` | ideas and scenes | named sequences | one may be in many |
+| `cast` | ideas and scenes | character presence | many-to-many |
 
 **Not a generic graph with typed edges.** That is the tempting generalisation, and it destroys the thing that makes each view useful: an outline that cannot express "acyclic" is not an outline, and no schema can help a traversal whose meaning lives only in the UI. Five modest features that each answer one question well beat one abstraction that answers none.
 
-**A piece needs no view at all.** It can sit in the pool, unplaced, with prose already written. The board is the workshop; the outline is the manuscript.
+**Neither needs a view at all.** An idea can sit in its pool unplaced, and a scene can have prose written and be in no section. The board is the workshop; the outline is the manuscript.
 
-**Arrangement is shared, viewport is personal.** Where a piece sits in the outline is part of the book and belongs in an event stream. Whether *your* twisty is open, or where your board is scrolled, never is. That is the direct lesson of the `expanded` field above.
+**Arrangement is shared, viewport is personal.** Where a scene sits in the outline is part of the book and belongs in an event stream. Whether *your* twisty is open, or where your board is scrolled, never is. That is the direct lesson of the `expanded` field above.
 
 **One view is privileged.** A book is ultimately linear and export needs an order, so the outline — not the board — is what "the manuscript" means. Better accepted deliberately now than discovered at export time.
 
 ### Naming
 
-Boring nouns for data, place-names for views. A **piece** is a piece wherever it appears; `board`, `outline`, `timeline`, `threads` and `cast` are places an author goes. Rejected: `card`, because a card is how the *board* draws a piece and a row is how the outline draws it — the name would describe one view's rendering. `node` and `graph` are both mechanism words, the same mistake as `tree` one level more abstract.
+Boring nouns for data, place-names for views. An **idea** is an idea and a **scene** a scene wherever they appear; `board`, `outline`, `timeline`, `threads` and `cast` are places an author goes. Rejected: `card`, because a card is how the *board* draws an idea and a row is how the outline draws a scene — the name would describe one view's rendering. `node` and `graph` are both mechanism words, the same mistake as `tree` one level more abstract. `piece`, the first name for the pool, went when the pool split in two; `passage`, the first name for a scene, went in [M13b](./ROADMAP.md#milestone-13b--passages-become-scenes).
 
-### The outline arranges sections, not pieces
+### The outline arranges sections, not scenes
 
-The board was allowed to be simple: a card *is* a piece, so the board stores `piece -> point` and nothing else. The outline is not, and the reason is the table of contents. **A section carries its own title**, because what belongs in a table of contents is rarely the working title of the idea the scene grew from. And **the structure of a book is not the structure of the ideas it came from** — an author plans Part Two before knowing which of their pieces will fill it.
+The board was allowed to be simple: a card *is* an idea, so the board stores `idea -> point` and nothing else. The outline is not, and the reason is the table of contents. **A section carries its own title**, because what belongs in a table of contents is rarely the working title of the idea the scene grew from. And **the structure of a book is not the structure of the ideas it came from** — an author plans Part Two before knowing which of their scenes will fill it.
 
-So a **section** is its own thing: an id, a title, children, and the pieces attached to it. A section may hold several pieces, and a section that holds none is perfectly legal.
+So a **section** is its own thing: an id, a title, children, and what is attached to it — scenes, and ideas as notes beside them. A section may hold several scenes, and a section that holds none is perfectly legal.
 
-**This is not the tree-as-model that [was rejected above](#the-tree-is-a-view-not-the-model), and the difference is worth stating** because the two look alike from a distance. The abandoned implementation's first failure was that *every node needed a parent at the moment of creation*, so there was nowhere to put an unplaced idea. That cannot recur here: pieces live in the pool and the outline is optional. A piece may have prose, sit on the board, and be in no section at all — it simply is not in the book yet. What the outline holds is structure, never content.
+**This is not the tree-as-model that [was rejected above](#the-tree-is-a-view-not-the-model), and the difference is worth stating** because the two look alike from a distance. The abandoned implementation's first failure was that *every node needed a parent at the moment of creation*, so there was nowhere to put an unplaced idea. That cannot recur here: scenes live in their pool and the outline is optional. A scene may have prose and be in no section at all — it simply is not in the book yet. What the outline holds is structure, never content.
 
 **The outline is its own root, and that root is never materialised.** A section's parent is `Option<SectionId>`, where `None` means *directly inside the book*, and the outline holds those top-level sections as its own `children` — the same word `HeldSection` uses, because it means the same thing one level up. There is deliberately no root `Section` standing for the book. The rejected design had one, and it is precisely what made every node need a parent at creation; a materialised root is the mandatory root wearing a different hat. Keeping it implicit is what lets an outline be empty, and lets a section be added with no parent named.
 
-**The trap that design did fall into is still open, though.** Its structure module reached ~3,300 lines and it never got to prose. Sections cost more machinery than "order the pieces" would have, so the guardrail is a hard one: a section has an id, a title, children and pieces, and **nothing else**. No `kind` or `level` field — depth in the tree is the level, and a `kind` would immediately start refusing structures an author wanted. No numbering, which is a rendering. And above all **no expansion state**: `NodeToggled` in an event stream is named above as the structural failure of tree-as-model, and it is the single easiest mistake to repeat here.
+**The trap that design did fall into is still open, though.** Its structure module reached ~3,300 lines and it never got to prose. Sections cost more machinery than "order the scenes" would have, so the guardrail is a hard one: a section has an id, a title, children and attachments, and **nothing else**. No `kind` or `level` field — depth in the tree is the level, and a `kind` would immediately start refusing structures an author wanted. No numbering, which is a rendering. And above all **no expansion state**: `NodeToggled` in an event stream is named above as the structural failure of tree-as-model, and it is the single easiest mistake to repeat here.
 
-**An empty leaf is a warning, never a refusal.** A section with no children and no pieces is a hole in the manuscript, and the view says so — but the aggregate accepts it without complaint. Planning is exactly the act of writing down a structure you have not filled yet, so refusing would break the feature's main use. The same instinct as [`PieceTitle` permitting the empty string](#the-event-catalogue).
+**An empty leaf is a warning, never a refusal.** A section with no children and no scenes is a hole in the manuscript, and the view says so — but the aggregate accepts it without complaint. Planning is exactly the act of writing down a structure you have not filled yet, so refusing would break the feature's main use. The same instinct as [`IdeaTitle` permitting the empty string](#the-event-catalogue).
 
 **An unnamed section is just unnamed.** `SectionTitle` permits `""` so an author can sketch structure before naming it. This once went further — a view drawing an unnamed section that held exactly one piece showed that piece’s title — but that died with the split into two pools ([M12](./ROADMAP.md#milestone-12--ideas-and-passages)): a section now holds scenes, and a scene carries its **own** title, so the name of a scene lives on the scene, not on the place it sits. An unnamed section reads as *Untitled*, and that is the prompt to name it.
 
-**Two orderings, not one.** Sections nest and are ordered among their siblings; pieces are ordered within their section. The manuscript is the depth-first walk: at each section, its own pieces, then its children. That is what `reading_order()` returns, and it is what export will mean.
+**Two orderings, not one.** Sections nest and are ordered among their siblings; scenes are ordered within their section. The manuscript is the depth-first walk: at each section, its own scenes, then its children. That is what `reading_order()` returns, and it is what export will mean.
 
 **Moves are shaped like intent, and one of them is not obvious.** `Move { section, under, after }` is what dragging produces. `Promote` and `Demote` are the outliner's Shift+Tab and Tab, and they exist separately so the audit log records what the author *did* rather than where the section landed — which is also why their events carry only the section id: an event carries the command's parameters and never anything derived from state.
 
@@ -385,29 +383,30 @@ So a **section** is its own thing: an id, a title, children, and the pieces atta
 
 **Promote at the top and demote at the front of a list emit no events.** There is nothing to lift out of, and nothing to nest under. A command that changes nothing produces nothing, the same as [`Reshape`](#the-event-catalogue) emitting only for what actually moved.
 
-**Removing a section lifts its children into its place and returns its pieces to the pool.** Neither is deleted. Pruning a chapter is a structural edit, and it must never be a way to lose prose — the pieces simply stop being in the book, which is where they started.
+**Removing a section lifts its children into its place and returns its scenes to the pool.** Neither is deleted. Pruning a chapter is a structural edit, and it must never be a way to lose prose — the scenes simply stop being in the book, which is where they started.
 
 ### The event catalogue
 
-**`pieces`** — one aggregate per piece:
+**`ideas`** — one aggregate per idea:
 
 ```
-PieceCaptured   { project, title }
-PieceRetitled   { title }
-SceneAttached { scene }
-PieceDiscarded  { }
+Captured  { project, title }
+Retitled  { title }
+Discarded { }
 ```
 
 **`boards`** — one aggregate per board:
 
 ```
-BoardStarted  { project }
-PiecePinned   { piece, at }
-PieceMoved    { piece, to }
-PieceUnpinned { piece }
+Started      { project }
+IdeaPinned   { idea, at }
+IdeaMoved    { idea, to }
+IdeaResized  { idea, to }
+IdeaRaised   { idea }
+IdeaUnpinned { idea }
 ```
 
-Pin, move and unpin are corkboard words, and they keep *the board's arrangement* clearly separate from *the piece exists*.
+Pin, move and unpin are corkboard words, and they keep *the board's arrangement* clearly separate from *the idea exists*.
 
 **`outline`** — one aggregate per outline:
 
@@ -419,21 +418,19 @@ SectionMoved    { section, under, after }
 SectionPromoted { section }
 SectionDemoted  { section }
 SectionRemoved  { section }
-PieceAttached   { piece, to, after }
-PieceDetached   { piece }
+Attached        { attachment, to, after }
+Detached        { attachment, from }
 ```
 
-Attach and detach are the outline's words for *this piece is in the book here*, kept clearly apart from pin and unpin, which are the board's. A piece attached where it already sits elsewhere simply moves — no error, and export can never emit the same text twice.
+Attach and detach are the outline's words for *this scene is in the book here*, kept clearly apart from pin and unpin, which are the board's. An attachment is tagged, a scene or an idea, and an attachment made where it already sits elsewhere simply moves — no error, and export can never emit the same text twice.
 
-**A title may be empty, and that is a value rather than a missing one.** A piece captured on the board starts as `""` and the author types into it. So `PieceTitle` mirrors [`ProjectName`](#identifiers) in every rule but one — it trims, rejects control characters and caps length, and it **permits the empty string**. The asymmetry is deliberate and worth knowing before someone tidies it away: a project is named by an author who has already decided to start one, while a piece exists precisely so that an idea can land *before* it has a name.
+**A title may be empty, and that is a value rather than a missing one.** An idea captured on the board starts as `""` and the author types into it. So `IdeaTitle` mirrors [`ProjectName`](#identifiers) in every rule but one — it trims, rejects control characters and caps length, and it **permits the empty string**. The asymmetry is deliberate and worth knowing before someone tidies it away: a project is named by an author who has already decided to start one, while an idea exists precisely so that a thought can land *before* it has a name.
 
-Untitled is stored as `""`, never as `Option<PieceTitle>`. Two representations of the same absence would force every reader to handle both `None` and `Some("")`, and trimming already collapses a whitespace-only title into that one form.
+Untitled is stored as `""`, never as `Option<IdeaTitle>`. Two representations of the same absence would force every reader to handle both `None` and `Some("")`, and trimming already collapses a whitespace-only title into that one form.
 
 **"Untitled" is a rendering, never a value.** A view draws a placeholder for an empty title; it does not store one. Storing the word would make an author who actually typed "Untitled" indistinguishable from one who typed nothing at all.
 
-**`SceneAttached` is lazy.** A scene is created when the author first opens a piece to write, not when the idea is captured — a fifty-idea brainstorm should not spawn fifty `yrs::Doc`s, particularly while [live scenes are never evicted](./TODO.md). This also answers who emits the attachment: the piece, on first write.
-
-**Moves commit on drop, not during the drag.** Free placement means dragging, and a drag that emits events writes thousands of records per session, which would make the audit log unreadable — defeating the reason for event-sourcing pieces in the first place. In-flight positions travel as **awareness**: ephemeral by construction, timed out on disconnect. The same division as prose, one level up:
+**Moves commit on drop, not during the drag.** Free placement means dragging, and a drag that emits events writes thousands of records per session, which would make the audit log unreadable — defeating the reason for event-sourcing the board in the first place. In-flight positions travel as **awareness**: ephemeral by construction, timed out on disconnect. The same division as prose, one level up:
 
 | | ephemeral | durable |
 |---|---|---|
@@ -442,13 +439,13 @@ Untitled is stored as `""`, never as `Option<PieceTitle>`. Two representations o
 
 The cost is honest: the board needs its own live channel, since awareness in our stack is bound to `/sync/{scene}` and a board is not a scene. Two live channels carrying different things, unable to share a protocol.
 
-**Moves must not conflict.** Moves of *different* pieces commute, so `PieceMoved` takes no strict version check, and concurrent drags of the *same* piece are last-drop-wins. Rejecting a move with "someone else moved it, reload" is the wrong answer for a position — no work is lost, the piece simply lands where the last author dropped it. Optimistic concurrency is reserved for the commands where a conflict means the author's intent no longer applies: pinning and unpinning.
+**Moves must not conflict.** Moves of *different* ideas commute, so `IdeaMoved` takes no strict version check, and concurrent drags of the *same* idea are last-drop-wins. Rejecting a move with "someone else moved it, reload" is the wrong answer for a position — no work is lost, the idea simply lands where the last author dropped it. Optimistic concurrency is reserved for the commands where a conflict means the author's intent no longer applies: pinning and unpinning.
 
 ### The board renders through a frontend join
 
-The board stores `piece -> point`; a corkboard shows words. Because `pieces` and `boards` are separate features and [features may not depend on each other](#dependency-rules), titles arrive by the client fetching both and joining them — the legal move the dependency table already names.
+The board stores `idea -> point`; a corkboard shows words. Because `ideas` and `boards` are separate features and [features may not depend on each other](#dependency-rules), titles arrive by the client fetching both and joining them — the legal move the dependency table already names.
 
-This has a property worth stating outright: **the join is the tolerant read model.** A placement whose piece is gone has nothing to draw. Discarding a piece leaves a dangling placement, and no compensating event or cross-aggregate choreography is needed to collect it — it resolves at render time. The price is that the board may briefly disagree with the pool, which is acceptable for an arrangement and would not be for prose.
+This has a property worth stating outright: **the join is the tolerant read model.** A placement whose idea is gone has nothing to draw. Discarding an idea leaves a placement dangling until `unpin-discarded-idea` collects it, and the client must not depend on that having happened — it resolves at render time. The price is that the board may briefly disagree with the pool, which is acceptable for an arrangement and would not be for prose.
 
 ### Board creation: find-or-start
 
@@ -480,17 +477,17 @@ Weaveling ships in two shapes, and the difference is not a build flag on one pro
 
 ### What this does to the in-memory adapters
 
-They stop being scaffolding. `InMemoryEventStore`, `InMemoryPieceCatalog`, `InMemorySceneStore` and `InProcessDispatcher` become **production code for one of two modes**, which is why every one of them is judged by the same conformance suite as its durable counterpart. The suites were written as a hedge against a database swap; they turn out to be the thing that lets a mode ship without one.
+They stop being scaffolding. `InMemoryEventStore`, `InMemoryIdeaCatalog`, `InMemorySceneStore` and `InProcessDispatcher` become **production code for one of two modes**, which is why every one of them is judged by the same conformance suite as its durable counterpart. The suites were written as a hedge against a database swap; they turn out to be the thing that lets a mode ship without one.
 
-It also **withdraws an argument used repeatedly to defer work**: *"it is in-memory, so it dies at process restart"*. That is true of a test run and false of an author who works all afternoon and exports at the end. The [dual write in the piece catalog](./TODO.md), the deletion cascade, and scenes that are never evicted all stop being free the moment a session is expected to last, and each is recorded with that consequence noted.
+It also **withdraws an argument used repeatedly to defer work**: *"it is in-memory, so it dies at process restart"*. That is true of a test run and false of an author who works all afternoon and exports at the end. The [dual write in the idea catalog](./TODO.md), the deletion cascade, and scenes that are never evicted all stop being free the moment a session is expected to last, and each is recorded with that consequence noted.
 
 ### Export is what makes it persistent, and it proves the events
 
 An export carries the projects, every aggregate's **event streams with their metadata**, and each scene's CRDT state — the last of which `Scene::everything()` already produces, since a `yrs` update from nothing is exactly a full document.
 
-It deliberately does **not** carry the piece catalog, and that is a **choice rather than a constraint** — derived data can perfectly well be exported as a cache warm. Leaving it out buys a smaller file and makes it impossible to import a catalog that disagrees with the events, at the cost of a rebuild pass on import.
+It deliberately does **not** carry the idea catalog, and that is a **choice rather than a constraint** — derived data can perfectly well be exported as a cache warm. Leaving it out buys a smaller file and makes it impossible to import a catalog that disagrees with the events, at the cost of a rebuild pass on import.
 
-That pass needs no new machinery: the export already holds every piece's event stream, so **the importer carries the enumeration** and can feed each stream through the projector as it reads. It is worth being precise about this, because it means local mode is *not* the thing that forces a general rebuild-from-events — [that debt has a different trigger](./TODO.md).
+That pass needs no new machinery: the export already holds every aggregate's event stream, so **the importer carries the enumeration** and can feed each stream through the projector as it reads. It is worth being precise about this, because it means local mode is *not* the thing that forces a general rebuild-from-events — [that debt has a different trigger](./TODO.md).
 
 ### Who reads a refusal differs, the flow does not
 
@@ -500,7 +497,7 @@ Who reads it is a **deployment matter, never something a feature reads**. `Publi
 
 ## Wiring — each feature assembles itself
 
-`app()` used to build every service by hand: which ports each takes, which listener to register, which routers to merge. Three features made it thirty-five lines and it named `ProjectService`, `SceneService`, `LiveScenes`, `PieceService`, `Publishing` and the catalog projector — so adding a feature meant editing the composition root and knowing the feature's insides.
+`app()` used to build every service by hand: which ports each takes, which listener to register, which routers to merge. Three features made it thirty-five lines and it named `ProjectService`, `SceneService`, `LiveScenes`, `IdeaService`, `Publishing` and the catalog projector — so adding a feature meant editing the composition root and knowing the feature's insides.
 
 Every feature now has a **`wiring` crate**, a sibling of `contract`, `core`, `adapters` and `tests`. It takes the feature's ports and returns what the feature contributes to the application. `app()` names no service and no adapter.
 
@@ -510,24 +507,24 @@ Every feature now has a **`wiring` crate**, a sibling of `contract`, `core`, `ad
 let features = vec![
     projects_wiring::wire(&adapters.projects, &context),
     scenes_wiring::wire(&adapters.scenes, &context),
-    pieces_wiring::wire(&adapters.pieces, &context),
+    ideas_wiring::wire(&adapters.ideas, &context),
     boards_wiring::wire(&adapters.boards, &context),
 ];
 ```
 
 Merging routes and registering listeners are then loops over that list. Before this, a feature was named three times — once to wire, once in the listener chain, once in the router merge — so adding one meant three edits in three places, and forgetting the middle one would have silently dropped its projections.
 
-**This was deliberately not a `Feature` trait — until a third backend.** A trait would have bought dynamic dispatch we had no use for, and a shared struct gave the same uniformity with no `dyn`. *Revised 2026-10-07, M13 step 0b:* by then every feature was named some ten times in `services/api` — its `Ports` twice, its database, its `lay_out`, its `wire`, its outbox in `outboxes()` — and forgetting the outbox kept compiling while its messages silently stopped. Local mode would have added a third round of each. See [below](#one-value-per-feature). It is a third *join* library for the same reason as [`eventpublishing`](#the-first-consumer-the-piece-catalog-as-a-projection) and `serving`: `wiring` is where `axum` meets `messaging`, and only wiring crates and the composition root live at that meeting point. The reference implementation lands in the same place — per-feature `*-starter` modules, assembled by the application.
+**This was deliberately not a `Feature` trait — until a third backend.** A trait would have bought dynamic dispatch we had no use for, and a shared struct gave the same uniformity with no `dyn`. *Revised 2026-10-07, M13 step 0b:* by then every feature was named some ten times in `services/api` — its `Ports` twice, its database, its `lay_out`, its `wire`, its outbox in `outboxes()` — and forgetting the outbox kept compiling while its messages silently stopped. Local mode would have added a third round of each. See [below](#one-value-per-feature). It is a third *join* library for the same reason as [`eventpublishing`](#the-first-consumer-the-idea-catalog-as-a-projection) and `serving`: `wiring` is where `axum` meets `messaging`, and only wiring crates and the composition root live at that meeting point. The reference implementation lands in the same place — per-feature `*-starter` modules, assembled by the application.
 
 Two features publish nothing, and carry an empty `listeners` rather than a different return type. That is the trade the loop is bought with, and it costs one `Wired::serving(routes)` call: **uniformity is the point**, and a feature that later grows a listener adds `.listening(…)` without changing its signature.
 
-**Every wiring returns a `Wired`, holding exactly what that feature contributes.** `projects` and `scenes` carry only `routes`; `pieces` carries `routes`, its `listeners`, and its service. A struct beats a bare `Router` because the call site reads the same for every feature and a feature that later grows listeners adds a field rather than changing its signature. What is deliberately *not* uniform is the field set: giving `projects` and `scenes` an empty `listeners` would pull `libraries/messaging` into two features that publish nothing, to say nothing.
+**Every wiring returns a `Wired`, holding exactly what that feature contributes.** `projects` and `scenes` carry only `routes`; `ideas` carries `routes`, its `listeners`, and its service. A struct beats a bare `Router` because the call site reads the same for every feature and a feature that later grows listeners adds a field rather than changing its signature. What is deliberately *not* uniform is the field set: giving `projects` and `scenes` an empty `listeners` would pull `libraries/messaging` into two features that publish nothing, to say nothing.
 
 **Listeners are returned, not registered.** A feature could take the dispatcher and call `listen` itself, but that would tie the feature crate to `InProcessDispatcher`, a concrete type it has no business knowing. Handing the listeners back leaves the root to decide what they are attached to, which is the same reason `Publisher` arrives as a port rather than a dispatcher.
 
-**A feature may depend on another feature's `contract`, and only that.** `boards_messaging` reads `pieces_contract::{DISCARDED, PieceEventDTO}` so it can subscribe to a piece being discarded — the first cross-feature dependency in the codebase, and the moment the messaging seam earns its keep. It is legal because [`contract` is a shared kernel](#feature-anatomy--the-onion), `serde` and nothing else, carrying no behaviour: boards gets the published routing key and wire shape, which is exactly what a subscriber is entitled to, and gets no access to pieces' domain, service or store. The [feature → feature ban](#dependency-rules) exists to stop features *calling* each other; reading a published contract is the opposite of a call.
+**A feature may depend on another feature's `contract`, and only that.** `boards_messaging` reads `ideas_contract::{DISCARDED, IdeaEventDTO}` so it can subscribe to an idea being discarded — the first cross-feature dependency in the codebase, and the moment the messaging seam earns its keep. It is legal because [`contract` is a shared kernel](#feature-anatomy--the-onion), `serde` and nothing else, carrying no behaviour: boards gets the published routing key and wire shape, which is exactly what a subscriber is entitled to, and gets no access to ideas' domain, service or store. The [feature → feature ban](#dependency-rules) exists to stop features *calling* each other; reading a published contract is the opposite of a call.
 
-What a subscriber must not do is reach back for what the message did not carry. When boards needed to know *which board* holds a discarded piece, the tempting fix was to add `project` to the discard event — rejected, because an event carries what changed and the project did not, and because a publisher must not learn what its subscribers need. Boards answers it from its own events instead, with a second projection indexing piece to boards.
+What a subscriber must not do is reach back for what the message did not carry. When boards needed to know *which board* holds a discarded idea, the tempting fix was to add `project` to the discard event — rejected, because an event carries what changed and the project did not, and because a publisher must not learn what its subscribers need. Boards answers it from its own events instead, with a second projection indexing idea to boards.
 
 **The composition root keeps the joins.** Cross-feature work — the deletion saga, and eventually the board reading the pool — cannot come out of a list of independent modules. Wiring covers the routine assembly; anything spanning features stays in `app()` on purpose.
 
@@ -541,7 +538,7 @@ app(Adapters::in_memory(Arc::new(SystemClock)))
 
 At M11 that becomes a per-feature `Ports::backed_by(&pool)`, chosen feature by feature rather than in one god-function. It does put the in-memory adapters in the production dependency graph, which is correct: [local mode](#two-ways-to-run-it) ships them as production.
 
-The [pieces test harness](../features/pieces/tests/src/wiring.rs) calls the real `pieces_wiring::wire`, so the API tests exercise production wiring instead of a parallel copy that could drift from it.
+The [ideas test harness](./features/ideas/tests/src/wiring.rs) calls the real `ideas_wiring::wire`, so the API tests exercise production wiring instead of a parallel copy that could drift from it.
 
 ### One value per feature
 
@@ -579,7 +576,7 @@ The version check and the append are atomic *inside* it — PostgreSQL uses a re
 
 **The outbox is an adapter detail.** This is where the reach for transactions usually happens, so it is worth being blunt: the port says *append these events*. The PostgreSQL adapter appends them **and** writes the outbox rows in one transaction, notifies on that same transaction, and a relay woken by that notification publishes from those rows afterwards. The in-memory adapter does **not** get an outbox: a crash there loses the events along with anything queued, so an outbox would be guarding a failure that cannot lose one without the other — it keeps publishing through the service instead. **[M11b](./ROADMAP.md#milestone-11b--one-flow-in-every-mode) overturns this**, for a reason that has nothing to do with durability: publishing inline means local mode and server mode take different paths, so the suite that runs in memory cannot see a bug that depends on a projection being one beat behind. So the two backends differ in where publishing lives, and each feature's `Ports` constructor chooses the store and its publishing together, which is what stops a double-publish or a silent one being wired by hand. Nothing above the port knows either way.
 
-Everything in this design fits the rule already. Cross-aggregate work — deleting a piece disposing its scenes — was *chosen* to be eventually consistent through the outbox, and cross-feature work is banned outright.
+Everything in this design fits the rule already. Cross-aggregate work — discarding an idea unlinking it from its scenes — was *chosen* to be eventually consistent through the outbox, and cross-feature work is banned outright.
 
 ### No `Tx` in a port signature
 
@@ -623,11 +620,11 @@ Today this is masked because a `LiveScene` is the single holder of the document,
 - **Be selective.** Event-source only where history has value (the structural domain, the audit log). Plain state for settings, presence, search indexes, and blobs. "ES where history has value" — not everything.
 - **Event store:** an events table with per-aggregate streams and optimistic concurrency via a version column. PostgreSQL backs it as of [the store milestone](./ROADMAP.md#milestone-11--the-real-store) — one database per feature, and an in-memory adapter still passing the same conformance suite. Nothing above the port knows which.
 - **Every event carries its agent.** "Who did this" is part of the record, and the slot has to exist from the very first event because it cannot be backfilled: anything written before the field exists is anonymous forever. Until accounts land it holds a placeholder agent, which is cheap now and impossible later.
-- **An event carries what changed, not what it replaced.** `PieceRetitled { title }`, not `{ from, to }`. The previous value is always recoverable by replay, and anything rendering a piece's history is replaying that stream anyway, so it already knows the old title at the moment it needs it. Storing it twice puts a second, uncorrectable copy of one fact into an immutable log, and shapes one event unlike its siblings for a reason that comes from rendering rather than from the domain. The case that would overturn this is a *cross-aggregate* feed — "everything that happened in this project today" — which cannot afford to replay every stream it touches; if that arrives, the prior value is added through an ordinary event version bump and a patch.
-- **Projections / async work:** a **transactional outbox** for reliable projection updates, its relay woken by `pg_notify` on the appending transaction and polling only as a backstop. No message broker for now (see below). The outbox *model* — entry, claim lock, repo port, relay — belongs to `libraries/messaging` rather than here, because it serves every published message and a saga publishes commands, not events. Turning an aggregate's events into messages is a third thing again, and lives in [`libraries/eventpublishing`](#the-first-consumer-the-piece-catalog-as-a-projection), which depends on both and is where the outbox insert will hang. What belongs to the event store is the **atomic insert**: appending events and inserting the outbox rows happen in one transaction, so the event store *adapter* depends on messaging while `libraries/eventsourcing` itself does not. Either way it stays invisible above the port — see [Transactions and Atomicity](#transactions-and-atomicity).
+- **An event carries what changed, not what it replaced.** `Retitled { title }`, not `{ from, to }`. The previous value is always recoverable by replay, and anything rendering an idea's history is replaying that stream anyway, so it already knows the old title at the moment it needs it. Storing it twice puts a second, uncorrectable copy of one fact into an immutable log, and shapes one event unlike its siblings for a reason that comes from rendering rather than from the domain. The case that would overturn this is a *cross-aggregate* feed — "everything that happened in this project today" — which cannot afford to replay every stream it touches; if that arrives, the prior value is added through an ordinary event version bump and a patch.
+- **Projections / async work:** a **transactional outbox** for reliable projection updates, its relay woken by `pg_notify` on the appending transaction and polling only as a backstop. No message broker for now (see below). The outbox *model* — entry, claim lock, repo port, relay — belongs to `libraries/messaging` rather than here, because it serves every published message and a saga publishes commands, not events. Turning an aggregate's events into messages is a third thing again, and lives in [`libraries/eventpublishing`](#the-first-consumer-the-idea-catalog-as-a-projection), which depends on both and is where the outbox insert will hang. What belongs to the event store is the **atomic insert**: appending events and inserting the outbox rows happen in one transaction, so the event store *adapter* depends on messaging while `libraries/eventsourcing` itself does not. Either way it stays invisible above the port — see [Transactions and Atomicity](#transactions-and-atomicity).
 - **An inbox is the dual of the outbox**, and will be wanted for the same reason: a redelivered message must not be handled twice. Deferred alongside the broker, but the shape is known — remember the message id, reject what has already been seen.
 - **Versioning / upcasting** is planned from day one — a book project lives for years and events will evolve. The mechanism is settled: **every event carries its own version**, and upcasting is a set of pure `from -> to` patch functions applied on read, so stored events are never rewritten in place. Adopted from the earlier implementation, where this design existed and was sound but was never exercised — every real event there sat at version zero, and the only patch lived in the library's own tests.
-- **Snapshots** for aggregates to keep rebuilds fast at scale (a paragraph-per-piece book is thousands of pieces).
+- **Snapshots** for aggregates to keep rebuilds fast at scale (a paragraph-per-scene book is thousands of scenes).
 
 ## Messaging — the seam now, the transport later
 
@@ -653,52 +650,52 @@ RabbitMQ's routing has four moving parts — exchange, routing key, binding, que
 
 **The queue is what we were missing**, and its identity there is `{exchange}-{routingKey}-{listenerName}`. We have every part but the last, which is why `Listener` now names itself. That name is not decoration: the inbox that makes redelivery safe is keyed by `listenerName + messageId`, so **idempotency is per listener**. Only the feature knows the right value, and once a broker exists the name is durable deployment state — renaming a queue either strands what it held or reprocesses it. `ListenerName` therefore refuses anything that would not survive as a queue name: lowercase, digits and hyphens.
 
-**A listener binds as many routing keys as it needs.** `listens_to` returns a `Vec<Subscription>`, because a RabbitMQ queue carries several bindings and one pattern is often the wrong shape: the pin index wants `board.piece.pinned` and `board.piece.unpinned` but *not* `board.piece.moved`, and no single pattern expresses that — `board.piece.*` swallows the move, which cost a projection write per drag until it was fixed. The provided `Listener::hears` folds the bindings with `any`, so a message matching two of them still arrives **once**, which is what a queue bound twice does.
+**A listener binds as many routing keys as it needs.** `listens_to` returns a `Vec<Subscription>`, because a RabbitMQ queue carries several bindings and one pattern is often the wrong shape: the pin index wants `board.idea.pinned` and `board.idea.unpinned` but *not* `board.idea.moved`, and no single pattern expresses that — `board.idea.*` swallows the move, which cost a projection write per drag until it was fixed. The provided `Listener::hears` folds the bindings with `any`, so a message matching two of them still arrives **once**, which is what a queue bound twice does.
 
 **`Delivery` is the second thing only a feature knows.** The reference implementation declares queues two ways, and our two coming consumers want one each:
 
 | | queue | a missed message | ours |
 |---|---|---|---|
-| `Delivery::Kept` | durable, shared, dead-lettered | redelivered, then set aside | the piece catalog projector, the deletion saga — a miss corrupts the read model |
+| `Delivery::Kept` | durable, shared, dead-lettered | redelivered, then set aside | the idea catalog projector, the deletion saga — a miss corrupts the read model |
 | `Delivery::Fleeting` | non-durable, auto-delete, one per instance | gone | the board's live channel — a browser that missed one refetches |
 
 So the in-process dispatcher dead-letters a refused `Kept` message and merely logs a refused `Fleeting` one, because nothing will ever replay the latter and a pile nobody drains is worse than a log line. `Kept` is the default: **losing a message has to be chosen, never inherited**. This also settles the local-mode question — `Fleeting` never dead-letters under either transport, so the board needs no mode branch at all.
 
-### The first consumer: the piece catalog as a projection
+### The first consumer: the idea catalog as a projection
 
-`PieceService` no longer writes the catalog. It appends events, **publishes** each one, and a `PieceCatalogProjector` keeps the listing. The vocabulary is deliberately plain — we publish events, we do not announce things — and the types say so: `PieceEventPublisher`, `PieceEventMsg`, `PieceEventDTO`.
+`IdeaService` does not write the catalog. It appends events, **publishes** each one, and an `IdeaCatalogProjector` keeps the listing. (Built in M8, when ideas were still pieces.) The vocabulary is deliberately plain — we publish events, we do not announce things — and the types say so: `IdeaEventPublisher`, `IdeaEventDTO`.
 
-**The message carries the whole event and its metadata**, not a curated summary. The first cut published only the piece id, on the reasoning that the only subscriber re-read state anyway — and that was wrong on a principle worth stating plainly: **a publisher must not know what its subscribers need.** Curate the payload and every new subscriber becomes a change to the publisher, which is the coupling messaging exists to remove. Worse, it does not even work: **features may not depend on features**, so a subscriber outside `pieces` cannot read our event store, and an id-only message is usable only from inside the feature that sent it. The outline wanting piece titles had no legal way to get them.
+**The message carries the whole event and its metadata**, not a curated summary. The first cut published only the id, on the reasoning that the only subscriber re-read state anyway — and that was wrong on a principle worth stating plainly: **a publisher must not know what its subscribers need.** Curate the payload and every new subscriber becomes a change to the publisher, which is the coupling messaging exists to remove. Worse, it does not even work: **features may not depend on features**, so a subscriber outside `ideas` cannot read our event store, and an id-only message is usable only from inside the feature that sent it. The outline wanting titles had no legal way to get them.
 
-So a published message carries the event's fields, its own **version** (each event versions independently, so the field belongs to the variant), the piece id and the **version the event landed at**, the **agent**, and when it happened. Dropping the agent was the sharpest miss: this document already says the agent slot cannot be backfilled, and the first payload silently made every message unable to answer *who did this*.
+So a published message carries the event's fields, its own **version** (each event versions independently, so the field belongs to the variant), the aggregate id and the **version the event landed at**, the **agent**, and when it happened. Dropping the agent was the sharpest miss: this document already says the agent slot cannot be backfilled, and the first payload silently made every message unable to answer *who did this*.
 
-**What is internal stays internal, though.** A snapshot is housekeeping, so it is **not published at all** — `message_for` returns `Option<Message>`, and it is refused twice over: the library skips anything flagged `is_snapshot`, which is right for every aggregate, and the feature's own mapping returns `None` for `PieceEvent::Snapshotted`. The service never hands one over anyway, since `Appended.events` excludes snapshots, so nothing rests on luck. For the same reason there is no `is_snapshot` flag on the wire: a subscriber that has to reason about our compaction is a subscriber we have coupled to our storage.
+**What is internal stays internal, though.** A snapshot is housekeeping, so it is **not published at all** — `message_for` returns `Option<Message>`, and it is refused twice over: the library skips anything flagged `is_snapshot`, which is right for every aggregate, and the feature's own mapping returns `None` for `IdeaEvent::Snapshotted`. The service never hands one over anyway, since `Appended.events` excludes snapshots, so nothing rests on luck. For the same reason there is no `is_snapshot` flag on the wire: a subscriber that has to reason about our compaction is a subscriber we have coupled to our storage.
 
 **The envelope belongs to a library; only the body belongs to the feature.** `libraries/eventpublishing` owns everything that is the same for every aggregate — the routing key, the aggregate id and version, the agent, the timestamp, and refusing to publish snapshots — and calls out to a `fn(&E) -> Option<B>` the feature supplies for the event body alone. `EventPublisher::telling(publisher, told)` is the whole wiring. The reference implementation draws the same line: its `MessagingEventPublisher` builds the envelope and metadata generically and defers to a dev-supplied `EventSerializer` for the body.
 
 That crate depends on both `eventsourcing` and `messaging`, which is why it is its own library rather than a module of either — the reference keeps it out of its eventsourcing *core* for the same reason. It is also where the outbox will go, since the reference's publisher inserts into an outbox rather than publishing directly.
 
-**The body is hand-written, in `contract`.** `PieceEventDTO` is a declared serde type in `pieces-contract`, and `adapters/messaging` maps `PieceEvent` onto it in an exhaustive `match`. Deriving `Serialize` on the domain event would have been four lines and wrong: an innocuous refactor of the enum would silently change the published contract. With a `match`, adding an event **fails to compile** until someone decides what it says on the wire and whether it is published at all.
+**The body is hand-written, in `contract`.** `IdeaEventDTO` is a declared serde type in `ideas-contract`, and `adapters/messaging` maps `IdeaEvent` onto it in an exhaustive `match`. Deriving `Serialize` on the domain event would have been four lines and wrong: an innocuous refactor of the enum would silently change the published contract. With a `match`, adding an event **fails to compile** until someone decides what it says on the wire and whether it is published at all.
 
-**Routing keys are derived, and the declared ones are a guard.** The library builds `{kind}.{event-name}` from metadata, so a key cannot disagree with the event it describes — the earlier hand-written `match` onto constants could drift, and needed a test to say so. `contract` still declares `CAPTURED`, `EVERY_PIECE` and the rest, because subscribers need something to bind to, and two tests assert the derived key and the declared constant agree. Both were checked by breaking them.
+**Routing keys are derived, and the declared ones are a guard.** The library builds `{kind}.{event-name}` from metadata, so a key cannot disagree with the event it describes — the earlier hand-written `match` onto constants could drift, and needed a test to say so. `contract` still declares `CAPTURED`, `EVERY_IDEA` and the rest, because subscribers need something to bind to, and two tests assert the derived key and the declared constant agree. Both were checked by breaking them.
 
-**Publishing is an outbound port, so `core` sees neither `messaging` nor `eventpublishing`.** `core` declares `PieceEventPublisher` and `PublishError` exactly as it declares `PieceCatalog`; `adapters/messaging` implements it. That is what lets the routing keys and payload live in `contract` where a published contract belongs — `core` may not depend on `contract`, so as long as `PieceService` did its own publishing they were stuck in the wrong crate. Under the outbox this port is where the enqueue goes, rather than a direct publish.
+**Publishing is an outbound port, so `core` sees neither `messaging` nor `eventpublishing`.** `core` declares `IdeaEventPublisher` and `PublishError` exactly as it declares `IdeaCatalog`; `adapters/messaging` implements it. That is what lets the routing keys and payload live in `contract` where a published contract belongs — `core` may not depend on `contract`, so as long as `IdeaService` did its own publishing they were stuck in the wrong crate. Under the outbox this port is where the enqueue goes, rather than a direct publish.
 
-**A subscriber may still re-read state, and ours does.** `PieceCatalogProjector` ignores the payload's event fields and reads the piece back, because a *listing* wants current state: re-reading is idempotent, and a late redelivery still reads latest, so it cannot roll the listing back. That is a choice about this projection, not about the message — the two were conflated in the first cut. A subscriber that needs history rather than current state now has everything it needs in the payload, and can guard on `piece.version`.
+**A subscriber may still re-read state, and ours does.** `IdeaCatalogProjector` ignores the payload's event fields and reads the idea back, because a *listing* wants current state: re-reading is idempotent, and a late redelivery still reads latest, so it cannot roll the listing back. That is a choice about this projection, not about the message — the two were conflated in the first cut. A subscriber that needs history rather than current state now has everything it needs in the payload, and can guard on the aggregate's version.
 
 **The service returns what it appended.** `EventSourcingService` used to hand back only a `Version`, which cannot say what happened — so `begin`/`execute`/`execute_at` now return `Appended { version, events: Vec<Recorded<E>> }`. `Recorded` rather than bare events, because the metadata is half of what gets published, and because only per-event metadata carries **each** event's version: a two-event command lands at n+1 and n+2, and the final version alone loses the first. Deriving the routing key from the command instead would have been wrong twice over: a command that changes nothing emits no events (retitling to the same title), and one command may emit several. A snapshot written on the way out is deliberately **not** in `appended.events`: collapsing the log is not news.
 
-**Reading a message back is a `*_in` family.** `message_for` builds one; `event_in` and `piece_in` take one apart, over the library's `published_in`. `every_piece()` hands out the subscription so no caller repeats the pattern or its `expect`.
+**Reading a message back is a `*_in` family.** `message_for` builds one; `event_in` and `idea_in` take one apart, over the library's `published_in`. `every_idea()` hands out the subscription so no caller repeats the pattern or its `expect`.
 
-**A listener is named for the job it does, not the thing it maintains.** So `catalogue-piece`, not `pieces-catalog`. The reference implementation settled the same way — `colors.color-created-update-lookup`, `colors.user-deleted-remove-permissions` — because a feature grows several listeners and a component name cannot tell them apart. The convention is an **imperative verb plus its object**, lowercase and hyphenated, which `ListenerName` already enforces; and it has to be unique across the deployment, because the name becomes a queue name and an inbox key rather than a label.
+**A listener is named for the job it does, not the thing it maintains.** So `catalogue-idea`, not `ideas-catalog`. The reference implementation settled the same way — `colors.color-created-update-lookup`, `colors.user-deleted-remove-permissions` — because a feature grows several listeners and a component name cannot tell them apart. The convention is an **imperative verb plus its object**, lowercase and hyphenated, which `ListenerName` already enforces; and it has to be unique across the deployment, because the name becomes a queue name and an inbox key rather than a label.
 
 ### Read-your-writes, once the listing is a projection
 
 A projection is behind by however long the transport takes, and in process that is zero — which makes it dangerously easy to write a client that silently depends on zero.
 
-The write path was already safe: `POST /pieces` and `PATCH /pieces/{id}` answer from the **event store**, not the catalog, returning the full piece and its `ETag`. Only `GET /pieces` reads the projection. So the fix belonged in the client, and it was to **stop asking**: the pool used to refetch the whole list after a capture, and now it keeps the piece the server just returned. That is honest under either transport, needs no spinner, and removes a request.
+The write path was already safe: `POST /api/ideas` and `PATCH /api/ideas/{id}` answer from the **event store**, not the catalog, returning the full idea and its `ETag`. Only `GET /api/ideas` reads the projection. So the fix belonged in the client, and it was to **stop asking**: the pool used to refetch the whole list after a capture, and now it keeps the idea the server just returned. That is honest under either transport, needs no spinner, and removes a request.
 
-The alternative — leaving the refetch and relying on the in-process dispatcher being synchronous — would have passed every test today and broken on the day a broker landed, with the symptom surfacing in the UI rather than at the seam. The [pieces E2E suite](./clients/web/e2e/pieces.spec.ts) still covers the projection honestly, because several of its tests reload or navigate back to the pool, and a remounted pool reads the catalog and nothing else.
+The alternative — leaving the refetch and relying on the in-process dispatcher being synchronous — would have passed every test today and broken on the day a broker landed, with the symptom surfacing in the UI rather than at the seam. The [ideas E2E suite](./clients/web/e2e/ideas.spec.ts) still covers the projection honestly, because several of its tests reload or navigate back to the pool, and a remounted pool reads the catalog and nothing else.
 
 ### At-least-once is the trap this design has to survive
 
@@ -730,7 +727,7 @@ Two consequences worth knowing. `#[component]` stays — it is independent of th
 
 `leptosfmt` was considered and skipped: with `view!` this rare, another tool in the chain costs more than it returns.
 
-**Every feature's stylesheet nests under its own root selector.** `main.scss` concatenates the partials into one global sheet, so a bare class name in one feature lands on every other. `_boards.scss` lives under `.board`, `_pieces.scss` under `.pool`, `_projects.scss` under `.projects`, `_prose.scss` under `.prose`; `_base`, `_controls` and `_overlays` stay global because being shared is their job.
+**Every feature's stylesheet nests under its own root selector.** `main.scss` concatenates the partials into one global sheet, so a bare class name in one feature lands on every other. `_boards.scss` lives under `.board`, `_ideas.scss` under `.pool`, `_projects.scss` under `.projects`, `_prose.scss` under `.prose`; `_base`, `_controls` and `_overlays` stay global because being shared is their job.
 
 The rule was written after the third collision, and the third one is the argument: a note about `.actions` leaking from the board onto the workspace was filed, and one change later a new `.surface` on the board silently inherited the prose editor's border, padding and `min-height: 8rem` — a ghost box drawn behind the first card. **None of it was caught by tests**, because the suites assert on roles and text. The two that do catch it now assert *layout*: that the board's surface has no box of its own, and that a project row still spreads title, stamp and menu across its width. That is the shape to copy — check a feature's chrome is still where it belongs, not merely that it exists.
 
@@ -768,9 +765,9 @@ The alternative — grouping by *kind of thing* — collapses under its own weig
 
 **Ids are newtypes, and they do not validate.** `ProjectId(String)` and `SceneId(String)` are tags, not parsers. The point is that `rename(id, name)` — two `String`s in the old signature — becomes a compile error when transposed, which an alias (`type ProjectId = String`) would not have caught, since an alias is documentation rather than a type. They deliberately do *not* check the `scene_` prefix: [the client never computes an id](#the-scenes-feature), it echoes back what it was given, and a validating constructor would quietly make the client depend on a format the server should be free to change.
 
-**Ids are declared, not written out.** `ids::id!(PieceId, "piece_")` is the whole of a feature's `id.rs`. Four features had grown byte-identical 136-line copies — the same v7 generation, the same base62 `Display`, the same prefix-stripping `FromStr`, the same nine tests — and every new feature was copying a fifth. The macro generates the type, its impls **and its test module**, so the tests run once per id type against the code that actually backs it, rather than being a copy someone has to remember to keep.
+**Ids are declared, not written out.** `ids::id!(IdeaId, "idea_")` is the whole of a feature's `id.rs`. Four features had grown byte-identical 136-line copies — the same v7 generation, the same base62 `Display`, the same prefix-stripping `FromStr`, the same nine tests — and every new feature was copying a fifth. The macro generates the type, its impls **and its test module**, so the tests run once per id type against the code that actually backs it, rather than being a copy someone has to remember to keep.
 
-A macro rather than a generic `Id<Kind>`: the generic form needs a marker type per feature (and `Piece` is already the aggregate), hand-written impls to dodge the `PhantomData` derive bounds, and it surfaces as `Id<Pieces>` in every error message. The macro keeps the types genuinely distinct and named, which is the property that matters — a `scene_…` string must not parse as a `PieceId`, and there is a generated test saying so.
+A macro rather than a generic `Id<Kind>`: the generic form needs a marker type per feature (and `Idea` is already the aggregate), hand-written impls to dodge the `PhantomData` derive bounds, and it surfaces as `Id<Ideas>` in every error message. The macro keeps the types genuinely distinct and named, which is the property that matters — a `scene_…` string must not parse as an `IdeaId`, and there is a generated test saying so.
 
 The per-feature error types went with it: one `ids::InvalidId` carries the prefix it expected, so the message stays exact while four near-identical error types disappear. It also means `ids` re-exports `Uuid`, `OffsetDateTime` and `Duration` so a feature declaring an id needs no `uuid` dependency at all — three cores dropped theirs.
 
@@ -778,7 +775,7 @@ The per-feature error types went with it: one `ids::InvalidId` carries the prefi
 
 What survives the rule is what the field genuinely has no word for: `Recorded<E>` (an event with its metadata), `Standing<A>` (state plus the version it stands at), and `Kept`/`Fleeting`, where the RabbitMQ words *durable* and *transient* describe the queue rather than the question a feature is actually answering — does missing this matter?
 
-**Name a projection for what it projects, and say that it is one.** `PieceCatalog` stays the port, because `Catalog` distinguishes *this* read model from the board's and the outline's, which are also projections over pieces — a `PiecesReadModel` would leave them all needing the distinguishing noun back. What was missing is that it is a projection at all, so the listener carries it: `PieceCatalogProjector`. That is where the CQRS rules bite, and where a reader meets them.
+**Name a projection for what it projects, and say that it is one.** `IdeaCatalog` stays the port, because `Catalog` distinguishes *this* read model from the board's and the outline's, which are also projections over ideas — an `IdeasReadModel` would leave them all needing the distinguishing noun back. What was missing is that it is a projection at all, so the listener carries it: `IdeaCatalogProjector`. That is where the CQRS rules bite, and where a reader meets them.
 
 **A type is not prefixed with its own module's name.** `scenes::prose::ProseEditor` already says "scene" once, through the path; `SceneEditor` there would say it twice while claiming more than the type does. The `scenes` folder holds two editor-ish things, and the useful distinction between them is what each *owns* rather than which language it is written in: `SceneEditor` is the Leptos component — liveness indicator, host element, focus control, and the lifecycle that creates and destroys what sits inside it — while `ProseEditor` is that surface, ProseMirror plus Yjs plus the socket, reached through `wasm-bindgen`. Naming them so that one visibly contains the other matches how the code nests, and it keeps "prose" meaning exactly one thing at every layer: the rich-text content, which is also the `Y.XmlFragment` key and the `class="prose"` section that wraps it. An editor that handled prose *and* a scene's title would need a new name; this one would not.
 
@@ -791,7 +788,7 @@ Two rules that are not obvious from the files:
 
 The port was verified rather than eyeballed: 163 declarations before and 163 after, the only difference being dart-sass unquoting `[contenteditable="false"]`.
 
-**Routes are paths, and `leptos_router` owns them.** `/` is the workspace and `/projects/{id}` is one project's pool; `route.rs` is reduced to the path builders so one place knows the URL shapes, and the route table itself is a `view!` block. Paths rather than query parameters because they *nest* — `?project=x&scene=y` says nothing about how the two relate, while `/projects/{id}/pieces/{id}` states it, and that is the shape the outline and board will need.
+**Routes are paths, and `leptos_router` owns them.** `/` is the workspace and `/projects/{id}` is one project's pool; `route.rs` is reduced to the path builders so one place knows the URL shapes, and the route table itself is a `view!` block. Paths rather than query parameters because they *nest* — `?project=x&scene=y` says nothing about how the two relate, while `/projects/{id}/ideas/{id}` states it, and that is the shape the outline and board will need.
 
 **Navigation is `<A>`, never a button with a callback.** This was hand-rolled first — a `Route` enum, a parser, and `pushState` plus a `popstate` listener — and it was wrong for a reason that had nothing to do with how many routes there are: navigation was `<button on:click>`, so a project could not be ctrl-clicked into a new tab, showed no URL on hover, offered no *copy link address*, and announced itself to a screen reader as a button. That defeats the entire point of moving to paths, which was shareable links. `leptos_router`'s `<A>` renders a real anchor and intercepts only unmodified left-clicks, so the browser's own affordances keep working. The router also handles `popstate`, nested routes, and route matching, which is the pile of work that hand-rolling was quietly signing up for.
 
@@ -820,7 +817,7 @@ Font bundling/licensing for embedded fonts is a concern for both.
 
 ## Supporting Concerns (noted for later)
 
-- **Search & mention detection** — projections built with **Tantivy** (Rust-native, Lucene-like): full-text search over prose, plus codex alias/mention indexing (the "which pieces does this character appear in" back-links).
+- **Search & mention detection** — projections built with **Tantivy** (Rust-native, Lucene-like): full-text search over prose, plus codex alias/mention indexing (the "which scenes does this character appear in" back-links).
 - **Blobs** (codex and research images) — object storage or filesystem, referenced by ID from events. Not stored as byte columns and not in the event log.
 - **Multi-author** — implies accounts, project membership, and permissions. Real scope, acknowledged early.
 - **Tenancy / ownership scoping** — today every store is **global**: `ProjectStore::list()` returns *every* project, and `get(id)` will hand back any project to anyone who names it. That is correct only while there is exactly one user, which is true for the MVP and false the moment accounts exist. Worth being clear that this is **not a filter to bolt on later**: scoping changes the port itself (`list(owner)` rather than `list()`), and every id-taking method gains an ownership check. Related: **ids are not capabilities**. A v7 id is unguessable in practice (74 random bits), but it leaks its creation time and will end up in logs, URLs and shared links — so authorisation must be explicit, never implied by someone knowing an id.
@@ -828,8 +825,4 @@ Font bundling/licensing for embedded fonts is a concern for both.
 
 ## Status
 
-Phase 1 is built — the projects slice runs end to end in a browser (see [ROADMAP.md](./ROADMAP.md)).
-
-The prose stack was spiked, measured and proven in all four of its risky places — CRDT semantics, `yrs` ↔ `Yjs` compatibility, the editor in Leptos, and sync over WebSocket — and is now being built for real as the `scenes` feature. `contract`, `core`, `adapters/store` and `adapters/sync` exist; the REST read model, the composition root and the client do not yet, so nothing is reachable from a browser.
-
-The structure domain and event sourcing are still design, which means a scene currently belongs to no piece — the link waits on pieces existing at all. The solution is still being woven.
+Phases 1 and 2 are done, and Phase 3 is being built. Where it stands is in [ROADMAP.md](./ROADMAP.md).

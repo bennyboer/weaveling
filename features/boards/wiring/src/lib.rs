@@ -98,13 +98,13 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.catalog.clone(),
         context.clock.clone(),
     );
-    let tidy = UnpinOnDiscard::new(boards.clone(), ports.catalog.clone());
+    let unpin_discarded_ideas = UnpinOnDiscard::new(boards.clone(), ports.catalog.clone());
     let sweep = DiscardBoardsOnProjectDeleted::new(boards.clone());
 
     Wired::serving(boards_rest::router(boards)).listening(vec![
         Arc::new(catalogue),
         Arc::new(index),
-        Arc::new(tidy),
+        Arc::new(unpin_discarded_ideas),
         Arc::new(sweep),
     ])
 }

@@ -569,6 +569,91 @@ async fn discarding_an_idea_unlinks_it_from_every_scene() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn deleting_a_scene_takes_it_out_of_the_book() {
+    use outbox::Cadence;
+    use weaveling_service_api::Relays;
+
+    let fixture = SqliteFixture::setup();
+    let databases = a_file_each(&fixture).await;
+    let clock = Arc::new(SystemClock);
+    let adapters = adapters_on(&databases, clock).await;
+    let outboxes = adapters.outboxes();
+    let consuming = adapters.consuming();
+    let server = TestServer::new(app(adapters));
+
+    let relays = Relays::started(
+        outboxes,
+        consuming,
+        Cadence {
+            deliver_every: std::time::Duration::from_millis(10),
+            sweep_every: std::time::Duration::from_secs(3_600),
+            deliver_at_most: 16,
+            sweep_at_most: 16,
+            kept_for: time::Duration::days(90),
+        },
+    );
+
+    let project = a_project(&server, "Unplacing").await;
+    let opened = server
+        .post("/api/outlines")
+        .json(&json!({ "project": project }))
+        .await;
+    opened.assert_status_ok();
+    let outline = opened.json::<Value>()["id"]
+        .as_str()
+        .expect("an opened outline carries an id")
+        .to_owned();
+    let added = server
+        .post(&format!("/api/outlines/{outline}/sections"))
+        .json(&json!({ "title": "Part One", "under": null, "after": null }))
+        .await;
+    added.assert_status(axum::http::StatusCode::CREATED);
+    let section = added.json::<Value>()["section"]
+        .as_str()
+        .expect("an added section carries its id")
+        .to_owned();
+    let made = server
+        .post("/api/scenes")
+        .json(&json!({ "project": project }))
+        .await;
+    made.assert_status(axum::http::StatusCode::CREATED);
+    let scene = made.json::<Value>()["id"]
+        .as_str()
+        .expect("a scene carries an id")
+        .to_owned();
+    server
+        .post(&format!("/api/outlines/{outline}/attachments"))
+        .json(&json!({
+            "attachment": { "kind": "scene", "id": scene },
+            "section": section,
+            "after": null,
+        }))
+        .await
+        .assert_status_ok();
+
+    server
+        .delete(&format!("/api/scenes/{scene}"))
+        .await
+        .assert_status(axum::http::StatusCode::NO_CONTENT);
+
+    assert!(
+        until(|| async {
+            server
+                .get(&format!("/api/outlines/{outline}"))
+                .await
+                .json::<Value>()["sections"][0]["attachments"]
+                .as_array()
+                .is_some_and(Vec::is_empty)
+        })
+        .await,
+        "the outline owns the placement, so only an outline listener hearing the deletion can let go"
+    );
+
+    relays.stop().await;
+    fixture.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn linking_an_idea_is_announced_and_relayed() {
     use outbox::Cadence;
     use weaveling_service_api::Relays;

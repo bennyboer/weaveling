@@ -12,6 +12,7 @@ type Listed = HashMap<OutlineId, OutlineSummary>;
 struct Attachments {
     by_outline: HashMap<OutlineId, Vec<Attachment>>,
     by_attachment: HashMap<Attachment, BTreeSet<OutlineId>>,
+    gone: HashSet<Attachment>,
 }
 
 #[derive(Debug, Default)]
@@ -118,6 +119,27 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             .get(attachment)
             .map(|holding| holding.iter().copied().collect())
             .unwrap_or_default())
+    }
+
+    async fn mark_gone(&self, attachment: &Attachment) -> Result<(), CatalogError> {
+        self.write_attachments().gone.insert(attachment.clone());
+
+        Ok(())
+    }
+
+    async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError> {
+        let attached = self.read_attachments();
+        let mut found: Vec<Attachment> = attached
+            .by_outline
+            .get(&outline)
+            .into_iter()
+            .flatten()
+            .filter(|held| attached.gone.contains(held))
+            .cloned()
+            .collect();
+        found.sort_by(|one, other| one.as_str().cmp(other.as_str()));
+
+        Ok(found)
     }
 }
 

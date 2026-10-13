@@ -127,7 +127,7 @@ async fn a_discarded_idea_is_taken_off_the_board() {
     let board = a_board_holding(&wired, &["idea_1", "idea_2"]).await;
 
     wired
-        .tidier
+        .on_idea_discarded
         .handle(&discarded("idea_1"))
         .await
         .expect("tidying should succeed");
@@ -147,7 +147,7 @@ async fn hearing_the_same_discard_twice_is_harmless() {
 
     for _ in 0..2 {
         wired
-            .tidier
+            .on_idea_discarded
             .handle(&discarded("idea_1"))
             .await
             .expect("a redelivery is not a failure");
@@ -166,7 +166,7 @@ async fn discarding_an_idea_nobody_pinned_is_harmless() {
     a_board_holding(&wired, &["idea_1"]).await;
 
     wired
-        .tidier
+        .on_idea_discarded
         .handle(&discarded("idea_never_pinned"))
         .await
         .expect("an idea that was never on a board is not a failure");
@@ -230,9 +230,13 @@ async fn discarding_an_idea_still_indexed_on_a_discarded_board_is_harmless() {
         .await
         .expect("holding should succeed");
 
-    wired.tidier.handle(&discarded("idea_1")).await.expect(
-        "a discarded board has nothing left to unpin, so this must not end in dead letters",
-    );
+    wired
+        .on_idea_discarded
+        .handle(&discarded("idea_1"))
+        .await
+        .expect(
+            "a discarded board has nothing left to unpin, so this must not end in dead letters",
+        );
 }
 
 #[tokio::test]
@@ -245,7 +249,7 @@ async fn a_discard_that_is_not_a_published_event_is_refused() {
     );
 
     assert!(
-        wired.tidier.handle(&nonsense).await.is_err(),
+        wired.on_idea_discarded.handle(&nonsense).await.is_err(),
         "a message the listener cannot act on belongs in dead letters"
     );
 }
@@ -278,12 +282,12 @@ async fn the_discard_listener_hears_only_discards() {
 
     assert!(
         wired
-            .tidier
+            .on_idea_discarded
             .hears(&RoutingKey::parse(DISCARDED).expect("a plain key is fine"))
     );
     assert!(
         !wired
-            .tidier
+            .on_idea_discarded
             .hears(&RoutingKey::parse("idea.retitled").expect("a plain key is fine")),
         "nothing else an idea does should move it off a board"
     );
