@@ -1621,3 +1621,104 @@ test("after everything, New section ends the book at the top level", async ({
     flow(page).getByRole("heading", { name: "Epilogue", level: 2 }),
   ).toBeVisible();
 });
+
+const headingAt = (page: Page, named: string, level: number) =>
+  flow(page).getByRole("heading", { name: named, level });
+
+test("Tab in a heading nests its section under the one before, and the cursor stays", async ({
+  page,
+}) => {
+  await aNewProject(page, "TabNests");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await openTheWritingView(page);
+
+  await heading(page, "Part Two").click();
+  await page.keyboard.press("Tab");
+
+  await expect(headingAt(page, "Part Two", 3)).toBeVisible();
+  await expect(headingAt(page, "Part Two", 3)).toBeFocused();
+  await expect
+    .poll(async () =>
+      (await projectsOutline(page)).sections.map(
+        (section: { title: string; parent: string | null }) => [
+          section.title,
+          section.parent !== null,
+        ],
+      ),
+    )
+    .toEqual([
+      ["Part One", false],
+      ["Part Two", true],
+    ]);
+});
+
+test("Shift+Tab in a heading lifts its section out a level", async ({
+  page,
+}) => {
+  await aNewProject(page, "ShiftTabLifts");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Chapter 1", under: "Part One" },
+  ]);
+  await openTheWritingView(page);
+
+  await heading(page, "Chapter 1").click();
+  await page.keyboard.press("Shift+Tab");
+
+  await expect(headingAt(page, "Chapter 1", 2)).toBeVisible();
+  await expect(headingAt(page, "Chapter 1", 2)).toBeFocused();
+});
+
+test("a heading's title being typed survives the heading being nested", async ({
+  page,
+}) => {
+  await aNewProject(page, "TypedThenTab");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await openTheWritingView(page);
+
+  await heading(page, "Part Two").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" and more");
+  await page.keyboard.press("Tab");
+
+  await expect(headingAt(page, "Part Two and more", 3)).toBeVisible();
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One", "Part Two and more"]);
+});
+
+test("a section's menu nests and lifts it, offering only what is possible", async ({
+  page,
+}) => {
+  await aNewProject(page, "MenuNests");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await openTheWritingView(page);
+
+  await sectionActions(page, "Part One").click();
+  await expect(menuItem(page, "Remove section")).toBeVisible();
+  await expect(menuItem(page, "Nest under the previous section")).toHaveCount(
+    0,
+  );
+  await expect(menuItem(page, "Lift out a level")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  await sectionActions(page, "Part Two").click();
+  await menuItem(page, "Nest under the previous section").click();
+  await expect(headingAt(page, "Part Two", 3)).toBeVisible();
+
+  await sectionActions(page, "Part Two").click();
+  await expect(menuItem(page, "Nest under the previous section")).toHaveCount(
+    0,
+  );
+  await menuItem(page, "Lift out a level").click();
+  await expect(headingAt(page, "Part Two", 2)).toBeVisible();
+});

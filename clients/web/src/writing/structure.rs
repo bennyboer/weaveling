@@ -8,6 +8,11 @@ use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
 
+enum Shift {
+    In,
+    Out,
+}
+
 #[derive(Clone, Copy)]
 pub struct Structure {
     project: StoredValue<ProjectId>,
@@ -176,6 +181,42 @@ impl Structure {
 
             match service::attach(&outline, &Attachment::Scene(scene), &to, behind).await {
                 Ok(placed) => self.adopt(placed),
+                Err(failure) => self.problems.report(failure),
+            }
+        });
+    }
+
+    pub fn can_nest(self, section: &SectionId) -> bool {
+        self.read_untracked(|book| book.can_demote(section))
+            .unwrap_or(false)
+    }
+
+    pub fn can_lift(self, section: &SectionId) -> bool {
+        self.read_untracked(|book| book.can_promote(section))
+            .unwrap_or(false)
+    }
+
+    pub fn nest(self, section: SectionId) {
+        self.shift(section, Shift::In);
+    }
+
+    pub fn lift(self, section: SectionId) {
+        self.shift(section, Shift::Out);
+    }
+
+    fn shift(self, section: SectionId, towards: Shift) {
+        let Some(outline) = self.id() else {
+            return;
+        };
+
+        spawn_local(async move {
+            let moved = match towards {
+                Shift::In => service::demote(&outline, &section).await,
+                Shift::Out => service::promote(&outline, &section).await,
+            };
+
+            match moved {
+                Ok(moved) => self.adopt(moved),
                 Err(failure) => self.problems.report(failure),
             }
         });

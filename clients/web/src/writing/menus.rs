@@ -9,6 +9,7 @@ use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
+use crate::writing::heading::{lift, nest};
 use crate::writing::margin::{Edge, Marked, Menu};
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -69,19 +70,36 @@ pub fn section_margin(section: SectionId, level: usize, state: WriteViewState) -
             (marked, Menu::Changing),
             state,
             move || {
+                let nested = section.clone();
+                let lifted = section.clone();
                 let removed = section.clone();
 
-                item("Remove section", false, move || {
-                    let holds_scenes = untrack(|| !state.structure.scenes_of(&removed).is_empty());
+                (
+                    state.structure.can_nest(&section).then(|| {
+                        item("Nest under the previous section", false, move || {
+                            state.margin.close();
+                            nest(nested.clone(), state);
+                        })
+                    }),
+                    state.structure.can_lift(&section).then(|| {
+                        item("Lift out a level", false, move || {
+                            state.margin.close();
+                            lift(lifted.clone(), state);
+                        })
+                    }),
+                    item("Remove section", false, move || {
+                        let holds_scenes =
+                            untrack(|| !state.structure.scenes_of(&removed).is_empty());
 
-                    if holds_scenes {
-                        state.margin.ask(Asking::RemoveSection(removed.clone()));
-                    } else {
-                        state.margin.close();
-                        state.structure.remove(removed.clone());
-                    }
-                })
-                .into_any()
+                        if holds_scenes {
+                            state.margin.ask(Asking::RemoveSection(removed.clone()));
+                        } else {
+                            state.margin.close();
+                            state.structure.remove(removed.clone());
+                        }
+                    }),
+                )
+                    .into_any()
             },
         ),))
 }

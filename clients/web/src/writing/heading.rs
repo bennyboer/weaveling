@@ -22,6 +22,20 @@ pub fn level_of(depth: usize) -> usize {
     depth.min(2) + 2
 }
 
+pub fn nest(section: SectionId, state: WriteViewState) {
+    if state.structure.can_nest(&section) {
+        state.walk.arrive_when_drawn(Stop::Heading(section.clone()));
+        state.structure.nest(section);
+    }
+}
+
+pub fn lift(section: SectionId, state: WriteViewState) {
+    if state.structure.can_lift(&section) {
+        state.walk.arrive_when_drawn(Stop::Heading(section.clone()));
+        state.structure.lift(section);
+    }
+}
+
 pub fn section_heading(depth: usize, section: Section, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let id = section.id.clone();
@@ -99,6 +113,18 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
             move |_| save(id.clone())
         })
         .on(ev::keydown, move |event| {
+            if event.key() == "Tab" {
+                event.prevent_default();
+                save(id.clone());
+
+                if event.shift_key() {
+                    lift(id.clone(), state);
+                } else {
+                    nest(id.clone(), state);
+                }
+
+                return;
+            }
             if event.key() == "Enter" {
                 event.prevent_default();
 

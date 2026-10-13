@@ -6,11 +6,24 @@
   font: 300 1.25rem/1.6 var(--reading);
 
   .heading {
+    position: relative;
     font-family: var(--heading);
     font-weight: 500;
     letter-spacing: 0;
     outline: none;
     caret-color: var(--accent);
+
+    &::after {
+      content: "";
+      position: absolute;
+      top: 0.15em;
+      bottom: 0.15em;
+      left: -0.7rem;
+      width: 3px;
+      border-radius: 2px;
+      background: var(--accent);
+      opacity: 0.55;
+    }
   }
 
   .heading:empty::before {
@@ -83,7 +96,7 @@
   .scene-margin {
     position: absolute;
     top: 0;
-    right: calc(100% + 0.5rem);
+    right: calc(100% + 1rem);
     display: flex;
     align-items: flex-start;
     justify-content: flex-end;
@@ -94,7 +107,7 @@
   .heading-margin {
     position: absolute;
     top: 0;
-    right: calc(100% + 0.5rem);
+    right: calc(100% + 1rem);
     display: flex;
     align-items: center;
     gap: 0.25rem;
@@ -312,7 +325,7 @@
     .margin-actions {
       position: absolute;
       top: 50%;
-      left: 13.5rem;
+      left: 13rem;
       translate: 0 -50%;
     }
   }

@@ -26,6 +26,7 @@ pub struct Walk {
     structure: Structure,
     editors: StoredValue<HashMap<SceneId, ProseEditor>, LocalStorage>,
     lines: StoredValue<HashMap<Stop, HtmlElement>, LocalStorage>,
+    awaited: StoredValue<Option<Stop>>,
 }
 
 impl Walk {
@@ -34,6 +35,7 @@ impl Walk {
             structure,
             editors: StoredValue::new_local(HashMap::new()),
             lines: StoredValue::new_local(HashMap::new()),
+            awaited: StoredValue::new(None),
         }
     }
 
@@ -49,8 +51,20 @@ impl Walk {
     }
 
     pub fn line_at(self, stop: Stop, shown: HtmlElement) {
+        let awaited = self
+            .awaited
+            .with_value(|awaited| awaited.as_ref() == Some(&stop));
+
+        if awaited {
+            self.awaited.set_value(None);
+            caret_in(&shown, Towards::Before);
+        }
         self.lines
             .update_value(|lines| _ = lines.insert(stop, shown));
+    }
+
+    pub fn arrive_when_drawn(self, stop: Stop) {
+        self.awaited.set_value(Some(stop));
     }
 
     pub fn line_gone(self, stop: &Stop) {
