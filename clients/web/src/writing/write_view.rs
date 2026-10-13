@@ -10,7 +10,7 @@ use crate::writing::bringing_back::{Landing, bringing_back};
 use crate::writing::heading::pending_heading;
 use crate::writing::heading::{first_heading, level_of, section_heading};
 use crate::writing::menus::{insertion, open_menu_where_writing, scene_margin, section_margin};
-use crate::writing::opening::{opening, pending_scene};
+use crate::writing::opening::{opening, pending_first_scene, pending_scene};
 use crate::writing::scene_in_flow::scene_in_flow;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -101,9 +101,16 @@ fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {
         section: section.clone(),
         after: None,
     };
+    let starting = section.clone();
+    let first_wanted = Memo::new({
+        let section = section.clone();
+
+        move |_| state.beginnings.pending_scene_first_in(&section)
+    });
 
     view! {
         {insertion(first, state)}
+        {move || first_wanted.get().then(|| pending_first_scene(starting.clone(), state))}
         <For
             each=move || state.structure.scenes_of(&section)
             key=|scene| scene.clone()

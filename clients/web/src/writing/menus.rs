@@ -10,6 +10,7 @@ use crate::scenes::model::SceneId;
 use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
 use crate::writing::margin::{Marked, Menu};
+use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
 pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
@@ -105,15 +106,36 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
                 (marked, Menu::Adding),
                 state,
                 move || {
+                    let fresh = landing.clone();
                     let here = landing.clone();
 
-                    item("Bring back a scene…", false, move || {
-                        state.margin.bring_back_to(here.clone())
-                    })
-                    .into_any()
+                    (
+                        item("New scene", false, move || {
+                            state.margin.close();
+                            begin_scene_at(&fresh, state);
+                        }),
+                        item("Bring back a scene…", false, move || {
+                            state.margin.bring_back_to(here.clone())
+                        }),
+                    )
+                        .into_any()
                 },
             )),
         ))
+}
+
+fn begin_scene_at(landing: &Landing, state: WriteViewState) {
+    let section = &landing.section;
+
+    match &landing.after {
+        Some(scene) => state.beginnings.start_pending_scene_after(scene),
+        None if untrack(|| state.structure.scenes_of(section).is_empty()) => {
+            state
+                .walk
+                .arrive(&Stop::Opening(section.clone()), Towards::After);
+        }
+        None => state.beginnings.start_pending_scene_first_in(section),
+    }
 }
 
 fn margin_menu(

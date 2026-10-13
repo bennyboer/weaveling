@@ -1427,3 +1427,70 @@ test("Enter in the search brings back the first scene that matches", async ({
     ["Part One", [placed, loose["A letter"]]],
   ]);
 });
+
+test("New scene in the gap between two scenes begins one right there", async ({
+  page,
+}) => {
+  await aNewProject(page, "NewBetween");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, first)).click();
+  await menuItem(page, "New scene").click();
+  await expect(newScene(page)).toBeFocused();
+  await page.keyboard.type("Mitten drin.");
+
+  await expect.poll(async () => (await sceneOrder(page))[0][1].length).toBe(3);
+  const made = (await sceneOrder(page))[0][1][1];
+  expect((await sceneOrder(page))[0][1]).toEqual([first, made, second]);
+  await expect(scene(page, made)).toHaveText("Mitten drin.");
+});
+
+test("New scene at a section's start begins one before its first scene", async ({
+  page,
+}) => {
+  await aNewProject(page, "NewFirst");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const [placed] = scenes["Part One"];
+  await openTheWritingView(page);
+
+  await addHere(gapAtStartOf(page, "Part One")).click();
+  await menuItem(page, "New scene").click();
+  await expect(newScene(page)).toBeFocused();
+  await page.keyboard.type("Ganz vorne.");
+
+  await expect.poll(async () => (await sceneOrder(page))[0][1].length).toBe(2);
+  const [made, after] = (await sceneOrder(page))[0][1];
+  expect(after).toBe(placed);
+  await expect(scene(page, made)).toHaveText("Ganz vorne.");
+});
+
+test("New scene in an empty section writes into its opening line", async ({
+  page,
+}) => {
+  await aNewProject(page, "NewEmpty");
+  await aBookShaped(page, [{ title: "Part One" }]);
+  await openTheWritingView(page);
+
+  await addHere(gapAtStartOf(page, "Part One")).click();
+  await menuItem(page, "New scene").click();
+
+  await expect(newScene(page)).toHaveCount(1);
+  await expect(newScene(page)).toBeFocused();
+});
+
+test("a new scene left empty goes away and makes nothing", async ({ page }) => {
+  await aNewProject(page, "NewLeftEmpty");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, first)).click();
+  await menuItem(page, "New scene").click();
+  await expect(newScene(page)).toBeFocused();
+  await heading(page, "Part One").click();
+
+  await expect(newScene(page)).toHaveCount(0);
+  expect(await sceneOrder(page)).toEqual([["Part One", [first, second]]]);
+});

@@ -13,21 +13,39 @@ const INVITATION: &str = "An empty scene. Start writing\u{2026}";
 
 const NEXT: &str = "A new scene";
 
+#[derive(Clone)]
+enum Line {
+    Opening,
+    After(SceneId),
+    First,
+}
+
 pub fn opening(section: SectionId, state: WriteViewState) -> impl IntoView {
-    scene_line(section, None, state)
+    scene_line(section, Line::Opening, state)
 }
 
 pub fn pending_scene(section: SectionId, after: SceneId, state: WriteViewState) -> impl IntoView {
-    scene_line(section, Some(after), state)
+    scene_line(section, Line::After(after), state)
 }
 
-fn scene_line(section: SectionId, after: Option<SceneId>, state: WriteViewState) -> impl IntoView {
+pub fn pending_first_scene(section: SectionId, state: WriteViewState) -> impl IntoView {
+    scene_line(section, Line::First, state)
+}
+
+fn scene_line(section: SectionId, line: Line, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let stop = Stop::Opening(section.clone());
-    let pending = after.clone().map(|after| Pending::Scene {
-        section: section.clone(),
-        after,
-    });
+    let after = match &line {
+        Line::After(scene) => Some(scene.clone()),
+        Line::Opening | Line::First => None,
+    };
+    let pending = match &line {
+        Line::Opening => None,
+        Line::After(_) | Line::First => Some(Pending::Scene {
+            section: section.clone(),
+            after: after.clone(),
+        }),
+    };
 
     match &pending {
         Some(_) => focus_when_mounted(host),
@@ -91,20 +109,19 @@ fn scene_line(section: SectionId, after: Option<SceneId>, state: WriteViewState)
                 return;
             }
 
-            match &after {
-                None => walk_on(&event, host, stop.clone(), state),
-                Some(scene) => {
-                    let anchor = Stop::Scene(scene.clone());
-                    let moved = match event.key().as_str() {
-                        "ArrowUp" => state.walk.arrive(&anchor, Towards::Before),
-                        "ArrowDown" => state.walk.leave(&anchor, Towards::After),
-                        _ => false,
-                    };
+            let anchor = match &line {
+                Line::Opening => return walk_on(&event, host, stop.clone(), state),
+                Line::After(scene) => Stop::Scene(scene.clone()),
+                Line::First => Stop::Heading(section.clone()),
+            };
+            let moved = match event.key().as_str() {
+                "ArrowUp" => state.walk.arrive(&anchor, Towards::Before),
+                "ArrowDown" => state.walk.leave(&anchor, Towards::After),
+                _ => false,
+            };
 
-                    if moved {
-                        event.prevent_default();
-                    }
-                }
+            if moved {
+                event.prevent_default();
             }
         })
 }

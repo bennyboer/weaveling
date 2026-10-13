@@ -13,8 +13,13 @@ use crate::writing::structure::Structure;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Pending {
-    Scene { section: SectionId, after: SceneId },
-    Section { after: SectionId },
+    Scene {
+        section: SectionId,
+        after: Option<SceneId>,
+    },
+    Section {
+        after: SectionId,
+    },
 }
 
 #[derive(Clone, Copy)]
@@ -49,9 +54,16 @@ impl Beginnings {
         if let Some(section) = self.structure.section_holding(scene) {
             self.pending.set(Some(Pending::Scene {
                 section,
-                after: scene.clone(),
+                after: Some(scene.clone()),
             }));
         }
+    }
+
+    pub fn start_pending_scene_first_in(self, section: &SectionId) {
+        self.pending.set(Some(Pending::Scene {
+            section: section.clone(),
+            after: None,
+        }));
     }
 
     pub fn start_pending_section_after(self, section: &SectionId) {
@@ -71,8 +83,17 @@ impl Beginnings {
 
     pub fn pending_scene_after(self, scene: &SceneId) -> Option<Pending> {
         self.pending.with(|pending| match pending {
-            Some(Pending::Scene { after, .. }) if after == scene => pending.clone(),
+            Some(Pending::Scene { after, .. }) if after.as_ref() == Some(scene) => pending.clone(),
             _ => None,
+        })
+    }
+
+    pub fn pending_scene_first_in(self, section: &SectionId) -> bool {
+        self.pending.with(|pending| {
+            matches!(
+                pending,
+                Some(Pending::Scene { section: held, after: None }) if held == section
+            )
         })
     }
 
