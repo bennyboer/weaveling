@@ -2,6 +2,8 @@
 
 A German children's tale (Märchen) used as a sample project for Weaveling tests.
 
+Per view: [Board](BOARD.md) · [Outline](OUTLINE.md) · [Timeline](TIMELINE.md) · [Locations](LOCATIONS.md) · [Codex](CODEX.md)
+
 ## Frame
 
 - Language: German
