@@ -31,7 +31,7 @@ impl LeftOff {
     }
 
     fn land_in(self, scene: SceneId, at: u32) {
-        self.viewport.bring_near(scene.clone());
+        self.viewport.hold_for_landing(scene.clone());
         self.walk.land_in(scene, at);
     }
 

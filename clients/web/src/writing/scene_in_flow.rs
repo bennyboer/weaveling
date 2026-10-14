@@ -49,15 +49,22 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
 }
 
 fn waiting(scene: SceneId, state: WriteViewState) -> impl IntoView {
-    let lines = untrack(|| state.word_count.of_scene(&scene))
-        .div_ceil(WORDS_A_LINE)
-        .max(1);
+    let height = match state.viewport.kept_height(&scene) {
+        Some(measured) => format!("{measured}px"),
+        None => {
+            let lines = untrack(|| state.word_count.of_scene(&scene))
+                .div_ceil(WORDS_A_LINE)
+                .max(1);
+
+            format!("{lines}lh")
+        }
+    };
 
     html::div()
         .class("scene waiting")
         .attr("data-scene", scene.to_string())
         .attr("aria-busy", "true")
-        .style(("min-height", format!("{lines}lh")))
+        .style(("min-height", height))
 }
 
 fn editor(scene: SceneId, state: WriteViewState) -> impl IntoView {
@@ -124,7 +131,12 @@ fn editor(scene: SceneId, state: WriteViewState) -> impl IntoView {
             let saving = Closure::<dyn Fn(bool)>::new({
                 let scene = scene.clone();
 
-                move |saving: bool| state.saving.scene_is_saving(scene.clone(), saving)
+                move |saving: bool| {
+                    state.saving.scene_is_saving(scene.clone(), saving);
+                    if !saving {
+                        state.viewport.saved(&scene);
+                    }
+                }
             });
             editor.on_saving(&saving);
             let caret_moved = Closure::<dyn Fn(u32)>::new({

@@ -28,6 +28,12 @@ impl Saving {
         }
     }
 
+    pub fn is_scene_saving(self, scene: &SceneId) -> bool {
+        self.scenes
+            .try_with_untracked(|scenes| scenes.contains(scene))
+            .unwrap_or(false)
+    }
+
     pub fn let_go_of(self, scene: &SceneId) {
         self.scene_is_saving(scene.clone(), false);
     }

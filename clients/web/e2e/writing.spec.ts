@@ -2543,3 +2543,93 @@ test("a dropped connection comes back, and what was written meanwhile is saved",
     (await (await page.request.get(`${API}/scenes/${only}`)).json()).text,
   ).toBe("Before. During.");
 });
+
+async function aLongBookWrittenAtItsStart(page: Page, named: string) {
+  await aNewProject(page, named);
+  const scenes = await aBookWithScenes(page, { "Part One": 60 });
+  const [first] = scenes["Part One"];
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await page.keyboard.type("The loom stood silent.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("She had not touched it since spring.");
+
+  return { first, last: scenes["Part One"][59] };
+}
+
+const toTheEnd = (page: Page) =>
+  page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+const nobodyWriting = (page: Page) =>
+  page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+
+test("a scene scrolled far away is let go, its height kept, and back again as it comes near", async ({
+  page,
+}) => {
+  const left: string[] = [];
+  page.on("websocket", (socket) =>
+    socket.on("framesent", ({ payload }) => {
+      if (Buffer.from(payload)[0] === 1) {
+        left.push(sceneCarried(payload));
+      }
+    }),
+  );
+  const { first } = await aLongBookWrittenAtItsStart(page, "LetGo");
+  await expect(saveState(page)).toHaveText("All saved");
+  const height = (await flow(page)
+    .locator(`[data-place-of="${first}"]`)
+    .boundingBox())!.height;
+  await nobodyWriting(page);
+
+  await toTheEnd(page);
+
+  const waiting = flow(page).locator(`.scene.waiting[data-scene="${first}"]`);
+  await expect(waiting).toHaveCount(1);
+  expect(
+    Math.abs((await waiting.boundingBox())!.height - height),
+    "the page keeps its length, so nothing below jumps",
+  ).toBeLessThan(1);
+  expect(left, "a scene let go leaves the connection").toContain(first);
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  await expect(scene(page, first)).toContainText(
+    "She had not touched it since spring.",
+  );
+});
+
+test("the scene the cursor is in stays however far the window scrolls", async ({
+  page,
+}) => {
+  const { first } = await aLongBookWrittenAtItsStart(page, "KeptByTheCursor");
+
+  await toTheEnd(page);
+  await page.waitForTimeout(500);
+
+  await expect(scene(page, first)).toBeFocused();
+  await page.keyboard.type(" Still here.");
+  await expect(scene(page, first)).toContainText("since spring. Still here.");
+});
+
+test("a scene still saving stays until it is saved", async ({ page }) => {
+  const sync = await holdingWhatIsWritten(page);
+  const { first } = await aLongBookWrittenAtItsStart(page, "KeptUntilSaved");
+  await expect(saveState(page)).toHaveText("All saved");
+  sync.hold();
+  await page.keyboard.type(" More.");
+  await expect(saveState(page)).toHaveText("Saving…");
+  await nobodyWriting(page);
+
+  await toTheEnd(page);
+  await page.waitForTimeout(500);
+
+  await expect(
+    scene(page, first),
+    "letting go of the only copy of an unsaved edit would lose it",
+  ).toHaveCount(1);
+  sync.release();
+  await expect(saveState(page)).toHaveText("All saved");
+  await expect(
+    flow(page).locator(`.scene.waiting[data-scene="${first}"]`),
+  ).toHaveCount(1);
+});
