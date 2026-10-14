@@ -75,6 +75,16 @@ impl SceneService {
         Ok(self.store.load(id).await?)
     }
 
+    pub async fn announce_word_count(
+        &self,
+        id: &str,
+        words: usize,
+    ) -> Result<(), SceneServiceError> {
+        let id: SceneId = id.parse()?;
+
+        Ok(self.store.announce_word_count(id, words).await?)
+    }
+
     pub async fn link(&self, id: &str, idea: &str) -> Result<Scene, SceneServiceError> {
         let id: SceneId = id.parse()?;
 

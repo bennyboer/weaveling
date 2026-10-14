@@ -128,7 +128,10 @@ export class ProseEditor {
 
   onChanged(changed) {
     this.changed = changed;
-    changed(textOf(this.view.state.doc));
+
+    if (this.provider.synced) {
+      changed(textOf(this.view.state.doc));
+    }
   }
 
   onBreaking(breaking) {

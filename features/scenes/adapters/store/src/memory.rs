@@ -131,6 +131,21 @@ impl SceneStore for InMemorySceneStore {
         Ok(())
     }
 
+    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+        let project = self
+            .read()
+            .get(&id)
+            .map(|stored| stored.project.clone())
+            .ok_or(StoreError::NotFound(id))?;
+        self.enqueue_change(SceneChange::WordsCounted {
+            scene: id,
+            project,
+            words,
+        });
+
+        Ok(())
+    }
+
     async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
         let mut scenes = self.write();
         let stored = scenes.get_mut(&id).ok_or(StoreError::NotFound(id))?;

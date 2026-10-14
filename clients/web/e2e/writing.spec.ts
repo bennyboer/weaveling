@@ -2310,3 +2310,44 @@ test("following the scene left off in lands where the author left off in it", as
   await page.keyboard.type("X");
   await expect(scene(page, second)).toHaveText("AlphaX Beta");
 });
+
+// TODO: back once the view loads its counts from statistics (M13c 6a2c)
+test.fixme("a scene whose text has not arrived still counts, by what the server last counted", async ({
+  page,
+}) => {
+  await aNewProject(page, "CountedByTheServer");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  const [later] = scenes["Part Two"];
+  await openTheWritingView(page);
+  await scene(page, later).click();
+  await page.keyboard.type("one two three");
+  await expect(saveState(page)).toHaveText("All saved");
+  const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+  await expect
+    .poll(
+      async () => {
+        const listed = await (
+          await page.request.get(`${API}/scenes?project=${project}`)
+        ).json();
+        return listed.find((held: { id: string }) => held.id === later).words;
+      },
+      { message: "the server counts what it stores", timeout: 10_000 },
+    )
+    .toBe(3);
+
+  await page.routeWebSocket(/\/api\/sync\//, (socket) => {
+    const server = socket.connectToServer();
+    const held = socket.url().includes(later);
+    socket.onMessage((frame) => server.send(frame));
+    server.onMessage((frame) => {
+      if (!held) {
+        socket.send(frame);
+      }
+    });
+  });
+  await page.reload();
+  await expect(scene(page, later)).toBeVisible();
+  await wordCount(page).click();
+
+  await expect(wordCount(page)).toHaveText("3 words in the book");
+});

@@ -2,13 +2,13 @@ use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
 use scenes_core::{Scene, SceneError, SceneId, SceneService, SceneServiceError, StoreError};
 use thiserror::Error;
 use tokio::sync::broadcast;
-use tokio::time::interval;
+use tokio::time::{Instant as Moment, interval, sleep};
 use tracing::warn;
 
 use crate::protocol::Message;
@@ -20,6 +20,7 @@ type Rooms = HashMap<SceneId, Room>;
 const BACKLOG: usize = 256;
 const GRACE: Duration = Duration::from_secs(30);
 const SWEEP_EVERY: Duration = Duration::from_secs(10);
+const RECOUNT_EVERY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Error)]
 pub enum LiveSceneError {
@@ -47,6 +48,9 @@ pub struct LiveScene {
     scene: Scene,
     traffic: broadcast::Sender<Overheard>,
     unsaved: AtomicBool,
+    uncounted: AtomicBool,
+    recount_waiting: AtomicBool,
+    counted_at: Mutex<Option<Moment>>,
 }
 
 impl LiveScene {
@@ -55,6 +59,39 @@ impl LiveScene {
             scene,
             traffic: broadcast::channel(BACKLOG).0,
             unsaved: AtomicBool::new(false),
+            uncounted: AtomicBool::new(false),
+            recount_waiting: AtomicBool::new(false),
+            counted_at: Mutex::new(None),
+        }
+    }
+
+    fn next_count_in(&self) -> Duration {
+        self.counted_at
+            .lock()
+            .expect("live scene count lock poisoned")
+            .map_or(Duration::ZERO, |counted| {
+                RECOUNT_EVERY.saturating_sub(counted.elapsed())
+            })
+    }
+
+    async fn recount(&self, service: &SceneService) {
+        if !self.uncounted.swap(false, Ordering::AcqRel) {
+            return;
+        }
+        *self
+            .counted_at
+            .lock()
+            .expect("live scene count lock poisoned") = Some(Moment::now());
+
+        match service
+            .announce_word_count(&self.id().to_string(), self.scene.words())
+            .await
+        {
+            Ok(()) | Err(SceneServiceError::Store(StoreError::NotFound(_))) => {}
+            Err(problem) => {
+                self.uncounted.store(true, Ordering::Release);
+                warn!(scene = %self.id(), %problem, "a scene's words could not be counted");
+            }
         }
     }
 
@@ -131,11 +168,33 @@ impl Presence {
             .service
             .apply(&self.scene.id().to_string(), update)
             .await;
-        if persisted.is_err() {
-            self.scene.unsaved.store(true, Ordering::Release);
+        match persisted {
+            Ok(()) => self.count_soon().await,
+            Err(_) => self.scene.unsaved.store(true, Ordering::Release),
         }
 
         persisted
+    }
+
+    async fn count_soon(&self) {
+        self.scene.uncounted.store(true, Ordering::Release);
+        let wait = self.scene.next_count_in();
+
+        if wait.is_zero() {
+            self.scene.recount(&self.shared.service).await;
+            return;
+        }
+        if self.scene.recount_waiting.swap(true, Ordering::AcqRel) {
+            return;
+        }
+
+        let scene = self.scene.clone();
+        let service = self.shared.service.clone();
+        tokio::spawn(async move {
+            sleep(wait).await;
+            scene.recount_waiting.store(false, Ordering::Release);
+            scene.recount(&service).await;
+        });
     }
 }
 
@@ -241,6 +300,7 @@ impl LiveScenes {
 
         for scene in idle {
             if self.flushed(&scene).await {
+                scene.recount(&self.shared.service).await;
                 self.let_go(&scene, idle_before);
             }
         }

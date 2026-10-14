@@ -41,10 +41,6 @@ impl WordCount {
         }
     }
 
-    pub fn let_go_of(self, scene: &SceneId) {
-        _ = self.words.try_update(|counted| counted.remove(scene));
-    }
-
     pub fn writing_in(self, section: SectionId) {
         if self
             .writing_in

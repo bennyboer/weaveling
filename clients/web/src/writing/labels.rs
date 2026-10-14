@@ -3,8 +3,7 @@ use std::collections::HashMap;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::projects::model::ProjectId;
-use crate::scenes::model::{SceneId, opening_of};
+use crate::scenes::model::{Scene, SceneId, opening_of};
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
@@ -24,28 +23,22 @@ pub struct Labels {
 }
 
 impl Labels {
-    pub fn of(project: &ProjectId, problems: Problems, saving: Saving) -> Self {
-        let labels = Self {
+    pub fn of(problems: Problems, saving: Saving) -> Self {
+        Self {
             titles: RwSignal::new(HashMap::new()),
             openings: RwSignal::new(HashMap::new()),
             problems,
             saving,
-        };
-        let project = project.clone();
+        }
+    }
 
-        spawn_local(async move {
-            match scenes::in_project(&project).await {
-                Ok(listed) => labels.titles.set(
-                    listed
-                        .into_iter()
-                        .map(|scene| (scene.id, scene.title))
-                        .collect(),
-                ),
-                Err(failure) => labels.problems.report(failure),
-            }
-        });
-
-        labels
+    pub fn remember(self, listed: &[Scene]) {
+        self.titles.set(
+            listed
+                .iter()
+                .map(|scene| (scene.id.clone(), scene.title.clone()))
+                .collect(),
+        );
     }
 
     pub fn opening_is(self, scene: SceneId, text: String) {

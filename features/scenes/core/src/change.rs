@@ -1,4 +1,4 @@
-use crate::{IdeaLink, SceneId};
+use crate::{IdeaLink, ProjectLink, SceneId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SceneChange {
@@ -15,6 +15,11 @@ pub enum SceneChange {
     Deleted {
         scene: SceneId,
     },
+    WordsCounted {
+        scene: SceneId,
+        project: ProjectLink,
+        words: usize,
+    },
 }
 
 impl SceneChange {
@@ -22,7 +27,8 @@ impl SceneChange {
         match self {
             Self::IdeaLinked { scene, .. }
             | Self::IdeaUnlinked { scene, .. }
-            | Self::Deleted { scene } => *scene,
+            | Self::Deleted { scene }
+            | Self::WordsCounted { scene, .. } => *scene,
         }
     }
 }

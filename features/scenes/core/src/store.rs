@@ -25,6 +25,8 @@ pub trait SceneStore: Send + Sync {
 
     async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError>;
 
+    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError>;
+
     async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError>;
 
     async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError>;

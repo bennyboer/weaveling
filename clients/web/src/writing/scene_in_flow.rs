@@ -101,7 +101,6 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 editor.destroy();
             }
             state.saving.let_go_of(&scene);
-            state.word_count.let_go_of(&scene);
             kept.set_value(None);
         }
     });

@@ -4064,6 +4064,7 @@ dependencies = [
  "time",
  "weaveling-clock",
  "weaveling-ids",
+ "weaveling-words",
  "yrs",
 ]
 

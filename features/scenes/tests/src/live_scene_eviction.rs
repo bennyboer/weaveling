@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -9,7 +9,7 @@ use scenes_core::{
     StoreError,
 };
 use scenes_store::InMemorySceneStore;
-use scenes_sync::{LiveScenes, Message};
+use scenes_sync::{LiveScenes, Message, Presence};
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
@@ -18,6 +18,7 @@ const A_PROJECT: &str = "project_1";
 struct FalteringStore {
     held: InMemorySceneStore,
     faltering: AtomicBool,
+    announced: Mutex<Vec<(SceneId, usize)>>,
 }
 
 impl FalteringStore {
@@ -46,6 +47,20 @@ impl SceneStore for FalteringStore {
 
     async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError> {
         self.held.retitle(id, title).await
+    }
+
+    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+        if self.faltering.load(Ordering::SeqCst) {
+            return Err(StoreError::Backend("the store is down".into()));
+        }
+
+        self.held.announce_word_count(id, words).await?;
+        self.announced
+            .lock()
+            .expect("the announced counts are never poisoned")
+            .push((id, words));
+
+        Ok(())
     }
 
     async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
@@ -84,6 +99,7 @@ fn a_workbench() -> Workbench {
     let store = Arc::new(FalteringStore {
         held: InMemorySceneStore::new(),
         faltering: AtomicBool::new(false),
+        announced: Mutex::new(Vec::new()),
     });
     let service = SceneService::new(
         store.clone(),
@@ -106,6 +122,17 @@ impl Workbench {
             .await
             .expect("should create")
             .id()
+    }
+
+    fn last_announced(&self, id: SceneId) -> Option<usize> {
+        self.store
+            .announced
+            .lock()
+            .expect("the announced counts are never poisoned")
+            .iter()
+            .rev()
+            .find(|(scene, _)| *scene == id)
+            .map(|(_, words)| *words)
     }
 
     async fn stored_text(&self, id: SceneId) -> String {
@@ -293,5 +320,79 @@ async fn a_scene_deleted_while_live_is_let_go_even_with_an_unstored_edit() {
     assert!(
         !bench.live.is_live(id),
         "a deleted scene has nowhere to be flushed to, and must not linger forever"
+    );
+}
+
+async fn writes(present: &Presence, saying: &str) {
+    let update = a_paragraph(saying);
+    present
+        .receive(Message::JustHappened(update.clone()))
+        .expect("should write");
+    present.persist(&update).await.expect("should persist");
+}
+
+#[tokio::test]
+async fn the_first_edit_stored_is_counted_at_once() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+
+    writes(&present, "The loom stood silent.").await;
+
+    assert_eq!(bench.last_announced(id), Some(4));
+}
+
+#[tokio::test(start_paused = true)]
+async fn edits_close_behind_are_counted_once_a_short_wait_is_over() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+    writes(&present, "The loom stood silent.").await;
+
+    writes(&present, "Then it spoke.").await;
+
+    assert_eq!(
+        bench.last_announced(id),
+        Some(4),
+        "counting every keystroke would cost a write each, so a count waits a moment"
+    );
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    assert_eq!(
+        bench.last_announced(id),
+        Some(7),
+        "the wait ends in a count, so a burst of typing is never left uncounted"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_scene_is_counted_before_it_is_let_go() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+    writes(&present, "The loom stood silent.").await;
+    writes(&present, "Then it spoke.").await;
+    drop(present);
+
+    bench.live.sweep(Instant::now()).await;
+
+    assert!(!bench.live.is_live(id));
+    assert_eq!(bench.last_announced(id), Some(7));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_count_that_cannot_be_stored_does_not_keep_a_scene_live() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+    writes(&present, "The loom stood silent.").await;
+    writes(&present, "Then it spoke.").await;
+    drop(present);
+
+    bench.store.falter(true);
+    bench.live.sweep(Instant::now()).await;
+
+    assert!(
+        !bench.live.is_live(id),
+        "the words are worked out from the text, so a missed count is caught up by the          next edit, while holding the scene in memory would last until the store is back"
     );
 }

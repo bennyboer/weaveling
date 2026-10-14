@@ -67,6 +67,14 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
             json!({ "scene": scene.to_string(), "idea": idea.to_string(), "version": version }),
         ),
         SceneChange::Deleted { scene } => ("scene.deleted", json!({ "scene": scene.to_string() })),
+        SceneChange::WordsCounted {
+            scene,
+            project,
+            words,
+        } => (
+            "scene.words.counted",
+            json!({ "scene": scene.to_string(), "project": project.to_string(), "words": words }),
+        ),
     };
 
     Message::opening(
@@ -508,6 +516,20 @@ pub async fn a_title_survives_further_writing(store: &impl SceneStore) {
     );
 }
 
+pub async fn announcing_a_word_count_for_a_missing_scene_is_not_found(store: &impl SceneStore) {
+    let missing = an_id(1_000);
+
+    let error = store
+        .announce_word_count(missing, 42)
+        .await
+        .expect_err("announcing should not find the scene");
+
+    assert!(
+        matches!(&error, StoreError::NotFound(id) if *id == missing),
+        "expected NotFound({missing}), got {error:?}"
+    );
+}
+
 fn an_idea(named: &str) -> IdeaLink {
     IdeaLink::from(named)
 }
@@ -782,6 +804,55 @@ pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
     );
 }
 
+pub async fn announcing_a_word_count_enqueues_it_with_the_scene_s_project(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+
+    store
+        .announce_word_count(id, 42)
+        .await
+        .expect("announcing should succeed");
+
+    assert_eq!(
+        told(bench.enqueued().await),
+        vec![(
+            "scene.words.counted".to_owned(),
+            json!({ "scene": id.to_string(), "project": a_project().to_string(), "words": 42 })
+        )]
+    );
+}
+
+pub async fn announcing_a_word_count_is_not_a_change_to_the_scene(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+
+    store
+        .link(id, &an_idea("idea_1"))
+        .await
+        .expect("link should succeed");
+    store
+        .announce_word_count(id, 42)
+        .await
+        .expect("announcing should succeed");
+    store
+        .link(id, &an_idea("idea_2"))
+        .await
+        .expect("link should succeed");
+
+    let versions: Vec<u64> = told(bench.enqueued().await)
+        .into_iter()
+        .filter(|(routing, _)| routing == "scene.idea.linked")
+        .map(|(_, payload)| payload["version"].as_u64().expect("a version"))
+        .collect();
+    assert_eq!(
+        versions,
+        vec![1, 2],
+        "a count is worked out from the text, so announcing it does not count the scene up"
+    );
+}
+
 pub async fn deleting_a_scene_enqueues_a_message(bench: &impl Workbench) {
     let store = bench.store();
     let id = an_id(1_000);
@@ -898,6 +969,10 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!($workbench, retitling_a_missing_scene_is_not_found);
         $crate::suite::conformance_case!($workbench, retitling_leaves_the_text_as_it_was);
         $crate::suite::conformance_case!($workbench, a_title_survives_further_writing);
+        $crate::suite::conformance_case!(
+            $workbench,
+            announcing_a_word_count_for_a_missing_scene_is_not_found
+        );
         $crate::suite::conformance_case!($workbench, a_new_scene_has_no_linked_ideas);
         $crate::suite::conformance_case!(
             $workbench,
@@ -919,6 +994,14 @@ macro_rules! conformance_tests {
             unlinking_enqueues_only_for_a_link_that_was_there
         );
         $crate::suite::enqueuing_case!($workbench, every_change_to_a_scene_counts_up);
+        $crate::suite::enqueuing_case!(
+            $workbench,
+            announcing_a_word_count_enqueues_it_with_the_scene_s_project
+        );
+        $crate::suite::enqueuing_case!(
+            $workbench,
+            announcing_a_word_count_is_not_a_change_to_the_scene
+        );
         $crate::suite::enqueuing_case!($workbench, deleting_a_scene_enqueues_a_message);
         $crate::suite::enqueuing_case!($workbench, a_refused_change_enqueues_nothing);
         $crate::suite::enqueuing_case!($workbench, writing_and_naming_enqueue_nothing);

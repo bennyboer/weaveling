@@ -16,6 +16,8 @@ const REMEMBER: &str = "INSERT INTO scenes (scene, project, title) VALUES ($1, $
 
 const KNOWN_AS: &str = "SELECT project, title FROM scenes WHERE scene = $1";
 
+const PROJECT_OF: &str = "SELECT project FROM scenes WHERE scene = $1";
+
 const RETITLE: &str = "UPDATE scenes SET title = $2, version = version + 1 WHERE scene = $1";
 
 const LINK: &str = "
@@ -323,6 +325,31 @@ impl SceneStore for PostgresSceneStore {
             0 => Err(StoreError::NotFound(id)),
             _ => Ok(()),
         }
+    }
+
+    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+        let mut transaction = self.begin().await?;
+
+        let project: Option<String> = sqlx::query_scalar(PROJECT_OF)
+            .bind(id.to_string())
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        let Some(project) = project else {
+            return Err(StoreError::NotFound(id));
+        };
+
+        self.enqueue_change(
+            &mut transaction,
+            SceneChange::WordsCounted {
+                scene: id,
+                project: ProjectLink::from(project),
+                words,
+            },
+        )
+        .await?;
+
+        transaction.commit().await.map_err(unreachable)
     }
 
     async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {

@@ -1,5 +1,8 @@
 use messaging::{Message, RoutingKey};
-use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
+use scenes_contract::{
+    DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO, WORDS_COUNTED,
+    WordsCountedDTO,
+};
 use scenes_core::SceneChange;
 use serde_json::Value;
 use time::OffsetDateTime;
@@ -36,6 +39,18 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
                 scene: scene.to_string(),
             }),
         ),
+        SceneChange::WordsCounted {
+            scene,
+            project,
+            words,
+        } => (
+            WORDS_COUNTED,
+            to_payload(&WordsCountedDTO {
+                scene: scene.to_string(),
+                project: project.to_string(),
+                words: *words as u64,
+            }),
+        ),
     };
 
     Message::opening(
@@ -51,7 +66,7 @@ fn to_payload(dto: &impl serde::Serialize) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use scenes_core::{IdeaLink, SceneId};
+    use scenes_core::{IdeaLink, ProjectLink, SceneId};
     use serde_json::json;
     use time::Duration;
 
@@ -109,6 +124,33 @@ mod tests {
 
         assert_eq!(told.routing.to_string(), DELETED);
         assert_eq!(told.payload, json!({ "scene": scene.to_string() }));
+    }
+
+    #[test]
+    fn a_word_count_is_announced_with_its_scene_s_project() {
+        let scene = a_scene();
+
+        let told = message_for(
+            &SceneChange::WordsCounted {
+                scene,
+                project: ProjectLink::from("project_1"),
+                words: 42,
+            },
+            at(2_000),
+        );
+
+        assert_eq!(told.routing.to_string(), WORDS_COUNTED);
+        let counted: WordsCountedDTO =
+            serde_json::from_value(told.payload).expect("a count reads back as its contract");
+        assert_eq!(
+            counted,
+            WordsCountedDTO {
+                scene: scene.to_string(),
+                project: "project_1".to_owned(),
+                words: 42,
+            },
+            "statistics are kept per project, so the count names its project rather than              making a listener ask scenes for it"
+        );
     }
 
     #[test]

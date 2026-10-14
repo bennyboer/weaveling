@@ -5,6 +5,8 @@ use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
+use words::words_in;
+
 use crate::projection::plain_text;
 use crate::{IdeaLink, ProjectLink, SceneId, SceneTitle};
 
@@ -102,6 +104,10 @@ impl Scene {
     pub fn text(&self) -> String {
         plain_text(&self.doc)
     }
+
+    pub fn words(&self) -> usize {
+        words_in(&self.text())
+    }
 }
 
 impl Debug for Scene {
@@ -169,6 +175,19 @@ mod tests {
             .expect("what we stored should reload");
 
         assert_eq!(reloaded.text(), "The loom stood silent.");
+    }
+
+    #[test]
+    fn a_scene_counts_its_words_across_its_paragraphs() {
+        let scene = Scene::empty(an_id(), a_project());
+        write(&scene, 0, "The loom stood silent.");
+        write(&scene, 1, "— And then?");
+
+        assert_eq!(
+            scene.words(),
+            6,
+            "a paragraph's last word and the next one's first stay two words"
+        );
     }
 
     #[test]
