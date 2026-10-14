@@ -1,36 +1,34 @@
-use axum::extract::ws::{Message as Frame, WebSocket};
-use futures_util::SinkExt;
-use futures_util::stream::SplitSink;
-use tokio::sync::mpsc::{self, UnboundedSender};
+use std::sync::Arc;
+
+use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
 
 use crate::live_scenes::{LiveScene, Overheard, PeerId, Reaction};
 
+pub type Wrapping = Arc<dyn Fn(Vec<u8>) -> Vec<u8> + Send + Sync>;
+
 pub struct Peer {
     id: PeerId,
     to_peer: UnboundedSender<Vec<u8>>,
-    writing: JoinHandle<()>,
+    wrapping: Wrapping,
     overhearing: JoinHandle<()>,
 }
 
 impl Peer {
-    pub fn arrive(id: PeerId, mut sink: SplitSink<WebSocket, Frame>, scene: &LiveScene) -> Self {
-        let (to_peer, mut outgoing) = mpsc::unbounded_channel::<Vec<u8>>();
+    pub fn arrive(
+        id: PeerId,
+        to_peer: UnboundedSender<Vec<u8>>,
+        wrapping: Wrapping,
+        scene: &LiveScene,
+    ) -> Self {
         let mut traffic = scene.listen();
-
-        let writing = tokio::spawn(async move {
-            while let Some(frame) = outgoing.recv().await {
-                if sink.send(Frame::Binary(frame.into())).await.is_err() {
-                    break;
-                }
-            }
-        });
 
         let overhearing = tokio::spawn({
             let to_peer = to_peer.clone();
+            let wrapping = wrapping.clone();
             async move {
                 while let Ok(overheard) = traffic.recv().await {
-                    if overheard.from != id && to_peer.send(overheard.frame).is_err() {
+                    if overheard.from != id && to_peer.send(wrapping(overheard.frame)).is_err() {
                         break;
                     }
                 }
@@ -40,7 +38,7 @@ impl Peer {
         Peer {
             id,
             to_peer,
-            writing,
+            wrapping,
             overhearing,
         }
     }
@@ -51,7 +49,7 @@ impl Peer {
 
     pub fn deliver(&self, reaction: &Reaction, scene: &LiveScene) {
         if let Some(reply) = &reaction.to_sender {
-            let _ = self.to_peer.send(reply.encode());
+            let _ = self.to_peer.send((self.wrapping)(reply.encode()));
         }
         if let Some(shared) = &reaction.to_others {
             scene.broadcast(Overheard {
@@ -65,6 +63,5 @@ impl Peer {
 impl Drop for Peer {
     fn drop(&mut self) {
         self.overhearing.abort();
-        self.writing.abort();
     }
 }

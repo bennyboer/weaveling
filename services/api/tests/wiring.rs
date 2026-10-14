@@ -154,3 +154,15 @@ async fn the_live_scenes_are_settled_before_the_service_stops() {
         "scenes holds edits and counts in memory, and stopping without settling them loses them"
     );
 }
+
+#[tokio::test]
+async fn the_socket_for_many_scenes_is_mounted_under_api() {
+    let (status, _) = get("/api/sync").await;
+
+    assert_ne!(
+        status,
+        StatusCode::NOT_FOUND,
+        "the route is there, and refuses a request that is not a socket"
+    );
+    assert!(status.is_client_error());
+}

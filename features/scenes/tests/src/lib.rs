@@ -5,6 +5,9 @@ mod live_scene_eviction;
 mod live_scenes;
 
 #[cfg(test)]
+mod one_connection;
+
+#[cfg(test)]
 mod scene_service;
 
 #[cfg(test)]
