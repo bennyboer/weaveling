@@ -3590,6 +3590,7 @@ dependencies = [
  "weaveling-outline-contract",
  "weaveling-projects-contract",
  "weaveling-scenes-contract",
+ "weaveling-words",
  "web-sys",
 ]
 
@@ -4229,6 +4230,10 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
 ]
+
+[[package]]
+name = "weaveling-words"
+version = "0.1.0"
 
 [[package]]
 name = "web-sys"

@@ -25,15 +25,8 @@ function endpoint() {
   return `${scheme}//${window.location.host}/api/sync`;
 }
 
-function wordsIn(doc) {
-  return doc
-    .textBetween(0, doc.content.size, " ", " ")
-    .split(/\s+/)
-    .filter((word) => /[\p{L}\p{N}]/u.test(word)).length;
-}
-
-function openingWordsOf(doc) {
-  return doc.textBetween(0, Math.min(doc.content.size, 400), " ");
+function textOf(doc) {
+  return doc.textBetween(0, doc.content.size, " ", " ");
 }
 
 export class ProseEditor {
@@ -48,7 +41,6 @@ export class ProseEditor {
     this.leaving = () => false;
     this.breaking = () => {};
     this.changed = () => {};
-    this.counted = () => {};
     this.caretMoved = () => {};
     this.saving = () => {};
     this.awaitSaving();
@@ -67,8 +59,7 @@ export class ProseEditor {
         this.updateState(this.state.apply(tr));
 
         if (tr.docChanged) {
-          editor.changed(openingWordsOf(this.state.doc));
-          editor.counted(wordsIn(this.state.doc));
+          editor.changed(textOf(this.state.doc));
         }
         if ((tr.docChanged || tr.selectionSet) && this.hasFocus()) {
           editor.caretMoved(this.state.selection.head);
@@ -137,7 +128,7 @@ export class ProseEditor {
 
   onChanged(changed) {
     this.changed = changed;
-    changed(openingWordsOf(this.view.state.doc));
+    changed(textOf(this.view.state.doc));
   }
 
   onBreaking(breaking) {
@@ -185,11 +176,6 @@ export class ProseEditor {
     } else {
       this.provider.once("synced", land);
     }
-  }
-
-  onCounted(counted) {
-    this.counted = counted;
-    counted(wordsIn(this.view.state.doc));
   }
 
   onSaving(saving) {

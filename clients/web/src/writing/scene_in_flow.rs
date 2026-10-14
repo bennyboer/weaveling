@@ -3,6 +3,7 @@ use leptos::html;
 use leptos::html::Div;
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
+use words::words_in;
 
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
@@ -21,7 +22,6 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn()>,
             Closure<dyn Fn(String)>,
             Closure<dyn Fn(bool)>,
-            Closure<dyn Fn(u32)>,
             Closure<dyn Fn(u32)>,
         )>,
     );
@@ -59,7 +59,10 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             let changed = Closure::<dyn Fn(String)>::new({
                 let scene = scene.clone();
 
-                move |text: String| state.labels.opening_is(scene.clone(), text)
+                move |text: String| {
+                    state.word_count.scene_has(scene.clone(), words_in(&text));
+                    state.labels.opening_is(scene.clone(), text);
+                }
             });
             editor.on_changed(&changed);
             let saving = Closure::<dyn Fn(bool)>::new({
@@ -68,12 +71,6 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 move |saving: bool| state.saving.scene_is_saving(scene.clone(), saving)
             });
             editor.on_saving(&saving);
-            let counted = Closure::<dyn Fn(u32)>::new({
-                let scene = scene.clone();
-
-                move |words: u32| state.word_count.scene_has(scene.clone(), words as usize)
-            });
-            editor.on_counted(&counted);
             let caret_moved = Closure::<dyn Fn(u32)>::new({
                 let scene = scene.clone();
 
@@ -91,7 +88,6 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 breaking,
                 changed,
                 saving,
-                counted,
                 caret_moved,
             )));
         }

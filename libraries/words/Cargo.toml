@@ -1,0 +1,6 @@
+[package]
+name = "weaveling-words"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]

@@ -42,9 +42,6 @@ extern "C" {
     #[wasm_bindgen(method, js_name = landAt)]
     pub fn land_at(this: &ProseEditor, at: u32);
 
-    #[wasm_bindgen(method, js_name = onCounted)]
-    pub fn on_counted(this: &ProseEditor, counted: &Closure<dyn Fn(u32)>);
-
     #[wasm_bindgen(method, js_name = onSaving)]
     pub fn on_saving(this: &ProseEditor, saving: &Closure<dyn Fn(bool)>);
 
