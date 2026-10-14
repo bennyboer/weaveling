@@ -12,7 +12,7 @@ use test_harness::SqliteFixture;
 use weaveling_service_api::{Adapters, Storage, Unprepared, app};
 use wiring::sqlite::{DataDirectory, Files};
 
-const DATABASES: [&str; 7] = [
+const DATABASES: [&str; 8] = [
     "messaging",
     "projects",
     "ideas",
@@ -20,6 +20,7 @@ const DATABASES: [&str; 7] = [
     "outline",
     "scenes",
     "appearances",
+    "statistics",
 ];
 
 #[derive(Clone)]

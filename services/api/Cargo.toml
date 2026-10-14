@@ -34,6 +34,7 @@ outline-wiring = { version = "0.1.0", path = "../../features/outline/wiring", pa
 scenes-wiring = { version = "0.1.0", path = "../../features/scenes/wiring", package = "weaveling-scenes-wiring" }
 ideas-wiring = { version = "0.1.0", path = "../../features/ideas/wiring", package = "weaveling-ideas-wiring" }
 projects-wiring = { version = "0.1.0", path = "../../features/projects/wiring", package = "weaveling-projects-wiring" }
+statistics-wiring = { version = "0.1.0", path = "../../features/statistics/wiring", package = "weaveling-statistics-wiring" }
 
 
 [features]
@@ -48,6 +49,7 @@ postgres = [
     "ideas-wiring/postgres",
     "scenes-wiring/postgres",
     "projects-wiring/postgres",
+    "statistics-wiring/postgres",
 ]
 sqlite = [
     "dep:sqlx",
@@ -60,6 +62,7 @@ sqlite = [
     "ideas-wiring/sqlite",
     "scenes-wiring/sqlite",
     "projects-wiring/sqlite",
+    "statistics-wiring/sqlite",
 ]
 
 [dev-dependencies]

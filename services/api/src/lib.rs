@@ -15,6 +15,7 @@ use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use outline_wiring::OutlineFeature;
 use projects_wiring::ProjectFeature;
 use scenes_wiring::SceneFeature;
+use statistics_wiring::StatisticsFeature;
 use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context, assemble};
 
@@ -52,6 +53,7 @@ impl Adapters {
             assemble::<BoardFeature>(&storage, &context).await?,
             assemble::<OutlineFeature>(&storage, &context).await?,
             assemble::<AppearanceFeature>(&storage, &context).await?,
+            assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
 
         Ok(Self {

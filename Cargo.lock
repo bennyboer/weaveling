@@ -4193,6 +4193,7 @@ dependencies = [
  "weaveling-outline-wiring",
  "weaveling-projects-wiring",
  "weaveling-scenes-wiring",
+ "weaveling-statistics-wiring",
  "weaveling-test-harness",
  "weaveling-wiring",
 ]
@@ -4205,6 +4206,87 @@ dependencies = [
  "thiserror",
  "tracing",
  "weaveling-eventsourcing",
+]
+
+[[package]]
+name = "weaveling-statistics-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "time",
+ "tokio",
+ "weaveling-statistics-core",
+ "weaveling-test-harness",
+]
+
+[[package]]
+name = "weaveling-statistics-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "weaveling-statistics-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "time",
+]
+
+[[package]]
+name = "weaveling-statistics-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "thiserror",
+ "weaveling-messaging",
+ "weaveling-scenes-contract",
+ "weaveling-statistics-core",
+]
+
+[[package]]
+name = "weaveling-statistics-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "serde",
+ "tracing",
+ "weaveling-statistics-contract",
+ "weaveling-statistics-core",
+]
+
+[[package]]
+name = "weaveling-statistics-tests"
+version = "0.1.0"
+dependencies = [
+ "axum-test",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-messaging",
+ "weaveling-scenes-contract",
+ "weaveling-statistics-catalog",
+ "weaveling-statistics-contract",
+ "weaveling-statistics-core",
+ "weaveling-statistics-messaging",
+ "weaveling-statistics-rest",
+]
+
+[[package]]
+name = "weaveling-statistics-wiring"
+version = "0.1.0"
+dependencies = [
+ "sqlx",
+ "weaveling-outbox",
+ "weaveling-statistics-catalog",
+ "weaveling-statistics-core",
+ "weaveling-statistics-messaging",
+ "weaveling-statistics-rest",
+ "weaveling-wiring",
 ]
 
 [[package]]

@@ -1,0 +1,9 @@
+[package]
+name = "weaveling-statistics-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+time = { workspace = true }
