@@ -94,13 +94,13 @@ async fn the_refusals_are_mounted_under_the_service() {
 }
 
 #[tokio::test]
-async fn the_sync_socket_is_mounted_under_api() {
+async fn there_is_no_socket_for_one_scene_any_more() {
     let (status, _) = get("/api/sync/weaveling").await;
 
     assert_eq!(
         status,
-        StatusCode::BAD_REQUEST,
-        "a malformed id must be refused by the route, not answered with 404 by the router"
+        StatusCode::NOT_FOUND,
+        "every scene travels on the one socket at /api/sync"
     );
 }
 

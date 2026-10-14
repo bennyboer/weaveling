@@ -439,7 +439,7 @@ Untitled is stored as `""`, never as `Option<IdeaTitle>`. Two representations of
 | prose | cursors (awareness) | text (CRDT) |
 | board | drag in flight (awareness) | placement (events) |
 
-The cost is honest: the board needs its own live channel, since awareness in our stack is bound to `/sync/{scene}` and a board is not a scene. Two live channels carrying different things, unable to share a protocol.
+The cost is honest: the board needs its own live channel, since awareness in our stack is bound to scenes on `/sync` and a board is not a scene. Two live channels carrying different things, unable to share a protocol.
 
 **Moves must not conflict.** Moves of *different* ideas commute, so `IdeaMoved` takes no strict version check, and concurrent drags of the *same* idea are last-drop-wins. Rejecting a move with "someone else moved it, reload" is the wrong answer for a position — no work is lost, the idea simply lands where the last author dropped it. Optimistic concurrency is reserved for the commands where a conflict means the author's intent no longer applies: pinning and unpinning.
 

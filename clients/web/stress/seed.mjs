@@ -16,6 +16,9 @@ const VOCABULARY = (
   "came down the valley road with its carts and its rumours and its hunger"
 ).split(" ");
 
+const JOIN = 0;
+const CARRY = 2;
+
 const MESSAGE_SYNC = 0;
 const STEP_ONE = 0;
 const STEP_TWO = 1;
@@ -76,9 +79,17 @@ function framed(kind, write) {
   return encoding.toUint8Array(encoder);
 }
 
+function enveloped(kind, scene, frame) {
+  const encoder = encoding.createEncoder();
+  encoding.writeVarUint(encoder, kind);
+  encoding.writeVarString(encoder, scene);
+  if (frame) encoding.writeVarUint8Array(encoder, frame);
+  return encoding.toUint8Array(encoder);
+}
+
 function written(scene, update) {
   return new Promise((done, failed) => {
-    const socket = new WebSocket(`${API.replace(/^http/, "ws")}/sync/${scene}`);
+    const socket = new WebSocket(`${API.replace(/^http/, "ws")}/sync`);
     socket.binaryType = "arraybuffer";
     const vector = Y.encodeStateVector((() => {
       const doc = new Y.Doc();
@@ -87,11 +98,15 @@ function written(scene, update) {
     })());
 
     socket.onopen = () => {
-      socket.send(framed(UPDATE, (encoder) => encoding.writeVarUint8Array(encoder, update)));
-      socket.send(framed(STEP_ONE, (encoder) => encoding.writeVarUint8Array(encoder, vector)));
+      socket.send(enveloped(JOIN, scene));
+      socket.send(enveloped(CARRY, scene, framed(UPDATE, (encoder) => encoding.writeVarUint8Array(encoder, update))));
+      socket.send(enveloped(CARRY, scene, framed(STEP_ONE, (encoder) => encoding.writeVarUint8Array(encoder, vector))));
     };
     socket.onmessage = (event) => {
-      const decoder = decoding.createDecoder(new Uint8Array(event.data));
+      const envelope = decoding.createDecoder(new Uint8Array(event.data));
+      if (decoding.readVarUint(envelope) !== CARRY) return;
+      if (decoding.readVarString(envelope) !== scene) return;
+      const decoder = decoding.createDecoder(decoding.readVarUint8Array(envelope));
       if (decoding.readVarUint(decoder) !== MESSAGE_SYNC) return;
       if (decoding.readVarUint(decoder) !== STEP_TWO) return;
       socket.close();
