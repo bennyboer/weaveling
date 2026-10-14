@@ -8,11 +8,12 @@ use crate::refusals::model::Refusal;
 const WORDLESS: &str = "A change did not reach everywhere it should have.";
 
 pub fn refusals_dialog(state: AlarmState) -> impl IntoView {
-    window_event_listener(ev::keydown, move |event| {
+    let escaping = window_event_listener(ev::keydown, move |event| {
         if event.key() == "Escape" {
             state.stop_looking();
         }
     });
+    on_cleanup(move || escaping.remove());
 
     html::div()
         .class("overlay")

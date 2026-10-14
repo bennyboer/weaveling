@@ -26,11 +26,24 @@ pub fn WriteView(project: String) -> impl IntoView {
     let open = Memo::new(move |_| state.structure.is_open());
     let unshaped = Memo::new(move |_| state.structure.is_unshaped());
 
-    window_event_listener(ev::click, move |_| state.margin.let_go());
-    window_event_listener(ev::keydown, move |event| match event.key().as_str() {
+    Effect::new(move |landed: Option<bool>| {
+        if landed == Some(true) || !open.get() {
+            return landed.unwrap_or(false);
+        }
+        untrack(|| state.left_off.land());
+
+        true
+    });
+
+    let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
+    let typing = window_event_listener(ev::keydown, move |event| match event.key().as_str() {
         "Escape" => state.margin.return_to_writing(),
         "F10" if event.shift_key() => open_menu_where_writing(&event, state),
         _ => {}
+    });
+    on_cleanup(move || {
+        clicking.remove();
+        typing.remove();
     });
 
     let book_view = html::article()

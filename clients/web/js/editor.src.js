@@ -49,6 +49,7 @@ export class ProseEditor {
     this.breaking = () => {};
     this.changed = () => {};
     this.counted = () => {};
+    this.caretMoved = () => {};
     this.saving = () => {};
     this.awaitSaving();
 
@@ -68,6 +69,9 @@ export class ProseEditor {
         if (tr.docChanged) {
           editor.changed(openingWordsOf(this.state.doc));
           editor.counted(wordsIn(this.state.doc));
+        }
+        if ((tr.docChanged || tr.selectionSet) && this.hasFocus()) {
+          editor.caretMoved(this.state.selection.head);
         }
       },
       state: EditorState.create({
@@ -153,6 +157,34 @@ export class ProseEditor {
     this.breaking();
 
     return true;
+  }
+
+  onCaretMoved(caretMoved) {
+    this.caretMoved = caretMoved;
+  }
+
+  landAt(at) {
+    const land = () => {
+      const focused = document.activeElement;
+
+      if (focused && focused !== document.body) {
+        return;
+      }
+
+      const { doc } = this.view.state;
+      const caret = Math.min(Math.max(at, 0), doc.content.size);
+
+      this.focusAt(TextSelection.near(doc.resolve(caret)));
+      const { node } = this.view.domAtPos(this.view.state.selection.head);
+      const line = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      line?.scrollIntoView({ block: "center" });
+    };
+
+    if (this.provider.synced) {
+      land();
+    } else {
+      this.provider.once("synced", land);
+    }
   }
 
   onCounted(counted) {

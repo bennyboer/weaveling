@@ -27,6 +27,7 @@ pub struct Walk {
     editors: StoredValue<HashMap<SceneId, ProseEditor>, LocalStorage>,
     lines: StoredValue<HashMap<Stop, HtmlElement>, LocalStorage>,
     awaited: StoredValue<Option<Stop>>,
+    landing: StoredValue<Option<(SceneId, u32)>>,
 }
 
 impl Walk {
@@ -36,12 +37,38 @@ impl Walk {
             editors: StoredValue::new_local(HashMap::new()),
             lines: StoredValue::new_local(HashMap::new()),
             awaited: StoredValue::new(None),
+            landing: StoredValue::new(None),
         }
     }
 
     pub fn writing_in(self, scene: SceneId, editor: ProseEditor) {
+        let landing = self
+            .landing
+            .try_update_value(|landing| {
+                landing
+                    .take_if(|(awaited, _)| awaited == &scene)
+                    .map(|(_, at)| at)
+            })
+            .flatten();
+
+        if let Some(at) = landing {
+            editor.land_at(at);
+        }
         self.editors
             .update_value(|editors| _ = editors.insert(scene, editor));
+    }
+
+    pub fn land_in(self, scene: SceneId, at: u32) {
+        let landed = self.editors.with_value(|editors| {
+            editors
+                .get(&scene)
+                .map(|editor| editor.land_at(at))
+                .is_some()
+        });
+
+        if !landed {
+            self.landing.set_value(Some((scene, at)));
+        }
     }
 
     pub fn done_with(self, scene: &SceneId) -> Option<ProseEditor> {

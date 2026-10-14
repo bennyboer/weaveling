@@ -1,6 +1,7 @@
 use crate::projects::model::ProjectId;
 use crate::writing::beginnings::Beginnings;
 use crate::writing::labels::Labels;
+use crate::writing::left_off::LeftOff;
 use crate::writing::margin::Margin;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
@@ -18,6 +19,7 @@ pub struct WriteViewState {
     pub margin: Margin,
     pub saving: Saving,
     pub word_count: WordCount,
+    pub left_off: LeftOff,
 }
 
 impl WriteViewState {
@@ -25,16 +27,18 @@ impl WriteViewState {
         let problems = Problems::none();
         let saving = Saving::nothing();
         let structure = Structure::open(project, problems, saving);
+        let walk = Walk::through(structure);
 
         Self {
             problems,
             structure,
-            walk: Walk::through(structure),
+            walk,
             beginnings: Beginnings::of(structure, problems),
             labels: Labels::of(project, problems, saving),
             margin: Margin::closed(),
             saving,
             word_count: WordCount::of(structure),
+            left_off: LeftOff::in_project(project, structure, walk),
         }
     }
 }

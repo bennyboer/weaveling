@@ -18,11 +18,12 @@ pub fn link_dialog(state: ScenePageState) -> impl IntoView {
         }
     });
 
-    window_event_listener(ev::keydown, move |event| {
+    let escaping = window_event_listener(ev::keydown, move |event| {
         if event.key() == "Escape" {
             state.stop_picking();
         }
     });
+    on_cleanup(move || escaping.remove());
 
     let matching = move || {
         let wanted = finding.get().to_lowercase();

@@ -1,6 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aLooseScene, aNewProject, views } from "./support/shell";
+import {
+  aLooseScene,
+  aNewProject,
+  openTheOutline,
+  views,
+} from "./support/shell";
 
 const API = "http://127.0.0.1:3000/api";
 
@@ -2121,4 +2126,139 @@ test("before the cursor is anywhere, the word count counts the first section", a
   await openTheWritingView(page);
 
   await expect(wordCount(page)).toHaveText("0 words in “Part One”");
+});
+
+test("the first time, Write lands at the start of the book", async ({
+  page,
+}) => {
+  await aNewProject(page, "FirstLanding");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  await openTheWritingView(page);
+
+  await expect(scene(page, scenes["Part One"][0])).toBeFocused();
+  await page.keyboard.type("Begun");
+  await expect(scene(page, scenes["Part One"][0])).toHaveText("Begun");
+});
+
+test("Write lands where the author left off, after moving away and after a reload", async ({
+  page,
+}) => {
+  await aNewProject(page, "LeftOff");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  const later = scene(page, scenes["Part Two"][0]);
+  await openTheWritingView(page);
+  await later.click();
+  await page.keyboard.type("Alpha Beta");
+  await page.keyboard.press("Home");
+  for (let step = 0; step < 5; step++) {
+    await page.keyboard.press("ArrowRight");
+  }
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await views(page).getByRole("link", { name: "Board", exact: true }).click();
+  await openTheWritingView(page);
+  await expect(later).toBeFocused();
+  await page.keyboard.type("X");
+  await expect(later).toHaveText("AlphaX Beta");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await page.reload();
+  await expect(later).toBeFocused();
+  await page.keyboard.type("Y");
+  await expect(later).toHaveText("AlphaXY Beta");
+});
+
+test("when the scene left off in has left the book, Write lands at its start", async ({
+  page,
+}) => {
+  await aNewProject(page, "LeftOffGone");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  const [first] = scenes["Part One"];
+  const [later] = scenes["Part Two"];
+  await openTheWritingView(page);
+  await scene(page, later).click();
+  await page.keyboard.type("Gone soon");
+  await sceneActions(page, later).click();
+  await menuItem(page, "Take out of the book").click();
+  await expect(scene(page, later)).toHaveCount(0);
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await page.reload();
+
+  await expect(scene(page, first)).toBeFocused();
+});
+
+test("a book with no scenes yet lands on its first section's writing line", async ({
+  page,
+}) => {
+  await aNewProject(page, "NothingWritten");
+  await aBookWithScenes(page, { "Part One": 0 });
+  await openTheWritingView(page);
+
+  await expect(beginning(page)).toBeFocused();
+});
+
+test("landing far down the book brings the line left off into the middle of the window", async ({
+  page,
+}) => {
+  await aNewProject(page, "FarDown");
+  const scenes = await aBookWithScenes(page, { "Part One": 14 });
+  const middle = scene(page, scenes["Part One"][7]);
+  await openTheWritingView(page);
+  await middle.click();
+  await page.keyboard.type("Half way.");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await page.reload();
+  await expect(middle).toBeFocused();
+
+  const line = (await middle.locator("p").boundingBox())!;
+  const tall = page.viewportSize()!.height;
+  expect(
+    Math.abs(line.y + line.height / 2 - tall / 2),
+    "the line sits in the middle third of the window",
+  ).toBeLessThan(tall / 6);
+});
+
+test("even the book's last line can be brought to the middle of the window", async ({
+  page,
+}) => {
+  await aNewProject(page, "LastLine");
+  const scenes = await aBookWithScenes(page, { "Part One": 14 });
+  const last = scene(page, scenes["Part One"][13]);
+  await openTheWritingView(page);
+  await last.click();
+  await page.keyboard.type("At the very end.");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await page.reload();
+  await expect(last).toBeFocused();
+
+  const line = (await last.locator("p").boundingBox())!;
+  const tall = page.viewportSize()!.height;
+  expect(
+    Math.abs(line.y + line.height / 2 - tall / 2),
+    "there is room below the book to scroll its end up",
+  ).toBeLessThan(tall / 6);
+});
+
+test("leaving the writing view leaves nothing behind that clicks or keys can trip over", async ({
+  page,
+}) => {
+  const panics: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error" && message.text().includes("panicked")) {
+      panics.push(message.text());
+    }
+  });
+  await aNewProject(page, "Leaving");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+
+  await openTheOutline(page);
+  await page.mouse.click(5, 300);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Shift+F10");
+
+  expect(panics).toEqual([]);
 });
