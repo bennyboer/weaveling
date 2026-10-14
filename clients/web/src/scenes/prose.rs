@@ -4,6 +4,14 @@ use web_sys::HtmlElement;
 
 #[wasm_bindgen(module = "/js/editor.bundle.js")]
 extern "C" {
+    pub type SyncConnection;
+
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> SyncConnection;
+
+    #[wasm_bindgen(method)]
+    pub fn close(this: &SyncConnection);
+
     pub type ProseEditor;
 
     #[wasm_bindgen(constructor)]
@@ -13,6 +21,7 @@ extern "C" {
         author: &str,
         color: &str,
         on_connected: &Closure<dyn Fn(bool)>,
+        connection: &SyncConnection,
     ) -> ProseEditor;
 
     #[wasm_bindgen(method)]

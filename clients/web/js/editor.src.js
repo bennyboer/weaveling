@@ -1,8 +1,4 @@
 import * as Y from "yjs";
-import { WebsocketProvider, messageSync } from "y-websocket";
-import { messageYjsSyncStep2, writeSyncStep1 } from "y-protocols/sync";
-import * as encoding from "lib0/encoding";
-import * as decoding from "lib0/decoding";
 import { EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { Schema } from "prosemirror-model";
@@ -12,6 +8,10 @@ import { baseKeymap } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { redo, undo, yCursorPlugin, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 
+import { SceneSync } from "./sync.js";
+
+export { SyncConnection } from "./sync.js";
+
 const FRAGMENT = "prose";
 
 const schema = new Schema({
@@ -19,31 +19,22 @@ const schema = new Schema({
   marks: basic.spec.marks,
 });
 
-function endpoint() {
-  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-
-  return `${scheme}//${window.location.host}/api/sync`;
-}
-
 function textOf(doc) {
   return doc.textBetween(0, doc.content.size, " ", " ");
 }
 
 export class ProseEditor {
-  constructor(host, scene, author, color, onConnected) {
+  constructor(host, scene, author, color, onConnected, connection) {
     this.doc = new Y.Doc();
     this.fragment = this.doc.getXmlFragment(FRAGMENT);
 
-    this.provider = new WebsocketProvider(endpoint(), scene, this.doc);
-    this.provider.awareness.setLocalStateField("user", { name: author, color });
-    this.provider.on("status", ({ status }) => onConnected(status === "connected"));
+    this.sync = new SceneSync(connection, scene, this.doc, onConnected);
+    this.sync.awareness.setLocalStateField("user", { name: author, color });
 
     this.leaving = () => false;
     this.breaking = () => {};
     this.changed = () => {};
     this.caretMoved = () => {};
-    this.saving = () => {};
-    this.awaitSaving();
 
     const editor = this;
 
@@ -85,7 +76,7 @@ export class ProseEditor {
             },
           }),
           ySyncPlugin(this.fragment),
-          yCursorPlugin(this.provider.awareness),
+          yCursorPlugin(this.sync.awareness),
           yUndoPlugin(),
           keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-Shift-z": redo }),
           keymap({
@@ -129,7 +120,7 @@ export class ProseEditor {
   onChanged(changed) {
     this.changed = changed;
 
-    if (this.provider.synced) {
+    if (this.sync.synced) {
       changed(textOf(this.view.state.doc));
     }
   }
@@ -174,85 +165,11 @@ export class ProseEditor {
       line?.scrollIntoView({ block: "center" });
     };
 
-    if (this.provider.synced) {
-      land();
-    } else {
-      this.provider.once("synced", land);
-    }
+    this.sync.whenSynced(land);
   }
 
   onSaving(saving) {
-    this.saving = saving;
-    saving(this.isSaving());
-  }
-
-  awaitSaving() {
-    this.changes = 0;
-    this.stored = 0;
-    this.asked = [];
-    this.wasSaving = false;
-
-    this.doc.on("update", (_, origin) => {
-      if (origin !== this.provider) {
-        this.changes += 1;
-        this.tellSaving();
-        this.askWhatIsStored();
-      }
-    });
-    this.provider.on("status", ({ status }) => {
-      this.asked = status === "connected" ? [this.stored] : [];
-    });
-
-    const handleSync = this.provider.messageHandlers[messageSync];
-
-    this.provider.messageHandlers[messageSync] = (encoder, decoder, provider, fromServer, kind) => {
-      const answer = fromServer && decoding.peekVarUint(decoder) === messageYjsSyncStep2;
-
-      handleSync(encoder, decoder, provider, fromServer, kind);
-
-      if (answer) {
-        this.answered();
-      }
-    };
-  }
-
-  askWhatIsStored() {
-    const { ws, wsconnected } = this.provider;
-
-    if (this.asked.length > 0 || !wsconnected || this.stored === this.changes) {
-      return;
-    }
-
-    const encoder = encoding.createEncoder();
-    encoding.writeVarUint(encoder, messageSync);
-    writeSyncStep1(encoder, this.doc);
-    this.asked.push(this.changes);
-    ws.send(encoding.toUint8Array(encoder));
-  }
-
-  answered() {
-    const covered = this.asked.shift();
-
-    if (covered === undefined) {
-      return;
-    }
-
-    this.stored = Math.max(this.stored, covered);
-    this.tellSaving();
-    this.askWhatIsStored();
-  }
-
-  isSaving() {
-    return this.stored < this.changes;
-  }
-
-  tellSaving() {
-    const saving = this.isSaving();
-
-    if (saving !== this.wasSaving) {
-      this.wasSaving = saving;
-      this.saving(saving);
-    }
+    this.sync.onSaving(saving);
   }
 
   onLeaving(leaving) {
@@ -333,7 +250,7 @@ export class ProseEditor {
 
   destroy() {
     this.view.destroy();
-    this.provider.destroy();
+    this.sync.destroy();
     this.doc.destroy();
   }
 

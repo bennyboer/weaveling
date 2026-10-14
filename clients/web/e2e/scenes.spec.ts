@@ -113,7 +113,7 @@ test("leaving a scene tears down the editor and its socket", async ({
 }) => {
   const sockets: WebSocket[] = [];
   page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/sync/")) {
+    if (socket.url().endsWith("/api/sync")) {
       sockets.push(socket);
     }
   });

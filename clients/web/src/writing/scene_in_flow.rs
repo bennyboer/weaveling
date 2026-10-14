@@ -83,7 +83,16 @@ fn editor(scene: SceneId, state: WriteViewState) -> impl IntoView {
             };
 
             let connected = Closure::<dyn Fn(bool)>::new(|_: bool| {});
-            let editor = ProseEditor::new(&surface, scene.as_str(), AUTHOR, COLOUR, &connected);
+            let editor = state.connection.with_value(|connection| {
+                ProseEditor::new(
+                    &surface,
+                    scene.as_str(),
+                    AUTHOR,
+                    COLOUR,
+                    &connected,
+                    connection,
+                )
+            });
             let leaving = Closure::<dyn Fn(String) -> bool>::new({
                 let scene = scene.clone();
 

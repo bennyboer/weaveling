@@ -1826,6 +1826,13 @@ test("a section's menu nests and lifts it, offering only what is possible", asyn
 
 const statusNote = (page: Page) => page.locator(".status-note");
 
+const sceneCarried = (frame: string | Buffer) => {
+  const bytes = Buffer.from(frame);
+  const length = bytes[1];
+
+  return bytes.subarray(2, 2 + length).toString();
+};
+
 const saveState = (page: Page) => statusNote(page).locator(".save-state");
 
 async function holdingWhatIsWritten(page: Page) {
@@ -1833,7 +1840,7 @@ async function holdingWhatIsWritten(page: Page) {
   const servers: { send: (frame: string | Buffer) => void }[] = [];
   let holding = false;
 
-  await page.routeWebSocket(/\/api\/sync\//, (socket) => {
+  await page.routeWebSocket(/\/api\/sync$/, (socket) => {
     const server = socket.connectToServer();
     servers.push(server);
 
@@ -2340,12 +2347,11 @@ test("a scene whose text has not arrived still counts, by what the server last c
     )
     .toBe(3);
 
-  await page.routeWebSocket(/\/api\/sync\//, (socket) => {
+  await page.routeWebSocket(/\/api\/sync$/, (socket) => {
     const server = socket.connectToServer();
-    const held = socket.url().includes(later);
     socket.onMessage((frame) => server.send(frame));
     server.onMessage((frame) => {
-      if (!held) {
+      if (sceneCarried(frame) !== later) {
         socket.send(frame);
       }
     });
@@ -2403,8 +2409,14 @@ test("what the server last counted never stands over what is being written", asy
 test("a scene far from the window waits without an editor, and gets one as it comes near", async ({
   page,
 }) => {
-  let sockets = 0;
-  page.on("websocket", () => sockets++);
+  const joined = new Set<string>();
+  page.on("websocket", (socket) =>
+    socket.on("framesent", ({ payload }) => {
+      if (Buffer.from(payload)[0] === 0) {
+        joined.add(sceneCarried(payload));
+      }
+    }),
+  );
   await aNewProject(page, "FarAndNear");
   const scenes = await aBookWithScenes(page, { "Part One": 60 });
   const last = scenes["Part One"][59];
@@ -2415,9 +2427,10 @@ test("a scene far from the window waits without an editor, and gets one as it co
   await expect(waiting).toHaveCount(1);
   await expect(scene(page, last)).toHaveCount(0);
   expect(
-    sockets,
-    "a scene nobody can see has no editor and holds no connection",
-  ).toBeLessThan(60);
+    joined.has(last),
+    "a scene nobody can see has no editor and is not synced",
+  ).toBe(false);
+  expect(joined.size).toBeGreaterThan(0);
 
   await waiting.scrollIntoViewIfNeeded();
 
@@ -2435,8 +2448,7 @@ test("landing where the author left off reaches a scene far down the book", asyn
   await flow(page).locator(`[data-place-of="${last}"]`).scrollIntoViewIfNeeded();
   await scene(page, last).click();
   await page.keyboard.type("Far down.");
-  // TODO: back to the usual wait once every scene shares one sync connection (M13c slice 6)
-  await expect(saveState(page)).toHaveText("All saved", { timeout: 15_000 });
+  await expect(saveState(page)).toHaveText("All saved");
 
   await page.reload();
 
@@ -2454,8 +2466,7 @@ test("a scene waiting far away is named in the margin by its opening words", asy
   await flow(page).locator(`[data-place-of="${last}"]`).scrollIntoViewIfNeeded();
   await scene(page, last).click();
   await page.keyboard.type("The far scene speaks.");
-  // TODO: back to the usual wait once every scene shares one sync connection (M13c slice 6)
-  await expect(saveState(page)).toHaveText("All saved", { timeout: 15_000 });
+  await expect(saveState(page)).toHaveText("All saved");
   await page.evaluate(() => window.scrollTo(0, 0));
   await scene(page, first).click();
   await page.keyboard.type("A");
@@ -2468,4 +2479,67 @@ test("a scene waiting far away is named in the margin by its opening words", asy
     flow(page).locator(`.scene.waiting[data-scene="${last}"]`),
   ).toHaveCount(1);
   await expect(label(page, last)).toHaveText("The far scene speaks.");
+});
+
+test("another author's cursor shows in the scene they are writing in", async ({
+  page,
+  context,
+}) => {
+  await aNewProject(page, "TwoAuthors");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+  const other = await context.newPage();
+  await other.goto(page.url());
+  await expect(scene(other, second)).toBeVisible();
+
+  await scene(other, second).click();
+  await other.keyboard.type("Written elsewhere.");
+
+  await expect(scene(page, second)).toContainText("Written elsewhere.");
+  await expect(
+    flow(page).locator(`[data-scene="${second}"] .ProseMirror-yjs-cursor`),
+  ).toHaveCount(1);
+  await expect(
+    flow(page).locator(`[data-scene="${first}"] .ProseMirror-yjs-cursor`),
+  ).toHaveCount(0);
+  await other.close();
+});
+
+test("a dropped connection comes back, and what was written meanwhile is saved", async ({
+  page,
+}) => {
+  let down = false;
+  let live: { close: () => Promise<void> } | null = null;
+  await page.routeWebSocket(/\/api\/sync$/, (socket) => {
+    if (down) {
+      socket.close();
+      return;
+    }
+    socket.connectToServer();
+    live = socket;
+  });
+  await aNewProject(page, "Dropped");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const [only] = scenes["Part One"];
+  await openTheWritingView(page);
+  await scene(page, only).click();
+  await page.keyboard.type("Before.");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  down = true;
+  await live!.close();
+  await page.keyboard.type(" During.");
+  await expect(saveState(page)).toHaveText("Saving…");
+  await page.waitForTimeout(1_000);
+  await expect(
+    saveState(page),
+    "nothing can be stored while the connection is down",
+  ).toHaveText("Saving…");
+
+  down = false;
+  await expect(saveState(page)).toHaveText("All saved", { timeout: 10_000 });
+  expect(
+    (await (await page.request.get(`${API}/scenes/${only}`)).json()).text,
+  ).toBe("Before. During.");
 });

@@ -5,7 +5,7 @@ use leptos::{IntoView, ev};
 use wasm_bindgen::closure::Closure;
 
 use crate::scenes::model::SceneId;
-use crate::scenes::prose::ProseEditor;
+use crate::scenes::prose::{ProseEditor, SyncConnection};
 
 #[component]
 pub fn SceneEditor(scene: SceneId) -> impl IntoView {
@@ -13,6 +13,7 @@ pub fn SceneEditor(scene: SceneId) -> impl IntoView {
     let connected = RwSignal::new(false);
 
     let prose = StoredValue::new(None::<ProseEditor>);
+    let connection = StoredValue::new_local(SyncConnection::new());
     let watching = StoredValue::new_local(None::<Closure<dyn Fn(bool)>>);
 
     Effect::new(move || {
@@ -21,13 +22,17 @@ pub fn SceneEditor(scene: SceneId) -> impl IntoView {
         };
 
         let on_connected = Closure::<dyn Fn(bool)>::new(move |live: bool| connected.set(live));
-        prose.set_value(Some(ProseEditor::new(
-            &surface,
-            scene.as_str(),
-            "You",
-            "#f59e0b",
-            &on_connected,
-        )));
+        let editor = connection.with_value(|connection| {
+            ProseEditor::new(
+                &surface,
+                scene.as_str(),
+                "You",
+                "#f59e0b",
+                &on_connected,
+                connection,
+            )
+        });
+        prose.set_value(Some(editor));
         watching.set_value(Some(on_connected));
     });
 
@@ -38,6 +43,7 @@ pub fn SceneEditor(scene: SceneId) -> impl IntoView {
             }
         });
         watching.set_value(None);
+        connection.with_value(SyncConnection::close);
     });
 
     html::section().class("prose").child((

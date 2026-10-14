@@ -48,7 +48,6 @@ test("the writing view on a book of many scenes", async ({ page }) => {
   const settled = await metrics();
   const mounted = await book.locator(".scene").count();
   const editors = await book.locator(".scene .ProseMirror").count();
-  const editors = await book.locator(".scene .ProseMirror").count();
   const synced = await book
     .locator(".scene .ProseMirror")
     .evaluateAll(
@@ -96,7 +95,6 @@ test("the writing view on a book of many scenes", async ({ page }) => {
     scenesInBook: seeded.scenes,
     typeableAfterMs: typeable ?? `not within ${GIVE_UP_AFTER} ms`,
     scenesMounted: mounted,
-    editorsMounted: editors,
     editorsMounted: editors,
     scenesWithTextArrived: synced,
     socketsOpen: opened.sockets - opened.closed,

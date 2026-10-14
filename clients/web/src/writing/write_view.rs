@@ -8,6 +8,7 @@ use web_sys::{Element, FocusEvent};
 use crate::outline::model::{Section, SectionId};
 use crate::route;
 use crate::scenes::model::SceneId;
+use crate::scenes::prose::SyncConnection;
 use crate::writing::asking::asking;
 use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
@@ -74,6 +75,7 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
         clicking.remove();
         typing.remove();
         state.viewport.close();
+        state.connection.with_value(SyncConnection::close);
     });
 
     let book_view = html::article()
