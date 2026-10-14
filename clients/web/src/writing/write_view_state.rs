@@ -2,6 +2,7 @@ use leptos::task::spawn_local;
 
 use crate::projects::model::ProjectId;
 use crate::scenes::service as scenes;
+use crate::statistics::service as statistics;
 use crate::writing::beginnings::Beginnings;
 use crate::writing::labels::Labels;
 use crate::writing::left_off::LeftOff;
@@ -43,11 +44,18 @@ impl WriteViewState {
             word_count: WordCount::of(structure),
             left_off: LeftOff::in_project(project, structure, walk),
         };
-        let project = project.clone();
+        let listing = project.clone();
+        let counting = project.clone();
 
         spawn_local(async move {
-            match scenes::in_project(&project).await {
+            match scenes::in_project(&listing).await {
                 Ok(listed) => state.labels.remember(&listed),
+                Err(failure) => state.problems.report(failure),
+            }
+        });
+        spawn_local(async move {
+            match statistics::word_counts(&counting).await {
+                Ok(counted) => state.word_count.remember(counted),
                 Err(failure) => state.problems.report(failure),
             }
         });

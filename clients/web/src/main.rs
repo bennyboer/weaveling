@@ -12,6 +12,7 @@ mod refusals;
 mod route;
 mod scenes;
 mod shell;
+mod statistics;
 mod theme;
 mod tray;
 mod writing;

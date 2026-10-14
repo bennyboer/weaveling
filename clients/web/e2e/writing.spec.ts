@@ -2311,8 +2311,7 @@ test("following the scene left off in lands where the author left off in it", as
   await expect(scene(page, second)).toHaveText("AlphaX Beta");
 });
 
-// TODO: back once the view loads its counts from statistics (M13c 6a2c)
-test.fixme("a scene whose text has not arrived still counts, by what the server last counted", async ({
+test("a scene whose text has not arrived still counts, by what the server last counted", async ({
   page,
 }) => {
   await aNewProject(page, "CountedByTheServer");
@@ -2326,12 +2325,18 @@ test.fixme("a scene whose text has not arrived still counts, by what the server 
   await expect
     .poll(
       async () => {
-        const listed = await (
-          await page.request.get(`${API}/scenes?project=${project}`)
+        const counted = await (
+          await page.request.get(
+            `${API}/statistics/word-counts?project=${project}`,
+          )
         ).json();
-        return listed.find((held: { id: string }) => held.id === later).words;
+        return counted.find((held: { scene: string }) => held.scene === later)
+          ?.words;
       },
-      { message: "the server counts what it stores", timeout: 10_000 },
+      {
+        message: "the server counts what it stores, and statistics keeps it",
+        timeout: 10_000,
+      },
     )
     .toBe(3);
 
@@ -2350,4 +2355,47 @@ test.fixme("a scene whose text has not arrived still counts, by what the server 
   await wordCount(page).click();
 
   await expect(wordCount(page)).toHaveText("3 words in the book");
+});
+
+test("what the server last counted never stands over what is being written", async ({
+  page,
+}) => {
+  await aNewProject(page, "CountedLate");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const [only] = scenes["Part One"];
+  await openTheWritingView(page);
+  await scene(page, only).click();
+  await page.keyboard.type("one two three");
+  await expect(saveState(page)).toHaveText("All saved");
+  const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+  await expect
+    .poll(
+      async () =>
+        (
+          await (
+            await page.request.get(
+              `${API}/statistics/word-counts?project=${project}`,
+            )
+          ).json()
+        )[0]?.words,
+      { timeout: 10_000 },
+    )
+    .toBe(3);
+
+  let answered = false;
+  await page.route("**/api/statistics/word-counts*", async (route) => {
+    const counted = await route.fetch();
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.fulfill({ response: counted });
+    answered = true;
+  });
+  await page.reload();
+  await expect(scene(page, only)).toBeFocused();
+  await page.keyboard.press("End");
+  await page.keyboard.type(" four");
+  await expect(wordCount(page)).toHaveText("4 words in “Part One”");
+
+  await expect.poll(() => answered).toBe(true);
+  await page.waitForTimeout(300);
+  await expect(wordCount(page)).toHaveText("4 words in “Part One”");
 });

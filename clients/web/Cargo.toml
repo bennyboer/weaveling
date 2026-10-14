@@ -41,3 +41,4 @@ outline-contract = { version = "0.1.0", path = "../../features/outline/contract"
 ideas-contract = { version = "0.1.0", path = "../../features/ideas/contract", package = "weaveling-ideas-contract" }
 scenes-contract = { version = "0.1.0", path = "../../features/scenes/contract", package = "weaveling-scenes-contract" }
 projects-contract = { version = "0.1.0", path = "../../features/projects/contract", package = "weaveling-projects-contract" }
+statistics-contract = { version = "0.1.0", path = "../../features/statistics/contract", package = "weaveling-statistics-contract" }

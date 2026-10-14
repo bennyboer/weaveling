@@ -4,6 +4,7 @@ use leptos::prelude::*;
 
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
+use crate::statistics::model::SceneWordCount;
 use crate::writing::structure::Structure;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -39,6 +40,14 @@ impl WordCount {
             self.words
                 .update(|counted| _ = counted.insert(scene, words));
         }
+    }
+
+    pub fn remember(self, counted: Vec<SceneWordCount>) {
+        self.words.update(|words| {
+            for count in counted {
+                words.entry(count.scene).or_insert(count.words);
+            }
+        });
     }
 
     pub fn writing_in(self, section: SectionId) {
