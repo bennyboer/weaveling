@@ -4,6 +4,7 @@ use web_sys::Storage;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::writing::structure::Structure;
+use crate::writing::viewport::Viewport;
 use crate::writing::walk::{Stop, Towards, Walk, stops_in_reading_order};
 
 #[derive(Clone, Copy)]
@@ -11,15 +12,27 @@ pub struct LeftOff {
     project: StoredValue<ProjectId>,
     structure: Structure,
     walk: Walk,
+    viewport: Viewport,
 }
 
 impl LeftOff {
-    pub fn in_project(project: &ProjectId, structure: Structure, walk: Walk) -> Self {
+    pub fn in_project(
+        project: &ProjectId,
+        structure: Structure,
+        walk: Walk,
+        viewport: Viewport,
+    ) -> Self {
         Self {
             project: StoredValue::new(project.clone()),
             structure,
             walk,
+            viewport,
         }
+    }
+
+    fn land_in(self, scene: SceneId, at: u32) {
+        self.viewport.bring_near(scene.clone());
+        self.walk.land_in(scene, at);
     }
 
     pub fn remember(self, scene: &SceneId, at: u32) {
@@ -35,14 +48,14 @@ impl LeftOff {
             let at = recalled
                 .filter(|(left_in, _)| left_in == &scene)
                 .map_or(0, |(_, at)| at);
-            self.walk.land_in(scene, at);
+            self.land_in(scene, at);
             return;
         }
 
         let recalled = recalled.filter(|(scene, _)| self.structure.holds(scene));
 
         if let Some((scene, at)) = recalled {
-            self.walk.land_in(scene, at);
+            self.land_in(scene, at);
             return;
         }
 
@@ -56,7 +69,7 @@ impl LeftOff {
         });
 
         match first_scene {
-            Some(scene) => self.walk.land_in(scene, 0),
+            Some(scene) => self.land_in(scene, 0),
             None => {
                 if let Some(opening) = read
                     .into_iter()

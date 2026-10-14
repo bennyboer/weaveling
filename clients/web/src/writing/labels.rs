@@ -39,6 +39,13 @@ impl Labels {
                 .map(|scene| (scene.id.clone(), scene.title.clone()))
                 .collect(),
         );
+        self.openings.update(|openings| {
+            for scene in listed {
+                openings
+                    .entry(scene.id.clone())
+                    .or_insert_with(|| opening_of(&scene.text));
+            }
+        });
     }
 
     pub fn opening_is(self, scene: SceneId, text: String) {

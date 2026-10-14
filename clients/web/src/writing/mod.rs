@@ -12,6 +12,7 @@ mod saving;
 mod scene_in_flow;
 mod status_note;
 mod structure;
+mod viewport;
 mod walk;
 mod word_count;
 pub mod write_view;

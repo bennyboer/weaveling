@@ -7,13 +7,60 @@ use words::words_in;
 
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
+use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
 const AUTHOR: &str = "You";
 const COLOUR: &str = "#f59e0b";
 
+const WORDS_A_LINE: usize = 11;
+
 pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
+    let place: NodeRef<Div> = NodeRef::new();
+    let near = Memo::new({
+        let scene = scene.clone();
+
+        move |_| state.viewport.is_near(&scene)
+    });
+
+    Effect::new(move || {
+        if let Some(watched) = place.get() {
+            state.viewport.watch(&watched);
+        }
+    });
+    on_cleanup(move || {
+        if let Some(watched) = place.get_untracked() {
+            state.viewport.stop_watching(&watched);
+        }
+    });
+
+    html::div()
+        .class("scene-place")
+        .attr(SCENE_PLACE, scene.to_string())
+        .node_ref(place)
+        .child(move || {
+            if near.get() {
+                editor(scene.clone(), state).into_any()
+            } else {
+                waiting(scene.clone(), state).into_any()
+            }
+        })
+}
+
+fn waiting(scene: SceneId, state: WriteViewState) -> impl IntoView {
+    let lines = untrack(|| state.word_count.of_scene(&scene))
+        .div_ceil(WORDS_A_LINE)
+        .max(1);
+
+    html::div()
+        .class("scene waiting")
+        .attr("data-scene", scene.to_string())
+        .attr("aria-busy", "true")
+        .style(("min-height", format!("{lines}lh")))
+}
+
+fn editor(scene: SceneId, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let kept = StoredValue::new_local(
         None::<(

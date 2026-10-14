@@ -2399,3 +2399,73 @@ test("what the server last counted never stands over what is being written", asy
   await page.waitForTimeout(300);
   await expect(wordCount(page)).toHaveText("4 words in “Part One”");
 });
+
+test("a scene far from the window waits without an editor, and gets one as it comes near", async ({
+  page,
+}) => {
+  let sockets = 0;
+  page.on("websocket", () => sockets++);
+  await aNewProject(page, "FarAndNear");
+  const scenes = await aBookWithScenes(page, { "Part One": 60 });
+  const last = scenes["Part One"][59];
+  await openTheWritingView(page);
+  await expect(scene(page, scenes["Part One"][0])).toBeVisible();
+
+  const waiting = flow(page).locator(`.scene.waiting[data-scene="${last}"]`);
+  await expect(waiting).toHaveCount(1);
+  await expect(scene(page, last)).toHaveCount(0);
+  expect(
+    sockets,
+    "a scene nobody can see has no editor and holds no connection",
+  ).toBeLessThan(60);
+
+  await waiting.scrollIntoViewIfNeeded();
+
+  await expect(scene(page, last)).toBeVisible();
+  await expect(waiting).toHaveCount(0);
+});
+
+test("landing where the author left off reaches a scene far down the book", async ({
+  page,
+}) => {
+  await aNewProject(page, "FarLanding");
+  const scenes = await aBookWithScenes(page, { "Part One": 60 });
+  const last = scenes["Part One"][59];
+  await openTheWritingView(page);
+  await flow(page).locator(`[data-place-of="${last}"]`).scrollIntoViewIfNeeded();
+  await scene(page, last).click();
+  await page.keyboard.type("Far down.");
+  // TODO: back to the usual wait once every scene shares one sync connection (M13c slice 6)
+  await expect(saveState(page)).toHaveText("All saved", { timeout: 15_000 });
+
+  await page.reload();
+
+  await expect(scene(page, last)).toBeFocused();
+});
+
+test("a scene waiting far away is named in the margin by its opening words", async ({
+  page,
+}) => {
+  await aNewProject(page, "FarNamed");
+  const scenes = await aBookWithScenes(page, { "Part One": 60 });
+  const [first] = scenes["Part One"];
+  const last = scenes["Part One"][59];
+  await openTheWritingView(page);
+  await flow(page).locator(`[data-place-of="${last}"]`).scrollIntoViewIfNeeded();
+  await scene(page, last).click();
+  await page.keyboard.type("The far scene speaks.");
+  // TODO: back to the usual wait once every scene shares one sync connection (M13c slice 6)
+  await expect(saveState(page)).toHaveText("All saved", { timeout: 15_000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await scene(page, first).click();
+  await page.keyboard.type("A");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await page.reload();
+  await expect(scene(page, first)).toBeFocused();
+
+  await expect(
+    flow(page).locator(`.scene.waiting[data-scene="${last}"]`),
+  ).toHaveCount(1);
+  await expect(label(page, last)).toHaveText("The far scene speaks.");
+});

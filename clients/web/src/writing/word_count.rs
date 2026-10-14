@@ -50,6 +50,11 @@ impl WordCount {
         });
     }
 
+    pub fn of_scene(self, scene: &SceneId) -> usize {
+        self.words
+            .with(|words| words.get(scene).copied().unwrap_or_default())
+    }
+
     pub fn writing_in(self, section: SectionId) {
         if self
             .writing_in

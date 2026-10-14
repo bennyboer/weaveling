@@ -10,6 +10,7 @@ use crate::writing::margin::Margin;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
 use crate::writing::structure::Structure;
+use crate::writing::viewport::Viewport;
 use crate::writing::walk::Walk;
 use crate::writing::word_count::WordCount;
 
@@ -24,6 +25,7 @@ pub struct WriteViewState {
     pub saving: Saving,
     pub word_count: WordCount,
     pub left_off: LeftOff,
+    pub viewport: Viewport,
 }
 
 impl WriteViewState {
@@ -32,6 +34,7 @@ impl WriteViewState {
         let saving = Saving::nothing();
         let structure = Structure::open(project, problems, saving);
         let walk = Walk::through(structure);
+        let viewport = Viewport::around_the_window();
 
         let state = Self {
             problems,
@@ -42,7 +45,8 @@ impl WriteViewState {
             margin: Margin::closed(),
             saving,
             word_count: WordCount::of(structure),
-            left_off: LeftOff::in_project(project, structure, walk),
+            left_off: LeftOff::in_project(project, structure, walk, viewport),
+            viewport,
         };
         let listing = project.clone();
         let counting = project.clone();

@@ -73,6 +73,7 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
     on_cleanup(move || {
         clicking.remove();
         typing.remove();
+        state.viewport.close();
     });
 
     let book_view = html::article()
