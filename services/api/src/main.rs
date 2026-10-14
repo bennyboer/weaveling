@@ -3,11 +3,11 @@ use std::sync::Arc;
 use clock::SystemClock;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
-use weaveling_service_api::{Adapters, Backend, Flakiness, Relays, WEAVELING_FLAKY, app};
+use weaveling_service_api::{Adapters, Backend, Flakiness, Relays, Settling, WEAVELING_FLAKY, app};
 
 const LOG_LEVEL_UNLESS_TOLD: &str = "info";
 
-async fn serving() -> (axum::Router, Relays) {
+async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>) {
     let backend = Backend::from_environment().unwrap_or_else(|why| panic!("{why}"));
     tracing::info!("keeping the work {backend}");
     let storage = backend.storage().unwrap_or_else(|why| panic!("{why}"));
@@ -20,11 +20,13 @@ async fn serving() -> (axum::Router, Relays) {
     }
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
+    let settling = adapters.settling();
     let routes = app(adapters);
 
     (
         routes,
         Relays::started(outboxes, consuming, backend.cadence()),
+        settling,
     )
 }
 
@@ -37,7 +39,7 @@ async fn main() {
         )
         .init();
 
-    let (routes, relays) = serving().await;
+    let (routes, relays, settling) = serving().await;
 
     let listener = TcpListener::bind("127.0.0.1:3000")
         .await
@@ -52,10 +54,15 @@ async fn main() {
         .await
         .expect("should serve");
 
-    stop(relays).await;
+    stop(settling, relays).await;
 }
 
-async fn stop(relays: Relays) {
+async fn stop(settling: Vec<Arc<dyn Settling>>, relays: Relays) {
+    for settled in settling {
+        settled.settle().await;
+    }
+    tracing::info!("what was still in memory is settled");
+
     relays.stop().await;
     tracing::info!("the outbox relays have stopped");
 }

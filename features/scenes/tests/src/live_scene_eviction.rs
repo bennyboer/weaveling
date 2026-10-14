@@ -396,3 +396,47 @@ async fn a_count_that_cannot_be_stored_does_not_keep_a_scene_live() {
         "the words are worked out from the text, so a missed count is caught up by the          next edit, while holding the scene in memory would last until the store is back"
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn settling_before_stopping_counts_what_is_still_waiting_to_be_counted() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+    writes(&present, "The loom stood silent.").await;
+    writes(&present, "Then it spoke.").await;
+    assert_eq!(bench.last_announced(id), Some(4));
+
+    bench.live.settle().await;
+
+    assert_eq!(
+        bench.last_announced(id),
+        Some(7),
+        "a count waiting out its moment dies with the process, so stopping counts it first"
+    );
+    assert!(
+        bench.live.is_live(id),
+        "settling stores and counts, and lets nothing go"
+    );
+}
+
+#[tokio::test]
+async fn settling_before_stopping_stores_an_edit_the_store_refused() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+    let update = a_paragraph("The loom stood silent.");
+    present
+        .receive(Message::JustHappened(update.clone()))
+        .expect("the live copy takes it");
+    bench.store.falter(true);
+    assert!(present.persist(&update).await.is_err());
+    bench.store.falter(false);
+
+    bench.live.settle().await;
+
+    assert_eq!(
+        bench.stored_text(id).await,
+        "The loom stood silent.",
+        "the live copy is the only one holding this edit, and stopping would lose it"
+    );
+}

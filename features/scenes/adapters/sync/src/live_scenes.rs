@@ -326,6 +326,20 @@ impl LiveScenes {
         }
     }
 
+    pub async fn settle(&self) {
+        let live: Vec<Arc<LiveScene>> = self
+            .shared
+            .read()
+            .values()
+            .map(|room| room.scene.clone())
+            .collect();
+
+        for scene in live {
+            self.flushed(&scene).await;
+            scene.recount(&self.shared.service).await;
+        }
+    }
+
     fn let_go(&self, scene: &Arc<LiveScene>, idle_before: Instant) {
         let mut rooms = self.shared.write();
 

@@ -143,3 +143,14 @@ async fn every_feature_answers_without_shadowing_the_others() {
     assert_eq!(scenes, StatusCode::CREATED);
     assert_eq!(ideas, StatusCode::OK);
 }
+
+#[tokio::test]
+async fn the_live_scenes_are_settled_before_the_service_stops() {
+    let adapters = Adapters::in_memory(Arc::new(SystemClock)).await;
+
+    assert_eq!(
+        adapters.settling().len(),
+        1,
+        "scenes holds edits and counts in memory, and stopping without settling them loses them"
+    );
+}

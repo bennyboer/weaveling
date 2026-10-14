@@ -4156,6 +4156,7 @@ dependencies = [
 name = "weaveling-scenes-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
  "weaveling-clock",
  "weaveling-messaging",

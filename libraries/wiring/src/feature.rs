@@ -4,7 +4,7 @@ use axum::Router;
 use messaging::Listener;
 use outbox::Outbox;
 
-use crate::{Context, Unprepared, Wired};
+use crate::{Context, Settling, Unprepared, Wired};
 
 pub trait Feature {
     const NAME: &'static str;
@@ -60,6 +60,7 @@ pub struct Assembled {
     pub outbox: Option<Arc<dyn Outbox>>,
     pub routes: Router,
     pub listeners: Vec<Arc<dyn Listener>>,
+    pub settling: Vec<Arc<dyn Settling>>,
 }
 
 pub async fn assemble<F: Feature>(
@@ -93,5 +94,6 @@ pub async fn assemble<F: Feature>(
         outbox: F::outbox(&ports),
         routes: wired.routes,
         listeners: wired.listeners,
+        settling: wired.settling,
     })
 }

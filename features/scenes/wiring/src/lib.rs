@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+
 use outbox::{InMemoryOutbox, Outbox};
 use scenes_core::{SceneService, SceneStore};
 use scenes_messaging::{DeleteOnProjectDeleted, UnlinkOnDiscard};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
-use wiring::{Context, Feature, Wired};
+use wiring::{Context, Feature, Settling, Wired};
 
 pub struct Ports {
     pub store: Arc<dyn SceneStore>,
@@ -75,10 +77,20 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
 
-    Wired::serving(
-        scenes_rest::router(scenes.clone()).merge(scenes_sync::router(LiveScenes::new(scenes))),
-    )
-    .listening(vec![Arc::new(sweep), Arc::new(unlink)])
+    let live = LiveScenes::new(scenes.clone());
+
+    Wired::serving(scenes_rest::router(scenes).merge(scenes_sync::router(live.clone())))
+        .listening(vec![Arc::new(sweep), Arc::new(unlink)])
+        .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
+}
+
+struct SettlingLiveScenes(LiveScenes);
+
+#[async_trait]
+impl Settling for SettlingLiveScenes {
+    async fn settle(&self) {
+        self.0.settle().await;
+    }
 }
 
 pub struct SceneFeature;

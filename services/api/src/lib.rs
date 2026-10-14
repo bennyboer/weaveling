@@ -24,7 +24,7 @@ use crate::flaky::Flaky;
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
 pub use relays::Relays;
-pub use wiring::{Storage, Unprepared};
+pub use wiring::{Settling, Storage, Unprepared};
 
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 const MESSAGING: &str = "messaging";
@@ -84,6 +84,13 @@ impl Adapters {
             self.deliveries.clone(),
             self.clock.clone(),
         )
+    }
+
+    pub fn settling(&self) -> Vec<Arc<dyn Settling>> {
+        self.features
+            .iter()
+            .flat_map(|feature| feature.settling.clone())
+            .collect()
     }
 
     pub fn outboxes(&self) -> Vec<Arc<dyn outbox::Outbox>> {
