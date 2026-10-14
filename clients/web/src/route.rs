@@ -28,6 +28,10 @@ pub fn writing(project: &str) -> String {
     format!("/projects/{project}/write")
 }
 
+pub fn writing_at(project: &str, scene: &SceneId) -> String {
+    format!("/projects/{project}/write?scene={scene}")
+}
+
 pub fn pool(project: &str) -> String {
     format!("/projects/{project}/ideas")
 }

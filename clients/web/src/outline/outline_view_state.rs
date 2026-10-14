@@ -219,13 +219,8 @@ impl OutlineViewState {
                 let Some(open) = outline.get_untracked() else {
                     return;
                 };
-                let behind = open
-                    .sections
-                    .iter()
-                    .find(|section| section.id == to)
-                    .and_then(|section| section.attachments.last().cloned());
 
-                settled(service::attach(&open.id, &attachment, &to, behind).await);
+                settled(attach_at_the_end(open, attachment, to).await);
             }
         });
 
@@ -265,11 +260,20 @@ impl OutlineViewState {
                     };
 
                     scenes.update(|held| held.get_or_insert_default().push(started.clone()));
-                    attaching.dispatch((Attachment::Scene(started.id.clone()), to));
-                    opening(
-                        &route::scene(&id.to_string(), &started.id),
-                        Default::default(),
-                    );
+                    let Some(open) = outline.get_untracked() else {
+                        return;
+                    };
+                    let placed =
+                        attach_at_the_end(open, Attachment::Scene(started.id.clone()), to).await;
+                    let held = placed.is_ok();
+
+                    settled(placed);
+                    if held {
+                        opening(
+                            &route::writing_at(&id.to_string(), &started.id),
+                            Default::default(),
+                        );
+                    }
                 }
             })
         };
@@ -459,4 +463,18 @@ impl OutlineViewState {
     pub fn write_in(&self, section: SectionId) {
         self.writing.dispatch(section);
     }
+}
+
+async fn attach_at_the_end(
+    open: Outline,
+    attachment: Attachment,
+    to: SectionId,
+) -> Result<Outline, ApiError> {
+    let behind = open
+        .sections
+        .iter()
+        .find(|section| section.id == to)
+        .and_then(|section| section.attachments.last().cloned());
+
+    service::attach(&open.id, &attachment, &to, behind).await
 }

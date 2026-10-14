@@ -48,21 +48,29 @@ test("an idea pinned beyond the edge can be panned to", async ({ page }) => {
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin Far away" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
+  const theBoard = () =>
+    page.evaluate(async () => {
+      const project = window.location.pathname.split("/")[2].split("-").pop();
 
-  await page.evaluate(async () => {
-    const project = window.location.pathname.split("/")[2].split("-").pop();
-    const board = await fetch("/api/boards", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project }),
-    }).then((it) => it.json());
+      return fetch("/api/boards", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ project }),
+      }).then((it) => it.json());
+    });
+  await expect
+    .poll(async () => (await theBoard()).ideas.length, {
+      message: "the board shows the pin before the server has it",
+    })
+    .toBe(1);
 
+  await page.evaluate(async (board) => {
     await fetch(`/api/boards/${board.id}/ideas/${board.ideas[0].idea}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ spot: { x: 40, y: 900 } }),
     });
-  });
+  }, await theBoard());
   await page.reload();
   await onTheBoard(page);
 

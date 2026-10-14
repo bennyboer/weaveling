@@ -135,7 +135,40 @@ test("an idea shows the sections that note it and the scenes that draw on it", a
   ).toBeVisible();
 });
 
-test("a scene the idea appears in opens from the inspector", async ({
+test("a scene in the book the idea appears in opens in the writing view", async ({
+  page,
+}) => {
+  await aNewProject(page, "FollowingIntoTheBook");
+  const idea = await anIdea(page, "A girl in a wood");
+  const scene = await linkFromAScene(page, idea, "The clearing");
+  const opened = await page.request.post(`${API}/outlines`, {
+    data: { project: idIn(projectSegment(page)) },
+  });
+  const outline = (await opened.json()).id;
+  const added = await page.request.post(`${API}/outlines/${outline}/sections`, {
+    data: { title: "Part One", under: null, after: null },
+  });
+  await page.request.post(`${API}/outlines/${outline}/attachments`, {
+    data: {
+      attachment: { kind: "scene", id: scene },
+      section: (await added.json()).section,
+      after: null,
+    },
+  });
+  await expect(async () => {
+    await inspect(page, idea);
+    await expect(
+      appearances(page).getByRole("link", { name: "The clearing" }),
+    ).toBeVisible({ timeout: 1_000 });
+  }).toPass();
+
+  await appearances(page).getByRole("link", { name: "The clearing" }).click();
+
+  await expect(page).toHaveURL(/\/write$/);
+  await expect(page.locator(`[data-scene="${scene}"] .ProseMirror`)).toBeFocused();
+});
+
+test("a scene not in the book the idea appears in opens on its own page", async ({
   page,
 }) => {
   await aNewProject(page, "Following");

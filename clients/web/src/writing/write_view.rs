@@ -1,6 +1,8 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
-use wasm_bindgen::JsCast;
+use leptos_router::NavigateOptions;
+use leptos_router::hooks::use_navigate;
+use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, FocusEvent};
 
 use crate::outline::model::{Section, SectionId};
@@ -21,16 +23,43 @@ use crate::writing::status_note::status_note;
 use crate::writing::write_view_state::WriteViewState;
 
 #[component]
-pub fn WriteView(project: String) -> impl IntoView {
+pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
     let state = WriteViewState::open(&route::project_id(&project));
     let open = Memo::new(move |_| state.structure.is_open());
     let unshaped = Memo::new(move |_| state.structure.is_unshaped());
+
+    let navigate = use_navigate();
 
     Effect::new(move |landed: Option<bool>| {
         if landed == Some(true) || !open.get() {
             return landed.unwrap_or(false);
         }
-        untrack(|| state.left_off.land());
+
+        let loose = following
+            .clone()
+            .filter(|scene| !untrack(|| state.structure.holds(scene)));
+
+        match loose {
+            Some(scene) => navigate(
+                &route::scene(&project, &scene),
+                NavigateOptions {
+                    replace: true,
+                    ..Default::default()
+                },
+            ),
+            None => {
+                if following.is_some()
+                    && let Ok(history) = window().history()
+                {
+                    let _ = history.replace_state_with_url(
+                        &JsValue::NULL,
+                        "",
+                        Some(&route::writing(&project)),
+                    );
+                }
+                untrack(|| state.left_off.land(following.clone()));
+            }
+        }
 
         true
     });

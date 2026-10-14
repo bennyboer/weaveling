@@ -2262,3 +2262,51 @@ test("leaving the writing view leaves nothing behind that clicks or keys can tri
 
   expect(panics).toEqual([]);
 });
+
+test("a scene followed from the outline opens the writing view at it, far down the book", async ({
+  page,
+}) => {
+  await aNewProject(page, "Followed");
+  const scenes = await aBookWithScenes(page, { "Part One": 14 });
+  const followed = scenes["Part One"][9];
+  await titled(page, followed, "The tenth");
+  await openTheOutline(page);
+
+  await page.locator(".leaf").getByRole("link", { name: "The tenth" }).click();
+
+  await expect(scene(page, followed)).toBeFocused();
+  await expect(page, "the address is the view's own again").toHaveURL(
+    /\/write$/,
+  );
+  await page.keyboard.type("Here.");
+  await expect(scene(page, followed)).toHaveText("Here.");
+  const line = (await scene(page, followed).locator("p").boundingBox())!;
+  const tall = page.viewportSize()!.height;
+  expect(Math.abs(line.y + line.height / 2 - tall / 2)).toBeLessThan(
+    tall / 6,
+  );
+});
+
+test("following the scene left off in lands where the author left off in it", async ({
+  page,
+}) => {
+  await aNewProject(page, "FollowedBack");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [, second] = scenes["Part One"];
+  await titled(page, second, "The second");
+  await openTheWritingView(page);
+  await scene(page, second).click();
+  await page.keyboard.type("Alpha Beta");
+  await page.keyboard.press("Home");
+  for (let step = 0; step < 5; step++) {
+    await page.keyboard.press("ArrowRight");
+  }
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await openTheOutline(page);
+  await page.locator(".leaf").getByRole("link", { name: "The second" }).click();
+
+  await expect(scene(page, second)).toBeFocused();
+  await page.keyboard.type("X");
+  await expect(scene(page, second)).toHaveText("AlphaX Beta");
+});

@@ -488,7 +488,7 @@ fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
     let named = shown.clone();
     let marked = mark(icon_for(&attachment));
     let at = held.project.with_value(|project| match &attachment {
-        Attachment::Scene(scene) => route::scene(project, scene),
+        Attachment::Scene(scene) => route::writing_at(project, scene),
         Attachment::Idea(idea) => route::idea(project, idea, &shown),
     });
 

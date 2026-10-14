@@ -28,10 +28,18 @@ impl LeftOff {
         }
     }
 
-    pub fn land(self) {
-        let recalled = self
-            .recalled()
-            .filter(|(scene, _)| self.structure.holds(scene));
+    pub fn land(self, following: Option<SceneId>) {
+        let recalled = self.recalled();
+
+        if let Some(scene) = following {
+            let at = recalled
+                .filter(|(left_in, _)| left_in == &scene)
+                .map_or(0, |(_, at)| at);
+            self.walk.land_in(scene, at);
+            return;
+        }
+
+        let recalled = recalled.filter(|(scene, _)| self.structure.holds(scene));
 
         if let Some((scene, at)) = recalled {
             self.walk.land_in(scene, at);

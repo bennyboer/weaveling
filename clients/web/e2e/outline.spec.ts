@@ -304,14 +304,18 @@ test("writing in a section opens the new scene", async ({ page }) => {
   await openTheOutline(page);
   await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
+  await page.route("**/api/outlines/*/attachments", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    await route.continue();
+  });
 
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
 
   await expect(
-    page.locator(".surface .ProseMirror"),
+    page.getByRole("article", { name: "The book" }).locator(".scene .ProseMirror"),
     "the button says write, so it has to leave the author writing rather than appending a blank row they may not even see",
-  ).toBeVisible();
-  await expect(page).toHaveURL(/\/scenes\/scene_/);
+  ).toBeFocused();
+  await expect(page).toHaveURL(/\/write$/);
 });
 
 test("a scene written in a section is held there", async ({ page }) => {
@@ -320,7 +324,7 @@ test("a scene written in a section is held there", async ({ page }) => {
   await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page).toHaveURL(/\/write$/);
 
   await openTheOutline(page);
 
@@ -335,14 +339,17 @@ test("a scene in the book opens from the outline", async ({ page }) => {
   await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page).toHaveURL(/\/write$/);
   await openTheOutline(page);
   await expect(page.locator(".leaf .name")).toHaveText("Empty");
 
   await page.locator(".leaf").getByRole("link", { name: "Empty" }).click();
 
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
-  await expect(page).toHaveURL(/\/scenes\/scene_/);
+  await expect(
+    page.getByRole("article", { name: "The book" }).locator(".scene .ProseMirror"),
+    "a scene in the book is written where it stands in the book",
+  ).toBeFocused();
+  await expect(page).toHaveURL(/\/write$/);
 });
 test("a scene taken out of the book goes back to the tray", async ({
   page,
@@ -352,7 +359,7 @@ test("a scene taken out of the book goes back to the tray", async ({
   await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page).toHaveURL(/\/write$/);
   await openTheOutline(page);
   await expect(waitingScenes(page).getByRole("button")).toHaveCount(0);
 
@@ -577,7 +584,7 @@ test("a note and a scene are drawn with different marks", async ({ page }) => {
   await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page).toHaveURL(/\/write$/);
   await openTheOutline(page);
   await placeIdea(page, "The loom remembers", "Chapter 1");
 
@@ -636,7 +643,7 @@ test("a section shows its scenes and its ideas as two groups", async ({
   await page.keyboard.press("Escape");
   await placeIdea(page, "The loom remembers", "Chapter 1");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page).toHaveURL(/\/write$/);
 
   await openTheOutline(page);
 
@@ -660,12 +667,14 @@ test("a titled scene is named by its title in the outline", async ({
   await addSections(page, ["Chapter 1"]);
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
-  await expect(page.locator(".surface .ProseMirror")).toBeVisible();
+  await expect(page).toHaveURL(/\/write$/);
   const saved = page.waitForResponse(
     (response) => response.request().method() === "PATCH",
   );
+  await page.getByRole("button", { name: "Scene actions" }).click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
   await page.getByRole("textbox", { name: "Scene title" }).fill("The arrival");
-  await page.getByRole("textbox", { name: "Scene title" }).press("Tab");
+  await page.getByRole("textbox", { name: "Scene title" }).press("Enter");
   await saved;
 
   await openTheOutline(page);

@@ -51,7 +51,7 @@ fn appears_in(state: InspectorState) -> impl IntoView {
                 .map(|(_, named)| place(Icon::Section, route::outline(&project), named));
             let in_scenes = scenes
                 .into_iter()
-                .map(|(id, named)| place(Icon::Scene, route::scene(&project, &id), named));
+                .map(|(id, named)| place(Icon::Scene, route::writing_at(&project, &id), named));
 
             html::ul()
                 .attr("aria-label", "Appears in")
