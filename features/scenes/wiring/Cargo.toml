@@ -14,6 +14,7 @@ clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weave
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 
+scenes-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-scenes-catalog" }
 scenes-core = { version = "0.1.0", path = "../core", package = "weaveling-scenes-core" }
 scenes-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-scenes-messaging" }
 scenes-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-scenes-rest" }
@@ -21,5 +22,5 @@ scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveli
 scenes-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-scenes-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "outbox/postgres", "scenes-store/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "outbox/sqlite", "scenes-store/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "outbox/postgres", "scenes-store/postgres", "scenes-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "outbox/sqlite", "scenes-store/sqlite", "scenes-catalog/sqlite"]

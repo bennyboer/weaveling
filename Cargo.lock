@@ -4051,6 +4051,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-scenes-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "time",
+ "tokio",
+ "weaveling-scenes-core",
+ "weaveling-test-harness",
+]
+
+[[package]]
 name = "weaveling-scenes-contract"
 version = "0.1.0"
 dependencies = [
@@ -4144,6 +4156,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-projects-contract",
+ "weaveling-scenes-catalog",
  "weaveling-scenes-contract",
  "weaveling-scenes-core",
  "weaveling-scenes-messaging",
@@ -4162,6 +4175,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-messaging",
  "weaveling-outbox",
+ "weaveling-scenes-catalog",
  "weaveling-scenes-core",
  "weaveling-scenes-messaging",
  "weaveling-scenes-rest",

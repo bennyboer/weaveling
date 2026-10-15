@@ -1,0 +1,14 @@
+CREATE TABLE scene_catalog (
+    scene          TEXT    PRIMARY KEY,
+    project        TEXT    NOT NULL,
+    title          TEXT    NOT NULL DEFAULT '',
+    title_version  INTEGER NOT NULL DEFAULT 0,
+    opening        TEXT    NOT NULL DEFAULT '',
+    opened_at      INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX scene_catalog_by_project ON scene_catalog (project, scene);
+
+CREATE TABLE scene_catalog_gone (
+    scene  TEXT PRIMARY KEY
+);

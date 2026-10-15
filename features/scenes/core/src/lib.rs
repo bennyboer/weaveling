@@ -1,3 +1,4 @@
+mod catalog;
 mod change;
 mod id;
 mod link;
@@ -7,6 +8,7 @@ mod service;
 mod store;
 mod title;
 
+pub use catalog::{CatalogError, SceneCatalog, SceneSummary};
 pub use change::SceneChange;
 pub use id::SceneId;
 pub use link::{IdeaLink, ProjectLink};

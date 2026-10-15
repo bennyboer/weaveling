@@ -8,6 +8,9 @@ mod live_scenes;
 mod one_connection;
 
 #[cfg(test)]
+mod scene_cataloguing;
+
+#[cfg(test)]
 mod scene_service;
 
 #[cfg(test)]

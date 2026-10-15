@@ -3,14 +3,16 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use outbox::{InMemoryOutbox, Outbox};
-use scenes_core::{SceneService, SceneStore};
-use scenes_messaging::{DeleteOnProjectDeleted, UnlinkOnDiscard};
+use scenes_catalog::InMemorySceneCatalog;
+use scenes_core::{SceneCatalog, SceneService, SceneStore};
+use scenes_messaging::{CatalogueScenes, DeleteOnProjectDeleted, UnlinkOnDiscard};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
 use wiring::{Context, Feature, Settling, Wired};
 
 pub struct Ports {
     pub store: Arc<dyn SceneStore>,
+    pub catalog: Arc<dyn SceneCatalog>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -27,6 +29,7 @@ impl Ports {
                 clock,
                 scenes_messaging::message_for,
             )),
+            catalog: Arc::new(InMemorySceneCatalog::new()),
             outbox,
         }
     }
@@ -38,6 +41,7 @@ impl Ports {
         clock: Arc<dyn clock::Clock>,
     ) -> Self {
         use outbox::PostgresOutbox;
+        use scenes_catalog::PostgresSceneCatalog;
         use scenes_store::PostgresSceneStore;
 
         Self {
@@ -45,6 +49,7 @@ impl Ports {
                 PostgresSceneStore::new(pool.clone())
                     .enqueuing(clock.clone(), scenes_messaging::message_for),
             ),
+            catalog: Arc::new(PostgresSceneCatalog::new(pool.clone())),
             outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
         }
     }
@@ -56,6 +61,7 @@ impl Ports {
         clock: Arc<dyn clock::Clock>,
     ) -> Self {
         use outbox::SqliteOutbox;
+        use scenes_catalog::SqliteSceneCatalog;
         use scenes_store::SqliteSceneStore;
 
         Self {
@@ -63,6 +69,7 @@ impl Ports {
                 SqliteSceneStore::new(pool.clone())
                     .enqueuing(clock.clone(), scenes_messaging::message_for),
             ),
+            catalog: Arc::new(SqliteSceneCatalog::new(pool.clone())),
             outbox: Arc::new(SqliteOutbox::new(pool, publisher, clock)),
         }
     }
@@ -76,11 +83,12 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.publisher.clone(),
         context.clock.clone(),
     );
+    let catalogue = CatalogueScenes::new(ports.catalog.clone());
 
     let live = LiveScenes::new(scenes.clone());
 
     Wired::serving(scenes_rest::router(scenes).merge(scenes_sync::router(live.clone())))
-        .listening(vec![Arc::new(sweep), Arc::new(unlink)])
+        .listening(vec![Arc::new(sweep), Arc::new(unlink), Arc::new(catalogue)])
         .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
 }
 
@@ -118,6 +126,7 @@ impl Feature for SceneFeature {
         vec![
             outbox::postgres::migrations(),
             scenes_store::postgres::migrations(),
+            scenes_catalog::postgres::migrations(),
         ]
     }
 
@@ -135,6 +144,7 @@ impl Feature for SceneFeature {
         vec![
             outbox::sqlite::migrations(),
             scenes_store::sqlite::migrations(),
+            scenes_catalog::sqlite::migrations(),
         ]
     }
 
