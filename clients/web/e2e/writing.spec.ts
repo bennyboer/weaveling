@@ -3313,3 +3313,128 @@ test("Escape in the section dialog leaves the scene outside the book", async ({
   await expect(scene(page, loose)).toBeVisible();
   expect(await sceneOrder(page)).toEqual([["Part One", scenes["Part One"]]]);
 });
+
+const following = (page: Page, side: string, scene: string) =>
+  page.goto(
+    page.url().replace(/\/write(\/loose)?(\?.*)?$/, `${side}?scene=${scene}`),
+  );
+
+test("a scene outside the book followed into the book's side opens the other side at it", async ({
+  page,
+}) => {
+  await aNewProject(page, "FollowLoose");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await aLooseScene(page);
+  const wanted = await aLooseScene(page);
+  await openTheWritingView(page);
+
+  await following(page, "/write", wanted);
+
+  await expect(page).toHaveURL(/\/write\/loose$/);
+  await expect(scene(page, wanted)).toBeFocused();
+});
+
+test("a scene in the book followed into the other side goes back to the book", async ({
+  page,
+}) => {
+  await aNewProject(page, "FollowPlaced");
+  const [, wanted] = (await aBookWithScenes(page, { "Part One": 2 }))[
+    "Part One"
+  ];
+  await aLooseScene(page);
+  await openTheWritingView(page);
+
+  await following(page, "/write/loose", wanted);
+
+  await expect(page).toHaveURL(/\/write$/);
+  await expect(scene(page, wanted)).toBeFocused();
+});
+
+test("each side lands where you left off on it", async ({ page }) => {
+  await aNewProject(page, "LeftOffSides");
+  const [, placed] = (await aBookWithScenes(page, { "Part One": 2 }))[
+    "Part One"
+  ];
+  await aLooseScene(page);
+  const loose = await aLooseScene(page);
+  await openTheWritingView(page);
+  await scene(page, placed).click();
+  await page.keyboard.type("In the book.");
+  await openTheLooseSide(page);
+  await scene(page, loose).click();
+  await page.keyboard.type("Outside.");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await page.reload();
+  await expect(scene(page, loose)).toBeFocused();
+  await sides(page)
+    .getByRole("link", { name: "The book", exact: true })
+    .click();
+
+  await expect(scene(page, placed)).toBeFocused();
+});
+
+test("the other side starts in its first scene when nothing was left off there", async ({
+  page,
+}) => {
+  await aNewProject(page, "LooseFirst");
+  await aBookWithScenes(page, { "Part One": 1 });
+  const first = await aLooseScene(page);
+  await aLooseScene(page);
+  await openTheWritingView(page);
+
+  await openTheLooseSide(page);
+
+  await expect(scene(page, first)).toBeFocused();
+});
+
+async function aSceneBegunHere(page: Page) {
+  await beginning(page).click();
+  await page.keyboard.type("Begun here.");
+  await expect(beginning(page)).toHaveCount(0);
+  await expect(saveState(page)).toHaveText("All saved");
+  const [begun] = await flow(page)
+    .locator(".scene[data-scene]")
+    .evaluateAll((all) => all.map((one) => one.getAttribute("data-scene")!));
+
+  return begun;
+}
+
+test("a scene begun in the view and taken out of the book shows up outside it at once", async ({
+  page,
+}) => {
+  await aNewProject(page, "TakenOutAtOnce");
+  await aBookWithScenes(page, { "Part One": 0 });
+  await openTheWritingView(page);
+  const begun = await aSceneBegunHere(page);
+  await expect(sides(page)).toHaveCount(0);
+
+  await sceneActions(page, begun).click();
+  await menuItem(page, "Take out of the book").click();
+
+  await expect(
+    sides(page).getByRole("link", { name: /Not in the book/ }),
+    "the view knows of the scene it began, though the listing it opened with does not",
+  ).toContainText("1");
+  await openTheLooseSide(page);
+  await expect(scene(page, begun)).toHaveText("Begun here.");
+});
+
+test("the scenes of a section removed from the book show up outside it at once", async ({
+  page,
+}) => {
+  await aNewProject(page, "RemovedAtOnce");
+  await aBookWithScenes(page, { "Part One": 0, "Part Two": 1 });
+  await openTheWritingView(page);
+  const begun = await aSceneBegunHere(page);
+
+  await sectionActions(page, "Part One").click();
+  await menuItem(page, "Remove section").click();
+  await asked(page).getByRole("button", { name: "Remove" }).click();
+
+  await expect(
+    sides(page).getByRole("link", { name: /Not in the book/ }),
+  ).toContainText("1");
+  await openTheLooseSide(page);
+  await expect(scene(page, begun)).toBeVisible();
+});

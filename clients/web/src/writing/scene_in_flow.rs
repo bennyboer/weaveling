@@ -114,11 +114,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             let caret_moved = Closure::<dyn Fn(u32)>::new({
                 let scene = scene.clone();
 
-                move |at: u32| {
-                    if state.side == Side::Book {
-                        state.left_off.remember(&scene, at);
-                    }
-                }
+                move |at: u32| state.left_off.remember(&scene, at)
             });
             editor.on_caret_moved(&caret_moved);
             if let Some(carried) = state.beginnings.words_to_carry(&scene) {

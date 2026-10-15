@@ -3,6 +3,8 @@ use web_sys::Storage;
 
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
+use crate::writing::loose_scenes::LooseScenes;
+use crate::writing::side::Side;
 use crate::writing::structure::Structure;
 use crate::writing::viewport::Viewport;
 use crate::writing::walk::{Stop, Towards, Walk, stops_in_reading_order};
@@ -13,12 +15,16 @@ pub struct LeftOff {
     structure: Structure,
     walk: Walk,
     viewport: Viewport,
+    side: Side,
+    loose: LooseScenes,
 }
 
 impl LeftOff {
     pub fn in_project(
         project: &ProjectId,
+        side: Side,
         structure: Structure,
+        loose: LooseScenes,
         walk: Walk,
         viewport: Viewport,
     ) -> Self {
@@ -27,6 +33,8 @@ impl LeftOff {
             structure,
             walk,
             viewport,
+            side,
+            loose,
         }
     }
 
@@ -52,10 +60,20 @@ impl LeftOff {
             return;
         }
 
-        let recalled = recalled.filter(|(scene, _)| self.structure.holds(scene));
+        let recalled = recalled.filter(|(scene, _)| match self.side {
+            Side::Book => self.structure.holds(scene),
+            Side::Loose => self.loose.in_order_untracked().contains(scene),
+        });
 
         if let Some((scene, at)) = recalled {
             self.land_in(scene, at);
+            return;
+        }
+
+        if self.side == Side::Loose {
+            if let Some(first) = self.loose.in_order_untracked().into_iter().next() {
+                self.land_in(first, 0);
+            }
             return;
         }
 
@@ -90,7 +108,10 @@ impl LeftOff {
     }
 
     fn key(self) -> String {
-        format!("weaveling.left-off.{}", self.project.get_value())
+        match self.side {
+            Side::Book => format!("weaveling.left-off.{}", self.project.get_value()),
+            Side::Loose => format!("weaveling.left-off.{}.loose", self.project.get_value()),
+        }
     }
 }
 

@@ -11,7 +11,7 @@ use crate::writing::structure::Structure;
 
 #[derive(Clone, Copy)]
 pub struct LooseScenes {
-    listed: RwSignal<Vec<SceneId>>,
+    listed: RwSignal<Option<Vec<SceneId>>>,
     structure: Structure,
     problems: Problems,
     saving: Saving,
@@ -20,7 +20,7 @@ pub struct LooseScenes {
 impl LooseScenes {
     pub fn of(structure: Structure, problems: Problems, saving: Saving) -> Self {
         Self {
-            listed: RwSignal::new(Vec::new()),
+            listed: RwSignal::new(None),
             structure,
             problems,
             saving,
@@ -29,8 +29,11 @@ impl LooseScenes {
 
     pub fn delete(self, scene: SceneId) {
         let before = self.listed.get_untracked();
-        self.listed
-            .update(|listed| listed.retain(|held| held != &scene));
+        self.listed.update(|listed| {
+            if let Some(listed) = listed {
+                listed.retain(|held| held != &scene);
+            }
+        });
         self.saving.write_begun();
 
         spawn_local(async move {
@@ -44,7 +47,24 @@ impl LooseScenes {
 
     pub fn remember(self, listed: &[SceneSummary]) {
         self.listed
-            .set(listed.iter().map(|scene| scene.id.clone()).collect());
+            .set(Some(listed.iter().map(|scene| scene.id.clone()).collect()));
+    }
+
+    pub fn include(self, scenes: Vec<SceneId>) {
+        self.listed.update(|listed| {
+            if let Some(listed) = listed {
+                for scene in scenes {
+                    if !listed.contains(&scene) {
+                        let at = listed.partition_point(|held| held.as_str() < scene.as_str());
+                        listed.insert(at, scene);
+                    }
+                }
+            }
+        });
+    }
+
+    pub fn is_known(self) -> bool {
+        self.listed.with(Option::is_some)
     }
 
     pub fn in_order(self) -> Vec<SceneId> {
@@ -53,6 +73,7 @@ impl LooseScenes {
         self.listed.with(|listed| {
             listed
                 .iter()
+                .flatten()
                 .filter(|scene| !held.contains(scene))
                 .cloned()
                 .collect()

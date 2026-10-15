@@ -57,7 +57,7 @@ impl WriteViewState {
             margin: Margin::closed(),
             saving,
             word_count: WordCount::of(structure),
-            left_off: LeftOff::in_project(project, structure, walk, viewport),
+            left_off: LeftOff::in_project(project, side, structure, loose, walk, viewport),
             viewport,
             scene_tray: SceneTray::as_last_left(),
             scene_ideas: SceneIdeas::of(project, problems, saving),

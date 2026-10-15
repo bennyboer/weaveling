@@ -50,6 +50,7 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                     match state.side {
                         Side::Book => item("Take out of the book", false, move || {
                             state.margin.close();
+                            state.loose.include(vec![take_out.clone()]);
                             state.structure.take_out(take_out.clone());
                         })
                         .into_any(),

@@ -41,17 +41,26 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     let navigate = use_navigate();
 
     Effect::new(move |landed: Option<bool>| {
-        if side == Side::Loose || landed == Some(true) || !open.get() {
+        let ready = open.get() && (side == Side::Book || state.loose.is_known());
+        if landed == Some(true) || !ready {
             return landed.unwrap_or(false);
         }
 
-        let loose = following
-            .clone()
-            .filter(|scene| !untrack(|| state.structure.holds(scene)));
+        let elsewhere = following.clone().filter(|scene| {
+            let in_the_book = untrack(|| state.structure.holds(scene));
 
-        match loose {
+            match side {
+                Side::Book => !in_the_book,
+                Side::Loose => in_the_book,
+            }
+        });
+
+        match elsewhere {
             Some(scene) => navigate(
-                &route::scene(&project, &scene),
+                &match side {
+                    Side::Book => route::loose_scene_at(&project, &scene),
+                    Side::Loose => route::writing_at(&project, &scene),
+                },
                 NavigateOptions {
                     replace: true,
                     ..Default::default()
@@ -61,11 +70,11 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
                 if following.is_some()
                     && let Ok(history) = window().history()
                 {
-                    let _ = history.replace_state_with_url(
-                        &JsValue::NULL,
-                        "",
-                        Some(&route::writing(&project)),
-                    );
+                    let here = match side {
+                        Side::Book => route::writing(&project),
+                        Side::Loose => route::loose_scenes(&project),
+                    };
+                    let _ = history.replace_state_with_url(&JsValue::NULL, "", Some(&here));
                 }
                 untrack(|| state.left_off.land(following.clone()));
             }

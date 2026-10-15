@@ -79,6 +79,11 @@ fn answered(question: Asking, state: WriteViewState) {
             Side::Book => state.structure.delete(scene),
             Side::Loose => state.loose.delete(scene),
         },
-        Asking::RemoveSection(section) => state.structure.remove(section),
+        Asking::RemoveSection(section) => {
+            state
+                .loose
+                .include(untrack(|| state.structure.scenes_within(&section)));
+            state.structure.remove(section);
+        }
     }
 }

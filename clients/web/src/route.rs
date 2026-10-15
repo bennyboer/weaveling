@@ -32,16 +32,16 @@ pub fn loose_scenes(project: &str) -> String {
     format!("/projects/{project}/write/loose")
 }
 
+pub fn loose_scene_at(project: &str, scene: &SceneId) -> String {
+    format!("/projects/{project}/write/loose?scene={scene}")
+}
+
 pub fn writing_at(project: &str, scene: &SceneId) -> String {
     format!("/projects/{project}/write?scene={scene}")
 }
 
 pub fn pool(project: &str) -> String {
     format!("/projects/{project}/ideas")
-}
-
-pub fn scene(project: &str, id: &SceneId) -> String {
-    format!("/projects/{project}/scenes/{id}")
 }
 
 pub fn idea_segment(id: &IdeaId, named: &str) -> String {

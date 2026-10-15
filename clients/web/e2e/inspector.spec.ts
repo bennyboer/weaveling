@@ -174,7 +174,7 @@ test("a scene in the book the idea appears in opens in the writing view", async 
   ).toBeFocused();
 });
 
-test("a scene not in the book the idea appears in opens on its own page", async ({
+test("a scene not in the book the idea appears in opens on the writing view's other side", async ({
   page,
 }) => {
   await aNewProject(page, "Following");
@@ -189,5 +189,8 @@ test("a scene not in the book the idea appears in opens on its own page", async 
 
   await appearances(page).getByRole("link", { name: "The clearing" }).click();
 
-  await expect(page).toHaveURL(new RegExp(`/scenes/${scene}$`));
+  await expect(page).toHaveURL(/\/write\/loose$/);
+  await expect(
+    page.locator(`[data-scene="${scene}"] .ProseMirror`),
+  ).toBeFocused();
 });
