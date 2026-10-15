@@ -133,7 +133,7 @@ impl Beginnings {
                 Ok((section, opened)) => {
                     self.focus_next.set_value(Some(section.clone()));
                     self.pending.set(None);
-                    self.structure.adopt(opened);
+                    self.structure.take(opened);
                     self.beginning_section.set_value(false);
 
                     let typed = self.section_words.get_value();
@@ -197,7 +197,7 @@ impl Beginnings {
             {
                 Ok(placed) => {
                     self.pending.set(None);
-                    self.structure.adopt(placed);
+                    self.structure.take(placed);
                 }
                 Err(failure) => self.could_not_begin(&section, failure),
             }

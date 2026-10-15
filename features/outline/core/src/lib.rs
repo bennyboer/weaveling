@@ -13,5 +13,5 @@ pub use outline::{
     Attachment, IdeaLink, KIND, Outline, OutlineCommand, OutlineError, OutlineEvent, PlacedSection,
     ProjectLink, SceneLink,
 };
-pub use service::{Added, Open, OutlineService, OutlineServiceError};
+pub use service::{Added, Changed, Open, OutlineService, OutlineServiceError};
 pub use title::{InvalidSectionTitle, SectionTitle};

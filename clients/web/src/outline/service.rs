@@ -1,12 +1,15 @@
 use gloo_net::http::Request;
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, MoveSectionRequest,
-    OpenOutlineRequest, OutlineDTO, PlacedSectionDTO, RetitleSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
+    MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
+    RetitleSectionRequest,
 };
 
 use crate::http::{ApiError, parsed};
 use crate::ideas::model::IdeaId;
-use crate::outline::model::{Attachment, Outline, OutlineId, Section, SectionId};
+use crate::outline::model::{
+    Attachment, Outline, OutlineChange, OutlineId, Section, SectionChange, SectionId,
+};
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 
@@ -32,7 +35,7 @@ pub async fn add(
     under: Option<SectionId>,
     after: Option<SectionId>,
     title: &str,
-) -> Result<(SectionId, Outline), ApiError> {
+) -> Result<(SectionId, OutlineChange), ApiError> {
     let payload = AddSectionRequest {
         under: under.map(|under| under.to_string()),
         after: after.map(|after| after.to_string()),
@@ -46,14 +49,14 @@ pub async fn add(
         .map_err(|_| ApiError::Offline)?;
     let added: AddedSectionResponse = parsed(response, SUBJECT).await?;
 
-    Ok((SectionId::from(added.section), as_outline(added.outline)))
+    Ok((SectionId::from(added.section), as_change(added.outline)))
 }
 
 pub async fn retitle(
     outline: &OutlineId,
     section: &SectionId,
     title: &str,
-) -> Result<Outline, ApiError> {
+) -> Result<OutlineChange, ApiError> {
     let payload = RetitleSectionRequest {
         title: title.to_owned(),
     };
@@ -64,7 +67,7 @@ pub async fn retitle(
         .await
         .map_err(|_| ApiError::Offline)?;
 
-    Ok(as_outline(parsed(response, SUBJECT).await?))
+    Ok(as_change(parsed(response, SUBJECT).await?))
 }
 
 pub async fn place(
@@ -72,7 +75,7 @@ pub async fn place(
     section: &SectionId,
     under: Option<SectionId>,
     after: Option<SectionId>,
-) -> Result<Outline, ApiError> {
+) -> Result<OutlineChange, ApiError> {
     let payload = MoveSectionRequest {
         under: under.map(|under| under.to_string()),
         after: after.map(|after| after.to_string()),
@@ -84,24 +87,24 @@ pub async fn place(
         .await
         .map_err(|_| ApiError::Offline)?;
 
-    Ok(as_outline(parsed(response, SUBJECT).await?))
+    Ok(as_change(parsed(response, SUBJECT).await?))
 }
 
-pub async fn promote(outline: &OutlineId, section: &SectionId) -> Result<Outline, ApiError> {
+pub async fn promote(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
     urged(outline, section, "promote").await
 }
 
-pub async fn demote(outline: &OutlineId, section: &SectionId) -> Result<Outline, ApiError> {
+pub async fn demote(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
     urged(outline, section, "demote").await
 }
 
-pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<Outline, ApiError> {
+pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
     let response = Request::delete(&format!("{OUTLINES}/{outline}/sections/{section}"))
         .send()
         .await
         .map_err(|_| ApiError::Offline)?;
 
-    Ok(as_outline(parsed(response, SUBJECT).await?))
+    Ok(as_change(parsed(response, SUBJECT).await?))
 }
 
 pub async fn attach(
@@ -109,7 +112,7 @@ pub async fn attach(
     attachment: &Attachment,
     to: &SectionId,
     after: Option<Attachment>,
-) -> Result<Outline, ApiError> {
+) -> Result<OutlineChange, ApiError> {
     let payload = AttachRequest {
         attachment: to_dto(attachment),
         section: to.to_string(),
@@ -122,7 +125,7 @@ pub async fn attach(
         .await
         .map_err(|_| ApiError::Offline)?;
 
-    Ok(as_outline(parsed(response, SUBJECT).await?))
+    Ok(as_change(parsed(response, SUBJECT).await?))
 }
 
 pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), ApiError> {
@@ -142,13 +145,17 @@ pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), 
     Err(ApiError::Unexpected)
 }
 
-async fn urged(outline: &OutlineId, section: &SectionId, how: &str) -> Result<Outline, ApiError> {
+async fn urged(
+    outline: &OutlineId,
+    section: &SectionId,
+    how: &str,
+) -> Result<OutlineChange, ApiError> {
     let response = Request::post(&format!("{OUTLINES}/{outline}/sections/{section}/{how}"))
         .send()
         .await
         .map_err(|_| ApiError::Offline)?;
 
-    Ok(as_outline(parsed(response, SUBJECT).await?))
+    Ok(as_change(parsed(response, SUBJECT).await?))
 }
 
 fn to_dto(attachment: &Attachment) -> AttachmentDTO {
@@ -183,5 +190,24 @@ fn as_section(dto: PlacedSectionDTO) -> Section {
         parent: dto.parent.map(SectionId::from),
         title: dto.title,
         attachments: dto.attachments.into_iter().map(as_attachment).collect(),
+    }
+}
+
+fn as_change(dto: OutlineChangeDTO) -> OutlineChange {
+    OutlineChange {
+        id: OutlineId::from(dto.id),
+        version: dto.version,
+        sections: dto.sections.into_iter().map(as_section_change).collect(),
+    }
+}
+
+fn as_section_change(dto: ChangedSectionDTO) -> SectionChange {
+    SectionChange {
+        id: SectionId::from(dto.section),
+        parent: dto.parent.map(SectionId::from),
+        title: dto.title,
+        attachments: dto
+            .attachments
+            .map(|attachments| attachments.into_iter().map(as_attachment).collect()),
     }
 }

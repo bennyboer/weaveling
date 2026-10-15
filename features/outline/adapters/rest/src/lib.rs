@@ -7,12 +7,13 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use eventsourcing::{Agent, ServiceError, Standing, Version};
 use outline_contract::{
-    AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, MoveSectionRequest,
-    OpenOutlineRequest, OutlineDTO, PlacedSectionDTO, RetitleSectionRequest,
+    AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
+    MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
+    RetitleSectionRequest,
 };
 use outline_core::{
-    Attachment, InvalidSectionTitle, Outline, OutlineError, OutlineService, OutlineServiceError,
-    PlacedSection, SectionId, SectionTitle,
+    Attachment, Changed, InvalidSectionTitle, Outline, OutlineError, OutlineService,
+    OutlineServiceError, PlacedSection, SectionId, SectionTitle,
 };
 use serving::{Unreadable, demanded, refusal, tag};
 
@@ -81,13 +82,17 @@ async fn add(
         )
         .await?;
     let standing = outlines.get(&outline).await?;
+    let unchanged = Changed {
+        version: added.version,
+        attachments_changed_in: Vec::new(),
+    };
 
     Ok((
         StatusCode::CREATED,
         [(ETAG, tag(standing.version))],
         Json(AddedSectionResponse {
             section: added.section.to_string(),
-            outline: to_dto(&outline, &standing.state, standing.version),
+            outline: to_change_dto(&outline, &standing, &unchanged),
         }),
     )
         .into_response())
@@ -99,7 +104,7 @@ async fn retitle(
     headers: HeaderMap,
     Json(request): Json<RetitleSectionRequest>,
 ) -> Result<Response, ApiError> {
-    outlines
+    let changed = outlines
         .retitle(
             &outline,
             section.parse()?,
@@ -109,10 +114,10 @@ async fn retitle(
         )
         .await?;
 
-    Ok(to_response(
-        StatusCode::OK,
+    Ok(to_change_response(
         &outline,
         &outlines.get(&outline).await?,
+        &changed,
     ))
 }
 
@@ -122,7 +127,7 @@ async fn place(
     headers: HeaderMap,
     Json(request): Json<MoveSectionRequest>,
 ) -> Result<Response, ApiError> {
-    outlines
+    let changed = outlines
         .place(
             &outline,
             section.parse()?,
@@ -133,10 +138,10 @@ async fn place(
         )
         .await?;
 
-    Ok(to_response(
-        StatusCode::OK,
+    Ok(to_change_response(
         &outline,
         &outlines.get(&outline).await?,
+        &changed,
     ))
 }
 
@@ -145,7 +150,7 @@ async fn promote(
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    outlines
+    let changed = outlines
         .promote(
             &outline,
             section.parse()?,
@@ -154,10 +159,10 @@ async fn promote(
         )
         .await?;
 
-    Ok(to_response(
-        StatusCode::OK,
+    Ok(to_change_response(
         &outline,
         &outlines.get(&outline).await?,
+        &changed,
     ))
 }
 
@@ -166,7 +171,7 @@ async fn demote(
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    outlines
+    let changed = outlines
         .demote(
             &outline,
             section.parse()?,
@@ -175,10 +180,10 @@ async fn demote(
         )
         .await?;
 
-    Ok(to_response(
-        StatusCode::OK,
+    Ok(to_change_response(
         &outline,
         &outlines.get(&outline).await?,
+        &changed,
     ))
 }
 
@@ -187,7 +192,7 @@ async fn remove(
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, ApiError> {
-    outlines
+    let changed = outlines
         .remove(
             &outline,
             section.parse()?,
@@ -196,10 +201,10 @@ async fn remove(
         )
         .await?;
 
-    Ok(to_response(
-        StatusCode::OK,
+    Ok(to_change_response(
         &outline,
         &outlines.get(&outline).await?,
+        &changed,
     ))
 }
 
@@ -209,7 +214,7 @@ async fn attach(
     headers: HeaderMap,
     Json(request): Json<AttachRequest>,
 ) -> Result<Response, ApiError> {
-    outlines
+    let changed = outlines
         .attach(
             &outline,
             to_attachment(&request.attachment),
@@ -220,10 +225,10 @@ async fn attach(
         )
         .await?;
 
-    Ok(to_response(
-        StatusCode::OK,
+    Ok(to_change_response(
         &outline,
         &outlines.get(&outline).await?,
+        &changed,
     ))
 }
 
@@ -271,6 +276,42 @@ fn to_response(status: StatusCode, outline: &str, standing: &Standing<Outline>) 
         Json(to_dto(outline, &standing.state, standing.version)),
     )
         .into_response()
+}
+
+fn to_change_response(outline: &str, standing: &Standing<Outline>, changed: &Changed) -> Response {
+    (
+        StatusCode::OK,
+        [(ETAG, tag(standing.version))],
+        Json(to_change_dto(outline, standing, changed)),
+    )
+        .into_response()
+}
+
+fn to_change_dto(
+    outline: &str,
+    standing: &Standing<Outline>,
+    changed: &Changed,
+) -> OutlineChangeDTO {
+    let nothing_else_landed = standing.version == changed.version;
+
+    OutlineChangeDTO {
+        id: outline.to_owned(),
+        version: standing.version.count(),
+        project: standing.state.project().to_string(),
+        sections: standing
+            .state
+            .sections()
+            .iter()
+            .map(|placed| ChangedSectionDTO {
+                section: placed.section.to_string(),
+                parent: placed.parent.map(|parent| parent.to_string()),
+                title: placed.title.to_string(),
+                attachments: (!nothing_else_landed
+                    || changed.attachments_changed_in.contains(&placed.section))
+                .then(|| placed.attachments.iter().map(to_attachment_dto).collect()),
+            })
+            .collect(),
+    }
 }
 
 fn to_dto(outline: &str, held: &Outline, version: Version) -> OutlineDTO {

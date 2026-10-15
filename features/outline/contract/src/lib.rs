@@ -36,9 +36,25 @@ pub struct OutlineDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ChangedSectionDTO {
+    pub section: String,
+    pub parent: Option<String>,
+    pub title: String,
+    pub attachments: Option<Vec<AttachmentDTO>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct OutlineChangeDTO {
+    pub id: String,
+    pub version: u64,
+    pub project: String,
+    pub sections: Vec<ChangedSectionDTO>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct AddedSectionResponse {
     pub section: String,
-    pub outline: OutlineDTO,
+    pub outline: OutlineChangeDTO,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

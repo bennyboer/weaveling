@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{
-    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, StoreError,
-    Version,
+    Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing,
+    StoreError, Version,
 };
 use ids::InvalidId;
 use registry::{Registry, RegistryError};
@@ -43,6 +43,33 @@ pub struct Open {
 pub struct Added {
     pub section: SectionId,
     pub version: Version,
+}
+
+pub struct Changed {
+    pub version: Version,
+    pub attachments_changed_in: Vec<SectionId>,
+}
+
+impl Changed {
+    fn by(landed: Appended<OutlineEvent>) -> Self {
+        let mut attachments_changed_in = Vec::new();
+
+        for happened in &landed.events {
+            let section = match &happened.event {
+                OutlineEvent::Attached { to, .. } => to,
+                OutlineEvent::Detached { from, .. } => from,
+                _ => continue,
+            };
+            if !attachments_changed_in.contains(section) {
+                attachments_changed_in.push(*section);
+            }
+        }
+
+        Self {
+            version: landed.version,
+            attachments_changed_in,
+        }
+    }
 }
 
 impl OutlineService {
@@ -91,7 +118,7 @@ impl OutlineService {
         agent: &Agent,
     ) -> Result<Added, OutlineServiceError> {
         let section = SectionId::generate(self.clock.now());
-        let version = self
+        let changed = self
             .carry_out(
                 outline,
                 OutlineCommand::Add {
@@ -105,7 +132,10 @@ impl OutlineService {
             )
             .await?;
 
-        Ok(Added { section, version })
+        Ok(Added {
+            section,
+            version: changed.version,
+        })
     }
 
     pub async fn retitle(
@@ -115,7 +145,7 @@ impl OutlineService {
         title: SectionTitle,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         self.carry_out(
             outline,
             OutlineCommand::Retitle { section, title },
@@ -133,7 +163,7 @@ impl OutlineService {
         after: Option<SectionId>,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         self.carry_out(
             outline,
             OutlineCommand::Move {
@@ -153,7 +183,7 @@ impl OutlineService {
         section: SectionId,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         self.carry_out(
             outline,
             OutlineCommand::Promote { section },
@@ -169,7 +199,7 @@ impl OutlineService {
         section: SectionId,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         self.carry_out(outline, OutlineCommand::Demote { section }, expected, agent)
             .await
     }
@@ -180,7 +210,7 @@ impl OutlineService {
         section: SectionId,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         self.carry_out(outline, OutlineCommand::Remove { section }, expected, agent)
             .await
     }
@@ -193,7 +223,7 @@ impl OutlineService {
         after: Option<Attachment>,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         self.carry_out(
             outline,
             OutlineCommand::Attach {
@@ -213,7 +243,7 @@ impl OutlineService {
         attachment: Attachment,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         self.carry_out(
             outline,
             OutlineCommand::Detach { attachment },
@@ -228,7 +258,7 @@ impl OutlineService {
         outline: &str,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         self.carry_out(outline, OutlineCommand::Discard, expected, agent)
             .await
     }
@@ -280,7 +310,7 @@ impl OutlineService {
         command: OutlineCommand,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, OutlineServiceError> {
+    ) -> Result<Changed, OutlineServiceError> {
         let outline: OutlineId = outline.parse()?;
         let key = AggregateId::from(&outline);
 
@@ -293,6 +323,6 @@ impl OutlineService {
             None => self.events.execute(&key, command, agent).await?,
         };
 
-        Ok(landed.version)
+        Ok(Changed::by(landed))
     }
 }

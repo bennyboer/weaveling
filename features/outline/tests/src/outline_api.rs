@@ -5,7 +5,7 @@ use axum_test::TestServer;
 use clock::FixedClock;
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, MoveSectionRequest,
-    OpenOutlineRequest, OutlineDTO, RetitleSectionRequest,
+    OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, RetitleSectionRequest,
 };
 use time::{Duration, OffsetDateTime};
 
@@ -55,7 +55,7 @@ async fn a_section(
     response.json()
 }
 
-fn shape(outline: &OutlineDTO) -> String {
+fn shape(outline: &OutlineChangeDTO) -> String {
     outline
         .sections
         .iter()
@@ -174,7 +174,7 @@ async fn a_section_can_be_retitled_for_the_table_of_contents() {
 
     response.assert_status(StatusCode::OK);
     assert_eq!(
-        shape(&response.json::<OutlineDTO>()),
+        shape(&response.json::<OutlineChangeDTO>()),
         shaped(
             "
             The Silent Loom
@@ -222,7 +222,7 @@ async fn promoting_lifts_a_section_and_takes_what_followed_it_along() {
 
     response.assert_status(StatusCode::OK);
     assert_eq!(
-        shape(&response.json::<OutlineDTO>()),
+        shape(&response.json::<OutlineChangeDTO>()),
         shaped(
             "
             Chapter 1
@@ -258,7 +258,7 @@ async fn demoting_nests_a_section_under_the_one_before_it() {
 
     response.assert_status(StatusCode::OK);
     assert_eq!(
-        shape(&response.json::<OutlineDTO>()),
+        shape(&response.json::<OutlineChangeDTO>()),
         shaped(
             "
             Chapter 1
@@ -297,7 +297,7 @@ async fn a_section_can_be_moved_under_another_with_its_children() {
 
     response.assert_status(StatusCode::OK);
     assert_eq!(
-        shape(&response.json::<OutlineDTO>()),
+        shape(&response.json::<OutlineChangeDTO>()),
         shaped(
             "
             Part One
@@ -347,7 +347,7 @@ async fn removing_a_section_lifts_its_children_into_its_place() {
 
     response.assert_status(StatusCode::OK);
     assert_eq!(
-        shape(&response.json::<OutlineDTO>()),
+        shape(&response.json::<OutlineChangeDTO>()),
         shaped(
             "
             Chapter 1
@@ -459,10 +459,14 @@ async fn a_section_with_no_scenes_is_accepted_because_planning_comes_first() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
 
-    let added = a_section(&server, &outline.id, "Chapter 9", None, None).await;
+    a_section(&server, &outline.id, "Chapter 9", None, None).await;
 
+    let found: OutlineDTO = server
+        .get(&format!("/outlines/{}", outline.id))
+        .await
+        .json();
     assert!(
-        added.outline.sections[0].attachments.is_empty(),
+        found.sections[0].attachments.is_empty(),
         "an empty leaf is a hole the view flags, never a refusal the domain makes"
     );
 }
@@ -542,5 +546,96 @@ async fn every_change_moves_the_version_the_etag_reports() {
     assert!(
         added.outline.version > outline.version,
         "a client holding a stale version must be able to tell"
+    );
+}
+
+async fn attaching(
+    server: &TestServer,
+    outline: &str,
+    scene: &str,
+    section: &str,
+) -> OutlineChangeDTO {
+    let response = server
+        .post(&format!("/outlines/{outline}/attachments"))
+        .json(&AttachRequest {
+            attachment: a_scene(scene),
+            section: section.to_owned(),
+            after: None,
+        })
+        .await;
+    response.assert_status(StatusCode::OK);
+
+    response.json()
+}
+
+fn attachments_sent(change: &OutlineChangeDTO) -> Vec<(String, Option<Vec<AttachmentDTO>>)> {
+    change
+        .sections
+        .iter()
+        .map(|placed| (placed.title.clone(), placed.attachments.clone()))
+        .collect()
+}
+
+#[tokio::test]
+async fn an_attach_answers_with_the_scenes_of_its_own_section_only() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+    let one = a_section(&server, &outline.id, "Chapter 1", None, None).await;
+    let two = a_section(&server, &outline.id, "Chapter 2", None, Some(&one.section)).await;
+    attaching(&server, &outline.id, "scene_1", &one.section).await;
+
+    let change = attaching(&server, &outline.id, "scene_2", &two.section).await;
+
+    assert_eq!(
+        attachments_sent(&change),
+        vec![
+            ("Chapter 1".to_owned(), None),
+            ("Chapter 2".to_owned(), Some(vec![a_scene("scene_2")])),
+        ],
+        "a book of thousands of scenes must not travel whole for every scene placed"
+    );
+}
+
+#[tokio::test]
+async fn a_scene_moved_between_sections_answers_with_both() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+    let one = a_section(&server, &outline.id, "Chapter 1", None, None).await;
+    let two = a_section(&server, &outline.id, "Chapter 2", None, Some(&one.section)).await;
+    attaching(&server, &outline.id, "scene_1", &one.section).await;
+
+    let change = attaching(&server, &outline.id, "scene_1", &two.section).await;
+
+    assert_eq!(
+        attachments_sent(&change),
+        vec![
+            ("Chapter 1".to_owned(), Some(Vec::new())),
+            ("Chapter 2".to_owned(), Some(vec![a_scene("scene_1")])),
+        ],
+        "the section it left changed as much as the one it went to"
+    );
+}
+
+#[tokio::test]
+async fn a_retitle_answers_with_the_shape_of_the_book_and_no_scenes() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+    let one = a_section(&server, &outline.id, "Chapter 1", None, None).await;
+    attaching(&server, &outline.id, "scene_1", &one.section).await;
+
+    let change: OutlineChangeDTO = server
+        .patch(&format!(
+            "/outlines/{}/sections/{}",
+            outline.id, one.section
+        ))
+        .json(&RetitleSectionRequest {
+            title: "The Silent Loom".to_owned(),
+        })
+        .await
+        .json();
+
+    assert_eq!(
+        attachments_sent(&change),
+        vec![("The Silent Loom".to_owned(), None)]
     );
 }

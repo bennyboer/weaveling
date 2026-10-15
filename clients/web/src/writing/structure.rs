@@ -4,7 +4,7 @@ use std::pin::Pin;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::outline::model::{Attachment, Outline, OutlineId, Section, SectionId};
+use crate::outline::model::{Attachment, Outline, OutlineChange, OutlineId, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
@@ -238,7 +238,7 @@ impl Structure {
 
         self.in_turn(async move {
             match service::retitle(&outline, &section, &title).await {
-                Ok(renamed) => self.adopt(renamed),
+                Ok(renamed) => self.take(renamed),
                 Err(failure) => self.problems.report(failure),
             }
         });
@@ -262,7 +262,7 @@ impl Structure {
             let behind = after.map(Attachment::Scene);
 
             match service::attach(&outline, &Attachment::Scene(scene), &to, behind).await {
-                Ok(placed) => self.adopt(placed),
+                Ok(placed) => self.take(placed),
                 Err(failure) => self.problems.report(failure),
             }
         });
@@ -298,7 +298,7 @@ impl Structure {
             };
 
             match moved {
-                Ok(moved) => self.adopt(moved),
+                Ok(moved) => self.take(moved),
                 Err(failure) => self.problems.report(failure),
             }
         });
@@ -341,7 +341,7 @@ impl Structure {
 
         self.in_turn(async move {
             match service::remove(&outline, &section).await {
-                Ok(removed) => self.adopt(removed),
+                Ok(removed) => self.take(removed),
                 Err(failure) => self.problems.report(failure),
             }
         });
@@ -371,6 +371,16 @@ impl Structure {
             Ok(opened) => self.adopt(opened),
             Err(failure) => self.problems.report(failure),
         }
+    }
+
+    pub fn take(self, change: OutlineChange) {
+        self.outline.update(|held| {
+            if let Some(held) = held
+                && change.version >= held.version
+            {
+                *held = held.changed_by(change);
+            }
+        });
     }
 
     pub fn adopt(self, arrived: Outline) {

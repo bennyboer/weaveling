@@ -18,6 +18,7 @@ use wiring::{Context, Feature};
 const SIZES: [usize; 3] = [1_000, 2_500, 5_000];
 const SAMPLES: usize = 9;
 const SPAN: usize = 100;
+const CHAPTER: usize = 50;
 
 #[derive(Default)]
 struct Overheard(Mutex<Vec<Message>>);
@@ -116,13 +117,30 @@ impl Bench {
         }
     }
 
-    fn next_scene(&mut self) -> String {
+    async fn next_scene(&mut self) -> String {
+        if self.attached > 0 && self.attached.is_multiple_of(CHAPTER) {
+            self.section = self
+                .outlines
+                .add(
+                    &self.outline.to_string(),
+                    None,
+                    Some(self.section.parse().expect("a section id")),
+                    SectionTitle::new("Chapter").expect("a plain title"),
+                    None,
+                    &Agent::Anonymous,
+                )
+                .await
+                .expect("a chapter is added")
+                .section
+                .to_string();
+        }
         self.attached += 1;
+
         format!("scene_bench{:010}", self.attached)
     }
 
     async fn attach_one(&mut self) -> Duration {
-        let scene = self.next_scene();
+        let scene = self.next_scene().await;
         let (attached, taken) = timed(self.outlines.attach(
             &self.outline.to_string(),
             Attachment::Scene(SceneLink::from(scene)),
@@ -180,7 +198,7 @@ impl Bench {
         let mut answered_bytes = 0;
         let mut indexing = Vec::new();
         for _ in 0..SAMPLES {
-            let scene = self.next_scene();
+            let scene = self.next_scene().await;
             let (answer, taken) = timed(
                 self.server
                     .post(&format!("/outlines/{}/attachments", self.outline))

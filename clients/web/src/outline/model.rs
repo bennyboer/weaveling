@@ -30,6 +30,21 @@ pub struct Outline {
     pub sections: Vec<Section>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SectionChange {
+    pub id: SectionId,
+    pub parent: Option<SectionId>,
+    pub title: String,
+    pub attachments: Option<Vec<Attachment>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutlineChange {
+    pub id: OutlineId,
+    pub version: u64,
+    pub sections: Vec<SectionChange>,
+}
+
 impl From<String> for OutlineId {
     fn from(given: String) -> Self {
         Self(given)
@@ -67,6 +82,29 @@ impl Section {
 }
 
 impl Outline {
+    pub fn changed_by(&self, change: OutlineChange) -> Self {
+        Self {
+            id: change.id,
+            version: change.version,
+            sections: change
+                .sections
+                .into_iter()
+                .map(|changed| Section {
+                    attachments: changed.attachments.unwrap_or_else(|| {
+                        self.sections
+                            .iter()
+                            .find(|section| section.id == changed.id)
+                            .map(|section| section.attachments.clone())
+                            .unwrap_or_default()
+                    }),
+                    id: changed.id,
+                    parent: changed.parent,
+                    title: changed.title,
+                })
+                .collect(),
+        }
+    }
+
     pub fn holds(&self, attachment: &Attachment) -> bool {
         self.sections
             .iter()
@@ -209,6 +247,52 @@ mod tests {
             .into_iter()
             .map(|(depth, section)| (depth, section.title.as_str()))
             .collect()
+    }
+
+    fn a_scene(id: &str) -> Attachment {
+        Attachment::Scene(SceneId::from(id.to_owned()))
+    }
+
+    fn changed(id: &str, attachments: Option<Vec<Attachment>>) -> SectionChange {
+        SectionChange {
+            id: SectionId::from(id.to_owned()),
+            parent: None,
+            title: id.to_owned(),
+            attachments,
+        }
+    }
+
+    #[test]
+    fn a_change_takes_the_scenes_it_sends_and_keeps_the_scenes_it_does_not() {
+        let mut kept = a_section("kept", None);
+        kept.attachments = vec![a_scene("scene_1")];
+        let mut moved = a_section("moved", None);
+        moved.attachments = vec![a_scene("scene_2")];
+        let held = an_outline(vec![kept, moved, a_section("removed", None)]);
+
+        let now = held.changed_by(OutlineChange {
+            id: OutlineId::from("outline_1".to_owned()),
+            version: 7,
+            sections: vec![
+                changed("new", None),
+                changed("moved", Some(vec![a_scene("scene_2"), a_scene("scene_3")])),
+                changed("kept", None),
+            ],
+        });
+
+        assert_eq!(now.version, 7);
+        assert_eq!(
+            now.sections
+                .iter()
+                .map(|section| (section.title.as_str(), section.attachments.clone()))
+                .collect::<Vec<_>>(),
+            vec![
+                ("new", Vec::new()),
+                ("moved", vec![a_scene("scene_2"), a_scene("scene_3")]),
+                ("kept", vec![a_scene("scene_1")]),
+            ],
+            "the order and the sections are the server's, the scenes of a section it did not send are ours"
+        );
     }
 
     #[test]

@@ -4,7 +4,7 @@ use leptos_router::hooks::use_navigate;
 use crate::http::ApiError;
 use crate::ideas::model::Idea;
 use crate::ideas::service as idea_service;
-use crate::outline::model::{Attachment, Outline, Section, SectionId};
+use crate::outline::model::{Attachment, Outline, OutlineChange, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::route;
@@ -69,8 +69,18 @@ impl OutlineViewState {
             }
         };
 
-        let settled = move |answer: Result<Outline, ApiError>| match answer {
-            Ok(told) => arrived(told),
+        let changed = move |told: OutlineChange| {
+            confirmed.update(|held| {
+                if let Some(held) = held
+                    && told.version >= held.version
+                {
+                    *held = held.changed_by(told);
+                }
+            });
+        };
+
+        let settled = move |answer: Result<OutlineChange, ApiError>| match answer {
+            Ok(told) => changed(told),
             Err(failure) => problem.set(Some(failure)),
         };
 
@@ -112,7 +122,12 @@ impl OutlineViewState {
             Action::new_local(move |()| {
                 let id = id.clone();
 
-                async move { settled(service::open(&id).await) }
+                async move {
+                    match service::open(&id).await {
+                        Ok(told) => arrived(told),
+                        Err(failure) => problem.set(Some(failure)),
+                    }
+                }
             })
         };
         opening.dispatch(());
@@ -130,7 +145,7 @@ impl OutlineViewState {
 
                     match service::add(&open.id, under, after, &title).await {
                         Ok((section, told)) => {
-                            arrived(told);
+                            changed(told);
                             added.set(Some(section));
                         }
                         Err(failure) => problem.set(Some(failure)),
@@ -469,7 +484,7 @@ async fn attach_at_the_end(
     open: Outline,
     attachment: Attachment,
     to: SectionId,
-) -> Result<Outline, ApiError> {
+) -> Result<OutlineChange, ApiError> {
     let behind = open
         .sections
         .iter()
