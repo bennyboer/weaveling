@@ -1,7 +1,7 @@
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const LABEL = process.env.STRESS_LABEL ?? "before";
 const GIVE_UP_AFTER = Number(process.env.STRESS_GIVE_UP_MS ?? 10 * 60_000);
@@ -9,6 +9,56 @@ const BOOK = process.env.STRESS_BOOK ?? "10000";
 const seeded = JSON.parse(
   readFileSync(join(__dirname, `seeded-${BOOK}.json`), "utf-8"),
 );
+
+type Frames = { median: number; p95: number; over50: number; frames: number };
+
+async function measuring(page: Page) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Performance.enable");
+
+  return async () =>
+    Object.fromEntries(
+      (await cdp.send("Performance.getMetrics")).metrics.map((metric) => [
+        metric.name,
+        metric.value,
+      ]),
+    );
+}
+
+const scrolled = (page: Page) =>
+  page.evaluate(
+    () =>
+      new Promise<Frames>((done) => {
+        const frames: number[] = [];
+        let last = performance.now();
+        const step = (now: number) => {
+          frames.push(now - last);
+          last = now;
+          window.scrollBy(0, 600);
+          if (frames.length < 300) {
+            requestAnimationFrame(step);
+          } else {
+            const sorted = [...frames].sort((a, b) => a - b);
+            done({
+              median: sorted[Math.floor(sorted.length / 2)],
+              p95: sorted[Math.floor(sorted.length * 0.95)],
+              over50: frames.filter((frame) => frame > 50).length,
+              frames: frames.length,
+            });
+          }
+        };
+        requestAnimationFrame(step);
+      }),
+  );
+
+function kept(named: string, result: object) {
+  console.log(JSON.stringify(result, null, 2));
+  mkdirSync("../../target/stress", { recursive: true });
+  writeFileSync(
+    `../../target/stress/${named}.json`,
+    JSON.stringify(result, null, 2),
+  );
+}
 
 test("the writing view on a book of many scenes", async ({ page }) => {
   const opened = { sockets: 0, closed: 0 };
@@ -18,15 +68,7 @@ test("the writing view on a book of many scenes", async ({ page }) => {
   });
   const crashed: string[] = [];
   page.on("crash", () => crashed.push("the page crashed"));
-  const cdp = await page.context().newCDPSession(page);
-  await cdp.send("Performance.enable");
-  const metrics = async () =>
-    Object.fromEntries(
-      (await cdp.send("Performance.getMetrics")).metrics.map((metric) => [
-        metric.name,
-        metric.value,
-      ]),
-    );
+  const metrics = await measuring(page);
 
   const began = Date.now();
   await page.goto(`/projects/${seeded.project}/write`);
@@ -51,7 +93,8 @@ test("the writing view on a book of many scenes", async ({ page }) => {
   const synced = await book
     .locator(".scene .ProseMirror")
     .evaluateAll(
-      (editors) => editors.filter((editor) => editor.textContent?.trim()).length,
+      (editors) =>
+        editors.filter((editor) => editor.textContent?.trim()).length,
     );
 
   let typing: number | null = null;
@@ -63,32 +106,7 @@ test("the writing view on a book of many scenes", async ({ page }) => {
     typing = Date.now() - typingBegan;
   }
 
-  const scrolling = await page.evaluate(
-    () =>
-      new Promise<{ median: number; p95: number; over50: number; frames: number }>(
-        (done) => {
-          const frames: number[] = [];
-          let last = performance.now();
-          const step = (now: number) => {
-            frames.push(now - last);
-            last = now;
-            window.scrollBy(0, 600);
-            if (frames.length < 300) {
-              requestAnimationFrame(step);
-            } else {
-              const sorted = [...frames].sort((a, b) => a - b);
-              done({
-                median: sorted[Math.floor(sorted.length / 2)],
-                p95: sorted[Math.floor(sorted.length * 0.95)],
-                over50: frames.filter((frame) => frame > 50).length,
-                frames: frames.length,
-              });
-            }
-          };
-          requestAnimationFrame(step);
-        },
-      ),
-  );
+  const scrolling = await scrolled(page);
 
   const result = {
     label: LABEL,
@@ -105,7 +123,48 @@ test("the writing view on a book of many scenes", async ({ page }) => {
     scrollFrameMs: scrolling,
     crashed,
   };
-  console.log(JSON.stringify(result, null, 2));
-  mkdirSync("../../target/stress", { recursive: true });
-  writeFileSync(`../../target/stress/${LABEL}.json`, JSON.stringify(result, null, 2));
+  kept(LABEL, result);
+});
+
+test("the outline on a book of many scenes", async ({ page }) => {
+  const crashed: string[] = [];
+  page.on("crash", () => crashed.push("the page crashed"));
+  const metrics = await measuring(page);
+
+  const began = Date.now();
+  await page.goto(`/projects/${seeded.project}/outline`);
+  const names = page.locator(".leaf .name");
+  await expect(names.first()).not.toBeEmpty({ timeout: GIVE_UP_AFTER });
+  const shown = Date.now() - began;
+  await page.waitForTimeout(3_000);
+  const settled = await metrics();
+  const leavesDrawn = await page.locator(".leaf").count();
+
+  const scrolling = await scrolled(page);
+
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const far = names.last();
+  await expect(far).not.toBeEmpty({ timeout: GIVE_UP_AFTER });
+  const followed = new URL(
+    (await far.getAttribute("href"))!,
+    page.url(),
+  ).searchParams.get("scene");
+  const followBegan = Date.now();
+  await far.click();
+  await expect(
+    page.locator(`.scene[data-scene="${followed}"] .ProseMirror`),
+  ).toBeVisible({ timeout: GIVE_UP_AFTER });
+  const following = Date.now() - followBegan;
+
+  kept(`${LABEL}-outline`, {
+    label: LABEL,
+    scenesInBook: seeded.scenes,
+    firstNameShownAfterMs: shown,
+    leavesDrawn,
+    jsHeapMb: Math.round(settled.JSHeapUsedSize / 1_048_576),
+    domNodes: settled.Nodes,
+    scrollFrameMs: scrolling,
+    followingTheLastSceneMs: following,
+    crashed,
+  });
 });
