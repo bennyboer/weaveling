@@ -1,15 +1,27 @@
 use leptos::html::{self, Input};
 use leptos::prelude::*;
-use leptos::{IntoView, ev};
+use leptos::{IntoView, ev, view};
+use leptos_router::components::A;
 
 use crate::icons::{Icon, mark};
+use crate::ideas::model::IdeaId;
+use crate::route;
 use crate::scenes::model::SceneId;
 use crate::writing::write_view_state::WriteViewState;
 
 pub const SCENE_TRAY: &str = "scene-tray";
 
-pub fn this_scene(state: WriteViewState) -> impl IntoView {
+pub fn this_scene(state: WriteViewState, project: String) -> impl IntoView {
     let tray = state.scene_tray;
+    let project = StoredValue::new(project);
+
+    Effect::new(move || {
+        if tray.is_open()
+            && let Some(scene) = tray.scene()
+        {
+            state.scene_ideas.look_up(scene);
+        }
+    });
 
     (
         html::button()
@@ -46,7 +58,11 @@ pub fn this_scene(state: WriteViewState) -> impl IntoView {
                             .class("nothing-yet")
                             .child("Put the cursor in a scene to see it here.")
                             .into_any(),
-                        Some(scene) => title_field(scene, state).into_any(),
+                        Some(scene) => (
+                            title_field(scene.clone(), state),
+                            drawn_from(scene, project, state),
+                        )
+                            .into_any(),
                     },
                 )),
             ),
@@ -112,4 +128,58 @@ fn title_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
             }
             _ => {}
         })
+}
+
+fn drawn_from(
+    scene: SceneId,
+    project: StoredValue<String>,
+    state: WriteViewState,
+) -> impl IntoView {
+    html::section().class("drawn-from").child((
+        html::h3().class("tally").child("Drawn from"),
+        move || match state.scene_ideas.linked_to(&scene) {
+            None => ().into_any(),
+            Some(linked) if linked.is_empty() => html::p()
+                .class("empty")
+                .child("No ideas linked yet.")
+                .into_any(),
+            Some(linked) => html::ul()
+                .attr("aria-label", "Drawn from")
+                .child(
+                    linked
+                        .into_iter()
+                        .map(|idea| linked_idea(scene.clone(), idea, project, state))
+                        .collect::<Vec<_>>(),
+                )
+                .into_any(),
+        },
+    ))
+}
+
+fn linked_idea(
+    scene: SceneId,
+    idea: IdeaId,
+    project: StoredValue<String>,
+    state: WriteViewState,
+) -> impl IntoView {
+    let named = state.scene_ideas.named(&idea);
+    let at = project.with_value(|project| route::idea(project, &idea, &named));
+    let shown = named.clone();
+
+    html::li().child((
+        mark(Icon::Idea),
+        view! {
+            <A href=at attr:class="name">
+                {shown}
+            </A>
+        },
+        html::button()
+            .r#type("button")
+            .attr("aria-label", format!("Unlink {named}"))
+            .attr("title", format!("Unlink {named}"))
+            .on(ev::click, move |_| {
+                state.scene_ideas.unlink(scene.clone(), idea.clone())
+            })
+            .child(mark(Icon::Remove)),
+    ))
 }

@@ -2890,3 +2890,90 @@ test("a scene renamed in the margin is named so in the open tray", async ({
 
   await expect(trayTitle(page)).toHaveValue("Renamed");
 });
+
+async function anIdeaLinkedTo(page: Page, scene: string, title: string) {
+  const captured = await page.request.post(`${API}/ideas`, {
+    data: { project: projectOf(page), title },
+  });
+  expect(captured.status()).toBe(201);
+  const { id } = await captured.json();
+  const linked = await page.request.post(`${API}/scenes/${scene}/ideas`, {
+    data: { idea: id },
+  });
+  expect(linked.ok()).toBe(true);
+
+  return id as string;
+}
+
+const drawnFrom = (page: Page) =>
+  sceneTray(page).getByRole("list", { name: "Drawn from" });
+
+test("the tray lists the ideas a scene draws on, each leading to its idea", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayIdeas");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  const loom = await anIdeaLinkedTo(page, first, "The loom remembers");
+  await anIdeaLinkedTo(page, first, "A war down the valley");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+
+  await sceneTab(page).click();
+
+  await expect(drawnFrom(page).getByRole("link")).toHaveText([
+    "The loom remembers",
+    "A war down the valley",
+  ]);
+  await drawnFrom(page)
+    .getByRole("link", { name: "The loom remembers" })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/ideas/[^/]*${loom}$`));
+});
+
+test("an idea unlinked in the tray no longer counts for the scene", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayUnlink");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  const loom = await anIdeaLinkedTo(page, first, "The loom remembers");
+  const war = await anIdeaLinkedTo(page, first, "A war down the valley");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+
+  await drawnFrom(page)
+    .getByRole("button", { name: "Unlink The loom remembers" })
+    .click();
+
+  await expect(drawnFrom(page).getByRole("link")).toHaveText([
+    "A war down the valley",
+  ]);
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`${API}/scenes/${first}`)).json()).ideas,
+    )
+    .toEqual([war]);
+  expect(loom).not.toBe(war);
+});
+
+test("the tray's ideas follow the cursor to the next scene, and a scene without any says so", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayIdeasFollow");
+  const [first, second] = (await aBookWithScenes(page, { "Part One": 2 }))[
+    "Part One"
+  ];
+  await anIdeaLinkedTo(page, first, "The loom remembers");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+  await expect(drawnFrom(page).getByRole("link")).toHaveText([
+    "The loom remembers",
+  ]);
+
+  await scene(page, second).click();
+
+  await expect(drawnFrom(page)).toHaveCount(0);
+  await expect(sceneTray(page)).toContainText("No ideas linked yet.");
+});

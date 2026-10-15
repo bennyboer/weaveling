@@ -29,6 +29,7 @@ use crate::writing::write_view_state::WriteViewState;
 #[component]
 pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
     let state = WriteViewState::open(&route::project_id(&project));
+    let segment = project.clone();
     let open = Memo::new(move |_| state.structure.is_open());
     let unshaped = Memo::new(move |_| state.structure.is_unshaped());
 
@@ -111,7 +112,7 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
         asking(state),
         bringing_back(state),
         status_note(state),
-        this_scene(state),
+        this_scene(state, segment),
     )
 }
 

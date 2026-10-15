@@ -9,6 +9,7 @@ mod menus;
 mod opening;
 mod problems;
 mod saving;
+mod scene_ideas;
 mod scene_in_flow;
 mod scene_tray;
 mod status_note;

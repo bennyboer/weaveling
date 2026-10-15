@@ -11,6 +11,7 @@ use crate::writing::left_off::LeftOff;
 use crate::writing::margin::Margin;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
+use crate::writing::scene_ideas::SceneIdeas;
 use crate::writing::scene_tray::SceneTray;
 use crate::writing::structure::Structure;
 use crate::writing::viewport::Viewport;
@@ -30,6 +31,7 @@ pub struct WriteViewState {
     pub left_off: LeftOff,
     pub viewport: Viewport,
     pub scene_tray: SceneTray,
+    pub scene_ideas: SceneIdeas,
     pub connection: StoredValue<SyncConnection, LocalStorage>,
 }
 
@@ -53,6 +55,7 @@ impl WriteViewState {
             left_off: LeftOff::in_project(project, structure, walk, viewport),
             viewport,
             scene_tray: SceneTray::as_last_left(),
+            scene_ideas: SceneIdeas::of(project, problems, saving),
             connection: StoredValue::new_local(SyncConnection::new()),
         };
         let listing = project.clone();

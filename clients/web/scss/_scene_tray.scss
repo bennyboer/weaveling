@@ -58,6 +58,7 @@ main:has(> .scene-tray) {
   .tally {
     margin: 0;
     font-size: 0.75rem;
+    font-weight: inherit;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--muted);
@@ -88,6 +89,16 @@ main:has(> .scene-tray) {
       border-bottom-color: var(--accent);
       outline: none;
     }
+  }
+
+  .drawn-from .tally {
+    margin-bottom: 0.6rem;
+  }
+
+  .drawn-from .empty {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.9rem;
   }
 
   .nothing-yet {
