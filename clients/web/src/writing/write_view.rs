@@ -4,7 +4,7 @@ use leptos::{IntoView, ev, html};
 use leptos_router::NavigateOptions;
 use leptos_router::hooks::use_navigate;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, FocusEvent};
+use web_sys::{Element, FocusEvent, KeyboardEvent};
 
 use crate::outline::model::{Section, SectionId};
 use crate::route;
@@ -22,6 +22,7 @@ use crate::writing::menus::{
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
 use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
 use crate::writing::status_note::status_note;
+use crate::writing::this_scene::{SCENE_TRAY, this_scene};
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -69,6 +70,7 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
 
     let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
     let typing = window_event_listener(ev::keydown, move |event| match event.key().as_str() {
+        "Escape" if within_the_tray(&event) => state.scene_tray.close(),
         "Escape" => state.margin.return_to_writing(),
         "F10" if event.shift_key() => open_menu_where_writing(&event, state),
         _ => {}
@@ -86,6 +88,9 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
         .on(ev::focusin, move |event| {
             if let Some(section) = section_around(&event) {
                 state.word_count.writing_in(section);
+            }
+            if let Some(scene) = scene_around(&event) {
+                state.scene_tray.follow(scene);
             }
         })
         .child((
@@ -106,7 +111,32 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
         asking(state),
         bringing_back(state),
         status_note(state),
+        this_scene(state),
     )
+}
+
+fn scene_around(event: &FocusEvent) -> Option<SceneId> {
+    event
+        .target()?
+        .dyn_into::<Element>()
+        .ok()?
+        .closest("[data-scene]")
+        .ok()??
+        .get_attribute("data-scene")
+        .map(SceneId::from)
+}
+
+fn within_the_tray(event: &KeyboardEvent) -> bool {
+    event
+        .target()
+        .and_then(|target| target.dyn_into::<Element>().ok())
+        .and_then(|target| {
+            target
+                .closest(&format!("#{SCENE_TRAY}, [aria-controls={SCENE_TRAY}]"))
+                .ok()
+                .flatten()
+        })
+        .is_some()
 }
 
 fn section_around(event: &FocusEvent) -> Option<SectionId> {

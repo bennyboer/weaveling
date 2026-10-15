@@ -2657,3 +2657,155 @@ test("the arrow keys carry the cursor into a scene let go while the window was e
     "coming from below, the cursor lands after the scene's last word",
   ).toHaveText("XSecond.Y");
 });
+
+const sceneTab = (page: Page) =>
+  page.getByRole("button", { name: "This scene" });
+
+const sceneTray = (page: Page) =>
+  page.getByRole("complementary", { name: "This scene" });
+
+async function aTitledPair(page: Page) {
+  await aNewProject(page, "Tray");
+  const [first, second] = (await aBookWithScenes(page, { "Part One": 2 }))[
+    "Part One"
+  ];
+  await titled(page, first, "The arrival");
+  await titled(page, second, "The loom");
+  await openTheWritingView(page);
+
+  return [first, second];
+}
+
+test("the tray is shut at first and opens from its tab on the scene the cursor is in", async ({
+  page,
+}) => {
+  const [, second] = await aTitledPair(page);
+  await expect(sceneTray(page)).toBeHidden();
+
+  await scene(page, second).click();
+  await sceneTab(page).click();
+
+  await expect(sceneTab(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(sceneTray(page).locator(".scene-name")).toHaveText("The loom");
+});
+
+test("the tray follows the cursor, and keeps the last scene when the cursor leaves the scenes", async ({
+  page,
+}) => {
+  const [first, second] = await aTitledPair(page);
+  await sceneTab(page).click();
+
+  await scene(page, first).click();
+  await expect(sceneTray(page).locator(".scene-name")).toHaveText(
+    "The arrival",
+  );
+  await scene(page, second).click();
+  await expect(sceneTray(page).locator(".scene-name")).toHaveText("The loom");
+  await flow(page).getByRole("heading", { name: "Part One" }).click();
+
+  await expect(
+    sceneTray(page).locator(".scene-name"),
+    "reaching for the tray must not empty it",
+  ).toHaveText("The loom");
+});
+
+test("an untitled scene is named in the tray by its opening words", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayUntitled");
+  const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await openTheWritingView(page);
+  await scene(page, only).click();
+  await sceneTab(page).click();
+  await expect(sceneTray(page).locator(".scene-name")).toHaveText(
+    "An empty scene",
+  );
+
+  await scene(page, only).click();
+  await page.keyboard.type("The loom stood silent.");
+
+  await expect(sceneTray(page).locator(".scene-name.untitled")).toHaveText(
+    "The loom stood silent.",
+  );
+});
+
+test("the tray stays open or shut across a reload, and Escape in it shuts it", async ({
+  page,
+}) => {
+  const [first] = await aTitledPair(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+
+  await page.reload();
+  await expect(sceneTray(page)).toBeVisible();
+
+  await sceneTray(page).getByRole("button", { name: "Close the tray" }).focus();
+  await page.keyboard.press("Escape");
+  await expect(sceneTray(page)).toBeHidden();
+  await page.reload();
+  await expect(flow(page)).toBeVisible();
+  await expect(sceneTray(page)).toBeHidden();
+});
+
+test("Escape while writing leaves the tray open", async ({ page }) => {
+  const [first] = await aTitledPair(page);
+  await sceneTab(page).click();
+  await scene(page, first).click();
+
+  await page.keyboard.press("Escape");
+
+  await expect(
+    sceneTray(page),
+    "Escape in the prose belongs to the margin, not the tray",
+  ).toBeVisible();
+});
+
+test("on a wide window the open tray sits beside the column and ends above the status bar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const [first] = await aTitledPair(page);
+  await scene(page, first).click();
+  const noteBefore = (await statusNote(page).boundingBox())!;
+
+  await sceneTab(page).click();
+
+  const tray = (await sceneTray(page).locator(".inside").boundingBox())!;
+  const written = (await scene(page, first).boundingBox())!;
+  const note = (await statusNote(page).boundingBox())!;
+  expect(written.x + written.width).toBeLessThanOrEqual(tray.x);
+  expect(
+    tray.y + tray.height,
+    "the tray covers nothing of the status bar",
+  ).toBeLessThanOrEqual(note.y + 1);
+  expect(note.x, "the status bar keeps its place").toBe(noteBefore.x);
+  expect(
+    await statusNote(page).evaluate((shown) => {
+      const at = shown.getBoundingClientRect();
+
+      return shown.contains(
+        document.elementFromPoint(at.x + at.width / 2, at.y + at.height / 2),
+      );
+    }),
+    "nothing covers the status note",
+  ).toBe(true);
+});
+
+test("on a phone the tray slides over the text and is toggled from its tab", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 400, height: 800 });
+  const [first] = await aTitledPair(page);
+  await scene(page, first).click();
+
+  await sceneTab(page).click();
+  const tray = (await sceneTray(page).boundingBox())!;
+  expect(tray.x).toBeGreaterThanOrEqual(0);
+  expect(tray.x + tray.width).toBeLessThanOrEqual(400);
+  await expect(sceneTray(page).locator(".scene-name")).toHaveText(
+    "The arrival",
+  );
+
+  await sceneTab(page).click();
+  await expect(sceneTray(page)).toBeHidden();
+});
