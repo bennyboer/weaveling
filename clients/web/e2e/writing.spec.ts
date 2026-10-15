@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import {
   aLooseScene,
+  sceneCatalogued,
   aNewProject,
   openTheOutline,
   views,
@@ -851,6 +852,7 @@ async function titled(page: Page, scene: string, title: string) {
     data: { title },
   });
   expect(renamed.ok()).toBe(true);
+  await sceneCatalogued(page, scene, title);
 }
 
 test("a scene's title stands in the margin, level with the scene", async ({

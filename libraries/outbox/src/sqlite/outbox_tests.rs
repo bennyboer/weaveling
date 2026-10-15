@@ -470,7 +470,7 @@ async fn a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it() {
 }
 
 #[tokio::test]
-async fn the_outbox_never_announces_so_the_relay_has_to_poll() {
+async fn an_enqueued_message_wakes_the_relay() {
     let wired = Wired::setup().await;
     let mut notifications = wired
         .relay(Overheard::listening())
@@ -479,12 +479,44 @@ async fn the_outbox_never_announces_so_the_relay_has_to_poll() {
         .expect("asking for notifications is not a failure");
     wired.waiting_messages(1).await;
 
-    let woken =
-        tokio::time::timeout(std::time::Duration::from_millis(50), notifications.wait()).await;
+    let woken = tokio::time::timeout(std::time::Duration::from_secs(1), notifications.wait()).await;
 
     assert!(
-        woken.is_err(),
-        "nothing wakes the relay in local mode, so a message waits for the next poll"
+        woken.is_ok(),
+        "a read model must not trail a write by a whole poll, or a view opened right after it \
+         shows what was there before"
+    );
+
+    wired.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
+    let wired = Wired::setup().await;
+    let heard = Overheard::listening();
+    let outbox = Arc::new(wired.relay(heard.clone()));
+    let message = a_link_message();
+    let mut transaction = wired.pool.begin().await.expect("a transaction opens");
+    enqueue(&mut transaction, from_a_scene(), &message)
+        .await
+        .expect("enqueueing should succeed");
+
+    let delivering = tokio::spawn({
+        let outbox = outbox.clone();
+        async move { outbox.deliver(10).await }
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    transaction.commit().await.expect("the transaction commits");
+    delivering
+        .await
+        .expect("delivering should not panic")
+        .expect("delivering should succeed");
+
+    assert_eq!(
+        heard.ids_heard(),
+        vec![message.id.as_uuid()],
+        "the bell rings inside the writer's transaction, so the relay's claim waits for the \
+         write lock and sees the message once it commits"
     );
 
     wired.cleanup().await;

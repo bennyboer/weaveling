@@ -1,4 +1,3 @@
-use std::future::pending;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -8,9 +7,11 @@ use messaging::{Conversation, Message, MessageId, Notifications, Publisher, Rout
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
+use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::outbox::{CLAIM_FOR, Delivered, Outbox, OutboxError};
+use crate::sqlite::enqueuing::hearing_enqueued;
 
 const CLAIM: &str = "
     UPDATE outbox
@@ -44,12 +45,12 @@ pub struct SqliteOutbox {
     clock: Arc<dyn Clock>,
 }
 
-struct Unannounced;
+struct Enqueued(watch::Receiver<u64>);
 
 #[async_trait]
-impl Notifications for Unannounced {
+impl Notifications for Enqueued {
     async fn wait(&mut self) {
-        pending::<()>().await;
+        _ = self.0.changed().await;
     }
 }
 
@@ -126,7 +127,7 @@ impl Outbox for SqliteOutbox {
     }
 
     async fn notifications(&self) -> Result<Box<dyn Notifications>, OutboxError> {
-        Ok(Box::new(Unannounced))
+        Ok(Box::new(Enqueued(hearing_enqueued())))
     }
 }
 

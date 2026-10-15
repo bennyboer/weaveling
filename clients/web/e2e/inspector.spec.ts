@@ -1,6 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject } from "./support/shell";
+import { aNewProject, sceneCatalogued } from "./support/shell";
 
 const API = "http://127.0.0.1:3000/api";
 
@@ -64,6 +64,7 @@ async function linkFromAScene(page: Page, idea: string, titled: string) {
       })
     ).status(),
   ).toBe(200);
+  await sceneCatalogued(page, scene, titled);
 
   return scene as string;
 }
@@ -91,7 +92,10 @@ test("an idea is renamed in place and keeps the name", async ({ page }) => {
   await page.getByRole("textbox", { name: "Idea name" }).fill("A girl lost");
   await page.getByRole("textbox", { name: "Idea name" }).press("Enter");
   await expect
-    .poll(async () => (await (await page.request.get(`${API}/ideas/${idea}`)).json()).title)
+    .poll(
+      async () =>
+        (await (await page.request.get(`${API}/ideas/${idea}`)).json()).title,
+    )
     .toBe("A girl lost");
   await page.reload();
 
@@ -165,7 +169,9 @@ test("a scene in the book the idea appears in opens in the writing view", async 
   await appearances(page).getByRole("link", { name: "The clearing" }).click();
 
   await expect(page).toHaveURL(/\/write$/);
-  await expect(page.locator(`[data-scene="${scene}"] .ProseMirror`)).toBeFocused();
+  await expect(
+    page.locator(`[data-scene="${scene}"] .ProseMirror`),
+  ).toBeFocused();
 });
 
 test("a scene not in the book the idea appears in opens on its own page", async ({

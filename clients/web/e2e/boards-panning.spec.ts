@@ -64,13 +64,16 @@ test("an idea pinned beyond the edge can be panned to", async ({ page }) => {
     })
     .toBe(1);
 
-  await page.evaluate(async (board) => {
-    await fetch(`/api/boards/${board.id}/ideas/${board.ideas[0].idea}`, {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ spot: { x: 40, y: 900 } }),
-    });
-  }, await theBoard());
+  await page.evaluate(
+    async (board) => {
+      await fetch(`/api/boards/${board.id}/ideas/${board.ideas[0].idea}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ spot: { x: 40, y: 900 } }),
+      });
+    },
+    await theBoard(),
+  );
   await page.reload();
   await onTheBoard(page);
 

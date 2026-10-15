@@ -68,8 +68,33 @@ export async function aLooseScene(page: Page): Promise<string> {
     data: { project: project.split("-").pop() },
   });
   expect(made.status()).toBe(201);
+  const { id } = await made.json();
+  await sceneCatalogued(page, id);
 
-  return (await made.json()).id;
+  return id;
+}
+
+async function cataloguedScene(page: Page, scene: string) {
+  const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+  const listed = await page.request.get(
+    `http://127.0.0.1:3000/api/scenes?project=${project}`,
+  );
+  const { scenes } = await listed.json();
+
+  return scenes.find((held: { id: string }) => held.id === scene);
+}
+
+export async function sceneCatalogued(
+  page: Page,
+  scene: string,
+  title?: string,
+) {
+  await expect
+    .poll(async () => (await cataloguedScene(page, scene))?.title, {
+      message:
+        "the scenes listing is a projection, so a fresh page can only show what it has caught up with",
+    })
+    .toBe(title ?? "");
 }
 
 async function cataloguedTitles(page: Page): Promise<string[]> {

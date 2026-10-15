@@ -248,7 +248,10 @@ test("a placement whose idea was never captured draws nothing", async ({
     .poll(
       () =>
         page.evaluate(async () => {
-          const project = window.location.pathname.split("/")[2].split("-").pop();
+          const project = window.location.pathname
+            .split("/")[2]
+            .split("-")
+            .pop();
           const board = await fetch("/api/boards", {
             method: "POST",
             headers: { "content-type": "application/json" },

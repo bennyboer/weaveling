@@ -1,10 +1,19 @@
+use std::sync::LazyLock;
+
 use messaging::Message;
 use sqlx::{Sqlite, Transaction};
+use tokio::sync::watch;
 
 use crate::outbox::Origin;
 use clock::text;
 
 use crate::sqlite::as_integer;
+
+static ENQUEUED: LazyLock<watch::Sender<u64>> = LazyLock::new(|| watch::channel(0).0);
+
+pub(crate) fn hearing_enqueued() -> watch::Receiver<u64> {
+    ENQUEUED.subscribe()
+}
 
 const ENQUEUE: &str = "
     INSERT INTO outbox
@@ -41,6 +50,7 @@ pub async fn enqueue(
         .bind(text::written(message.occurred_at))
         .execute(&mut **transaction)
         .await?;
+    ENQUEUED.send_modify(|rung| *rung = rung.wrapping_add(1));
 
     Ok(())
 }

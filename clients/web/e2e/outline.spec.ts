@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import {
   aLooseScene,
+  sceneCatalogued,
   aNewProject,
   captureIdea,
   openTheOutline,
@@ -312,7 +313,9 @@ test("writing in a section opens the new scene", async ({ page }) => {
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
 
   await expect(
-    page.getByRole("article", { name: "The book" }).locator(".scene .ProseMirror"),
+    page
+      .getByRole("article", { name: "The book" })
+      .locator(".scene .ProseMirror"),
     "the button says write, so it has to leave the author writing rather than appending a blank row they may not even see",
   ).toBeFocused();
   await expect(page).toHaveURL(/\/write$/);
@@ -346,7 +349,9 @@ test("a scene in the book opens from the outline", async ({ page }) => {
   await page.locator(".leaf").getByRole("link", { name: "Empty" }).click();
 
   await expect(
-    page.getByRole("article", { name: "The book" }).locator(".scene .ProseMirror"),
+    page
+      .getByRole("article", { name: "The book" })
+      .locator(".scene .ProseMirror"),
     "a scene in the book is written where it stands in the book",
   ).toBeFocused();
   await expect(page).toHaveURL(/\/write$/);
@@ -676,6 +681,11 @@ test("a titled scene is named by its title in the outline", async ({
   await page.getByRole("textbox", { name: "Scene title" }).fill("The arrival");
   await page.getByRole("textbox", { name: "Scene title" }).press("Enter");
   await saved;
+  await sceneCatalogued(
+    page,
+    new URL((await saved).url()).pathname.split("/").pop()!,
+    "The arrival",
+  );
 
   await openTheOutline(page);
 
