@@ -103,13 +103,27 @@ const laidOut = (page: Page) =>
       ),
   );
 
+const projectOf = (page: Page) =>
+  new URL(page.url()).pathname.split("/")[2].split("-").pop();
+
 async function projectsOutline(page: Page) {
-  const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+  const project = projectOf(page);
   const opened = await page.request.post(`${API}/outlines`, {
     data: { project },
   });
 
   return opened.json();
+}
+
+async function cataloguedOpening(page: Page, scene: string) {
+  const listed = await page.request.get(
+    `${API}/scenes?project=${projectOf(page)}`,
+  );
+  const { scenes } = await listed.json();
+
+  return (
+    scenes.find((held: { id: string }) => held.id === scene)?.opening ?? ""
+  );
 }
 
 const savedTitles = async (page: Page) =>
@@ -1877,9 +1891,7 @@ test("the status note sits in the status bar, at its right", async ({
   expect(wide - (note.x + note.width)).toBeLessThanOrEqual(16);
 });
 
-test("the status note makes room for the alarm beside it", async ({
-  page,
-}) => {
+test("the status note makes room for the alarm beside it", async ({ page }) => {
   await page.route("**/api/service/refusals", (route) =>
     route.fulfill({
       json: [
@@ -1934,7 +1946,9 @@ test("the status note says Saving… until the server has stored what was writte
 
   sync.release();
   await expect(saveState(page)).toHaveText("All saved");
-  const stored = await (await page.request.get(`${API}/scenes/${written}`)).json();
+  const stored = await (
+    await page.request.get(`${API}/scenes/${written}`)
+  ).json();
   expect(stored.text, "All saved only once it is stored").toContain(
     "Held back.",
   );
@@ -1955,7 +1969,9 @@ test("a scene begun by typing is all saved once its first words are stored", asy
 
   await expect(saveState(page)).toHaveText("All saved");
   const [begun] = (await projectsOutline(page)).sections[0].attachments;
-  const stored = await (await page.request.get(`${API}/scenes/${begun.id}`)).json();
+  const stored = await (
+    await page.request.get(`${API}/scenes/${begun.id}`)
+  ).json();
   expect(stored.text, "All saved only once it is stored").toContain(
     "The loom stood silent.",
   );
@@ -2289,9 +2305,7 @@ test("a scene followed from the outline opens the writing view at it, far down t
   await expect(scene(page, followed)).toHaveText("Here.");
   const line = (await scene(page, followed).locator("p").boundingBox())!;
   const tall = page.viewportSize()!.height;
-  expect(Math.abs(line.y + line.height / 2 - tall / 2)).toBeLessThan(
-    tall / 6,
-  );
+  expect(Math.abs(line.y + line.height / 2 - tall / 2)).toBeLessThan(tall / 6);
 });
 
 test("following the scene left off in lands where the author left off in it", async ({
@@ -2445,7 +2459,9 @@ test("landing where the author left off reaches a scene far down the book", asyn
   const scenes = await aBookWithScenes(page, { "Part One": 60 });
   const last = scenes["Part One"][59];
   await openTheWritingView(page);
-  await flow(page).locator(`[data-place-of="${last}"]`).scrollIntoViewIfNeeded();
+  await flow(page)
+    .locator(`[data-place-of="${last}"]`)
+    .scrollIntoViewIfNeeded();
   await scene(page, last).click();
   await page.keyboard.type("Far down.");
   await expect(saveState(page)).toHaveText("All saved");
@@ -2463,10 +2479,15 @@ test("a scene coming near is named in the margin before its text arrives", async
   const [first] = scenes["Part One"];
   const last = scenes["Part One"][59];
   await openTheWritingView(page);
-  await flow(page).locator(`[data-place-of="${last}"]`).scrollIntoViewIfNeeded();
+  await flow(page)
+    .locator(`[data-place-of="${last}"]`)
+    .scrollIntoViewIfNeeded();
   await scene(page, last).click();
   await page.keyboard.type("The far scene speaks.");
   await expect(saveState(page)).toHaveText("All saved");
+  await expect
+    .poll(() => cataloguedOpening(page, last))
+    .toBe("The far scene speaks.");
   await page.evaluate(() => window.scrollTo(0, 0));
   await scene(page, first).click();
   await page.keyboard.type("A");
@@ -2491,7 +2512,9 @@ test("a scene coming near is named in the margin before its text arrives", async
     "a scene far away draws nothing but its place",
   ).toHaveCount(1);
 
-  await flow(page).locator(`[data-place-of="${last}"]`).scrollIntoViewIfNeeded();
+  await flow(page)
+    .locator(`[data-place-of="${last}"]`)
+    .scrollIntoViewIfNeeded();
 
   await expect(scene(page, last)).toHaveText("");
   await expect(label(page, last)).toHaveText("The far scene speaks.");

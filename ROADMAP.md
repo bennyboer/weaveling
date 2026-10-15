@@ -913,6 +913,16 @@ In memory stays what development and the tests run on. `Backend::chosen` survive
 
 ---
 
+### Milestone 13d — Simplify
+
+**Goal:** a lighter codebase before the next big step.
+
+**Build:** a look at the project as a whole once M13c is done, rather than one slice at a time: what grew more layers, crates, abstractions or special cases than it needs, what is duplicated across features and backends, and what could be removed or merged. Each finding is weighed, and the ones worth it are taken in reviewable slices.
+
+**Done when:** the findings are written down, and the ones chosen are done with every suite still passing.
+
+---
+
 ### Milestone 14 — Two languages
 
 **Goal:** German and English, chosen by the reader rather than the build.

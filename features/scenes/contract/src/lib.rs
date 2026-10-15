@@ -72,6 +72,20 @@ pub struct SceneDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SceneSummaryDTO {
+    pub id: String,
+    pub project: String,
+    pub title: String,
+    pub opening: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ScenePageDTO {
+    pub scenes: Vec<SceneSummaryDTO>,
+    pub next: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct LinkIdeaRequest {
     pub idea: String,
 }

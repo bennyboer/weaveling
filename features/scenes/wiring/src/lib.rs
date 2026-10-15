@@ -87,9 +87,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 
     let live = LiveScenes::new(scenes.clone());
 
-    Wired::serving(scenes_rest::router(scenes).merge(scenes_sync::router(live.clone())))
-        .listening(vec![Arc::new(sweep), Arc::new(unlink), Arc::new(catalogue)])
-        .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
+    Wired::serving(
+        scenes_rest::router(scenes, ports.catalog.clone()).merge(scenes_sync::router(live.clone())),
+    )
+    .listening(vec![Arc::new(sweep), Arc::new(unlink), Arc::new(catalogue)])
+    .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
 }
 
 struct SettlingLiveScenes(LiveScenes);

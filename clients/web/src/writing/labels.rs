@@ -5,7 +5,7 @@ use leptos::task::spawn_local;
 
 use words::opening_of;
 
-use crate::scenes::model::{Scene, SceneId};
+use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
@@ -34,7 +34,7 @@ impl Labels {
         }
     }
 
-    pub fn remember(self, listed: &[Scene]) {
+    pub fn remember(self, listed: &[SceneSummary]) {
         self.titles.set(
             listed
                 .iter()
@@ -45,7 +45,7 @@ impl Labels {
             for scene in listed {
                 openings
                     .entry(scene.id.clone())
-                    .or_insert_with(|| opening_of(&scene.text));
+                    .or_insert_with(|| scene.opening.clone());
             }
         });
     }

@@ -8,14 +8,14 @@ use crate::outline::model::{Attachment, Outline, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::route;
-use crate::scenes::model::Scene;
+use crate::scenes::model::SceneSummary;
 use crate::scenes::service as scene_service;
 
 #[derive(Clone, Copy)]
 pub struct OutlineViewState {
     problem: RwSignal<Option<ApiError>>,
     outline: Memo<Option<Outline>>,
-    scenes: RwSignal<Option<Vec<Scene>>>,
+    scenes: RwSignal<Option<Vec<SceneSummary>>>,
     ideas: RwSignal<Option<Vec<Idea>>>,
     added: RwSignal<Option<SectionId>>,
     adding: Action<(Option<SectionId>, Option<SectionId>, String), ()>,
@@ -57,7 +57,7 @@ impl OutlineViewState {
                 open
             })
         });
-        let scenes = RwSignal::new(None::<Vec<Scene>>);
+        let scenes = RwSignal::new(None::<Vec<SceneSummary>>);
         let ideas = RwSignal::new(None::<Vec<Idea>>);
         let added = RwSignal::new(None::<SectionId>);
 
@@ -259,7 +259,7 @@ impl OutlineViewState {
                         Err(failure) => return problem.set(Some(failure)),
                     };
 
-                    scenes.update(|held| held.get_or_insert_default().push(started.clone()));
+                    scenes.update(|held| held.get_or_insert_default().push(started.summarized()));
                     let Some(open) = outline.get_untracked() else {
                         return;
                     };
@@ -353,7 +353,7 @@ impl OutlineViewState {
             .unwrap_or_default()
     }
 
-    pub fn waiting_scenes(&self) -> Vec<Scene> {
+    pub fn waiting_scenes(&self) -> Vec<SceneSummary> {
         let Some(open) = self.outline.get() else {
             return Vec::new();
         };

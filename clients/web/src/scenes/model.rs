@@ -16,14 +16,31 @@ pub struct Scene {
 }
 
 impl Scene {
+    pub fn summarized(&self) -> SceneSummary {
+        SceneSummary {
+            id: self.id.clone(),
+            title: self.title.clone(),
+            opening: opening_of(&self.text),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SceneSummary {
+    pub id: SceneId,
+    pub title: String,
+    pub opening: String,
+}
+
+impl SceneSummary {
     pub fn shown_as(&self) -> String {
         if !self.title.trim().is_empty() {
             return self.title.clone();
         }
 
-        match opening_of(&self.text) {
-            opening if opening.is_empty() => "Empty".to_owned(),
-            opening => opening,
+        match self.opening.as_str() {
+            "" => "Empty".to_owned(),
+            opening => opening.to_owned(),
         }
     }
 }

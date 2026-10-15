@@ -3,10 +3,13 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
+use scenes_catalog::InMemorySceneCatalog;
 use scenes_contract::{
-    CreateSceneRequest, FRAGMENT, LinkIdeaRequest, RetitleSceneRequest, SceneDTO,
+    CreateSceneRequest, FRAGMENT, LinkIdeaRequest, RetitleSceneRequest, SceneDTO, ScenePageDTO,
+    SceneSummaryDTO,
 };
-use scenes_core::SceneService;
+use scenes_core::{ProjectLink, SceneCatalog, SceneId, SceneService, SceneTitle};
+use scenes_rest::PAGE;
 use scenes_store::InMemorySceneStore;
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
@@ -27,7 +30,10 @@ fn a_service() -> SceneService {
 }
 
 fn new_server_with(service: SceneService) -> TestServer {
-    TestServer::new(scenes_rest::router(service))
+    TestServer::new(scenes_rest::router(
+        service,
+        Arc::new(InMemorySceneCatalog::new()),
+    ))
 }
 
 fn a_paragraph(saying: &str) -> Vec<u8> {
@@ -202,24 +208,111 @@ async fn retitling_a_scene_nobody_created_is_not_found() {
     response.assert_status(StatusCode::NOT_FOUND);
 }
 
+async fn a_catalog_holding(count: i64) -> Arc<InMemorySceneCatalog> {
+    let catalog = Arc::new(InMemorySceneCatalog::new());
+
+    for made in 0..count {
+        catalog
+            .remember(SceneId::generate(at(made)), &ProjectLink::from(A_PROJECT))
+            .await
+            .expect("remembering should succeed");
+    }
+
+    catalog
+}
+
+async fn page_after(server: &TestServer, after: Option<&str>) -> ScenePageDTO {
+    let asked = match after {
+        Some(last) => format!("/scenes?project={A_PROJECT}&after={last}"),
+        None => format!("/scenes?project={A_PROJECT}"),
+    };
+
+    server.get(&asked).await.json()
+}
+
 #[tokio::test]
-async fn a_listing_carries_each_scene_s_title() {
-    let server = new_server_with(a_service());
-    let created = a_scene(&server).await;
-    retitled(&server, &created.id, "The loom")
+async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
+    let catalog = a_catalog_holding(0).await;
+    let scene = SceneId::generate(at(1_000));
+    catalog
+        .retitle(
+            scene,
+            &ProjectLink::from(A_PROJECT),
+            &SceneTitle::new("The loom").expect("a plain title"),
+            1,
+        )
         .await
-        .assert_status_ok();
-
-    let listed: Vec<SceneDTO> = server
-        .get(&format!("/scenes?project={A_PROJECT}"))
+        .expect("retitling should succeed");
+    catalog
+        .note_opening(
+            scene,
+            &ProjectLink::from(A_PROJECT),
+            "The loom stood silent.",
+            at(1_000),
+        )
         .await
-        .json();
+        .expect("noting an opening should succeed");
+    let server = TestServer::new(scenes_rest::router(a_service(), catalog));
 
-    assert_eq!(listed.len(), 1);
+    let listed = page_after(&server, None).await;
+
     assert_eq!(
-        listed[0].title, "The loom",
-        "the outline names its leaves from this listing"
+        listed,
+        ScenePageDTO {
+            scenes: vec![SceneSummaryDTO {
+                id: scene.to_string(),
+                project: A_PROJECT.to_owned(),
+                title: "The loom".to_owned(),
+                opening: "The loom stood silent.".to_owned(),
+            }],
+            next: None,
+        },
+        "the outline names its leaves from this listing, so it must not open every scene"
     );
+}
+
+#[tokio::test]
+async fn a_long_listing_comes_a_page_at_a_time() {
+    let server = TestServer::new(scenes_rest::router(
+        a_service(),
+        a_catalog_holding(PAGE as i64 + 1).await,
+    ));
+
+    let first = page_after(&server, None).await;
+    let rest = page_after(&server, first.next.as_deref()).await;
+
+    assert_eq!(first.scenes.len(), PAGE);
+    assert_eq!(
+        first.next.as_deref(),
+        first.scenes.last().map(|scene| scene.id.as_str()),
+        "the next page is asked for after the last scene of this one"
+    );
+    assert_eq!(rest.scenes.len(), 1);
+    assert_eq!(rest.next, None, "the last page says there is no more");
+}
+
+#[tokio::test]
+async fn a_listing_exactly_one_page_long_says_there_is_no_more() {
+    let server = TestServer::new(scenes_rest::router(
+        a_service(),
+        a_catalog_holding(PAGE as i64).await,
+    ));
+
+    let listed = page_after(&server, None).await;
+
+    assert_eq!(listed.scenes.len(), PAGE);
+    assert_eq!(listed.next, None);
+}
+
+#[tokio::test]
+async fn a_listing_after_something_that_is_no_scene_is_a_bad_request() {
+    let server = new_server_with(a_service());
+
+    let response = server
+        .get(&format!("/scenes?project={A_PROJECT}&after=idea_1"))
+        .await;
+
+    response.assert_status(StatusCode::BAD_REQUEST);
 }
 
 async fn linked(server: &TestServer, id: &str, idea: &str) -> axum_test::TestResponse {

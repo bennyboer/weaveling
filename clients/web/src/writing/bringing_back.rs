@@ -5,7 +5,7 @@ use leptos::{IntoView, ev, html};
 
 use crate::inputs::typed;
 use crate::outline::model::SectionId;
-use crate::scenes::model::{Scene, SceneId};
+use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scenes;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -25,13 +25,13 @@ pub fn bringing_back(state: WriteViewState) -> impl IntoView {
 }
 
 fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
-    let waiting: RwSignal<Option<Vec<Scene>>> = RwSignal::new(None);
+    let waiting: RwSignal<Option<Vec<SceneSummary>>> = RwSignal::new(None);
     let project = state.structure.project();
 
     spawn_local(async move {
         match scenes::in_project(&project).await {
             Ok(all) => {
-                let outside: Vec<Scene> = all
+                let outside: Vec<SceneSummary> = all
                     .into_iter()
                     .filter(|scene| !state.structure.holds(&scene.id))
                     .collect();
@@ -145,7 +145,7 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
         )
 }
 
-fn choice(scene: Scene, landing: Landing, state: WriteViewState) -> impl IntoView {
+fn choice(scene: SceneSummary, landing: Landing, state: WriteViewState) -> impl IntoView {
     let shown = scene.shown_as();
     let chosen = scene.id;
 

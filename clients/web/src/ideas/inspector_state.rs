@@ -8,7 +8,7 @@ use crate::ideas::service as idea_service;
 use crate::outline::model::{Section, SectionId};
 use crate::outline::service as outline_service;
 use crate::route;
-use crate::scenes::model::{Scene, SceneId};
+use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scene_service;
 
 #[derive(Clone, Copy)]
@@ -18,7 +18,7 @@ pub struct InspectorState {
     opened: RwSignal<Option<Idea>>,
     places: RwSignal<Vec<Place>>,
     sections: RwSignal<Vec<Section>>,
-    scenes: RwSignal<Vec<Scene>>,
+    scenes: RwSignal<Vec<SceneSummary>>,
     retitling_idea: Action<String, ()>,
 }
 
@@ -28,7 +28,7 @@ impl InspectorState {
         let opened = RwSignal::new(None::<Idea>);
         let places = RwSignal::new(Vec::<Place>::new());
         let sections = RwSignal::new(Vec::<Section>::new());
-        let scenes = RwSignal::new(Vec::<Scene>::new());
+        let scenes = RwSignal::new(Vec::<SceneSummary>::new());
 
         let opening_idea = Action::new_local(move |asked: &IdeaId| {
             let asked = asked.clone();
@@ -171,7 +171,7 @@ impl InspectorState {
                 let named = scenes
                     .iter()
                     .find(|scene| scene.id == id)
-                    .map(Scene::shown_as)
+                    .map(SceneSummary::shown_as)
                     .unwrap_or_else(|| "Untitled".to_owned());
 
                 (id, named)
