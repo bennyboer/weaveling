@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use leptos::html;
+use leptos::html::{self, Li};
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
@@ -9,6 +9,7 @@ use web_sys::HtmlElement;
 
 use crate::icons::{Icon, mark};
 use crate::inputs::typed;
+use crate::outline::in_view::{InView, LEAVES_PLACE};
 use crate::outline::model::{Attachment, Section, SectionId};
 use crate::outline::outline_view_state::{OutlineViewState, Urge};
 use crate::route;
@@ -30,19 +31,29 @@ struct Held {
     over: RwSignal<Option<SectionId>>,
     editing: RwSignal<Option<SectionId>>,
     folded: RwSignal<HashSet<SectionId>>,
+    in_view: InView,
     state: OutlineViewState,
 }
 
+const FLOCK: usize = 50;
+
 #[component]
 pub fn OutlineView(project: String) -> impl IntoView {
+    let carrying = RwSignal::new(None);
+    let hauling = RwSignal::new(None);
+    let in_view = InView::around_the_window(Signal::derive(move || {
+        carrying.with(Option::is_some) || hauling.with(Option::is_some)
+    }));
+    on_cleanup(move || in_view.close());
     let held = Held {
         project: StoredValue::new(project.clone()),
-        carrying: RwSignal::new(None),
-        hauling: RwSignal::new(None),
+        carrying,
+        hauling,
         landing: RwSignal::new(None),
         over: RwSignal::new(None),
         editing: RwSignal::new(None),
         folded: RwSignal::new(HashSet::new()),
+        in_view,
         state: OutlineViewState::open(&route::project_id(&project)),
     };
     let state = held.state;
@@ -139,8 +150,8 @@ fn branch(section: Section, held: Held) -> AnyView {
 
             (bears(&under, held) && !shut).then(|| {
                 html::ul().class("twigs").child((
-                    group("Scenes", scenes, held),
-                    group("Ideas", ideas, held),
+                    group(under.clone(), "Scenes", scenes, held),
+                    group(under.clone(), "Ideas", ideas, held),
                     twigs(Some(under.clone()), held),
                 ))
             })
@@ -148,7 +159,12 @@ fn branch(section: Section, held: Held) -> AnyView {
         .into_any()
 }
 
-fn group(named: &'static str, attachments: Vec<Attachment>, held: Held) -> Option<impl IntoView> {
+fn group(
+    section: SectionId,
+    named: &'static str,
+    attachments: Vec<Attachment>,
+    held: Held,
+) -> Option<impl IntoView> {
     (!attachments.is_empty()).then(|| {
         html::li().class("kind").child((
             html::div()
@@ -156,12 +172,54 @@ fn group(named: &'static str, attachments: Vec<Attachment>, held: Held) -> Optio
                 .child(html::span().class("kind-label").child(named)),
             html::ul().class("twigs").attr("aria-label", named).child(
                 attachments
-                    .into_iter()
-                    .map(|attachment| leaf(attachment, held))
+                    .chunks(FLOCK)
+                    .enumerate()
+                    .map(|(nth, flock)| {
+                        leaves(format!("{section}/{named}/{nth}"), flock.to_vec(), held)
+                    })
                     .collect::<Vec<_>>(),
             ),
         ))
     })
+}
+
+fn leaves(place: String, attachments: Vec<Attachment>, held: Held) -> impl IntoView {
+    let spot: NodeRef<Li> = NodeRef::new();
+    let rows = attachments.len();
+    let near = Memo::new({
+        let place = place.clone();
+
+        move |_| held.in_view.is_near(&place)
+    });
+
+    Effect::new(move || {
+        if let Some(watched) = spot.get() {
+            held.in_view.watch(&watched);
+        }
+    });
+    on_cleanup(move || {
+        if let Some(watched) = spot.get_untracked() {
+            held.in_view.stop_watching(&watched);
+        }
+    });
+
+    html::li()
+        .class("leaves")
+        .class(("waiting", move || !near.get()))
+        .attr(LEAVES_PLACE, place)
+        .style(("--rows", rows.to_string()))
+        .node_ref(spot)
+        .child(move || {
+            near.get().then(|| {
+                html::ul().class("flock").child(
+                    attachments
+                        .iter()
+                        .cloned()
+                        .map(|attachment| leaf(attachment, held))
+                        .collect::<Vec<_>>(),
+                )
+            })
+        })
 }
 
 fn bears(section: &SectionId, held: Held) -> bool {

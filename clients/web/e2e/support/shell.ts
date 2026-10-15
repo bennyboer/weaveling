@@ -62,26 +62,54 @@ export async function openThePool(page: Page) {
   ).toBeVisible();
 }
 
-export async function aLooseScene(page: Page): Promise<string> {
+export async function aSceneMade(page: Page): Promise<string> {
   const project = new URL(page.url()).pathname.split("/")[2];
   const made = await page.request.post("http://127.0.0.1:3000/api/scenes", {
     data: { project: project.split("-").pop() },
   });
   expect(made.status()).toBe(201);
-  const { id } = await made.json();
+
+  return (await made.json()).id;
+}
+
+export async function aLooseScene(page: Page): Promise<string> {
+  const id = await aSceneMade(page);
   await sceneCatalogued(page, id);
 
   return id;
 }
 
-async function cataloguedScene(page: Page, scene: string) {
+async function cataloguedScenes(
+  page: Page,
+): Promise<{ id: string; title: string }[]> {
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
   const listed = await page.request.get(
     `http://127.0.0.1:3000/api/scenes?project=${project}`,
   );
-  const { scenes } = await listed.json();
 
-  return scenes.find((held: { id: string }) => held.id === scene);
+  return (await listed.json()).scenes;
+}
+
+async function cataloguedScene(page: Page, scene: string) {
+  return (await cataloguedScenes(page)).find((held) => held.id === scene);
+}
+
+export async function scenesCatalogued(page: Page, scenes: string[]) {
+  await expect
+    .poll(
+      async () => {
+        const listed = new Set(
+          (await cataloguedScenes(page)).map((held) => held.id),
+        );
+
+        return scenes.filter((scene) => !listed.has(scene));
+      },
+      {
+        message:
+          "the scenes listing is a projection, so a fresh page can only show what it has caught up with",
+      },
+    )
+    .toEqual([]);
 }
 
 export async function sceneCatalogued(

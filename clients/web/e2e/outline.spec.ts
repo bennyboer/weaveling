@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { aBookWithScenes } from "./support/book";
 import {
   aLooseScene,
   sceneCatalogued,
@@ -723,4 +724,77 @@ test("a title being typed survives a slower answer about another section", async
   await expect
     .poll(() => savedTitles(page))
     .toEqual(["Kapitel 1", "Kapitel 2"]);
+});
+
+test.describe("a chapter far longer than the window", () => {
+  test.describe.configure({ mode: "serial" });
+
+  const book = { at: "", scenes: [] as string[] };
+
+  test.beforeAll(async ({ browser }) => {
+    test.setTimeout(180_000);
+    const page = await browser.newPage();
+    await aNewProject(page, "LongChapter");
+    book.scenes = (await aBookWithScenes(page, { "Part One": 250 }))[
+      "Part One"
+    ];
+    book.at = new URL(page.url()).pathname;
+    await page.close();
+  });
+
+  const group = (page: Page, nth: number) =>
+    page.locator(`[data-leaves$="/Scenes/${nth}"]`);
+
+  const leafOf = (page: Page, scene: string) =>
+    page.locator(`.leaf a[href$="${scene}"]`);
+
+  test("only the leaves near the window are drawn, and a far group stands as tall as its leaves", async ({
+    page,
+  }) => {
+    await page.goto(book.at);
+    await openTheOutline(page);
+
+    await expect(group(page, 0)).not.toHaveClass(/waiting/);
+    await expect(group(page, 2)).toHaveClass(/waiting/);
+    await expect(
+      group(page, 2).locator(".leaf"),
+      "a group far below the window draws nothing but its place",
+    ).toHaveCount(0);
+    const waiting = (await group(page, 2).boundingBox())!.height;
+    const height = await page.evaluate(() => document.body.scrollHeight);
+
+    await group(page, 2).scrollIntoViewIfNeeded();
+
+    await expect(group(page, 2).locator(".leaf")).toHaveCount(50);
+    await expect(leafOf(page, book.scenes[149])).toBeVisible();
+    expect(
+      Math.abs((await group(page, 2).boundingBox())!.height - waiting),
+      "a group must not change height as it is drawn, or the outline jumps under the reader",
+    ).toBeLessThanOrEqual(0.5);
+    expect(
+      Math.abs(
+        (await page.evaluate(() => document.body.scrollHeight)) - height,
+      ),
+      "the outline as a whole keeps its height, give or take the rounding of a pixel",
+    ).toBeLessThanOrEqual(1);
+  });
+
+  test("a group scrolled far away is let go, but not the one holding the focus", async ({
+    page,
+  }) => {
+    await page.goto(book.at);
+    await openTheOutline(page);
+    await expect(group(page, 1)).not.toHaveClass(/waiting/);
+    await leafOf(page, book.scenes[0]).focus();
+
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+    await expect(group(page, 4)).not.toHaveClass(/waiting/);
+    await expect(group(page, 1)).toHaveClass(/waiting/);
+    await expect(
+      group(page, 0),
+      "taking down the leaf with the cursor would drop the focus",
+    ).not.toHaveClass(/waiting/);
+    await expect(leafOf(page, book.scenes[0])).toBeFocused();
+  });
 });

@@ -1,4 +1,6 @@
 .outline {
+  --leaf-row: 1.9rem;
+
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -28,7 +30,8 @@
   }
 
   .branches,
-  .twigs {
+  .twigs,
+  .flock {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -59,9 +62,12 @@
     height: 1.05rem;
   }
 
-  .twigs > .leaf:last-child::before {
-    bottom: auto;
-    height: 0.95rem;
+  .twigs > .leaves:last-child::before {
+    bottom: calc(var(--leaf-row) / 2);
+  }
+
+  .leaves.waiting {
+    height: calc(var(--rows) * var(--leaf-row));
   }
 
   .twigs > .kind:last-child::before {
@@ -80,7 +86,8 @@
     color: var(--muted);
   }
 
-  .twigs > li > .row::before {
+  .twigs > li > .row::before,
+  .flock > li > .row::before {
     content: "";
     position: absolute;
     left: -1.15rem;
@@ -258,7 +265,7 @@
   }
 
   .leaf .row {
-    height: 1.9rem;
+    height: var(--leaf-row);
     color: var(--muted);
   }
 

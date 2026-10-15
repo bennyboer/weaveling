@@ -6,6 +6,7 @@ mod icons;
 mod ideas;
 mod inputs;
 mod moment;
+mod nearness;
 mod outline;
 mod projects;
 mod refusals;

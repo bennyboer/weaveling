@@ -2,22 +2,13 @@ use std::collections::{HashMap, HashSet};
 
 use js_sys::Array;
 use leptos::prelude::*;
-use wasm_bindgen::JsCast;
-use wasm_bindgen::closure::Closure;
-use web_sys::{Element, IntersectionObserver, IntersectionObserverEntry, IntersectionObserverInit};
+use web_sys::{Element, IntersectionObserverEntry};
 
+use crate::nearness::{KEPT, NEAR, Watching, entries_placed_by, observing};
 use crate::scenes::model::SceneId;
 use crate::writing::saving::Saving;
 
-const NEAR: &str = "1500px 0px";
-const KEPT: &str = "3000px 0px";
-
 pub const SCENE_PLACE: &str = "data-place-of";
-
-type Watching = (
-    IntersectionObserver,
-    Closure<dyn Fn(Array, IntersectionObserver)>,
-);
 
 #[derive(Clone, Copy)]
 pub struct Viewport {
@@ -31,28 +22,10 @@ pub struct Viewport {
 }
 
 fn entries_of(entries: Array) -> Vec<(SceneId, IntersectionObserverEntry)> {
-    entries
-        .iter()
-        .filter_map(|entry| entry.dyn_into::<IntersectionObserverEntry>().ok())
-        .filter_map(|entry| {
-            entry
-                .target()
-                .get_attribute(SCENE_PLACE)
-                .map(|scene| (SceneId::from(scene), entry))
-        })
+    entries_placed_by(SCENE_PLACE, entries)
+        .into_iter()
+        .map(|(scene, entry)| (SceneId::from(scene), entry))
         .collect()
-}
-
-fn observing(margin: &str, seen: impl Fn(Array) + 'static) -> Option<Watching> {
-    let callback = Closure::<dyn Fn(Array, IntersectionObserver)>::new(
-        move |entries: Array, _: IntersectionObserver| seen(entries),
-    );
-    let reaching = IntersectionObserverInit::new();
-    reaching.set_root_margin(margin);
-
-    IntersectionObserver::new_with_options(callback.as_ref().unchecked_ref(), &reaching)
-        .ok()
-        .map(|observer| (observer, callback))
 }
 
 impl Viewport {
