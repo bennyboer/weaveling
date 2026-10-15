@@ -1,3 +1,4 @@
+use leptos::html::Div;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use leptos_router::NavigateOptions;
@@ -19,8 +20,9 @@ use crate::writing::menus::{
     book_edge, insertion, open_menu_where_writing, scene_margin, section_margin,
 };
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
-use crate::writing::scene_in_flow::scene_in_flow;
+use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
 use crate::writing::status_note::status_note;
+use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::write_view_state::WriteViewState;
 
 #[component]
@@ -195,22 +197,56 @@ fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {
             key=|scene| scene.clone()
             let:scene
         >
-            <div class="scene-slot">
-                <div class="scene-row">
-                    {scene_margin(scene.clone(), state)}
-                    {scene_in_flow(scene.clone(), state)}
-                </div>
-                {pending_after(holding.clone(), scene.clone(), state)}
-                {insertion(
-                    Landing {
-                        section: holding.clone(),
-                        after: Some(scene),
-                    },
-                    state,
-                )}
-            </div>
+            {scene_slot(holding.clone(), scene, state)}
         </For>
     }
+}
+
+fn scene_slot(section: SectionId, scene: SceneId, state: WriteViewState) -> impl IntoView {
+    let place: NodeRef<Div> = NodeRef::new();
+    let near = Memo::new({
+        let scene = scene.clone();
+
+        move |_| state.viewport.is_near(&scene)
+    });
+
+    Effect::new(move || {
+        if let Some(watched) = place.get() {
+            state.viewport.watch(&watched);
+        }
+    });
+    on_cleanup(move || {
+        if let Some(watched) = place.get_untracked() {
+            state.viewport.stop_watching(&watched);
+        }
+    });
+
+    html::div()
+        .class("scene-slot")
+        .class(("waiting", move || !near.get()))
+        .attr(SCENE_PLACE, scene.to_string())
+        .node_ref(place)
+        .child(move || {
+            if !near.get() {
+                return waiting_scene(scene.clone(), state).into_any();
+            }
+
+            (
+                html::div().class("scene-row").child((
+                    scene_margin(scene.clone(), state),
+                    scene_in_flow(scene.clone(), state),
+                )),
+                pending_after(section.clone(), scene.clone(), state),
+                insertion(
+                    Landing {
+                        section: section.clone(),
+                        after: Some(scene.clone()),
+                    },
+                    state,
+                ),
+            )
+                .into_any()
+        })
 }
 
 fn pending_after(section: SectionId, scene: SceneId, state: WriteViewState) -> impl IntoView {

@@ -2455,7 +2455,7 @@ test("landing where the author left off reaches a scene far down the book", asyn
   await expect(scene(page, last)).toBeFocused();
 });
 
-test("a scene waiting far away is named in the margin by its opening words", async ({
+test("a scene coming near is named in the margin before its text arrives", async ({
   page,
 }) => {
   await aNewProject(page, "FarNamed");
@@ -2472,12 +2472,28 @@ test("a scene waiting far away is named in the margin by its opening words", asy
   await page.keyboard.type("A");
   await expect(saveState(page)).toHaveText("All saved");
 
+  await page.routeWebSocket(/\/api\/sync$/, (socket) => {
+    const server = socket.connectToServer();
+    socket.onMessage((frame) => server.send(frame));
+    server.onMessage((frame) => {
+      if (sceneCarried(frame) !== last) {
+        socket.send(frame);
+      }
+    });
+  });
   await page.reload();
   await expect(scene(page, first)).toBeFocused();
-
   await expect(
-    flow(page).locator(`.scene.waiting[data-scene="${last}"]`),
+    flow(page).locator(`.scene-slot.waiting[data-place-of="${last}"]`),
   ).toHaveCount(1);
+  await expect(
+    flow(page).locator(`[data-place-of="${last}"] *`),
+    "a scene far away draws nothing but its place",
+  ).toHaveCount(1);
+
+  await flow(page).locator(`[data-place-of="${last}"]`).scrollIntoViewIfNeeded();
+
+  await expect(scene(page, last)).toHaveText("");
   await expect(label(page, last)).toHaveText("The far scene speaks.");
 });
 
