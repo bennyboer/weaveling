@@ -168,6 +168,19 @@ export class ProseEditor {
     this.sync.whenSynced(land);
   }
 
+  arriveWhenSynced(towards) {
+    this.sync.whenSynced(() => {
+      if (towards === "before") {
+        this.focusEnd();
+      } else {
+        this.focusStart();
+      }
+      const { node } = this.view.domAtPos(this.view.state.selection.head);
+      const line = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      line?.scrollIntoView({ block: "nearest" });
+    });
+  }
+
   onSaving(saving) {
     this.sync.onSaving(saving);
   }

@@ -7,6 +7,7 @@ use crate::outline::model::{Outline, SectionId};
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
 use crate::writing::structure::Structure;
+use crate::writing::viewport::Viewport;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Towards {
@@ -28,16 +29,20 @@ pub struct Walk {
     lines: StoredValue<HashMap<Stop, HtmlElement>, LocalStorage>,
     awaited: StoredValue<Option<Stop>>,
     landing: StoredValue<Option<(SceneId, u32)>>,
+    arriving: StoredValue<Option<(SceneId, Towards)>>,
+    viewport: Viewport,
 }
 
 impl Walk {
-    pub fn through(structure: Structure) -> Self {
+    pub fn through(structure: Structure, viewport: Viewport) -> Self {
         Self {
             structure,
             editors: StoredValue::new_local(HashMap::new()),
             lines: StoredValue::new_local(HashMap::new()),
             awaited: StoredValue::new(None),
             landing: StoredValue::new(None),
+            arriving: StoredValue::new(None),
+            viewport,
         }
     }
 
@@ -53,6 +58,20 @@ impl Walk {
 
         if let Some(at) = landing {
             editor.land_at(at);
+        }
+        let arriving = self
+            .arriving
+            .try_update_value(|arriving| {
+                arriving
+                    .take_if(|(awaited, _)| awaited == &scene)
+                    .map(|(_, towards)| towards)
+            })
+            .flatten();
+        if let Some(towards) = arriving {
+            editor.arrive_when_synced(match towards {
+                Towards::Before => "before",
+                Towards::After => "after",
+            });
         }
         self.editors
             .update_value(|editors| _ = editors.insert(scene, editor));
@@ -109,17 +128,26 @@ impl Walk {
 
     pub fn arrive(self, at: &Stop, towards: Towards) -> bool {
         match at {
-            Stop::Scene(scene) => self.editors.with_value(|editors| match editors.get(scene) {
-                Some(editor) => {
-                    match towards {
-                        Towards::Before => editor.focus_end(),
-                        Towards::After => editor.focus_start(),
-                    }
+            Stop::Scene(scene) => {
+                let mounted = self.editors.with_value(|editors| match editors.get(scene) {
+                    Some(editor) => {
+                        match towards {
+                            Towards::Before => editor.focus_end(),
+                            Towards::After => editor.focus_start(),
+                        }
 
-                    true
+                        true
+                    }
+                    None => false,
+                });
+
+                if !mounted {
+                    self.arriving.set_value(Some((scene.clone(), towards)));
+                    self.viewport.hold_for_landing(scene.clone());
                 }
-                None => false,
-            }),
+
+                true
+            }
             line => self.lines.with_value(|lines| match lines.get(line) {
                 Some(shown) => {
                     caret_in(shown, towards);

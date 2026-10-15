@@ -2633,3 +2633,41 @@ test("a scene still saving stays until it is saved", async ({ page }) => {
     flow(page).locator(`.scene.waiting[data-scene="${first}"]`),
   ).toHaveCount(1);
 });
+
+test("the arrow keys carry the cursor into a scene let go while the window was elsewhere", async ({
+  page,
+}) => {
+  await aNewProject(page, "WalkingIntoTheFar");
+  const scenes = await aBookWithScenes(page, { "Part One": 60 });
+  const [first, second, third] = scenes["Part One"];
+  await openTheWritingView(page);
+  await scene(page, second).click();
+  await page.keyboard.type("Second.");
+  await scene(page, first).click();
+  await page.keyboard.type("First.");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await toTheEnd(page);
+  await expect(
+    flow(page).locator(`.scene.waiting[data-scene="${second}"]`),
+  ).toHaveCount(1);
+  await page.keyboard.press("ArrowDown");
+
+  await expect(scene(page, second)).toBeFocused();
+  await page.keyboard.type("X");
+  await expect(scene(page, second)).toHaveText("XSecond.");
+
+  await scene(page, third).click();
+  await toTheEnd(page);
+  await expect(
+    flow(page).locator(`.scene.waiting[data-scene="${second}"]`),
+  ).toHaveCount(1);
+  await page.keyboard.press("ArrowUp");
+
+  await expect(scene(page, second)).toBeFocused();
+  await page.keyboard.type("Y");
+  await expect(
+    scene(page, second),
+    "coming from below, the cursor lands after the scene's last word",
+  ).toHaveText("XSecond.Y");
+});

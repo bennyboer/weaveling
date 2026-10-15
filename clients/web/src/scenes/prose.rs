@@ -48,6 +48,9 @@ extern "C" {
     #[wasm_bindgen(method, js_name = onCaretMoved)]
     pub fn on_caret_moved(this: &ProseEditor, moved: &Closure<dyn Fn(u32)>);
 
+    #[wasm_bindgen(method, js_name = arriveWhenSynced)]
+    pub fn arrive_when_synced(this: &ProseEditor, towards: &str);
+
     #[wasm_bindgen(method, js_name = landAt)]
     pub fn land_at(this: &ProseEditor, at: u32);
 
