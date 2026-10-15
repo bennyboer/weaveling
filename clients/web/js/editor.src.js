@@ -32,7 +32,7 @@ export class ProseEditor {
     this.sync.awareness.setLocalStateField("user", { name: author, color });
 
     this.leaving = () => false;
-    this.breaking = () => {};
+    this.breaking = null;
     this.changed = () => {};
     this.caretMoved = () => {};
 
@@ -134,7 +134,13 @@ export class ProseEditor {
     const { $from } = selection;
     const last = $from.depth === 1 && $from.index(0) === doc.childCount - 1;
 
-    if (!selection.empty || !last || doc.childCount < 2 || $from.parent.content.size > 0) {
+    if (
+      !this.breaking ||
+      !selection.empty ||
+      !last ||
+      doc.childCount < 2 ||
+      $from.parent.content.size > 0
+    ) {
       return false;
     }
 

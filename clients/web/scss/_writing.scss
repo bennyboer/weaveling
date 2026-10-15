@@ -399,3 +399,45 @@
 body:has(.alarm) .status-note {
   right: 2.5rem;
 }
+
+.writing .side-switch {
+  display: flex;
+  gap: 1.5rem;
+  margin: -1.5rem 0 2.5rem;
+  border-bottom: 1px solid var(--line);
+  font: 400 0.85rem/1 var(--reading);
+
+  a {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: -1px;
+    padding: 0.55rem 0;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    text-decoration: none;
+
+    &:hover {
+      color: var(--ink);
+    }
+
+    &[aria-current="page"] {
+      border-bottom-color: var(--accent);
+      color: var(--ink);
+    }
+  }
+
+  .tally {
+    min-width: 1.2rem;
+    padding: 0.1rem 0.35rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 8%, transparent);
+    font-size: 0.75rem;
+    text-align: center;
+  }
+}
+
+.writing .every-scene-placed {
+  color: var(--muted);
+  font-size: 1rem;
+}

@@ -6,6 +6,8 @@ use web_sys::HtmlElement;
 use crate::outline::model::{Outline, SectionId};
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
+use crate::writing::loose_scenes::LooseScenes;
+use crate::writing::side::Side;
 use crate::writing::structure::Structure;
 use crate::writing::viewport::Viewport;
 
@@ -31,12 +33,21 @@ pub struct Walk {
     landing: StoredValue<Option<(SceneId, u32)>>,
     arriving: StoredValue<Option<(SceneId, Towards)>>,
     viewport: Viewport,
+    side: Side,
+    loose: LooseScenes,
 }
 
 impl Walk {
-    pub fn through(structure: Structure, viewport: Viewport) -> Self {
+    pub fn through(
+        structure: Structure,
+        viewport: Viewport,
+        side: Side,
+        loose: LooseScenes,
+    ) -> Self {
         Self {
             structure,
+            side,
+            loose,
             editors: StoredValue::new_local(HashMap::new()),
             lines: StoredValue::new_local(HashMap::new()),
             awaited: StoredValue::new(None),
@@ -122,11 +133,23 @@ impl Walk {
         self.lines.update_value(|lines| _ = lines.remove(stop));
     }
 
+    fn reading_order(self) -> Vec<Stop> {
+        match self.side {
+            Side::Book => self
+                .structure
+                .read_untracked(stops_in_reading_order)
+                .unwrap_or_default(),
+            Side::Loose => self
+                .loose
+                .in_order_untracked()
+                .into_iter()
+                .map(Stop::Scene)
+                .collect(),
+        }
+    }
+
     pub fn leave(self, from: &Stop, towards: Towards) -> bool {
-        let read = self
-            .structure
-            .read_untracked(stops_in_reading_order)
-            .unwrap_or_default();
+        let read = self.reading_order();
 
         neighbour(&read, from, towards).is_some_and(|next| self.arrive(&next, towards))
     }

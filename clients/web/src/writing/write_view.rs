@@ -2,6 +2,7 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use leptos_router::NavigateOptions;
+use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, FocusEvent, KeyboardEvent};
@@ -21,14 +22,16 @@ use crate::writing::menus::{
 };
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
 use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
+use crate::writing::side::Side;
 use crate::writing::status_note::status_note;
 use crate::writing::this_scene::{SCENE_TRAY, ideas_to_link, this_scene};
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::write_view_state::WriteViewState;
 
 #[component]
-pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
-    let state = WriteViewState::open(&route::project_id(&project));
+pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> impl IntoView {
+    let state = WriteViewState::open(&route::project_id(&project), side);
+    let switching = project.clone();
     let segment = project.clone();
     let open = Memo::new(move |_| state.structure.is_open());
     let unshaped = Memo::new(move |_| state.structure.is_unshaped());
@@ -36,7 +39,7 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
     let navigate = use_navigate();
 
     Effect::new(move |landed: Option<bool>| {
-        if landed == Some(true) || !open.get() {
+        if side == Side::Loose || landed == Some(true) || !open.get() {
             return landed.unwrap_or(false);
         }
 
@@ -103,8 +106,15 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
                         .child(failure.to_string())
                 })
             },
-            move || unshaped.get().then(|| first_heading(state)),
-            move || open.get().then(|| book(state)),
+            side_switch(switching, state),
+            move || match side {
+                Side::Book => (
+                    unshaped.get().then(|| first_heading(state)),
+                    open.get().then(|| book(state)),
+                )
+                    .into_any(),
+                Side::Loose => open.get().then(|| loose_side(state)).into_any(),
+            },
         ));
 
     (
@@ -165,6 +175,47 @@ fn book(state: WriteViewState) -> impl IntoView {
             {section_in_flow(depth, section, state)}
         </For>
         {move || (!ends_in_a_scene.get()).then(|| book_edge(Edge::End, state))}
+    }
+}
+
+fn side_switch(project: String, state: WriteViewState) -> impl IntoView {
+    let book = route::writing(&project);
+    let elsewhere = route::loose_scenes(&project);
+    let loose = Memo::new(move |_| state.loose.in_order().len());
+
+    html::nav()
+        .class("side-switch")
+        .attr("aria-label", "Sides of the work")
+        .child((
+            view! {
+                <A href=book exact=true>
+                    "The book"
+                </A>
+            },
+            view! {
+                <A href=elsewhere exact=true>
+                    "Not in the book"
+                    <span class="tally">{move || loose.get()}</span>
+                </A>
+            },
+        ))
+}
+
+fn loose_side(state: WriteViewState) -> impl IntoView {
+    let none = Memo::new(move |_| state.loose.in_order().is_empty());
+
+    view! {
+        {move || {
+            none.get()
+                .then(|| html::p().class("every-scene-placed").child("Every scene is in the book."))
+        }}
+        <For
+            each=move || state.loose.in_order()
+            key=|scene| scene.clone()
+            let:scene
+        >
+            {scene_slot(None, scene, state)}
+        </For>
     }
 }
 
@@ -229,12 +280,12 @@ fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {
             key=|scene| scene.clone()
             let:scene
         >
-            {scene_slot(holding.clone(), scene, state)}
+            {scene_slot(Some(holding.clone()), scene, state)}
         </For>
     }
 }
 
-fn scene_slot(section: SectionId, scene: SceneId, state: WriteViewState) -> impl IntoView {
+fn scene_slot(section: Option<SectionId>, scene: SceneId, state: WriteViewState) -> impl IntoView {
     let place: NodeRef<Div> = NodeRef::new();
     let near = Memo::new({
         let scene = scene.clone();
@@ -268,14 +319,18 @@ fn scene_slot(section: SectionId, scene: SceneId, state: WriteViewState) -> impl
                     scene_margin(scene.clone(), state),
                     scene_in_flow(scene.clone(), state),
                 )),
-                pending_after(section.clone(), scene.clone(), state),
-                insertion(
-                    Landing {
-                        section: section.clone(),
-                        after: Some(scene.clone()),
-                    },
-                    state,
-                ),
+                section.clone().map(|section| {
+                    (
+                        pending_after(section.clone(), scene.clone(), state),
+                        insertion(
+                            Landing {
+                                section,
+                                after: Some(scene.clone()),
+                            },
+                            state,
+                        ),
+                    )
+                }),
             )
                 .into_any()
         })

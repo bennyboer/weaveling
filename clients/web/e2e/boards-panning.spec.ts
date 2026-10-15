@@ -24,11 +24,32 @@ const spotOf = (page: Page, named: string) =>
 
 type Page = Parameters<Parameters<typeof test>[1]>[0]["page"];
 
+const boardOnServer = (page: Page) =>
+  page.evaluate(async () => {
+    const project = window.location.pathname.split("/")[2].split("-").pop();
+
+    return fetch("/api/boards", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project }),
+    }).then((it) => it.json());
+  });
+
+async function pinHeld(page: Page) {
+  await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
+  await expect
+    .poll(async () => (await boardOnServer(page)).ideas.length, {
+      message: "the board shows the pin before the server has it",
+    })
+    .toBe(1);
+}
+
 test("dragging the bare board carries the cards with it", async ({ page }) => {
   await anOpenProject(page, "Panning");
   await captureIdea(page, "The loom remembers");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
+  await pinHeld(page);
   const before = await seenAt(page, "The loom remembers");
 
   await panBy(page, -150, -70);
@@ -47,22 +68,7 @@ test("an idea pinned beyond the edge can be panned to", async ({ page }) => {
   await captureIdea(page, "Far away");
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin Far away" }).click();
-  await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
-  const theBoard = () =>
-    page.evaluate(async () => {
-      const project = window.location.pathname.split("/")[2].split("-").pop();
-
-      return fetch("/api/boards", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ project }),
-      }).then((it) => it.json());
-    });
-  await expect
-    .poll(async () => (await theBoard()).ideas.length, {
-      message: "the board shows the pin before the server has it",
-    })
-    .toBe(1);
+  await pinHeld(page);
 
   await page.evaluate(
     async (board) => {
@@ -72,7 +78,7 @@ test("an idea pinned beyond the edge can be panned to", async ({ page }) => {
         body: JSON.stringify({ spot: { x: 40, y: 900 } }),
       });
     },
-    await theBoard(),
+    await boardOnServer(page),
   );
   await page.reload();
   await onTheBoard(page);

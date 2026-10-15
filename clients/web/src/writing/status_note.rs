@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::icons::{Icon, mark};
+use crate::writing::side::Side;
 use crate::writing::word_count::Counted;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -34,15 +35,26 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
     });
 
     html::div().class("status-note").child((
-        html::button()
-            .r#type("button")
-            .class("word-count")
-            .attr("title", move || match state.word_count.counted() {
-                Counted::Section => "Count the whole book",
-                Counted::Book => "Count the section being written",
-            })
-            .on(ev::click, move |_| state.word_count.toggle())
-            .child(move || counted(state)),
+        match state.side {
+            Side::Book => html::button()
+                .r#type("button")
+                .class("word-count")
+                .attr("title", move || match state.word_count.counted() {
+                    Counted::Section => "Count the whole book",
+                    Counted::Book => "Count the section being written",
+                })
+                .on(ev::click, move |_| state.word_count.toggle())
+                .child(move || counted(state))
+                .into_any(),
+            Side::Loose => html::span()
+                .class("word-count")
+                .child(move || {
+                    let words = state.word_count.words_in(&state.loose.in_order());
+
+                    format!("{} not in the book", in_words(words))
+                })
+                .into_any(),
+        },
         html::span().class("save-state").child(move || {
             if shown_saving.get() {
                 (mark(Icon::Saving), html::span().child("Saving…"))

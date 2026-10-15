@@ -3056,3 +3056,177 @@ test("Escape closes the tray's dialog and leaves the tray open", async ({
   await expect(sceneTray(page)).toBeVisible();
   await expect(sceneTray(page)).toContainText("No ideas linked yet.");
 });
+
+const sides = (page: Page) =>
+  page.getByRole("navigation", { name: "Sides of the work" });
+
+async function openTheLooseSide(page: Page) {
+  await sides(page)
+    .getByRole("link", { name: /Not in the book/ })
+    .click();
+  await expect(page).toHaveURL(/\/write\/loose$/);
+}
+
+test("the switch shows the book on one side and the scenes outside it on the other", async ({
+  page,
+}) => {
+  await aNewProject(page, "Sides");
+  const [placed] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  const loose = await aLooseScene(page);
+  await openTheWritingView(page);
+  await expect(scene(page, placed)).toBeVisible();
+  await expect(scene(page, loose)).toHaveCount(0);
+  await expect(
+    sides(page).getByRole("link", { name: /Not in the book/ }),
+  ).toContainText("1");
+
+  await openTheLooseSide(page);
+
+  await expect(scene(page, loose)).toBeVisible();
+  await expect(scene(page, placed)).toHaveCount(0);
+  await expect(
+    sides(page).getByRole("link", { name: /Not in the book/ }),
+  ).toHaveAttribute("aria-current", "page");
+  await expect(
+    sides(page).getByRole("link", { name: "The book", exact: true }),
+  ).not.toHaveAttribute("aria-current", "page");
+});
+
+test("a scene outside the book is written in on its side and kept", async ({
+  page,
+}) => {
+  await aNewProject(page, "LooseWriting");
+  await aBookWithScenes(page, { "Part One": 1 });
+  const loose = await aLooseScene(page);
+  await openTheWritingView(page);
+  await openTheLooseSide(page);
+
+  await scene(page, loose).click();
+  await page.keyboard.type("Cut, but kept.");
+
+  await expect(saveState(page)).toHaveText("All saved");
+  await expect
+    .poll(async () => (await (await sceneOnServer(page, loose)).json()).text)
+    .toBe("Cut, but kept.");
+});
+
+test("the arrow keys walk among the scenes outside the book", async ({
+  page,
+}) => {
+  await aNewProject(page, "LooseWalk");
+  await aBookWithScenes(page, { "Part One": 1 });
+  const first = await aLooseScene(page);
+  const second = await aLooseScene(page);
+  await openTheWritingView(page);
+  await openTheLooseSide(page);
+  await scene(page, first).click();
+  await page.keyboard.type("First.");
+
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.type("Second.");
+
+  await expect(scene(page, second)).toHaveText("Second.");
+});
+
+test("each side counts its own words", async ({ page }) => {
+  await aNewProject(page, "LooseCount");
+  const [placed] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  const loose = await aLooseScene(page);
+  await openTheWritingView(page);
+  await scene(page, placed).click();
+  await page.keyboard.type("Two words.");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await openTheLooseSide(page);
+  await scene(page, loose).click();
+  await page.keyboard.type("Three more words.");
+
+  await expect(statusNote(page).locator(".word-count")).toHaveText(
+    "3 words not in the book",
+  );
+  await expect(saveState(page)).toHaveText("All saved");
+  await sides(page)
+    .getByRole("link", { name: "The book", exact: true })
+    .click();
+  await expect(statusNote(page).locator(".word-count")).toContainText(
+    "2 words",
+  );
+});
+
+test("the tray names a scene outside the book", async ({ page }) => {
+  await aNewProject(page, "LooseTray");
+  await aBookWithScenes(page, { "Part One": 1 });
+  const loose = await aLooseScene(page);
+  await titled(page, loose, "The cut scene");
+  await openTheWritingView(page);
+  await openTheLooseSide(page);
+
+  await scene(page, loose).click();
+  await sceneTab(page).click();
+
+  await expect(trayTitle(page)).toHaveValue("The cut scene");
+});
+
+test("with every scene in the book, the other side says so", async ({
+  page,
+}) => {
+  await aNewProject(page, "NoLoose");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+
+  await openTheLooseSide(page);
+
+  await expect(flow(page)).toContainText("Every scene is in the book.");
+  await expect(flow(page).locator(".scene")).toHaveCount(0);
+});
+
+test("a scene outside the book offers no way out of the book, and Enter twice begins nothing", async ({
+  page,
+}) => {
+  await aNewProject(page, "LooseMenu");
+  await aBookWithScenes(page, { "Part One": 1 });
+  const loose = await aLooseScene(page);
+  await openTheWritingView(page);
+  await openTheLooseSide(page);
+  await scene(page, loose).click();
+  await page.keyboard.type("Alone.");
+
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Still here.");
+  await sceneActions(page, loose).click();
+
+  await expect(
+    flow(page).getByRole("menuitem"),
+    "taking out of the book means nothing for a scene not in it",
+  ).toHaveText(["Rename"]);
+  await expect(flow(page).locator(".scene")).toHaveCount(1);
+  await expect(
+    scene(page, loose).locator("p"),
+    "with no next scene to begin, Enter twice is two line breaks like anywhere else",
+  ).toHaveText(["Alone.", "", "Still here."]);
+});
+
+test("writing outside the book leaves where you left off in the book alone", async ({
+  page,
+}) => {
+  await aNewProject(page, "LooseLeftOff");
+  const [, second] = (await aBookWithScenes(page, { "Part One": 2 }))[
+    "Part One"
+  ];
+  const loose = await aLooseScene(page);
+  await openTheWritingView(page);
+  await scene(page, second).click();
+  await page.keyboard.type("Here.");
+  await expect(saveState(page)).toHaveText("All saved");
+  await openTheLooseSide(page);
+  await scene(page, loose).click();
+  await page.keyboard.type("Elsewhere.");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await sides(page)
+    .getByRole("link", { name: "The book", exact: true })
+    .click();
+
+  await expect(scene(page, second)).toBeFocused();
+});

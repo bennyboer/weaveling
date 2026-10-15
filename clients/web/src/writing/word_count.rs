@@ -84,6 +84,11 @@ impl WordCount {
             .or_else(|| self.structure.first_section())
     }
 
+    pub fn words_in(self, scenes: &[SceneId]) -> usize {
+        self.words
+            .with(|counted| scenes.iter().filter_map(|scene| counted.get(scene)).sum())
+    }
+
     pub fn words(self) -> usize {
         let scenes = match self.counted() {
             Counted::Book => self.structure.every_scene(),

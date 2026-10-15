@@ -11,6 +11,7 @@ use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
 use crate::writing::heading::{lift, nest};
 use crate::writing::margin::{Edge, Marked, Menu};
+use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
@@ -40,17 +41,22 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 let rename = chosen.clone();
                 let take_out = chosen.clone();
                 let delete = chosen.clone();
+                let in_the_book = state.side == Side::Book;
 
                 (
                     item("Rename", false, move || {
                         state.margin.start_renaming(rename.clone())
                     }),
-                    item("Take out of the book", false, move || {
-                        state.margin.close();
-                        state.structure.take_out(take_out.clone());
-                    }),
-                    item("Delete scene", true, move || {
-                        state.margin.ask(Asking::DeleteScene(delete.clone()))
+                    in_the_book.then(|| {
+                        (
+                            item("Take out of the book", false, move || {
+                                state.margin.close();
+                                state.structure.take_out(take_out.clone());
+                            }),
+                            item("Delete scene", true, move || {
+                                state.margin.ask(Asking::DeleteScene(delete.clone()))
+                            }),
+                        )
                     }),
                 )
                     .into_any()
