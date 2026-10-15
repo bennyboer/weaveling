@@ -221,6 +221,50 @@ pub async fn what_an_outline_holds_is_replaced_not_added_to(catalog: &impl Outli
     );
 }
 
+pub async fn what_stays_is_kept_what_left_is_dropped_and_what_came_is_added(
+    catalog: &impl OutlineCatalog,
+) {
+    let outline = OutlineId::generate(at(1_000));
+    catalog
+        .holds(
+            outline,
+            &[
+                Attachment::scene("scene_1"),
+                Attachment::scene("scene_2"),
+                Attachment::idea("idea_1"),
+            ],
+        )
+        .await
+        .expect("indexing should succeed");
+
+    catalog
+        .holds(
+            outline,
+            &[
+                Attachment::scene("scene_2"),
+                Attachment::idea("idea_1"),
+                Attachment::scene("scene_3"),
+            ],
+        )
+        .await
+        .expect("indexing again should succeed");
+
+    let holding = |attachment: Attachment| async move {
+        catalog
+            .outlines_holding(&attachment)
+            .await
+            .expect("looking should succeed")
+    };
+    assert!(holding(Attachment::scene("scene_1")).await.is_empty());
+    assert_eq!(
+        holding(Attachment::scene("scene_2")).await,
+        vec![outline],
+        "only what changed is written, so what stays must not be lost on the way"
+    );
+    assert_eq!(holding(Attachment::idea("idea_1")).await, vec![outline]);
+    assert_eq!(holding(Attachment::scene("scene_3")).await, vec![outline]);
+}
+
 pub async fn one_outline_letting_a_scene_go_leaves_the_others_holding_it(
     catalog: &impl OutlineCatalog,
 ) {
@@ -448,6 +492,10 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             what_an_outline_holds_is_replaced_not_added_to
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            what_stays_is_kept_what_left_is_dropped_and_what_came_is_added
         );
         $crate::catalog_conformance_case!(
             $workbench,

@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use async_trait::async_trait;
 use outline_core::{
     Attachment, CatalogError, OutlineCatalog, OutlineId, OutlineSummary, ProjectLink,
@@ -22,7 +24,18 @@ const IN_PROJECT: &str = "
     ORDER BY outline
 ";
 
-const LET_GO: &str = "DELETE FROM outline_attachments WHERE outline = ?1";
+const LET_GO_OF_EVERYTHING: &str = "DELETE FROM outline_attachments WHERE outline = ?1";
+
+const HELD: &str = "
+    SELECT attachment_type, attachment_id
+    FROM outline_attachments
+    WHERE outline = ?1
+";
+
+const LET_GO: &str = "
+    DELETE FROM outline_attachments
+    WHERE outline = ?1 AND attachment_type = ?2 AND attachment_id = ?3
+";
 
 const HOLD: &str = "
     INSERT INTO outline_attachments (outline, attachment_type, attachment_id)
@@ -93,7 +106,7 @@ impl OutlineCatalog for SqliteOutlineCatalog {
             .await
             .map_err(unreachable)?;
 
-        sqlx::query(LET_GO)
+        sqlx::query(LET_GO_OF_EVERYTHING)
             .bind(outline.to_string())
             .execute(&mut *transaction)
             .await
@@ -128,19 +141,45 @@ impl OutlineCatalog for SqliteOutlineCatalog {
         outline: OutlineId,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
-
-        sqlx::query(LET_GO)
-            .bind(outline.to_string())
-            .execute(&mut *transaction)
+        let mut transaction = self
+            .pool
+            .begin_with("BEGIN IMMEDIATE")
             .await
             .map_err(unreachable)?;
 
-        for attachment in attachments {
+        let before: HashSet<(String, String)> = sqlx::query(HELD)
+            .bind(outline.to_string())
+            .fetch_all(&mut *transaction)
+            .await
+            .map_err(unreachable)?
+            .iter()
+            .map(|row| Ok((row.try_get(0)?, row.try_get(1)?)))
+            .collect::<Result<_, sqlx::Error>>()
+            .map_err(unreachable)?;
+        let after: HashSet<(String, String)> = attachments
+            .iter()
+            .map(|attachment| {
+                (
+                    attachment_type_of(attachment).to_owned(),
+                    attachment.to_string(),
+                )
+            })
+            .collect();
+
+        for (attachment_type, id) in before.difference(&after) {
+            sqlx::query(LET_GO)
+                .bind(outline.to_string())
+                .bind(attachment_type)
+                .bind(id)
+                .execute(&mut *transaction)
+                .await
+                .map_err(unreachable)?;
+        }
+        for (attachment_type, id) in after.difference(&before) {
             sqlx::query(HOLD)
                 .bind(outline.to_string())
-                .bind(attachment_type_of(attachment))
-                .bind(attachment.to_string())
+                .bind(attachment_type)
+                .bind(id)
                 .execute(&mut *transaction)
                 .await
                 .map_err(unreachable)?;

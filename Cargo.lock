@@ -3887,9 +3887,11 @@ dependencies = [
 name = "weaveling-outline-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
  "serde_json",
+ "sqlx",
  "time",
  "tokio",
  "weaveling-clock",
@@ -3905,6 +3907,7 @@ dependencies = [
  "weaveling-projects-contract",
  "weaveling-registry",
  "weaveling-scenes-contract",
+ "weaveling-test-harness",
  "weaveling-wiring",
 ]
 
