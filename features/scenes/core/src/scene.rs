@@ -5,7 +5,7 @@ use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
-use words::words_in;
+use words::{opening_of, words_in};
 
 use crate::projection::plain_text;
 use crate::{IdeaLink, ProjectLink, SceneId, SceneTitle};
@@ -107,6 +107,10 @@ impl Scene {
 
     pub fn words(&self) -> usize {
         words_in(&self.text())
+    }
+
+    pub fn opening(&self) -> String {
+        opening_of(&self.text())
     }
 }
 

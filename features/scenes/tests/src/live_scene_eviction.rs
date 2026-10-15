@@ -19,6 +19,7 @@ struct FalteringStore {
     held: InMemorySceneStore,
     faltering: AtomicBool,
     announced: Mutex<Vec<(SceneId, usize)>>,
+    openings: Mutex<Vec<(SceneId, String)>>,
 }
 
 impl FalteringStore {
@@ -63,6 +64,20 @@ impl SceneStore for FalteringStore {
         Ok(())
     }
 
+    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
+        if self.faltering.load(Ordering::SeqCst) {
+            return Err(StoreError::Backend("the store is down".into()));
+        }
+
+        self.held.announce_opening(id, opening).await?;
+        self.openings
+            .lock()
+            .expect("the announced openings are never poisoned")
+            .push((id, opening.to_owned()));
+
+        Ok(())
+    }
+
     async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
         self.held.link(id, idea).await
     }
@@ -100,6 +115,7 @@ fn a_workbench() -> Workbench {
         held: InMemorySceneStore::new(),
         faltering: AtomicBool::new(false),
         announced: Mutex::new(Vec::new()),
+        openings: Mutex::new(Vec::new()),
     });
     let service = SceneService::new(
         store.clone(),
@@ -122,6 +138,17 @@ impl Workbench {
             .await
             .expect("should create")
             .id()
+    }
+
+    fn openings_told(&self, id: SceneId) -> Vec<String> {
+        self.store
+            .openings
+            .lock()
+            .expect("the announced openings are never poisoned")
+            .iter()
+            .filter(|(scene, _)| *scene == id)
+            .map(|(_, opening)| opening.clone())
+            .collect()
     }
 
     fn last_announced(&self, id: SceneId) -> Option<usize> {
@@ -438,5 +465,27 @@ async fn settling_before_stopping_stores_an_edit_the_store_refused() {
         bench.stored_text(id).await,
         "The loom stood silent.",
         "the live copy is the only one holding this edit, and stopping would lose it"
+    );
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_scene_s_opening_is_told_when_it_is_counted_and_only_when_it_changed() {
+    let bench = a_workbench();
+    let id = bench.a_scene().await;
+    let present = bench.live.join(id).await.expect("should join");
+    let update = a_paragraph("The loom stood silent in the grey light of morning.");
+
+    for _ in 0..2 {
+        present
+            .receive(Message::JustHappened(update.clone()))
+            .expect("should write");
+        present.persist(&update).await.expect("should persist");
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+    }
+
+    assert_eq!(
+        bench.openings_told(id),
+        vec!["The loom stood silent in the grey light…".to_owned()],
+        "counted twice, but the opening is told once, since it did not change"
     );
 }

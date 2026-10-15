@@ -1,7 +1,7 @@
 use messaging::{Message, RoutingKey};
 use scenes_contract::{
-    DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO, WORDS_COUNTED,
-    WordsCountedDTO,
+    CREATED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, OPENING_CHANGED, OpeningChangedDTO,
+    RETITLED, SceneCreatedDTO, SceneDeletedDTO, SceneRetitledDTO, WORDS_COUNTED, WordsCountedDTO,
 };
 use scenes_core::SceneChange;
 use serde_json::Value;
@@ -39,6 +39,39 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
                 scene: scene.to_string(),
             }),
         ),
+        SceneChange::Created { scene, project } => (
+            CREATED,
+            to_payload(&SceneCreatedDTO {
+                scene: scene.to_string(),
+                project: project.to_string(),
+            }),
+        ),
+        SceneChange::Retitled {
+            scene,
+            project,
+            title,
+            version,
+        } => (
+            RETITLED,
+            to_payload(&SceneRetitledDTO {
+                scene: scene.to_string(),
+                project: project.to_string(),
+                title: title.to_string(),
+                version: *version,
+            }),
+        ),
+        SceneChange::OpeningChanged {
+            scene,
+            project,
+            opening,
+        } => (
+            OPENING_CHANGED,
+            to_payload(&OpeningChangedDTO {
+                scene: scene.to_string(),
+                project: project.to_string(),
+                opening: opening.clone(),
+            }),
+        ),
         SceneChange::WordsCounted {
             scene,
             project,
@@ -66,7 +99,7 @@ fn to_payload(dto: &impl serde::Serialize) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use scenes_core::{IdeaLink, ProjectLink, SceneId};
+    use scenes_core::{IdeaLink, ProjectLink, SceneId, SceneTitle};
     use serde_json::json;
     use time::Duration;
 
@@ -150,6 +183,65 @@ mod tests {
                 words: 42,
             },
             "statistics are kept per project, so the count names its project rather than              making a listener ask scenes for it"
+        );
+    }
+
+    #[test]
+    fn a_scene_s_name_travels_in_three_announcements_each_naming_its_project() {
+        let scene = a_scene();
+        let project = ProjectLink::from("project_1");
+
+        let created = message_for(
+            &SceneChange::Created {
+                scene,
+                project: project.clone(),
+            },
+            at(2_000),
+        );
+        let retitled = message_for(
+            &SceneChange::Retitled {
+                scene,
+                project: project.clone(),
+                title: SceneTitle::new("The loom").expect("a plain title"),
+                version: 4,
+            },
+            at(2_000),
+        );
+        let opened = message_for(
+            &SceneChange::OpeningChanged {
+                scene,
+                project,
+                opening: "The loom stood silent.".to_owned(),
+            },
+            at(2_000),
+        );
+
+        assert_eq!(created.routing.to_string(), CREATED);
+        assert_eq!(
+            serde_json::from_value::<SceneCreatedDTO>(created.payload).expect("reads back"),
+            SceneCreatedDTO {
+                scene: scene.to_string(),
+                project: "project_1".to_owned(),
+            }
+        );
+        assert_eq!(retitled.routing.to_string(), RETITLED);
+        assert_eq!(
+            serde_json::from_value::<SceneRetitledDTO>(retitled.payload).expect("reads back"),
+            SceneRetitledDTO {
+                scene: scene.to_string(),
+                project: "project_1".to_owned(),
+                title: "The loom".to_owned(),
+                version: 4,
+            }
+        );
+        assert_eq!(opened.routing.to_string(), OPENING_CHANGED);
+        assert_eq!(
+            serde_json::from_value::<OpeningChangedDTO>(opened.payload).expect("reads back"),
+            OpeningChangedDTO {
+                scene: scene.to_string(),
+                project: "project_1".to_owned(),
+                opening: "The loom stood silent.".to_owned(),
+            }
         );
     }
 

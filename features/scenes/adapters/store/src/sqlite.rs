@@ -20,7 +20,7 @@ const KNOWN_AS: &str = "SELECT project, title FROM scenes WHERE scene = ?1";
 
 const PROJECT_OF: &str = "SELECT project FROM scenes WHERE scene = ?1";
 
-const RETITLE: &str = "UPDATE scenes SET title = ?2, version = version + 1 WHERE scene = ?1";
+const RETITLE: &str = "UPDATE scenes SET title = ?2, version = version + 1 WHERE scene = ?1 RETURNING project, version";
 
 const LINK: &str = "
     INSERT INTO scene_ideas (scene, idea)
@@ -112,6 +112,28 @@ impl SqliteSceneStore {
             enqueuing: Some(Mapping::new(clock, message_for)),
             ..self
         }
+    }
+
+    async fn announce(
+        &self,
+        id: SceneId,
+        change: impl FnOnce(ProjectLink) -> SceneChange,
+    ) -> Result<(), StoreError> {
+        let mut transaction = self.begin_writing().await?;
+
+        let project: Option<String> = sqlx::query_scalar(PROJECT_OF)
+            .bind(id.to_string())
+            .fetch_optional(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        let Some(project) = project else {
+            return Err(StoreError::NotFound(id));
+        };
+
+        self.enqueue_change(&mut transaction, change(ProjectLink::from(project)))
+            .await?;
+
+        transaction.commit().await.map_err(unreachable)
     }
 
     async fn enqueue_change(
@@ -254,6 +276,15 @@ impl SceneStore for SqliteSceneStore {
             .await
             .map_err(unreachable)?;
 
+        self.enqueue_change(
+            &mut transaction,
+            SceneChange::Created {
+                scene: id,
+                project: scene.project().clone(),
+            },
+        )
+        .await?;
+
         transaction.commit().await.map_err(unreachable)
     }
 
@@ -320,42 +351,48 @@ impl SceneStore for SqliteSceneStore {
     }
 
     async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError> {
-        let changed = sqlx::query(RETITLE)
-            .bind(id.to_string())
-            .bind(title.as_str())
-            .execute(&self.pool)
-            .await
-            .map_err(unreachable)?;
-
-        match changed.rows_affected() {
-            0 => Err(StoreError::NotFound(id)),
-            _ => Ok(()),
-        }
-    }
-
-    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
         let mut transaction = self.begin_writing().await?;
 
-        let project: Option<String> = sqlx::query_scalar(PROJECT_OF)
+        let retitled: Option<(String, i64)> = sqlx::query_as(RETITLE)
             .bind(id.to_string())
+            .bind(title.as_str())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(unreachable)?;
-        let Some(project) = project else {
+        let Some((project, version)) = retitled else {
             return Err(StoreError::NotFound(id));
         };
 
         self.enqueue_change(
             &mut transaction,
-            SceneChange::WordsCounted {
+            SceneChange::Retitled {
                 scene: id,
                 project: ProjectLink::from(project),
-                words,
+                title: title.clone(),
+                version: version as u64,
             },
         )
         .await?;
 
         transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+        self.announce(id, |project| SceneChange::WordsCounted {
+            scene: id,
+            project,
+            words,
+        })
+        .await
+    }
+
+    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
+        self.announce(id, |project| SceneChange::OpeningChanged {
+            scene: id,
+            project,
+            opening: opening.to_owned(),
+        })
+        .await
     }
 
     async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {

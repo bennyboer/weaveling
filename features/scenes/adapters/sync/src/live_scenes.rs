@@ -51,6 +51,7 @@ pub struct LiveScene {
     uncounted: AtomicBool,
     recount_waiting: AtomicBool,
     counted_at: Mutex<Option<Moment>>,
+    opening_told: Mutex<Option<String>>,
 }
 
 impl LiveScene {
@@ -62,6 +63,7 @@ impl LiveScene {
             uncounted: AtomicBool::new(false),
             recount_waiting: AtomicBool::new(false),
             counted_at: Mutex::new(None),
+            opening_told: Mutex::new(None),
         }
     }
 
@@ -83,16 +85,44 @@ impl LiveScene {
             .lock()
             .expect("live scene count lock poisoned") = Some(Moment::now());
 
-        match service
-            .announce_word_count(&self.id().to_string(), self.scene.words())
-            .await
-        {
-            Ok(()) | Err(SceneServiceError::Store(StoreError::NotFound(_))) => {}
-            Err(problem) => {
-                self.uncounted.store(true, Ordering::Release);
-                warn!(scene = %self.id(), %problem, "a scene's words could not be counted");
+        let id = self.id().to_string();
+        let counted = service.announce_word_count(&id, self.scene.words()).await;
+        let opened = self.tell_opening(service, &id).await;
+
+        for told in [counted, opened] {
+            match told {
+                Ok(()) | Err(SceneServiceError::Store(StoreError::NotFound(_))) => {}
+                Err(problem) => {
+                    self.uncounted.store(true, Ordering::Release);
+                    warn!(scene = %self.id(), %problem, "what a scene holds could not be told");
+                }
             }
         }
+    }
+
+    async fn tell_opening(
+        &self,
+        service: &SceneService,
+        id: &str,
+    ) -> Result<(), SceneServiceError> {
+        let opening = self.scene.opening();
+        let unchanged = self
+            .opening_told
+            .lock()
+            .expect("live scene opening lock poisoned")
+            .as_ref()
+            == Some(&opening);
+
+        if unchanged {
+            return Ok(());
+        }
+        service.announce_opening(id, &opening).await?;
+        *self
+            .opening_told
+            .lock()
+            .expect("live scene opening lock poisoned") = Some(opening);
+
+        Ok(())
     }
 
     pub fn id(&self) -> SceneId {

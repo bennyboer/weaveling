@@ -620,7 +620,7 @@ async fn linking_an_idea_is_announced_and_relayed() {
             .await
             .expect("reading the scenes outbox should succeed");
 
-            relayed == vec!["scene.idea.linked".to_owned()]
+            relayed == vec!["scene.created".to_owned(), "scene.idea.linked".to_owned()]
         })
         .await,
         "the link is written and announced in one transaction, and the scenes outbox is relayed like every other"

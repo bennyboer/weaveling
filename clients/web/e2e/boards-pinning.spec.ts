@@ -244,6 +244,22 @@ test("a placement whose idea was never captured draws nothing", async ({
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
   await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(async () => {
+          const project = window.location.pathname.split("/")[2].split("-").pop();
+          const board = await fetch("/api/boards", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ project }),
+          }).then((it) => it.json());
+
+          return board.ideas.length;
+        }),
+      { message: "the board shows the pin before the server has it" },
+    )
+    .toBe(1);
 
   await page.evaluate(async () => {
     const project = window.location.pathname.split("/")[2].split("-").pop();

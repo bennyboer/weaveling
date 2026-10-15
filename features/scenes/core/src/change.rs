@@ -1,7 +1,22 @@
-use crate::{IdeaLink, ProjectLink, SceneId};
+use crate::{IdeaLink, ProjectLink, SceneId, SceneTitle};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SceneChange {
+    Created {
+        scene: SceneId,
+        project: ProjectLink,
+    },
+    Retitled {
+        scene: SceneId,
+        project: ProjectLink,
+        title: SceneTitle,
+        version: u64,
+    },
+    OpeningChanged {
+        scene: SceneId,
+        project: ProjectLink,
+        opening: String,
+    },
     IdeaLinked {
         scene: SceneId,
         idea: IdeaLink,
@@ -28,6 +43,9 @@ impl SceneChange {
             Self::IdeaLinked { scene, .. }
             | Self::IdeaUnlinked { scene, .. }
             | Self::Deleted { scene }
+            | Self::Created { scene, .. }
+            | Self::Retitled { scene, .. }
+            | Self::OpeningChanged { scene, .. }
             | Self::WordsCounted { scene, .. } => *scene,
         }
     }

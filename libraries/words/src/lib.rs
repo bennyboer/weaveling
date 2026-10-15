@@ -1,3 +1,14 @@
+const OPENING: usize = 40;
+
+pub fn opening_of(text: &str) -> String {
+    let saying = text.split_whitespace().collect::<Vec<_>>().join(" ");
+
+    match saying.char_indices().nth(OPENING) {
+        None => saying,
+        Some((cut, _)) => format!("{}…", saying[..cut].trim_end()),
+    }
+}
+
 pub fn words_in(text: &str) -> usize {
     text.split_whitespace()
         .filter(|word| word.chars().any(char::is_alphanumeric))
@@ -30,6 +41,43 @@ mod tests {
     fn punctuation_inside_a_word_keeps_it_one_word() {
         assert_eq!(words_in("well-known don't 3.5 e-mail"), 4);
         assert_eq!(words_in("first—second"), 1);
+    }
+
+    #[test]
+    fn a_short_text_opens_with_all_of_itself() {
+        assert_eq!(
+            opening_of("The loom stood silent."),
+            "The loom stood silent."
+        );
+        assert_eq!(opening_of(""), "");
+    }
+
+    #[test]
+    fn an_opening_runs_the_text_together_on_single_spaces() {
+        assert_eq!(
+            opening_of(
+                "  The loom
+
+stood   silent.  "
+            ),
+            "The loom stood silent.",
+            "paragraphs and runs of space would read as gaps in a scene's name"
+        );
+    }
+
+    #[test]
+    fn a_long_text_is_cut_after_forty_characters_and_says_so() {
+        assert_eq!(
+            opening_of("The loom stood silent in the grey light of morning while she counted."),
+            "The loom stood silent in the grey light…"
+        );
+    }
+
+    #[test]
+    fn an_opening_is_cut_between_characters_not_inside_one() {
+        let opening = opening_of(&"ä".repeat(60));
+
+        assert_eq!(opening, format!("{}…", "ä".repeat(40)));
     }
 
     #[test]

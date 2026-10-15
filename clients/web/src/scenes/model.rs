@@ -1,8 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
-use crate::ideas::model::IdeaId;
+use words::opening_of;
 
-const OPENING: usize = 40;
+use crate::ideas::model::IdeaId;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(String);
@@ -25,15 +25,6 @@ impl Scene {
             opening if opening.is_empty() => "Empty".to_owned(),
             opening => opening,
         }
-    }
-}
-
-pub fn opening_of(text: &str) -> String {
-    let saying = text.split_whitespace().collect::<Vec<_>>().join(" ");
-
-    match saying.char_indices().nth(OPENING) {
-        None => saying,
-        Some((cut, _)) => format!("{}…", saying[..cut].trim_end()),
     }
 }
 

@@ -67,6 +67,32 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
             json!({ "scene": scene.to_string(), "idea": idea.to_string(), "version": version }),
         ),
         SceneChange::Deleted { scene } => ("scene.deleted", json!({ "scene": scene.to_string() })),
+        SceneChange::Created { scene, project } => (
+            "scene.created",
+            json!({ "scene": scene.to_string(), "project": project.to_string() }),
+        ),
+        SceneChange::Retitled {
+            scene,
+            project,
+            title,
+            version,
+        } => (
+            "scene.retitled",
+            json!({
+                "scene": scene.to_string(),
+                "project": project.to_string(),
+                "title": title.to_string(),
+                "version": version
+            }),
+        ),
+        SceneChange::OpeningChanged {
+            scene,
+            project,
+            opening,
+        } => (
+            "scene.opening.changed",
+            json!({ "scene": scene.to_string(), "project": project.to_string(), "opening": opening }),
+        ),
         SceneChange::WordsCounted {
             scene,
             project,
@@ -82,6 +108,13 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
         payload,
         at,
     )
+}
+
+fn told_after_creating(messages: Vec<Message>) -> Vec<(String, Value)> {
+    told(messages)
+        .into_iter()
+        .filter(|(routing, _)| routing != "scene.created")
+        .collect()
 }
 
 fn told(messages: Vec<Message>) -> Vec<(String, Value)> {
@@ -713,7 +746,7 @@ pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
     }
 
     assert_eq!(
-        told(bench.enqueued().await),
+        told_after_creating(bench.enqueued().await),
         vec![(
             "scene.idea.linked".to_owned(),
             json!({ "scene": id.to_string(), "idea": "idea_1", "version": 1 })
@@ -740,7 +773,7 @@ pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Work
         .await
         .expect("unlinking nothing should succeed");
 
-    let heard: Vec<String> = told(bench.enqueued().await)
+    let heard: Vec<String> = told_after_creating(bench.enqueued().await)
         .into_iter()
         .map(|(routing, _)| routing)
         .collect();
@@ -783,7 +816,7 @@ pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
         .await
         .expect("link should succeed");
 
-    let versions: Vec<(String, u64)> = told(bench.enqueued().await)
+    let versions: Vec<(String, u64)> = told_after_creating(bench.enqueued().await)
         .into_iter()
         .map(|(_, payload)| {
             (
@@ -797,6 +830,7 @@ pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
         vec![
             (id.to_string(), 1),
             (other.to_string(), 1),
+            (id.to_string(), 2),
             (id.to_string(), 4),
             (id.to_string(), 5),
         ],
@@ -815,7 +849,7 @@ pub async fn announcing_a_word_count_enqueues_it_with_the_scene_s_project(bench:
         .expect("announcing should succeed");
 
     assert_eq!(
-        told(bench.enqueued().await),
+        told_after_creating(bench.enqueued().await),
         vec![(
             "scene.words.counted".to_owned(),
             json!({ "scene": id.to_string(), "project": a_project().to_string(), "words": 42 })
@@ -861,7 +895,7 @@ pub async fn deleting_a_scene_enqueues_a_message(bench: &impl Workbench) {
     store.delete(id).await.expect("delete should succeed");
 
     assert_eq!(
-        told(bench.enqueued().await),
+        told_after_creating(bench.enqueued().await),
         vec![(
             "scene.deleted".to_owned(),
             json!({ "scene": id.to_string() })
@@ -884,7 +918,7 @@ pub async fn a_refused_change_enqueues_nothing(bench: &impl Workbench) {
     );
 }
 
-pub async fn writing_and_naming_enqueue_nothing(bench: &impl Workbench) {
+pub async fn writing_enqueues_nothing(bench: &impl Workbench) {
     let store = bench.store();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
@@ -894,18 +928,91 @@ pub async fn writing_and_naming_enqueue_nothing(bench: &impl Workbench) {
         .await
         .expect("apply should succeed");
     store
-        .retitle(id, &a_title("The loom"))
-        .await
-        .expect("retitle should succeed");
-    store
         .unlink_everywhere(&an_idea("idea_1"))
         .await
         .expect("unlinking everywhere should succeed");
 
     assert!(
-        bench.enqueued().await.is_empty(),
-        "only links and deletions concern anyone outside; unlinking a discarded idea \
-         everywhere is answered by whoever heard the discard itself"
+        told_after_creating(bench.enqueued().await).is_empty(),
+        "every keystroke is an edit, so text is announced by what is counted from it, not edit          by edit; and unlinking a discarded idea everywhere is answered by whoever heard the          discard itself"
+    );
+}
+
+pub async fn creating_a_scene_is_announced_with_its_project(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+
+    an_empty_scene(store, id).await;
+
+    assert_eq!(
+        told(bench.enqueued().await),
+        vec![(
+            "scene.created".to_owned(),
+            json!({ "scene": id.to_string(), "project": a_project().to_string() })
+        )],
+        "a listing kept apart from the store learns of a scene this way"
+    );
+}
+
+pub async fn a_retitle_is_announced_with_its_title_and_version(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+
+    store
+        .retitle(id, &a_title("The loom"))
+        .await
+        .expect("retitle should succeed");
+
+    assert_eq!(
+        told_after_creating(bench.enqueued().await),
+        vec![(
+            "scene.retitled".to_owned(),
+            json!({
+                "scene": id.to_string(),
+                "project": a_project().to_string(),
+                "title": "The loom",
+                "version": 1
+            })
+        )],
+        "the version tells a late retitle from a newer one"
+    );
+}
+
+pub async fn announcing_an_opening_enqueues_it_with_the_scene_s_project(bench: &impl Workbench) {
+    let store = bench.store();
+    let id = an_id(1_000);
+    an_empty_scene(store, id).await;
+
+    store
+        .announce_opening(id, "The loom stood silent.")
+        .await
+        .expect("announcing should succeed");
+
+    assert_eq!(
+        told_after_creating(bench.enqueued().await),
+        vec![(
+            "scene.opening.changed".to_owned(),
+            json!({
+                "scene": id.to_string(),
+                "project": a_project().to_string(),
+                "opening": "The loom stood silent."
+            })
+        )]
+    );
+}
+
+pub async fn announcing_an_opening_for_a_missing_scene_is_not_found(store: &impl SceneStore) {
+    let missing = an_id(1_000);
+
+    let error = store
+        .announce_opening(missing, "Nowhere.")
+        .await
+        .expect_err("announcing should not find the scene");
+
+    assert!(
+        matches!(&error, StoreError::NotFound(id) if *id == missing),
+        "expected NotFound({missing}), got {error:?}"
     );
 }
 
@@ -973,6 +1080,10 @@ macro_rules! conformance_tests {
             $workbench,
             announcing_a_word_count_for_a_missing_scene_is_not_found
         );
+        $crate::suite::conformance_case!(
+            $workbench,
+            announcing_an_opening_for_a_missing_scene_is_not_found
+        );
         $crate::suite::conformance_case!($workbench, a_new_scene_has_no_linked_ideas);
         $crate::suite::conformance_case!(
             $workbench,
@@ -1004,7 +1115,16 @@ macro_rules! conformance_tests {
         );
         $crate::suite::enqueuing_case!($workbench, deleting_a_scene_enqueues_a_message);
         $crate::suite::enqueuing_case!($workbench, a_refused_change_enqueues_nothing);
-        $crate::suite::enqueuing_case!($workbench, writing_and_naming_enqueue_nothing);
+        $crate::suite::enqueuing_case!($workbench, writing_enqueues_nothing);
+        $crate::suite::enqueuing_case!($workbench, creating_a_scene_is_announced_with_its_project);
+        $crate::suite::enqueuing_case!(
+            $workbench,
+            a_retitle_is_announced_with_its_title_and_version
+        );
+        $crate::suite::enqueuing_case!(
+            $workbench,
+            announcing_an_opening_enqueues_it_with_the_scene_s_project
+        );
     };
 }
 

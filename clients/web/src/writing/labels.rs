@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
-use crate::scenes::model::{Scene, SceneId, opening_of};
+use words::opening_of;
+
+use crate::scenes::model::{Scene, SceneId};
 use crate::scenes::service as scenes;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;

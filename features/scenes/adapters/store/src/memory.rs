@@ -87,6 +87,10 @@ impl SceneStore for InMemorySceneStore {
                 state: scene.everything(),
             },
         );
+        self.enqueue_change(SceneChange::Created {
+            scene: scene.id(),
+            project: scene.project().clone(),
+        });
 
         Ok(())
     }
@@ -127,6 +131,27 @@ impl SceneStore for InMemorySceneStore {
         let stored = scenes.get_mut(&id).ok_or(StoreError::NotFound(id))?;
         stored.title = title.clone();
         stored.version += 1;
+        self.enqueue_change(SceneChange::Retitled {
+            scene: id,
+            project: stored.project.clone(),
+            title: title.clone(),
+            version: stored.version,
+        });
+
+        Ok(())
+    }
+
+    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
+        let project = self
+            .read()
+            .get(&id)
+            .map(|stored| stored.project.clone())
+            .ok_or(StoreError::NotFound(id))?;
+        self.enqueue_change(SceneChange::OpeningChanged {
+            scene: id,
+            project,
+            opening: opening.to_owned(),
+        });
 
         Ok(())
     }
