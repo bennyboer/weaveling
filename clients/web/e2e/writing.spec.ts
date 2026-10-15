@@ -2664,6 +2664,9 @@ const sceneTab = (page: Page) =>
 const sceneTray = (page: Page) =>
   page.getByRole("complementary", { name: "This scene" });
 
+const trayTitle = (page: Page) =>
+  sceneTray(page).getByRole("textbox", { name: "Scene title" });
+
 async function aTitledPair(page: Page) {
   await aNewProject(page, "Tray");
   const [first, second] = (await aBookWithScenes(page, { "Part One": 2 }))[
@@ -2686,7 +2689,7 @@ test("the tray is shut at first and opens from its tab on the scene the cursor i
   await sceneTab(page).click();
 
   await expect(sceneTab(page)).toHaveAttribute("aria-expanded", "true");
-  await expect(sceneTray(page).locator(".scene-name")).toHaveText("The loom");
+  await expect(trayTitle(page)).toHaveValue("The loom");
 });
 
 test("the tray follows the cursor, and keeps the last scene when the cursor leaves the scenes", async ({
@@ -2696,17 +2699,15 @@ test("the tray follows the cursor, and keeps the last scene when the cursor leav
   await sceneTab(page).click();
 
   await scene(page, first).click();
-  await expect(sceneTray(page).locator(".scene-name")).toHaveText(
-    "The arrival",
-  );
+  await expect(trayTitle(page)).toHaveValue("The arrival");
   await scene(page, second).click();
-  await expect(sceneTray(page).locator(".scene-name")).toHaveText("The loom");
+  await expect(trayTitle(page)).toHaveValue("The loom");
   await flow(page).getByRole("heading", { name: "Part One" }).click();
 
   await expect(
-    sceneTray(page).locator(".scene-name"),
+    trayTitle(page),
     "reaching for the tray must not empty it",
-  ).toHaveText("The loom");
+  ).toHaveValue("The loom");
 });
 
 test("an untitled scene is named in the tray by its opening words", async ({
@@ -2717,16 +2718,19 @@ test("an untitled scene is named in the tray by its opening words", async ({
   await openTheWritingView(page);
   await scene(page, only).click();
   await sceneTab(page).click();
-  await expect(sceneTray(page).locator(".scene-name")).toHaveText(
+  await expect(trayTitle(page)).toHaveAttribute(
+    "placeholder",
     "An empty scene",
   );
 
   await scene(page, only).click();
   await page.keyboard.type("The loom stood silent.");
 
-  await expect(sceneTray(page).locator(".scene-name.untitled")).toHaveText(
+  await expect(trayTitle(page)).toHaveAttribute(
+    "placeholder",
     "The loom stood silent.",
   );
+  await expect(trayTitle(page)).toHaveValue("");
 });
 
 test("the tray stays open or shut across a reload, and Escape in it shuts it", async ({
@@ -2802,10 +2806,87 @@ test("on a phone the tray slides over the text and is toggled from its tab", asy
   const tray = (await sceneTray(page).boundingBox())!;
   expect(tray.x).toBeGreaterThanOrEqual(0);
   expect(tray.x + tray.width).toBeLessThanOrEqual(400);
-  await expect(sceneTray(page).locator(".scene-name")).toHaveText(
-    "The arrival",
-  );
+  await expect(trayTitle(page)).toHaveValue("The arrival");
 
   await sceneTab(page).click();
   await expect(sceneTray(page)).toBeHidden();
+});
+
+test("a scene renamed in the tray is named so in the margin, on the server and in the outline", async ({
+  page,
+}) => {
+  const [first] = await aTitledPair(page);
+  await scene(page, first).click();
+  await page.keyboard.type("Begun.");
+  await sceneTab(page).click();
+
+  await trayTitle(page).fill("The homecoming");
+  await trayTitle(page).press("Enter");
+
+  await expect(label(page, first)).toHaveText("The homecoming");
+  await expect(
+    scene(page, first),
+    "Enter puts the cursor back where it was writing",
+  ).toBeFocused();
+  await page.keyboard.type(" Still.");
+  await expect(scene(page, first)).toHaveText("Begun. Still.");
+  await sceneCatalogued(page, first, "The homecoming");
+  await openTheOutline(page);
+  await expect(page.locator(".leaf .name").first()).toHaveText(
+    "The homecoming",
+  );
+});
+
+test("Escape in the tray's title drops what was typed and keeps the tray open", async ({
+  page,
+}) => {
+  const [first] = await aTitledPair(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+
+  await trayTitle(page).fill("Not this");
+  await trayTitle(page).press("Escape");
+
+  await expect(trayTitle(page)).toHaveValue("The arrival");
+  await expect(sceneTray(page)).toBeVisible();
+  await expect(scene(page, first)).toBeFocused();
+  await expect(label(page, first)).toHaveText("The arrival");
+});
+
+test("a title cleared in the tray leaves the opening words to name the scene", async ({
+  page,
+}) => {
+  const [first] = await aTitledPair(page);
+  await scene(page, first).click();
+  await page.keyboard.type("The loom stood silent.");
+  await sceneTab(page).click();
+
+  await trayTitle(page).fill("");
+  await trayTitle(page).press("Enter");
+
+  await expect(label(page, first)).toHaveText("The loom stood silent.");
+  await expect(trayTitle(page)).toHaveAttribute(
+    "placeholder",
+    "The loom stood silent.",
+  );
+});
+
+test("a scene renamed in the margin is named so in the open tray", async ({
+  page,
+}) => {
+  const [first] = await aTitledPair(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+
+  await flow(page)
+    .locator(`.scene-row:has([data-scene="${first}"])`)
+    .getByRole("button", { name: "Scene actions" })
+    .click();
+  await page.getByRole("menuitem", { name: "Rename" }).click();
+  await flow(page)
+    .getByRole("textbox", { name: "Scene title" })
+    .fill("Renamed");
+  await flow(page).getByRole("textbox", { name: "Scene title" }).press("Enter");
+
+  await expect(trayTitle(page)).toHaveValue("Renamed");
 });

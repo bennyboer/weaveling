@@ -90,6 +90,11 @@ impl Walk {
         }
     }
 
+    pub fn back_into(self, scene: &SceneId) -> bool {
+        self.editors
+            .with_value(|editors| editors.get(scene).map(|editor| editor.focus()).is_some())
+    }
+
     pub fn done_with(self, scene: &SceneId) -> Option<ProseEditor> {
         self.editors
             .try_update_value(|editors| editors.remove(scene))
