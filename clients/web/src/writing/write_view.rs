@@ -22,7 +22,7 @@ use crate::writing::menus::{
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
 use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
 use crate::writing::status_note::status_note;
-use crate::writing::this_scene::{SCENE_TRAY, this_scene};
+use crate::writing::this_scene::{SCENE_TRAY, ideas_to_link, this_scene};
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -113,6 +113,7 @@ pub fn WriteView(project: String, following: Option<SceneId>) -> impl IntoView {
         bringing_back(state),
         status_note(state),
         this_scene(state, segment),
+        ideas_to_link(state),
     )
 }
 

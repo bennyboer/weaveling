@@ -33,7 +33,15 @@ pub fn ScenePage() -> impl IntoView {
                         SceneEditor(SceneEditorProps { scene }),
                         title_field(state),
                         drawn_from(state),
-                        move || state.is_picking().then(|| link_dialog(state)),
+                        move || {
+                            state.is_picking().then(|| {
+                                link_dialog(
+                                    Signal::derive(move || state.waiting_ideas()),
+                                    move |chosen| state.link(chosen),
+                                    move || state.stop_picking(),
+                                )
+                            })
+                        },
                     )
                         .into_any(),
                     None => html::p().class("empty").child("Opening…").into_any(),

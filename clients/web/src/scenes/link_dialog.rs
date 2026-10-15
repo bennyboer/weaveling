@@ -5,9 +5,11 @@ use leptos::{IntoView, ev};
 use crate::icons::{Icon, mark};
 use crate::ideas::model::{Idea, IdeaId};
 use crate::inputs::typed;
-use crate::scenes::scene_page_state::ScenePageState;
-
-pub fn link_dialog(state: ScenePageState) -> impl IntoView {
+pub fn link_dialog(
+    waiting: Signal<Vec<Idea>>,
+    link: impl Fn(Vec<IdeaId>) + Copy + Send + Sync + 'static,
+    close: impl Fn() + Copy + Send + Sync + 'static,
+) -> impl IntoView {
     let finding = RwSignal::new(String::new());
     let chosen = RwSignal::new(Vec::<IdeaId>::new());
     let search = NodeRef::<html::Input>::new();
@@ -20,7 +22,7 @@ pub fn link_dialog(state: ScenePageState) -> impl IntoView {
 
     let escaping = window_event_listener(ev::keydown, move |event| {
         if event.key() == "Escape" {
-            state.stop_picking();
+            close();
         }
     });
     on_cleanup(move || escaping.remove());
@@ -28,8 +30,8 @@ pub fn link_dialog(state: ScenePageState) -> impl IntoView {
     let matching = move || {
         let wanted = finding.get().to_lowercase();
 
-        state
-            .waiting_ideas()
+        waiting
+            .get()
             .into_iter()
             .filter(|idea| idea.shown_as().to_lowercase().contains(wanted.trim()))
             .collect::<Vec<_>>()
@@ -37,7 +39,7 @@ pub fn link_dialog(state: ScenePageState) -> impl IntoView {
 
     html::div()
         .class("overlay")
-        .on(ev::click, move |_| state.stop_picking())
+        .on(ev::click, move |_| close())
         .child(
             html::div()
                 .class("dialog")
@@ -61,7 +63,7 @@ pub fn link_dialog(state: ScenePageState) -> impl IntoView {
                         let found = matching();
 
                         if found.is_empty() {
-                            let why = match state.waiting_ideas().is_empty() {
+                            let why = match waiting.with(Vec::is_empty) {
                                 true => "Every idea in this project is already linked.",
                                 false => "No idea matches.",
                             };
@@ -83,14 +85,14 @@ pub fn link_dialog(state: ScenePageState) -> impl IntoView {
                     html::div().class("dialog-actions").child((
                         html::button()
                             .r#type("button")
-                            .on(ev::click, move |_| state.stop_picking())
+                            .on(ev::click, move |_| close())
                             .child("Cancel"),
                         html::button()
                             .r#type("button")
                             .disabled(move || chosen.with(Vec::is_empty))
                             .on(ev::click, move |_| {
-                                state.link(chosen.get_untracked());
-                                state.stop_picking();
+                                link(chosen.get_untracked());
+                                close();
                             })
                             .child(move || match chosen.with(Vec::len) {
                                 0 | 1 => "Link".to_owned(),

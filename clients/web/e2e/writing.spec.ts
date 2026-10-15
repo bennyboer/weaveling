@@ -945,7 +945,11 @@ test("a scene taken out of the book leaves the flow but is kept", async ({
 
   await expect(scene(page, first)).toHaveCount(0);
   await expect(scene(page, second)).toBeVisible();
-  expect(await sceneOrder(page)).toEqual([["Part One", [second]]]);
+  await expect
+    .poll(() => sceneOrder(page), {
+      message: "the flow lets go of the scene before the server has it out",
+    })
+    .toEqual([["Part One", [second]]]);
   expect((await sceneOnServer(page, first)).status()).toBe(200);
 });
 
@@ -2891,12 +2895,17 @@ test("a scene renamed in the margin is named so in the open tray", async ({
   await expect(trayTitle(page)).toHaveValue("Renamed");
 });
 
-async function anIdeaLinkedTo(page: Page, scene: string, title: string) {
+async function anIdea(page: Page, title: string) {
   const captured = await page.request.post(`${API}/ideas`, {
     data: { project: projectOf(page), title },
   });
   expect(captured.status()).toBe(201);
-  const { id } = await captured.json();
+
+  return (await captured.json()).id as string;
+}
+
+async function anIdeaLinkedTo(page: Page, scene: string, title: string) {
+  const id = await anIdea(page, title);
   const linked = await page.request.post(`${API}/scenes/${scene}/ideas`, {
     data: { idea: id },
   });
@@ -2975,5 +2984,75 @@ test("the tray's ideas follow the cursor to the next scene, and a scene without 
   await scene(page, second).click();
 
   await expect(drawnFrom(page)).toHaveCount(0);
+  await expect(sceneTray(page)).toContainText("No ideas linked yet.");
+});
+
+const linkDialog = (page: Page) =>
+  page.getByRole("dialog", { name: "Link ideas" });
+
+test("ideas linked from the tray are listed in the order they were picked, and kept", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayLinking");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  const loom = await anIdea(page, "The loom remembers");
+  await anIdea(page, "A war down the valley");
+  const winter = await anIdea(page, "Winter comes early");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+
+  await sceneTray(page).getByRole("button", { name: "Link an idea" }).click();
+  await linkDialog(page).getByLabel("Winter comes early").check();
+  await linkDialog(page).getByLabel("The loom remembers").check();
+  await linkDialog(page).getByRole("button", { name: "Link 2" }).click();
+
+  await expect(linkDialog(page)).toBeHidden();
+  await expect(drawnFrom(page).getByRole("link")).toHaveText([
+    "Winter comes early",
+    "The loom remembers",
+  ]);
+  await expect
+    .poll(
+      async () =>
+        (await (await page.request.get(`${API}/scenes/${first}`)).json()).ideas,
+    )
+    .toEqual([winter, loom]);
+});
+
+test("the tray's dialog offers only ideas the scene does not draw on yet", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayLinkingOffers");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await anIdeaLinkedTo(page, first, "The loom remembers");
+  await anIdea(page, "A war down the valley");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+
+  await sceneTray(page).getByRole("button", { name: "Link an idea" }).click();
+
+  await expect(
+    linkDialog(page).getByRole("list", { name: "Ideas to link" }),
+  ).toHaveText("A war down the valley");
+});
+
+test("Escape closes the tray's dialog and leaves the tray open", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayLinkingEscape");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await anIdea(page, "The loom remembers");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+  await sceneTray(page).getByRole("button", { name: "Link an idea" }).click();
+  await expect(linkDialog(page)).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(linkDialog(page)).toBeHidden();
+  await expect(sceneTray(page)).toBeVisible();
   await expect(sceneTray(page)).toContainText("No ideas linked yet.");
 });

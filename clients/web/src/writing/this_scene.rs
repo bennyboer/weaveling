@@ -6,6 +6,7 @@ use leptos_router::components::A;
 use crate::icons::{Icon, mark};
 use crate::ideas::model::IdeaId;
 use crate::route;
+use crate::scenes::link_dialog::link_dialog;
 use crate::scenes::model::SceneId;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -153,6 +154,11 @@ fn drawn_from(
                 )
                 .into_any(),
         },
+        html::button()
+            .r#type("button")
+            .class("link-an-idea")
+            .on(ev::click, move |_| state.scene_ideas.start_picking())
+            .child((mark(Icon::Plus), "Link an idea")),
     ))
 }
 
@@ -182,4 +188,27 @@ fn linked_idea(
             })
             .child(mark(Icon::Remove)),
     ))
+}
+
+pub fn ideas_to_link(state: WriteViewState) -> impl IntoView {
+    let tray = state.scene_tray;
+    let ideas = state.scene_ideas;
+
+    move || {
+        ideas.is_picking().then(|| {
+            link_dialog(
+                Signal::derive(move || {
+                    tray.scene()
+                        .map(|scene| ideas.waiting_for(&scene))
+                        .unwrap_or_default()
+                }),
+                move |chosen| {
+                    if let Some(scene) = tray.scene_untracked() {
+                        ideas.link(scene, chosen);
+                    }
+                },
+                move || ideas.stop_picking(),
+            )
+        })
+    }
 }

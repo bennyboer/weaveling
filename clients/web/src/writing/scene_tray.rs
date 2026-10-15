@@ -28,6 +28,10 @@ impl SceneTray {
         self.scene.get()
     }
 
+    pub fn scene_untracked(self) -> Option<SceneId> {
+        self.scene.get_untracked()
+    }
+
     pub fn follow(self, scene: SceneId) {
         if self
             .scene
