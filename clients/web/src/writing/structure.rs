@@ -254,6 +254,16 @@ impl Structure {
     }
 
     pub fn bring_back(self, scene: SceneId, to: SectionId, after: Option<SceneId>) {
+        self.bring_back_then(scene, to, after, || {});
+    }
+
+    pub fn bring_back_then(
+        self,
+        scene: SceneId,
+        to: SectionId,
+        after: Option<SceneId>,
+        then: impl FnOnce() + 'static,
+    ) {
         let Some(outline) = self.id() else {
             return;
         };
@@ -262,7 +272,10 @@ impl Structure {
             let behind = after.map(Attachment::Scene);
 
             match service::attach(&outline, &Attachment::Scene(scene), &to, behind).await {
-                Ok(placed) => self.take(placed),
+                Ok(placed) => {
+                    self.take(placed);
+                    then();
+                }
                 Err(failure) => self.problems.report(failure),
             }
         });

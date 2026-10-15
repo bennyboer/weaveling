@@ -3167,20 +3167,26 @@ test("the tray names a scene outside the book", async ({ page }) => {
   await expect(trayTitle(page)).toHaveValue("The cut scene");
 });
 
-test("with every scene in the book, the other side says so", async ({
+test("with every scene in the book, the switch stays out of the way and the other side says so", async ({
   page,
 }) => {
   await aNewProject(page, "NoLoose");
   await aBookWithScenes(page, { "Part One": 1 });
   await openTheWritingView(page);
+  await expect(flow(page).locator(".scene")).toHaveCount(1);
+  await expect(sides(page)).toHaveCount(0);
 
-  await openTheLooseSide(page);
+  await page.goto(page.url().replace(/\/write$/, "/write/loose"));
 
   await expect(flow(page)).toContainText("Every scene is in the book.");
   await expect(flow(page).locator(".scene")).toHaveCount(0);
+  await expect(
+    sides(page),
+    "on the other side the switch is the only way back",
+  ).toBeVisible();
 });
 
-test("a scene outside the book offers no way out of the book, and Enter twice begins nothing", async ({
+test("a scene outside the book is offered its own ways, and Enter twice begins nothing", async ({
   page,
 }) => {
   await aNewProject(page, "LooseMenu");
@@ -3199,7 +3205,7 @@ test("a scene outside the book offers no way out of the book, and Enter twice be
   await expect(
     flow(page).getByRole("menuitem"),
     "taking out of the book means nothing for a scene not in it",
-  ).toHaveText(["Rename"]);
+  ).toHaveText(["Rename", "Bring into the book…", "Delete scene"]);
   await expect(flow(page).locator(".scene")).toHaveCount(1);
   await expect(
     scene(page, loose).locator("p"),
@@ -3229,4 +3235,81 @@ test("writing outside the book leaves where you left off in the book alone", asy
     .click();
 
   await expect(scene(page, second)).toBeFocused();
+});
+
+const placingDialog = (page: Page) =>
+  page.getByRole("dialog", { name: "Bring into the book" });
+
+test("a scene outside the book is brought into the section chosen, and the cursor lands in it", async ({
+  page,
+}) => {
+  await aNewProject(page, "BringingIn");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  const loose = await aLooseScene(page);
+  await titled(page, loose, "The cut scene");
+  await openTheWritingView(page);
+  await openTheLooseSide(page);
+  await sceneActions(page, loose).click();
+  await menuItem(page, "Bring into the book…").click();
+
+  await expect(placingDialog(page)).toContainText(
+    "“The cut scene” goes at the end of the section you choose.",
+  );
+  await expect(
+    placingDialog(page)
+      .getByRole("list", { name: "Sections of the book" })
+      .getByRole("button"),
+  ).toHaveText(["Part One", "Part Two"]);
+  await placingDialog(page).getByRole("button", { name: "Part Two" }).click();
+
+  await expect(page).toHaveURL(/\/write$/);
+  await expect(scene(page, loose)).toBeFocused();
+  await expect
+    .poll(() => sceneOrder(page))
+    .toEqual([
+      ["Part One", scenes["Part One"]],
+      ["Part Two", [...scenes["Part Two"], loose]],
+    ]);
+  await expect(
+    sides(page),
+    "with the last scene brought in, nothing is left outside the book",
+  ).toHaveCount(0);
+});
+
+test("a scene outside the book is deleted after asking", async ({ page }) => {
+  await aNewProject(page, "LooseDelete");
+  await aBookWithScenes(page, { "Part One": 1 });
+  const loose = await aLooseScene(page);
+  await openTheWritingView(page);
+  await openTheLooseSide(page);
+  await sceneActions(page, loose).click();
+  await menuItem(page, "Delete scene").click();
+
+  await asked(page).getByRole("button", { name: "Delete" }).click();
+
+  await expect(scene(page, loose)).toHaveCount(0);
+  await expect(flow(page)).toContainText("Every scene is in the book.");
+  await expect(sides(page)).toBeVisible();
+  await expect
+    .poll(async () => (await sceneOnServer(page, loose)).status())
+    .toBe(404);
+});
+
+test("Escape in the section dialog leaves the scene outside the book", async ({
+  page,
+}) => {
+  await aNewProject(page, "BringingInEscape");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const loose = await aLooseScene(page);
+  await openTheWritingView(page);
+  await openTheLooseSide(page);
+  await sceneActions(page, loose).click();
+  await menuItem(page, "Bring into the book…").click();
+  await expect(placingDialog(page)).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(placingDialog(page)).toBeHidden();
+  await expect(scene(page, loose)).toBeVisible();
+  expect(await sceneOrder(page)).toEqual([["Part One", scenes["Part One"]]]);
 });

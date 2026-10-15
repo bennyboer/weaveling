@@ -1,0 +1,96 @@
+use leptos::prelude::*;
+use leptos::{IntoView, ev, html};
+use leptos_router::hooks::use_navigate;
+
+use crate::outline::model::Section;
+use crate::route;
+use crate::scenes::model::SceneId;
+use crate::writing::write_view_state::WriteViewState;
+
+pub fn placing(state: WriteViewState, project: String) -> impl IntoView {
+    let project = StoredValue::new(project);
+
+    move || {
+        state
+            .margin
+            .placing()
+            .map(|scene| section_chooser(scene, project, state))
+    }
+}
+
+fn section_chooser(
+    scene: SceneId,
+    project: StoredValue<String>,
+    state: WriteViewState,
+) -> impl IntoView {
+    let named = untrack(|| state.labels.of_scene(&scene)).shown;
+    let told = match named.trim() {
+        "" => "The scene goes at the end of the section you choose.".to_owned(),
+        named => format!("“{named}” goes at the end of the section you choose."),
+    };
+
+    html::div()
+        .class("overlay")
+        .on(ev::click, move |_| state.margin.return_to_writing())
+        .child(
+            html::div()
+                .class("dialog placing")
+                .role("dialog")
+                .attr("aria-modal", "true")
+                .attr("aria-label", "Bring into the book")
+                .on(ev::click, |event| event.stop_propagation())
+                .child((
+                    html::h2().child("Bring into the book"),
+                    html::p().child(told),
+                    html::ul()
+                        .class("sections")
+                        .attr("aria-label", "Sections of the book")
+                        .child(
+                            untrack(|| state.structure.sections())
+                                .into_iter()
+                                .map(|(depth, section)| {
+                                    section_choice(depth, section, scene.clone(), project, state)
+                                })
+                                .collect::<Vec<_>>(),
+                        ),
+                    html::div().class("dialog-actions").child(
+                        html::button()
+                            .on(ev::click, move |_| state.margin.return_to_writing())
+                            .child("Cancel"),
+                    ),
+                )),
+        )
+}
+
+fn section_choice(
+    depth: usize,
+    section: Section,
+    scene: SceneId,
+    project: StoredValue<String>,
+    state: WriteViewState,
+) -> impl IntoView {
+    let navigate = use_navigate();
+    let titled = match section.title.trim() {
+        "" => "Untitled section".to_owned(),
+        title => title.to_owned(),
+    };
+    let to = section.id.clone();
+
+    html::li().style(("--depth", depth.to_string())).child(
+        html::button()
+            .r#type("button")
+            .on(ev::click, move |_| {
+                let after = untrack(|| state.structure.scenes_of(&to)).last().cloned();
+                let at = project.with_value(|project| route::writing_at(project, &scene));
+                let navigate = navigate.clone();
+
+                state.margin.return_to_writing();
+                state
+                    .structure
+                    .bring_back_then(scene.clone(), to.clone(), after, move || {
+                        navigate(&at, Default::default())
+                    });
+            })
+            .child(titled),
+    )
+}

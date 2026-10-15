@@ -3,6 +3,7 @@ use leptos::{IntoView, ev, html};
 
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
+use crate::writing::side::Side;
 use crate::writing::write_view_state::WriteViewState;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -74,7 +75,10 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String, &'
 
 fn answered(question: Asking, state: WriteViewState) {
     match question {
-        Asking::DeleteScene(scene) => state.structure.delete(scene),
+        Asking::DeleteScene(scene) => match state.side {
+            Side::Book => state.structure.delete(scene),
+            Side::Loose => state.loose.delete(scene),
+        },
         Asking::RemoveSection(section) => state.structure.remove(section),
     }
 }

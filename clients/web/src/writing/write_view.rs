@@ -21,6 +21,7 @@ use crate::writing::menus::{
     book_edge, insertion, open_menu_where_writing, scene_margin, section_margin,
 };
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
+use crate::writing::placing::placing;
 use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
 use crate::writing::side::Side;
 use crate::writing::status_note::status_note;
@@ -32,6 +33,7 @@ use crate::writing::write_view_state::WriteViewState;
 pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> impl IntoView {
     let state = WriteViewState::open(&route::project_id(&project), side);
     let switching = project.clone();
+    let placed_from = project.clone();
     let segment = project.clone();
     let open = Memo::new(move |_| state.structure.is_open());
     let unshaped = Memo::new(move |_| state.structure.is_unshaped());
@@ -106,7 +108,12 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
                         .child(failure.to_string())
                 })
             },
-            side_switch(switching, state),
+            move || {
+                let anything_outside = !state.loose.in_order().is_empty();
+
+                (side == Side::Loose || anything_outside)
+                    .then(|| side_switch(switching.clone(), state))
+            },
             move || match side {
                 Side::Book => (
                     unshaped.get().then(|| first_heading(state)),
@@ -124,6 +131,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         status_note(state),
         this_scene(state, segment),
         ideas_to_link(state),
+        placing(state, placed_from),
     )
 }
 

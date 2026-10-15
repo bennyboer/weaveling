@@ -8,6 +8,7 @@ mod loose_scenes;
 mod margin;
 mod menus;
 mod opening;
+mod placing;
 mod problems;
 mod saving;
 mod scene_ideas;

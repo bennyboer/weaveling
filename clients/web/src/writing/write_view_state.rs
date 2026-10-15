@@ -45,7 +45,7 @@ impl WriteViewState {
         let saving = Saving::nothing();
         let structure = Structure::open(project, problems, saving);
         let viewport = Viewport::around_the_window(saving);
-        let loose = LooseScenes::of(structure);
+        let loose = LooseScenes::of(structure, problems, saving);
         let walk = Walk::through(structure, viewport, side, loose);
 
         let state = Self {

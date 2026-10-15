@@ -32,6 +32,7 @@ pub struct Margin {
     renaming: RwSignal<Option<SceneId>>,
     asking: RwSignal<Option<Asking>>,
     bringing_back: RwSignal<Option<Landing>>,
+    placing: RwSignal<Option<SceneId>>,
     writing: StoredValue<Option<HtmlElement>, LocalStorage>,
 }
 
@@ -42,6 +43,7 @@ impl Margin {
             renaming: RwSignal::new(None),
             asking: RwSignal::new(None),
             bringing_back: RwSignal::new(None),
+            placing: RwSignal::new(None),
             writing: StoredValue::new_local(None),
         }
     }
@@ -119,6 +121,15 @@ impl Margin {
         self.asking.set(Some(question));
     }
 
+    pub fn placing(self) -> Option<SceneId> {
+        self.placing.get()
+    }
+
+    pub fn place(self, scene: SceneId) {
+        self.close();
+        self.placing.set(Some(scene));
+    }
+
     pub fn landing(self) -> Option<Landing> {
         self.bringing_back.get()
     }
@@ -135,6 +146,9 @@ impl Margin {
         }
         if self.bringing_back.with_untracked(Option::is_some) {
             self.bringing_back.set(None);
+        }
+        if self.placing.with_untracked(Option::is_some) {
+            self.placing.set(None);
         }
         self.refocus_writing();
     }
