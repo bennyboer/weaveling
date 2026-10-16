@@ -3,7 +3,6 @@ mod idea;
 mod ideas;
 mod missing;
 mod outline;
-mod scene;
 mod workspace;
 mod write;
 
@@ -17,7 +16,6 @@ use crate::app::idea::IdeaPage;
 use crate::app::ideas::IdeasPage;
 use crate::app::missing::MissingPage;
 use crate::app::outline::OutlinePage;
-use crate::app::scene::ScenePage;
 use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
 use crate::app::write::{LooseScenesPage, WritePage};
 use crate::projects::overlays::Overlays;
@@ -49,10 +47,6 @@ pub fn App() -> impl IntoView {
                 <Route path=path!("/projects/:project/write") view=WritePage />
                 <Route path=path!("/projects/:project/write/loose") view=LooseScenesPage />
                 <Route path=path!("/projects/:project/ideas/:idea") view=IdeaPage />
-                <Route
-                    path=path!("/projects/:project/scenes/:scene")
-                    view=ScenePage
-                />
             </Routes>
             {status_bar()}
         </Router>

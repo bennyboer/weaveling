@@ -2493,6 +2493,12 @@ test("another author's cursor shows in the scene they are writing in", async ({
   await expect(
     flow(page).locator(`[data-scene="${first}"] .ProseMirror-yjs-cursor`),
   ).toHaveCount(0);
+  await expect(
+    flow(page).locator(
+      `[data-scene="${second}"] .ProseMirror-yjs-cursor > div`,
+    ),
+    "the name above another author's cursor floats over the text rather than pushing it apart",
+  ).toHaveCSS("position", "absolute");
   await other.close();
 });
 
@@ -3437,4 +3443,97 @@ test("the scenes of a section removed from the book show up outside it at once",
   ).toContainText("1");
   await openTheLooseSide(page);
   await expect(scene(page, begun)).toBeVisible();
+});
+
+test("two tabs writing in one scene converge", async ({ page, context }) => {
+  await aNewProject(page, "Converge");
+  const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await openTheWritingView(page);
+  const second = await context.newPage();
+  await second.goto(page.url());
+  await expect(scene(second, only)).toBeVisible();
+
+  await scene(page, only).click();
+  await page.keyboard.type("She threaded the shuttle.");
+  await expect(scene(second, only)).toContainText("She threaded the shuttle.");
+  await scene(second, only).click();
+  await second.keyboard.press("Control+End");
+  await second.keyboard.type(" The loom answered.");
+
+  const written = (tab: Page) =>
+    scene(tab, only).evaluate((editor) => {
+      const copy = editor.cloneNode(true) as HTMLElement;
+      copy
+        .querySelectorAll(".ProseMirror-yjs-cursor")
+        .forEach((cursor) => cursor.remove());
+
+      return copy.textContent;
+    });
+  const woven = "She threaded the shuttle. The loom answered.";
+  await expect.poll(() => written(page)).toBe(woven);
+  await expect.poll(() => written(second)).toBe(woven);
+  await second.close();
+});
+
+test("leaving the writing view closes its connection", async ({ page }) => {
+  const sockets: { isClosed(): boolean }[] = [];
+  page.on("websocket", (socket) => {
+    if (socket.url().endsWith("/api/sync")) {
+      sockets.push(socket);
+    }
+  });
+  await aNewProject(page, "TearDown");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(1);
+  expect(sockets).toHaveLength(1);
+
+  await views(page).getByRole("link", { name: "Board", exact: true }).click();
+
+  await expect.poll(() => sockets[0].isClosed()).toBe(true);
+  await expect(flow(page)).toHaveCount(0);
+});
+
+test("a key pressed right after moving the cursor acts where the cursor now is", async ({
+  page,
+}) => {
+  await aNewProject(page, "Quick");
+  const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await openTheWritingView(page);
+  await scene(page, only).click();
+  await page.keyboard.type("First.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Last.");
+
+  await page.keyboard.press("ArrowUp");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+
+  await expect(
+    scene(page, only).locator("p"),
+    "the browser moves the cursor at once and tells the editor a moment later, so a fast Enter must not split where the cursor was",
+  ).toHaveText(["First.", "", "Last."]);
+});
+
+test("the tray's dialog finds ideas by name", async ({ page }) => {
+  await aNewProject(page, "TrayLinkingFinds");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await anIdea(page, "The loom remembers");
+  await anIdea(page, "A war down the valley");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await sceneTab(page).click();
+  await sceneTray(page).getByRole("button", { name: "Link an idea" }).click();
+
+  await linkDialog(page)
+    .getByRole("searchbox", { name: "Find an idea" })
+    .fill("loom");
+
+  await expect(
+    linkDialog(page).getByRole("list", { name: "Ideas to link" }),
+  ).toHaveText("The loom remembers");
+  await linkDialog(page)
+    .getByRole("searchbox", { name: "Find an idea" })
+    .fill("nothing like it");
+  await expect(linkDialog(page)).toContainText("No idea matches.");
 });
