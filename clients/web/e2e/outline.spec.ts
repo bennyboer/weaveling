@@ -650,6 +650,12 @@ test("a section shows its scenes and its ideas as two groups", async ({
   await placeIdea(page, "The loom remembers", "Chapter 1");
   await page.getByRole("button", { name: "Write in Chapter 1" }).click();
   await expect(page).toHaveURL(/\/write$/);
+  const begun = await page
+    .getByRole("article", { name: "The book" })
+    .locator(".scene[data-scene]")
+    .first()
+    .getAttribute("data-scene");
+  await sceneCatalogued(page, begun!);
 
   await openTheOutline(page);
 

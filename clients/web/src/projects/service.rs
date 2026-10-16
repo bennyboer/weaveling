@@ -22,6 +22,8 @@ pub async fn list() -> Result<Vec<Project>, ApiError> {
 pub async fn create(name: &str) -> Result<Project, ApiError> {
     let payload = CreateProjectRequest {
         name: name.to_owned(),
+        language: None,
+        description: String::new(),
     };
     let response = Request::post(PROJECTS)
         .json(&payload)

@@ -72,6 +72,10 @@ fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {
         ProjectEvent::Renamed(name) => ProjectEventDTO::Renamed {
             name: name.to_string(),
         },
+        ProjectEvent::DetailsChanged(details) => ProjectEventDTO::DetailsChanged {
+            language: details.language.as_ref().map(ToString::to_string),
+            description: details.description.to_string(),
+        },
         ProjectEvent::Deleted => ProjectEventDTO::Deleted,
         ProjectEvent::Snapshotted { .. } => return None,
     })
@@ -82,7 +86,8 @@ mod tests {
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Recorded, Version};
     use messaging::RoutingKey;
-    use projects_contract::{DELETED, RENAMED, STARTED};
+    use projects_contract::{DELETED, DETAILS_CHANGED, RENAMED, STARTED};
+    use projects_core::{BookLanguage, ProjectDescription, ProjectDetails};
     use projects_core::{KIND, ProjectName};
     use serde_json::json;
     use time::{Duration, OffsetDateTime};
@@ -123,6 +128,10 @@ mod tests {
         vec![
             (a_start(), STARTED),
             (ProjectEvent::Renamed(a_name()), RENAMED),
+            (
+                ProjectEvent::DetailsChanged(ProjectDetails::default()),
+                DETAILS_CHANGED,
+            ),
             (ProjectEvent::Deleted, DELETED),
         ]
     }
@@ -173,6 +182,26 @@ mod tests {
     }
 
     #[test]
+    fn changed_details_travel_with_their_language_and_description() {
+        let id = a_project();
+        let details = ProjectDetails {
+            language: Some(BookLanguage::new("de").expect("a plain tag")),
+            description: ProjectDescription::new("A weaver's daughter.").expect("plain"),
+        };
+
+        let body = event_in(&published(&id, ProjectEvent::DetailsChanged(details)))
+            .expect("what we wrote must be readable");
+
+        assert_eq!(
+            body.event.body,
+            ProjectEventDTO::DetailsChanged {
+                language: Some("de".to_owned()),
+                description: "A weaver's daughter.".to_owned(),
+            }
+        );
+    }
+
+    #[test]
     fn the_name_on_the_wire_is_the_name_of_the_event() {
         let id = a_project();
 
@@ -192,6 +221,7 @@ mod tests {
         let id = a_project();
         let snapshot = ProjectEvent::Snapshotted {
             name: a_name(),
+            details: ProjectDetails::default(),
             created_at: at(1_000),
             updated_at: at(2_000),
             deleted: false,

@@ -1,6 +1,7 @@
 use eventsourcing::{Agent, AgentId, Aggregate, AggregateId, Event, EventMetadata, Version};
 use time::{Duration, OffsetDateTime};
 
+use crate::details::{BookLanguage, ProjectDescription, ProjectDetails};
 use crate::name::ProjectName;
 use crate::project::*;
 
@@ -28,7 +29,7 @@ fn stamped(version: u64, occurred_at: OffsetDateTime) -> EventMetadata {
 }
 
 fn a_start() -> ProjectCommand {
-    ProjectCommand::Start(a_name("The Weaver's Apprentice"))
+    ProjectCommand::Start(a_name("The Weaver's Apprentice"), ProjectDetails::default())
 }
 
 fn a_started_project() -> Project {
@@ -178,4 +179,89 @@ fn every_event_says_its_own_name() {
     ] {
         assert_eq!(event.name().as_str(), named);
     }
+}
+
+fn some_details() -> ProjectDetails {
+    ProjectDetails {
+        language: Some(BookLanguage::new("de").expect("a plain tag")),
+        description: ProjectDescription::new("A weaver's daughter, and a war.")
+            .expect("a plain description"),
+    }
+}
+
+#[test]
+fn a_project_started_with_details_has_them_at_once() {
+    assert_eq!(
+        Project::begin(
+            ProjectCommand::Start(a_name("The Weaver's Apprentice"), some_details()),
+            &an_author()
+        )
+        .expect("starting should succeed"),
+        vec![
+            ProjectEvent::Started(a_name("The Weaver's Apprentice")),
+            ProjectEvent::DetailsChanged(some_details()),
+        ]
+    );
+}
+
+#[test]
+fn a_project_started_without_details_is_only_started() {
+    assert_eq!(
+        Project::begin(a_start(), &an_author()).expect("starting should succeed"),
+        vec![ProjectEvent::Started(a_name("The Weaver's Apprentice"))],
+        "no details means no event saying so"
+    );
+}
+
+#[test]
+fn changing_a_project_s_details_moves_when_it_was_updated() {
+    let mut project = a_started_project();
+
+    let events = project
+        .decide(ProjectCommand::ChangeDetails(some_details()), &an_author())
+        .expect("changing the details should succeed");
+    assert_eq!(events, vec![ProjectEvent::DetailsChanged(some_details())]);
+    project.apply(&events[0], &stamped(2, at(2_000)));
+
+    assert_eq!(project.details(), &some_details());
+    assert_eq!(project.updated_at(), at(2_000));
+}
+
+#[test]
+fn changing_a_project_s_details_to_what_they_are_records_nothing() {
+    let mut project = a_started_project();
+    project.apply(
+        &ProjectEvent::DetailsChanged(some_details()),
+        &stamped(2, at(2_000)),
+    );
+
+    assert_eq!(
+        project.decide(ProjectCommand::ChangeDetails(some_details()), &an_author()),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn a_deleted_project_s_details_cannot_change() {
+    let mut project = a_started_project();
+    project.apply(&ProjectEvent::Deleted, &stamped(2, at(2_000)));
+
+    assert_eq!(
+        project.decide(ProjectCommand::ChangeDetails(some_details()), &an_author()),
+        Err(ProjectError::Deleted)
+    );
+}
+
+#[test]
+fn a_project_s_details_survive_its_snapshot() {
+    let mut project = a_started_project();
+    project.apply(
+        &ProjectEvent::DetailsChanged(some_details()),
+        &stamped(2, at(2_000)),
+    );
+
+    let restored = Project::from_first(&project.snapshot(), &stamped(2, at(2_000)))
+        .expect("a snapshot gives birth");
+
+    assert_eq!(restored.details(), &some_details());
 }

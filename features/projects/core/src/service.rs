@@ -8,6 +8,10 @@ use ids::InvalidId;
 use thiserror::Error;
 
 use crate::catalog::{CatalogError, ProjectCatalog, ProjectSummary};
+use crate::details::{
+    BookLanguage, InvalidBookLanguage, InvalidProjectDescription, ProjectDescription,
+    ProjectDetails,
+};
 use crate::id::ProjectId;
 use crate::name::{InvalidProjectName, ProjectName};
 use crate::project::{KIND, Project, ProjectCommand, ProjectError, ProjectEvent};
@@ -18,6 +22,10 @@ pub enum ProjectServiceError {
     InvalidId(#[from] InvalidId),
     #[error(transparent)]
     InvalidName(#[from] InvalidProjectName),
+    #[error(transparent)]
+    InvalidLanguage(#[from] InvalidBookLanguage),
+    #[error(transparent)]
+    InvalidDescription(#[from] InvalidProjectDescription),
     #[error(transparent)]
     Events(#[from] ServiceError<ProjectError>),
     #[error(transparent)]
@@ -48,14 +56,20 @@ impl ProjectService {
         Ok(self.catalog.all().await?)
     }
 
-    pub async fn start(&self, name: &str, agent: &Agent) -> Result<ProjectId, ProjectServiceError> {
+    pub async fn start(
+        &self,
+        name: &str,
+        language: Option<&str>,
+        description: &str,
+        agent: &Agent,
+    ) -> Result<ProjectId, ProjectServiceError> {
         let id = ProjectId::generate(self.clock.now());
 
         let _landed = self
             .events
             .begin(
                 &AggregateId::from(&id),
-                ProjectCommand::Start(ProjectName::new(name)?),
+                ProjectCommand::Start(ProjectName::new(name)?, details(language, description)?),
                 agent,
             )
             .await?;
@@ -94,6 +108,23 @@ impl ProjectService {
         .await
     }
 
+    pub async fn change_details(
+        &self,
+        id: &str,
+        language: Option<&str>,
+        description: &str,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Version, ProjectServiceError> {
+        self.carry_out(
+            id,
+            ProjectCommand::ChangeDetails(details(language, description)?),
+            expected,
+            agent,
+        )
+        .await
+    }
+
     pub async fn delete(
         &self,
         id: &str,
@@ -125,4 +156,17 @@ impl ProjectService {
 
         Ok(landed.version)
     }
+}
+
+fn details(
+    language: Option<&str>,
+    description: &str,
+) -> Result<ProjectDetails, ProjectServiceError> {
+    Ok(ProjectDetails {
+        language: language
+            .filter(|chosen| !chosen.trim().is_empty())
+            .map(BookLanguage::new)
+            .transpose()?,
+        description: ProjectDescription::new(description)?,
+    })
 }

@@ -26,7 +26,7 @@ fn a_service_on(clock: Arc<FixedClock>) -> Wired {
 async fn a_project(wired: &Wired, named: &str) -> String {
     let id = wired
         .projects
-        .start(named, &nobody())
+        .start(named, None, "", &nobody())
         .await
         .expect("starting should succeed")
         .to_string();
@@ -69,7 +69,7 @@ async fn starting_a_project_with_a_blank_name_is_refused_and_writes_nothing() {
 
     let refused = wired
         .projects
-        .start("   ", &nobody())
+        .start("   ", None, "", &nobody())
         .await
         .expect_err("a blank name should be refused");
 

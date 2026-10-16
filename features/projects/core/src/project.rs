@@ -1,9 +1,12 @@
+use std::iter::once;
+
 use eventsourcing::{
     Agent, Aggregate, AggregateId, AggregateType, Event, EventMetadata, EventName, Version,
 };
 use thiserror::Error;
 use time::OffsetDateTime;
 
+use crate::details::ProjectDetails;
 use crate::id::ProjectId;
 use crate::name::ProjectName;
 
@@ -17,13 +20,15 @@ impl From<&ProjectId> for AggregateId {
 
 const STARTED: EventName = EventName::of("STARTED");
 const RENAMED: EventName = EventName::of("RENAMED");
+const DETAILS_CHANGED: EventName = EventName::of("DETAILS_CHANGED");
 const DELETED: EventName = EventName::of("DELETED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectCommand {
-    Start(ProjectName),
+    Start(ProjectName, ProjectDetails),
     Rename(ProjectName),
+    ChangeDetails(ProjectDetails),
     Delete,
 }
 
@@ -31,9 +36,11 @@ pub enum ProjectCommand {
 pub enum ProjectEvent {
     Started(ProjectName),
     Renamed(ProjectName),
+    DetailsChanged(ProjectDetails),
     Deleted,
     Snapshotted {
         name: ProjectName,
+        details: ProjectDetails,
         created_at: OffsetDateTime,
         updated_at: OffsetDateTime,
         deleted: bool,
@@ -43,6 +50,7 @@ pub enum ProjectEvent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {
     name: ProjectName,
+    details: ProjectDetails,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
     deleted: bool,
@@ -63,6 +71,10 @@ impl Project {
         &self.name
     }
 
+    pub fn details(&self) -> &ProjectDetails {
+        &self.details
+    }
+
     pub fn created_at(&self) -> OffsetDateTime {
         self.created_at
     }
@@ -81,6 +93,7 @@ impl Event for ProjectEvent {
         match self {
             Self::Started(..) => STARTED,
             Self::Renamed(..) => RENAMED,
+            Self::DetailsChanged(..) => DETAILS_CHANGED,
             Self::Deleted => DELETED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -104,7 +117,12 @@ impl Aggregate for Project {
 
     fn begin(command: ProjectCommand, _agent: &Agent) -> Result<Vec<ProjectEvent>, ProjectError> {
         match command {
-            ProjectCommand::Start(name) => Ok(vec![ProjectEvent::Started(name)]),
+            ProjectCommand::Start(name, details) => {
+                let detailed = (details != ProjectDetails::default())
+                    .then_some(ProjectEvent::DetailsChanged(details));
+
+                Ok(once(ProjectEvent::Started(name)).chain(detailed).collect())
+            }
             _ => Err(ProjectError::NotStartedYet),
         }
     }
@@ -113,17 +131,20 @@ impl Aggregate for Project {
         match event {
             ProjectEvent::Started(name) => Some(Self {
                 name: name.clone(),
+                details: ProjectDetails::default(),
                 created_at: metadata.occurred_at,
                 updated_at: metadata.occurred_at,
                 deleted: false,
             }),
             ProjectEvent::Snapshotted {
                 name,
+                details,
                 created_at,
                 updated_at,
                 deleted,
             } => Some(Self {
                 name: name.clone(),
+                details: details.clone(),
                 created_at: *created_at,
                 updated_at: *updated_at,
                 deleted: *deleted,
@@ -150,6 +171,13 @@ impl Aggregate for Project {
 
                 Ok(vec![ProjectEvent::Renamed(to)])
             }
+            ProjectCommand::ChangeDetails(details) => {
+                if details == self.details {
+                    return Ok(vec![]);
+                }
+
+                Ok(vec![ProjectEvent::DetailsChanged(details)])
+            }
             ProjectCommand::Delete => Ok(vec![ProjectEvent::Deleted]),
         }
     }
@@ -161,17 +189,23 @@ impl Aggregate for Project {
                 self.name = to.clone();
                 self.updated_at = metadata.occurred_at;
             }
+            ProjectEvent::DetailsChanged(details) => {
+                self.details = details.clone();
+                self.updated_at = metadata.occurred_at;
+            }
             ProjectEvent::Deleted => {
                 self.deleted = true;
                 self.updated_at = metadata.occurred_at;
             }
             ProjectEvent::Snapshotted {
                 name,
+                details,
                 created_at,
                 updated_at,
                 deleted,
             } => {
                 self.name = name.clone();
+                self.details = details.clone();
                 self.created_at = *created_at;
                 self.updated_at = *updated_at;
                 self.deleted = *deleted;
@@ -182,6 +216,7 @@ impl Aggregate for Project {
     fn snapshot(&self) -> ProjectEvent {
         ProjectEvent::Snapshotted {
             name: self.name.clone(),
+            details: self.details.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
             deleted: self.deleted,

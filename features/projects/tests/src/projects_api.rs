@@ -4,7 +4,9 @@ use axum::http::StatusCode;
 use axum::http::header::ETAG;
 use axum_test::TestServer;
 use clock::FixedClock;
-use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
+use projects_contract::{
+    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
+};
 use time::{Duration, OffsetDateTime};
 
 use crate::wiring::{Wired, wired};
@@ -50,6 +52,8 @@ fn a_server_on(clock: Arc<FixedClock>) -> Serving {
 fn named(name: &str) -> CreateProjectRequest {
     CreateProjectRequest {
         name: name.to_owned(),
+        language: None,
+        description: String::new(),
     }
 }
 
@@ -303,4 +307,97 @@ async fn deleting_an_unknown_project_answers_404() {
     let response = server.delete(&format!("/projects/{UNKNOWN_ID}")).await;
 
     response.assert_status(StatusCode::NOT_FOUND);
+}
+
+fn details(language: Option<&str>, description: &str) -> ChangeDetailsRequest {
+    ChangeDetailsRequest {
+        language: language.map(str::to_owned),
+        description: description.to_owned(),
+    }
+}
+
+#[tokio::test]
+async fn a_project_can_be_started_with_its_language_and_a_description() {
+    let server = a_server();
+
+    let response = server
+        .post("/projects")
+        .json(&CreateProjectRequest {
+            name: "Der Webstuhl".to_owned(),
+            language: Some("de".to_owned()),
+            description: "A weaver's daughter, and a war.".to_owned(),
+        })
+        .await;
+
+    response.assert_status(StatusCode::CREATED);
+    let started: ProjectDetailsDTO = response.json();
+    let found: ProjectDetailsDTO = server
+        .get(&format!("/projects/{}", started.id))
+        .await
+        .json();
+    assert_eq!(found.language.as_deref(), Some("de"));
+    assert_eq!(found.description, "A weaver's daughter, and a war.");
+}
+
+#[tokio::test]
+async fn a_project_started_with_a_name_alone_has_no_language_yet() {
+    let server = a_server();
+    let started = a_project_named(&server, "Working Title").await;
+
+    let found: ProjectDetailsDTO = server
+        .get(&format!("/projects/{}", started.id))
+        .await
+        .json();
+
+    assert_eq!(found.language, None);
+    assert_eq!(found.description, "");
+}
+
+#[tokio::test]
+async fn a_project_s_language_and_description_can_be_changed() {
+    let server = a_server();
+    let started = a_project_named(&server, "Working Title").await;
+
+    let response = server
+        .put(&format!("/projects/{}/details", started.id))
+        .json(&details(Some("EN-gb"), "  A crown of straw.  "))
+        .await;
+
+    response.assert_status(StatusCode::OK);
+    let changed: ProjectDetailsDTO = response.json();
+    assert_eq!(
+        changed.language.as_deref(),
+        Some("en-GB"),
+        "a language is kept in the case `lang` expects"
+    );
+    assert_eq!(changed.description, "A crown of straw.");
+    assert_eq!(changed.version, 2);
+}
+
+#[tokio::test]
+async fn what_is_not_a_language_or_too_long_a_description_is_refused() {
+    let server = a_server();
+    let started = a_project_named(&server, "Working Title").await;
+
+    for refused in [
+        details(Some("deutsch"), ""),
+        details(None, &"a".repeat(4_097)),
+    ] {
+        server
+            .put(&format!("/projects/{}/details", started.id))
+            .json(&refused)
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+    }
+}
+
+#[tokio::test]
+async fn changing_the_details_of_an_unknown_project_answers_404() {
+    let server = a_server();
+
+    server
+        .put(&format!("/projects/{UNKNOWN_ID}/details"))
+        .json(&details(Some("de"), ""))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }

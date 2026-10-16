@@ -36,7 +36,7 @@ async fn listed(wired: &Wired) -> Vec<String> {
 async fn a_started_project(wired: &Wired) -> ProjectId {
     let id = wired
         .projects
-        .start("The Weaver's Apprentice", &an_author())
+        .start("The Weaver's Apprentice", None, "", &an_author())
         .await
         .expect("starting should succeed");
     wired.settle().await;

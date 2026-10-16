@@ -4,10 +4,12 @@ use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, put};
 use clock::text::serialize;
 use eventsourcing::{Agent, Standing, Version};
-use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
+use projects_contract::{
+    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
+};
 use projects_core::{Project, ProjectService, ProjectServiceError, ProjectSummary};
 use serving::{Unreadable, demanded, refusal, tag};
 
@@ -15,6 +17,7 @@ pub fn router(projects: ProjectService) -> Router {
     Router::new()
         .route("/projects", get(list).post(create))
         .route("/projects/{id}", get(find).patch(rename).delete(remove))
+        .route("/projects/{id}/details", put(change_details))
         .with_state(projects)
 }
 
@@ -39,7 +42,12 @@ async fn create(
     Json(request): Json<CreateProjectRequest>,
 ) -> Result<Response, ApiError> {
     let id = projects
-        .start(&request.name, &nobody_yet())
+        .start(
+            &request.name,
+            request.language.as_deref(),
+            &request.description,
+            &nobody_yet(),
+        )
         .await?
         .to_string();
     let started = projects.get(&id).await?;
@@ -64,6 +72,25 @@ async fn rename(
 ) -> Result<Response, ApiError> {
     projects
         .rename(&id, &request.name, expected(&headers)?, &nobody_yet())
+        .await?;
+
+    Ok(to_response(StatusCode::OK, &id, &projects.get(&id).await?))
+}
+
+async fn change_details(
+    State(projects): State<ProjectService>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(request): Json<ChangeDetailsRequest>,
+) -> Result<Response, ApiError> {
+    projects
+        .change_details(
+            &id,
+            request.language.as_deref(),
+            &request.description,
+            expected(&headers)?,
+            &nobody_yet(),
+        )
         .await?;
 
     Ok(to_response(StatusCode::OK, &id, &projects.get(&id).await?))
@@ -95,10 +122,12 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Re
     (
         status,
         [(ETAG, tag(standing.version))],
-        Json(ProjectDTO {
+        Json(ProjectDetailsDTO {
             id: id.to_owned(),
             version: standing.version.count(),
             name: project.name().to_string(),
+            language: project.details().language.as_ref().map(ToString::to_string),
+            description: project.details().description.to_string(),
             created_at: serialize(project.created_at()),
             updated_at: serialize(project.updated_at()),
         }),
@@ -135,6 +164,12 @@ impl IntoResponse for ApiError {
         let (status, message) = match refused {
             ProjectServiceError::InvalidId(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
             ProjectServiceError::InvalidName(reason) => {
+                (StatusCode::BAD_REQUEST, reason.to_string())
+            }
+            ProjectServiceError::InvalidLanguage(reason) => {
+                (StatusCode::BAD_REQUEST, reason.to_string())
+            }
+            ProjectServiceError::InvalidDescription(reason) => {
                 (StatusCode::BAD_REQUEST, reason.to_string())
             }
             ProjectServiceError::Events(events) => refusal(&events),
