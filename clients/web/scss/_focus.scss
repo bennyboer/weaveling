@@ -70,8 +70,9 @@ body.focused {
   transition: opacity 250ms;
 }
 
-body.focused .writing:has(.where-written) {
+body.focused .writing:has(.ProseMirror-focused > .where-written) {
   .ProseMirror > :not(.where-written),
+  .ProseMirror:not(.ProseMirror-focused) > .where-written,
   .heading,
   .scene-label,
   .between-scenes {

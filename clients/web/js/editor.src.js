@@ -1,5 +1,5 @@
 import * as Y from "yjs";
-import { EditorState, Plugin, PluginKey, Selection, TextSelection } from "prosemirror-state";
+import { EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { Schema } from "prosemirror-model";
 import { schema as basic } from "prosemirror-schema-basic";
@@ -19,38 +19,19 @@ const schema = new Schema({
   marks: basic.spec.marks,
 });
 
-const WRITTEN_IN = new PluginKey("written-in");
-
 function markingWhereWritten() {
   return new Plugin({
-    key: WRITTEN_IN,
-    state: {
-      init: () => false,
-      apply: (tr, focused) => tr.getMeta(WRITTEN_IN) ?? focused,
-    },
     props: {
       decorations(state) {
         const { $head } = state.selection;
 
-        if (!WRITTEN_IN.getState(state) || $head.depth < 1) {
+        if ($head.depth < 1) {
           return null;
         }
 
         return DecorationSet.create(state.doc, [
           Decoration.node($head.before(1), $head.after(1), { class: "where-written" }),
         ]);
-      },
-      handleDOMEvents: {
-        focus: (view) => {
-          view.dispatch(view.state.tr.setMeta(WRITTEN_IN, true));
-
-          return false;
-        },
-        blur: (view) => {
-          view.dispatch(view.state.tr.setMeta(WRITTEN_IN, false));
-
-          return false;
-        },
       },
     },
   });
