@@ -3681,3 +3681,31 @@ test("a book without a language leaves the page's own", async ({ page }) => {
 
   await expect(flow(page)).not.toHaveAttribute("lang", /.+/);
 });
+
+test("a project's details are fetched once while moving between its views", async ({
+  page,
+}) => {
+  await aNewProject(page, "OnceOnly");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await theBookIsIn(page, "de");
+  const asked: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.method() === "GET" &&
+      /\/api\/projects\/[^/?]+$/.test(request.url())
+    ) {
+      asked.push(request.url());
+    }
+  });
+
+  await openTheWritingView(page);
+  await expect(flow(page)).toHaveAttribute("lang", "de");
+  await openTheOutline(page);
+  await openTheWritingView(page);
+  await expect(flow(page)).toHaveAttribute("lang", "de");
+
+  expect(
+    asked,
+    "the project being worked in is held while its views come and go",
+  ).toHaveLength(1);
+});

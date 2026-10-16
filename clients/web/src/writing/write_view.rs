@@ -8,6 +8,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, FocusEvent, KeyboardEvent};
 
 use crate::outline::model::{Section, SectionId};
+use crate::projects::open_project::OpenProject;
 use crate::route;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::SyncConnection;
@@ -33,6 +34,13 @@ use crate::writing::write_view_state::WriteViewState;
 #[component]
 pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> impl IntoView {
     let state = WriteViewState::open(&route::project_id(&project), side);
+    let open_project = expect_context::<OpenProject>();
+    open_project.open(&route::project_id(&project));
+    Effect::new(move || {
+        if let Some(failure) = open_project.refused() {
+            state.problems.report(failure);
+        }
+    });
     let switching = project.clone();
     let placed_from = project.clone();
     let segment = project.clone();
@@ -101,7 +109,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     let book_view = html::article()
         .class("writing")
         .attr("aria-label", "The book")
-        .attr("lang", move || state.book_language.get())
+        .attr("lang", move || open_project.language())
         .attr("spellcheck", move || {
             state.settings.checks_spelling().to_string()
         })

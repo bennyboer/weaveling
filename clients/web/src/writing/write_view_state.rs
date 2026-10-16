@@ -2,7 +2,6 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::projects::model::ProjectId;
-use crate::projects::service as projects;
 use crate::scenes::prose::SyncConnection;
 use crate::scenes::service as scenes;
 use crate::statistics::service as statistics;
@@ -37,7 +36,6 @@ pub struct WriteViewState {
     pub scene_tray: SceneTray,
     pub scene_ideas: SceneIdeas,
     pub settings: Settings,
-    pub book_language: RwSignal<Option<String>>,
     pub side: Side,
     pub loose: LooseScenes,
     pub connection: StoredValue<SyncConnection, LocalStorage>,
@@ -66,13 +64,11 @@ impl WriteViewState {
             scene_tray: SceneTray::as_last_left(),
             scene_ideas: SceneIdeas::of(project, problems, saving),
             settings: Settings::as_last_left(),
-            book_language: RwSignal::new(None),
             side,
             loose,
             connection: StoredValue::new_local(SyncConnection::new()),
         };
         let listing = project.clone();
-        let describing = project.clone();
         let counting = project.clone();
 
         spawn_local(async move {
@@ -81,13 +77,6 @@ impl WriteViewState {
                     state.labels.remember(&listed);
                     state.loose.remember(&listed);
                 }
-                Err(failure) => state.problems.report(failure),
-            }
-        });
-        spawn_local(async move {
-            // TODO [REVIEW] We should probably save the project globally when being in a project, so we don't have to look it up everytime a view needs it
-            match projects::details(&describing).await {
-                Ok(described) => state.book_language.set(described.language),
                 Err(failure) => state.problems.report(failure),
             }
         });
