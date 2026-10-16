@@ -18,6 +18,12 @@ pub struct ProjectDetails {
     pub description: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DescribedProject {
+    pub name: String,
+    pub details: ProjectDetails,
+}
+
 impl From<String> for ProjectId {
     fn from(given: String) -> Self {
         Self(given)

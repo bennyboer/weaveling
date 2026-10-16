@@ -1,9 +1,11 @@
 pub mod confirm_delete;
+pub mod details_form;
 pub mod languages;
 pub mod model;
 pub mod new_project;
 pub mod open_project;
 pub mod overlays;
+pub mod project_details;
 pub mod row;
 pub mod service;
 pub mod workspace;

@@ -3657,6 +3657,7 @@ async function theBookIsIn(page: Page, language: string | null) {
     { data: { language, description: "" } },
   );
   expect(changed.ok()).toBe(true);
+  await page.reload();
 }
 
 test("the book is marked with its language, so the browser checks it in that language", async ({
@@ -3687,7 +3688,6 @@ test("a project's details are fetched once while moving between its views", asyn
 }) => {
   await aNewProject(page, "OnceOnly");
   await aBookWithScenes(page, { "Part One": 1 });
-  await theBookIsIn(page, "de");
   const asked: string[] = [];
   page.on("request", (request) => {
     if (
@@ -3697,6 +3697,7 @@ test("a project's details are fetched once while moving between its views", asyn
       asked.push(request.url());
     }
   });
+  await theBookIsIn(page, "de");
 
   await openTheWritingView(page);
   await expect(flow(page)).toHaveAttribute("lang", "de");

@@ -3,6 +3,8 @@ use leptos::prelude::*;
 use leptos::{IntoView, view};
 use leptos_router::components::A;
 
+use crate::projects::open_project::OpenProject;
+use crate::projects::project_details::project_details;
 use crate::refusals::alarm::{AlarmState, alarm};
 use crate::route;
 use crate::theme;
@@ -81,9 +83,19 @@ fn whereabouts(inside: Inside) -> impl IntoView {
         named,
         here,
     } = inside;
+    let open_project = expect_context::<OpenProject>();
+    let id = route::project_id(&project);
+    open_project.open(&id);
+    let shown = Signal::derive(move || open_project.name().unwrap_or_else(|| named.clone()));
 
     (
-        html::h1().class("whose").child(html::span().child(named)),
+        html::div().class("whose-row").child((
+            html::h1()
+                .class("whose")
+                .attr("title", shown)
+                .child(html::span().child(shown)),
+            project_details(id),
+        )),
         html::nav()
             .class("views")
             .attr("aria-label", "Views")

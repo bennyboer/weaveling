@@ -33,18 +33,62 @@
     }
   }
 
-  .whose,
+  .whose-row,
   .views {
     padding-left: 1.5rem;
     border-left: 1px solid var(--line);
+  }
+
+  .whose-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .project-details-button {
+    display: grid;
+    place-items: center;
+    width: 1.9rem;
+    height: 1.9rem;
+    margin-right: -0.475rem;
+    padding: 0;
+    border: 0;
+    border-radius: 0.4rem;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      color: var(--ink);
+      background: var(--surface);
+    }
+
+    &:disabled {
+      visibility: hidden;
+    }
+
+    svg {
+      width: 0.95rem;
+      height: 0.95rem;
+    }
   }
 
   .whose {
     display: flex;
     align-items: center;
     margin: 0;
+    min-width: 0;
+    max-width: 24rem;
     font: 500 1.15rem/1 var(--heading);
     letter-spacing: 0;
+
+    span {
+      min-width: 0;
+      overflow-x: clip;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
   }
 
   .views {

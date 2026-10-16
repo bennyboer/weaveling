@@ -2,13 +2,13 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::http::ApiError;
-use crate::projects::model::{ProjectDetails, ProjectId};
+use crate::projects::model::{DescribedProject, ProjectId};
 use crate::projects::service;
 
 #[derive(Clone, Copy)]
 pub struct OpenProject {
     project: RwSignal<Option<ProjectId>>,
-    details: RwSignal<Option<ProjectDetails>>,
+    described: RwSignal<Option<DescribedProject>>,
     refused: RwSignal<Option<ApiError>>,
 }
 
@@ -16,7 +16,7 @@ impl OpenProject {
     pub fn none() -> Self {
         Self {
             project: RwSignal::new(None),
-            details: RwSignal::new(None),
+            described: RwSignal::new(None),
             refused: RwSignal::new(None),
         }
     }
@@ -29,7 +29,7 @@ impl OpenProject {
             return;
         }
         self.project.set(Some(project.clone()));
-        self.details.set(None);
+        self.described.set(None);
         self.refused.set(None);
 
         let project = project.clone();
@@ -43,7 +43,7 @@ impl OpenProject {
                 return;
             }
             match found {
-                Ok(described) => self.details.set(Some(described)),
+                Ok(described) => self.described.set(Some(described)),
                 Err(failure) => {
                     self.project.set(None);
                     self.refused.set(Some(failure));
@@ -52,9 +52,25 @@ impl OpenProject {
         });
     }
 
+    pub fn described(self) -> Option<DescribedProject> {
+        self.described.get()
+    }
+
+    pub fn name(self) -> Option<String> {
+        self.described
+            .with(|described| described.as_ref().map(|held| held.name.clone()))
+    }
+
     pub fn language(self) -> Option<String> {
-        self.details
-            .with(|details| details.as_ref().and_then(|held| held.language.clone()))
+        self.described.with(|described| {
+            described
+                .as_ref()
+                .and_then(|held| held.details.language.clone())
+        })
+    }
+
+    pub fn keep(self, described: DescribedProject) {
+        self.described.set(Some(described));
     }
 
     pub fn refused(self) -> Option<ApiError> {

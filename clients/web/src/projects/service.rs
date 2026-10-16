@@ -1,12 +1,12 @@
 use gloo_net::http::Request;
 use projects_contract::{
-    CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
+    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
 };
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::http::{ApiError, checked, parsed};
-use crate::projects::model::{Project, ProjectDetails, ProjectId};
+use crate::projects::model::{DescribedProject, Project, ProjectDetails, ProjectId};
 
 const PROJECTS: &str = "/api/projects";
 const SUBJECT: &str = "project";
@@ -37,17 +37,31 @@ pub async fn create(name: &str, details: &ProjectDetails) -> Result<Project, Api
     as_project(parsed(response, SUBJECT).await?)
 }
 
-pub async fn details(id: &ProjectId) -> Result<ProjectDetails, ApiError> {
+pub async fn details(id: &ProjectId) -> Result<DescribedProject, ApiError> {
     let response = Request::get(&format!("{PROJECTS}/{id}"))
         .send()
         .await
         .map_err(|_| ApiError::Offline)?;
-    let found: ProjectDetailsDTO = parsed(response, SUBJECT).await?;
 
-    Ok(ProjectDetails {
-        language: found.language,
-        description: found.description,
-    })
+    Ok(as_described(parsed(response, SUBJECT).await?))
+}
+
+pub async fn change_details(
+    id: &ProjectId,
+    details: &ProjectDetails,
+) -> Result<DescribedProject, ApiError> {
+    let payload = ChangeDetailsRequest {
+        language: details.language.clone(),
+        description: details.description.clone(),
+    };
+    let response = Request::put(&format!("{PROJECTS}/{id}/details"))
+        .json(&payload)
+        .map_err(|_| ApiError::Unexpected)?
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
+
+    Ok(as_described(parsed(response, SUBJECT).await?))
 }
 
 pub async fn rename(id: &ProjectId, name: &str) -> Result<Project, ApiError> {
@@ -82,4 +96,14 @@ fn as_project(dto: ProjectDTO) -> Result<Project, ApiError> {
         name: dto.name,
         updated_at,
     })
+}
+
+fn as_described(found: ProjectDetailsDTO) -> DescribedProject {
+    DescribedProject {
+        name: found.name,
+        details: ProjectDetails {
+            language: found.language,
+            description: found.description,
+        },
+    }
 }
