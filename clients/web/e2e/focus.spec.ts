@@ -157,3 +157,18 @@ test("focus mode is not kept: a reload or another view leaves it", async ({
   await openTheBoard(page);
   await expect(masthead(page)).toBeVisible();
 });
+
+test("focused, the prose is set larger", async ({ page }) => {
+  const { scenes } = await writingIn(page, "Larger");
+  const size = () =>
+    scene(page, scenes["Part One"][0]).evaluate((prose) =>
+      parseFloat(getComputedStyle(prose).fontSize),
+    );
+  const before = await size();
+
+  await focusButton(page).click();
+
+  expect(await size()).toBeGreaterThan(before);
+  await focusButton(page).click();
+  expect(await size()).toBe(before);
+});

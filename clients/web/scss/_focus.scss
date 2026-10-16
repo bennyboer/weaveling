@@ -32,6 +32,11 @@ body.focused {
     }
   }
 
+  .writing {
+    max-width: 48rem;
+    font-size: 1.45rem;
+  }
+
   .writing .menu-button {
     opacity: 0;
   }
