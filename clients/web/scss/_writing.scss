@@ -384,6 +384,21 @@
     }
   }
 
+  .open-settings {
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      color: var(--ink);
+    }
+  }
+
   .save-state {
     display: flex;
     align-items: center;
@@ -472,5 +487,29 @@ body:has(.alarm) .status-note {
       border-color: var(--line);
       background: var(--raised);
     }
+  }
+}
+
+.dialog.writing-settings .setting {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 0.25rem 0 1.25rem;
+  cursor: pointer;
+
+  input {
+    flex: none;
+    margin-top: 0.3rem;
+  }
+
+  span {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  small {
+    color: var(--muted);
+    font-size: 0.8rem;
   }
 }

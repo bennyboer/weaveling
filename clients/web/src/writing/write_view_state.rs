@@ -14,6 +14,7 @@ use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
 use crate::writing::scene_ideas::SceneIdeas;
 use crate::writing::scene_tray::SceneTray;
+use crate::writing::settings::Settings;
 use crate::writing::side::Side;
 use crate::writing::structure::Structure;
 use crate::writing::viewport::Viewport;
@@ -34,6 +35,7 @@ pub struct WriteViewState {
     pub viewport: Viewport,
     pub scene_tray: SceneTray,
     pub scene_ideas: SceneIdeas,
+    pub settings: Settings,
     pub side: Side,
     pub loose: LooseScenes,
     pub connection: StoredValue<SyncConnection, LocalStorage>,
@@ -61,6 +63,7 @@ impl WriteViewState {
             viewport,
             scene_tray: SceneTray::as_last_left(),
             scene_ideas: SceneIdeas::of(project, problems, saving),
+            settings: Settings::as_last_left(),
             side,
             loose,
             connection: StoredValue::new_local(SyncConnection::new()),

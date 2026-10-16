@@ -23,6 +23,7 @@ pub enum Icon {
     Saving,
     PullOut,
     PushIn,
+    Settings,
 }
 
 pub fn mark(icon: Icon) -> impl IntoView {
@@ -46,6 +47,7 @@ pub fn mark(icon: Icon) -> impl IntoView {
         Icon::Saved => "M20 6 9 17l-5-5",
         Icon::PullOut => "m15 18-6-6 6-6",
         Icon::PushIn => "m9 18 6-6-6-6",
+        Icon::Settings => "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
         Icon::Saving => {
             "M5 22h14M5 2h14M17 22v-4.17a2 2 0 0 0-.59-1.42L12 12l-4.41 4.41A2 2 0 0 0 7 17.83V22M7 2v4.17a2 2 0 0 0 .59 1.42L12 12l4.41-4.41A2 2 0 0 0 17 6.17V2"
         }

@@ -3537,3 +3537,116 @@ test("the tray's dialog finds ideas by name", async ({ page }) => {
     .fill("nothing like it");
   await expect(linkDialog(page)).toContainText("No idea matches.");
 });
+
+const writingSettings = (page: Page) =>
+  page.getByRole("dialog", { name: "Writing settings" });
+
+const checkedForSpelling = (page: Page) =>
+  flow(page)
+    .locator(".scene .ProseMirror, .heading")
+    .evaluateAll((all) => all.map((one) => (one as HTMLElement).spellcheck));
+
+test("scenes are checked for spelling by default, headings never", async ({
+  page,
+}) => {
+  await aNewProject(page, "Spelling");
+  await aBookWithScenes(page, { "Part One": 2 });
+  await openTheWritingView(page);
+  await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(2);
+
+  expect(
+    await flow(page)
+      .locator(".scene .ProseMirror")
+      .evaluateAll((all) => all.map((one) => (one as HTMLElement).spellcheck)),
+  ).toEqual([true, true]);
+  expect(
+    await flow(page)
+      .locator(".heading")
+      .evaluateAll((all) => all.map((one) => (one as HTMLElement).spellcheck)),
+  ).toEqual([false]);
+});
+
+test("spelling switched off in the writing settings stays off for every scene, across a reload", async ({
+  page,
+}) => {
+  await aNewProject(page, "SpellingOff");
+  await aBookWithScenes(page, { "Part One": 2 });
+  await openTheWritingView(page);
+  await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(2);
+
+  await statusNote(page)
+    .getByRole("button", { name: "Writing settings" })
+    .click();
+  await writingSettings(page).getByLabel("Check spelling").uncheck();
+  await writingSettings(page).getByRole("button", { name: "Close" }).click();
+
+  await expect(writingSettings(page)).toBeHidden();
+  expect(await checkedForSpelling(page)).toEqual([false, false, false]);
+  await page.reload();
+  await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(2);
+  expect(await checkedForSpelling(page)).toEqual([false, false, false]);
+
+  await statusNote(page)
+    .getByRole("button", { name: "Writing settings" })
+    .click();
+  await expect(
+    writingSettings(page).getByLabel("Check spelling"),
+  ).not.toBeChecked();
+  await writingSettings(page).getByLabel("Check spelling").check();
+  await page.keyboard.press("Escape");
+
+  await expect(writingSettings(page)).toBeHidden();
+  expect(
+    await flow(page)
+      .locator(".scene .ProseMirror")
+      .evaluateAll((all) => all.map((one) => (one as HTMLElement).spellcheck)),
+  ).toEqual([true, true]);
+});
+
+async function aSlowHandover(page: Page) {
+  await page.route("**/attachments", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    await route.continue();
+  });
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Emulation.setCPUThrottlingRate", { rate: 4 });
+}
+
+const SENTENCE = "The loom stood silent in the grey light.";
+
+test("nothing typed while a section's first scene is being made is lost", async ({
+  page,
+}) => {
+  await aNewProject(page, "HandoverOpening");
+  await aBookWithScenes(page, { "Part One": 0 });
+  await openTheWritingView(page);
+  await aSlowHandover(page);
+
+  await beginning(page).click();
+  await page.keyboard.type(SENTENCE, { delay: 15 });
+
+  await expect(
+    flow(page).locator(".scene .ProseMirror"),
+    "the line typed into stays until the scene's own editor has its words and the cursor",
+  ).toHaveText(SENTENCE);
+});
+
+test("nothing typed while the next scene is being made after Enter twice is lost", async ({
+  page,
+}) => {
+  await aNewProject(page, "HandoverPending");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await page.keyboard.type("First.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await aSlowHandover(page);
+
+  await page.keyboard.type(SENTENCE, { delay: 15 });
+
+  await expect(flow(page).locator(".scene .ProseMirror")).toHaveText([
+    "First.",
+    SENTENCE,
+  ]);
+});

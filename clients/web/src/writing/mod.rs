@@ -14,6 +14,8 @@ mod saving;
 mod scene_ideas;
 mod scene_in_flow;
 mod scene_tray;
+mod settings;
+mod settings_dialog;
 pub mod side;
 mod status_note;
 mod structure;

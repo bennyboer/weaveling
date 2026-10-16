@@ -35,6 +35,13 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
     });
 
     html::div().class("status-note").child((
+        html::button()
+            .r#type("button")
+            .class("open-settings")
+            .attr("aria-label", "Writing settings")
+            .attr("title", "Writing settings")
+            .on(ev::click, move |_| state.settings.open())
+            .child(mark(Icon::Settings)),
         match state.side {
             Side::Book => html::button()
                 .r#type("button")

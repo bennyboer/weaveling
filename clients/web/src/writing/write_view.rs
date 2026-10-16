@@ -23,6 +23,7 @@ use crate::writing::menus::{
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
 use crate::writing::placing::placing;
 use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
+use crate::writing::settings_dialog::settings_dialog;
 use crate::writing::side::Side;
 use crate::writing::status_note::status_note;
 use crate::writing::this_scene::{SCENE_TRAY, ideas_to_link, this_scene};
@@ -100,6 +101,9 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     let book_view = html::article()
         .class("writing")
         .attr("aria-label", "The book")
+        .attr("spellcheck", move || {
+            state.settings.checks_spelling().to_string()
+        })
         .on(ev::focusin, move |event| {
             if let Some(section) = section_around(&event) {
                 state.word_count.writing_in(section);
@@ -140,6 +144,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         status_note(state),
         this_scene(state, segment),
         ideas_to_link(state),
+        settings_dialog(state),
         placing(state, placed_from),
     )
 }
@@ -262,7 +267,10 @@ fn section_in_flow(depth: usize, section: Section, state: WriteViewState) -> imp
                     section_margin(id.clone(), level_of(depth), state),
                 )),
             html::div().class("scenes").child(scenes_of(id, state)),
-            move || empty.get().then(|| opening(waiting.clone(), state)),
+            move || {
+                (empty.get() || state.beginnings.hands_over(&waiting))
+                    .then(|| opening(waiting.clone(), state))
+            },
             move || {
                 below.get().map(|pending| match pending {
                     Pending::Section { after } => {

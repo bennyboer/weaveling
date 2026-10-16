@@ -29,7 +29,7 @@ pub struct Beginnings {
     beginning_section: StoredValue<bool>,
     section_words: StoredValue<String>,
     focus_next: StoredValue<Option<SectionId>>,
-    opening: StoredValue<HashSet<SectionId>>,
+    opening: RwSignal<HashSet<SectionId>>,
     opening_words: StoredValue<HashMap<SectionId, String>>,
     opened: StoredValue<HashMap<SceneId, SectionId>>,
 }
@@ -43,7 +43,7 @@ impl Beginnings {
             beginning_section: StoredValue::new(false),
             section_words: StoredValue::new(String::new()),
             focus_next: StoredValue::new(None),
-            opening: StoredValue::new(HashSet::new()),
+            opening: RwSignal::new(HashSet::new()),
             opening_words: StoredValue::new(HashMap::new()),
             opened: StoredValue::new(HashMap::new()),
         }
@@ -172,7 +172,7 @@ impl Beginnings {
     pub fn begin_scene(self, section: SectionId, after: Option<SceneId>) {
         let started = self
             .opening
-            .try_update_value(|opening| opening.insert(section.clone()))
+            .try_update(|opening| opening.insert(section.clone()))
             .unwrap_or(false);
         let Some(outline) = self.structure.id().filter(|_| started) else {
             return;
@@ -195,10 +195,7 @@ impl Beginnings {
             )
             .await
             {
-                Ok(placed) => {
-                    self.pending.set(None);
-                    self.structure.take(placed);
-                }
+                Ok(placed) => self.structure.take(placed),
                 Err(failure) => self.could_not_begin(&section, failure),
             }
         });
@@ -214,17 +211,22 @@ impl Beginnings {
             .opened
             .try_update_value(|opened| opened.remove(scene))
             .flatten()?;
-        self.opening
-            .update_value(|opening| _ = opening.remove(&section));
+        self.opening.update(|opening| _ = opening.remove(&section));
+        if self.pending.with_untracked(Option::is_some) {
+            self.pending.set(None);
+        }
 
         self.opening_words
             .try_update_value(|words| words.remove(&section))
             .flatten()
     }
 
+    pub fn hands_over(self, section: &SectionId) -> bool {
+        self.opening.with(|opening| opening.contains(section))
+    }
+
     fn could_not_begin(self, section: &SectionId, failure: ApiError) {
-        self.opening
-            .update_value(|opening| _ = opening.remove(section));
+        self.opening.update(|opening| _ = opening.remove(section));
         self.problems.report(failure);
     }
 }
