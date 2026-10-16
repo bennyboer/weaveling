@@ -1,0 +1,59 @@
+.focus-line {
+  display: none;
+}
+
+body.focused {
+  .masthead,
+  .drawer,
+  .drawer-tab,
+  .drawer-toggles {
+    display: none;
+  }
+
+  .focus-line {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding: 1.1rem 1.5rem 0;
+    color: var(--muted);
+    font: 400 0.8rem/1.2 var(--reading);
+    opacity: 0.7;
+
+    span {
+      white-space: nowrap;
+    }
+
+    .project,
+    .section {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
+  .writing .menu-button {
+    opacity: 0;
+  }
+
+  .writing .reach:hover .menu-button,
+  .writing .scene-row:hover .menu-button,
+  .writing .heading-row:hover .menu-button,
+  .writing .menu-button:focus-visible,
+  .writing .menu-button[aria-expanded="true"] {
+    opacity: 1;
+  }
+
+  .status-bar,
+  .status-note {
+    opacity: 0.25;
+    transition: opacity 200ms;
+  }
+
+  .status-bar:hover,
+  .status-note:hover,
+  .status-note:has(:focus-visible),
+  &:has(.status-bar:hover) .status-note {
+    opacity: 1;
+  }
+}

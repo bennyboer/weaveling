@@ -17,6 +17,7 @@ use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
 use crate::writing::contents::contents;
 use crate::writing::drawers::drawer_toggles;
+use crate::writing::focus::focus_line;
 use crate::writing::going_back::going_back;
 use crate::writing::heading::pending_heading;
 use crate::writing::heading::{first_heading, level_of, section_heading};
@@ -99,6 +100,10 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     let typing = window_event_listener(ev::keydown, move |event| match event.key().as_str() {
         "Escape" => state.margin.return_to_writing(),
         "F10" if event.shift_key() => open_menu_where_writing(&event, state),
+        "F" | "f" if event.shift_key() && (event.ctrl_key() || event.meta_key()) => {
+            event.prevent_default();
+            state.focus.toggle();
+        }
         _ => {}
     });
     on_cleanup(move || {
@@ -118,7 +123,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         .on(ev::focusin, move |event| {
             state.left_off.let_go_of_the_offer();
             if let Some(section) = section_around(&event) {
-                state.word_count.writing_in(section);
+                state.writing_in.moved_to(section);
             }
             if let Some(scene) = scene_around(&event) {
                 state.scene_tray.follow(scene);
@@ -150,6 +155,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         ));
 
     (
+        focus_line(state),
         book_view,
         asking(state),
         bringing_back(state),

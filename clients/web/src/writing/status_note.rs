@@ -37,6 +37,14 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
     html::div().class("status-note").child((
         html::button()
             .r#type("button")
+            .class("enter-focus")
+            .attr("aria-label", "Focus mode")
+            .attr("title", "Focus mode (Ctrl+Shift+F)")
+            .attr("aria-pressed", move || state.focus.is_on().to_string())
+            .on(ev::click, move |_| state.focus.toggle())
+            .child(mark(Icon::Focus)),
+        html::button()
+            .r#type("button")
             .class("open-settings")
             .attr("aria-label", "Writing settings")
             .attr("title", "Writing settings")
@@ -78,7 +86,7 @@ fn counted(state: WriteViewState) -> String {
     match state.word_count.counted() {
         Counted::Book => format!("{words} in the book"),
         Counted::Section => match state
-            .word_count
+            .writing_in
             .section()
             .and_then(|section| state.structure.title_of(&section))
             .filter(|title| !title.trim().is_empty())

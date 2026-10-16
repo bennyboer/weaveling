@@ -27,6 +27,7 @@ pub enum Icon {
     Cogwheel,
     UnfoldAll,
     FoldAll,
+    Focus,
 }
 
 pub fn mark(icon: Icon) -> impl IntoView {
@@ -51,6 +52,9 @@ pub fn mark(icon: Icon) -> impl IntoView {
         Icon::PullOut => "m15 18-6-6 6-6",
         Icon::PushIn => "m9 18 6-6-6-6",
         Icon::Settings => "M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6",
+        Icon::Focus => {
+            "M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"
+        }
         Icon::UnfoldAll => "m7 15 5 5 5-5M7 9l5-5 5 5",
         Icon::FoldAll => "m7 20 5-5 5 5M7 4l5 5 5-5",
         Icon::Cogwheel => {
