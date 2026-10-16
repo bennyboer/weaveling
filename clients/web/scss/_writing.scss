@@ -5,10 +5,6 @@
   padding: 3.5rem 1.5rem 50vh;
   font: 300 1.25rem/1.6 var(--reading);
 
-  @media (width <= 46rem) {
-    padding-inline: 2.75rem;
-  }
-
   .heading {
     position: relative;
     font-family: var(--heading);
@@ -222,63 +218,6 @@
     }
   }
 
-  @media (max-width: 72rem) {
-    .reach {
-      left: 0;
-
-      &::after {
-        left: 2.5rem;
-      }
-
-      .margin-actions {
-        left: 0;
-      }
-
-      .menu-button {
-        opacity: 0;
-      }
-
-      &:hover .menu-button,
-      .menu-button[aria-expanded="true"] {
-        opacity: 1;
-      }
-    }
-
-    .scene-margin {
-      position: relative;
-      right: auto;
-      width: auto;
-      margin-bottom: 0.25rem;
-    }
-
-    .scene-label {
-      font-size: 0.85rem;
-      line-height: 2rem;
-      text-align: left;
-      translate: none;
-    }
-
-    .heading-margin {
-      right: 0;
-    }
-
-    .heading-row .heading {
-      padding-right: 2.5rem;
-    }
-
-    .menu-button {
-      opacity: 1;
-    }
-
-    .menu {
-      right: 0;
-    }
-
-    .insertion .menu {
-      right: auto;
-      left: 0;
-    }
-  }
 
   .between-scenes {
     margin: 0;
@@ -361,6 +300,64 @@
 
   .empty {
     color: var(--muted);
+  }
+
+  @media (max-width: 72rem) {
+    .reach {
+      left: 0;
+
+      &::after {
+        left: 2.5rem;
+      }
+
+      .margin-actions {
+        left: 0;
+      }
+
+      .menu-button {
+        opacity: 0;
+      }
+
+      &:hover .menu-button,
+      .menu-button[aria-expanded="true"] {
+        opacity: 1;
+      }
+    }
+
+    .scene-margin {
+      position: relative;
+      right: auto;
+      width: auto;
+      margin-bottom: 0.25rem;
+    }
+
+    .scene-label {
+      font-size: 0.85rem;
+      line-height: 2rem;
+      text-align: left;
+      translate: none;
+    }
+
+    .heading-margin {
+      right: 0;
+    }
+
+    .heading-row .heading {
+      padding-right: 2.5rem;
+    }
+
+    .menu-button {
+      opacity: 1;
+    }
+
+    .menu {
+      right: 0;
+    }
+
+    .insertion .menu {
+      right: auto;
+      left: 0;
+    }
   }
 }
 

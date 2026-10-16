@@ -1,8 +1,15 @@
 use leptos::prelude::*;
+use leptos::{IntoView, ev, html};
+
+use crate::icons::{Icon, mark};
 
 use crate::writing::book_rail::BookRail;
+use crate::writing::contents::BOOK_RAIL;
 use crate::writing::drawer_width::{BOOK_LEFT_IN_SIGHT, DrawerWidth, NARROWEST};
 use crate::writing::scene_tray::SceneTray;
+use crate::writing::side::Side;
+use crate::writing::this_scene::SCENE_TRAY;
+use crate::writing::write_view_state::WriteViewState;
 
 const LYING_OVER_THE_BOOK: f64 = 960.0;
 
@@ -49,4 +56,29 @@ pub fn keep_apart(rail: BookRail, tray: SceneTray) {
 
         (rail_open, tray_open, latest)
     });
+}
+
+pub fn drawer_toggles(state: WriteViewState) -> impl IntoView {
+    let (rail, tray) = (state.book_rail, state.scene_tray);
+
+    html::div().class("drawer-toggles").child((
+        (state.side == Side::Book).then(|| {
+            html::button()
+                .r#type("button")
+                .attr("aria-label", "Contents")
+                .attr("title", "Contents")
+                .attr("aria-controls", BOOK_RAIL)
+                .attr("aria-expanded", move || rail.is_open().to_string())
+                .on(ev::click, move |_| rail.toggle())
+                .child(mark(Icon::Section))
+        }),
+        html::button()
+            .r#type("button")
+            .attr("aria-label", "This scene")
+            .attr("title", "This scene")
+            .attr("aria-controls", SCENE_TRAY)
+            .attr("aria-expanded", move || tray.is_open().to_string())
+            .on(ev::click, move |_| tray.toggle())
+            .child(mark(Icon::Scene)),
+    ))
 }

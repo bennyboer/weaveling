@@ -2805,20 +2805,20 @@ test("on a wide window the open tray sits beside the column and ends above the s
   ).toBe(true);
 });
 
-test("on a phone the tray slides over the text and is toggled from its tab", async ({
+test("on a phone the tray slides over the text and is toggled from the status bar", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 400, height: 800 });
   const [first] = await aTitledPair(page);
   await scene(page, first).click();
 
-  await sceneTab(page).click();
+  await page.getByRole("button", { name: "This scene", exact: true }).click();
   const tray = (await sceneTray(page).boundingBox())!;
   expect(tray.x).toBeGreaterThanOrEqual(0);
   expect(tray.x + tray.width).toBeLessThanOrEqual(400);
   await expect(trayTitle(page)).toHaveValue("The arrival");
 
-  await sceneTab(page).click();
+  await page.getByRole("button", { name: "This scene", exact: true }).click();
   await expect(sceneTray(page)).toBeHidden();
 });
 

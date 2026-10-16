@@ -154,29 +154,36 @@ test("a drawer's edge moves with the arrow keys", async ({ page }) => {
   await expect(railHandle(page)).toHaveAttribute("aria-valuenow", "352");
 });
 
-for (const width of [375, 600]) {
-  test(`on a window ${width}px wide, the drawers' tabs keep clear of the text`, async ({
-    page,
-  }) => {
-    await aWritingView(page, width);
-    const scene = flow(page).locator(".scene .ProseMirror").first();
-    await scene.click();
-    await page.keyboard.type(
-      "Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua.",
-    );
+test("on a phone, the drawers open from the status bar, with no tabs over the book", async ({
+  page,
+}) => {
+  await aWritingView(page, 375);
 
-    const text = (await scene.boundingBox())!;
-    const contents = (await page
-      .getByRole("button", { name: "Contents", exact: true })
-      .boundingBox())!;
-    const thisScene = (await page
-      .getByRole("button", { name: "This scene", exact: true })
-      .boundingBox())!;
-
-    expect(text.x).toBeGreaterThanOrEqual(contents.x + contents.width);
-    expect(text.x + text.width).toBeLessThanOrEqual(thisScene.x);
+  await expect(page.locator(".book-rail-tab")).toBeHidden();
+  await expect(page.locator(".scene-tray-tab")).toBeHidden();
+  const status = page.getByRole("contentinfo", { name: "Status" });
+  const contents = page.getByRole("button", { name: "Contents", exact: true });
+  const thisScene = page.getByRole("button", {
+    name: "This scene",
+    exact: true,
   });
-}
+  const bar = (await status.boundingBox())!;
+  for (const button of [contents, thisScene]) {
+    const seen = (await button.boundingBox())!;
+    expect(seen.y, "it sits in the status bar").toBeGreaterThanOrEqual(bar.y);
+  }
+
+  await contents.click();
+  await expect(rail(page)).toBeVisible();
+  await expect(contents).toHaveAttribute("aria-expanded", "true");
+
+  await thisScene.click();
+  await expect(tray(page)).toBeVisible();
+  await expect(rail(page), "a phone holds one drawer at a time").toBeHidden();
+
+  await thisScene.click();
+  await expect(tray(page), "the same button puts it away").toBeHidden();
+});
 
 test("where the drawers lie over the book, opening one puts the other away", async ({
   page,

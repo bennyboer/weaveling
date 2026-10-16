@@ -33,3 +33,56 @@
     outline: none;
   }
 }
+
+.drawer-toggles {
+  position: fixed;
+  bottom: 0;
+  left: 0.5rem;
+  z-index: 6;
+  display: none;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.6rem;
+
+  button {
+    display: grid;
+    place-items: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    padding: 0;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+
+    svg {
+      width: 0.85rem;
+      height: 0.85rem;
+    }
+
+    &:hover,
+    &[aria-expanded="true"] {
+      color: var(--ink);
+    }
+
+    &[aria-expanded="true"] {
+      background: var(--surface);
+    }
+  }
+}
+
+@media (width <= 46rem) {
+  .drawer-toggles {
+    display: flex;
+  }
+
+  .book-rail-tab,
+  .scene-tray-tab {
+    display: none;
+  }
+}
+
+body:has(.scene-tray:not([hidden]), .book-rail:not([hidden])) .drawer-toggles {
+  z-index: 9;
+}

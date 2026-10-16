@@ -16,6 +16,7 @@ use crate::writing::asking::asking;
 use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
 use crate::writing::contents::{BOOK_RAIL, contents};
+use crate::writing::drawers::drawer_toggles;
 use crate::writing::heading::pending_heading;
 use crate::writing::heading::{first_heading, level_of, section_heading};
 use crate::writing::margin::Edge;
@@ -155,6 +156,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         status_note(state),
         this_scene(state, segment),
         (side == Side::Book).then(|| contents(state)),
+        drawer_toggles(state),
         ideas_to_link(state),
         settings_dialog(state),
         placing(state, placed_from),
