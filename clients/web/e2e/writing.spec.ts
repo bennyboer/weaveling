@@ -3710,3 +3710,52 @@ test("a project's details are fetched once while moving between its views", asyn
     "the project being worked in is held while its views come and go",
   ).toHaveLength(1);
 });
+
+test("moving the cursor just as the scene goes away raises no error", async ({
+  page,
+}) => {
+  const failures: string[] = [];
+  page.on("pageerror", (failure) => failures.push(failure.message));
+  await aNewProject(page, "Vanishing");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+  const prose = flow(page).locator(".scene .ProseMirror").first();
+  await prose.click();
+  await page.keyboard.type("Some words to move about in.");
+  await expect(prose).toHaveText("Some words to move about in.");
+
+  await page.evaluate(() => {
+    const words = document.querySelector(".scene .ProseMirror p")!.firstChild!;
+    getSelection()!.collapse(words, 3);
+    document.dispatchEvent(new Event("selectionchange"));
+    document
+      .querySelector<HTMLElement>(
+        'nav[aria-label="Views"] a[href$="/outline"]',
+      )!
+      .click();
+  });
+  await expect(page.getByRole("article", { name: "The book" })).toHaveCount(0);
+  await page.evaluate(() => new Promise((settled) => setTimeout(settled, 100)));
+
+  expect(
+    failures,
+    "the cursor's last move is let go with the scene, not dispatched into it",
+  ).toEqual([]);
+});
+
+test("on a phone, the menu of a place to add opens where it can be seen", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await aNewProject(page, "PhoneMenu");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await openTheWritingView(page);
+
+  await addHere(gapBelow(page, scenes["Part One"][0])).click();
+
+  const menu = page.getByRole("menu");
+  await expect(menu).toBeVisible();
+  const seen = (await menu.boundingBox())!;
+  expect(seen.x).toBeGreaterThanOrEqual(0);
+  expect(seen.x + seen.width).toBeLessThanOrEqual(375);
+});

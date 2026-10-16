@@ -13,6 +13,7 @@ thiserror = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true, features = [
+    "CssStyleDeclaration",
     "Document",
     "DomRect",
     "DomTokenList",
@@ -23,7 +24,11 @@ web-sys = { workspace = true, features = [
     "IntersectionObserverEntry",
     "IntersectionObserverInit",
     "Location",
+    "MediaQueryList",
     "Navigator",
+    "PointerEvent",
+    "ScrollIntoViewOptions",
+    "ScrollLogicalPosition",
     "Selection",
     "Storage",
     "UrlSearchParams",

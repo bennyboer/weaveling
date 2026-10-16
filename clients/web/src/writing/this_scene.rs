@@ -8,6 +8,7 @@ use crate::ideas::model::IdeaId;
 use crate::route;
 use crate::scenes::link_dialog::link_dialog;
 use crate::scenes::model::SceneId;
+use crate::writing::drawer_handle::{Grows, drawer_handle};
 use crate::writing::write_view_state::WriteViewState;
 
 pub const SCENE_TRAY: &str = "scene-tray";
@@ -43,7 +44,8 @@ pub fn this_scene(state: WriteViewState, project: String) -> impl IntoView {
             .class(("open", move || tray.is_open()))
             .attr("aria-label", "This scene")
             .attr("hidden", move || (!tray.is_open()).then_some(""))
-            .child(
+            .child((
+                drawer_handle(tray.width(), Grows::Leftwards, "Resize the tray"),
                 html::div().class("inside").child((
                     html::div().class("head").child((
                         html::p().class("tally").child("This scene"),
@@ -66,7 +68,7 @@ pub fn this_scene(state: WriteViewState, project: String) -> impl IntoView {
                             .into_any(),
                     },
                 )),
-            ),
+            )),
     )
 }
 

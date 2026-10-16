@@ -110,3 +110,23 @@ test("the theme can be set from anywhere in a project", async ({ page }) => {
 
   expect(await marked(page)).toBe("dark");
 });
+
+for (const [chosen, system] of [
+  ["Light", "dark"],
+  ["Dark", "light"],
+] as const) {
+  test(`a ${chosen.toLowerCase()} theme chosen against a ${system} system draws the browser's own controls to match`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: system });
+    await page.goto("/");
+
+    await theming(page).getByRole("button", { name: chosen }).click();
+
+    expect(
+      await page.evaluate(
+        () => getComputedStyle(document.documentElement).colorScheme,
+      ),
+    ).toBe(chosen.toLowerCase());
+  });
+}

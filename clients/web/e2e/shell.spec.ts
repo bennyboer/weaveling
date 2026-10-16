@@ -190,3 +190,82 @@ test("the wordmark leads back to every project", async ({ page }) => {
   await expect(page.getByPlaceholder("A working title…")).toBeVisible();
   await expect(corkboard(page)).toHaveCount(0);
 });
+
+for (const width of [375, 700, 900, 1100]) {
+  test(`on a window ${width}px wide, the masthead fits without scrolling sideways`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 700 });
+    const title = await aNewProject(page, "A rather long name for a phone");
+    await views(page).getByRole("link", { name: "Write", exact: true }).click();
+    await expect(page.getByRole("article", { name: "The book" })).toBeVisible();
+
+    const seen = await page.evaluate(() => {
+      const box = (of: string) =>
+        document.querySelector(of)!.getBoundingClientRect();
+      const inside = (of: string) => {
+        const seen = box(of);
+        return seen.width > 0 && seen.left >= 0 && seen.right <= innerWidth;
+      };
+
+      return {
+        scrolled: document.documentElement.scrollWidth - innerWidth,
+        logo: inside(".wordmark .mark"),
+        name: box(".whose span").width,
+        details: inside(".project-details-button"),
+        views: [...document.querySelectorAll(".views .view")].every((view) =>
+          inside(`.views a[href="${view.getAttribute("href")}"]`),
+        ),
+        theming: inside(".theming"),
+      };
+    });
+
+    expect(seen.scrolled, "nothing reaches past the window").toBe(0);
+    expect(seen.logo).toBe(true);
+    expect(seen.name, "the name keeps room to be read").toBeGreaterThan(90);
+    expect(seen.details).toBe(true);
+    expect(seen.views, "every view can be reached").toBe(true);
+    expect(seen.theming).toBe(true);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveAttribute(
+      "title",
+      title,
+    );
+  });
+}
+
+for (const width of [375, 1440]) {
+  test(`on a window ${width}px wide, a short name sits right beside its details button`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 700 });
+    await aNewProject(page, "x");
+    await page.request.patch(
+      `http://127.0.0.1:3000/api/projects/${new URL(page.url()).pathname.split("/")[2].split("-").pop()}`,
+      { data: { name: "Kurz" } },
+    );
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Kurz");
+
+    const seen = await page.evaluate(() => {
+      const name = document.createRange();
+      name.selectNodeContents(document.querySelector(".whose span")!);
+      const views = document.querySelector(".views")!.getBoundingClientRect();
+      const bar = document.querySelector(".masthead")!.getBoundingClientRect();
+
+      return {
+        gap:
+          document
+            .querySelector(".project-details-button svg")!
+            .getBoundingClientRect().left - name.getBoundingClientRect().right,
+        viewsFrom: views.left - bar.left,
+        viewsTo: bar.right - views.right,
+      };
+    });
+
+    expect(seen.gap).toBeLessThanOrEqual(16);
+    if (width < 900) {
+      expect(seen.viewsFrom, "the views' row runs the full width").toBe(0);
+      expect(seen.viewsTo, "the views' row runs the full width").toBe(0);
+    }
+  });
+}

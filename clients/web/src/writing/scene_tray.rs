@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use web_sys::Storage;
 
 use crate::scenes::model::SceneId;
+use crate::writing::drawer_width::DrawerWidth;
 
 const KEPT_OPEN: &str = "weaveling.scene-tray";
 const OPEN: &str = "open";
@@ -10,6 +11,7 @@ const OPEN: &str = "open";
 pub struct SceneTray {
     scene: RwSignal<Option<SceneId>>,
     open: RwSignal<bool>,
+    width: DrawerWidth,
 }
 
 impl SceneTray {
@@ -21,6 +23,7 @@ impl SceneTray {
         Self {
             scene: RwSignal::new(None),
             open: RwSignal::new(open),
+            width: DrawerWidth::as_last_left("weaveling.scene-tray.width", "--scene-tray"),
         }
     }
 
@@ -39,6 +42,10 @@ impl SceneTray {
         {
             self.scene.set(Some(scene));
         }
+    }
+
+    pub fn width(self) -> DrawerWidth {
+        self.width
     }
 
     pub fn is_open(self) -> bool {

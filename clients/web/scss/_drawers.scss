@@ -1,0 +1,35 @@
+.drawer-handle {
+  position: absolute;
+  top: 0;
+  right: -0.3rem;
+  bottom: 0;
+  z-index: 1;
+  width: 0.6rem;
+  cursor: col-resize;
+  touch-action: none;
+
+  &.leftwards {
+    right: auto;
+    left: -0.3rem;
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(50% - 1px);
+    width: 2px;
+    background: transparent;
+    transition: background 0.15s;
+  }
+
+  &:hover::after,
+  &:focus-visible::after {
+    background: var(--accent);
+  }
+
+  &:focus-visible {
+    outline: none;
+  }
+}

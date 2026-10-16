@@ -1,5 +1,6 @@
 :root {
   color-scheme: light dark;
+  accent-color: var(--accent);
   --ink: #1d3b47;
   --muted: #6f6659;
   --line: #e6ddcf;
@@ -28,7 +29,12 @@
   }
 }
 
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --ink: #e8e3d9;
   --muted: #8fa3ac;
   --line: #263b45;

@@ -1,16 +1,14 @@
-main:has(> .scene-tray) {
+main:has(> .scene-tray, > .book-rail) {
   position: relative;
 }
 
 .scene-tray {
-  --scene-tray: 20rem;
-
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
   z-index: 7;
-  width: var(--scene-tray);
+  width: var(--scene-tray, 20rem);
   border-left: 1px solid var(--line);
   background: var(--paper);
 
@@ -167,7 +165,7 @@ main:has(> .scene-tray) {
   }
 
   &[aria-expanded="true"] {
-    right: 20rem;
+    right: var(--scene-tray, 20rem);
   }
 }
 
@@ -190,14 +188,9 @@ body:has(.scene-tray:not([hidden])) .status-note {
     position: fixed;
     top: 0;
     bottom: 1.6rem;
-    width: min(20rem, 85vw);
 
     .inside {
       max-height: 100%;
     }
-  }
-
-  .scene-tray-tab[aria-expanded="true"] {
-    right: min(20rem, 85vw);
   }
 }

@@ -40,6 +40,9 @@ export class ProseEditor {
 
     this.view = new EditorView(host, {
       dispatchTransaction: function (tr) {
+        if (this.isDestroyed) {
+          return;
+        }
         if (!tr.selectionSet && !tr.docChanged) {
           const shown = editor.shownSelection(tr.doc);
 

@@ -39,6 +39,12 @@
     border-left: 1px solid var(--line);
   }
 
+  .wordmark,
+  .views,
+  .theming {
+    flex-shrink: 0;
+  }
+
   .whose-row {
     display: flex;
     align-items: center;
@@ -145,6 +151,50 @@
     button[aria-pressed="true"] {
       background: var(--surface);
       color: var(--accent);
+    }
+  }
+}
+
+@media (width <= 60rem) {
+  .masthead {
+    flex-wrap: wrap;
+    gap: 0 1rem;
+    height: auto;
+    padding: 0 1rem;
+
+    .wordmark,
+    .whose-row,
+    .theming {
+      height: 3.25rem;
+    }
+
+    .wordmark span:not(.mark) {
+      display: none;
+    }
+
+    .whose-row {
+      flex: 1;
+      padding-left: 1rem;
+    }
+
+    .whose {
+      max-width: none;
+    }
+
+    .theming {
+      height: auto;
+    }
+
+    .views {
+      order: 1;
+      flex-basis: calc(100% + 2rem);
+      height: 2.75rem;
+      margin: 0 -1rem;
+      padding: 0 1rem;
+      overflow-x: auto;
+      border-top: 1px solid var(--line);
+      border-left: none;
+      scrollbar-width: none;
     }
   }
 }

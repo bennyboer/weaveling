@@ -6,6 +6,8 @@ use crate::scenes::prose::SyncConnection;
 use crate::scenes::service as scenes;
 use crate::statistics::service as statistics;
 use crate::writing::beginnings::Beginnings;
+use crate::writing::book_rail::BookRail;
+use crate::writing::drawers::keep_apart;
 use crate::writing::labels::Labels;
 use crate::writing::left_off::LeftOff;
 use crate::writing::loose_scenes::LooseScenes;
@@ -34,6 +36,7 @@ pub struct WriteViewState {
     pub left_off: LeftOff,
     pub viewport: Viewport,
     pub scene_tray: SceneTray,
+    pub book_rail: BookRail,
     pub scene_ideas: SceneIdeas,
     pub settings: Settings,
     pub side: Side,
@@ -62,12 +65,14 @@ impl WriteViewState {
             left_off: LeftOff::in_project(project, side, structure, loose, walk, viewport),
             viewport,
             scene_tray: SceneTray::as_last_left(),
+            book_rail: BookRail::as_last_left(),
             scene_ideas: SceneIdeas::of(project, problems, saving),
             settings: Settings::as_last_left(),
             side,
             loose,
             connection: StoredValue::new_local(SyncConnection::new()),
         };
+        keep_apart(state.book_rail, state.scene_tray);
         let listing = project.clone();
         let counting = project.clone();
 
