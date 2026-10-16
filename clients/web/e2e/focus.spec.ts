@@ -172,3 +172,69 @@ test("focused, the prose is set larger", async ({ page }) => {
   await focusButton(page).click();
   expect(await size()).toBe(before);
 });
+
+const shown = (page: Page) =>
+  flow(page).evaluate((book) =>
+    [...book.querySelectorAll(".ProseMirror > p, .heading")].map((part) =>
+      Number(getComputedStyle(part).opacity),
+    ),
+  );
+
+async function threeParagraphs(page: Page, id: string) {
+  await scene(page, id).click();
+  await page.keyboard.type("First paragraph.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Second paragraph.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Third paragraph.");
+}
+
+test("focused, all but the paragraph being written fades back, and the brightness follows the cursor", async ({
+  page,
+}) => {
+  const { scenes } = await writingIn(page, "Fading");
+  await threeParagraphs(page, scenes["Part One"][0]);
+  await focusButton(page).click();
+  await scene(page, scenes["Part One"][0]).click();
+  await page.keyboard.press("ControlOrMeta+End");
+
+  await expect
+    .poll(() => shown(page), {
+      message:
+        "headings: Part One, Part Two; paragraphs: three, then the empty scene",
+    })
+    .toEqual([0.3, 0.3, 0.3, 1, 0.3, 0.3]);
+
+  await page.keyboard.press("ArrowUp");
+
+  await expect.poll(() => shown(page)).toEqual([0.3, 0.3, 1, 0.3, 0.3, 0.3]);
+});
+
+test("nothing fades while no paragraph is being written", async ({ page }) => {
+  const { scenes } = await writingIn(page, "NotWriting");
+  await threeParagraphs(page, scenes["Part One"][0]);
+  await focusButton(page).click();
+
+  await flow(page).getByRole("heading", { name: "Part Two" }).click();
+
+  await expect.poll(() => shown(page)).toEqual([1, 1, 1, 1, 1, 1]);
+});
+
+test("out of focus mode nothing fades", async ({ page }) => {
+  const { scenes } = await writingIn(page, "Unfocused");
+  await threeParagraphs(page, scenes["Part One"][0]);
+
+  await expect.poll(() => shown(page)).toEqual([1, 1, 1, 1, 1, 1]);
+});
+
+test("moving into the next scene brightens its paragraph and fades the one left", async ({
+  page,
+}) => {
+  const { scenes } = await writingIn(page, "NextScene");
+  await threeParagraphs(page, scenes["Part One"][0]);
+  await focusButton(page).click();
+
+  await scene(page, scenes["Part Two"][0]).click();
+
+  await expect.poll(() => shown(page)).toEqual([0.3, 0.3, 0.3, 0.3, 0.3, 1]);
+});

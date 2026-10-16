@@ -62,3 +62,19 @@ body.focused {
     opacity: 1;
   }
 }
+
+.writing .ProseMirror > *,
+.writing .heading,
+.writing .scene-label,
+.writing .between-scenes {
+  transition: opacity 250ms;
+}
+
+body.focused .writing:has(.where-written) {
+  .ProseMirror > :not(.where-written),
+  .heading,
+  .scene-label,
+  .between-scenes {
+    opacity: 0.3;
+  }
+}
