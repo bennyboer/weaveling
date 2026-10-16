@@ -1,5 +1,6 @@
 use leptos::prelude::*;
-use web_sys::Storage;
+use wasm_bindgen::JsCast;
+use web_sys::{HtmlElement, Storage};
 
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
@@ -17,6 +18,7 @@ pub struct LeftOff {
     viewport: Viewport,
     side: Side,
     loose: LooseScenes,
+    offered: RwSignal<Option<(SceneId, u32)>>,
 }
 
 impl LeftOff {
@@ -35,6 +37,31 @@ impl LeftOff {
             viewport,
             side,
             loose,
+            offered: RwSignal::new(None),
+        }
+    }
+
+    pub fn offered(self) -> Option<SceneId> {
+        self.offered
+            .with(|offered| offered.as_ref().map(|(scene, _)| scene.clone()))
+    }
+
+    pub fn go_back(self) {
+        if let Some((scene, at)) = self.offered.get_untracked() {
+            self.offered.set(None);
+            if let Some(chosen) = document()
+                .active_element()
+                .and_then(|focused| focused.dyn_into::<HtmlElement>().ok())
+            {
+                _ = chosen.blur();
+            }
+            self.land_in(scene, at);
+        }
+    }
+
+    pub fn let_go_of_the_offer(self) {
+        if self.offered.with_untracked(Option::is_some) {
+            self.offered.set(None);
         }
     }
 
@@ -65,26 +92,27 @@ impl LeftOff {
             Side::Loose => self.loose.in_order_untracked().contains(scene),
         });
 
-        if let Some((scene, at)) = recalled {
-            self.land_in(scene, at);
-            return;
-        }
-
-        if self.side == Side::Loose {
-            if let Some(first) = self.loose.in_order_untracked().into_iter().next() {
-                self.land_in(first, 0);
-            }
-            return;
-        }
-
-        let read = self
-            .structure
-            .read_untracked(stops_in_reading_order)
-            .unwrap_or_default();
+        let read = match self.side {
+            Side::Book => self
+                .structure
+                .read_untracked(stops_in_reading_order)
+                .unwrap_or_default(),
+            Side::Loose => self
+                .loose
+                .in_order_untracked()
+                .into_iter()
+                .map(Stop::Scene)
+                .collect(),
+        };
         let first_scene = read.iter().find_map(|stop| match stop {
             Stop::Scene(scene) => Some(scene.clone()),
             _ => None,
         });
+
+        if recalled.is_some() {
+            self.offered.set(recalled);
+            return;
+        }
 
         match first_scene {
             Some(scene) => self.land_in(scene, 0),

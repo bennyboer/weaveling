@@ -17,6 +17,7 @@ use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
 use crate::writing::contents::{BOOK_RAIL, contents};
 use crate::writing::drawers::drawer_toggles;
+use crate::writing::going_back::going_back;
 use crate::writing::heading::pending_heading;
 use crate::writing::heading::{first_heading, level_of, section_heading};
 use crate::writing::margin::Edge;
@@ -117,6 +118,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
             state.settings.checks_spelling().to_string()
         })
         .on(ev::focusin, move |event| {
+            state.left_off.let_go_of_the_offer();
             if let Some(section) = section_around(&event) {
                 state.word_count.writing_in(section);
             }
@@ -157,6 +159,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         this_scene(state, segment),
         (side == Side::Book).then(|| contents(state)),
         drawer_toggles(state),
+        going_back(state),
         ideas_to_link(state),
         settings_dialog(state),
         placing(state, placed_from),

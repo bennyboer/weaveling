@@ -519,3 +519,48 @@ body:has(.alarm) .status-note {
     font-size: 0.8rem;
   }
 }
+
+.going-back {
+  position: fixed;
+  bottom: 2.4rem;
+  left: 50%;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: min(32rem, calc(100vw - 2rem));
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  color: var(--ink);
+  font: 400 0.85rem/1.2 var(--reading);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.14);
+  translate: -50% 0;
+  cursor: pointer;
+
+  svg {
+    flex: none;
+    width: 0.9rem;
+    height: 0.9rem;
+    color: var(--accent);
+  }
+
+  span {
+    white-space: nowrap;
+  }
+
+  .where {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--muted);
+    font-family: var(--heading);
+    font-style: italic;
+    text-overflow: ellipsis;
+  }
+
+  &:hover,
+  &:focus-visible {
+    border-color: var(--accent);
+  }
+}

@@ -1794,6 +1794,15 @@ const sceneCarried = (frame: string | Buffer) => {
   return bytes.subarray(2, 2 + length).toString();
 };
 
+const goingBack = (page: Page) =>
+  page.getByRole("button", { name: /Back to where you left off/ });
+
+async function backToWhereILeftOff(page: Page) {
+  await page
+    .getByRole("button", { name: /Back to where you left off/ })
+    .click();
+}
+
 const saveState = (page: Page) => statusNote(page).locator(".save-state");
 
 async function holdingWhatIsWritten(page: Page) {
@@ -2106,6 +2115,7 @@ test("the first time, Write lands at the start of the book", async ({
   await openTheWritingView(page);
 
   await expect(scene(page, scenes["Part One"][0])).toBeFocused();
+  await expect(goingBack(page), "nothing was left off yet").toHaveCount(0);
   await page.keyboard.type("Begun");
   await expect(scene(page, scenes["Part One"][0])).toHaveText("Begun");
 });
@@ -2127,12 +2137,14 @@ test("Write lands where the author left off, after moving away and after a reloa
 
   await views(page).getByRole("link", { name: "Board", exact: true }).click();
   await openTheWritingView(page);
+  await backToWhereILeftOff(page);
   await expect(later).toBeFocused();
   await page.keyboard.type("X");
   await expect(later).toHaveText("AlphaX Beta");
   await expect(saveState(page)).toHaveText("All saved");
 
   await page.reload();
+  await backToWhereILeftOff(page);
   await expect(later).toBeFocused();
   await page.keyboard.type("Y");
   await expect(later).toHaveText("AlphaXY Beta");
@@ -2180,6 +2192,7 @@ test("landing far down the book brings the line left off into the middle of the 
   await expect(saveState(page)).toHaveText("All saved");
 
   await page.reload();
+  await backToWhereILeftOff(page);
   await expect(middle).toBeFocused();
 
   const line = (await middle.locator("p").boundingBox())!;
@@ -2202,6 +2215,7 @@ test("even the book's last line can be brought to the middle of the window", asy
   await expect(saveState(page)).toHaveText("All saved");
 
   await page.reload();
+  await backToWhereILeftOff(page);
   await expect(last).toBeFocused();
 
   const line = (await last.locator("p").boundingBox())!;
@@ -2275,6 +2289,10 @@ test("following the scene left off in lands where the author left off in it", as
   await page.locator(".leaf").getByRole("link", { name: "The second" }).click();
 
   await expect(scene(page, second)).toBeFocused();
+  await expect(
+    goingBack(page),
+    "a scene followed to needs no way back",
+  ).toHaveCount(0);
   await page.keyboard.type("X");
   await expect(scene(page, second)).toHaveText("AlphaX Beta");
 });
@@ -2357,6 +2375,7 @@ test("what the server last counted never stands over what is being written", asy
     answered = true;
   });
   await page.reload();
+  await backToWhereILeftOff(page);
   await expect(scene(page, only)).toBeFocused();
   await page.keyboard.press("End");
   await page.keyboard.type(" four");
@@ -2415,6 +2434,7 @@ test("landing where the author left off reaches a scene far down the book", asyn
 
   await page.reload();
 
+  await backToWhereILeftOff(page);
   await expect(scene(page, last)).toBeFocused();
 });
 
@@ -2454,6 +2474,7 @@ test("a scene coming near is named in the margin before its text arrives", async
     });
   });
   await page.reload();
+  await backToWhereILeftOff(page);
   await expect(scene(page, first)).toBeFocused();
   await expect(
     flow(page).locator(`.scene-slot.waiting[data-place-of="${last}"]`),
@@ -3240,6 +3261,7 @@ test("writing outside the book leaves where you left off in the book alone", asy
     .getByRole("link", { name: "The book", exact: true })
     .click();
 
+  await backToWhereILeftOff(page);
   await expect(scene(page, second)).toBeFocused();
 });
 
@@ -3372,11 +3394,13 @@ test("each side lands where you left off on it", async ({ page }) => {
   await expect(saveState(page)).toHaveText("All saved");
 
   await page.reload();
+  await backToWhereILeftOff(page);
   await expect(scene(page, loose)).toBeFocused();
   await sides(page)
     .getByRole("link", { name: "The book", exact: true })
     .click();
 
+  await backToWhereILeftOff(page);
   await expect(scene(page, placed)).toBeFocused();
 });
 
@@ -3758,4 +3782,57 @@ test("on a phone, the menu of a place to add opens where it can be seen", async 
   const seen = (await menu.boundingBox())!;
   expect(seen.x).toBeGreaterThanOrEqual(0);
   expect(seen.x + seen.width).toBeLessThanOrEqual(375);
+});
+
+test("Write opens at the start of the book, and offers the way back to where the author left off", async ({
+  page,
+}) => {
+  await aNewProject(page, "OfferedBack");
+  const scenes = await aBookWithScenes(page, { "Part One": 14 });
+  const [first] = scenes["Part One"];
+  const far = scenes["Part One"][11];
+  await titled(page, far, "The far scene");
+  await openTheWritingView(page);
+  await flow(page).locator(`[data-place-of="${far}"]`).scrollIntoViewIfNeeded();
+  await scene(page, far).click();
+  await page.keyboard.type("Alpha Beta");
+  await page.keyboard.press("Home");
+  await page.keyboard.press("ArrowRight");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await views(page).getByRole("link", { name: "Board", exact: true }).click();
+  await openTheWritingView(page);
+
+  await expect(goingBack(page)).toContainText("The far scene");
+  expect(
+    await page.evaluate(() => window.scrollY),
+    "the book is open at its start",
+  ).toBe(0);
+  await expect(scene(page, first)).not.toBeFocused();
+  await expect(scene(page, far)).not.toBeFocused();
+
+  await goingBack(page).click();
+
+  await expect(scene(page, far)).toBeFocused();
+  await expect(scene(page, far)).toBeInViewport();
+  await expect(goingBack(page), "taken, the offer goes").toHaveCount(0);
+  await page.keyboard.type("X");
+  await expect(scene(page, far)).toHaveText("AXlpha Beta");
+});
+
+test("putting the cursor in the book lets the offer go", async ({ page }) => {
+  await aNewProject(page, "OfferLetGo");
+  const scenes = await aBookWithScenes(page, { "Part One": 2 });
+  const [first, second] = scenes["Part One"];
+  await openTheWritingView(page);
+  await scene(page, second).click();
+  await page.keyboard.type("Left here.");
+  await expect(saveState(page)).toHaveText("All saved");
+  await page.reload();
+  await expect(goingBack(page)).toBeVisible();
+
+  await scene(page, first).click();
+
+  await expect(goingBack(page)).toHaveCount(0);
+  await expect(scene(page, first)).toBeFocused();
 });
