@@ -3650,3 +3650,34 @@ test("nothing typed while the next scene is being made after Enter twice is lost
     SENTENCE,
   ]);
 });
+
+async function theBookIsIn(page: Page, language: string | null) {
+  const changed = await page.request.put(
+    `${API}/projects/${projectOf(page)}/details`,
+    { data: { language, description: "" } },
+  );
+  expect(changed.ok()).toBe(true);
+}
+
+test("the book is marked with its language, so the browser checks it in that language", async ({
+  page,
+}) => {
+  await aNewProject(page, "Sprache");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await theBookIsIn(page, "de");
+
+  await openTheWritingView(page);
+
+  await expect(flow(page)).toHaveAttribute("lang", "de");
+});
+
+test("a book without a language leaves the page's own", async ({ page }) => {
+  await aNewProject(page, "NoLanguage");
+  await aBookWithScenes(page, { "Part One": 1 });
+  await theBookIsIn(page, null);
+
+  await openTheWritingView(page);
+  await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(1);
+
+  await expect(flow(page)).not.toHaveAttribute("lang", /.+/);
+});

@@ -89,3 +89,53 @@
     }
   }
 }
+
+.dialog.project-details {
+  width: min(30rem, 92vw);
+  max-width: none;
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin: 0 0 1rem;
+
+    > span {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    input,
+    select,
+    textarea {
+      flex: none;
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+    }
+
+    select,
+    textarea {
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 0.375rem;
+      background: var(--paper);
+      color: var(--ink);
+
+      &:focus-visible {
+        outline: 2px solid var(--ink);
+        outline-offset: -1px;
+      }
+    }
+
+    textarea {
+      resize: vertical;
+      min-height: 4.5rem;
+    }
+
+    small {
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+  }
+}

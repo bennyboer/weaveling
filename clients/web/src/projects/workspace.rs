@@ -1,10 +1,10 @@
 use leptos::prelude::*;
 
 use crate::http::ApiError;
-use crate::projects::model::{Project, ProjectId};
+use crate::projects::model::{Project, ProjectDetails, ProjectId};
 use crate::projects::service;
 
-type CreateAction = Action<String, Result<Project, ApiError>>;
+type CreateAction = Action<(String, ProjectDetails), Result<Project, ApiError>>;
 type RenameAction = Action<(ProjectId, String), Result<Project, ApiError>>;
 type DeleteAction = Action<ProjectId, Result<(), ApiError>>;
 
@@ -49,15 +49,15 @@ impl Workspace {
         Self {
             known,
             problem,
-            creating: Action::new_local(move |name: &String| {
-                let name = name.clone();
+            creating: Action::new_local(move |(name, details): &(String, ProjectDetails)| {
+                let (name, details) = (name.clone(), details.clone());
                 async move {
-                    let outcome = service::create(&name).await;
+                    let outcome = service::create(&name, &details).await;
                     if let Ok(created) = &outcome {
                         keep(known, |held| put(held, created.clone()));
                     }
 
-                    remember_outcome(problem, outcome)
+                    outcome
                 }
             }),
             renaming: Action::new_local(move |(id, name): &(ProjectId, String)| {
@@ -107,8 +107,14 @@ impl Workspace {
         Signal::derive(move || creating.value().get().and_then(Result::ok))
     }
 
-    pub fn create(self, name: String) {
-        self.creating.dispatch(name);
+    pub fn refused_creation(self) -> Signal<Option<ApiError>> {
+        let creating = self.creating;
+
+        Signal::derive(move || creating.value().get().and_then(Result::err))
+    }
+
+    pub fn create(self, name: String, details: ProjectDetails) {
+        self.creating.dispatch((name, details));
     }
 
     pub fn renaming(self) -> Signal<bool> {

@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 
-import { boardSaves, corkboard, dragBy } from "./support/board";
+import { boardSaves, corkboard, dragBy, pinHeld } from "./support/board";
 import {
   anOpenProject,
   captureIdea,
@@ -38,6 +38,7 @@ test("a nudge survives a reload", async ({ page }) => {
   const saved = boardSaves(page);
   await openTheBoard(page);
   await page.getByRole("button", { name: "Pin The loom remembers" }).click();
+  await pinHeld(page);
   await corkboard(page).locator(".pinned").focus();
   await page.keyboard.press("ArrowRight");
   await expect(corkboard(page).locator(".pinned")).toHaveAttribute(

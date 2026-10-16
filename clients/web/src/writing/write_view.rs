@@ -101,6 +101,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     let book_view = html::article()
         .class("writing")
         .attr("aria-label", "The book")
+        .attr("lang", move || state.book_language.get())
         .attr("spellcheck", move || {
             state.settings.checks_spelling().to_string()
         })

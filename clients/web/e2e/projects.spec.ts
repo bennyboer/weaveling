@@ -4,12 +4,18 @@ const aTitle = () => `The Loom ${crypto.randomUUID().slice(0, 8)}`;
 
 const titleField = (page: Page) => page.getByPlaceholder("A working title…");
 
+const newProject = (page: Page) =>
+  page.getByRole("dialog", { name: "New project" });
+
 const rowFor = (page: Page, title: string) =>
   page.getByRole("listitem").filter({ hasText: title });
 
 async function aProjectCalled(page: Page, title: string) {
   await titleField(page).fill(title);
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await newProject(page)
+    .getByRole("button", { name: "Create project" })
+    .click();
   await expect(rowFor(page, title)).toBeVisible();
 }
 
@@ -25,15 +31,19 @@ test("a project can be created and appears in the list", async ({ page }) => {
   await expect(rowFor(page, title)).toBeVisible();
 });
 
-test("Enter creates the project instead of reloading the page", async ({
+test("Enter asks for the project's details, and Enter again creates it", async ({
   page,
 }) => {
   const title = aTitle();
 
   await titleField(page).fill(title);
   await titleField(page).press("Enter");
+  await expect(newProject(page).getByLabel("Title")).toBeFocused();
+  await expect(newProject(page).getByLabel("Title")).toHaveValue(title);
+  await page.keyboard.press("Enter");
 
   await expect(rowFor(page, title)).toBeVisible();
+  await expect(newProject(page)).toBeHidden();
 });
 
 test("the title field is emptied once the project is created", async ({
@@ -50,15 +60,33 @@ test("a name the server rejects leaves the problem on screen", async ({
   page,
 }) => {
   await titleField(page).fill("a".repeat(201));
-  await page.getByRole("button", { name: "Create" }).click();
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await newProject(page)
+    .getByRole("button", { name: "Create project" })
+    .click();
 
-  await expect(page.getByRole("alert")).toContainText("at most 200 characters");
+  await expect(newProject(page).getByRole("alert")).toContainText(
+    "at most 200 characters",
+  );
+  await expect(
+    page.getByRole("alert"),
+    "the problem is told beside the title it is about, not behind the dialog",
+  ).toHaveCount(1);
+  await expect(
+    newProject(page),
+    "the dialog stays, so the title can be put right",
+  ).toBeVisible();
+
+  await newProject(page).getByLabel("Title").fill("A shorter title");
+  await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
 test("a blank title cannot be submitted", async ({ page }) => {
   await titleField(page).fill("   ");
 
-  await expect(page.getByRole("button", { name: "Create" })).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Create", exact: true }),
+  ).toBeDisabled();
 });
 
 test("a project can be renamed", async ({ page }) => {
@@ -177,4 +205,61 @@ test("a project row spreads its title, stamp and menu across the width", async (
     laid.titleSpans,
     "the title takes the room the other two leave",
   ).toBeGreaterThan(0);
+});
+
+test("a new project is given its book's language and a description", async ({
+  page,
+}) => {
+  const title = aTitle();
+  await titleField(page).fill(title);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+
+  await newProject(page)
+    .getByLabel("Language of the book")
+    .selectOption({ label: "German (Deutsch)" });
+  await newProject(page)
+    .getByLabel("Description")
+    .fill("A weaver's daughter, and a war.");
+  await newProject(page)
+    .getByRole("button", { name: "Create project" })
+    .click();
+
+  await expect(rowFor(page, title)).toBeVisible();
+  let made: { id: string } | undefined;
+  await expect
+    .poll(async () => {
+      const listed = await (await page.request.get("/api/projects")).json();
+      made = listed.find((one: { name: string }) => one.name === title);
+
+      return made !== undefined;
+    })
+    .toBe(true);
+  const found = await (
+    await page.request.get(`/api/projects/${made!.id}`)
+  ).json();
+  expect(found.language).toBe("de");
+  expect(found.description).toBe("A weaver's daughter, and a war.");
+});
+
+test("the language offered at first is the browser's own", async ({ page }) => {
+  await titleField(page).fill(aTitle());
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+
+  await expect(newProject(page).getByLabel("Language of the book")).toHaveValue(
+    "en",
+  );
+});
+
+test("cancelling the new project's details creates nothing and keeps the title", async ({
+  page,
+}) => {
+  const title = aTitle();
+  await titleField(page).fill(title);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+
+  await page.keyboard.press("Escape");
+
+  await expect(newProject(page)).toBeHidden();
+  await expect(titleField(page)).toHaveValue(title);
+  await expect(rowFor(page, title)).toHaveCount(0);
 });

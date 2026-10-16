@@ -1,12 +1,14 @@
 import { test, expect } from "@playwright/test";
 
 import {
+  boardOnServer,
   boardSaves,
   bar,
   cardNamed,
   corkboard,
   dragBy,
   panBy,
+  pinHeld,
   seenAt,
   select,
   surface,
@@ -23,26 +25,6 @@ const spotOf = (page: Page, named: string) =>
   cardNamed(page, named).evaluate((it) => it.getAttribute("style"));
 
 type Page = Parameters<Parameters<typeof test>[1]>[0]["page"];
-
-const boardOnServer = (page: Page) =>
-  page.evaluate(async () => {
-    const project = window.location.pathname.split("/")[2].split("-").pop();
-
-    return fetch("/api/boards", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ project }),
-    }).then((it) => it.json());
-  });
-
-async function pinHeld(page: Page) {
-  await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
-  await expect
-    .poll(async () => (await boardOnServer(page)).ideas.length, {
-      message: "the board shows the pin before the server has it",
-    })
-    .toBe(1);
-}
 
 test("dragging the bare board carries the cards with it", async ({ page }) => {
   await anOpenProject(page, "Panning");

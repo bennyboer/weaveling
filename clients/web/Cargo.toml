@@ -23,6 +23,7 @@ web-sys = { workspace = true, features = [
     "IntersectionObserverEntry",
     "IntersectionObserverInit",
     "Location",
+    "Navigator",
     "Selection",
     "Storage",
     "UrlSearchParams",

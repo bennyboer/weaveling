@@ -1,10 +1,12 @@
 use gloo_net::http::Request;
-use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
+use projects_contract::{
+    CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
+};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::http::{ApiError, checked, parsed};
-use crate::projects::model::{Project, ProjectId};
+use crate::projects::model::{Project, ProjectDetails, ProjectId};
 
 const PROJECTS: &str = "/api/projects";
 const SUBJECT: &str = "project";
@@ -19,11 +21,11 @@ pub async fn list() -> Result<Vec<Project>, ApiError> {
     listed.into_iter().map(as_project).collect()
 }
 
-pub async fn create(name: &str) -> Result<Project, ApiError> {
+pub async fn create(name: &str, details: &ProjectDetails) -> Result<Project, ApiError> {
     let payload = CreateProjectRequest {
         name: name.to_owned(),
-        language: None,
-        description: String::new(),
+        language: details.language.clone(),
+        description: details.description.clone(),
     };
     let response = Request::post(PROJECTS)
         .json(&payload)
@@ -33,6 +35,19 @@ pub async fn create(name: &str) -> Result<Project, ApiError> {
         .map_err(|_| ApiError::Offline)?;
 
     as_project(parsed(response, SUBJECT).await?)
+}
+
+pub async fn details(id: &ProjectId) -> Result<ProjectDetails, ApiError> {
+    let response = Request::get(&format!("{PROJECTS}/{id}"))
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)?;
+    let found: ProjectDetailsDTO = parsed(response, SUBJECT).await?;
+
+    Ok(ProjectDetails {
+        language: found.language,
+        description: found.description,
+    })
 }
 
 pub async fn rename(id: &ProjectId, name: &str) -> Result<Project, ApiError> {

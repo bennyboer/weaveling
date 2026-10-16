@@ -12,6 +12,12 @@ pub struct Project {
     pub updated_at: OffsetDateTime,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProjectDetails {
+    pub language: Option<String>,
+    pub description: String,
+}
+
 impl From<String> for ProjectId {
     fn from(given: String) -> Self {
         Self(given)

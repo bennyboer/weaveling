@@ -135,3 +135,23 @@ export function boardSaves(page: Page): () => Promise<void> {
       })
       .toBe(0);
 }
+
+export const boardOnServer = (page: Page) =>
+  page.evaluate(async () => {
+    const project = window.location.pathname.split("/")[2].split("-").pop();
+
+    return fetch("/api/boards", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ project }),
+    }).then((it) => it.json());
+  });
+
+export async function pinHeld(page: Page) {
+  await expect(corkboard(page).locator(".pinned")).toHaveCount(1);
+  await expect
+    .poll(async () => (await boardOnServer(page)).ideas.length, {
+      message: "the board shows the pin before the server has it",
+    })
+    .toBe(1);
+}

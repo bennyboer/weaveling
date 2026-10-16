@@ -12,6 +12,10 @@ export async function aNewProject(page: Page, named: string): Promise<string> {
   await page.goto("/");
   await page.getByPlaceholder("A working title…").fill(title);
   await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "New project" })
+    .getByRole("button", { name: "Create project" })
+    .click();
   await page.getByRole("link", { name: title }).click();
 
   await onTheBoard(page);
