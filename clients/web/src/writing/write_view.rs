@@ -5,7 +5,7 @@ use leptos_router::NavigateOptions;
 use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, FocusEvent, KeyboardEvent};
+use web_sys::{Element, FocusEvent};
 
 use crate::outline::model::{Section, SectionId};
 use crate::projects::open_project::OpenProject;
@@ -15,7 +15,7 @@ use crate::scenes::prose::SyncConnection;
 use crate::writing::asking::asking;
 use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
-use crate::writing::contents::{BOOK_RAIL, contents};
+use crate::writing::contents::contents;
 use crate::writing::drawers::drawer_toggles;
 use crate::writing::going_back::going_back;
 use crate::writing::heading::pending_heading;
@@ -30,7 +30,7 @@ use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
 use crate::writing::settings_dialog::settings_dialog;
 use crate::writing::side::Side;
 use crate::writing::status_note::status_note;
-use crate::writing::this_scene::{SCENE_TRAY, ideas_to_link, this_scene};
+use crate::writing::this_scene::{ideas_to_link, this_scene};
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -97,8 +97,6 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
 
     let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
     let typing = window_event_listener(ev::keydown, move |event| match event.key().as_str() {
-        "Escape" if within(&event, SCENE_TRAY) => state.scene_tray.close(),
-        "Escape" if within(&event, BOOK_RAIL) => state.book_rail.close(),
         "Escape" => state.margin.return_to_writing(),
         "F10" if event.shift_key() => open_menu_where_writing(&event, state),
         _ => {}
@@ -175,19 +173,6 @@ fn scene_around(event: &FocusEvent) -> Option<SceneId> {
         .ok()??
         .get_attribute("data-scene")
         .map(SceneId::from)
-}
-
-fn within(event: &KeyboardEvent, drawer: &str) -> bool {
-    event
-        .target()
-        .and_then(|target| target.dyn_into::<Element>().ok())
-        .and_then(|target| {
-            target
-                .closest(&format!("#{drawer}, [aria-controls={drawer}]"))
-                .ok()
-                .flatten()
-        })
-        .is_some()
 }
 
 fn section_around(event: &FocusEvent) -> Option<SectionId> {

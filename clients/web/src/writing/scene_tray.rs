@@ -1,29 +1,19 @@
 use leptos::prelude::*;
-use web_sys::Storage;
 
+use crate::drawer::Drawer;
 use crate::scenes::model::SceneId;
-use crate::writing::drawer_width::DrawerWidth;
-
-const KEPT_OPEN: &str = "weaveling.scene-tray";
-const OPEN: &str = "open";
 
 #[derive(Clone, Copy)]
 pub struct SceneTray {
     scene: RwSignal<Option<SceneId>>,
-    open: RwSignal<bool>,
-    width: DrawerWidth,
+    drawer: Drawer,
 }
 
 impl SceneTray {
     pub fn as_last_left() -> Self {
-        let open = shelf()
-            .and_then(|shelf| shelf.get_item(KEPT_OPEN).ok().flatten())
-            .is_some_and(|kept| kept == OPEN);
-
         Self {
             scene: RwSignal::new(None),
-            open: RwSignal::new(open),
-            width: DrawerWidth::as_last_left("weaveling.scene-tray.width", "--scene-tray"),
+            drawer: Drawer::as_last_left("weaveling.scene-tray", false),
         }
     }
 
@@ -44,34 +34,7 @@ impl SceneTray {
         }
     }
 
-    pub fn width(self) -> DrawerWidth {
-        self.width
+    pub fn drawer(self) -> Drawer {
+        self.drawer
     }
-
-    pub fn is_open(self) -> bool {
-        self.open.get()
-    }
-
-    pub fn toggle(self) {
-        self.keep_open(!self.open.get_untracked());
-    }
-
-    pub fn close(self) {
-        self.keep_open(false);
-    }
-
-    fn keep_open(self, open: bool) {
-        self.open.set(open);
-
-        if let Some(shelf) = shelf() {
-            _ = match open {
-                true => shelf.set_item(KEPT_OPEN, OPEN),
-                false => shelf.remove_item(KEPT_OPEN),
-            };
-        }
-    }
-}
-
-fn shelf() -> Option<Storage> {
-    window().local_storage().ok().flatten()
 }

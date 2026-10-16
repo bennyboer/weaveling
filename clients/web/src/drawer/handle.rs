@@ -3,7 +3,7 @@ use leptos::{IntoView, ev, html};
 use wasm_bindgen::JsCast;
 use web_sys::Element;
 
-use crate::writing::drawer_width::DrawerWidth;
+use crate::drawer::width::DrawerWidth;
 
 const STEP: f64 = 16.0;
 
@@ -13,7 +13,7 @@ pub enum Grows {
     Rightwards,
 }
 
-pub fn drawer_handle(width: DrawerWidth, grows: Grows, named: &'static str) -> impl IntoView {
+pub fn drawer_handle(width: DrawerWidth, grows: Grows, named: String) -> impl IntoView {
     let dragging = StoredValue::new(None::<(f64, f64)>);
     let towards = move |moved: f64| match grows {
         Grows::Rightwards => moved,

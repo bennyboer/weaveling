@@ -3,8 +3,6 @@ mod beginnings;
 mod book_rail;
 mod bringing_back;
 mod contents;
-mod drawer_handle;
-mod drawer_width;
 mod drawers;
 mod going_back;
 mod heading;

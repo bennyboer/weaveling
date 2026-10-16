@@ -632,9 +632,9 @@ test("the tally counts scenes with no home, never ideas", async ({ page }) => {
   await aLooseScene(page);
   await openTheOutline(page);
 
-  await expect(page.locator(".tray-toggle")).toHaveText(
-    /^Not in the book · 1$/,
-  );
+  await expect(
+    page.getByRole("button", { name: /^Not in the book ·/ }),
+  ).toHaveText(/^Not in the book · 1$/);
   await expect(waitingIdeas(page).getByRole("button")).toHaveCount(2);
 });
 

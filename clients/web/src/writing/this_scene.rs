@@ -3,12 +3,12 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 
+use crate::drawer::{Edge, Inside, drawer};
 use crate::icons::{Icon, mark};
 use crate::ideas::model::IdeaId;
 use crate::route;
 use crate::scenes::link_dialog::link_dialog;
 use crate::scenes::model::SceneId;
-use crate::writing::drawer_handle::{Grows, drawer_handle};
 use crate::writing::write_view_state::WriteViewState;
 
 pub const SCENE_TRAY: &str = "scene-tray";
@@ -18,57 +18,34 @@ pub fn this_scene(state: WriteViewState, project: String) -> impl IntoView {
     let project = StoredValue::new(project);
 
     Effect::new(move || {
-        if tray.is_open()
+        if tray.drawer().is_open()
             && let Some(scene) = tray.scene()
         {
             state.scene_ideas.look_up(scene);
         }
     });
 
-    (
-        html::button()
-            .r#type("button")
-            .class("scene-tray-tab")
-            .attr("aria-expanded", move || tray.is_open().to_string())
-            .attr("aria-controls", SCENE_TRAY)
-            .on(ev::click, move |_| tray.toggle())
-            .child((html::span().child("This scene"), move || {
-                match tray.is_open() {
-                    true => mark(Icon::PushIn).into_any(),
-                    false => mark(Icon::PullOut).into_any(),
-                }
-            })),
-        html::aside()
-            .id(SCENE_TRAY)
-            .class(SCENE_TRAY)
-            .class(("open", move || tray.is_open()))
-            .attr("aria-label", "This scene")
-            .attr("hidden", move || (!tray.is_open()).then_some(""))
-            .child((
-                drawer_handle(tray.width(), Grows::Leftwards, "Resize the tray"),
-                html::div().class("inside").child((
-                    html::div().class("head").child((
-                        html::p().class("tally").child("This scene"),
-                        html::button()
-                            .r#type("button")
-                            .class("shut")
-                            .attr("aria-label", "Close the tray")
-                            .on(ev::click, move |_| tray.close())
-                            .child("\u{00d7}"),
-                    )),
-                    move || match tray.scene() {
-                        None => html::p()
-                            .class("nothing-yet")
-                            .child("Put the cursor in a scene to see it here.")
-                            .into_any(),
-                        Some(scene) => (
-                            title_field(scene.clone(), state),
-                            drawn_from(scene, project, state),
-                        )
-                            .into_any(),
-                    },
-                )),
-            )),
+    drawer(
+        tray.drawer(),
+        Edge::Right,
+        || "This scene".to_owned(),
+        Inside {
+            id: SCENE_TRAY,
+            named: "This scene",
+            called: "the tray",
+            head: html::p().class("tally").child("This scene"),
+            body: move || match tray.scene() {
+                None => html::p()
+                    .class("nothing-yet")
+                    .child("Put the cursor in a scene to see it here.")
+                    .into_any(),
+                Some(scene) => (
+                    title_field(scene.clone(), state),
+                    drawn_from(scene, project, state),
+                )
+                    .into_any(),
+            },
+        },
     )
 }
 

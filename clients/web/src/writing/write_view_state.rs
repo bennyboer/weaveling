@@ -72,7 +72,7 @@ impl WriteViewState {
             loose,
             connection: StoredValue::new_local(SyncConnection::new()),
         };
-        keep_apart(state.book_rail, state.scene_tray);
+        keep_apart(state.book_rail.drawer(), state.scene_tray.drawer());
         let listing = project.clone();
         let counting = project.clone();
 

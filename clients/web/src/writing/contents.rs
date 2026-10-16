@@ -2,11 +2,11 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
 
+use crate::drawer::{Edge, Inside, drawer};
 use crate::icons::{Icon, mark};
 use crate::outline::model::{Section, SectionId};
 use crate::scenes::model::SceneId;
 use crate::writing::book_rail::Fold;
-use crate::writing::drawer_handle::{Grows, drawer_handle};
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -30,45 +30,25 @@ enum Entry {
 pub fn contents(state: WriteViewState) -> impl IntoView {
     let rail = state.book_rail;
 
-    (
-        html::button()
-            .r#type("button")
-            .class("book-rail-tab")
-            .attr("aria-expanded", move || rail.is_open().to_string())
-            .attr("aria-controls", BOOK_RAIL)
-            .on(ev::click, move |_| rail.toggle())
-            .child((html::span().child("Contents"), move || {
-                match rail.is_open() {
-                    true => mark(Icon::Promote).into_any(),
-                    false => mark(Icon::Demote).into_any(),
-                }
-            })),
-        html::aside()
-            .id(BOOK_RAIL)
-            .class(BOOK_RAIL)
-            .attr("aria-label", "Contents")
-            .attr("hidden", move || (!rail.is_open()).then_some(""))
-            .child((
-                drawer_handle(rail.width(), Grows::Rightwards, "Resize the contents"),
-                html::div().class("inside").child((
-                    html::div().class("head").child((
-                        html::p().class("tally").child("Contents"),
-                        folding_everything(state),
-                        html::button()
-                            .r#type("button")
-                            .class("shut")
-                            .attr("aria-label", "Close the contents")
-                            .on(ev::click, move |_| rail.close())
-                            .child("\u{00d7}"),
-                    )),
-                    html::ol().class("rail-entries").child(move || {
-                        entries(state)
-                            .into_iter()
-                            .map(|entry| row(entry, state))
-                            .collect::<Vec<_>>()
-                    }),
-                )),
-            )),
+    drawer(
+        rail.drawer(),
+        Edge::Left,
+        || "Contents".to_owned(),
+        Inside {
+            id: BOOK_RAIL,
+            named: "Contents",
+            called: "the contents",
+            head: (
+                html::p().class("tally").child("Contents"),
+                folding_everything(state),
+            ),
+            body: html::ol().class("rail-entries").child(move || {
+                entries(state)
+                    .into_iter()
+                    .map(|entry| row(entry, state))
+                    .collect::<Vec<_>>()
+            }),
+        },
     )
 }
 
@@ -242,6 +222,6 @@ fn go_to(stop: Stop, state: WriteViewState) {
         .flatten()
         .is_some_and(|query| query.matches());
     if narrow {
-        state.book_rail.close();
+        state.book_rail.drawer().close();
     }
 }

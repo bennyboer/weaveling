@@ -1,35 +1,35 @@
 use leptos::html;
 use leptos::prelude::*;
-use leptos::{IntoView, ev};
+
+use crate::drawer::{Drawer, Edge, Inside, drawer};
+
+const WIDE: f64 = 960.0;
 
 pub fn laid_out(
     work: AnyView,
     kept: AnyView,
     tally: impl Fn() -> String + Send + Sync + 'static,
 ) -> impl IntoView {
-    let out = RwSignal::new(false);
+    let wide = window()
+        .inner_width()
+        .ok()
+        .and_then(|width| width.as_f64())
+        .is_some_and(|width| width > WIDE);
+    let tray = Drawer::as_last_left("weaveling.tray", wide);
 
     html::div().class("laid-out").child((
         work,
-        html::button()
-            .r#type("button")
-            .class("tray-toggle")
-            .attr("aria-expanded", move || out.get().to_string())
-            .on(ev::click, move |_| out.update(|shown| *shown = !*shown))
-            .child(tally),
-        html::aside()
-            .class(move || match out.get() {
-                true => "tray pulled-out",
-                false => "tray",
-            })
-            .child((
-                html::button()
-                    .r#type("button")
-                    .class("shut")
-                    .attr("aria-label", "Hide the tray")
-                    .on(ev::click, move |_| out.set(false))
-                    .child("\u{00d7}"),
-                kept,
-            )),
+        drawer(
+            tray,
+            Edge::Right,
+            tally,
+            Inside {
+                id: "tray",
+                named: "Tray",
+                called: "the tray",
+                head: (),
+                body: kept,
+            },
+        ),
     ))
 }
