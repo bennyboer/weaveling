@@ -557,11 +557,11 @@ test.describe("copying what is chosen", () => {
     const [first] = await aBook(page, "OrdinaryCopy", 2);
     await written(page, first, "Keep this and not that.");
     await page.keyboard.press("Home");
-    for (let step = 0; step < 4; step++) {
-      await page.keyboard.press("Shift+ControlOrMeta+ArrowRight");
+    for (let step = 0; step < "Keep this".length; step++) {
+      await page.keyboard.press("Shift+ArrowRight");
     }
 
-    await expect.poll(() => copied(page)).toBe("Keep this and not ");
+    await expect.poll(() => copied(page)).toBe("Keep this");
   });
 
   test("a chosen heading is copied as a line of its own", async ({ page }) => {

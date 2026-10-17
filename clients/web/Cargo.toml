@@ -28,6 +28,7 @@ web-sys = { workspace = true, features = [
     "IntersectionObserverInit",
     "Location",
     "MediaQueryList",
+    "NodeList",
     "Navigator",
     "PointerEvent",
     "Range",

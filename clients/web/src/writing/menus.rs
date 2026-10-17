@@ -23,8 +23,22 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
         move |_| state.margin.is_renaming(&scene)
     });
     let chosen = scene.clone();
+    let carried = scene.clone();
 
     html::div().class("scene-margin").child((
+        (state.side == Side::Book).then(|| {
+            html::button()
+                .r#type("button")
+                .class("menu-button grip")
+                .attr("tabindex", "-1")
+                .attr("aria-label", "Move scene")
+                .attr("title", "Drag to move")
+                .on(ev::pointerdown, move |event| {
+                    event.prevent_default();
+                    state.moving.pick_up(carried.clone());
+                })
+                .child(mark(Icon::Grip))
+        }),
         move || {
             if renaming.get() {
                 renaming_field(scene.clone(), state).into_any()
@@ -116,6 +130,8 @@ pub fn section_margin(section: SectionId, level: usize, state: WriteViewState) -
 
 pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
     let marked = Marked::Gap(landing.clone());
+    let section = landing.section.to_string();
+    let landing_here = landing.clone();
     let after = landing.after.as_ref().map(ToString::to_string);
     let first_in = landing.after.is_none().then(|| landing.section.to_string());
 
@@ -124,6 +140,8 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
     html::div()
         .class("insertion")
         .class(("below-a-scene", below_a_scene))
+        .class(("landing", move || state.moving.lands_at(&landing_here)))
+        .attr("data-section", section)
         .attr("data-after", after)
         .attr("data-first-in", first_in)
         .child((

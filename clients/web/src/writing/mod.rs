@@ -14,6 +14,7 @@ mod left_off;
 mod loose_scenes;
 mod margin;
 mod menus;
+mod moving;
 mod opening;
 mod placing;
 mod problems;

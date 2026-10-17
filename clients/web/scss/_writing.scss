@@ -573,3 +573,33 @@ body:has(.alarm) .status-note {
 .writing:focus {
   outline: none;
 }
+
+.writing .scene-margin {
+  .grip {
+    order: 1;
+    cursor: grab;
+    touch-action: none;
+  }
+
+  .margin-actions {
+    order: 2;
+  }
+}
+
+.writing .scene-slot.carried {
+  opacity: 0.4;
+}
+
+.writing .insertion.landing .reach::after {
+  border-top-width: 2px;
+  opacity: 1;
+}
+
+.writing .insertion.landing .between-scenes {
+  visibility: hidden;
+}
+
+body:has(.writing .scene-slot.carried) {
+  cursor: grabbing;
+  user-select: none;
+}

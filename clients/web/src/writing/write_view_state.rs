@@ -15,6 +15,7 @@ use crate::writing::labels::Labels;
 use crate::writing::left_off::LeftOff;
 use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::margin::Margin;
+use crate::writing::moving::Moving;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
 use crate::writing::scene_ideas::SceneIdeas;
@@ -45,6 +46,7 @@ pub struct WriteViewState {
     pub scene_ideas: SceneIdeas,
     pub choosing: Choosing,
     pub copying: Copying,
+    pub moving: Moving,
     pub settings: Settings,
     pub focus: Focus,
     pub side: Side,
@@ -80,6 +82,7 @@ impl WriteViewState {
             scene_ideas: SceneIdeas::of(project, problems, saving),
             choosing,
             copying: Copying::of(choosing, structure, walk, problems),
+            moving: Moving::nothing(choosing, structure),
             settings: Settings::as_last_left(),
             focus: Focus::off(),
             side,

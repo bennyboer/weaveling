@@ -116,7 +116,7 @@ test("while focused, a margin's menu shows only when its line is hovered", async
   await page.setViewportSize({ width: 1000, height: 800 });
   const { scenes } = await writingIn(page, "Margins");
   const menu = flow(page).locator(
-    `.scene-row:has([data-scene="${scenes["Part One"][0]}"]) .menu-button`,
+    `.scene-row:has([data-scene="${scenes["Part One"][0]}"]) .menu-button[aria-label="Scene actions"]`,
   );
   await page.mouse.move(5, 5);
   expect(
