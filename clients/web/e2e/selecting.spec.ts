@@ -630,3 +630,171 @@ test.describe("copying what is chosen", () => {
     );
   });
 });
+
+test.describe("choosing with the mouse", () => {
+  const middleOf = async (page: Page, id: string) => {
+    const seen = (await scene(page, id).boundingBox())!;
+
+    return { x: seen.x + 40, y: seen.y + seen.height / 2 };
+  };
+
+  async function dragged(page: Page, from: string, to: string[]) {
+    const start = await middleOf(page, from);
+    await page.mouse.move(start.x, start.y);
+    await page.mouse.down();
+    await page.mouse.move(start.x + 40, start.y, { steps: 3 });
+    for (const over of to) {
+      const next = await middleOf(page, over);
+      await page.mouse.move(next.x, next.y, { steps: 8 });
+    }
+  }
+
+  test("dragging from one scene into others chooses them all, and they stay chosen once let go", async ({
+    page,
+  }) => {
+    const [first, second, third] = await aBook(page, "Dragging", 3);
+    await written(page, first, "First scene.");
+    await written(page, second, "Second scene.");
+    await written(page, third, "Third scene.");
+
+    await dragged(page, first, [third]);
+    await expect.poll(() => chosen(page)).toEqual([first, second, third]);
+    await page.mouse.up();
+
+    await expect.poll(() => chosen(page)).toEqual([first, second, third]);
+    await expect
+      .poll(() => spannedBySelection(page))
+      .toEqual([first, second, third]);
+    await expect(flow(page), "the keys are with the book").toBeFocused();
+    await page.keyboard.press("Shift+ArrowUp");
+    await expect.poll(() => chosen(page)).toEqual([first, second]);
+  });
+
+  test("dragging back gives scenes back", async ({ page }) => {
+    const [first, second, third] = await aBook(page, "DraggingBack", 3);
+    await written(page, first, "First scene.");
+    await written(page, second, "Second scene.");
+    await written(page, third, "Third scene.");
+
+    await dragged(page, first, [third, second]);
+    await page.mouse.up();
+
+    await expect.poll(() => chosen(page)).toEqual([first, second]);
+  });
+
+  test("a drag within one scene selects its text as it always did", async ({
+    page,
+  }) => {
+    const [first] = await aBook(page, "DraggingInside", 2);
+    await written(page, first, "Only these words here.");
+    const seen = (await scene(page, first).boundingBox())!;
+
+    await page.mouse.move(seen.x + 2, seen.y + seen.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(seen.x + 90, seen.y + seen.height / 2, {
+      steps: 6,
+    });
+    await page.mouse.up();
+
+    await expect.poll(() => chosen(page)).toEqual([]);
+    await expect(scene(page, first)).toBeFocused();
+    expect(
+      (await page.evaluate(() => getSelection()!.toString())).length,
+    ).toBeGreaterThan(0);
+  });
+
+  test("a drag across a section takes its heading in", async ({ page }) => {
+    await aNewProject(page, "DraggingHeadings");
+    const made = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+    await views(page).getByRole("link", { name: "Write", exact: true }).click();
+    await written(page, made["Part One"][0], "One.");
+    await written(page, made["Part Two"][0], "Two.");
+
+    await dragged(page, made["Part One"][0], [made["Part Two"][0]]);
+    await page.mouse.up();
+
+    await expect.poll(() => headingsChosen(page)).toEqual(["Part Two"]);
+    await expect
+      .poll(() => chosen(page))
+      .toEqual([made["Part One"][0], made["Part Two"][0]]);
+  });
+
+  test("once let go, moving the mouse changes nothing", async ({ page }) => {
+    const [first, second, third] = await aBook(page, "LetGo", 3);
+    await written(page, first, "First scene.");
+    await written(page, second, "Second scene.");
+    await written(page, third, "Third scene.");
+    await dragged(page, first, [second]);
+    await page.mouse.up();
+    await expect.poll(() => chosen(page)).toEqual([first, second]);
+
+    const far = await middleOf(page, third);
+    await page.mouse.move(far.x, far.y, { steps: 6 });
+
+    await expect.poll(() => chosen(page)).toEqual([first, second]);
+  });
+
+  test("moving on within the last scene keeps every chosen scene selected", async ({
+    page,
+  }) => {
+    const [first, second, third] = await aBook(page, "WithinLast", 3);
+    await written(page, first, "First scene.");
+    await written(page, second, "Second scene.");
+    await written(page, third, "Third scene, with a few more words in it.");
+    await dragged(page, first, [third]);
+
+    const last = (await scene(page, third).boundingBox())!;
+    await page.mouse.move(last.x + last.width - 20, last.y + last.height / 2, {
+      steps: 8,
+    });
+    await page.mouse.up();
+
+    await expect
+      .poll(() => spannedBySelection(page))
+      .toEqual([first, second, third]);
+  });
+
+  test("Shift+click in another scene chooses from the cursor's scene to that one", async ({
+    page,
+  }) => {
+    const [first, second, third] = await aBook(page, "ShiftClick", 3);
+    await written(page, first, "First scene.");
+    await written(page, second, "Second scene.");
+    await written(page, third, "Third scene.");
+    await scene(page, first).click();
+
+    const far = await middleOf(page, third);
+    await page.keyboard.down("Shift");
+    await page.mouse.click(far.x, far.y);
+    await page.keyboard.up("Shift");
+
+    await expect.poll(() => chosen(page)).toEqual([first, second, third]);
+    await expect
+      .poll(() => spannedBySelection(page))
+      .toEqual([first, second, third]);
+
+    const back = await middleOf(page, second);
+    await page.keyboard.down("Shift");
+    await page.mouse.click(back.x, back.y);
+    await page.keyboard.up("Shift");
+    await expect.poll(() => chosen(page)).toEqual([first, second]);
+  });
+
+  test("Shift+click within the cursor's scene still selects its text", async ({
+    page,
+  }) => {
+    const [first] = await aBook(page, "ShiftClickInside", 2);
+    await written(page, first, "Only these words here.");
+    await page.keyboard.press("Home");
+    const seen = (await scene(page, first).boundingBox())!;
+
+    await page.keyboard.down("Shift");
+    await page.mouse.click(seen.x + 90, seen.y + seen.height / 2);
+    await page.keyboard.up("Shift");
+
+    await expect.poll(() => chosen(page)).toEqual([]);
+    expect(
+      (await page.evaluate(() => getSelection()!.toString())).length,
+    ).toBeGreaterThan(0);
+  });
+});

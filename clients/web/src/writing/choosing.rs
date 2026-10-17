@@ -114,6 +114,15 @@ impl Choosing {
         Some(reached)
     }
 
+    pub fn reach_to(self, stop: Stop) {
+        let Some((anchor, head)) = self.ends.get_untracked() else {
+            return;
+        };
+        if head != stop {
+            self.ends.set(Some((anchor, stop)));
+        }
+    }
+
     pub fn let_go(self) {
         if self.is_active() {
             self.ends.set(None);

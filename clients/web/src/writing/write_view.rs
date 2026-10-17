@@ -15,6 +15,7 @@ use crate::scenes::prose::SyncConnection;
 use crate::writing::asking::{Asking, asking};
 use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
+use crate::writing::choosing::hand_the_keys_to_the_book;
 use crate::writing::contents::contents;
 use crate::writing::drawers::drawer_toggles;
 use crate::writing::focus::focus_line;
@@ -103,6 +104,43 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         }
     });
 
+    let dragging_from = StoredValue::new(None::<Stop>);
+    let pressing = window_event_listener(ev::pointerdown, move |event| {
+        let pressed = (event.button() == 0)
+            .then(|| stop_at(event.client_x(), event.client_y()))
+            .flatten();
+        if event.shift_key()
+            && let Some(clicked) = pressed.clone()
+            && reached_by_shift_click(clicked, state)
+        {
+            event.prevent_default();
+            return;
+        }
+        dragging_from.set_value(pressed);
+    });
+    let dragging = window_event_listener(ev::pointermove, move |event| {
+        let Some(from) = dragging_from.get_value() else {
+            return;
+        };
+        let Some(over) = stop_at(event.client_x(), event.client_y()) else {
+            return;
+        };
+        if !state.choosing.is_active() {
+            if over == from {
+                return;
+            }
+            state.choosing.begin_at(from);
+            hand_the_keys_to_the_book();
+        }
+        state.choosing.reach_to(over);
+        drawn_again_after_the_browser(state);
+    });
+    let letting_go = window_event_listener(ev::pointerup, move |_| {
+        if dragging_from.get_value().is_some() && state.choosing.is_active() {
+            drawn_again_after_the_browser(state);
+        }
+        dragging_from.set_value(None);
+    });
     let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
     let copying = window_event_listener(ev::copy, move |event| state.copying.copied(&event));
     let typing = window_event_listener(ev::keydown, move |event| {
@@ -114,6 +152,9 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     });
     on_cleanup(move || {
         clicking.remove();
+        pressing.remove();
+        dragging.remove();
+        letting_go.remove();
         copying.remove();
         typing.remove();
         state.viewport.close();
@@ -273,6 +314,62 @@ fn drawn(stop: &Stop) -> Option<Element> {
     };
 
     document().query_selector(&found).ok().flatten()
+}
+
+fn drawn_again_after_the_browser(state: WriteViewState) {
+    if let Some((first, last)) = untrack(|| state.choosing.span()) {
+        _ = request_animation_frame(move || shown_as_selected(&first, &last));
+    }
+}
+
+fn reached_by_shift_click(clicked: Stop, state: WriteViewState) -> bool {
+    if !state.choosing.is_active() {
+        let Some(here) = where_the_cursor_is() else {
+            return false;
+        };
+        if here == clicked {
+            return false;
+        }
+        state.choosing.begin_at(here);
+        hand_the_keys_to_the_book();
+    }
+    state.choosing.reach_to(clicked);
+
+    true
+}
+
+fn where_the_cursor_is() -> Option<Stop> {
+    let focused = document().active_element()?;
+
+    if let Some(scene) = focused.closest("[data-scene]").ok().flatten() {
+        return scene
+            .get_attribute("data-scene")
+            .map(|scene| Stop::Scene(SceneId::from(scene)));
+    }
+
+    focused
+        .closest(".heading-row[data-section]")
+        .ok()
+        .flatten()?
+        .get_attribute("data-section")
+        .map(|section| Stop::Heading(SectionId::from(section)))
+}
+
+fn stop_at(x: i32, y: i32) -> Option<Stop> {
+    let under = document().element_from_point(x as f32, y as f32)?;
+
+    if let Some(scene) = under.closest("[data-scene]").ok().flatten() {
+        return scene
+            .get_attribute("data-scene")
+            .map(|scene| Stop::Scene(SceneId::from(scene)));
+    }
+
+    under
+        .closest(".heading-row[data-section]")
+        .ok()
+        .flatten()?
+        .get_attribute("data-section")
+        .map(|section| Stop::Heading(SectionId::from(section)))
 }
 
 fn is_the_book_itself(event: &FocusEvent) -> bool {
