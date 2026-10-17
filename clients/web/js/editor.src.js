@@ -26,6 +26,22 @@ const schema = new Schema({
 
 const QUOTATION_CHANGED = "quotation-changed";
 
+function speakingOrNot(state, dispatch) {
+  const speech = schema.marks.speech;
+
+  if (!state.selection.empty) {
+    return toggleMark(speech)(state, dispatch);
+  }
+  const marks = state.storedMarks ?? state.selection.$from.marks();
+  dispatch(
+    speech.isInSet(marks)
+      ? state.tr.removeStoredMark(speech)
+      : state.tr.addStoredMark(speech.create()),
+  );
+
+  return true;
+}
+
 function speaking(state) {
   const { empty, $from } = state.selection;
   const speech = schema.marks.speech;
@@ -206,6 +222,7 @@ export class ProseEditor {
           keymap({
             "Mod-i": toggleMark(schema.marks.em),
             "Mod-b": toggleMark(schema.marks.strong),
+            "Mod-Shift-2": speakingOrNot,
           }),
           keymap({
             Enter: (state, dispatch) => this.breakAtEnd(state, dispatch),
@@ -390,20 +407,8 @@ export class ProseEditor {
     if (text !== '"') {
       return false;
     }
-    const { state } = view;
-    const speech = schema.marks.speech;
 
-    if (!state.selection.empty) {
-      return toggleMark(speech)(state, view.dispatch);
-    }
-    const marks = state.storedMarks ?? state.selection.$from.marks();
-    view.dispatch(
-      speech.isInSet(marks)
-        ? state.tr.removeStoredMark(speech)
-        : state.tr.addStoredMark(speech.create()),
-    );
-
-    return true;
+    return speakingOrNot(view.state, view.dispatch);
   }
 
   onSelecting(selecting) {

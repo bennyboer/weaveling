@@ -4186,3 +4186,33 @@ test("what is said, pasted back in, stays what is said with one pair of marks", 
     "»Komm her,« sagte sie.\n»Komm her,« sagte sie.",
   );
 });
+
+test("Ctrl+Shift+2 begins a line of dialogue and ends it again", async ({ page }) => {
+  const only = await quoting(page, "DialogueKey", "de");
+
+  await page.keyboard.press("ControlOrMeta+Shift+2");
+  await page.keyboard.type("Komm her,");
+  await page.keyboard.press("ControlOrMeta+Shift+2");
+  await page.keyboard.type(" sagte sie.");
+
+  await expect.poll(() => shown(page, only)).toBe("»Komm her,« sagte sie.");
+  await expect(scene(page, only).locator("q.speech")).toHaveText(["Komm her,"]);
+});
+
+test("Ctrl+Shift+2 makes selected text dialogue, and plain again", async ({ page }) => {
+  const only = await quoting(page, "DialogueKeySelected", "de");
+  await page.keyboard.type("Sie sagte Ja.");
+  await page.keyboard.press("End");
+  for (let step = 0; step < "Ja.".length; step++) {
+    await page.keyboard.press("Shift+ArrowLeft");
+  }
+
+  await page.keyboard.press("ControlOrMeta+Shift+2");
+
+  await expect.poll(() => shown(page, only)).toBe("Sie sagte »Ja.«");
+
+  await page.keyboard.press("ControlOrMeta+Shift+2");
+
+  await expect.poll(() => shown(page, only)).toBe("Sie sagte Ja.");
+  await expect(scene(page, only).locator("q.speech")).toHaveCount(0);
+});
