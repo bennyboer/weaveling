@@ -1,7 +1,7 @@
 import * as Y from "yjs";
 import { EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
-import { Schema } from "prosemirror-model";
+import { DOMSerializer, Schema } from "prosemirror-model";
 import { schema as basic } from "prosemirror-schema-basic";
 import { addListNodes } from "prosemirror-schema-list";
 import { baseKeymap, toggleMark } from "prosemirror-commands";
@@ -19,7 +19,7 @@ const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "Alt" : "Ct
 const schema = new Schema({
   nodes: addListNodes(basic.spec.nodes, "paragraph block*", "block"),
   marks: basic.spec.marks.addToStart("speech", {
-    parseDOM: [{ tag: "q" }],
+    parseDOM: [{ tag: "q" }, { tag: "span.speech" }, { tag: "span.speech-mark", ignore: true }],
     toDOM: () => ["q", { class: "speech" }, 0],
   }),
 });
@@ -82,6 +82,32 @@ function quotedText(doc, opening, closing) {
   });
 
   return blocks.join("\n");
+}
+
+function copiedWithMarks(editor) {
+  const markOf = (text) => {
+    const mark = document.createElement("span");
+    mark.className = "speech-mark";
+    mark.textContent = text;
+
+    return mark;
+  };
+
+  return new DOMSerializer(DOMSerializer.nodesFromSchema(schema), {
+    ...DOMSerializer.marksFromSchema(schema),
+    speech: () => {
+      const said = document.createElement("span");
+      const content = document.createElement("span");
+      said.className = "speech";
+      said.append(
+        markOf(editor.quotationMarks.opening),
+        content,
+        markOf(editor.quotationMarks.closing),
+      );
+
+      return { dom: said, contentDOM: content };
+    },
+  });
 }
 
 function markingWhereWritten() {
@@ -162,6 +188,13 @@ export class ProseEditor {
                 focus: (view) => this.focusedWhereTheBrowserPutIt(view),
               },
               handleTextInput: (view, from, to, text) => this.typedMark(view, from, to, text),
+              clipboardSerializer: copiedWithMarks(this),
+              clipboardTextSerializer: (slice) =>
+                quotedText(
+                  slice.content,
+                  this.quotationMarks.opening,
+                  this.quotationMarks.closing,
+                ),
             },
           }),
           markingWhereWritten(),

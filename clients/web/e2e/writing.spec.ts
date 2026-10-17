@@ -4139,3 +4139,50 @@ test("copied, what is said comes with the book's marks", async ({
     )
     .toBe("Part One\n\n»Komm her,« sagte sie.");
 });
+
+
+test("copied from within a scene, what is said comes with the book's marks", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await quoting(page, "QuotingCopiedWithin", "de");
+  await page.keyboard.type('"Komm her," sagte sie.');
+  await page.keyboard.press("Shift+Home");
+
+  await page.keyboard.press("ControlOrMeta+C");
+
+  await expect
+    .poll(() => page.evaluate(() => navigator.clipboard.readText()))
+    .toBe("»Komm her,« sagte sie.");
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const [item] = await navigator.clipboard.read();
+        const html = await (await item.getType("text/html")).text();
+
+        return new DOMParser().parseFromString(html, "text/html").body.textContent;
+      }),
+    )
+    .toBe("»Komm her,« sagte sie.");
+});
+
+test("what is said, pasted back in, stays what is said with one pair of marks", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const only = await quoting(page, "QuotingPastedBack", "de");
+  await page.keyboard.type('"Komm her," sagte sie.');
+  await page.keyboard.press("Shift+Home");
+  await page.keyboard.press("ControlOrMeta+C");
+  await page.keyboard.press("End");
+  await page.keyboard.press("Enter");
+
+  await page.keyboard.press("ControlOrMeta+V");
+
+  await expect(scene(page, only).locator("q.speech")).toHaveCount(2);
+  expect(await shown(page, only)).toBe(
+    "»Komm her,« sagte sie.\n»Komm her,« sagte sie.",
+  );
+});
