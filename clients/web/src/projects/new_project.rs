@@ -1,11 +1,14 @@
 use leptos::html::{self, Input};
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
+use leptos_router::NavigateOptions;
+use leptos_router::hooks::use_navigate;
 
 use crate::projects::details_form::{DetailsDraft, details_fields};
 use crate::projects::languages::the_browser_s;
-use crate::projects::model::ProjectDetails;
+use crate::projects::model::{ProjectDetails, ProjectId};
 use crate::projects::workspace::Workspace;
+use crate::route;
 
 #[component]
 pub fn NewProject(workspace: Workspace) -> impl IntoView {
@@ -13,7 +16,7 @@ pub fn NewProject(workspace: Workspace) -> impl IntoView {
     let asking = RwSignal::new(false);
     let creating = workspace.creating();
 
-    empty_the_draft_once_a_project_lands(workspace, draft, asking);
+    go_into_a_project_once_it_lands(workspace, draft, asking);
 
     let ask = move || {
         if !draft.get_untracked().trim().is_empty() {
@@ -123,17 +126,29 @@ fn new_project_dialog(
         )
 }
 
-fn empty_the_draft_once_a_project_lands(
+fn go_into_a_project_once_it_lands(
     workspace: Workspace,
     draft: RwSignal<String>,
     asking: RwSignal<bool>,
 ) {
     let created = workspace.created();
+    let navigate = use_navigate();
 
-    Effect::new(move |_| {
-        if created.get().is_some() {
+    Effect::new(move |before: Option<Option<ProjectId>>| {
+        let landed = created.get();
+        let now = landed.as_ref().map(|project| project.id.clone());
+
+        if let (Some(before), Some(project)) = (before, landed)
+            && before.as_ref() != Some(&project.id)
+        {
             draft.set(String::new());
             asking.set(false);
+            navigate(
+                &route::project(&project.id, &project.name),
+                NavigateOptions::default(),
+            );
         }
+
+        now
     });
 }

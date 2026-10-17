@@ -10,12 +10,20 @@ const newProject = (page: Page) =>
 const rowFor = (page: Page, title: string) =>
   page.getByRole("listitem").filter({ hasText: title });
 
+const insideTheProject = (page: Page) =>
+  expect(page).toHaveURL(/\/projects\/[a-z0-9-]+-project_/);
+
+const backToTheList = (page: Page) =>
+  page.getByRole("link", { name: "All projects" }).click();
+
 async function aProjectCalled(page: Page, title: string) {
   await titleField(page).fill(title);
   await page.getByRole("button", { name: "Create", exact: true }).click();
   await newProject(page)
     .getByRole("button", { name: "Create project" })
     .click();
+  await insideTheProject(page);
+  await backToTheList(page);
   await expect(rowFor(page, title)).toBeVisible();
 }
 
@@ -23,11 +31,20 @@ test.beforeEach(async ({ page }) => {
   await page.goto("/");
 });
 
-test("a project can be created and appears in the list", async ({ page }) => {
+test("a new project opens at once, and the list has it when coming back", async ({
+  page,
+}) => {
   const title = aTitle();
 
-  await aProjectCalled(page, title);
+  await titleField(page).fill(title);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await newProject(page)
+    .getByRole("button", { name: "Create project" })
+    .click();
 
+  await insideTheProject(page);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+  await backToTheList(page);
   await expect(rowFor(page, title)).toBeVisible();
 });
 
@@ -42,17 +59,19 @@ test("Enter asks for the project's details, and Enter again creates it", async (
   await expect(newProject(page).getByLabel("Title")).toHaveValue(title);
   await page.keyboard.press("Enter");
 
-  await expect(rowFor(page, title)).toBeVisible();
-  await expect(newProject(page)).toBeHidden();
+  await insideTheProject(page);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
 });
 
-test("the title field is emptied once the project is created", async ({
+test("coming back to the list after making a project stays on the list", async ({
   page,
 }) => {
   const title = aTitle();
 
   await aProjectCalled(page, title);
+  await page.evaluate(() => new Promise((settled) => setTimeout(settled, 300)));
 
+  await expect(page).toHaveURL(/\/$/);
   await expect(titleField(page)).toHaveValue("");
 });
 
@@ -224,7 +243,7 @@ test("a new project is given its book's language and a description", async ({
     .getByRole("button", { name: "Create project" })
     .click();
 
-  await expect(rowFor(page, title)).toBeVisible();
+  await insideTheProject(page);
   let made: { id: string } | undefined;
   await expect
     .poll(async () => {
