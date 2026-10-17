@@ -60,12 +60,13 @@ extern "C" {
     #[wasm_bindgen(method, js_name = onLeaving)]
     pub fn on_leaving(this: &ProseEditor, leaving: &Closure<dyn Fn(String) -> bool>);
 
+    #[wasm_bindgen(method, js_name = quotedText)]
+    pub fn quoted_text(this: &ProseEditor) -> String;
+
     #[wasm_bindgen(method, js_name = setQuotationMarks)]
     pub fn set_quotation_marks(this: &ProseEditor, opening: &str, closing: &str);
 
     #[wasm_bindgen(method, js_name = onSelecting)]
     pub fn on_selecting(this: &ProseEditor, selecting: &Closure<dyn Fn(String) -> bool>);
 
-    #[wasm_bindgen(method, js_name = plainText)]
-    pub fn plain_text(this: &ProseEditor) -> String;
 }

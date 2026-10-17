@@ -35,7 +35,7 @@ impl Editors {
     }
 
     pub fn text_in(self, scene: &SceneId) -> Option<String> {
-        self.told(scene, ProseEditor::plain_text)
+        self.told(scene, ProseEditor::quoted_text)
     }
 
     pub fn back_into(self, scene: &SceneId) -> bool {

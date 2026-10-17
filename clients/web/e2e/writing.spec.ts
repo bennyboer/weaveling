@@ -3996,24 +3996,56 @@ async function quoting(page: Page, named: string, language: string | null) {
   return only;
 }
 
-test("a typed \" becomes the book's quotation marks, opening or closing by where it falls", async ({
+const shown = (page: Page, id: string) =>
+  scene(page, id).evaluate((prose) => {
+    const marks = (spoken: Element) =>
+      [...getComputedStyle(spoken).quotes.matchAll(/"([^"]*)"/g)].map(
+        (found) => found[1],
+      );
+    const read = (node: Node): string =>
+      node instanceof Element && node.matches("q.speech")
+        ? `${marks(node)[0]}${[...node.childNodes].map(read).join("")}${marks(node)[1]}`
+        : node instanceof Element
+          ? [...node.childNodes].map(read).join("")
+          : (node.textContent ?? "");
+
+    return [...prose.children].map(read).join("\n");
+  });
+
+test("a typed \" begins what is said and another ends it, drawn in the book's marks", async ({
   page,
 }) => {
   const only = await quoting(page, "QuotingDe", "de");
 
   await page.keyboard.type('"Komm her," sagte sie. ("Bitte.")');
 
-  await expect(scene(page, only)).toHaveText(
-    "»Komm her,« sagte sie. (»Bitte.«)",
-  );
+  await expect
+    .poll(() => shown(page, only))
+    .toBe("»Komm her,« sagte sie. (»Bitte.«)");
+  await expect(scene(page, only).locator("q.speech")).toHaveText([
+    "Komm her,",
+    "Bitte.",
+  ]);
+});
+
+test("the opening mark shows as soon as \" is typed", async ({ page }) => {
+  const only = await quoting(page, "QuotingBegun", "de");
+
+  await page.keyboard.type('Sie sagte: "');
+
+  await expect(scene(page, only)).toHaveText("Sie sagte: »");
+  await page.keyboard.type("Ja.");
+  await expect.poll(() => shown(page, only)).toBe("Sie sagte: »Ja.«");
 });
 
 test("a book with no language quotes as English does", async ({ page }) => {
   const only = await quoting(page, "QuotingNone", null);
 
-  await page.keyboard.type('"Come here," she said—"now."');
+  await page.keyboard.type('"Come here," she said.');
 
-  await expect(scene(page, only)).toHaveText("“Come here,” she said—“now.”");
+  await expect
+    .poll(() => shown(page, only))
+    .toBe("“Come here,” she said.");
 });
 
 test("French marks are set with narrow spaces inside", async ({ page }) => {
@@ -4021,7 +4053,9 @@ test("French marks are set with narrow spaces inside", async ({ page }) => {
 
   await page.keyboard.type('"Viens"');
 
-  await expect(scene(page, only)).toHaveText("« Viens »");
+  await expect
+    .poll(() => shown(page, only))
+    .toBe("« Viens »");
 });
 
 test("a typed ' becomes an apostrophe", async ({ page }) => {
@@ -4032,11 +4066,12 @@ test("a typed ' becomes an apostrophe", async ({ page }) => {
   await expect(scene(page, only)).toHaveText("Wie geht’s? Don’t.");
 });
 
-test("a quotation style chosen while writing is used from the next mark on", async ({
+test("a quotation style chosen while writing redraws what is already said", async ({
   page,
 }) => {
   const only = await quoting(page, "QuotingChanged", "de");
   await page.keyboard.type('"Eins" ');
+  await expect.poll(() => shown(page, only)).toBe("»Eins« ");
 
   await page.getByRole("button", { name: "Project details" }).click();
   const details = page.getByRole("dialog", { name: "Project details" });
@@ -4047,5 +4082,60 @@ test("a quotation style chosen while writing is used from the next mark on", asy
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type('"Zwei"');
 
-  await expect(scene(page, only)).toHaveText("»Eins« „Zwei“");
+  await expect.poll(() => shown(page, only)).toBe("„Eins“ „Zwei“");
+});
+
+test("what is said stays one pair of marks with emphasis inside it", async ({
+  page,
+}) => {
+  const only = await quoting(page, "QuotingEmphasis", "de");
+
+  await page.keyboard.type('"Das ist ');
+  await page.keyboard.press("ControlOrMeta+I");
+  await page.keyboard.type("meine");
+  await page.keyboard.press("ControlOrMeta+I");
+  await page.keyboard.type(' Sache."');
+
+  await expect(scene(page, only).locator("q.speech")).toHaveCount(1);
+  await expect
+    .poll(() => shown(page, only))
+    .toBe("»Das ist meine Sache.«");
+});
+
+test("selected text becomes what is said when \" is typed over it", async ({
+  page,
+}) => {
+  const only = await quoting(page, "QuotingSelected", "de");
+  await page.keyboard.type("Sie sagte Ja.");
+  await page.keyboard.press("End");
+  for (let step = 0; step < "Ja.".length; step++) {
+    await page.keyboard.press("Shift+ArrowLeft");
+  }
+
+  await page.keyboard.type('"');
+
+  await expect.poll(() => shown(page, only)).toBe("Sie sagte »Ja.«");
+});
+
+test("copied, what is said comes with the book's marks", async ({
+  page,
+  context,
+}) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const only = await quoting(page, "QuotingCopied", "de");
+  await page.keyboard.type('"Komm her," sagte sie.');
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.press("ControlOrMeta+A");
+  await expect(flow(page).locator(".scene-slot.chosen")).toHaveCount(1);
+
+  await page.keyboard.press("ControlOrMeta+C");
+
+  await expect
+    .poll(async () =>
+      (await page.evaluate(() => navigator.clipboard.readText())).replace(
+        /\r\n/g,
+        "\n",
+      ),
+    )
+    .toBe("Part One\n\n»Komm her,« sagte sie.");
 });

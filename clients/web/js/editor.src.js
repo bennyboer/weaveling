@@ -14,14 +14,75 @@ export { SyncConnection } from "./sync.js";
 
 const FRAGMENT = "prose";
 
-const OPENS_AFTER = /[\s(\[{\u2013\u2014-]/;
-
 const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "Alt" : "Ctrl";
 
 const schema = new Schema({
   nodes: addListNodes(basic.spec.nodes, "paragraph block*", "block"),
-  marks: basic.spec.marks,
+  marks: basic.spec.marks.addToStart("speech", {
+    parseDOM: [{ tag: "q" }],
+    toDOM: () => ["q", { class: "speech" }, 0],
+  }),
 });
+
+const QUOTATION_CHANGED = "quotation-changed";
+
+function speaking(state) {
+  const { empty, $from } = state.selection;
+  const speech = schema.marks.speech;
+
+  return (
+    empty &&
+    Boolean(speech.isInSet(state.storedMarks ?? [])) &&
+    !speech.isInSet($from.marks())
+  );
+}
+
+function showingSpeechBegun(editor) {
+  return new Plugin({
+    props: {
+      decorations(state) {
+        if (!speaking(state)) {
+          return null;
+        }
+        const begun = document.createElement("span");
+        begun.className = "speech-begun";
+        begun.textContent = editor.quotationMarks.opening;
+
+        return DecorationSet.create(state.doc, [
+          Decoration.widget(state.selection.head, begun, { side: -1, key: begun.textContent }),
+        ]);
+      },
+    },
+  });
+}
+
+function quotedText(doc, opening, closing) {
+  const blocks = [];
+
+  doc.descendants((node) => {
+    if (!node.isTextblock) {
+      return true;
+    }
+    let text = "";
+    let inSpeech = false;
+    node.forEach((child) => {
+      const speaks = Boolean(schema.marks.speech.isInSet(child.marks));
+      if (speaks !== inSpeech) {
+        text += speaks ? opening : closing;
+        inSpeech = speaks;
+      }
+      text += child.text ?? "";
+    });
+    if (inSpeech) {
+      text += closing;
+    }
+    blocks.push(text);
+
+    return false;
+  });
+
+  return blocks.join("\n");
+}
 
 function markingWhereWritten() {
   return new Plugin({
@@ -104,6 +165,7 @@ export class ProseEditor {
             },
           }),
           markingWhereWritten(),
+          showingSpeechBegun(this),
           ySyncPlugin(this.fragment),
           yCursorPlugin(this.sync.awareness),
           yUndoPlugin(),
@@ -272,34 +334,43 @@ export class ProseEditor {
 
   setQuotationMarks(opening, closing) {
     this.quotationMarks = { opening, closing };
+
+    if (this.view && !this.view.isDestroyed) {
+      this.view.dispatch(this.view.state.tr.setMeta(QUOTATION_CHANGED, true));
+    }
+  }
+
+  quotedText() {
+    return quotedText(
+      this.view.state.doc,
+      this.quotationMarks.opening,
+      this.quotationMarks.closing,
+    );
   }
 
   typedMark(view, from, to, text) {
-    if (text !== '"' && text !== "'") {
+    if (text === "'") {
+      view.dispatch(view.state.tr.insertText("\u2019", from, to));
+
+      return true;
+    }
+    if (text !== '"') {
       return false;
     }
-    const mark =
-      text === "'"
-        ? "\u2019"
-        : this.opensAt(view.state, from)
-          ? this.quotationMarks.opening
-          : this.quotationMarks.closing;
+    const { state } = view;
+    const speech = schema.marks.speech;
 
-    view.dispatch(view.state.tr.insertText(mark, from, to));
-
-    return true;
-  }
-
-  opensAt(state, at) {
-    const $at = state.doc.resolve(at);
-    const before = $at.parent.textBetween(
-      Math.max(0, $at.parentOffset - 1),
-      $at.parentOffset,
-      null,
-      " ",
+    if (!state.selection.empty) {
+      return toggleMark(speech)(state, view.dispatch);
+    }
+    const marks = state.storedMarks ?? state.selection.$from.marks();
+    view.dispatch(
+      speech.isInSet(marks)
+        ? state.tr.removeStoredMark(speech)
+        : state.tr.addStoredMark(speech.create()),
     );
 
-    return before === "" || OPENS_AFTER.test(before);
+    return true;
   }
 
   onSelecting(selecting) {
@@ -413,11 +484,5 @@ export class ProseEditor {
 
   focus() {
     this.view.focus();
-  }
-
-  plainText() {
-    const doc = this.view.state.doc;
-
-    return doc.textBetween(0, doc.content.size, "\n");
   }
 }

@@ -186,6 +186,10 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         .attr("aria-label", "The book")
         .attr("tabindex", "-1")
         .attr("lang", move || open_project.language())
+        .style(("quotes", move || {
+            let marks = open_project.quotation_marks();
+            format!("\"{}\" \"{}\"", marks.opening(), marks.closing())
+        }))
         .attr("spellcheck", move || {
             state.settings.checks_spelling().to_string()
         })
