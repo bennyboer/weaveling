@@ -74,6 +74,7 @@ fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {
         },
         ProjectEvent::DetailsChanged(details) => ProjectEventDTO::DetailsChanged {
             language: details.language.as_ref().map(ToString::to_string),
+            quotation: details.quotation.map(|style| style.to_string()),
             description: details.description.to_string(),
         },
         ProjectEvent::Deleted => ProjectEventDTO::Deleted,
@@ -87,7 +88,7 @@ mod tests {
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Recorded, Version};
     use messaging::RoutingKey;
     use projects_contract::{DELETED, DETAILS_CHANGED, RENAMED, STARTED};
-    use projects_core::{BookLanguage, ProjectDescription, ProjectDetails};
+    use projects_core::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
     use projects_core::{KIND, ProjectName};
     use serde_json::json;
     use time::{Duration, OffsetDateTime};
@@ -182,10 +183,11 @@ mod tests {
     }
 
     #[test]
-    fn changed_details_travel_with_their_language_and_description() {
+    fn changed_details_travel_with_their_language_quotation_and_description() {
         let id = a_project();
         let details = ProjectDetails {
             language: Some(BookLanguage::new("de").expect("a plain tag")),
+            quotation: Some(QuotationMarks::LowHigh),
             description: ProjectDescription::new("A weaver's daughter.").expect("plain"),
         };
 
@@ -196,6 +198,7 @@ mod tests {
             body.event.body,
             ProjectEventDTO::DetailsChanged {
                 language: Some("de".to_owned()),
+                quotation: Some("low-high".to_owned()),
                 description: "A weaver's daughter.".to_owned(),
             }
         );

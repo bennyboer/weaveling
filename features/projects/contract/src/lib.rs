@@ -6,12 +6,16 @@ pub struct CreateProjectRequest {
     #[serde(default)]
     pub language: Option<String>,
     #[serde(default)]
+    pub quotation: Option<String>,
+    #[serde(default)]
     pub description: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChangeDetailsRequest {
     pub language: Option<String>,
+    #[serde(default)]
+    pub quotation: Option<String>,
     pub description: String,
 }
 
@@ -35,6 +39,7 @@ pub struct ProjectDetailsDTO {
     pub version: u64,
     pub name: String,
     pub language: Option<String>,
+    pub quotation: Option<String>,
     pub description: String,
     pub created_at: String,
     pub updated_at: String,
@@ -62,6 +67,7 @@ pub enum ProjectEventDTO {
     #[serde(rename = "DETAILS_CHANGED")]
     DetailsChanged {
         language: Option<String>,
+        quotation: Option<String>,
         description: String,
     },
     #[serde(rename = "DELETED")]

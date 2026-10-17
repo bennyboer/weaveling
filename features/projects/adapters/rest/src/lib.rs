@@ -10,7 +10,7 @@ use eventsourcing::{Agent, Standing, Version};
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
 };
-use projects_core::{Project, ProjectService, ProjectServiceError, ProjectSummary};
+use projects_core::{Project, ProjectService, ProjectServiceError, ProjectSummary, RawDetails};
 use serving::{Unreadable, demanded, refusal, tag};
 
 pub fn router(projects: ProjectService) -> Router {
@@ -44,8 +44,11 @@ async fn create(
     let id = projects
         .start(
             &request.name,
-            request.language.as_deref(),
-            &request.description,
+            &RawDetails {
+                language: request.language.as_deref(),
+                quotation: request.quotation.as_deref(),
+                description: &request.description,
+            },
             &nobody_yet(),
         )
         .await?
@@ -86,8 +89,11 @@ async fn change_details(
     projects
         .change_details(
             &id,
-            request.language.as_deref(),
-            &request.description,
+            &RawDetails {
+                language: request.language.as_deref(),
+                quotation: request.quotation.as_deref(),
+                description: &request.description,
+            },
             expected(&headers)?,
             &nobody_yet(),
         )
@@ -127,6 +133,7 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Re
             version: standing.version.count(),
             name: project.name().to_string(),
             language: project.details().language.as_ref().map(ToString::to_string),
+            quotation: project.details().quotation.map(|style| style.to_string()),
             description: project.details().description.to_string(),
             created_at: serialize(project.created_at()),
             updated_at: serialize(project.updated_at()),
@@ -167,6 +174,9 @@ impl IntoResponse for ApiError {
                 (StatusCode::BAD_REQUEST, reason.to_string())
             }
             ProjectServiceError::InvalidLanguage(reason) => {
+                (StatusCode::BAD_REQUEST, reason.to_string())
+            }
+            ProjectServiceError::InvalidQuotation(reason) => {
                 (StatusCode::BAD_REQUEST, reason.to_string())
             }
             ProjectServiceError::InvalidDescription(reason) => {

@@ -53,6 +53,7 @@ fn named(name: &str) -> CreateProjectRequest {
     CreateProjectRequest {
         name: name.to_owned(),
         language: None,
+        quotation: None,
         description: String::new(),
     }
 }
@@ -312,7 +313,15 @@ async fn deleting_an_unknown_project_answers_404() {
 fn details(language: Option<&str>, description: &str) -> ChangeDetailsRequest {
     ChangeDetailsRequest {
         language: language.map(str::to_owned),
+        quotation: None,
         description: description.to_owned(),
+    }
+}
+
+fn quoted(language: &str, quotation: &str) -> ChangeDetailsRequest {
+    ChangeDetailsRequest {
+        quotation: Some(quotation.to_owned()),
+        ..details(Some(language), "")
     }
 }
 
@@ -325,6 +334,7 @@ async fn a_project_can_be_started_with_its_language_and_a_description() {
         .json(&CreateProjectRequest {
             name: "Der Webstuhl".to_owned(),
             language: Some("de".to_owned()),
+            quotation: Some("low-high".to_owned()),
             description: "A weaver's daughter, and a war.".to_owned(),
         })
         .await;
@@ -336,6 +346,7 @@ async fn a_project_can_be_started_with_its_language_and_a_description() {
         .await
         .json();
     assert_eq!(found.language.as_deref(), Some("de"));
+    assert_eq!(found.quotation.as_deref(), Some("low-high"));
     assert_eq!(found.description, "A weaver's daughter, and a war.");
 }
 
@@ -350,6 +361,10 @@ async fn a_project_started_with_a_name_alone_has_no_language_yet() {
         .json();
 
     assert_eq!(found.language, None);
+    assert_eq!(
+        found.quotation, None,
+        "with no style chosen, the book's language decides its quotation marks"
+    );
     assert_eq!(found.description, "");
 }
 
@@ -382,12 +397,35 @@ async fn what_is_not_a_language_or_too_long_a_description_is_refused() {
     for refused in [
         details(Some("deutsch"), ""),
         details(None, &"a".repeat(4_097)),
+        quoted("de", "guillemets"),
     ] {
         server
             .put(&format!("/projects/{}/details", started.id))
             .json(&refused)
             .await
             .assert_status(StatusCode::BAD_REQUEST);
+    }
+}
+
+#[tokio::test]
+async fn a_book_s_quotation_style_can_be_chosen_and_chosen_again() {
+    let server = a_server();
+    let started = a_project_named(&server, "Working Title").await;
+
+    for style in [
+        "pointing-in",
+        "low-high",
+        "curly",
+        "spaced-out",
+        "pointing-out",
+    ] {
+        let changed: ProjectDetailsDTO = server
+            .put(&format!("/projects/{}/details", started.id))
+            .json(&quoted("de", style))
+            .await
+            .json();
+
+        assert_eq!(changed.quotation.as_deref(), Some(style));
     }
 }
 

@@ -1,7 +1,7 @@
 use eventsourcing::{Agent, AgentId, Aggregate, AggregateId, Event, EventMetadata, Version};
 use time::{Duration, OffsetDateTime};
 
-use crate::details::{BookLanguage, ProjectDescription, ProjectDetails};
+use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
 use crate::name::ProjectName;
 use crate::project::*;
 
@@ -184,6 +184,7 @@ fn every_event_says_its_own_name() {
 fn some_details() -> ProjectDetails {
     ProjectDetails {
         language: Some(BookLanguage::new("de").expect("a plain tag")),
+        quotation: Some(QuotationMarks::PointingIn),
         description: ProjectDescription::new("A weaver's daughter, and a war.")
             .expect("a plain description"),
     }

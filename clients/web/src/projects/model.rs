@@ -2,6 +2,8 @@ use std::fmt::{self, Display, Formatter};
 
 use time::OffsetDateTime;
 
+use crate::projects::quotation::QuotationMarks;
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProjectId(String);
 
@@ -15,6 +17,7 @@ pub struct Project {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ProjectDetails {
     pub language: Option<String>,
+    pub quotation: Option<QuotationMarks>,
     pub description: String,
 }
 

@@ -1,7 +1,8 @@
 use eventsourcing::Codec;
 use projects_core::{
     BookLanguage, InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName,
-    ProjectDescription, ProjectDetails, ProjectEvent, ProjectName,
+    InvalidQuotationMarks, ProjectDescription, ProjectDetails, ProjectEvent, ProjectName,
+    QuotationMarks,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -16,12 +17,16 @@ enum StoredProjectEvent {
     },
     DetailsChanged {
         language: Option<String>,
+        #[serde(default)]
+        quotation: Option<String>,
         description: String,
     },
     Deleted,
     Snapshotted {
         name: String,
         language: Option<String>,
+        #[serde(default)]
+        quotation: Option<String>,
         description: String,
         #[serde(with = "time::serde::rfc3339")]
         created_at: OffsetDateTime,
@@ -56,6 +61,7 @@ impl From<&ProjectEvent> for StoredProjectEvent {
             },
             ProjectEvent::DetailsChanged(details) => Self::DetailsChanged {
                 language: details.language.as_ref().map(ToString::to_string),
+                quotation: details.quotation.map(|style| style.as_str().to_owned()),
                 description: details.description.to_string(),
             },
             ProjectEvent::Deleted => Self::Deleted,
@@ -68,6 +74,7 @@ impl From<&ProjectEvent> for StoredProjectEvent {
             } => Self::Snapshotted {
                 name: name.as_str().to_owned(),
                 language: details.language.as_ref().map(ToString::to_string),
+                quotation: details.quotation.map(|style| style.as_str().to_owned()),
                 description: details.description.to_string(),
                 created_at: *created_at,
                 updated_at: *updated_at,
@@ -81,6 +88,7 @@ impl From<&ProjectEvent> for StoredProjectEvent {
 enum UnreadableProjectEvent {
     Name,
     Language,
+    Quotation,
     Description,
 }
 
@@ -96,6 +104,12 @@ impl From<InvalidBookLanguage> for UnreadableProjectEvent {
     }
 }
 
+impl From<InvalidQuotationMarks> for UnreadableProjectEvent {
+    fn from(_: InvalidQuotationMarks) -> Self {
+        Self::Quotation
+    }
+}
+
 impl From<InvalidProjectDescription> for UnreadableProjectEvent {
     fn from(_: InvalidProjectDescription) -> Self {
         Self::Description
@@ -104,10 +118,12 @@ impl From<InvalidProjectDescription> for UnreadableProjectEvent {
 
 fn details_of(
     language: Option<String>,
+    quotation: Option<String>,
     description: &str,
 ) -> Result<ProjectDetails, UnreadableProjectEvent> {
     Ok(ProjectDetails {
         language: language.as_deref().map(BookLanguage::new).transpose()?,
+        quotation: quotation.as_deref().map(QuotationMarks::new).transpose()?,
         description: ProjectDescription::new(description)?,
     })
 }
@@ -121,19 +137,21 @@ impl TryFrom<StoredProjectEvent> for ProjectEvent {
             StoredProjectEvent::Renamed { name } => Self::Renamed(ProjectName::new(&name)?),
             StoredProjectEvent::DetailsChanged {
                 language,
+                quotation,
                 description,
-            } => Self::DetailsChanged(details_of(language, &description)?),
+            } => Self::DetailsChanged(details_of(language, quotation, &description)?),
             StoredProjectEvent::Deleted => Self::Deleted,
             StoredProjectEvent::Snapshotted {
                 name,
                 language,
+                quotation,
                 description,
                 created_at,
                 updated_at,
                 deleted,
             } => Self::Snapshotted {
                 name: ProjectName::new(&name)?,
-                details: details_of(language, &description)?,
+                details: details_of(language, quotation, &description)?,
                 created_at,
                 updated_at,
                 deleted,
@@ -161,6 +179,7 @@ mod tests {
     fn a_description() -> ProjectDetails {
         ProjectDetails {
             language: Some(BookLanguage::new("de").expect("a plain tag")),
+            quotation: Some(QuotationMarks::PointingIn),
             description: ProjectDescription::new(
                 "A weaver's daughter.
 A war.",

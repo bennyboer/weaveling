@@ -60,6 +60,7 @@ fn new_project_dialog(
         draft,
         &ProjectDetails {
             language: the_browser_s().map(str::to_owned),
+            quotation: None,
             description: String::new(),
         },
     );

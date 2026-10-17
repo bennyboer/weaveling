@@ -7,6 +7,7 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::http::{ApiError, checked, parsed};
 use crate::projects::model::{DescribedProject, Project, ProjectDetails, ProjectId};
+use crate::projects::quotation::QuotationMarks;
 
 const PROJECTS: &str = "/api/projects";
 const SUBJECT: &str = "project";
@@ -25,6 +26,7 @@ pub async fn create(name: &str, details: &ProjectDetails) -> Result<Project, Api
     let payload = CreateProjectRequest {
         name: name.to_owned(),
         language: details.language.clone(),
+        quotation: details.quotation.map(|style| style.name().to_owned()),
         description: details.description.clone(),
     };
     let response = Request::post(PROJECTS)
@@ -52,6 +54,7 @@ pub async fn change_details(
 ) -> Result<DescribedProject, ApiError> {
     let payload = ChangeDetailsRequest {
         language: details.language.clone(),
+        quotation: details.quotation.map(|style| style.name().to_owned()),
         description: details.description.clone(),
     };
     let response = Request::put(&format!("{PROJECTS}/{id}/details"))
@@ -103,6 +106,7 @@ fn as_described(found: ProjectDetailsDTO) -> DescribedProject {
         name: found.name,
         details: ProjectDetails {
             language: found.language,
+            quotation: found.quotation.as_deref().and_then(QuotationMarks::named),
             description: found.description,
         },
     }

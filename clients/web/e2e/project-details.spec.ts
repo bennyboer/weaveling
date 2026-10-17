@@ -8,8 +8,7 @@ const API = "http://127.0.0.1:3000/api";
 const projectOf = (page: Page) =>
   new URL(page.url()).pathname.split("/")[2].split("-").pop();
 
-const masthead = (page: Page) =>
-  page.getByRole("heading", { level: 1 });
+const masthead = (page: Page) => page.getByRole("heading", { level: 1 });
 
 const detailsButton = (page: Page) =>
   page.getByRole("button", { name: "Project details" });
@@ -105,9 +104,9 @@ test("a title left as it was is not renamed", async ({ page }) => {
   await details(page).getByRole("button", { name: "Save" }).click();
 
   await expect(details(page)).toHaveCount(0);
-  await expect.poll(async () => (await onServer(page)).description).toBe(
-    "Only this.",
-  );
+  await expect
+    .poll(async () => (await onServer(page)).description)
+    .toBe("Only this.");
   expect(renames).toEqual([]);
 });
 
@@ -203,4 +202,48 @@ test("a long name is cut short in the masthead, and told in full on hover", asyn
     seen.buttonBeforeViews,
     "the details button stays beside the name, before the views",
   ).toBe(true);
+});
+
+test("the quotation marks follow the book's language until a style is chosen", async ({
+  page,
+}) => {
+  await aNewProject(page, "Quoting");
+  await openTheDetails(page);
+  const marks = details(page).getByLabel("Quotation marks");
+  await details(page)
+    .getByLabel("Language of the book")
+    .selectOption({ label: "German (Deutsch)" });
+
+  await expect(marks.locator("option").first()).toHaveText(
+    "As the language has it, »…«",
+  );
+  await details(page)
+    .getByLabel("Language of the book")
+    .selectOption({ label: "English" });
+  await expect(marks.locator("option").first()).toHaveText(
+    "As the language has it, “…”",
+  );
+  await details(page).getByRole("button", { name: "Save" }).click();
+  await expect(details(page)).toHaveCount(0);
+
+  const found = await onServer(page);
+  expect(found.quotation, "following the language stores no style").toBe(null);
+});
+
+test("a quotation style chosen for the book is kept", async ({ page }) => {
+  await aNewProject(page, "QuotingChosen");
+  await openTheDetails(page);
+
+  await details(page)
+    .getByLabel("Quotation marks")
+    .selectOption({ label: "„…“" });
+  await details(page).getByRole("button", { name: "Save" }).click();
+  await expect(details(page)).toHaveCount(0);
+
+  expect((await onServer(page)).quotation).toBe("low-high");
+  await page.reload();
+  await openTheDetails(page);
+  await expect(details(page).getByLabel("Quotation marks")).toHaveValue(
+    "low-high",
+  );
 });

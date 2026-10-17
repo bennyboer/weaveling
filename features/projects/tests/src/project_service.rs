@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clock::FixedClock;
 use eventsourcing::{Agent, ServiceError, Version};
-use projects_core::{InvalidProjectName, ProjectError, ProjectId, ProjectSummary};
+use projects_core::{InvalidProjectName, ProjectError, ProjectId, ProjectSummary, RawDetails};
 use time::{Duration, OffsetDateTime};
 
 use crate::wiring::{Wired, wired};
@@ -26,7 +26,7 @@ fn a_service_on(clock: Arc<FixedClock>) -> Wired {
 async fn a_project(wired: &Wired, named: &str) -> String {
     let id = wired
         .projects
-        .start(named, None, "", &nobody())
+        .start(named, &RawDetails::default(), &nobody())
         .await
         .expect("starting should succeed")
         .to_string();
@@ -69,7 +69,7 @@ async fn starting_a_project_with_a_blank_name_is_refused_and_writes_nothing() {
 
     let refused = wired
         .projects
-        .start("   ", None, "", &nobody())
+        .start("   ", &RawDetails::default(), &nobody())
         .await
         .expect_err("a blank name should be refused");
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use clock::FixedClock;
 use eventsourcing::{Agent, AggregateId, EventMetadata, Recorded, Version};
 use messaging::{Message, RoutingKey};
-use projects_core::{KIND, ProjectCatalog, ProjectEvent, ProjectId, ProjectName};
+use projects_core::{KIND, ProjectCatalog, ProjectEvent, ProjectId, ProjectName, RawDetails};
 use projects_messaging::message_for;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -36,7 +36,11 @@ async fn listed(wired: &Wired) -> Vec<String> {
 async fn a_started_project(wired: &Wired) -> ProjectId {
     let id = wired
         .projects
-        .start("The Weaver's Apprentice", None, "", &an_author())
+        .start(
+            "The Weaver's Apprentice",
+            &RawDetails::default(),
+            &an_author(),
+        )
         .await
         .expect("starting should succeed");
     wired.settle().await;

@@ -9,8 +9,8 @@ use thiserror::Error;
 
 use crate::catalog::{CatalogError, ProjectCatalog, ProjectSummary};
 use crate::details::{
-    BookLanguage, InvalidBookLanguage, InvalidProjectDescription, ProjectDescription,
-    ProjectDetails,
+    BookLanguage, InvalidBookLanguage, InvalidProjectDescription, InvalidQuotationMarks,
+    ProjectDescription, ProjectDetails, QuotationMarks,
 };
 use crate::id::ProjectId;
 use crate::name::{InvalidProjectName, ProjectName};
@@ -24,6 +24,8 @@ pub enum ProjectServiceError {
     InvalidName(#[from] InvalidProjectName),
     #[error(transparent)]
     InvalidLanguage(#[from] InvalidBookLanguage),
+    #[error(transparent)]
+    InvalidQuotation(#[from] InvalidQuotationMarks),
     #[error(transparent)]
     InvalidDescription(#[from] InvalidProjectDescription),
     #[error(transparent)]
@@ -59,8 +61,7 @@ impl ProjectService {
     pub async fn start(
         &self,
         name: &str,
-        language: Option<&str>,
-        description: &str,
+        details: &RawDetails<'_>,
         agent: &Agent,
     ) -> Result<ProjectId, ProjectServiceError> {
         let id = ProjectId::generate(self.clock.now());
@@ -69,7 +70,7 @@ impl ProjectService {
             .events
             .begin(
                 &AggregateId::from(&id),
-                ProjectCommand::Start(ProjectName::new(name)?, details(language, description)?),
+                ProjectCommand::Start(ProjectName::new(name)?, details.checked()?),
                 agent,
             )
             .await?;
@@ -111,14 +112,13 @@ impl ProjectService {
     pub async fn change_details(
         &self,
         id: &str,
-        language: Option<&str>,
-        description: &str,
+        details: &RawDetails<'_>,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, ProjectServiceError> {
         self.carry_out(
             id,
-            ProjectCommand::ChangeDetails(details(language, description)?),
+            ProjectCommand::ChangeDetails(details.checked()?),
             expected,
             agent,
         )
@@ -158,15 +158,25 @@ impl ProjectService {
     }
 }
 
-fn details(
-    language: Option<&str>,
-    description: &str,
-) -> Result<ProjectDetails, ProjectServiceError> {
-    Ok(ProjectDetails {
-        language: language
-            .filter(|chosen| !chosen.trim().is_empty())
-            .map(BookLanguage::new)
-            .transpose()?,
-        description: ProjectDescription::new(description)?,
-    })
+#[derive(Default)]
+pub struct RawDetails<'a> {
+    pub language: Option<&'a str>,
+    pub quotation: Option<&'a str>,
+    pub description: &'a str,
+}
+
+impl RawDetails<'_> {
+    fn checked(&self) -> Result<ProjectDetails, ProjectServiceError> {
+        Ok(ProjectDetails {
+            language: chosen(self.language).map(BookLanguage::new).transpose()?,
+            quotation: chosen(self.quotation)
+                .map(QuotationMarks::new)
+                .transpose()?,
+            description: ProjectDescription::new(self.description)?,
+        })
+    }
+}
+
+fn chosen(raw: Option<&str>) -> Option<&str> {
+    raw.filter(|chosen| !chosen.trim().is_empty())
 }
