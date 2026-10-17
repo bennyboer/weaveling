@@ -1,7 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject, aLooseScene, views } from "./support/shell";
-import { aBookWithScenes } from "./support/book";
+import {
+  aNewProject,
+  aLooseScene,
+  aSceneMade,
+  scenesCatalogued,
+  views,
+} from "./support/shell";
+import { aBookShaped, aBookWithScenes } from "./support/book";
 
 const flow = (page: Page) => page.getByRole("article", { name: "The book" });
 
@@ -311,4 +317,202 @@ test("in an empty scene, Shift+Down chooses only that scene", async ({
   await expect.poll(() => chosen(page)).toEqual([first]);
   await page.keyboard.press("Shift+ArrowDown");
   await expect.poll(() => chosen(page)).toEqual([first, second]);
+});
+
+const API = "http://127.0.0.1:3000/api";
+
+const projectOf = (page: Page) =>
+  new URL(page.url()).pathname.split("/")[2].split("-").pop();
+
+async function theBook(page: Page) {
+  const opened = await page.request.post(`${API}/outlines`, {
+    data: { project: projectOf(page) },
+  });
+  const outline = await opened.json();
+
+  return outline.sections.map(
+    (section: {
+      title: string;
+      attachments: { kind: string; id: string }[];
+    }) => [
+      section.title,
+      section.attachments
+        .filter((attached) => attached.kind === "scene")
+        .map((attached) => attached.id),
+    ],
+  );
+}
+
+const sceneExists = async (page: Page, id: string) =>
+  (await page.request.get(`${API}/scenes/${id}`)).ok();
+
+const removing = (page: Page) =>
+  page.getByRole("dialog", { name: "Remove what is chosen?" });
+
+test("Delete asks first, naming what is chosen, and Cancel keeps it chosen", async ({
+  page,
+}) => {
+  const [first, second] = await aBook(page, "Asking", 3);
+  await written(page, first, "One.");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Shift+ArrowDown");
+
+  await page.keyboard.press("Delete");
+
+  await expect(removing(page)).toContainText("2 scenes are chosen.");
+  await expect(removing(page).getByRole("button")).toHaveText([
+    "Cancel",
+    "Take out of the book",
+    "Delete for good",
+  ]);
+  await removing(page).getByRole("button", { name: "Cancel" }).click();
+
+  await expect(removing(page)).toHaveCount(0);
+  await expect.poll(() => chosen(page)).toEqual([first, second]);
+  await page.keyboard.press("Shift+ArrowUp");
+  await expect.poll(() => chosen(page)).toEqual([first]);
+});
+
+test("Escape closes the question and leaves the scenes chosen", async ({
+  page,
+}) => {
+  const [first] = await aBook(page, "EscapeAsking", 2);
+  await written(page, first, "One.");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Backspace");
+  await expect(removing(page)).toBeVisible();
+
+  await page.keyboard.press("Escape");
+
+  await expect(removing(page)).toHaveCount(0);
+  await expect.poll(() => chosen(page)).toEqual([first]);
+});
+
+test("taken out of the book, the chosen scenes wait among those not in it", async ({
+  page,
+}) => {
+  const [first, second, third] = await aBook(page, "TakenOut", 3);
+  await written(page, first, "One.");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Delete");
+
+  await removing(page)
+    .getByRole("button", { name: "Take out of the book" })
+    .click();
+
+  await expect.poll(() => theBook(page)).toEqual([["Part One", [third]]]);
+  expect(await sceneExists(page, first)).toBe(true);
+  expect(await sceneExists(page, second)).toBe(true);
+  await expect(flow(page).locator(`[data-scene="${first}"]`)).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: /Not in the book/ }),
+  ).toContainText("2");
+});
+
+test("deleted for good, the chosen scenes are gone", async ({ page }) => {
+  const [first, second, third] = await aBook(page, "ForGood", 3);
+  await written(page, second, "Two.");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Delete");
+
+  await removing(page).getByRole("button", { name: "Delete for good" }).click();
+
+  await expect.poll(() => theBook(page)).toEqual([["Part One", [first]]]);
+  await expect.poll(() => sceneExists(page, second)).toBe(false);
+  await expect.poll(() => sceneExists(page, third)).toBe(false);
+});
+
+test("a chosen heading removes its section with the sections inside it and all their scenes", async ({
+  page,
+}) => {
+  await aNewProject(page, "Sections");
+  const { outline, ids } = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+    { title: "Inside Two", under: "Part Two" },
+  ]);
+  const scenes: Record<string, string> = {};
+  for (const title of ["Part One", "Part Two", "Inside Two"]) {
+    const scene = await aSceneMade(page);
+    const attached = await page.request.post(
+      `${API}/outlines/${outline}/attachments`,
+      {
+        data: {
+          attachment: { kind: "scene", id: scene },
+          section: ids[title],
+          after: null,
+        },
+      },
+    );
+    expect(attached.ok()).toBe(true);
+    scenes[title] = scene;
+  }
+  await scenesCatalogued(page, Object.values(scenes));
+  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await written(page, scenes["Part Two"], "Two.");
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.press("Shift+ArrowUp");
+  await page.keyboard.press("Shift+ArrowUp");
+
+  await page.keyboard.press("Delete");
+  await expect(removing(page)).toContainText(
+    "2 scenes and 2 sections are chosen.",
+  );
+  await removing(page)
+    .getByRole("button", { name: "Take out of the book" })
+    .click();
+
+  await expect
+    .poll(() => theBook(page))
+    .toEqual([["Part One", [scenes["Part One"]]]]);
+  expect(await sceneExists(page, scenes["Inside Two"])).toBe(true);
+});
+
+test("outside the book, chosen scenes can only be deleted for good", async ({
+  page,
+}) => {
+  await aNewProject(page, "LooseDelete");
+  await aBookWithScenes(page, { "Part One": 1 });
+  const first = await aLooseScene(page);
+  await aLooseScene(page);
+  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await page.goto(page.url().replace(/\/write$/, "/write/loose"));
+  await written(page, first, "Loose.");
+  await page.keyboard.press("Shift+ArrowDown");
+
+  await page.keyboard.press("Delete");
+
+  await expect(removing(page).getByRole("button")).toHaveText([
+    "Cancel",
+    "Delete for good",
+  ]);
+  await removing(page).getByRole("button", { name: "Delete for good" }).click();
+  await expect.poll(() => sceneExists(page, first)).toBe(false);
+});
+
+test("scenes begun in the view, taken out of the book, show among those outside it at once", async ({
+  page,
+}) => {
+  const [first] = await aBook(page, "BegunHere", 1);
+  await written(page, first, "Existing.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Begun right here.");
+  await expect.poll(async () => (await theBook(page))[0][1].length).toBe(2);
+  const [, begun] = (await theBook(page))[0][1];
+  await expect(scene(page, begun)).toHaveText("Begun right here.");
+  await page.keyboard.press("ControlOrMeta+End");
+
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Delete");
+  await removing(page)
+    .getByRole("button", { name: "Take out of the book" })
+    .click();
+
+  const outside = page.getByRole("link", { name: /Not in the book/ });
+  await expect(outside).toBeVisible();
+  await outside.click();
+  await expect(scene(page, begun)).toHaveText("Begun right here.");
 });

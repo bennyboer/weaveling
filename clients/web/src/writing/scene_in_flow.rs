@@ -2,13 +2,12 @@ use leptos::IntoView;
 use leptos::html;
 use leptos::html::Div;
 use leptos::prelude::*;
-use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
-use web_sys::HtmlElement;
 use words::words_in;
 
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
+use crate::writing::choosing::hand_the_keys_to_the_book;
 use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -37,17 +36,6 @@ pub fn waiting_scene(scene: SceneId, state: WriteViewState) -> impl IntoView {
         .attr("data-scene", scene.to_string())
         .attr("aria-busy", "true")
         .style(("min-height", height))
-}
-
-fn hand_the_keys_to_the_book() {
-    if let Some(book) = document()
-        .query_selector("article.writing")
-        .ok()
-        .flatten()
-        .and_then(|book| book.dyn_into::<HtmlElement>().ok())
-    {
-        _ = book.focus();
-    }
 }
 
 pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {

@@ -116,6 +116,10 @@ impl Margin {
         self.asking.get()
     }
 
+    pub fn asking_untracked(self) -> bool {
+        self.asking.with_untracked(Option::is_some)
+    }
+
     pub fn ask(self, question: Asking) {
         self.close();
         self.asking.set(Some(question));

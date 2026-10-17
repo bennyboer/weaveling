@@ -12,7 +12,7 @@ use crate::projects::open_project::OpenProject;
 use crate::route;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::SyncConnection;
-use crate::writing::asking::asking;
+use crate::writing::asking::{Asking, asking};
 use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
 use crate::writing::contents::contents;
@@ -104,12 +104,13 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     });
 
     let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
-    let typing =
-        window_event_listener(ev::keydown, move |event| match state.choosing.is_active() {
+    let typing = window_event_listener(ev::keydown, move |event| {
+        match state.choosing.is_active() && !state.margin.asking_untracked() {
             true if !event.default_prevented() => choosing(&event, state),
             true => {}
             false => writing(&event, state),
-        });
+        }
+    });
     on_cleanup(move || {
         clicking.remove();
         typing.remove();
@@ -210,6 +211,12 @@ fn choosing(event: &KeyboardEvent, state: WriteViewState) {
             event.prevent_default();
             selection.take_in_everything();
         }
+        "Delete" | "Backspace" => {
+            event.prevent_default();
+            state
+                .margin
+                .ask(removing(selection.in_reading_order(), state));
+        }
         "Escape" | "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" => {
             event.prevent_default();
             if let Some(head) = selection.head() {
@@ -226,6 +233,33 @@ fn choosing(event: &KeyboardEvent, state: WriteViewState) {
         }
         _ => {}
     }
+}
+
+fn removing(chosen: Vec<Stop>, state: WriteViewState) -> Asking {
+    let mut scenes = Vec::new();
+    let mut sections = Vec::new();
+
+    for stop in chosen {
+        match stop {
+            Stop::Scene(scene) => scenes.push(scene),
+            Stop::Heading(section) | Stop::Opening(section) => {
+                for within in state.structure.sections_within(&section) {
+                    if !sections.contains(&within) {
+                        sections.push(within);
+                    }
+                }
+            }
+        }
+    }
+    for section in &sections {
+        for scene in untrack(|| state.structure.scenes_of(section)) {
+            if !scenes.contains(&scene) {
+                scenes.push(scene);
+            }
+        }
+    }
+
+    Asking::RemoveChosen { scenes, sections }
 }
 
 fn drawn(stop: &Stop) -> Option<Element> {

@@ -142,6 +142,24 @@ impl Structure {
         })
     }
 
+    pub fn sections_within(self, section: &SectionId) -> Vec<SectionId> {
+        self.read_untracked(|book| {
+            let read = book.in_reading_order();
+            let Some(start) = read.iter().position(|(_, held)| &held.id == section) else {
+                return Vec::new();
+            };
+            let (depth, _) = read[start];
+
+            read[start..]
+                .iter()
+                .enumerate()
+                .take_while(|(nth, (nested, _))| *nth == 0 || *nested > depth)
+                .map(|(_, (_, held))| held.id.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+    }
+
     pub fn scenes_within(self, section: &SectionId) -> Vec<SceneId> {
         self.outline.with(|outline| {
             let Some(book) = outline.as_ref() else {

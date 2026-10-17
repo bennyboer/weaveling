@@ -1,6 +1,8 @@
 use std::collections::HashSet;
 
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
+use web_sys::HtmlElement;
 
 use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::side::Side;
@@ -57,6 +59,21 @@ impl Choosing {
         self.span.get()
     }
 
+    pub fn in_reading_order(self) -> Vec<Stop> {
+        let Some((first, last)) = self.span.get_untracked() else {
+            return Vec::new();
+        };
+        let order = untrack(|| choosable(self.structure, self.loose, self.side));
+        let (Some(from), Some(to)) = (
+            order.iter().position(|stop| stop == &first),
+            order.iter().position(|stop| stop == &last),
+        ) else {
+            return Vec::new();
+        };
+
+        order[from..=to].to_vec()
+    }
+
     pub fn holds(self, stop: &Stop) -> bool {
         self.chosen.with(|chosen| chosen.contains(stop))
     }
@@ -101,6 +118,17 @@ impl Choosing {
         if self.is_active() {
             self.ends.set(None);
         }
+    }
+}
+
+pub fn hand_the_keys_to_the_book() {
+    if let Some(book) = document()
+        .query_selector("article.writing")
+        .ok()
+        .flatten()
+        .and_then(|book| book.dyn_into::<HtmlElement>().ok())
+    {
+        _ = book.focus();
     }
 }
 
