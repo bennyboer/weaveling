@@ -72,11 +72,17 @@
 
     p {
       margin: 0 0 1.1rem;
+      text-wrap: pretty;
     }
 
     strong {
       font-weight: 500;
     }
+  }
+
+  &.justified .scene .ProseMirror p {
+    text-align: justify;
+    hyphens: auto;
   }
 
   .opening {

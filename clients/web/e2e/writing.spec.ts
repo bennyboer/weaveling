@@ -4216,3 +4216,76 @@ test("Ctrl+Shift+2 makes selected text dialogue, and plain again", async ({ page
   await expect.poll(() => shown(page, only)).toBe("Sie sagte Ja.");
   await expect(scene(page, only).locator("q.speech")).toHaveCount(0);
 });
+
+const LONG_PARAGRAPH =
+  "Am Morgen lag Nebel über dem Fluss, und die Fährleute warteten schweigend am Ufer, bis die Glocke vom Kirchturm herüberklang und der erste Kahn sich langsam vom Steg löste, beladen mit Körben voller Äpfel und Tuchballen für den Markt.";
+
+const howTheTextSits = (page: Page, id: string) =>
+  scene(page, id)
+    .locator("p")
+    .first()
+    .evaluate((paragraph) => {
+      const style = getComputedStyle(paragraph);
+      const range = document.createRange();
+      range.selectNodeContents(paragraph);
+      const firstLine = range.getClientRects()[0];
+      const inside =
+        paragraph.getBoundingClientRect().right - parseFloat(style.paddingRight);
+
+      return {
+        align: style.textAlign,
+        hyphens: style.hyphens,
+        wrap: style.textWrapStyle,
+        flush: Math.abs(inside - firstLine.right) < 1,
+      };
+    });
+
+test("the text sits ragged right by default, its paragraphs ending without a lone word", async ({
+  page,
+}) => {
+  const only = await quoting(page, "RaggedRight", "de");
+
+  await page.keyboard.insertText(LONG_PARAGRAPH);
+
+  await expect.poll(() => howTheTextSits(page, only)).toEqual({
+    align: "start",
+    hyphens: "manual",
+    wrap: "pretty",
+    flush: false,
+  });
+});
+
+test("justified text in the writing settings sets lines flush and hyphenated, across a reload", async ({
+  page,
+}) => {
+  const only = await quoting(page, "Justified", "de");
+  await page.keyboard.insertText(LONG_PARAGRAPH);
+
+  await statusNote(page)
+    .getByRole("button", { name: "Writing settings" })
+    .click();
+  await writingSettings(page).getByLabel("Justified text").check();
+  await page.keyboard.press("Escape");
+
+  const justified = {
+    align: "justify",
+    hyphens: "auto",
+    wrap: "pretty",
+    flush: true,
+  };
+  await expect.poll(() => howTheTextSits(page, only)).toEqual(justified);
+  await page.reload();
+  await expect(scene(page, only)).toContainText("Am Morgen");
+  await expect.poll(() => howTheTextSits(page, only)).toEqual(justified);
+
+  await statusNote(page)
+    .getByRole("button", { name: "Writing settings" })
+    .click();
+  await expect(writingSettings(page).getByLabel("Justified text")).toBeChecked();
+  await writingSettings(page).getByLabel("Justified text").uncheck();
+  await page.keyboard.press("Escape");
+
+  await expect
+    .poll(() => howTheTextSits(page, only))
+    .toMatchObject({ align: "start", flush: false });
+});

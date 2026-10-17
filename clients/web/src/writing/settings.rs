@@ -2,22 +2,22 @@ use leptos::prelude::*;
 use web_sys::Storage;
 
 const SPELLING: &str = "weaveling.writing.spellcheck";
+const JUSTIFIED: &str = "weaveling.writing.justified";
 const OFF: &str = "off";
+const ON: &str = "on";
 
 #[derive(Clone, Copy)]
 pub struct Settings {
     spelling: RwSignal<bool>,
+    justified: RwSignal<bool>,
     open: RwSignal<bool>,
 }
 
 impl Settings {
     pub fn as_last_left() -> Self {
-        let switched_off = shelf()
-            .and_then(|shelf| shelf.get_item(SPELLING).ok().flatten())
-            .is_some_and(|kept| kept == OFF);
-
         Self {
-            spelling: RwSignal::new(!switched_off),
+            spelling: RwSignal::new(kept(SPELLING).as_deref() != Some(OFF)),
+            justified: RwSignal::new(kept(JUSTIFIED).as_deref() == Some(ON)),
             open: RwSignal::new(false),
         }
     }
@@ -28,13 +28,16 @@ impl Settings {
 
     pub fn check_spelling(self, wanted: bool) {
         self.spelling.set(wanted);
+        keep(SPELLING, (!wanted).then_some(OFF));
+    }
 
-        if let Some(shelf) = shelf() {
-            _ = match wanted {
-                true => shelf.remove_item(SPELLING),
-                false => shelf.set_item(SPELLING, OFF),
-            };
-        }
+    pub fn justifies(self) -> bool {
+        self.justified.get()
+    }
+
+    pub fn justify(self, wanted: bool) {
+        self.justified.set(wanted);
+        keep(JUSTIFIED, wanted.then_some(ON));
     }
 
     pub fn is_open(self) -> bool {
@@ -47,6 +50,19 @@ impl Settings {
 
     pub fn close(self) {
         self.open.set(false);
+    }
+}
+
+fn kept(key: &str) -> Option<String> {
+    shelf().and_then(|shelf| shelf.get_item(key).ok().flatten())
+}
+
+fn keep(key: &str, value: Option<&str>) {
+    if let Some(shelf) = shelf() {
+        _ = match value {
+            Some(value) => shelf.set_item(key, value),
+            None => shelf.remove_item(key),
+        };
     }
 }
 

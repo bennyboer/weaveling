@@ -44,6 +44,22 @@ pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
                                     ),
                                 )),
                             )),
+                            html::label().class("setting").child((
+                                html::input()
+                                    .r#type("checkbox")
+                                    .prop("checked", move || settings.justifies())
+                                    .on(ev::change, move |event| {
+                                        if let Some(field) = typed(&event) {
+                                            settings.justify(field.checked());
+                                        }
+                                    }),
+                                html::span().child((
+                                    "Justified text",
+                                    html::small().child(
+                                        "Sets lines flush on both sides like a printed page, hyphenating words in the book's language.",
+                                    ),
+                                )),
+                            )),
                             html::div().class("dialog-actions").child(
                                 html::button()
                                     .r#type("button")

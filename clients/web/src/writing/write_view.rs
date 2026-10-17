@@ -193,6 +193,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         .attr("spellcheck", move || {
             state.settings.checks_spelling().to_string()
         })
+        .class(("justified", move || state.settings.justifies()))
         .on(ev::focusin, move |event| {
             state.left_off.let_go_of_the_offer();
             if !is_the_book_itself(&event) {
