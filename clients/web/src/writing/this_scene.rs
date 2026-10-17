@@ -92,7 +92,7 @@ fn title_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
             "Enter" => {
                 event.prevent_default();
                 rename();
-                if !state.walk.back_into(&scene) {
+                if !state.editors.back_into(&scene) {
                     state.left_off.land(Some(scene.clone()));
                 }
             }
@@ -102,7 +102,7 @@ fn title_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 if let Some(typed) = field.get_untracked() {
                     typed.set_value(&titled().unwrap_or_default());
                 }
-                if !state.walk.back_into(&scene) {
+                if !state.editors.back_into(&scene) {
                     state.left_off.land(Some(scene.clone()));
                 }
             }

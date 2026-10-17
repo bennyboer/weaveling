@@ -10,6 +10,7 @@ use crate::writing::book_rail::BookRail;
 use crate::writing::choosing::Choosing;
 use crate::writing::copying::Copying;
 use crate::writing::drawers::keep_apart;
+use crate::writing::editors::Editors;
 use crate::writing::focus::Focus;
 use crate::writing::labels::Labels;
 use crate::writing::left_off::LeftOff;
@@ -33,6 +34,7 @@ pub struct WriteViewState {
     pub problems: Problems,
     pub structure: Structure,
     pub walk: Walk,
+    pub editors: Editors,
     pub beginnings: Beginnings,
     pub labels: Labels,
     pub margin: Margin,
@@ -61,7 +63,8 @@ impl WriteViewState {
         let structure = Structure::open(project, problems, saving);
         let viewport = Viewport::around_the_window(saving);
         let loose = LooseScenes::of(structure, problems, saving);
-        let walk = Walk::through(structure, viewport, side, loose);
+        let editors = Editors::none();
+        let walk = Walk::through(structure, viewport, side, loose, editors);
         let writing_in = WritingIn::of(structure);
         let choosing = Choosing::nothing(structure, loose, side);
 
@@ -69,6 +72,7 @@ impl WriteViewState {
             problems,
             structure,
             walk,
+            editors,
             beginnings: Beginnings::of(structure, problems),
             labels: Labels::of(problems, saving),
             margin: Margin::closed(),
@@ -81,7 +85,7 @@ impl WriteViewState {
             book_rail: BookRail::as_last_left(),
             scene_ideas: SceneIdeas::of(project, problems, saving),
             choosing,
-            copying: Copying::of(choosing, structure, walk, problems),
+            copying: Copying::of(choosing, structure, editors, problems),
             moving: Moving::nothing(choosing, structure),
             settings: Settings::as_last_left(),
             focus: Focus::off(),

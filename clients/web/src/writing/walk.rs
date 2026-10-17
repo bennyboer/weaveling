@@ -6,6 +6,7 @@ use web_sys::HtmlElement;
 use crate::outline::model::{Outline, SectionId};
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
+use crate::writing::editors::Editors;
 use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::side::Side;
 use crate::writing::structure::Structure;
@@ -27,7 +28,7 @@ pub enum Stop {
 #[derive(Clone, Copy)]
 pub struct Walk {
     structure: Structure,
-    editors: StoredValue<HashMap<SceneId, ProseEditor>, LocalStorage>,
+    editors: Editors,
     lines: StoredValue<HashMap<Stop, HtmlElement>, LocalStorage>,
     awaited: StoredValue<Option<Stop>>,
     landing: StoredValue<Option<(SceneId, u32)>>,
@@ -43,12 +44,13 @@ impl Walk {
         viewport: Viewport,
         side: Side,
         loose: LooseScenes,
+        editors: Editors,
     ) -> Self {
         Self {
             structure,
             side,
             loose,
-            editors: StoredValue::new_local(HashMap::new()),
+            editors,
             lines: StoredValue::new_local(HashMap::new()),
             awaited: StoredValue::new(None),
             landing: StoredValue::new(None),
@@ -57,12 +59,12 @@ impl Walk {
         }
     }
 
-    pub fn writing_in(self, scene: SceneId, editor: ProseEditor) {
+    pub fn editor_ready(self, scene: &SceneId, editor: &ProseEditor) {
         let landing = self
             .landing
             .try_update_value(|landing| {
                 landing
-                    .take_if(|(awaited, _)| awaited == &scene)
+                    .take_if(|(awaited, _)| awaited == scene)
                     .map(|(_, at)| at)
             })
             .flatten();
@@ -74,7 +76,7 @@ impl Walk {
             .arriving
             .try_update_value(|arriving| {
                 arriving
-                    .take_if(|(awaited, _)| awaited == &scene)
+                    .take_if(|(awaited, _)| awaited == scene)
                     .map(|(_, towards)| towards)
             })
             .flatten();
@@ -84,44 +86,16 @@ impl Walk {
                 Towards::After => "after",
             });
         }
-        self.editors
-            .update_value(|editors| _ = editors.insert(scene, editor));
     }
 
     pub fn land_in(self, scene: SceneId, at: u32) {
-        let landed = self.editors.with_value(|editors| {
-            editors
-                .get(&scene)
-                .map(|editor| editor.land_at(at))
-                .is_some()
-        });
-
-        if !landed {
+        if self
+            .editors
+            .told(&scene, |editor| editor.land_at(at))
+            .is_none()
+        {
             self.landing.set_value(Some((scene, at)));
         }
-    }
-
-    pub fn told(self, scene: &SceneId, told: impl FnOnce(&ProseEditor)) {
-        _ = self
-            .editors
-            .try_with_value(|editors| editors.get(scene).map(told));
-    }
-
-    pub fn text_in(self, scene: &SceneId) -> Option<String> {
-        self.editors
-            .try_with_value(|editors| editors.get(scene).map(ProseEditor::plain_text))
-            .flatten()
-    }
-
-    pub fn back_into(self, scene: &SceneId) -> bool {
-        self.editors
-            .with_value(|editors| editors.get(scene).map(|editor| editor.focus()).is_some())
-    }
-
-    pub fn done_with(self, scene: &SceneId) -> Option<ProseEditor> {
-        self.editors
-            .try_update_value(|editors| editors.remove(scene))
-            .flatten()
     }
 
     pub fn line_at(self, stop: Stop, shown: HtmlElement) {
@@ -169,17 +143,13 @@ impl Walk {
     pub fn arrive(self, at: &Stop, towards: Towards) -> bool {
         match at {
             Stop::Scene(scene) => {
-                let mounted = self.editors.with_value(|editors| match editors.get(scene) {
-                    Some(editor) => {
-                        match towards {
-                            Towards::Before => editor.focus_end(),
-                            Towards::After => editor.focus_start(),
-                        }
-
-                        true
-                    }
-                    None => false,
-                });
+                let mounted = self
+                    .editors
+                    .told(scene, |editor| match towards {
+                        Towards::Before => editor.focus_end(),
+                        Towards::After => editor.focus_start(),
+                    })
+                    .is_some();
 
                 if !mounted {
                     self.arriving.set_value(Some((scene.clone(), towards)));

@@ -6,6 +6,7 @@ mod choosing;
 mod contents;
 mod copying;
 mod drawers;
+mod editors;
 mod focus;
 mod going_back;
 mod heading;

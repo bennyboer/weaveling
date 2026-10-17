@@ -7,9 +7,10 @@ use web_sys::ClipboardEvent;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
 use crate::writing::choosing::Choosing;
+use crate::writing::editors::Editors;
 use crate::writing::problems::Problems;
 use crate::writing::structure::Structure;
-use crate::writing::walk::{Stop, Walk};
+use crate::writing::walk::Stop;
 
 const BETWEEN: &str = "\n\n";
 
@@ -17,17 +18,22 @@ const BETWEEN: &str = "\n\n";
 pub struct Copying {
     choosing: Choosing,
     structure: Structure,
-    walk: Walk,
+    editors: Editors,
     problems: Problems,
     fetched: StoredValue<HashMap<SceneId, String>>,
 }
 
 impl Copying {
-    pub fn of(choosing: Choosing, structure: Structure, walk: Walk, problems: Problems) -> Self {
+    pub fn of(
+        choosing: Choosing,
+        structure: Structure,
+        editors: Editors,
+        problems: Problems,
+    ) -> Self {
         Self {
             choosing,
             structure,
-            walk,
+            editors,
             problems,
             fetched: StoredValue::new(HashMap::new()),
         }
@@ -81,7 +87,7 @@ impl Copying {
     }
 
     fn text_of(self, scene: &SceneId) -> Option<String> {
-        self.walk.text_in(scene).or_else(|| {
+        self.editors.text_in(scene).or_else(|| {
             self.fetched
                 .try_with_value(|fetched| fetched.get(scene).cloned())
                 .flatten()

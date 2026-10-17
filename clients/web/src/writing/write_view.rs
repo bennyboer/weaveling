@@ -286,7 +286,7 @@ fn choosing(event: &KeyboardEvent, state: WriteViewState) {
                 selection.let_go();
                 bring_into_sight(&head, state);
                 let back = match &head {
-                    Stop::Scene(scene) => state.walk.back_into(scene),
+                    Stop::Scene(scene) => state.editors.back_into(scene),
                     _ => false,
                 };
                 if !back && !state.walk.arrive(&head, Towards::After) {

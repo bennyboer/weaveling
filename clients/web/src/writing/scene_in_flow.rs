@@ -151,7 +151,8 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 editor.seed(&carried);
             }
 
-            state.walk.writing_in(scene.clone(), editor);
+            state.walk.editor_ready(&scene, &editor);
+            state.editors.arrived(scene.clone(), editor);
             editors_made.update(|made| *made += 1);
             kept.set_value(Some((
                 connected,
@@ -171,7 +172,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
         move || {
             let marks = marks.get();
             if editors_made.get() > 0 {
-                state.walk.told(&scene, |editor| {
+                state.editors.told(&scene, |editor| {
                     editor.set_quotation_marks(&marks.opening(), &marks.closing())
                 });
             }
@@ -182,7 +183,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
         let scene = scene.clone();
 
         move || {
-            if let Some(editor) = state.walk.done_with(&scene) {
+            if let Some(editor) = state.editors.gone(&scene) {
                 editor.destroy();
             }
             state.saving.let_go_of(&scene);
