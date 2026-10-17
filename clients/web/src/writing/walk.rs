@@ -101,6 +101,12 @@ impl Walk {
         }
     }
 
+    pub fn text_in(self, scene: &SceneId) -> Option<String> {
+        self.editors
+            .try_with_value(|editors| editors.get(scene).map(ProseEditor::plain_text))
+            .flatten()
+    }
+
     pub fn back_into(self, scene: &SceneId) -> bool {
         self.editors
             .with_value(|editors| editors.get(scene).map(|editor| editor.focus()).is_some())

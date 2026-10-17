@@ -516,3 +516,117 @@ test("scenes begun in the view, taken out of the book, show among those outside 
   await outside.click();
   await expect(scene(page, begun)).toHaveText("Begun right here.");
 });
+
+async function copied(page: Page) {
+  await page.keyboard.press("ControlOrMeta+C");
+
+  return (await page.evaluate(() => navigator.clipboard.readText())).replace(
+    /\r\n/g,
+    "\n",
+  );
+}
+
+test.describe("copying what is chosen", () => {
+  test.describe.configure({ mode: "serial" });
+
+  test.beforeEach(async ({ context }) => {
+    await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  });
+
+  test("copies the chosen scenes' text in reading order, a blank line between them", async ({
+    page,
+  }) => {
+    const [first, second] = await aBook(page, "Copying", 3);
+    await written(page, second, "Second, line one.");
+    await page.keyboard.press("Enter");
+    await page.keyboard.type("Second, line two.");
+    await written(page, first, "First.");
+    await page.keyboard.press("Shift+ArrowDown");
+    await page.keyboard.press("Shift+ArrowDown");
+    await expect.poll(() => chosen(page)).toEqual([first, second]);
+    await page.evaluate(() => navigator.clipboard.writeText("before"));
+
+    await expect
+      .poll(() => copied(page))
+      .toBe("First.\n\nSecond, line one.\nSecond, line two.");
+  });
+
+  test("with nothing chosen, copying text in a scene copies just that text", async ({
+    page,
+  }) => {
+    const [first] = await aBook(page, "OrdinaryCopy", 2);
+    await written(page, first, "Keep this and not that.");
+    await page.keyboard.press("Home");
+    for (let step = 0; step < 4; step++) {
+      await page.keyboard.press("Shift+ControlOrMeta+ArrowRight");
+    }
+
+    await expect.poll(() => copied(page)).toBe("Keep this and not ");
+  });
+
+  test("a chosen heading is copied as a line of its own", async ({ page }) => {
+    await aNewProject(page, "CopyingHeadings");
+    const made = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+    await views(page).getByRole("link", { name: "Write", exact: true }).click();
+    await written(page, made["Part One"][0], "One.");
+    await written(page, made["Part Two"][0], "Two.");
+    await page.keyboard.press("ControlOrMeta+Home");
+    await page.keyboard.press("Shift+ArrowUp");
+    await page.keyboard.press("Shift+ArrowUp");
+    await page.keyboard.press("Shift+ArrowUp");
+
+    await expect.poll(() => copied(page)).toBe("One.\n\nPart Two\n\nTwo.");
+  });
+
+  test("a scene far down the book, not drawn, is copied all the same", async ({
+    page,
+  }) => {
+    const scenes = await aBook(page, "CopyingFar", 60);
+    const last = scenes[59];
+    await flow(page)
+      .locator(`[data-place-of="${last}"]`)
+      .scrollIntoViewIfNeeded();
+    await written(page, last, "Far down the book.");
+    await expect
+      .poll(
+        async () =>
+          (await (await page.request.get(`${API}/scenes/${last}`)).json()).text,
+      )
+      .toBe("Far down the book.");
+    await page.reload();
+    await written(page, scenes[0], "At the top.");
+    await expect(
+      flow(page).locator(`[data-place-of="${last}"] .ProseMirror`),
+      "the last scene is far enough away not to be drawn",
+    ).toHaveCount(0);
+
+    await page.keyboard.press("ControlOrMeta+A");
+    await page.keyboard.press("ControlOrMeta+A");
+    await expect.poll(async () => (await chosen(page)).length).toBe(60);
+
+    await expect
+      .poll(async () => (await copied(page)).split("\n\n"))
+      .toEqual(expect.arrayContaining(["At the top.", "Far down the book."]));
+  });
+
+  test("a far scene that cannot be read is told, rather than copied as nothing", async ({
+    page,
+  }) => {
+    const scenes = await aBook(page, "CopyingRefused", 60);
+    await written(page, scenes[0], "At the top.");
+    await page.route(`**/api/scenes/${scenes[59]}`, (route) =>
+      route.fulfill({ status: 500, body: "{}" }),
+    );
+    await page.evaluate(() => navigator.clipboard.writeText("before"));
+
+    await page.keyboard.press("ControlOrMeta+A");
+    await page.keyboard.press("ControlOrMeta+A");
+    await expect.poll(async () => (await chosen(page)).length).toBe(60);
+    await page.keyboard.press("ControlOrMeta+C");
+
+    await expect(flow(page).getByRole("alert")).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      "before",
+    );
+  });
+});

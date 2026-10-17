@@ -104,6 +104,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     });
 
     let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
+    let copying = window_event_listener(ev::copy, move |event| state.copying.copied(&event));
     let typing = window_event_listener(ev::keydown, move |event| {
         match state.choosing.is_active() && !state.margin.asking_untracked() {
             true if !event.default_prevented() => choosing(&event, state),
@@ -113,6 +114,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     });
     on_cleanup(move || {
         clicking.remove();
+        copying.remove();
         typing.remove();
         state.viewport.close();
         state.connection.with_value(SyncConnection::close);

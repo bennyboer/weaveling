@@ -8,6 +8,7 @@ use crate::statistics::service as statistics;
 use crate::writing::beginnings::Beginnings;
 use crate::writing::book_rail::BookRail;
 use crate::writing::choosing::Choosing;
+use crate::writing::copying::Copying;
 use crate::writing::drawers::keep_apart;
 use crate::writing::focus::Focus;
 use crate::writing::labels::Labels;
@@ -43,6 +44,7 @@ pub struct WriteViewState {
     pub book_rail: BookRail,
     pub scene_ideas: SceneIdeas,
     pub choosing: Choosing,
+    pub copying: Copying,
     pub settings: Settings,
     pub focus: Focus,
     pub side: Side,
@@ -59,6 +61,7 @@ impl WriteViewState {
         let loose = LooseScenes::of(structure, problems, saving);
         let walk = Walk::through(structure, viewport, side, loose);
         let writing_in = WritingIn::of(structure);
+        let choosing = Choosing::nothing(structure, loose, side);
 
         let state = Self {
             problems,
@@ -75,7 +78,8 @@ impl WriteViewState {
             scene_tray: SceneTray::as_last_left(),
             book_rail: BookRail::as_last_left(),
             scene_ideas: SceneIdeas::of(project, problems, saving),
-            choosing: Choosing::nothing(structure, loose, side),
+            choosing,
+            copying: Copying::of(choosing, structure, walk, problems),
             settings: Settings::as_last_left(),
             focus: Focus::off(),
             side,

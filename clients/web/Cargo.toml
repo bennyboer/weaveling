@@ -13,7 +13,10 @@ thiserror = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true, features = [
+    "Clipboard",
+    "ClipboardEvent",
     "CssStyleDeclaration",
+    "DataTransfer",
     "Document",
     "DomRect",
     "DomTokenList",

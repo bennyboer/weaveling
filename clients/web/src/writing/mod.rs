@@ -4,6 +4,7 @@ mod book_rail;
 mod bringing_back;
 mod choosing;
 mod contents;
+mod copying;
 mod drawers;
 mod focus;
 mod going_back;
