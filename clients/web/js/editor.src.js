@@ -14,6 +14,8 @@ export { SyncConnection } from "./sync.js";
 
 const FRAGMENT = "prose";
 
+const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "Alt" : "Ctrl";
+
 const schema = new Schema({
   nodes: addListNodes(basic.spec.nodes, "paragraph block*", "block"),
   marks: basic.spec.marks,
@@ -50,6 +52,7 @@ export class ProseEditor {
     this.sync.awareness.setLocalStateField("user", { name: author, color });
 
     this.leaving = () => false;
+    this.selecting = () => false;
     this.breaking = null;
     this.changed = () => {};
     this.caretMoved = () => {};
@@ -107,8 +110,19 @@ export class ProseEditor {
             ArrowLeft: (state, _, view) => this.leave(state, view, "before", "left"),
             ArrowDown: (state, _, view) => this.leave(state, view, "after", "down"),
             ArrowRight: (state, _, view) => this.leave(state, view, "after", "right"),
+            "Shift-ArrowUp": (state, _, view) => this.selectBeyond(state, view, "before", "up"),
+            "Shift-ArrowDown": (state, _, view) => this.selectBeyond(state, view, "after", "down"),
+            "Mod-a": (state) => this.selectAllOnceMore(state),
             ...this.jumping("Mod"),
             ...this.jumping("Alt"),
+            [`${BY_PARAGRAPH}-ArrowUp`]: (state, dispatch, view) =>
+              this.byParagraph(state, dispatch, view, "before"),
+            [`${BY_PARAGRAPH}-ArrowDown`]: (state, dispatch, view) =>
+              this.byParagraph(state, dispatch, view, "after"),
+            [`${BY_PARAGRAPH}-Shift-ArrowUp`]: (state, dispatch, view) =>
+              this.byParagraph(state, dispatch, view, "before", true),
+            [`${BY_PARAGRAPH}-Shift-ArrowDown`]: (state, dispatch, view) =>
+              this.byParagraph(state, dispatch, view, "after", true),
           }),
           keymap(baseKeymap),
         ],
@@ -137,6 +151,37 @@ export class ProseEditor {
       [`${modifier}-ArrowRight`]: across("after"),
       [`${modifier}-ArrowDown`]: across("after"),
     };
+  }
+
+  byParagraph(state, dispatch, view, towards, extending = false) {
+    const { doc, selection } = state;
+    const { $head } = selection;
+    const after = towards === "after";
+    const edge = after ? $head.end() : $head.start();
+    let to = null;
+
+    if ($head.parent.isTextblock && $head.pos !== edge) {
+      to = edge;
+    } else {
+      const beyond = Selection.findFrom(
+        doc.resolve(after ? $head.after() : $head.before()),
+        after ? 1 : -1,
+        true,
+      );
+      if (beyond) {
+        to = after ? beyond.$head.end() : beyond.$head.start();
+      }
+    }
+
+    if (to === null) {
+      return extending
+        ? this.selecting(this.wholly(state) ? `beyond-${towards}` : towards)
+        : this.leave(state, view, towards, after ? "right" : "left");
+    }
+    const anchor = extending ? selection.anchor : to;
+    dispatch?.(state.tr.setSelection(TextSelection.create(doc, anchor, to)).scrollIntoView());
+
+    return true;
   }
 
   onChanged(changed) {
@@ -215,6 +260,37 @@ export class ProseEditor {
 
   onLeaving(leaving) {
     this.leaving = leaving;
+  }
+
+  onSelecting(selecting) {
+    this.selecting = selecting;
+  }
+
+  selectBeyond(state, view, towards, moving) {
+    const { doc, selection } = state;
+    const atEdge =
+      view.endOfTextblock(moving) &&
+      doc.resolve(selection.head).index(0) === (towards === "before" ? 0 : doc.childCount - 1);
+
+    return atEdge && this.selecting(this.wholly(state) ? `beyond-${towards}` : towards);
+  }
+
+  wholly(state) {
+    const { doc, selection } = state;
+
+    return (
+      !selection.empty &&
+      selection.from <= Selection.atStart(doc).from &&
+      selection.to >= Selection.atEnd(doc).to
+    );
+  }
+
+  selectAllOnceMore(state) {
+    const { doc, selection } = state;
+    const everything =
+      selection.from <= Selection.atStart(doc).from && selection.to >= Selection.atEnd(doc).to;
+
+    return everything && this.selecting("all");
   }
 
   leave(state, view, towards, moving) {

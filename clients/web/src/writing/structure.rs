@@ -222,6 +222,10 @@ impl Structure {
         })
     }
 
+    pub fn read<T>(self, reading: impl FnOnce(&Outline) -> T) -> Option<T> {
+        self.outline.with(|outline| outline.as_ref().map(reading))
+    }
+
     pub fn read_untracked<T>(self, reading: impl FnOnce(&Outline) -> T) -> Option<T> {
         self.outline
             .with_untracked(|outline| outline.as_ref().map(reading))

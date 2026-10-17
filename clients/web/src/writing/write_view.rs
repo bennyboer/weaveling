@@ -5,7 +5,7 @@ use leptos_router::NavigateOptions;
 use leptos_router::components::A;
 use leptos_router::hooks::use_navigate;
 use wasm_bindgen::{JsCast, JsValue};
-use web_sys::{Element, FocusEvent};
+use web_sys::{Element, FocusEvent, KeyboardEvent, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::outline::model::{Section, SectionId};
 use crate::projects::open_project::OpenProject;
@@ -33,6 +33,7 @@ use crate::writing::side::Side;
 use crate::writing::status_note::status_note;
 use crate::writing::this_scene::{ideas_to_link, this_scene};
 use crate::writing::viewport::SCENE_PLACE;
+use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
 #[component]
@@ -96,16 +97,19 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         true
     });
 
-    let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
-    let typing = window_event_listener(ev::keydown, move |event| match event.key().as_str() {
-        "Escape" => state.margin.return_to_writing(),
-        "F10" if event.shift_key() => open_menu_where_writing(&event, state),
-        "F" | "f" if event.shift_key() && (event.ctrl_key() || event.meta_key()) => {
-            event.prevent_default();
-            state.focus.toggle();
+    Effect::new(move || {
+        if let Some((first, last)) = state.choosing.span() {
+            _ = request_animation_frame(move || shown_as_selected(&first, &last));
         }
-        _ => {}
     });
+
+    let clicking = window_event_listener(ev::click, move |_| state.margin.let_go());
+    let typing =
+        window_event_listener(ev::keydown, move |event| match state.choosing.is_active() {
+            true if !event.default_prevented() => choosing(&event, state),
+            true => {}
+            false => writing(&event, state),
+        });
     on_cleanup(move || {
         clicking.remove();
         typing.remove();
@@ -116,12 +120,16 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     let book_view = html::article()
         .class("writing")
         .attr("aria-label", "The book")
+        .attr("tabindex", "-1")
         .attr("lang", move || open_project.language())
         .attr("spellcheck", move || {
             state.settings.checks_spelling().to_string()
         })
         .on(ev::focusin, move |event| {
             state.left_off.let_go_of_the_offer();
+            if !is_the_book_itself(&event) {
+                state.choosing.let_go();
+            }
             if let Some(section) = section_around(&event) {
                 state.writing_in.moved_to(section);
             }
@@ -168,6 +176,106 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         settings_dialog(state),
         placing(state, placed_from),
     )
+}
+
+fn writing(event: &KeyboardEvent, state: WriteViewState) {
+    match event.key().as_str() {
+        "Escape" => state.margin.return_to_writing(),
+        "F10" if event.shift_key() => open_menu_where_writing(event, state),
+        "F" | "f" if event.shift_key() && (event.ctrl_key() || event.meta_key()) => {
+            event.prevent_default();
+            state.focus.toggle();
+        }
+        _ => {}
+    }
+}
+
+fn choosing(event: &KeyboardEvent, state: WriteViewState) {
+    let selection = state.choosing;
+    let shifted = event.shift_key();
+    let commanding = event.ctrl_key() || event.meta_key();
+
+    match event.key().as_str() {
+        "ArrowUp" | "ArrowDown" if shifted => {
+            event.prevent_default();
+            let towards = match event.key().as_str() {
+                "ArrowUp" => Towards::Before,
+                _ => Towards::After,
+            };
+            if let Some(reached) = selection.reach(towards) {
+                bring_into_sight(&reached, state);
+            }
+        }
+        "a" | "A" if commanding => {
+            event.prevent_default();
+            selection.take_in_everything();
+        }
+        "Escape" | "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" => {
+            event.prevent_default();
+            if let Some(head) = selection.head() {
+                selection.let_go();
+                bring_into_sight(&head, state);
+                let back = match &head {
+                    Stop::Scene(scene) => state.walk.back_into(scene),
+                    _ => false,
+                };
+                if !back && !state.walk.arrive(&head, Towards::After) {
+                    state.walk.arrive_when_drawn(head);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn drawn(stop: &Stop) -> Option<Element> {
+    let found = match stop {
+        Stop::Scene(scene) => format!("[data-scene=\"{scene}\"]"),
+        Stop::Heading(section) | Stop::Opening(section) => {
+            format!(".heading-row[data-section=\"{section}\"] .heading")
+        }
+    };
+
+    document().query_selector(&found).ok().flatten()
+}
+
+fn is_the_book_itself(event: &FocusEvent) -> bool {
+    event
+        .target()
+        .and_then(|target| target.dyn_into::<Element>().ok())
+        .is_some_and(|target| target.class_list().contains("writing"))
+}
+
+fn shown_as_selected(first: &Stop, last: &Stop) {
+    let (Some(from), Some(to)) = (drawn(first), drawn(last)) else {
+        return;
+    };
+    let (Ok(spanned), Ok(Some(shown))) = (document().create_range(), window().get_selection())
+    else {
+        return;
+    };
+    if spanned.set_start_before(&from).is_ok() && spanned.set_end_after(&to).is_ok() {
+        _ = shown.remove_all_ranges();
+        _ = shown.add_range(&spanned);
+    }
+}
+
+fn bring_into_sight(stop: &Stop, state: WriteViewState) {
+    let place = match stop {
+        Stop::Scene(scene) => {
+            state.viewport.bring_near(scene.clone());
+            document()
+                .query_selector(&format!("[{SCENE_PLACE}=\"{scene}\"]"))
+                .ok()
+                .flatten()
+        }
+        heading => drawn(heading),
+    };
+    if let Some(place) = place {
+        let nearest = ScrollIntoViewOptions::new();
+        nearest.set_block(ScrollLogicalPosition::Nearest);
+        place.scroll_into_view_with_scroll_into_view_options(&nearest);
+    }
 }
 
 fn scene_around(event: &FocusEvent) -> Option<SceneId> {
@@ -340,6 +448,11 @@ fn scene_slot(section: Option<SectionId>, scene: SceneId, state: WriteViewState)
     html::div()
         .class("scene-slot")
         .class(("waiting", move || !near.get()))
+        .class(("chosen", {
+            let scene = scene.clone();
+
+            move || state.choosing.holds(&Stop::Scene(scene.clone()))
+        }))
         .attr(SCENE_PLACE, scene.to_string())
         .node_ref(place)
         .child(move || {

@@ -2,6 +2,7 @@ mod asking;
 mod beginnings;
 mod book_rail;
 mod bringing_back;
+mod choosing;
 mod contents;
 mod drawers;
 mod focus;

@@ -2,7 +2,9 @@ use leptos::IntoView;
 use leptos::html;
 use leptos::html::Div;
 use leptos::prelude::*;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
+use web_sys::HtmlElement;
 use words::words_in;
 
 use crate::scenes::model::SceneId;
@@ -37,6 +39,17 @@ pub fn waiting_scene(scene: SceneId, state: WriteViewState) -> impl IntoView {
         .style(("min-height", height))
 }
 
+fn hand_the_keys_to_the_book() {
+    if let Some(book) = document()
+        .query_selector("article.writing")
+        .ok()
+        .flatten()
+        .and_then(|book| book.dyn_into::<HtmlElement>().ok())
+    {
+        _ = book.focus();
+    }
+}
+
 pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let kept = StoredValue::new_local(
@@ -47,6 +60,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             Closure<dyn Fn(String)>,
             Closure<dyn Fn(bool)>,
             Closure<dyn Fn(u32)>,
+            Closure<dyn Fn(String) -> bool>,
         )>,
     );
     let named = scene.to_string();
@@ -83,6 +97,30 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 }
             });
             editor.on_leaving(&leaving);
+            let selecting = Closure::<dyn Fn(String) -> bool>::new({
+                let scene = scene.clone();
+
+                move |taking: String| {
+                    let choosing = state.choosing;
+                    match taking.as_str() {
+                        "all" => choosing.take_in_everything(),
+                        "before" => choosing.begin_at(Stop::Scene(scene.clone())),
+                        "after" => choosing.begin_at(Stop::Scene(scene.clone())),
+                        "beyond-before" => {
+                            choosing.begin_at(Stop::Scene(scene.clone()));
+                            choosing.reach(Towards::Before);
+                        }
+                        _ => {
+                            choosing.begin_at(Stop::Scene(scene.clone()));
+                            choosing.reach(Towards::After);
+                        }
+                    }
+                    hand_the_keys_to_the_book();
+
+                    true
+                }
+            });
+            editor.on_selecting(&selecting);
             let breaking = Closure::<dyn Fn()>::new({
                 let scene = scene.clone();
 
@@ -129,6 +167,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 changed,
                 saving,
                 caret_moved,
+                selecting,
             )));
         }
     });

@@ -569,3 +569,7 @@ body:has(.alarm) .status-note {
     border-color: var(--accent);
   }
 }
+
+.writing:focus {
+  outline: none;
+}

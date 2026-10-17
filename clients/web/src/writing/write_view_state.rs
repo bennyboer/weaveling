@@ -7,6 +7,7 @@ use crate::scenes::service as scenes;
 use crate::statistics::service as statistics;
 use crate::writing::beginnings::Beginnings;
 use crate::writing::book_rail::BookRail;
+use crate::writing::choosing::Choosing;
 use crate::writing::drawers::keep_apart;
 use crate::writing::focus::Focus;
 use crate::writing::labels::Labels;
@@ -41,6 +42,7 @@ pub struct WriteViewState {
     pub scene_tray: SceneTray,
     pub book_rail: BookRail,
     pub scene_ideas: SceneIdeas,
+    pub choosing: Choosing,
     pub settings: Settings,
     pub focus: Focus,
     pub side: Side,
@@ -73,6 +75,7 @@ impl WriteViewState {
             scene_tray: SceneTray::as_last_left(),
             book_rail: BookRail::as_last_left(),
             scene_ideas: SceneIdeas::of(project, problems, saving),
+            choosing: Choosing::nothing(structure, loose, side),
             settings: Settings::as_last_left(),
             focus: Focus::off(),
             side,

@@ -3836,3 +3836,100 @@ test("putting the cursor in the book lets the offer go", async ({ page }) => {
   await expect(goingBack(page)).toHaveCount(0);
   await expect(scene(page, first)).toBeFocused();
 });
+
+const caretIn = (page: Page) =>
+  page.evaluate(() => {
+    const chosen = getSelection()!;
+    const block = chosen.focusNode!.parentElement!.closest("p")!;
+    const before = document.createRange();
+    before.selectNodeContents(block);
+    before.setEnd(chosen.focusNode!, chosen.focusOffset);
+
+    return `${block.textContent} @${before.toString().length}`;
+  });
+
+test("Ctrl+Down goes to the end of the paragraph, then to the end of the next, then on into the next scene", async ({
+  page,
+}) => {
+  await aNewProject(page, "ByParagraph");
+  const [first, second] = (await aBookWithScenes(page, { "Part One": 2 }))[
+    "Part One"
+  ];
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await page.keyboard.type("One two three.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Four five.");
+  await page.keyboard.press("ControlOrMeta+Home");
+  await page.keyboard.press("ArrowRight");
+
+  await page.keyboard.press("Control+ArrowDown");
+  expect(await caretIn(page)).toBe("One two three. @14");
+
+  await page.keyboard.press("Control+ArrowDown");
+  expect(await caretIn(page)).toBe("Four five. @10");
+
+  await page.keyboard.press("Control+ArrowDown");
+  await expect(scene(page, second)).toBeFocused();
+});
+
+test("Ctrl+Up goes to the start of the paragraph, then to the start of the one before", async ({
+  page,
+}) => {
+  await aNewProject(page, "ByParagraphUp");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await page.keyboard.type("One two three.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Four five.");
+
+  await page.keyboard.press("Control+ArrowUp");
+  expect(await caretIn(page)).toBe("Four five. @0");
+
+  await page.keyboard.press("Control+ArrowUp");
+  expect(await caretIn(page)).toBe("One two three. @0");
+});
+
+test("Ctrl+Shift+Up selects back to the start of the paragraph, then of each one before, and on into whole scenes", async ({
+  page,
+}) => {
+  await aNewProject(page, "SelectingParagraphs");
+  const [first, second] = (await aBookWithScenes(page, { "Part One": 2 }))[
+    "Part One"
+  ];
+  await openTheWritingView(page);
+  await scene(page, second).click();
+  await page.keyboard.type("One two three.");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("Four five.");
+
+  await page.keyboard.press("Control+Shift+ArrowUp");
+  expect(await page.evaluate(() => getSelection()!.toString())).toBe(
+    "Four five.",
+  );
+
+  await page.keyboard.press("Control+Shift+ArrowUp");
+  expect(
+    (await page.evaluate(() => getSelection()!.toString())).replace(
+      /\s+/g,
+      " ",
+    ),
+  ).toBe("One two three. Four five.");
+
+  await page.keyboard.press("Control+Shift+ArrowUp");
+  await expect
+    .poll(
+      () =>
+        flow(page)
+          .locator(".scene-slot.chosen")
+          .evaluateAll((slots) =>
+            slots.map((slot) => slot.getAttribute("data-place-of")),
+          ),
+      {
+        message:
+          "with the scene already selected whole, the next press takes in the one above",
+      },
+    )
+    .toEqual([first, second]);
+});
