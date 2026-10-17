@@ -101,10 +101,10 @@ fn whereabouts(inside: Inside) -> impl IntoView {
             .attr("aria-label", "Views")
             .child(
                 [
+                    Viewing::Write,
                     Viewing::Board,
                     Viewing::Outline,
                     Viewing::Ideas,
-                    Viewing::Write,
                 ]
                 .into_iter()
                 .map(|view| tab(view, project.clone(), here))

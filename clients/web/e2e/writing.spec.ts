@@ -1826,7 +1826,7 @@ async function holdingWhatIsWritten(page: Page) {
     held: () => held.length,
     release: () => {
       holding = false;
-      held.splice(0).forEach((frame) => servers[0].send(frame));
+      held.splice(0).forEach((frame) => servers.at(-1)!.send(frame));
     },
   };
 }
@@ -3500,13 +3500,13 @@ test("two tabs writing in one scene converge", async ({ page, context }) => {
 });
 
 test("leaving the writing view closes its connection", async ({ page }) => {
+  await aNewProject(page, "TearDown");
   const sockets: { isClosed(): boolean }[] = [];
   page.on("websocket", (socket) => {
     if (socket.url().endsWith("/api/sync")) {
       sockets.push(socket);
     }
   });
-  await aNewProject(page, "TearDown");
   await aBookWithScenes(page, { "Part One": 1 });
   await openTheWritingView(page);
   await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(1);

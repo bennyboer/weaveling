@@ -17,7 +17,7 @@ pub fn project(id: &ProjectId, named: &str) -> String {
 }
 
 pub fn board(project: &str) -> String {
-    format!("/projects/{project}")
+    format!("/projects/{project}/board")
 }
 
 pub fn outline(project: &str) -> String {

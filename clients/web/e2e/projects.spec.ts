@@ -44,6 +44,11 @@ test("a new project opens at once, and the list has it when coming back", async 
 
   await insideTheProject(page);
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+  await expect(
+    page.getByRole("article", { name: "The book" }),
+    "a project opens on the writing view",
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/write$/);
   await backToTheList(page);
   await expect(rowFor(page, title)).toBeVisible();
 });

@@ -106,7 +106,10 @@ test("the pool is hidden until a project is opened", async ({ page }) => {
 });
 
 test("the browser back button leaves the project", async ({ page }) => {
-  await aNewProject(page, "Back");
+  const title = await aNewProject(page, "Back");
+  await page.getByRole("link", { name: "All projects" }).click();
+  await page.getByRole("link", { name: title }).click();
+  await expect(page.getByRole("article", { name: "The book" })).toBeVisible();
 
   await page.goBack();
 
@@ -158,8 +161,10 @@ test("a project can be opened in a new tab", async ({ page, context }) => {
     .click({ modifiers: ["ControlOrMeta"] });
   const tab = await opened;
 
-  await expect(tab).toHaveURL(/\/projects\/project-[a-z0-9-]+-project_/);
-  await onTheBoard(tab);
+  await expect(tab).toHaveURL(
+    /\/projects\/project-[a-z0-9-]+-project_[0-9A-Za-z]{22}\/write$/,
+  );
+  await expect(tab.getByRole("article", { name: "The book" })).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   await tab.close();
 });
@@ -182,7 +187,7 @@ test("the address carries a readable slug in front of the id", async ({
   const address = new URL(page.url()).pathname;
 
   expect(address).toMatch(
-    /^\/projects\/project-the-silent-loom-[0-9a-f]{8}-project_[0-9A-Za-z]{22}$/,
+    /^\/projects\/project-the-silent-loom-[0-9a-f]{8}-project_[0-9A-Za-z]{22}\/board$/,
   );
 });
 

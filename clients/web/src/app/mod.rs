@@ -17,7 +17,7 @@ use crate::app::ideas::IdeasPage;
 use crate::app::missing::MissingPage;
 use crate::app::outline::OutlinePage;
 use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
-use crate::app::write::{LooseScenesPage, WritePage};
+use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
 use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
@@ -43,7 +43,8 @@ pub fn App() -> impl IntoView {
                     path=path!("/")
                     view=move || WorkspacePage(WorkspacePageProps { workspace, overlays })
                 />
-                <Route path=path!("/projects/:project") view=BoardPage />
+                <Route path=path!("/projects/:project") view=ProjectPage />
+                <Route path=path!("/projects/:project/board") view=BoardPage />
                 <Route path=path!("/projects/:project/outline") view=OutlinePage />
                 <Route path=path!("/projects/:project/ideas") view=IdeasPage />
                 <Route path=path!("/projects/:project/write") view=WritePage />

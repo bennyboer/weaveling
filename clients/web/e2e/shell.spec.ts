@@ -269,3 +269,16 @@ for (const width of [375, 1440]) {
     }
   });
 }
+
+test("the writing view comes first among a project's views", async ({
+  page,
+}) => {
+  await aNewProject(page, "Order");
+
+  await expect(views(page).getByRole("link")).toHaveText([
+    "Write",
+    "Board",
+    "Outline",
+    "Ideas",
+  ]);
+});

@@ -22,7 +22,7 @@ test("a project's board can be opened from its pool", async ({ page }) => {
   await openTheBoard(page);
 
   await expect(page).toHaveURL(
-    /\/projects\/project-[a-z0-9-]+-project_[0-9A-Za-z]{22}$/,
+    /\/projects\/project-[a-z0-9-]+-project_[0-9A-Za-z]{22}\/board$/,
   );
 });
 

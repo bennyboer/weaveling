@@ -114,7 +114,7 @@ test("double-clicking a card edits its title instead of opening it", async ({
 
   await expect(cardNamed(page, "A thread comes loose")).toBeVisible();
   await expect(page).toHaveURL(
-    /\/projects\/project-[a-z0-9-]+-project_[0-9A-Za-z]{22}$/,
+    /\/projects\/project-[a-z0-9-]+-project_[0-9A-Za-z]{22}\/board$/,
   );
 });
 
