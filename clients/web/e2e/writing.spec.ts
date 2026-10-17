@@ -3933,3 +3933,55 @@ test("Ctrl+Shift+Up selects back to the start of the paragraph, then of each one
     )
     .toEqual([first, second]);
 });
+
+test("Ctrl+I and Ctrl+B set a word in italics and in bold, and take it off again", async ({
+  page,
+}) => {
+  await aNewProject(page, "Emphasis");
+  const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await openTheWritingView(page);
+  await scene(page, only).click();
+  await page.keyboard.type("She never returned.");
+  await page.keyboard.press("Home");
+  for (let step = 0; step < "She".length; step++) {
+    await page.keyboard.press("Shift+ArrowRight");
+  }
+
+  await page.keyboard.press("ControlOrMeta+I");
+  await expect(scene(page, only).locator("em")).toHaveText("She");
+  await page.keyboard.press("ControlOrMeta+B");
+  await expect(scene(page, only).locator("strong")).toHaveText("She");
+  const weights = await scene(page, only).evaluate((prose) => [
+    Number(getComputedStyle(prose).fontWeight),
+    Number(getComputedStyle(prose.querySelector("strong")!).fontWeight),
+  ]);
+  expect(
+    weights[1] - weights[0],
+    "bold stands out from the light prose around it, in every browser",
+  ).toBeGreaterThanOrEqual(200);
+
+  await page.keyboard.press("ControlOrMeta+I");
+  await expect(scene(page, only).locator("em")).toHaveCount(0);
+  await expect(scene(page, only)).toHaveText("She never returned.");
+});
+
+test("italics begun by Ctrl+I go on as typed, and are kept", async ({
+  page,
+}) => {
+  await aNewProject(page, "EmphasisKept");
+  const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await openTheWritingView(page);
+  await scene(page, only).click();
+  await page.keyboard.type("A ship called ");
+  await page.keyboard.press("ControlOrMeta+I");
+  await page.keyboard.type("Endurance");
+  await page.keyboard.press("ControlOrMeta+I");
+  await page.keyboard.type(" sailed.");
+  await expect(scene(page, only).locator("em")).toHaveText("Endurance");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await page.reload();
+
+  await expect(scene(page, only).locator("em")).toHaveText("Endurance");
+  await expect(scene(page, only)).toHaveText("A ship called Endurance sailed.");
+});

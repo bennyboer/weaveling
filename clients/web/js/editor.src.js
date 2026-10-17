@@ -4,7 +4,7 @@ import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
 import { Schema } from "prosemirror-model";
 import { schema as basic } from "prosemirror-schema-basic";
 import { addListNodes } from "prosemirror-schema-list";
-import { baseKeymap } from "prosemirror-commands";
+import { baseKeymap, toggleMark } from "prosemirror-commands";
 import { keymap } from "prosemirror-keymap";
 import { redo, undo, yCursorPlugin, ySyncPlugin, yUndoPlugin } from "y-prosemirror";
 
@@ -104,6 +104,10 @@ export class ProseEditor {
           yCursorPlugin(this.sync.awareness),
           yUndoPlugin(),
           keymap({ "Mod-z": undo, "Mod-y": redo, "Mod-Shift-z": redo }),
+          keymap({
+            "Mod-i": toggleMark(schema.marks.em),
+            "Mod-b": toggleMark(schema.marks.strong),
+          }),
           keymap({
             Enter: (state, dispatch) => this.breakAtEnd(state, dispatch),
             ArrowUp: (state, _, view) => this.leave(state, view, "before", "up"),
