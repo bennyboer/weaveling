@@ -3,6 +3,7 @@ use leptos::task::spawn_local;
 
 use crate::http::ApiError;
 use crate::projects::model::{DescribedProject, ProjectId};
+use crate::projects::quotation::QuotationMarks;
 use crate::projects::service;
 
 #[derive(Clone, Copy)]
@@ -66,6 +67,20 @@ impl OpenProject {
             described
                 .as_ref()
                 .and_then(|held| held.details.language.clone())
+        })
+    }
+
+    pub fn quotation_marks(self) -> QuotationMarks {
+        self.described.with(|described| {
+            let details = described.as_ref().map(|held| &held.details);
+
+            details
+                .and_then(|details| details.quotation)
+                .unwrap_or_else(|| {
+                    QuotationMarks::of_language(
+                        details.and_then(|details| details.language.as_deref()),
+                    )
+                })
         })
     }
 

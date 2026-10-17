@@ -101,6 +101,12 @@ impl Walk {
         }
     }
 
+    pub fn told(self, scene: &SceneId, told: impl FnOnce(&ProseEditor)) {
+        _ = self
+            .editors
+            .try_with_value(|editors| editors.get(scene).map(told));
+    }
+
     pub fn text_in(self, scene: &SceneId) -> Option<String> {
         self.editors
             .try_with_value(|editors| editors.get(scene).map(ProseEditor::plain_text))

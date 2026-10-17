@@ -3985,3 +3985,67 @@ test("italics begun by Ctrl+I go on as typed, and are kept", async ({
   await expect(scene(page, only).locator("em")).toHaveText("Endurance");
   await expect(scene(page, only)).toHaveText("A ship called Endurance sailed.");
 });
+
+async function quoting(page: Page, named: string, language: string | null) {
+  await aNewProject(page, named);
+  const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await theBookIsIn(page, language);
+  await openTheWritingView(page);
+  await scene(page, only).click();
+
+  return only;
+}
+
+test("a typed \" becomes the book's quotation marks, opening or closing by where it falls", async ({
+  page,
+}) => {
+  const only = await quoting(page, "QuotingDe", "de");
+
+  await page.keyboard.type('"Komm her," sagte sie. ("Bitte.")');
+
+  await expect(scene(page, only)).toHaveText(
+    "»Komm her,« sagte sie. (»Bitte.«)",
+  );
+});
+
+test("a book with no language quotes as English does", async ({ page }) => {
+  const only = await quoting(page, "QuotingNone", null);
+
+  await page.keyboard.type('"Come here," she said—"now."');
+
+  await expect(scene(page, only)).toHaveText("“Come here,” she said—“now.”");
+});
+
+test("French marks are set with narrow spaces inside", async ({ page }) => {
+  const only = await quoting(page, "QuotingFr", "fr");
+
+  await page.keyboard.type('"Viens"');
+
+  await expect(scene(page, only)).toHaveText("« Viens »");
+});
+
+test("a typed ' becomes an apostrophe", async ({ page }) => {
+  const only = await quoting(page, "Apostrophe", "de");
+
+  await page.keyboard.type("Wie geht's? Don't.");
+
+  await expect(scene(page, only)).toHaveText("Wie geht’s? Don’t.");
+});
+
+test("a quotation style chosen while writing is used from the next mark on", async ({
+  page,
+}) => {
+  const only = await quoting(page, "QuotingChanged", "de");
+  await page.keyboard.type('"Eins" ');
+
+  await page.getByRole("button", { name: "Project details" }).click();
+  const details = page.getByRole("dialog", { name: "Project details" });
+  await details.getByLabel("Quotation marks").selectOption({ label: "„…“" });
+  await details.getByRole("button", { name: "Save" }).click();
+  await expect(details).toHaveCount(0);
+  await scene(page, only).click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.type('"Zwei"');
+
+  await expect(scene(page, only)).toHaveText("»Eins« „Zwei“");
+});

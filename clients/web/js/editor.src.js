@@ -14,6 +14,8 @@ export { SyncConnection } from "./sync.js";
 
 const FRAGMENT = "prose";
 
+const OPENS_AFTER = /[\s(\[{\u2013\u2014-]/;
+
 const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "Alt" : "Ctrl";
 
 const schema = new Schema({
@@ -53,6 +55,7 @@ export class ProseEditor {
 
     this.leaving = () => false;
     this.selecting = () => false;
+    this.quotationMarks = { opening: "\u201c", closing: "\u201d" };
     this.breaking = null;
     this.changed = () => {};
     this.caretMoved = () => {};
@@ -97,6 +100,7 @@ export class ProseEditor {
               handleDOMEvents: {
                 focus: (view) => this.focusedWhereTheBrowserPutIt(view),
               },
+              handleTextInput: (view, from, to, text) => this.typedMark(view, from, to, text),
             },
           }),
           markingWhereWritten(),
@@ -264,6 +268,38 @@ export class ProseEditor {
 
   onLeaving(leaving) {
     this.leaving = leaving;
+  }
+
+  setQuotationMarks(opening, closing) {
+    this.quotationMarks = { opening, closing };
+  }
+
+  typedMark(view, from, to, text) {
+    if (text !== '"' && text !== "'") {
+      return false;
+    }
+    const mark =
+      text === "'"
+        ? "\u2019"
+        : this.opensAt(view.state, from)
+          ? this.quotationMarks.opening
+          : this.quotationMarks.closing;
+
+    view.dispatch(view.state.tr.insertText(mark, from, to));
+
+    return true;
+  }
+
+  opensAt(state, at) {
+    const $at = state.doc.resolve(at);
+    const before = $at.parent.textBetween(
+      Math.max(0, $at.parentOffset - 1),
+      $at.parentOffset,
+      null,
+      " ",
+    );
+
+    return before === "" || OPENS_AFTER.test(before);
   }
 
   onSelecting(selecting) {

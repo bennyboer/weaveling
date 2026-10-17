@@ -5,6 +5,7 @@ use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
 use words::words_in;
 
+use crate::projects::open_project::OpenProject;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
 use crate::writing::choosing::hand_the_keys_to_the_book;
@@ -40,6 +41,9 @@ pub fn waiting_scene(scene: SceneId, state: WriteViewState) -> impl IntoView {
 
 pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
+    let open_project = expect_context::<OpenProject>();
+    let marks = Memo::new(move |_| open_project.quotation_marks());
+    let editors_made = RwSignal::new(0_u32);
     let kept = StoredValue::new_local(
         None::<(
             Closure<dyn Fn(bool)>,
@@ -148,6 +152,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             }
 
             state.walk.writing_in(scene.clone(), editor);
+            editors_made.update(|made| *made += 1);
             kept.set_value(Some((
                 connected,
                 leaving,
@@ -157,6 +162,19 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 caret_moved,
                 selecting,
             )));
+        }
+    });
+
+    Effect::new({
+        let scene = scene.clone();
+
+        move || {
+            let marks = marks.get();
+            if editors_made.get() > 0 {
+                state.walk.told(&scene, |editor| {
+                    editor.set_quotation_marks(&marks.opening(), &marks.closing())
+                });
+            }
         }
     });
 
