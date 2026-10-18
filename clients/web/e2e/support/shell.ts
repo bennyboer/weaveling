@@ -8,19 +8,25 @@ const aName = (of: string) =>
 export const views = (page: Page) =>
   page.getByRole("navigation", { name: "Views" });
 
+const slugOf = (title: string) =>
+  title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+
 export async function aNewProject(page: Page, named: string): Promise<string> {
   const title = aName(named);
+  const made = await page.request.post(`${API}/projects`, {
+    data: { name: title, language: "en" },
+  });
+  expect(made.ok()).toBe(true);
+  const { id } = await made.json();
+  await expect
+    .poll(async () => {
+      const listed = await (await page.request.get(`${API}/projects`)).json();
+      return listed.some((project: { id: string }) => project.id === id);
+    })
+    .toBe(true);
 
-  await page.goto("/");
-  await page.getByPlaceholder("A working title…").fill(title);
-  await page.getByRole("button", { name: "Create", exact: true }).click();
-  await page
-    .getByRole("dialog", { name: "New project" })
-    .getByRole("button", { name: "Create project" })
-    .click();
-  await expect(page.getByRole("article", { name: "The book" })).toBeVisible();
-
-  await openTheBoard(page);
+  await page.goto(`/projects/${slugOf(title)}-${id}/board`);
+  await onTheBoard(page);
 
   return title;
 }
