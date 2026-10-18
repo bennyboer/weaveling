@@ -5,6 +5,7 @@ use leptos_router::hooks::use_params_map;
 
 use crate::ideas::inspector::inspector;
 use crate::ideas::inspector_state::InspectorState;
+use crate::problem::problem;
 use crate::route;
 use crate::shell::{Inside, masthead};
 
@@ -24,14 +25,7 @@ pub fn IdeaPage() -> impl IntoView {
     (
         move || masthead(Some(Inside::of(&state.project(), None))),
         html::main().child(html::div().class("column").child((
-            move || {
-                state.problem().map(|failure| {
-                    html::p()
-                        .class("problem")
-                        .role("alert")
-                        .child(failure.to_string())
-                })
-            },
+            move || state.problem().map(problem),
             move || match ready.get() {
                 true => inspector(state).into_any(),
                 false => html::p().class("empty").child("Opening…").into_any(),

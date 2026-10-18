@@ -1,6 +1,7 @@
 use leptos::ev;
 use leptos::prelude::*;
-use web_sys::Storage;
+
+use crate::kept::{keep, recall};
 
 const AT_FIRST: f64 = 320.0;
 pub const NARROWEST: f64 = 224.0;
@@ -17,8 +18,7 @@ pub struct DrawerWidth {
 
 impl DrawerWidth {
     pub fn as_last_left(kept: String) -> Self {
-        let chosen = shelf()
-            .and_then(|shelf| shelf.get_item(&kept).ok().flatten())
+        let chosen = recall(&kept)
             .and_then(|kept| kept.parse().ok())
             .filter(|width: &f64| width.is_finite())
             .unwrap_or(AT_FIRST);
@@ -73,11 +73,8 @@ impl DrawerWidth {
     }
 
     pub fn keep(self) {
-        if let Some(shelf) = shelf() {
-            let width = self.shown_untracked().round().to_string();
-            self.kept
-                .with_value(|kept| _ = shelf.set_item(kept, &width));
-        }
+        let width = self.shown_untracked().round().to_string();
+        self.kept.with_value(|kept| keep(kept, &width));
     }
 }
 
@@ -95,8 +92,4 @@ fn window_width() -> f64 {
         .ok()
         .and_then(|width| width.as_f64())
         .unwrap_or(AT_FIRST * 4.0)
-}
-
-fn shelf() -> Option<Storage> {
-    window().local_storage().ok().flatten()
 }

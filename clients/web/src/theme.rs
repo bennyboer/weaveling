@@ -1,7 +1,8 @@
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
-use web_sys::Storage;
+
+use crate::kept::{keep, recall};
 
 const REMEMBERED: &str = "weaveling.theme";
 const MARKED: &str = "data-theme";
@@ -82,19 +83,11 @@ fn choose(theme: Theme) {
         };
     }
 
-    if let Some(shelf) = shelf() {
-        let _ = shelf.set_item(REMEMBERED, theme.stored());
-    }
+    keep(REMEMBERED, theme.stored());
 }
 
 fn remembered() -> Theme {
-    shelf()
-        .and_then(|shelf| shelf.get_item(REMEMBERED).ok().flatten())
-        .map_or(Theme::System, |said| Theme::told(&said))
-}
-
-fn shelf() -> Option<Storage> {
-    window().local_storage().ok().flatten()
+    recall(REMEMBERED).map_or(Theme::System, |said| Theme::told(&said))
 }
 
 fn mark(theme: Theme) -> impl IntoView {

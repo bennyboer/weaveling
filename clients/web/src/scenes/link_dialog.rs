@@ -5,7 +5,6 @@ use leptos::{IntoView, ev};
 use crate::dialog::modal;
 use crate::icons::{Icon, mark};
 use crate::ideas::model::{Idea, IdeaId};
-use crate::inputs::typed;
 pub fn link_dialog(
     waiting: Signal<Vec<Idea>>,
     link: impl Fn(Vec<IdeaId>) + Copy + Send + Sync + 'static,
@@ -42,9 +41,7 @@ pub fn link_dialog(
                 .attr("placeholder", "Find an idea")
                 .node_ref(search)
                 .on(ev::input, move |event| {
-                    if let Some(field) = typed(&event) {
-                        finding.set(field.value());
-                    }
+                    finding.set(event_target_value(&event));
                 }),
             move || {
                 let found = matching();

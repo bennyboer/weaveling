@@ -8,6 +8,7 @@ use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, FocusEvent, KeyboardEvent, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::outline::model::{Section, SectionId};
+use crate::problem::problem;
 use crate::projects::open_project::OpenProject;
 use crate::route;
 use crate::scenes::model::SceneId;
@@ -207,14 +208,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
             }
         })
         .child((
-            move || {
-                state.problems.latest().map(|failure| {
-                    html::p()
-                        .class("problem")
-                        .role("alert")
-                        .child(failure.to_string())
-                })
-            },
+            move || state.problems.latest().map(problem),
             move || {
                 let anything_outside = !state.loose.in_order().is_empty();
 

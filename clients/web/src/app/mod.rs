@@ -3,6 +3,7 @@ mod idea;
 mod ideas;
 mod missing;
 mod outline;
+mod project_page;
 mod workspace;
 mod write;
 

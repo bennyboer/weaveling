@@ -5,7 +5,7 @@ use leptos_router::components::A;
 
 use crate::icons::{Icon, mark};
 use crate::ideas::inspector_state::InspectorState;
-use crate::inputs::typed;
+use crate::problem::problem;
 use crate::route;
 
 pub fn inspector(state: InspectorState) -> impl IntoView {
@@ -22,9 +22,7 @@ fn name_field(state: InspectorState) -> impl IntoView {
                 state.opened().map(|idea| idea.title).unwrap_or_default()
             })
             .on(ev::change, move |event| {
-                if let Some(field) = typed(&event) {
-                    state.retitle(field.value());
-                }
+                state.retitle(event_target_value(&event));
             }),
     )
 }
@@ -79,17 +77,7 @@ pub fn docked(state: InspectorState) -> impl IntoView {
             html::section()
                 .class("docked-inspector")
                 .attr("aria-label", "Inspector")
-                .child((
-                    move || {
-                        state.problem().map(|failure| {
-                            html::p()
-                                .class("problem")
-                                .role("alert")
-                                .child(failure.to_string())
-                        })
-                    },
-                    inspector(state),
-                ))
+                .child((move || state.problem().map(problem), inspector(state)))
         })
     }
 }

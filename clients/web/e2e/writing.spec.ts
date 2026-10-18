@@ -3625,6 +3625,12 @@ test("spelling switched off in the writing settings stays off for every scene, a
       .locator(".scene .ProseMirror")
       .evaluateAll((all) => all.map((one) => (one as HTMLElement).spellcheck)),
   ).toEqual([true, true]);
+  await page.reload();
+  await expect(flow(page).locator(".scene .ProseMirror")).toHaveCount(2);
+  expect(
+    await checkedForSpelling(page),
+    "switched back on, spelling stays on after a reload too",
+  ).toEqual([false, true, true]);
 });
 
 async function aSlowHandover(page: Page) {
@@ -4287,6 +4293,11 @@ test("justified text in the writing settings sets lines flush and hyphenated, ac
 
   await expect
     .poll(() => howTheTextSits(page, only))
+    .toMatchObject({ align: "start", flush: false });
+  await page.reload();
+  await expect(scene(page, only)).toContainText("Am Morgen");
+  await expect
+    .poll(() => howTheTextSits(page, only), "switched back, the text stays ragged after a reload")
     .toMatchObject({ align: "start", flush: false });
 });
 

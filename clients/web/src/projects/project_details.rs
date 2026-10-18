@@ -6,6 +6,7 @@ use leptos::{IntoView, ev};
 use crate::dialog::modal;
 use crate::http::ApiError;
 use crate::icons::{Icon, mark};
+use crate::problem::problem;
 use crate::projects::details_form::{DetailsDraft, details_fields};
 use crate::projects::model::{DescribedProject, ProjectId};
 use crate::projects::open_project::OpenProject;
@@ -86,14 +87,7 @@ fn changing_dialog(
         move || changing.set(false),
         (
             details_fields(draft, field, move || refused.set(None), save),
-            move || {
-                refused.get().map(|failure| {
-                    html::p()
-                        .class("problem")
-                        .role("alert")
-                        .child(failure.to_string())
-                })
-            },
+            move || refused.get().map(problem),
             html::div().class("dialog-actions").child((
                 html::button()
                     .r#type("button")

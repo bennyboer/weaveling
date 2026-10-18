@@ -1,25 +1,16 @@
 use leptos::IntoView;
 use leptos::html;
 use leptos::prelude::*;
-use leptos_router::hooks::use_params_map;
 
+use crate::app::project_page::project_page;
 use crate::ideas::pool::{Pool, PoolProps};
-use crate::shell::{Inside, Viewing, masthead};
+use crate::shell::Viewing;
 
 #[component]
 pub fn IdeasPage() -> impl IntoView {
-    let params = use_params_map();
-
-    move || {
-        params.read().get("project").map(|project| {
-            (
-                masthead(Some(Inside::of(&project, Some(Viewing::Ideas)))),
-                html::main().child(
-                    html::div()
-                        .class("column")
-                        .child(Pool(PoolProps { project })),
-                ),
-            )
-        })
-    }
+    project_page(Viewing::Ideas, |project| {
+        html::div()
+            .class("column")
+            .child(Pool(PoolProps { project }))
+    })
 }

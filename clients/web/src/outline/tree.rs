@@ -5,13 +5,13 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 use wasm_bindgen::JsCast;
-use web_sys::HtmlElement;
+use web_sys::{HtmlElement, HtmlInputElement};
 
 use crate::icons::{Icon, mark};
-use crate::inputs::typed;
 use crate::outline::in_view::{InView, LEAVES_PLACE};
 use crate::outline::model::{Attachment, Section, SectionId};
 use crate::outline::outline_view_state::{OutlineViewState, Urge};
+use crate::problem::problem_to_dismiss;
 use crate::route;
 use crate::tray::laid_out;
 
@@ -60,17 +60,9 @@ pub fn OutlineView(project: String) -> impl IntoView {
 
     html::section().class("outline").child((
         move || {
-            state.problem().map(|failure| {
-                html::p().class("problem").role("alert").child((
-                    failure.to_string(),
-                    html::button()
-                        .r#type("button")
-                        .class("dismiss")
-                        .attr("aria-label", "Dismiss")
-                        .on(ev::click, move |_| state.dismiss())
-                        .child("\u{00d7}"),
-                ))
-            })
+            state
+                .problem()
+                .map(|failure| problem_to_dismiss(failure, move || state.dismiss()))
         },
         laid_out(
             html::div()
@@ -407,9 +399,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     "Escape" => {
                         held.editing.set(None);
 
-                        if let Some(field) = typed(&event) {
-                            let _ = field.blur();
-                        }
+                        let _ = event_target::<HtmlInputElement>(&event).blur();
                     }
                     _ => {}
                 })
@@ -755,10 +745,7 @@ fn shown_or_blank(shown: &str) -> String {
 }
 
 fn settle(event: &ev::Event, section: &SectionId, state: OutlineViewState) {
-    let Some(field) = typed(event) else {
-        return;
-    };
-    let written = field.value();
+    let written = event_target_value(event);
     let was = state
         .sections()
         .into_iter()

@@ -15,6 +15,7 @@ use crate::boards::viewport::{NEARER, Viewport};
 use crate::ideas::inspector::docked;
 use crate::ideas::inspector_state::InspectorState;
 use crate::ideas::model::{Idea, IdeaId};
+use crate::problem::problem_to_dismiss;
 use crate::route;
 use crate::tray::laid_out;
 
@@ -50,17 +51,9 @@ pub fn BoardView(project: String) -> impl IntoView {
 
     html::section().class("board").child((
         move || {
-            state.problem().map(|failure| {
-                html::p().class("problem").role("alert").child((
-                    failure.to_string(),
-                    html::button()
-                        .r#type("button")
-                        .class("dismiss")
-                        .attr("aria-label", "Dismiss")
-                        .on(ev::click, move |_| state.dismiss())
-                        .child("\u{00d7}"),
-                ))
-            })
+            state
+                .problem()
+                .map(|failure| problem_to_dismiss(failure, move || state.dismiss()))
         },
         laid_out(
             corkboard(project, handles).into_any(),

@@ -1,5 +1,6 @@
 use leptos::prelude::*;
-use web_sys::Storage;
+
+use crate::kept::{forget, keep, recall};
 
 const SPELLING: &str = "weaveling.writing.spellcheck";
 const JUSTIFIED: &str = "weaveling.writing.justified";
@@ -16,8 +17,8 @@ pub struct Settings {
 impl Settings {
     pub fn as_last_left() -> Self {
         Self {
-            spelling: RwSignal::new(kept(SPELLING).as_deref() != Some(OFF)),
-            justified: RwSignal::new(kept(JUSTIFIED).as_deref() == Some(ON)),
+            spelling: RwSignal::new(recall(SPELLING).as_deref() != Some(OFF)),
+            justified: RwSignal::new(recall(JUSTIFIED).as_deref() == Some(ON)),
             open: RwSignal::new(false),
         }
     }
@@ -28,7 +29,10 @@ impl Settings {
 
     pub fn check_spelling(self, wanted: bool) {
         self.spelling.set(wanted);
-        keep(SPELLING, (!wanted).then_some(OFF));
+        match wanted {
+            true => forget(SPELLING),
+            false => keep(SPELLING, OFF),
+        }
     }
 
     pub fn justifies(self) -> bool {
@@ -37,7 +41,10 @@ impl Settings {
 
     pub fn justify(self, wanted: bool) {
         self.justified.set(wanted);
-        keep(JUSTIFIED, wanted.then_some(ON));
+        match wanted {
+            true => keep(JUSTIFIED, ON),
+            false => forget(JUSTIFIED),
+        }
     }
 
     pub fn is_open(self) -> bool {
@@ -51,21 +58,4 @@ impl Settings {
     pub fn close(self) {
         self.open.set(false);
     }
-}
-
-fn kept(key: &str) -> Option<String> {
-    shelf().and_then(|shelf| shelf.get_item(key).ok().flatten())
-}
-
-fn keep(key: &str, value: Option<&str>) {
-    if let Some(shelf) = shelf() {
-        _ = match value {
-            Some(value) => shelf.set_item(key, value),
-            None => shelf.remove_item(key),
-        };
-    }
-}
-
-fn shelf() -> Option<Storage> {
-    window().local_storage().ok().flatten()
 }

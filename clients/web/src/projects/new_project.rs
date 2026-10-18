@@ -5,6 +5,7 @@ use leptos_router::NavigateOptions;
 use leptos_router::hooks::use_navigate;
 
 use crate::dialog::modal;
+use crate::problem::problem;
 use crate::projects::details_form::{DetailsDraft, details_fields};
 use crate::projects::languages::the_browser_s;
 use crate::projects::model::{ProjectDetails, ProjectId};
@@ -91,12 +92,7 @@ fn new_project_dialog(
                     .get()
                     .then(|| refused.get())
                     .flatten()
-                    .map(|failure| {
-                        html::p()
-                            .class("problem")
-                            .role("alert")
-                            .child(failure.to_string())
-                    })
+                    .map(problem)
             },
             html::div().class("dialog-actions").child((
                 html::button()

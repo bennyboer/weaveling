@@ -2,7 +2,6 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::dialog::modal;
-use crate::inputs::typed;
 use crate::writing::write_view_state::WriteViewState;
 
 const SPELLING: &str = "Underlines words the browser's dictionary does not know.";
@@ -54,9 +53,7 @@ fn setting(
             .r#type("checkbox")
             .prop("checked", on)
             .on(ev::change, move |event| {
-                if let Some(field) = typed(&event) {
-                    turned(field.checked());
-                }
+                turned(event_target_checked(&event));
             }),
         html::span().child((named, html::small().child(told))),
     ))

@@ -7,13 +7,14 @@ use leptos_router::components::A;
 use crate::http::ApiError;
 use crate::ideas::model::Idea;
 use crate::ideas::service;
+use crate::problem::problem;
 use crate::route;
 
 #[component]
 pub fn Pool(project: String) -> impl IntoView {
     let whose = project;
     let project = route::project_id(&whose);
-    let problem = RwSignal::new(None::<ApiError>);
+    let failed = RwSignal::new(None::<ApiError>);
     let captured = RwSignal::new(Vec::<Idea>::new());
     let title: NodeRef<Input> = NodeRef::new();
 
@@ -37,10 +38,10 @@ pub fn Pool(project: String) -> impl IntoView {
             async move {
                 match service::capture(&project, &saying).await {
                     Ok(idea) => {
-                        problem.set(None);
+                        failed.set(None);
                         captured.update(|held| held.push(idea));
                     }
-                    Err(failure) => problem.set(Some(failure)),
+                    Err(failure) => failed.set(Some(failure)),
                 }
             }
         })
@@ -86,14 +87,7 @@ pub fn Pool(project: String) -> impl IntoView {
                     .disabled(capturing.pending())
                     .child("Capture"),
             )),
-        move || {
-            problem.get().map(|failure| {
-                html::p()
-                    .class("problem")
-                    .role("alert")
-                    .child(failure.to_string())
-            })
-        },
+        move || failed.get().map(problem),
         move || (ideas().is_empty()).then(|| html::p().class("empty").child(nothing_yet(listed))),
         html::ul()
             .class("ideas")

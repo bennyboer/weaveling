@@ -1,21 +1,13 @@
 use leptos::IntoView;
-use leptos::html;
 use leptos::prelude::*;
-use leptos_router::hooks::use_params_map;
 
+use crate::app::project_page::project_page;
 use crate::outline::tree::{OutlineView, OutlineViewProps};
-use crate::shell::{Inside, Viewing, masthead};
+use crate::shell::Viewing;
 
 #[component]
 pub fn OutlinePage() -> impl IntoView {
-    let params = use_params_map();
-
-    move || {
-        params.read().get("project").map(|project| {
-            (
-                masthead(Some(Inside::of(&project, Some(Viewing::Outline)))),
-                html::main().child(OutlineView(OutlineViewProps { project })),
-            )
-        })
-    }
+    project_page(Viewing::Outline, |project| {
+        OutlineView(OutlineViewProps { project })
+    })
 }

@@ -10,9 +10,9 @@ pub fn project(id: &ProjectId, named: &str) -> String {
     let slug = slugify(named);
 
     if slug.is_empty() {
-        format!("/projects/{id}")
+        writing(&id.to_string())
     } else {
-        format!("/projects/{slug}-{id}")
+        writing(&format!("{slug}-{id}"))
     }
 }
 
@@ -138,8 +138,13 @@ mod tests {
     fn a_title_survives_the_round_trip_through_an_address() {
         let id = ProjectId::from("project_034Jlq".to_owned());
         let address = project(&id, "The Silent Loom");
-        let segment = address.trim_start_matches("/projects/");
+        let segment = "the-silent-loom-project_034Jlq";
 
+        assert_eq!(
+            address,
+            format!("/projects/{segment}/write"),
+            "a project opens on writing"
+        );
         assert_eq!(named(segment), "The Silent Loom");
         assert_eq!(project_id(segment), id);
     }

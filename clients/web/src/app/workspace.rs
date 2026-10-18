@@ -2,6 +2,7 @@ use leptos::IntoView;
 use leptos::html;
 use leptos::prelude::*;
 
+use crate::problem::problem;
 use crate::projects::confirm_delete::{ConfirmDelete, ConfirmDeleteProps};
 use crate::projects::new_project::{NewProject, NewProjectProps};
 use crate::projects::overlays::Overlays;
@@ -19,14 +20,7 @@ pub fn WorkspacePage(workspace: Workspace, overlays: Overlays) -> impl IntoView 
                 "Bring us your tiny, fragile story ideas, and we will help you weave them into a full epic.",
             ),
             NewProject(NewProjectProps { workspace }),
-            move || {
-                workspace.problem().map(|failure| {
-                    html::p()
-                        .class("problem")
-                        .role("alert")
-                        .child(failure.to_string())
-                })
-            },
+            move || workspace.problem().map(problem),
             move || placeholder(workspace),
             html::ul().class("projects").child(move || {
                 workspace

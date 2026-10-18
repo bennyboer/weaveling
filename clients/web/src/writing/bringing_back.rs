@@ -4,7 +4,6 @@ use leptos::task::spawn_local;
 use leptos::{IntoView, ev, html};
 
 use crate::dialog::modal;
-use crate::inputs::typed;
 use crate::outline::model::SectionId;
 use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scenes;
@@ -90,9 +89,7 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
                                     .attr("placeholder", "Find a scene")
                                     .node_ref(search)
                                     .on(ev::input, move |event| {
-                                        if let Some(field) = typed(&event) {
-                                            finding.set(field.value());
-                                        }
+                                        finding.set(event_target_value(&event));
                                     })
                                     .on(ev::keydown, move |event| {
                                         if event.key() == "Enter"

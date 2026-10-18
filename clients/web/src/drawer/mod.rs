@@ -3,11 +3,11 @@ pub mod width;
 
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
-use web_sys::Storage;
 
 use crate::drawer::handle::{Grows, drawer_handle};
 use crate::drawer::width::DrawerWidth;
 use crate::icons::{Icon, mark};
+use crate::kept::{keep, recall};
 
 const OPEN: &str = "open";
 const SHUT: &str = "shut";
@@ -27,9 +27,7 @@ pub struct Drawer {
 
 impl Drawer {
     pub fn as_last_left(kept: &str, open_at_first: bool) -> Self {
-        let open = shelf()
-            .and_then(|shelf| shelf.get_item(kept).ok().flatten())
-            .map_or(open_at_first, |kept| kept == OPEN);
+        let open = recall(kept).map_or(open_at_first, |kept| kept == OPEN);
 
         Self {
             kept: StoredValue::new(kept.to_owned()),
@@ -57,11 +55,8 @@ impl Drawer {
     fn keep_open(self, open: bool) {
         self.open.set(open);
 
-        if let Some(shelf) = shelf() {
-            self.kept.with_value(|kept| {
-                _ = shelf.set_item(kept, if open { OPEN } else { SHUT });
-            });
-        }
+        self.kept
+            .with_value(|kept| keep(kept, if open { OPEN } else { SHUT }));
     }
 }
 
@@ -154,8 +149,4 @@ where
                 )),
             )),
     )
-}
-
-fn shelf() -> Option<Storage> {
-    window().local_storage().ok().flatten()
 }

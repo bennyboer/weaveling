@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 use wasm_bindgen::JsCast;
-use web_sys::{HtmlElement, Storage};
+use web_sys::HtmlElement;
 
+use crate::kept::{keep, recall};
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::writing::loose_scenes::LooseScenes;
@@ -71,9 +72,7 @@ impl LeftOff {
     }
 
     pub fn remember(self, scene: &SceneId, at: u32) {
-        if let Some(shelf) = shelf() {
-            let _ = shelf.set_item(&self.key(), &format!("{scene} {at}"));
-        }
+        keep(&self.key(), &format!("{scene} {at}"));
     }
 
     pub fn land(self, following: Option<SceneId>) {
@@ -129,7 +128,7 @@ impl LeftOff {
     }
 
     fn recalled(self) -> Option<(SceneId, u32)> {
-        let kept = shelf()?.get_item(&self.key()).ok()??;
+        let kept = recall(&self.key())?;
         let (scene, at) = kept.split_once(' ')?;
 
         Some((SceneId::from(scene.to_owned()), at.parse().ok()?))
@@ -141,8 +140,4 @@ impl LeftOff {
             Side::Loose => format!("weaveling.left-off.{}.loose", self.project.get_value()),
         }
     }
-}
-
-fn shelf() -> Option<Storage> {
-    window().local_storage().ok().flatten()
 }
