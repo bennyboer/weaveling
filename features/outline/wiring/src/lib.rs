@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use eventsourcing::{EventStore, InMemoryEventStore};
-use outbox::{InMemoryOutbox, Outbox};
+use eventsourcing::EventStore;
+use outbox::Outbox;
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineCatalog, OutlineEvent, OutlineService};
 use outline_messaging::{
@@ -9,74 +9,13 @@ use outline_messaging::{
     DiscardOutlinesOnProjectDeleted, OutlineCatalogProjector,
 };
 use registry::{InMemoryRegistry, Registry};
-use wiring::{Context, Feature, Wired};
+use wiring::{Context, EventSourced, Feature, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<OutlineEvent>>,
     pub catalog: Arc<dyn OutlineCatalog>,
     pub registry: Arc<dyn Registry>,
     pub outbox: Arc<dyn Outbox>,
-}
-
-impl Ports {
-    pub fn in_memory(
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        let outbox = Arc::new(InMemoryOutbox::new(publisher, clock));
-
-        Self {
-            events: Arc::new(InMemoryEventStore::enqueuing_to(
-                outbox.clone(),
-                outline_messaging::message_for,
-            )),
-            catalog: Arc::new(InMemoryOutlineCatalog::new()),
-            registry: Arc::new(InMemoryRegistry::new()),
-            outbox,
-        }
-    }
-
-    #[cfg(feature = "postgres")]
-    pub fn postgres(
-        pool: sqlx::PgPool,
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        use eventsourcing::PostgresEventStore;
-        use outbox::PostgresOutbox;
-
-        Self {
-            events: Arc::new(PostgresEventStore::new(
-                pool.clone(),
-                outline_store::codec(),
-                outline_messaging::message_for,
-            )),
-            catalog: Arc::new(outline_catalog::PostgresOutlineCatalog::new(pool.clone())),
-            registry: Arc::new(registry::PostgresRegistry::new(pool.clone())),
-            outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
-        }
-    }
-
-    #[cfg(feature = "sqlite")]
-    pub fn sqlite(
-        pool: sqlx::SqlitePool,
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        use eventsourcing::SqliteEventStore;
-        use outbox::SqliteOutbox;
-
-        Self {
-            events: Arc::new(SqliteEventStore::new(
-                pool.clone(),
-                outline_store::codec(),
-                outline_messaging::message_for,
-            )),
-            catalog: Arc::new(outline_catalog::SqliteOutlineCatalog::new(pool.clone())),
-            registry: Arc::new(registry::SqliteRegistry::new(pool.clone())),
-            outbox: Arc::new(SqliteOutbox::new(pool, publisher, clock)),
-        }
-    }
 }
 
 pub fn service(ports: &Ports, context: &Context) -> OutlineService {
@@ -121,16 +60,32 @@ impl Feature for OutlineFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        Ports::in_memory(context.publisher.clone(), context.clock.clone())
+        let EventSourced { events, outbox } =
+            EventSourced::in_memory(outline_messaging::message_for, context);
+
+        Ports {
+            events,
+            catalog: Arc::new(InMemoryOutlineCatalog::new()),
+            registry: Arc::new(InMemoryRegistry::new()),
+            outbox,
+        }
     }
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::postgres(
-            pool,
-            context.publisher.clone(),
-            context.clock.clone(),
-        ))
+        let EventSourced { events, outbox } = EventSourced::on_postgres(
+            &pool,
+            outline_store::codec(),
+            outline_messaging::message_for,
+            context,
+        );
+
+        Ok(Ports {
+            events,
+            catalog: Arc::new(outline_catalog::PostgresOutlineCatalog::new(pool.clone())),
+            registry: Arc::new(registry::PostgresRegistry::new(pool)),
+            outbox,
+        })
     }
 
     #[cfg(feature = "postgres")]
@@ -145,11 +100,19 @@ impl Feature for OutlineFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::sqlite(
-            pool,
-            context.publisher.clone(),
-            context.clock.clone(),
-        ))
+        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+            &pool,
+            outline_store::codec(),
+            outline_messaging::message_for,
+            context,
+        );
+
+        Ok(Ports {
+            events,
+            catalog: Arc::new(outline_catalog::SqliteOutlineCatalog::new(pool.clone())),
+            registry: Arc::new(registry::SqliteRegistry::new(pool)),
+            outbox,
+        })
     }
 
     #[cfg(feature = "sqlite")]

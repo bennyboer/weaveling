@@ -1,11 +1,15 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::Router;
 use axum::body::{Body, to_bytes};
 use axum::http::{Request, StatusCode};
+use axum_test::TestServer;
 use clock::SystemClock;
+use outbox::Cadence;
+use serde_json::{Value, json};
 use tower::ServiceExt;
-use weaveling_service_api::{Adapters, app};
+use weaveling_service_api::{Adapters, Relays, app};
 
 async fn new_app() -> Router {
     app(Adapters::in_memory(Arc::new(SystemClock)).await)
@@ -165,4 +169,50 @@ async fn the_socket_for_many_scenes_is_mounted_under_api() {
         "the route is there, and refuses a request that is not a socket"
     );
     assert!(status.is_client_error());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn in_memory_a_captured_idea_travels_all_the_way_to_its_catalog() {
+    let adapters = Adapters::in_memory(Arc::new(SystemClock)).await;
+    let relays = Relays::started(
+        adapters.outboxes(),
+        adapters.consuming(),
+        Cadence {
+            deliver_every: Duration::from_millis(10),
+            ..Cadence::default()
+        },
+    );
+    let server = TestServer::new(app(adapters));
+    let project = server
+        .post("/api/projects")
+        .json(&json!({ "name": "Kept in mind" }))
+        .await
+        .json::<Value>()["id"]
+        .as_str()
+        .expect("a project is made with an id")
+        .to_owned();
+
+    server
+        .post("/api/ideas")
+        .json(&json!({ "project": project, "title": "A girl in a wood" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let mut listed = Value::Null;
+    for _ in 0..1_000 {
+        listed = server
+            .get(&format!("/api/ideas?project={project}"))
+            .await
+            .json();
+        if listed.as_array().is_some_and(|ideas| !ideas.is_empty()) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        listed[0]["title"], "A girl in a wood",
+        "in memory too, the catalog only hears of an idea through the outbox and its relay"
+    );
+
+    relays.stop().await;
 }

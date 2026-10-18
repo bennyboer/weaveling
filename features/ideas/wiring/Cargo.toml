@@ -10,7 +10,6 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
-messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 

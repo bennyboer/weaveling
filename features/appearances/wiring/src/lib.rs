@@ -12,28 +12,6 @@ pub struct Ports {
     pub catalog: Arc<dyn AppearanceCatalog>,
 }
 
-impl Ports {
-    pub fn in_memory() -> Self {
-        Self {
-            catalog: Arc::new(InMemoryAppearanceCatalog::new()),
-        }
-    }
-
-    #[cfg(feature = "postgres")]
-    pub fn postgres(pool: sqlx::PgPool) -> Self {
-        Self {
-            catalog: Arc::new(appearances_catalog::PostgresAppearanceCatalog::new(pool)),
-        }
-    }
-
-    #[cfg(feature = "sqlite")]
-    pub fn sqlite(pool: sqlx::SqlitePool) -> Self {
-        Self {
-            catalog: Arc::new(appearances_catalog::SqliteAppearanceCatalog::new(pool)),
-        }
-    }
-}
-
 pub fn wire(ports: &Ports) -> Wired {
     Wired::serving(appearances_rest::router(ports.catalog.clone())).listening(vec![
         Arc::new(OutlineAppearancesProjector::new(ports.catalog.clone())),
@@ -50,12 +28,16 @@ impl Feature for AppearanceFeature {
     type Ports = Ports;
 
     fn in_memory(_context: &Context) -> Ports {
-        Ports::in_memory()
+        Ports {
+            catalog: Arc::new(InMemoryAppearanceCatalog::new()),
+        }
     }
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::postgres(pool))
+        Ok(Ports {
+            catalog: Arc::new(appearances_catalog::PostgresAppearanceCatalog::new(pool)),
+        })
     }
 
     #[cfg(feature = "postgres")]
@@ -65,7 +47,9 @@ impl Feature for AppearanceFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::sqlite(pool))
+        Ok(Ports {
+            catalog: Arc::new(appearances_catalog::SqliteAppearanceCatalog::new(pool)),
+        })
     }
 
     #[cfg(feature = "sqlite")]

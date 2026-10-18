@@ -16,65 +16,6 @@ pub struct Ports {
     pub outbox: Arc<dyn Outbox>,
 }
 
-impl Ports {
-    pub fn in_memory(
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        let outbox = Arc::new(InMemoryOutbox::new(publisher, clock.clone()));
-
-        Self {
-            store: Arc::new(InMemorySceneStore::new().enqueuing_to(
-                outbox.clone(),
-                clock,
-                scenes_messaging::message_for,
-            )),
-            catalog: Arc::new(InMemorySceneCatalog::new()),
-            outbox,
-        }
-    }
-
-    #[cfg(feature = "postgres")]
-    pub fn postgres(
-        pool: sqlx::PgPool,
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        use outbox::PostgresOutbox;
-        use scenes_catalog::PostgresSceneCatalog;
-        use scenes_store::PostgresSceneStore;
-
-        Self {
-            store: Arc::new(
-                PostgresSceneStore::new(pool.clone())
-                    .enqueuing(clock.clone(), scenes_messaging::message_for),
-            ),
-            catalog: Arc::new(PostgresSceneCatalog::new(pool.clone())),
-            outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
-        }
-    }
-
-    #[cfg(feature = "sqlite")]
-    pub fn sqlite(
-        pool: sqlx::SqlitePool,
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        use outbox::SqliteOutbox;
-        use scenes_catalog::SqliteSceneCatalog;
-        use scenes_store::SqliteSceneStore;
-
-        Self {
-            store: Arc::new(
-                SqliteSceneStore::new(pool.clone())
-                    .enqueuing(clock.clone(), scenes_messaging::message_for),
-            ),
-            catalog: Arc::new(SqliteSceneCatalog::new(pool.clone())),
-            outbox: Arc::new(SqliteOutbox::new(pool, publisher, clock)),
-        }
-    }
-}
-
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let scenes = SceneService::new(ports.store.clone(), context.clock.clone());
     let unlink = UnlinkOnDiscard::new(scenes.clone());
@@ -111,16 +52,36 @@ impl Feature for SceneFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        Ports::in_memory(context.publisher.clone(), context.clock.clone())
+        let outbox = Arc::new(InMemoryOutbox::new(
+            context.publisher.clone(),
+            context.clock.clone(),
+        ));
+
+        Ports {
+            store: Arc::new(InMemorySceneStore::new().enqueuing_to(
+                outbox.clone(),
+                context.clock.clone(),
+                scenes_messaging::message_for,
+            )),
+            catalog: Arc::new(InMemorySceneCatalog::new()),
+            outbox,
+        }
     }
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::postgres(
-            pool,
-            context.publisher.clone(),
-            context.clock.clone(),
-        ))
+        Ok(Ports {
+            store: Arc::new(
+                scenes_store::PostgresSceneStore::new(pool.clone())
+                    .enqueuing(context.clock.clone(), scenes_messaging::message_for),
+            ),
+            catalog: Arc::new(scenes_catalog::PostgresSceneCatalog::new(pool.clone())),
+            outbox: Arc::new(outbox::PostgresOutbox::new(
+                pool,
+                context.publisher.clone(),
+                context.clock.clone(),
+            )),
+        })
     }
 
     #[cfg(feature = "postgres")]
@@ -134,11 +95,18 @@ impl Feature for SceneFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::sqlite(
-            pool,
-            context.publisher.clone(),
-            context.clock.clone(),
-        ))
+        Ok(Ports {
+            store: Arc::new(
+                scenes_store::SqliteSceneStore::new(pool.clone())
+                    .enqueuing(context.clock.clone(), scenes_messaging::message_for),
+            ),
+            catalog: Arc::new(scenes_catalog::SqliteSceneCatalog::new(pool.clone())),
+            outbox: Arc::new(outbox::SqliteOutbox::new(
+                pool,
+                context.publisher.clone(),
+                context.clock.clone(),
+            )),
+        })
     }
 
     #[cfg(feature = "sqlite")]

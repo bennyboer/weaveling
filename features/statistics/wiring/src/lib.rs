@@ -10,28 +10,6 @@ pub struct Ports {
     pub catalog: Arc<dyn WordCountCatalog>,
 }
 
-impl Ports {
-    pub fn in_memory() -> Self {
-        Self {
-            catalog: Arc::new(InMemoryWordCountCatalog::new()),
-        }
-    }
-
-    #[cfg(feature = "postgres")]
-    pub fn postgres(pool: sqlx::PgPool) -> Self {
-        Self {
-            catalog: Arc::new(statistics_catalog::PostgresWordCountCatalog::new(pool)),
-        }
-    }
-
-    #[cfg(feature = "sqlite")]
-    pub fn sqlite(pool: sqlx::SqlitePool) -> Self {
-        Self {
-            catalog: Arc::new(statistics_catalog::SqliteWordCountCatalog::new(pool)),
-        }
-    }
-}
-
 pub fn wire(ports: &Ports) -> Wired {
     Wired::serving(statistics_rest::router(ports.catalog.clone())).listening(vec![Arc::new(
         WordCountsProjector::new(ports.catalog.clone()),
@@ -46,12 +24,16 @@ impl Feature for StatisticsFeature {
     type Ports = Ports;
 
     fn in_memory(_context: &Context) -> Ports {
-        Ports::in_memory()
+        Ports {
+            catalog: Arc::new(InMemoryWordCountCatalog::new()),
+        }
     }
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::postgres(pool))
+        Ok(Ports {
+            catalog: Arc::new(statistics_catalog::PostgresWordCountCatalog::new(pool)),
+        })
     }
 
     #[cfg(feature = "postgres")]
@@ -61,7 +43,9 @@ impl Feature for StatisticsFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::sqlite(pool))
+        Ok(Ports {
+            catalog: Arc::new(statistics_catalog::SqliteWordCountCatalog::new(pool)),
+        })
     }
 
     #[cfg(feature = "sqlite")]

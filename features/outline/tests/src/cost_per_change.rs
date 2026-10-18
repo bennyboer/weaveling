@@ -65,6 +65,13 @@ fn ms(taken: Duration) -> String {
     format!("{:.1}", taken.as_secs_f64() * 1_000.0)
 }
 
+fn telling(heard: &Arc<Overheard>) -> Context {
+    Context {
+        clock: Arc::new(SystemClock) as Arc<dyn Clock>,
+        publisher: heard.clone(),
+    }
+}
+
 async fn timed<T>(work: impl IntoFuture<Output = T>) -> (T, Duration) {
     let began = Instant::now();
     let done = work.await;
@@ -74,10 +81,7 @@ async fn timed<T>(work: impl IntoFuture<Output = T>) -> (T, Duration) {
 
 impl Bench {
     async fn on(ports: Ports, heard: Arc<Overheard>) -> Self {
-        let context = Context {
-            clock: Arc::new(SystemClock) as Arc<dyn Clock>,
-            publisher: heard.clone(),
-        };
+        let context = telling(&heard);
         let wired = outline_wiring::wire(&ports, &context);
         let outlines = outline_wiring::service(&ports, &context);
         let indexer = wired
@@ -246,7 +250,7 @@ impl Bench {
 #[ignore = "a measurement, run on purpose: cargo test -p weaveling-outline-tests --release cost_per_change -- --ignored --nocapture"]
 async fn cost_per_change() {
     let heard = Arc::new(Overheard::default());
-    let ports = Ports::in_memory(heard.clone(), Arc::new(SystemClock));
+    let ports = OutlineFeature::in_memory(&telling(&heard));
     Bench::on(ports, heard).await.report("memory").await;
 
     let fixture = SqliteFixture::setup();
@@ -255,7 +259,8 @@ async fn cost_per_change() {
         schema.run(&pool).await.expect("the schema lays down");
     }
     let heard = Arc::new(Overheard::default());
-    let ports = Ports::sqlite(pool, heard.clone(), Arc::new(SystemClock));
+    let ports =
+        OutlineFeature::on_sqlite(pool, &telling(&heard)).expect("the outline wires on SQLite");
     Bench::on(ports, heard).await.report("sqlite").await;
     fixture.cleanup().await;
 }

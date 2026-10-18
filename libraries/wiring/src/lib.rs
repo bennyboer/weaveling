@@ -1,3 +1,4 @@
+mod event_sourced;
 mod feature;
 mod unprepared;
 
@@ -7,6 +8,7 @@ pub mod postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+pub use event_sourced::EventSourced;
 pub use feature::{Assembled, Feature, Storage, assemble};
 pub use unprepared::Unprepared;
 

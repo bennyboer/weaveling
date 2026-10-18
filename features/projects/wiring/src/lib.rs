@@ -1,74 +1,16 @@
 use std::sync::Arc;
 
-use eventsourcing::{EventStore, InMemoryEventStore};
-use outbox::{InMemoryOutbox, Outbox};
+use eventsourcing::EventStore;
+use outbox::Outbox;
 use projects_catalog::InMemoryProjectCatalog;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectService};
 use projects_messaging::ProjectCatalogProjector;
-use wiring::{Context, Feature, Wired};
+use wiring::{Context, EventSourced, Feature, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<ProjectEvent>>,
     pub catalog: Arc<dyn ProjectCatalog>,
     pub outbox: Arc<dyn Outbox>,
-}
-
-impl Ports {
-    pub fn in_memory(
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        let outbox = Arc::new(InMemoryOutbox::new(publisher, clock));
-
-        Self {
-            events: Arc::new(InMemoryEventStore::enqueuing_to(
-                outbox.clone(),
-                projects_messaging::message_for,
-            )),
-            catalog: Arc::new(InMemoryProjectCatalog::new()),
-            outbox,
-        }
-    }
-
-    #[cfg(feature = "postgres")]
-    pub fn postgres(
-        pool: sqlx::PgPool,
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        use eventsourcing::PostgresEventStore;
-        use outbox::PostgresOutbox;
-
-        Self {
-            events: Arc::new(PostgresEventStore::new(
-                pool.clone(),
-                projects_store::codec(),
-                projects_messaging::message_for,
-            )),
-            catalog: Arc::new(projects_catalog::PostgresProjectCatalog::new(pool.clone())),
-            outbox: Arc::new(PostgresOutbox::new(pool, publisher, clock)),
-        }
-    }
-
-    #[cfg(feature = "sqlite")]
-    pub fn sqlite(
-        pool: sqlx::SqlitePool,
-        publisher: Arc<dyn messaging::Publisher>,
-        clock: Arc<dyn clock::Clock>,
-    ) -> Self {
-        use eventsourcing::SqliteEventStore;
-        use outbox::SqliteOutbox;
-
-        Self {
-            events: Arc::new(SqliteEventStore::new(
-                pool.clone(),
-                projects_store::codec(),
-                projects_messaging::message_for,
-            )),
-            catalog: Arc::new(projects_catalog::SqliteProjectCatalog::new(pool.clone())),
-            outbox: Arc::new(SqliteOutbox::new(pool, publisher, clock)),
-        }
-    }
 }
 
 pub fn service(ports: &Ports, context: &Context) -> ProjectService {
@@ -98,16 +40,30 @@ impl Feature for ProjectFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        Ports::in_memory(context.publisher.clone(), context.clock.clone())
+        let EventSourced { events, outbox } =
+            EventSourced::in_memory(projects_messaging::message_for, context);
+
+        Ports {
+            events,
+            catalog: Arc::new(InMemoryProjectCatalog::new()),
+            outbox,
+        }
     }
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::postgres(
-            pool,
-            context.publisher.clone(),
-            context.clock.clone(),
-        ))
+        let EventSourced { events, outbox } = EventSourced::on_postgres(
+            &pool,
+            projects_store::codec(),
+            projects_messaging::message_for,
+            context,
+        );
+
+        Ok(Ports {
+            events,
+            catalog: Arc::new(projects_catalog::PostgresProjectCatalog::new(pool)),
+            outbox,
+        })
     }
 
     #[cfg(feature = "postgres")]
@@ -121,11 +77,18 @@ impl Feature for ProjectFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        Ok(Ports::sqlite(
-            pool,
-            context.publisher.clone(),
-            context.clock.clone(),
-        ))
+        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+            &pool,
+            projects_store::codec(),
+            projects_messaging::message_for,
+            context,
+        );
+
+        Ok(Ports {
+            events,
+            catalog: Arc::new(projects_catalog::SqliteProjectCatalog::new(pool)),
+            outbox,
+        })
     }
 
     #[cfg(feature = "sqlite")]
