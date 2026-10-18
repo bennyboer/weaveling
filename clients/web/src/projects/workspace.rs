@@ -17,14 +17,8 @@ pub struct Workspace {
     deleting: DeleteAction,
 }
 
-impl Default for Workspace {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Workspace {
-    pub fn new() -> Self {
+    pub fn listing() -> Self {
         let known = RwSignal::new(None::<Vec<Project>>);
         let problem = RwSignal::new(None);
 

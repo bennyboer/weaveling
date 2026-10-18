@@ -10,8 +10,8 @@ pub use attaching::AttachmentIndexProjector;
 pub use cataloguing::OutlineCatalogProjector;
 pub use discarding::{DetachOnDiscard, when_discarded};
 pub use publishing::{
-    OutlineEventPublisher, UnreadableOutlineEvent, event_in, every_event, message_for, outline_in,
-    when_attached, when_detached, when_section_removed, when_started,
+    UnreadableOutlineEvent, event_in, every_event, message_for, outline_in, when_attached,
+    when_detached, when_section_removed, when_started,
 };
 pub use scene_deleting::{DetachOnSceneDeleted, when_scene_deleted};
 

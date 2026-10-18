@@ -1,10 +1,7 @@
-use std::sync::{Arc, Mutex};
-
-use async_trait::async_trait;
 use eventsourcing::{
     Agent, AgentId, AggregateId, AggregateType, Event, EventMetadata, EventName, Recorded, Version,
 };
-use messaging::{Message, Publisher, Undelivered};
+use messaging::Message;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -63,23 +60,6 @@ fn body(event: &Happened) -> Option<Body> {
     }
 }
 
-#[derive(Default)]
-struct Overheard {
-    published: Mutex<Vec<Message>>,
-}
-
-#[async_trait]
-impl Publisher for Overheard {
-    async fn publish(&self, message: Message) -> Result<(), Undelivered> {
-        self.published
-            .lock()
-            .expect("published lock poisoned")
-            .push(message);
-
-        Ok(())
-    }
-}
-
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
@@ -108,10 +88,6 @@ fn a_capture() -> Happened {
     }
 }
 
-fn publishing() -> MessagingEventPublisher<Happened, Body> {
-    MessagingEventPublisher::new(Arc::new(Overheard::default()), body)
-}
-
 fn read(message: &Message) -> PublishedEvent<Body> {
     published_in(message).expect("what we just wrote must be readable")
 }
@@ -133,8 +109,7 @@ fn a_kind_can_be_subscribed_to_whole() {
 
 #[test]
 fn what_is_published_says_who_did_it() {
-    let published = publishing()
-        .message_for(&recorded(a_capture(), 1, an_author()))
+    let published = message_for(&recorded(a_capture(), 1, an_author()), body)
         .expect("a capture should be published");
 
     assert_eq!(
@@ -149,8 +124,7 @@ fn what_is_published_says_who_did_it() {
 
 #[test]
 fn an_anonymous_agent_still_says_so() {
-    let published = publishing()
-        .message_for(&recorded(a_capture(), 1, Agent::Anonymous))
+    let published = message_for(&recorded(a_capture(), 1, Agent::Anonymous), body)
         .expect("a capture should be published");
 
     assert_eq!(read(&published).agent.kind, "anonymous");
@@ -159,8 +133,7 @@ fn an_anonymous_agent_still_says_so() {
 
 #[test]
 fn what_is_published_names_the_aggregate_it_happened_to() {
-    let published = publishing()
-        .message_for(&recorded(a_capture(), 7, an_author()))
+    let published = message_for(&recorded(a_capture(), 7, an_author()), body)
         .expect("a capture should be published");
 
     assert_eq!(
@@ -176,8 +149,7 @@ fn what_is_published_names_the_aggregate_it_happened_to() {
 
 #[test]
 fn what_is_published_carries_the_body_the_feature_supplied() {
-    let published = publishing()
-        .message_for(&recorded(a_capture(), 1, an_author()))
+    let published = message_for(&recorded(a_capture(), 1, an_author()), body)
         .expect("a capture should be published");
 
     assert_eq!(
@@ -194,8 +166,7 @@ fn what_is_published_carries_the_body_the_feature_supplied() {
 
 #[test]
 fn the_body_sits_beside_its_version_on_the_wire() {
-    let published = publishing()
-        .message_for(&recorded(a_capture(), 1, an_author()))
+    let published = message_for(&recorded(a_capture(), 1, an_author()), body)
         .expect("a capture should be published");
 
     assert_eq!(
@@ -207,8 +178,7 @@ fn the_body_sits_beside_its_version_on_the_wire() {
 
 #[test]
 fn an_event_with_nothing_to_say_still_says_its_name() {
-    let published = publishing()
-        .message_for(&recorded(Happened::SceneAttached, 2, an_author()))
+    let published = message_for(&recorded(Happened::SceneAttached, 2, an_author()), body)
         .expect("an attachment should be published");
 
     assert_eq!(published.routing.to_string(), "idea.scene.attached");
@@ -222,8 +192,7 @@ fn an_event_with_nothing_to_say_still_says_its_name() {
 
 #[test]
 fn what_is_published_says_when_it_happened_in_a_readable_way() {
-    let published = publishing()
-        .message_for(&recorded(a_capture(), 1, an_author()))
+    let published = message_for(&recorded(a_capture(), 1, an_author()), body)
         .expect("a capture should be published");
 
     assert_eq!(read(&published).occurred_at, "1970-01-01T00:16:40Z");
@@ -231,7 +200,7 @@ fn what_is_published_says_when_it_happened_in_a_readable_way() {
 
 #[test]
 fn a_snapshot_is_never_published() {
-    let nothing = publishing().message_for(&recorded(Happened::Snapshotted, 101, an_author()));
+    let nothing = message_for(&recorded(Happened::Snapshotted, 101, an_author()), body);
 
     assert!(
         nothing.is_none(),
@@ -245,48 +214,9 @@ fn an_event_the_feature_keeps_to_itself_is_not_published() {
         None
     }
 
-    let publishing: MessagingEventPublisher<Happened, Body> =
-        MessagingEventPublisher::new(Arc::new(Overheard::default()), nothing_ever);
-
     assert!(
-        publishing
-            .message_for(&recorded(a_capture(), 1, an_author()))
-            .is_none(),
+        message_for(&recorded(a_capture(), 1, an_author()), nothing_ever).is_none(),
         "a feature must be able to keep an internal event off the wire"
-    );
-}
-
-#[tokio::test]
-async fn publishing_hands_the_message_to_the_transport() {
-    let overheard = Arc::new(Overheard::default());
-    let publishing = MessagingEventPublisher::new(overheard.clone(), body);
-
-    publishing
-        .publish(&recorded(a_capture(), 1, an_author()))
-        .await
-        .expect("publishing should succeed");
-
-    let published = overheard.published.lock().expect("published lock poisoned");
-    assert_eq!(published.len(), 1);
-    assert_eq!(published[0].routing.to_string(), "idea.captured");
-}
-
-#[tokio::test]
-async fn nothing_reaches_the_transport_for_a_snapshot() {
-    let overheard = Arc::new(Overheard::default());
-    let publishing = MessagingEventPublisher::new(overheard.clone(), body);
-
-    publishing
-        .publish(&recorded(Happened::Snapshotted, 101, an_author()))
-        .await
-        .expect("skipping a snapshot is not a failure");
-
-    assert!(
-        overheard
-            .published
-            .lock()
-            .expect("published lock poisoned")
-            .is_empty()
     );
 }
 

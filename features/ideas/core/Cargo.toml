@@ -13,4 +13,3 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 
 [dev-dependencies]
 time = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }

@@ -8,8 +8,8 @@ pub use discarding::{UnpinOnDiscard, when_discarded};
 pub use pinning::PinnedIdeasProjector;
 
 pub use publishing::{
-    BoardEventPublisher, UnreadableBoardEvent, board_in, event_in, every_event, message_for,
-    when_board_discarded, when_pinned, when_started, when_unpinned,
+    UnreadableBoardEvent, board_in, event_in, every_event, message_for, when_board_discarded,
+    when_pinned, when_started, when_unpinned,
 };
 
 use std::sync::Arc;

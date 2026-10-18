@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
 use clock::text::serialize;
 use eventsourcing::{AggregateType, Event, EventName, Recorded};
-use messaging::{Message, Publisher, RoutingKey, Undelivered};
+use messaging::{Message, RoutingKey};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use thiserror::Error;
@@ -10,11 +8,6 @@ use thiserror::Error;
 use crate::published::{PublishedAgent, PublishedAggregate, PublishedBody, PublishedEvent};
 
 const SEPARATOR: &str = ".";
-
-pub struct MessagingEventPublisher<E, B> {
-    publisher: Arc<dyn Publisher>,
-    body: fn(&E) -> Option<B>,
-}
 
 #[derive(Debug, Error)]
 pub enum UnreadableMessage {
@@ -65,26 +58,4 @@ pub fn published_in<B: DeserializeOwned>(
     message: &Message,
 ) -> Result<PublishedEvent<B>, UnreadableMessage> {
     serde_json::from_value(message.payload.clone()).map_err(UnreadableMessage::NotAPublishedEvent)
-}
-
-impl<E, B> MessagingEventPublisher<E, B>
-where
-    E: Event,
-    B: Serialize,
-{
-    pub fn new(publisher: Arc<dyn Publisher>, body: fn(&E) -> Option<B>) -> Self {
-        Self { publisher, body }
-    }
-
-    pub fn message_for(&self, happened: &Recorded<E>) -> Option<Message> {
-        message_for(happened, self.body)
-    }
-
-    pub async fn publish(&self, happened: &Recorded<E>) -> Result<(), Undelivered> {
-        let Some(message) = self.message_for(happened) else {
-            return Ok(());
-        };
-
-        self.publisher.publish(message).await
-    }
 }

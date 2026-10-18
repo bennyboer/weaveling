@@ -1,5 +1,6 @@
 mod memory;
-pub mod suite;
+#[cfg(test)]
+mod suite;
 
 #[cfg(feature = "postgres")]
 pub mod postgres;

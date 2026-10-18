@@ -1,11 +1,11 @@
 use std::sync::{Arc, Mutex};
 
 use clock::FixedClock;
-use eventsourcing::{Agent, InMemoryEventStore, PublishingEventStore, Version};
+use eventsourcing::{Agent, InMemoryEventStore, Version};
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use ideas_core::{IdeaCatalog, IdeaId, IdeaService, IdeaSummary, IdeaTitle, ProjectLink};
-use ideas_messaging::{DiscardOnProjectDeleted, IdeaEventPublisher};
+use ideas_messaging::DiscardOnProjectDeleted;
 use messaging::{Listener, Message, Publisher, RoutingKey, Undelivered};
 use projects_contract::DELETED;
 use serde_json::json;
@@ -49,10 +49,7 @@ fn a_workbench(at_most: usize) -> Wired {
     let catalog = Arc::new(InMemoryIdeaCatalog::new());
     let overheard = Arc::new(Overheard::default());
     let ideas = IdeaService::new(
-        PublishingEventStore::wrapping(
-            Arc::new(InMemoryEventStore::new()),
-            Arc::new(IdeaEventPublisher::new(overheard.clone())),
-        ),
+        Arc::new(InMemoryEventStore::new()),
         catalog.clone(),
         clock.clone(),
     );

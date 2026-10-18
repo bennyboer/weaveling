@@ -13,6 +13,4 @@ eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weave
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 
 [dev-dependencies]
-async-trait = { workspace = true }
 time = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }

@@ -25,4 +25,3 @@ scenes-contract = { version = "0.1.0", path = "../../../scenes/contract", packag
 
 [dev-dependencies]
 time = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }

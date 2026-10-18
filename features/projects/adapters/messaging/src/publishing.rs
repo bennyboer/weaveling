@@ -1,20 +1,12 @@
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use eventpublishing::{
-    MessagingEventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
-    published_in,
+    PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
 };
-use eventsourcing::{EventPublisher, PublishError, Recorded};
+use eventsourcing::Recorded;
 use ids::InvalidId;
-use messaging::{Message, Publisher, Subscription};
+use messaging::{Message, Subscription};
 use projects_contract::{EVERY_PROJECT, ProjectEventDTO};
 use projects_core::{ProjectEvent, ProjectId};
 use thiserror::Error;
-
-pub struct ProjectEventPublisher {
-    publishing: MessagingEventPublisher<ProjectEvent, ProjectEventDTO>,
-}
 
 #[derive(Debug, Error)]
 pub enum UnreadableProjectEvent {
@@ -44,24 +36,6 @@ pub fn project_in(message: &Message) -> Result<ProjectId, UnreadableProjectEvent
 
 pub fn message_for(happened: &Recorded<ProjectEvent>) -> Option<Message> {
     message_carrying(happened, body)
-}
-
-impl ProjectEventPublisher {
-    pub fn new(publisher: Arc<dyn Publisher>) -> Self {
-        Self {
-            publishing: MessagingEventPublisher::new(publisher, body),
-        }
-    }
-}
-
-#[async_trait]
-impl EventPublisher<ProjectEvent> for ProjectEventPublisher {
-    async fn publish(&self, happened: &Recorded<ProjectEvent>) -> Result<(), PublishError> {
-        self.publishing
-            .publish(happened)
-            .await
-            .map_err(PublishError::because)
-    }
 }
 
 fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {

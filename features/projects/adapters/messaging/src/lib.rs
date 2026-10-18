@@ -1,8 +1,6 @@
 mod publishing;
 
-pub use publishing::{
-    ProjectEventPublisher, UnreadableProjectEvent, event_in, every_event, message_for, project_in,
-};
+pub use publishing::{UnreadableProjectEvent, event_in, every_event, message_for, project_in};
 
 use std::sync::Arc;
 

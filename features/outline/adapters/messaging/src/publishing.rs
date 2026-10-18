@@ -1,22 +1,15 @@
-use std::sync::Arc;
-
 use eventpublishing::{
-    MessagingEventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
-    published_in,
+    PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
 };
-use eventsourcing::{EventPublisher, PublishError, Recorded};
+use eventsourcing::Recorded;
 use ids::InvalidId;
-use messaging::{Message, Publisher, Subscription};
+use messaging::{Message, Subscription};
 use outline_contract::{
     ATTACHED, AttachmentDTO, DETACHED, DISCARDED, EVERY_OUTLINE, OutlineEventDTO, SECTION_REMOVED,
     STARTED,
 };
 use outline_core::{Attachment, OutlineEvent, OutlineId};
 use thiserror::Error;
-
-pub struct OutlineEventPublisher {
-    publishing: MessagingEventPublisher<OutlineEvent, OutlineEventDTO>,
-}
 
 #[derive(Debug, Error)]
 pub enum UnreadableOutlineEvent {
@@ -66,24 +59,6 @@ pub fn outline_in(message: &Message) -> Result<OutlineId, UnreadableOutlineEvent
 
 pub fn message_for(happened: &Recorded<OutlineEvent>) -> Option<Message> {
     message_carrying(happened, body)
-}
-
-impl OutlineEventPublisher {
-    pub fn new(publisher: Arc<dyn Publisher>) -> Self {
-        Self {
-            publishing: MessagingEventPublisher::new(publisher, body),
-        }
-    }
-}
-
-#[async_trait::async_trait]
-impl EventPublisher<OutlineEvent> for OutlineEventPublisher {
-    async fn publish(&self, happened: &Recorded<OutlineEvent>) -> Result<(), PublishError> {
-        self.publishing
-            .publish(happened)
-            .await
-            .map_err(PublishError::because)
-    }
 }
 
 fn to_dto(attachment: &Attachment) -> AttachmentDTO {

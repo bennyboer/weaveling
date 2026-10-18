@@ -1,22 +1,14 @@
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use boards_contract::{
     BoardEventDTO, DISCARDED, EVERY_BOARD, IDEA_PINNED, IDEA_UNPINNED, STARTED, SizeDTO, SpotDTO,
 };
 use boards_core::{BoardEvent, BoardId, Size, Spot};
 use eventpublishing::{
-    MessagingEventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
-    published_in,
+    PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
 };
-use eventsourcing::{EventPublisher, PublishError, Recorded};
+use eventsourcing::Recorded;
 use ids::InvalidId;
-use messaging::{Message, Publisher, Subscription};
+use messaging::{Message, Subscription};
 use thiserror::Error;
-
-pub struct BoardEventPublisher {
-    publishing: MessagingEventPublisher<BoardEvent, BoardEventDTO>,
-}
 
 #[derive(Debug, Error)]
 pub enum UnreadableBoardEvent {
@@ -60,24 +52,6 @@ pub fn board_in(message: &Message) -> Result<BoardId, UnreadableBoardEvent> {
 
 pub fn message_for(happened: &Recorded<BoardEvent>) -> Option<Message> {
     message_carrying(happened, body)
-}
-
-impl BoardEventPublisher {
-    pub fn new(publisher: Arc<dyn Publisher>) -> Self {
-        Self {
-            publishing: MessagingEventPublisher::new(publisher, body),
-        }
-    }
-}
-
-#[async_trait]
-impl EventPublisher<BoardEvent> for BoardEventPublisher {
-    async fn publish(&self, happened: &Recorded<BoardEvent>) -> Result<(), PublishError> {
-        self.publishing
-            .publish(happened)
-            .await
-            .map_err(PublishError::because)
-    }
 }
 
 fn body(event: &BoardEvent) -> Option<BoardEventDTO> {

@@ -1,20 +1,12 @@
-use std::sync::Arc;
-
-use async_trait::async_trait;
 use eventpublishing::{
-    MessagingEventPublisher, PublishedEvent, UnreadableMessage, message_for as message_carrying,
-    published_in,
+    PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
 };
-use eventsourcing::{EventPublisher, PublishError, Recorded};
+use eventsourcing::Recorded;
 use ideas_contract::{EVERY_IDEA, IdeaEventDTO};
 use ideas_core::{IdeaEvent, IdeaId};
 use ids::InvalidId;
-use messaging::{Message, Publisher, Subscription};
+use messaging::{Message, Subscription};
 use thiserror::Error;
-
-pub struct IdeaEventPublisher {
-    publishing: MessagingEventPublisher<IdeaEvent, IdeaEventDTO>,
-}
 
 #[derive(Debug, Error)]
 pub enum UnreadableIdeaEvent {
@@ -42,24 +34,6 @@ pub fn idea_in(message: &Message) -> Result<IdeaId, UnreadableIdeaEvent> {
 
 pub fn message_for(happened: &Recorded<IdeaEvent>) -> Option<Message> {
     message_carrying(happened, body)
-}
-
-impl IdeaEventPublisher {
-    pub fn new(publisher: Arc<dyn Publisher>) -> Self {
-        Self {
-            publishing: MessagingEventPublisher::new(publisher, body),
-        }
-    }
-}
-
-#[async_trait]
-impl EventPublisher<IdeaEvent> for IdeaEventPublisher {
-    async fn publish(&self, happened: &Recorded<IdeaEvent>) -> Result<(), PublishError> {
-        self.publishing
-            .publish(happened)
-            .await
-            .map_err(PublishError::because)
-    }
 }
 
 fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {

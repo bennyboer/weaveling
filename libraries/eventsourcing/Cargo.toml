@@ -6,21 +6,19 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing"] }
 
 serde_json = { workspace = true }
 sqlx = { workspace = true, optional = true, features = ["uuid"] }
 tokio = { workspace = true, features = ["rt", "time", "sync", "macros"] }
-uuid = { workspace = true, optional = true }
 
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 outbox = { version = "0.1.0", path = "../outbox", package = "weaveling-outbox" }
 
 [features]
-postgres = ["dep:sqlx", "dep:uuid", "messaging/postgres", "outbox/postgres"]
-sqlite = ["dep:sqlx", "dep:uuid", "sqlx/sqlite", "outbox/sqlite"]
+postgres = ["dep:sqlx", "messaging/postgres", "outbox/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "outbox/sqlite"]
 
 [dev-dependencies]
 serde = { workspace = true }

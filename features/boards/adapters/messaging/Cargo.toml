@@ -24,4 +24,3 @@ projects-contract = { version = "0.1.0", path = "../../../projects/contract", pa
 
 [dev-dependencies]
 time = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt"] }

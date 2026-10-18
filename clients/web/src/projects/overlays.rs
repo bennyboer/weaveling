@@ -7,14 +7,8 @@ pub struct Overlays {
     confirming: RwSignal<Option<Project>>,
 }
 
-impl Default for Overlays {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Overlays {
-    pub fn new() -> Self {
+    pub fn none() -> Self {
         Self {
             open_menu: RwSignal::new(None),
             confirming: RwSignal::new(None),

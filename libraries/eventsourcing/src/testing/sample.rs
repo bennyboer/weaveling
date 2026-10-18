@@ -25,7 +25,6 @@ pub enum SampleCommand {
     UpdateTitle(String),
     UpdateDescription(String),
     Rewrite { title: String, description: String },
-    Correct(String),
     Delete,
 }
 
@@ -172,7 +171,6 @@ impl Aggregate for Sample {
                 SampleEvent::TitleUpdated(title),
                 SampleEvent::DescriptionUpdated(description),
             ]),
-            SampleCommand::Correct(title) => Ok(vec![SampleEvent::Corrected(title)]),
             SampleCommand::Delete => Ok(vec![SampleEvent::Deleted]),
         }
     }
