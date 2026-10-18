@@ -5,7 +5,11 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
-use scenes_core::{Scene, SceneError, SceneId, SceneService, SceneServiceError, StoreError};
+use async_trait::async_trait;
+use quotation::QuotationMarks;
+use scenes_core::{
+    Scene, SceneError, SceneId, SceneRestyler, SceneService, SceneServiceError, StoreError,
+};
 use thiserror::Error;
 use tokio::sync::broadcast;
 use tokio::time::{Instant as Moment, interval, sleep};
@@ -131,6 +135,10 @@ impl LiveScene {
 
     pub fn text(&self) -> String {
         self.scene.text()
+    }
+
+    pub fn restyled(&self, style: QuotationMarks) -> Option<Vec<u8>> {
+        self.scene.restyled(style)
     }
 
     pub fn listen(&self) -> broadcast::Receiver<Overheard> {
@@ -422,6 +430,27 @@ impl LiveScenes {
                 LiveScenes { shared }.sweep(idle_before).await;
             }
         });
+    }
+}
+
+#[async_trait]
+impl SceneRestyler for LiveScenes {
+    async fn restyle(
+        &self,
+        scene: SceneId,
+        style: QuotationMarks,
+    ) -> Result<bool, SceneServiceError> {
+        let presence = self.join(scene).await?;
+        let Some(update) = presence.restyled(style) else {
+            return Ok(false);
+        };
+        presence.broadcast(Overheard {
+            from: self.next_peer(),
+            frame: Message::JustHappened(update.clone()).encode(),
+        });
+        presence.persist(&update).await?;
+
+        Ok(true)
     }
 }
 

@@ -17,6 +17,7 @@ messaging = { version = "0.1.0", path = "../../../libraries/messaging", package 
 scenes-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-scenes-catalog" }
 scenes-contract = { version = "0.1.0", path = "../contract", package = "weaveling-scenes-contract" }
 scenes-core = { version = "0.1.0", path = "../core", package = "weaveling-scenes-core" }
+quotation = { version = "0.1.0", path = "../../../libraries/quotation", package = "weaveling-quotation" }
 scenes-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-scenes-messaging" }
 scenes-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-scenes-rest" }
 scenes-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-scenes-store" }

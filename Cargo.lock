@@ -4069,6 +4069,7 @@ dependencies = [
  "time",
  "weaveling-clock",
  "weaveling-ids",
+ "weaveling-quotation",
  "weaveling-words",
  "yrs",
 ]
@@ -4123,12 +4124,14 @@ dependencies = [
 name = "weaveling-scenes-sync"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "futures-util",
  "thiserror",
  "time",
  "tokio",
  "tracing",
+ "weaveling-quotation",
  "weaveling-scenes-core",
  "yrs",
 ]
@@ -4147,6 +4150,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-projects-contract",
+ "weaveling-quotation",
  "weaveling-scenes-catalog",
  "weaveling-scenes-contract",
  "weaveling-scenes-core",

@@ -1,11 +1,16 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use clock::FixedClock;
-use scenes_core::{FRAGMENT, SceneId, SceneService};
+use quotation::QuotationMarks;
+use scenes_core::{FRAGMENT, ProjectLink, Scene, SceneId, SceneRestyler, SceneService};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message};
 use time::{Duration, OffsetDateTime};
-use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
+use yrs::types::Attrs;
+use yrs::{
+    Any, Doc, ReadTxn, StateVector, Text, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim,
+};
 
 const A_PROJECT: &str = "project_1";
 
@@ -197,4 +202,111 @@ async fn a_scene_rejoined_after_everyone_left_still_has_the_prose() {
     let joined = afresh.join(scene.id()).await.expect("should join again");
 
     assert_eq!(joined.text(), "The loom stood silent.");
+}
+
+fn a_dialogue() -> Vec<u8> {
+    let doc = Doc::new();
+    let fragment = doc.get_or_insert_xml_fragment(FRAGMENT);
+    {
+        let mut txn = doc.transact_mut();
+        let paragraph = fragment.insert(&mut txn, 0, XmlElementPrelim::empty("paragraph"));
+        let prose = paragraph.insert(&mut txn, 0, XmlTextPrelim::new(""));
+        for (piece, side) in [
+            ("»", Some("opening")),
+            ("Komm her,", None),
+            ("«", Some("closing")),
+            (" sagte sie.", None),
+        ] {
+            let end = prose.len(&txn);
+            let attrs = side.map_or_else(Attrs::new, |side| {
+                Attrs::from([(
+                    Arc::from("quote"),
+                    Any::from(HashMap::from([("side".to_owned(), Any::from(side))])),
+                )])
+            });
+            prose.insert_with_attributes(&mut txn, end, piece, attrs);
+        }
+    }
+
+    doc.transact()
+        .encode_state_as_update_v1(&StateVector::default())
+}
+
+#[tokio::test]
+async fn a_scene_nobody_has_open_is_restyled_where_it_is_kept() {
+    let (service, live) = a_workbench();
+    let scene = service.create(A_PROJECT).await.expect("should create");
+    service
+        .apply(&scene.id().to_string(), &a_dialogue())
+        .await
+        .expect("should apply");
+
+    let restyled = live
+        .restyle(scene.id(), QuotationMarks::LowHigh)
+        .await
+        .expect("should restyle");
+
+    assert!(restyled);
+    let reopened = service
+        .open(&scene.id().to_string())
+        .await
+        .expect("should open");
+    assert_eq!(reopened.text(), "„Komm her,“ sagte sie.");
+}
+
+#[tokio::test]
+async fn whoever_has_the_scene_open_hears_it_restyled_as_it_happens() {
+    let (service, live) = a_workbench();
+    let scene = service.create(A_PROJECT).await.expect("should create");
+    service
+        .apply(&scene.id().to_string(), &a_dialogue())
+        .await
+        .expect("should apply");
+    let open = live.join(scene.id()).await.expect("should join");
+    let mut hearing = open.listen();
+    let listening = Scene::rehydrate(
+        scene.id(),
+        ProjectLink::from(A_PROJECT),
+        &service
+            .open(&scene.id().to_string())
+            .await
+            .expect("should open")
+            .everything(),
+    )
+    .expect("an editor that has the scene as it was");
+
+    live.restyle(scene.id(), QuotationMarks::Curly)
+        .await
+        .expect("should restyle");
+
+    let heard = hearing
+        .try_recv()
+        .expect("the change is sent to everyone in the scene");
+    let Ok(Message::JustHappened(update)) = Message::decode(&heard.frame) else {
+        panic!("a restyling reaches the open scene as something that just happened");
+    };
+    listening.apply(&update).expect("what was heard applies");
+    assert_eq!(
+        listening.text(),
+        "“Komm her,” sagte sie.",
+        "hearing the change is enough to catch up"
+    );
+    assert_eq!(open.text(), "“Komm her,” sagte sie.");
+}
+
+#[tokio::test]
+async fn a_scene_already_in_the_style_is_left_alone() {
+    let (service, live) = a_workbench();
+    let scene = service.create(A_PROJECT).await.expect("should create");
+    service
+        .apply(&scene.id().to_string(), &a_dialogue())
+        .await
+        .expect("should apply");
+
+    let restyled = live
+        .restyle(scene.id(), QuotationMarks::PointingIn)
+        .await
+        .expect("should restyle");
+
+    assert!(!restyled, "»…« is what the scene already says");
 }

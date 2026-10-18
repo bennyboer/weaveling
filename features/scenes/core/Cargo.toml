@@ -11,4 +11,5 @@ yrs = { workspace = true }
 
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+quotation = { version = "0.1.0", path = "../../../libraries/quotation", package = "weaveling-quotation" }
 words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }

@@ -5,9 +5,10 @@ use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
+use quotation::QuotationMarks;
 use words::{opening_of, words_in};
 
-use crate::projection::plain_text;
+use crate::projection::{plain_text, restyle};
 use crate::{IdeaLink, ProjectLink, SceneId, SceneTitle};
 
 #[derive(Debug, Error)]
@@ -112,6 +113,12 @@ impl Scene {
     pub fn opening(&self) -> String {
         opening_of(&self.text())
     }
+
+    pub fn restyled(&self, style: QuotationMarks) -> Option<Vec<u8>> {
+        let before = self.doc.transact().state_vector();
+
+        restyle(&self.doc, style).then(|| self.doc.transact().encode_state_as_update_v1(&before))
+    }
 }
 
 impl Debug for Scene {
@@ -125,7 +132,9 @@ impl Debug for Scene {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::Arc;
+
     use time::OffsetDateTime;
 
     use yrs::types::Attrs;
@@ -195,6 +204,175 @@ mod tests {
             scene.words(),
             6,
             "a paragraph's last word and the next one's first stay two words"
+        );
+    }
+
+    fn quoting(side: &str) -> Attrs {
+        Attrs::from([(
+            Arc::from("quote"),
+            Any::from(HashMap::from([("side".to_owned(), Any::from(side))])),
+        )])
+    }
+
+    fn written(scene: &Scene, pieces: Vec<(&str, Attrs)>) {
+        let fragment = scene.doc.get_or_insert_xml_fragment(FRAGMENT);
+        let mut txn = scene.doc.transact_mut();
+        let at = fragment.len(&txn);
+        let paragraph = fragment.insert(&mut txn, at, XmlElementPrelim::empty("paragraph"));
+        let prose = paragraph.insert(&mut txn, 0, XmlTextPrelim::new(""));
+        for (piece, attrs) in pieces {
+            let end = prose.len(&txn);
+            prose.insert_with_attributes(&mut txn, end, piece, attrs);
+        }
+    }
+
+    fn said(scene: &Scene, pieces: &[(&str, Option<&str>)]) {
+        written(
+            scene,
+            pieces
+                .iter()
+                .map(|(piece, side)| (*piece, side.map(quoting).unwrap_or_default()))
+                .collect(),
+        );
+    }
+
+    #[test]
+    fn a_mark_whose_letters_are_set_apart_is_still_one_mark() {
+        let scene = Scene::empty(an_id(), a_project());
+        let mut emphasized = quoting("opening");
+        emphasized.insert(Arc::from("em"), Any::from(HashMap::<String, Any>::new()));
+        written(
+            &scene,
+            vec![
+                ("«", emphasized),
+                ("\u{202F}", quoting("opening")),
+                ("Oui", Attrs::new()),
+                ("\u{202F}»", quoting("closing")),
+            ],
+        );
+
+        scene.restyled(QuotationMarks::PointingIn);
+
+        assert_eq!(
+            scene.text(),
+            "»Oui«",
+            "half a mark set in italics is not a mark of its own"
+        );
+    }
+
+    #[test]
+    fn tagged_marks_are_rewritten_in_the_style_asked_for() {
+        let scene = Scene::empty(an_id(), a_project());
+        said(
+            &scene,
+            &[
+                ("»", Some("opening")),
+                ("Komm her,", None),
+                ("«", Some("closing")),
+                (" sagte sie.", None),
+            ],
+        );
+        said(
+            &scene,
+            &[
+                ("»", Some("opening")),
+                ("Gleich.", None),
+                ("«", Some("closing")),
+            ],
+        );
+
+        let update = scene.restyled(QuotationMarks::LowHigh);
+
+        assert_eq!(scene.text(), "„Komm her,“ sagte sie.\n„Gleich.“");
+        assert!(
+            update.is_some(),
+            "what was rewritten is handed back to be sent on"
+        );
+    }
+
+    #[test]
+    fn the_change_handed_back_brings_another_copy_of_the_scene_up_to_date() {
+        let scene = Scene::empty(an_id(), a_project());
+        said(
+            &scene,
+            &[
+                ("»", Some("opening")),
+                ("Komm", None),
+                ("«", Some("closing")),
+            ],
+        );
+        let copy = Scene::rehydrate(an_id(), a_project(), &scene.everything())
+            .expect("a copy of the scene");
+
+        let update = scene
+            .restyled(QuotationMarks::Curly)
+            .expect("something was rewritten");
+        copy.apply(&update).expect("the change applies to the copy");
+
+        assert_eq!(copy.text(), "“Komm”");
+    }
+
+    #[test]
+    fn marks_already_in_the_style_leave_the_scene_as_it_was() {
+        let scene = Scene::empty(an_id(), a_project());
+        said(
+            &scene,
+            &[
+                ("„", Some("opening")),
+                ("Ja.", None),
+                ("“", Some("closing")),
+            ],
+        );
+
+        assert!(scene.restyled(QuotationMarks::LowHigh).is_none());
+        assert_eq!(scene.text(), "„Ja.“");
+    }
+
+    #[test]
+    fn a_mark_typed_without_its_tag_is_left_as_it_was_typed() {
+        let scene = Scene::empty(an_id(), a_project());
+        said(
+            &scene,
+            &[
+                ("»Zitat« und ", None),
+                ("»", Some("opening")),
+                ("Rede", None),
+                ("«", Some("closing")),
+            ],
+        );
+
+        scene.restyled(QuotationMarks::LowHigh);
+
+        assert_eq!(scene.text(), "»Zitat« und „Rede“");
+    }
+
+    #[test]
+    fn marks_of_more_than_one_letter_are_rewritten_whole_and_stay_tagged() {
+        let scene = Scene::empty(an_id(), a_project());
+        said(
+            &scene,
+            &[
+                ("»", Some("opening")),
+                ("Oui", None),
+                ("«", Some("closing")),
+                (" et ", None),
+                ("»", Some("opening")),
+                ("non", None),
+                ("«", Some("closing")),
+            ],
+        );
+
+        scene.restyled(QuotationMarks::SpacedOut);
+        assert_eq!(
+            scene.text(),
+            "«\u{202F}Oui\u{202F}» et «\u{202F}non\u{202F}»"
+        );
+
+        scene.restyled(QuotationMarks::PointingIn);
+        assert_eq!(
+            scene.text(),
+            "»Oui« et »non«",
+            "rewritten once, the marks are still known as marks"
         );
     }
 
