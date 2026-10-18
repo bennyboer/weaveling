@@ -613,15 +613,3 @@ body:has(.writing .scene-slot.carried) {
   cursor: grabbing;
   user-select: none;
 }
-
-.writing q.speech::before {
-  content: open-quote;
-}
-
-.writing q.speech::after {
-  content: close-quote;
-}
-
-.writing .speech-begun {
-  pointer-events: none;
-}

@@ -210,17 +210,9 @@ export async function theBookIsIn(page: Page, language: string | null) {
 }
 
 export const shown = (page: Page, id: string) =>
-  scene(page, id).evaluate((prose) => {
-    const marks = (spoken: Element) =>
-      [...getComputedStyle(spoken).quotes.matchAll(/"([^"]*)"/g)].map(
-        (found) => found[1],
-      );
-    const read = (node: Node): string =>
-      node instanceof Element && node.matches("q.speech")
-        ? `${marks(node)[0]}${[...node.childNodes].map(read).join("")}${marks(node)[1]}`
-        : node instanceof Element
-          ? [...node.childNodes].map(read).join("")
-          : (node.textContent ?? "");
+  scene(page, id).evaluate((prose) =>
+    [...prose.children].map((paragraph) => paragraph.textContent).join("\n"),
+  );
 
-    return [...prose.children].map(read).join("\n");
-  });
+export const quotationMarks = (page: Page, id: string) =>
+  scene(page, id).locator("span.quote");

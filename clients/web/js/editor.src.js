@@ -1,7 +1,7 @@
 import * as Y from "yjs";
 import { EditorState, Plugin, Selection, TextSelection } from "prosemirror-state";
 import { Decoration, DecorationSet, EditorView } from "prosemirror-view";
-import { DOMSerializer, Schema } from "prosemirror-model";
+import { Schema } from "prosemirror-model";
 import { schema as basic } from "prosemirror-schema-basic";
 import { addListNodes } from "prosemirror-schema-list";
 import { baseKeymap, toggleMark } from "prosemirror-commands";
@@ -18,112 +18,92 @@ const BY_PARAGRAPH = /Mac|iP(hone|[oa]d)/.test(navigator.platform) ? "Alt" : "Ct
 
 const schema = new Schema({
   nodes: addListNodes(basic.spec.nodes, "paragraph block*", "block"),
-  marks: basic.spec.marks.addToStart("speech", {
-    parseDOM: [{ tag: "q" }, { tag: "span.speech" }, { tag: "span.speech-mark", ignore: true }],
-    toDOM: () => ["q", { class: "speech" }, 0],
-  }),
+  marks: basic.spec.marks
+    .addToStart("quote", {
+      attrs: { side: { default: "opening" } },
+      inclusive: false,
+      parseDOM: [
+        {
+          tag: "span.quote",
+          getAttrs: (dom) => ({ side: dom.dataset.side === "closing" ? "closing" : "opening" }),
+        },
+      ],
+      toDOM: (mark) => ["span", { class: "quote", "data-side": mark.attrs.side }, 0],
+    })
+    .addToEnd("speech", { toDOM: () => ["span", 0] }),
 });
 
-const QUOTATION_CHANGED = "quotation-changed";
+const OPENS_AFTER = /[\s([{\u2014\u2013\-/]$/;
 
-function speakingOrNot(state, dispatch) {
-  const speech = schema.marks.speech;
+function quoteRuns(doc) {
+  const runs = [];
 
-  if (!state.selection.empty) {
-    return toggleMark(speech)(state, dispatch);
-  }
-  const marks = state.storedMarks ?? state.selection.$from.marks();
-  dispatch(
-    speech.isInSet(marks)
-      ? state.tr.removeStoredMark(speech)
-      : state.tr.addStoredMark(speech.create()),
-  );
+  doc.descendants((node, position) => {
+    if (!node.isTextblock) {
+      return true;
+    }
+    let run = null;
+    node.forEach((child, offset) => {
+      const from = position + 1 + offset;
+      const quote = schema.marks.quote.isInSet(child.marks);
+      if (quote && run && run.side === quote.attrs.side && run.to === from) {
+        run.to = from + child.nodeSize;
+        run.text += child.text;
+        return;
+      }
+      run = quote ? { from, to: from + child.nodeSize, side: quote.attrs.side, text: child.text, marks: child.marks } : null;
+      if (run) {
+        runs.push(run);
+      }
+    });
 
-  return true;
-}
-
-function speaking(state) {
-  const { empty, $from } = state.selection;
-  const speech = schema.marks.speech;
-
-  return (
-    empty &&
-    Boolean(speech.isInSet(state.storedMarks ?? [])) &&
-    !speech.isInSet($from.marks())
-  );
-}
-
-function showingSpeechBegun(editor) {
-  return new Plugin({
-    props: {
-      decorations(state) {
-        if (!speaking(state)) {
-          return null;
-        }
-        const begun = document.createElement("span");
-        begun.className = "speech-begun";
-        begun.textContent = editor.quotationMarks.opening;
-
-        return DecorationSet.create(state.doc, [
-          Decoration.widget(state.selection.head, begun, { side: -1, key: begun.textContent }),
-        ]);
-      },
-    },
+    return false;
   });
+
+  return runs;
 }
 
-function quotedText(doc, opening, closing) {
+function speechRuns(doc) {
+  const runs = [];
+
+  doc.descendants((node, position) => {
+    if (!node.isTextblock) {
+      return true;
+    }
+    let run = null;
+    node.forEach((child, offset) => {
+      const from = position + 1 + offset;
+      if (schema.marks.speech.isInSet(child.marks)) {
+        if (run && run.to === from) {
+          run.to = from + child.nodeSize;
+        } else {
+          run = { from, to: from + child.nodeSize };
+          runs.push(run);
+        }
+      } else {
+        run = null;
+      }
+    });
+
+    return false;
+  });
+
+  return runs;
+}
+
+function writtenText(doc) {
   const blocks = [];
 
   doc.descendants((node) => {
     if (!node.isTextblock) {
       return true;
     }
-    let text = "";
-    let inSpeech = false;
-    node.forEach((child) => {
-      const speaks = Boolean(schema.marks.speech.isInSet(child.marks));
-      if (speaks !== inSpeech) {
-        text += speaks ? opening : closing;
-        inSpeech = speaks;
-      }
-      text += child.text ?? "";
-    });
-    if (inSpeech) {
-      text += closing;
-    }
-    blocks.push(text);
+    blocks.push(node.textContent);
 
     return false;
   });
 
   return blocks.join("\n");
-}
-
-function copiedWithMarks(editor) {
-  const markOf = (text) => {
-    const mark = document.createElement("span");
-    mark.className = "speech-mark";
-    mark.textContent = text;
-
-    return mark;
-  };
-
-  return new DOMSerializer(DOMSerializer.nodesFromSchema(schema), {
-    ...DOMSerializer.marksFromSchema(schema),
-    speech: () => {
-      const said = document.createElement("span");
-      const content = document.createElement("span");
-      said.className = "speech";
-      said.append(
-        markOf(editor.quotationMarks.opening),
-        content,
-        markOf(editor.quotationMarks.closing),
-      );
-
-      return { dom: said, contentDOM: content };
-    },
-  });
 }
 
 function markingWhereWritten() {
@@ -204,17 +184,10 @@ export class ProseEditor {
                 focus: (view) => this.focusedWhereTheBrowserPutIt(view),
               },
               handleTextInput: (view, from, to, text) => this.typedMark(view, from, to, text),
-              clipboardSerializer: copiedWithMarks(this),
-              clipboardTextSerializer: (slice) =>
-                quotedText(
-                  slice.content,
-                  this.quotationMarks.opening,
-                  this.quotationMarks.closing,
-                ),
+              clipboardTextSerializer: (slice) => writtenText(slice.content),
             },
           }),
           markingWhereWritten(),
-          showingSpeechBegun(this),
           ySyncPlugin(this.fragment),
           yCursorPlugin(this.sync.awareness),
           yUndoPlugin(),
@@ -222,7 +195,7 @@ export class ProseEditor {
           keymap({
             "Mod-i": toggleMark(schema.marks.em),
             "Mod-b": toggleMark(schema.marks.strong),
-            "Mod-Shift-2": speakingOrNot,
+            "Mod-Shift-2": (state, dispatch) => this.quoting(state, dispatch),
           }),
           keymap({
             Enter: (state, dispatch) => this.breakAtEnd(state, dispatch),
@@ -384,18 +357,77 @@ export class ProseEditor {
 
   setQuotationMarks(opening, closing) {
     this.quotationMarks = { opening, closing };
+    this.sync.whenSynced(() => this.restyled());
+  }
 
-    if (this.view && !this.view.isDestroyed) {
-      this.view.dispatch(this.view.state.tr.setMeta(QUOTATION_CHANGED, true));
+  restyled() {
+    if (!this.view || this.view.isDestroyed) {
+      return;
+    }
+    const { state } = this.view;
+    const tr = state.tr;
+
+    for (const run of speechRuns(state.doc).reverse()) {
+      tr.removeMark(run.from, run.to, schema.marks.speech);
+      this.inserted(tr, run.to, "closing", tr.doc.resolve(run.to).marks());
+      this.inserted(tr, run.from, "opening", tr.doc.resolve(run.from).marks());
+    }
+    for (const run of quoteRuns(tr.doc).reverse()) {
+      const wanted = this.quotationMarks[run.side];
+      if (run.text !== wanted) {
+        tr.replaceWith(run.from, run.to, schema.text(wanted, run.marks));
+      }
+    }
+    if (tr.docChanged) {
+      this.view.dispatch(tr.setMeta("addToHistory", false));
     }
   }
 
-  quotedText() {
-    return quotedText(
-      this.view.state.doc,
-      this.quotationMarks.opening,
-      this.quotationMarks.closing,
+  inserted(tr, at, side, marks) {
+    const written = this.quotationMarks[side];
+    const quoted = schema.marks.quote.create({ side }).addToSet(
+      marks.filter((mark) => mark.type !== schema.marks.quote && mark.type !== schema.marks.speech),
     );
+    tr.insert(at, schema.text(written, quoted));
+
+    return written.length;
+  }
+
+  writtenText() {
+    return writtenText(this.view.state.doc);
+  }
+
+  quoting(state, dispatch) {
+    const { from, to, empty, $from } = state.selection;
+    const tr = state.tr;
+
+    if (empty) {
+      const before = $from.parent.textBetween(0, $from.parentOffset, undefined, "\ufffc");
+      const opensHere = before === "" || OPENS_AFTER.test(before);
+      const length = this.inserted(tr, from, opensHere ? "opening" : "closing", state.storedMarks ?? $from.marks());
+      dispatch?.(tr.setSelection(TextSelection.create(tr.doc, from + length)).scrollIntoView());
+
+      return true;
+    }
+
+    const runs = quoteRuns(state.doc);
+    const opening = runs.find((run) => run.side === "opening" && run.to === from);
+    const closing = runs.find((run) => run.side === "closing" && run.from === to);
+    if (opening && closing) {
+      tr.delete(closing.from, closing.to);
+      tr.delete(opening.from, opening.to);
+      dispatch?.(
+        tr.setSelection(TextSelection.create(tr.doc, opening.from, opening.from + (to - from))),
+      );
+
+      return true;
+    }
+
+    this.inserted(tr, to, "closing", state.doc.resolve(to).marks());
+    const shift = this.inserted(tr, from, "opening", state.doc.resolve(from).marks());
+    dispatch?.(tr.setSelection(TextSelection.create(tr.doc, from + shift, to + shift)));
+
+    return true;
   }
 
   typedMark(view, from, to, text) {
@@ -408,7 +440,7 @@ export class ProseEditor {
       return false;
     }
 
-    return speakingOrNot(view.state, view.dispatch);
+    return this.quoting(view.state, view.dispatch);
   }
 
   onSelecting(selecting) {
