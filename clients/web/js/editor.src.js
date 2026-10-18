@@ -63,34 +63,6 @@ function quoteRuns(doc) {
   return runs;
 }
 
-function speechRuns(doc) {
-  const runs = [];
-
-  doc.descendants((node, position) => {
-    if (!node.isTextblock) {
-      return true;
-    }
-    let run = null;
-    node.forEach((child, offset) => {
-      const from = position + 1 + offset;
-      if (schema.marks.speech.isInSet(child.marks)) {
-        if (run && run.to === from) {
-          run.to = from + child.nodeSize;
-        } else {
-          run = { from, to: from + child.nodeSize };
-          runs.push(run);
-        }
-      } else {
-        run = null;
-      }
-    });
-
-    return false;
-  });
-
-  return runs;
-}
-
 function writtenText(doc) {
   const blocks = [];
 
@@ -367,11 +339,6 @@ export class ProseEditor {
     const { state } = this.view;
     const tr = state.tr;
 
-    for (const run of speechRuns(state.doc).reverse()) {
-      tr.removeMark(run.from, run.to, schema.marks.speech);
-      this.inserted(tr, run.to, "closing", tr.doc.resolve(run.to).marks());
-      this.inserted(tr, run.from, "opening", tr.doc.resolve(run.from).marks());
-    }
     for (const run of quoteRuns(tr.doc).reverse()) {
       const wanted = this.quotationMarks[run.side];
       if (run.text !== wanted) {
