@@ -125,8 +125,12 @@ impl Debug for Scene {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use time::OffsetDateTime;
-    use yrs::{Text, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
+
+    use yrs::types::Attrs;
+    use yrs::types::xml::XmlOut;
+    use yrs::{Any, Text, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
     use super::*;
     use crate::projection::FRAGMENT;
@@ -192,6 +196,30 @@ mod tests {
             6,
             "a paragraph's last word and the next one's first stay two words"
         );
+    }
+
+    #[test]
+    fn marks_on_the_prose_are_not_part_of_its_text() {
+        let scene = Scene::empty(an_id(), a_project());
+        write(&scene, 0, " she asked, ");
+        {
+            let fragment = scene.doc.get_or_insert_xml_fragment(FRAGMENT);
+            let mut txn = scene.doc.transact_mut();
+            let Some(XmlOut::Element(paragraph)) = fragment.get(&txn, 0) else {
+                panic!("expected a paragraph");
+            };
+            let Some(XmlOut::Text(prose)) = paragraph.get(&txn, 0) else {
+                panic!("expected prose");
+            };
+            let marked =
+                |mark: &str| Attrs::from([(Arc::from(mark), Any::Map(Default::default()))]);
+            prose.insert_with_attributes(&mut txn, 0, "What am I to do?", marked("speech"));
+            let end = prose.len(&txn);
+            prose.insert_with_attributes(&mut txn, end, "quietly", marked("em"));
+        }
+
+        assert_eq!(scene.text(), "What am I to do? she asked, quietly");
+        assert_eq!(scene.words(), 8);
     }
 
     #[test]

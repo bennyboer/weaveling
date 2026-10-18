@@ -4289,3 +4289,17 @@ test("justified text in the writing settings sets lines flush and hyphenated, ac
     .poll(() => howTheTextSits(page, only))
     .toMatchObject({ align: "start", flush: false });
 });
+
+test("what is said and set in italics opens a scene's catalogued name as plain words", async ({
+  page,
+}) => {
+  const only = await quoting(page, "PlainOpening", "de");
+
+  await page.keyboard.type('"Was soll ich tun?" fragte sie ');
+  await page.keyboard.press("ControlOrMeta+I");
+  await page.keyboard.type("leise");
+
+  await expect
+    .poll(() => cataloguedOpening(page, only))
+    .toBe("Was soll ich tun? fragte sie leise");
+});
