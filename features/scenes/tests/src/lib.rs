@@ -20,6 +20,9 @@ mod scenes_api;
 mod shared_kernel;
 
 #[cfg(test)]
+mod scene_restyling;
+
+#[cfg(test)]
 mod scene_sweeping;
 
 #[cfg(test)]

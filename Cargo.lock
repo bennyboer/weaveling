@@ -4088,6 +4088,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-projects-contract",
+ "weaveling-quotation",
  "weaveling-scenes-contract",
  "weaveling-scenes-core",
 ]

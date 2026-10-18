@@ -48,10 +48,9 @@ function quoteRuns(doc) {
       const quote = schema.marks.quote.isInSet(child.marks);
       if (quote && run && run.side === quote.attrs.side && run.to === from) {
         run.to = from + child.nodeSize;
-        run.text += child.text;
         return;
       }
-      run = quote ? { from, to: from + child.nodeSize, side: quote.attrs.side, text: child.text, marks: child.marks } : null;
+      run = quote ? { from, to: from + child.nodeSize, side: quote.attrs.side } : null;
       if (run) {
         runs.push(run);
       }
@@ -329,25 +328,6 @@ export class ProseEditor {
 
   setQuotationMarks(opening, closing) {
     this.quotationMarks = { opening, closing };
-    this.sync.whenSynced(() => this.restyled());
-  }
-
-  restyled() {
-    if (!this.view || this.view.isDestroyed) {
-      return;
-    }
-    const { state } = this.view;
-    const tr = state.tr;
-
-    for (const run of quoteRuns(tr.doc).reverse()) {
-      const wanted = this.quotationMarks[run.side];
-      if (run.text !== wanted) {
-        tr.replaceWith(run.from, run.to, schema.text(wanted, run.marks));
-      }
-    }
-    if (tr.docChanged) {
-      this.view.dispatch(tr.setMeta("addToHistory", false));
-    }
   }
 
   inserted(tr, at, side, marks) {

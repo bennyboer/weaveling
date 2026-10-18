@@ -1,4 +1,5 @@
 mod memory;
+mod restyling_tasks;
 #[cfg(test)]
 mod suite;
 
@@ -13,6 +14,7 @@ pub mod sqlite;
 mod sqlite_tests;
 
 pub use memory::InMemorySceneCatalog;
+pub use restyling_tasks::InMemoryRestylingTasks;
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresSceneCatalog;

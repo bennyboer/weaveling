@@ -3,9 +3,11 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use outbox::{InMemoryOutbox, Outbox};
-use scenes_catalog::InMemorySceneCatalog;
-use scenes_core::{SceneCatalog, SceneService, SceneStore};
-use scenes_messaging::{CatalogueScenes, DeleteOnProjectDeleted, UnlinkOnDiscard};
+use scenes_catalog::{InMemoryRestylingTasks, InMemorySceneCatalog};
+use scenes_core::{RestylingTasks, SceneCatalog, SceneService, SceneStore};
+use scenes_messaging::{
+    CatalogueScenes, DeleteOnProjectDeleted, RestyleOnQuotationChanged, UnlinkOnDiscard,
+};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
 use wiring::{Context, Feature, Settling, Wired};
@@ -13,6 +15,7 @@ use wiring::{Context, Feature, Settling, Wired};
 pub struct Ports {
     pub store: Arc<dyn SceneStore>,
     pub catalog: Arc<dyn SceneCatalog>,
+    pub restyling_tasks: Arc<dyn RestylingTasks>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -27,11 +30,23 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let catalogue = CatalogueScenes::new(ports.catalog.clone());
 
     let live = LiveScenes::new(scenes.clone());
+    let restyle = RestyleOnQuotationChanged::new(
+        scenes.clone(),
+        Arc::new(live.clone()),
+        ports.restyling_tasks.clone(),
+        context.publisher.clone(),
+        context.clock.clone(),
+    );
 
     Wired::serving(
         scenes_rest::router(scenes, ports.catalog.clone()).merge(scenes_sync::router(live.clone())),
     )
-    .listening(vec![Arc::new(sweep), Arc::new(unlink), Arc::new(catalogue)])
+    .listening(vec![
+        Arc::new(sweep),
+        Arc::new(unlink),
+        Arc::new(catalogue),
+        Arc::new(restyle),
+    ])
     .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
 }
 
@@ -64,6 +79,7 @@ impl Feature for SceneFeature {
                 scenes_messaging::message_for,
             )),
             catalog: Arc::new(InMemorySceneCatalog::new()),
+            restyling_tasks: Arc::new(InMemoryRestylingTasks::new()),
             outbox,
         }
     }
@@ -76,6 +92,8 @@ impl Feature for SceneFeature {
                     .enqueuing(context.clock.clone(), scenes_messaging::message_for),
             ),
             catalog: Arc::new(scenes_catalog::PostgresSceneCatalog::new(pool.clone())),
+            // TODO: keep the latest restyling in the database, so a restart does not forget it
+            restyling_tasks: Arc::new(InMemoryRestylingTasks::new()),
             outbox: Arc::new(outbox::PostgresOutbox::new(
                 pool,
                 context.publisher.clone(),
@@ -101,6 +119,8 @@ impl Feature for SceneFeature {
                     .enqueuing(context.clock.clone(), scenes_messaging::message_for),
             ),
             catalog: Arc::new(scenes_catalog::SqliteSceneCatalog::new(pool.clone())),
+            // TODO: keep the latest restyling in the database, so a restart does not forget it
+            restyling_tasks: Arc::new(InMemoryRestylingTasks::new()),
             outbox: Arc::new(outbox::SqliteOutbox::new(
                 pool,
                 context.publisher.clone(),
