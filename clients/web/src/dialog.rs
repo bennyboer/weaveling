@@ -3,7 +3,7 @@ use leptos::{IntoView, ev, html};
 
 pub fn modal(
     title: &'static str,
-    kind: &'static str,
+    style_class: &'static str,
     close: impl Fn() + Copy + Send + Sync + 'static,
     body: impl IntoView + 'static,
 ) -> impl IntoView {
@@ -19,7 +19,7 @@ pub fn modal(
         .on(ev::click, move |_| close())
         .child(
             html::div()
-                .class(format!("dialog {kind}").trim_end().to_owned())
+                .class(format!("dialog {style_class}").trim_end().to_owned())
                 .role("dialog")
                 .attr("aria-modal", "true")
                 .attr("aria-label", title)
