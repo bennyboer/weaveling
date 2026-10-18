@@ -6,7 +6,7 @@ use eventsourcing::{
 use thiserror::Error;
 use time::OffsetDateTime;
 
-use crate::details::ProjectDetails;
+use crate::details::{ProjectDetails, QuotationMarks};
 use crate::id::ProjectId;
 use crate::name::ProjectName;
 
@@ -21,6 +21,7 @@ impl From<&ProjectId> for AggregateId {
 const STARTED: EventName = EventName::of("STARTED");
 const RENAMED: EventName = EventName::of("RENAMED");
 const DETAILS_CHANGED: EventName = EventName::of("DETAILS_CHANGED");
+const QUOTATION_CHANGED: EventName = EventName::of("QUOTATION_CHANGED");
 const DELETED: EventName = EventName::of("DELETED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
@@ -37,6 +38,7 @@ pub enum ProjectEvent {
     Started(ProjectName),
     Renamed(ProjectName),
     DetailsChanged(ProjectDetails),
+    QuotationChanged(QuotationMarks),
     Deleted,
     Snapshotted {
         name: ProjectName,
@@ -94,6 +96,7 @@ impl Event for ProjectEvent {
             Self::Started(..) => STARTED,
             Self::Renamed(..) => RENAMED,
             Self::DetailsChanged(..) => DETAILS_CHANGED,
+            Self::QuotationChanged(..) => QUOTATION_CHANGED,
             Self::Deleted => DELETED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -175,8 +178,13 @@ impl Aggregate for Project {
                 if details == self.details {
                     return Ok(vec![]);
                 }
+                let style = details.quotation_marks();
+                let restyled = (style != self.details.quotation_marks())
+                    .then_some(ProjectEvent::QuotationChanged(style));
 
-                Ok(vec![ProjectEvent::DetailsChanged(details)])
+                Ok(once(ProjectEvent::DetailsChanged(details))
+                    .chain(restyled)
+                    .collect())
             }
             ProjectCommand::Delete => Ok(vec![ProjectEvent::Deleted]),
         }
@@ -193,6 +201,7 @@ impl Aggregate for Project {
                 self.details = details.clone();
                 self.updated_at = metadata.occurred_at;
             }
+            ProjectEvent::QuotationChanged(..) => {}
             ProjectEvent::Deleted => {
                 self.deleted = true;
                 self.updated_at = metadata.occurred_at;

@@ -21,6 +21,9 @@ enum StoredProjectEvent {
         quotation: Option<String>,
         description: String,
     },
+    QuotationChanged {
+        quotation: String,
+    },
     Deleted,
     Snapshotted {
         name: String,
@@ -63,6 +66,9 @@ impl From<&ProjectEvent> for StoredProjectEvent {
                 language: details.language.as_ref().map(ToString::to_string),
                 quotation: details.quotation.map(|style| style.name().to_owned()),
                 description: details.description.to_string(),
+            },
+            ProjectEvent::QuotationChanged(style) => Self::QuotationChanged {
+                quotation: style.name().to_owned(),
             },
             ProjectEvent::Deleted => Self::Deleted,
             ProjectEvent::Snapshotted {
@@ -140,6 +146,9 @@ impl TryFrom<StoredProjectEvent> for ProjectEvent {
                 quotation,
                 description,
             } => Self::DetailsChanged(details_of(language, quotation, &description)?),
+            StoredProjectEvent::QuotationChanged { quotation } => {
+                Self::QuotationChanged(QuotationMarks::new(&quotation)?)
+            }
             StoredProjectEvent::Deleted => Self::Deleted,
             StoredProjectEvent::Snapshotted {
                 name,
@@ -199,6 +208,7 @@ A war.",
             ProjectEvent::Renamed(a_name("A crown of straw")),
             ProjectEvent::DetailsChanged(a_description()),
             ProjectEvent::DetailsChanged(ProjectDetails::default()),
+            ProjectEvent::QuotationChanged(QuotationMarks::SpacedOut),
             ProjectEvent::Deleted,
             ProjectEvent::Snapshotted {
                 name: a_name("The Weaver's Apprentice"),

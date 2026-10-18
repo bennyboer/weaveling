@@ -174,6 +174,10 @@ fn every_event_says_its_own_name() {
     for (event, named) in [
         (ProjectEvent::Started(a_name("Started")), "STARTED"),
         (ProjectEvent::Renamed(a_name("Renamed")), "RENAMED"),
+        (
+            ProjectEvent::QuotationChanged(QuotationMarks::Curly),
+            "QUOTATION_CHANGED",
+        ),
         (ProjectEvent::Deleted, "DELETED"),
         (a_started_project().snapshot(), "SNAPSHOTTED"),
     ] {
@@ -221,7 +225,6 @@ fn changing_a_project_s_details_moves_when_it_was_updated() {
     let events = project
         .decide(ProjectCommand::ChangeDetails(some_details()), &an_author())
         .expect("changing the details should succeed");
-    assert_eq!(events, vec![ProjectEvent::DetailsChanged(some_details())]);
     project.apply(&events[0], &stamped(2, at(2_000)));
 
     assert_eq!(project.details(), &some_details());
@@ -239,6 +242,78 @@ fn changing_a_project_s_details_to_what_they_are_records_nothing() {
     assert_eq!(
         project.decide(ProjectCommand::ChangeDetails(some_details()), &an_author()),
         Ok(vec![])
+    );
+}
+
+fn changed(project: &Project, details: ProjectDetails) -> Vec<ProjectEvent> {
+    project
+        .decide(ProjectCommand::ChangeDetails(details), &an_author())
+        .expect("changing the details should succeed")
+}
+
+fn with_details(details: ProjectDetails) -> Project {
+    let mut project = a_started_project();
+    project.apply(
+        &ProjectEvent::DetailsChanged(details),
+        &stamped(2, at(2_000)),
+    );
+    project
+}
+
+#[test]
+fn choosing_another_quotation_style_says_so_apart_from_the_details() {
+    let project = with_details(some_details());
+    let restyled = ProjectDetails {
+        quotation: Some(QuotationMarks::LowHigh),
+        ..some_details()
+    };
+
+    assert_eq!(
+        changed(&project, restyled.clone()),
+        vec![
+            ProjectEvent::DetailsChanged(restyled),
+            ProjectEvent::QuotationChanged(QuotationMarks::LowHigh),
+        ]
+    );
+}
+
+#[test]
+fn a_new_language_brings_its_quotation_style_when_none_was_chosen() {
+    let project = with_details(ProjectDetails::default());
+    let french = ProjectDetails {
+        language: Some(BookLanguage::new("fr").expect("a plain tag")),
+        ..ProjectDetails::default()
+    };
+
+    assert_eq!(
+        changed(&project, french.clone()),
+        vec![
+            ProjectEvent::DetailsChanged(french),
+            ProjectEvent::QuotationChanged(QuotationMarks::SpacedOut),
+        ]
+    );
+}
+
+#[test]
+fn details_that_leave_the_marks_as_they_look_do_not_restyle_the_book() {
+    let project = with_details(some_details());
+    let described = ProjectDetails {
+        description: ProjectDescription::new("Only the blurb changed.").expect("plain"),
+        ..some_details()
+    };
+    let chosen_as_the_language_would = ProjectDetails {
+        quotation: None,
+        ..some_details()
+    };
+
+    assert_eq!(
+        changed(&project, described.clone()),
+        vec![ProjectEvent::DetailsChanged(described)]
+    );
+    assert_eq!(
+        changed(&project, chosen_as_the_language_would.clone()),
+        vec![ProjectEvent::DetailsChanged(chosen_as_the_language_would)],
+        "German quotes »so« whether chosen or not"
     );
 }
 

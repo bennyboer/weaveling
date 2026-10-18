@@ -109,6 +109,14 @@ pub struct ProjectDetails {
     pub description: ProjectDescription,
 }
 
+impl ProjectDetails {
+    pub fn quotation_marks(&self) -> QuotationMarks {
+        self.quotation.unwrap_or_else(|| {
+            QuotationMarks::of_language(self.language.as_ref().map(|language| language.0.as_str()))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

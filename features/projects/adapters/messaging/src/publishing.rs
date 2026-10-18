@@ -47,6 +47,9 @@ fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {
             quotation: details.quotation.map(|style| style.to_string()),
             description: details.description.to_string(),
         },
+        ProjectEvent::QuotationChanged(style) => ProjectEventDTO::QuotationChanged {
+            quotation: style.to_string(),
+        },
         ProjectEvent::Deleted => ProjectEventDTO::Deleted,
         ProjectEvent::Snapshotted { .. } => return None,
     })
@@ -57,7 +60,9 @@ mod tests {
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Recorded, Version};
     use messaging::{RoutingKey, Subscription};
-    use projects_contract::{DELETED, DETAILS_CHANGED, EVERY_PROJECT, RENAMED, STARTED};
+    use projects_contract::{
+        DELETED, DETAILS_CHANGED, EVERY_PROJECT, QUOTATION_CHANGED, RENAMED, STARTED,
+    };
     use projects_core::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
     use projects_core::{KIND, ProjectName};
     use serde_json::json;
@@ -102,6 +107,10 @@ mod tests {
             (
                 ProjectEvent::DetailsChanged(ProjectDetails::default()),
                 DETAILS_CHANGED,
+            ),
+            (
+                ProjectEvent::QuotationChanged(QuotationMarks::Curly),
+                QUOTATION_CHANGED,
             ),
             (ProjectEvent::Deleted, DELETED),
         ]
@@ -172,6 +181,24 @@ mod tests {
                 language: Some("de".to_owned()),
                 quotation: Some("low-high".to_owned()),
                 description: "A weaver's daughter.".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_changed_quotation_style_travels_by_its_name() {
+        let id = a_project();
+
+        let body = event_in(&published(
+            &id,
+            ProjectEvent::QuotationChanged(QuotationMarks::PointingOut),
+        ))
+        .expect("what we wrote must be readable");
+
+        assert_eq!(
+            body.event.body,
+            ProjectEventDTO::QuotationChanged {
+                quotation: "pointing-out".to_owned(),
             }
         );
     }

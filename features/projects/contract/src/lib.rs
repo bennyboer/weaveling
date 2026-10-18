@@ -48,6 +48,7 @@ pub struct ProjectDetailsDTO {
 pub const STARTED: &str = "project.started";
 pub const RENAMED: &str = "project.renamed";
 pub const DETAILS_CHANGED: &str = "project.details.changed";
+pub const QUOTATION_CHANGED: &str = "project.quotation.changed";
 pub const DELETED: &str = "project.deleted";
 pub const EVERY_PROJECT: &str = "project.#";
 
@@ -70,6 +71,8 @@ pub enum ProjectEventDTO {
         quotation: Option<String>,
         description: String,
     },
+    #[serde(rename = "QUOTATION_CHANGED")]
+    QuotationChanged { quotation: String },
     #[serde(rename = "DELETED")]
     Deleted,
 }
