@@ -12,3 +12,8 @@ CREATE INDEX scene_catalog_by_project ON scene_catalog (project, scene);
 CREATE TABLE scene_catalog_gone (
     scene  TEXT COLLATE "C" PRIMARY KEY
 );
+
+CREATE TABLE quotation_restyling_tasks (
+    project        TEXT COLLATE "C" PRIMARY KEY,
+    latest_change  BIGINT           NOT NULL
+);

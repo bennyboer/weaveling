@@ -139,20 +139,29 @@ mod tests {
     use async_trait::async_trait;
 
     use super::*;
+    use crate::InMemoryQuotationRestylingTasks;
     use crate::suite::Workbench;
 
-    struct InMemory(InMemorySceneCatalog);
+    struct InMemory(InMemorySceneCatalog, InMemoryQuotationRestylingTasks);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Catalog = InMemorySceneCatalog;
+        type Tasks = InMemoryQuotationRestylingTasks;
 
         async fn setup() -> Self {
-            Self(InMemorySceneCatalog::new())
+            Self(
+                InMemorySceneCatalog::new(),
+                InMemoryQuotationRestylingTasks::new(),
+            )
         }
 
         fn catalog(&self) -> &Self::Catalog {
             &self.0
+        }
+
+        fn tasks(&self) -> &Self::Tasks {
+            &self.1
         }
 
         async fn cleanup(self) {}

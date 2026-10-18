@@ -5,10 +5,10 @@ use eventpublishing::{UnreadableMessage, published_in};
 use messaging::{Failure, Handler, Message, Publisher, RoutingKey, Undelivered};
 use projects_contract::{ProjectEventDTO, QUOTATION_CHANGED};
 use quotation::{InvalidQuotationMarks, QuotationMarks};
-use scenes_contract::{MORE_TO_RESTYLE, MoreToRestyleDTO};
+use scenes_contract::{MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
 use scenes_core::{
-    ProjectLink, RestylingTaskError, RestylingTasks, SceneId, SceneRestyler, SceneService,
-    SceneServiceError, StoreError,
+    ProjectLink, QuotationRestylingTaskError, QuotationRestylingTasks, SceneId, SceneRestyler,
+    SceneService, SceneServiceError, StoreError,
 };
 use thiserror::Error;
 
@@ -17,7 +17,7 @@ use crate::AT_MOST;
 pub struct RestyleOnQuotationChanged {
     scenes: SceneService,
     restyler: Arc<dyn SceneRestyler>,
-    tasks: Arc<dyn RestylingTasks>,
+    tasks: Arc<dyn QuotationRestylingTasks>,
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
     at_most: usize,
@@ -32,14 +32,14 @@ enum NotRestyled {
     #[error(transparent)]
     Unstyled(#[from] InvalidQuotationMarks),
     #[error(transparent)]
-    RestylingTasks(#[from] RestylingTaskError),
+    QuotationRestylingTasks(#[from] QuotationRestylingTaskError),
     #[error(transparent)]
     Scenes(#[from] SceneServiceError),
     #[error(transparent)]
     Undelivered(#[from] Undelivered),
 }
 
-struct RestylingTask {
+struct QuotationRestylingTask {
     project: String,
     style: QuotationMarks,
     change: u64,
@@ -50,7 +50,7 @@ impl RestyleOnQuotationChanged {
     pub fn new(
         scenes: SceneService,
         restyler: Arc<dyn SceneRestyler>,
-        tasks: Arc<dyn RestylingTasks>,
+        tasks: Arc<dyn QuotationRestylingTasks>,
         publisher: Arc<dyn Publisher>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -103,10 +103,11 @@ impl RestyleOnQuotationChanged {
         Ok(())
     }
 
-    fn carry_on(&self, asked: &Message, task: &RestylingTask, after: SceneId) -> Message {
+    fn carry_on(&self, asked: &Message, task: &QuotationRestylingTask, after: SceneId) -> Message {
         asked.answering(
-            RoutingKey::parse(MORE_TO_RESTYLE).expect("a declared routing key holds no wildcards"),
-            serde_json::to_value(MoreToRestyleDTO {
+            RoutingKey::parse(MORE_QUOTATION_MARKS_TO_RESTYLE)
+                .expect("a declared routing key holds no wildcards"),
+            serde_json::to_value(MoreQuotationMarksToRestyleDTO {
                 project: task.project.clone(),
                 quotation: task.style.name().to_owned(),
                 change: task.change,
@@ -118,12 +119,12 @@ impl RestyleOnQuotationChanged {
     }
 }
 
-fn what_to_restyle(asked: &Message) -> Result<RestylingTask, NotRestyled> {
-    if asked.routing.to_string() == MORE_TO_RESTYLE {
-        let carried: MoreToRestyleDTO = serde_json::from_value(asked.payload.clone())
+fn what_to_restyle(asked: &Message) -> Result<QuotationRestylingTask, NotRestyled> {
+    if asked.routing.to_string() == MORE_QUOTATION_MARKS_TO_RESTYLE {
+        let carried: MoreQuotationMarksToRestyleDTO = serde_json::from_value(asked.payload.clone())
             .map_err(|why| NotRestyled::Unshaped(why.to_string()))?;
 
-        return Ok(RestylingTask {
+        return Ok(QuotationRestylingTask {
             project: carried.project,
             style: QuotationMarks::new(&carried.quotation)?,
             change: carried.change,
@@ -138,7 +139,7 @@ fn what_to_restyle(asked: &Message) -> Result<RestylingTask, NotRestyled> {
         ));
     };
 
-    Ok(RestylingTask {
+    Ok(QuotationRestylingTask {
         project: changed.aggregate.id,
         style: QuotationMarks::new(&quotation)?,
         change: changed.aggregate.version,
@@ -152,8 +153,9 @@ fn deleted_meanwhile(refused: &SceneServiceError) -> bool {
 
 #[async_trait::async_trait]
 impl Handler for RestyleOnQuotationChanged {
-    const NAME: &'static str = "restyle-scenes-of-restyled-project";
-    const LISTENS_TO: &'static [&'static str] = &[QUOTATION_CHANGED, MORE_TO_RESTYLE];
+    const NAME: &'static str = "restyle-quotation-marks-of-project";
+    const LISTENS_TO: &'static [&'static str] =
+        &[QUOTATION_CHANGED, MORE_QUOTATION_MARKS_TO_RESTYLE];
     const WHEN_REFUSED: &'static str =
         "The quotation marks of a book were not all changed to its new style.";
 

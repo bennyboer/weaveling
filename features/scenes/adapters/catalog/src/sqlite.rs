@@ -1,5 +1,8 @@
 use async_trait::async_trait;
-use scenes_core::{CatalogError, ProjectLink, SceneCatalog, SceneId, SceneSummary, SceneTitle};
+use scenes_core::{
+    CatalogError, ProjectLink, QuotationRestylingTaskError, QuotationRestylingTasks, SceneCatalog,
+    SceneId, SceneSummary, SceneTitle,
+};
 use sqlx::migrate::Migrator;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
@@ -41,6 +44,14 @@ const IN_PROJECT_AFTER: &str = "
     WHERE project = ?1 AND scene > ?2
     ORDER BY scene
     LIMIT ?3
+";
+
+const CLAIM: &str = "
+    INSERT INTO quotation_restyling_tasks (project, latest_change)
+    VALUES (?1, ?2)
+    ON CONFLICT (project) DO UPDATE
+    SET latest_change = excluded.latest_change
+    WHERE quotation_restyling_tasks.latest_change <= excluded.latest_change
 ";
 
 pub fn migrations() -> Migrator {
@@ -167,5 +178,33 @@ impl SceneCatalog for SqliteSceneCatalog {
             .iter()
             .map(summary_from)
             .collect()
+    }
+}
+
+pub struct SqliteQuotationRestylingTasks {
+    pool: SqlitePool,
+}
+
+impl SqliteQuotationRestylingTasks {
+    pub fn new(pool: SqlitePool) -> Self {
+        Self { pool }
+    }
+}
+
+#[async_trait]
+impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
+    async fn claim(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        let written = sqlx::query(CLAIM)
+            .bind(project.to_string())
+            .bind(i64::try_from(change).expect("a version fits a signed 64-bit column"))
+            .execute(&self.pool)
+            .await
+            .map_err(|failure| QuotationRestylingTaskError::Backend(Box::new(failure)))?;
+
+        Ok(written.rows_affected() == 1)
     }
 }

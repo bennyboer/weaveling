@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 pub const FRAGMENT: &str = "prose";
 
 pub const MORE_TO_SWEEP: &str = "scene.sweep.more";
-pub const MORE_TO_RESTYLE: &str = "scene.restyle.more";
+pub const MORE_QUOTATION_MARKS_TO_RESTYLE: &str = "scene.quotation.restyle.more";
 pub const IDEA_LINKED: &str = "scene.idea.linked";
 pub const IDEA_UNLINKED: &str = "scene.idea.unlinked";
 pub const DELETED: &str = "scene.deleted";
@@ -59,7 +59,7 @@ pub struct MoreToSweepDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct MoreToRestyleDTO {
+pub struct MoreQuotationMarksToRestyleDTO {
     pub project: String,
     pub quotation: String,
     pub change: u64,

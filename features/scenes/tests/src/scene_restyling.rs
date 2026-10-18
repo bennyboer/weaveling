@@ -6,8 +6,8 @@ use clock::FixedClock;
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::QUOTATION_CHANGED;
 use quotation::QuotationMarks;
-use scenes_catalog::InMemoryRestylingTasks;
-use scenes_contract::{FRAGMENT, MORE_TO_RESTYLE, MoreToRestyleDTO};
+use scenes_catalog::InMemoryQuotationRestylingTasks;
+use scenes_contract::{FRAGMENT, MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
 use scenes_core::{SceneId, SceneRestyler, SceneService, SceneServiceError, StoreError};
 use scenes_messaging::RestyleOnQuotationChanged;
 use scenes_store::InMemorySceneStore;
@@ -76,7 +76,7 @@ fn restyling_with(
         restyle: RestyleOnQuotationChanged::new(
             scenes.clone(),
             restyler,
-            Arc::new(InMemoryRestylingTasks::new()),
+            Arc::new(InMemoryQuotationRestylingTasks::new()),
             overheard.clone(),
             clock,
         )
@@ -156,7 +156,7 @@ impl Wired {
         self.overheard
             .heard()
             .into_iter()
-            .filter(|message| message.routing.to_string() == MORE_TO_RESTYLE)
+            .filter(|message| message.routing.to_string() == MORE_QUOTATION_MARKS_TO_RESTYLE)
             .collect()
     }
 
@@ -195,8 +195,8 @@ fn restyled(project: &str, quotation: &str, change: u64) -> Message {
 
 fn more_of(project: &str, quotation: &str, change: u64, after: SceneId) -> Message {
     Message::opening(
-        RoutingKey::parse(MORE_TO_RESTYLE).expect("a declared routing key is fine"),
-        serde_json::to_value(MoreToRestyleDTO {
+        RoutingKey::parse(MORE_QUOTATION_MARKS_TO_RESTYLE).expect("a declared routing key is fine"),
+        serde_json::to_value(MoreQuotationMarksToRestyleDTO {
             project: project.to_owned(),
             quotation: quotation.to_owned(),
             change,
@@ -253,11 +253,11 @@ async fn a_continuation_carries_the_style_the_change_and_where_it_got_to() {
         .expect("restyling succeeds");
 
     let carried = wired.carried_on();
-    let more: MoreToRestyleDTO =
+    let more: MoreQuotationMarksToRestyleDTO =
         serde_json::from_value(carried[0].payload.clone()).expect("readable");
     assert_eq!(
         more,
-        MoreToRestyleDTO {
+        MoreQuotationMarksToRestyleDTO {
             project: A_PROJECT.to_owned(),
             quotation: "low-high".to_owned(),
             change: 3,

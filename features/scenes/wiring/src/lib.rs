@@ -3,8 +3,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use outbox::{InMemoryOutbox, Outbox};
-use scenes_catalog::{InMemoryRestylingTasks, InMemorySceneCatalog};
-use scenes_core::{RestylingTasks, SceneCatalog, SceneService, SceneStore};
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
+use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneService, SceneStore};
 use scenes_messaging::{
     CatalogueScenes, DeleteOnProjectDeleted, RestyleOnQuotationChanged, UnlinkOnDiscard,
 };
@@ -15,7 +15,7 @@ use wiring::{Context, Feature, Settling, Wired};
 pub struct Ports {
     pub store: Arc<dyn SceneStore>,
     pub catalog: Arc<dyn SceneCatalog>,
-    pub restyling_tasks: Arc<dyn RestylingTasks>,
+    pub quotation_restyling_tasks: Arc<dyn QuotationRestylingTasks>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -33,7 +33,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let restyle = RestyleOnQuotationChanged::new(
         scenes.clone(),
         Arc::new(live.clone()),
-        ports.restyling_tasks.clone(),
+        ports.quotation_restyling_tasks.clone(),
         context.publisher.clone(),
         context.clock.clone(),
     );
@@ -79,7 +79,7 @@ impl Feature for SceneFeature {
                 scenes_messaging::message_for,
             )),
             catalog: Arc::new(InMemorySceneCatalog::new()),
-            restyling_tasks: Arc::new(InMemoryRestylingTasks::new()),
+            quotation_restyling_tasks: Arc::new(InMemoryQuotationRestylingTasks::new()),
             outbox,
         }
     }
@@ -92,8 +92,9 @@ impl Feature for SceneFeature {
                     .enqueuing(context.clock.clone(), scenes_messaging::message_for),
             ),
             catalog: Arc::new(scenes_catalog::PostgresSceneCatalog::new(pool.clone())),
-            // TODO: keep the latest restyling in the database, so a restart does not forget it
-            restyling_tasks: Arc::new(InMemoryRestylingTasks::new()),
+            quotation_restyling_tasks: Arc::new(
+                scenes_catalog::PostgresQuotationRestylingTasks::new(pool.clone()),
+            ),
             outbox: Arc::new(outbox::PostgresOutbox::new(
                 pool,
                 context.publisher.clone(),
@@ -119,8 +120,9 @@ impl Feature for SceneFeature {
                     .enqueuing(context.clock.clone(), scenes_messaging::message_for),
             ),
             catalog: Arc::new(scenes_catalog::SqliteSceneCatalog::new(pool.clone())),
-            // TODO: keep the latest restyling in the database, so a restart does not forget it
-            restyling_tasks: Arc::new(InMemoryRestylingTasks::new()),
+            quotation_restyling_tasks: Arc::new(
+                scenes_catalog::SqliteQuotationRestylingTasks::new(pool.clone()),
+            ),
             outbox: Arc::new(outbox::SqliteOutbox::new(
                 pool,
                 context.publisher.clone(),

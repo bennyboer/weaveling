@@ -1,13 +1,18 @@
-use scenes_core::{ProjectLink, SceneCatalog, SceneId, SceneSummary, SceneTitle};
+use scenes_core::{
+    ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary, SceneTitle,
+};
 use time::{Duration, OffsetDateTime};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
     type Catalog: SceneCatalog;
+    type Tasks: QuotationRestylingTasks;
 
     async fn setup() -> Self;
 
     fn catalog(&self) -> &Self::Catalog;
+
+    fn tasks(&self) -> &Self::Tasks;
 
     async fn cleanup(self);
 }
@@ -224,6 +229,64 @@ pub async fn forgetting_what_was_never_remembered_is_harmless(catalog: &impl Sce
     assert!(listed(catalog, "project_1").await.is_empty());
 }
 
+async fn claimed(tasks: &impl QuotationRestylingTasks, project: &str, change: u64) -> bool {
+    tasks
+        .claim(&a_project(project), change)
+        .await
+        .expect("claiming should succeed")
+}
+
+pub async fn the_first_change_claims_the_book(tasks: &impl QuotationRestylingTasks) {
+    assert!(claimed(tasks, "project_1", 3).await);
+}
+
+pub async fn a_newer_change_takes_the_book_from_an_older_one(tasks: &impl QuotationRestylingTasks) {
+    claimed(tasks, "project_1", 3).await;
+
+    assert!(claimed(tasks, "project_1", 5).await);
+    assert!(
+        !claimed(tasks, "project_1", 3).await,
+        "the older change has lost the book for good"
+    );
+}
+
+pub async fn an_older_change_is_turned_away_and_leaves_the_newer_one_holding(
+    tasks: &impl QuotationRestylingTasks,
+) {
+    claimed(tasks, "project_1", 5).await;
+
+    assert!(!claimed(tasks, "project_1", 3).await);
+    assert!(claimed(tasks, "project_1", 5).await);
+}
+
+pub async fn the_same_change_claims_the_book_again(tasks: &impl QuotationRestylingTasks) {
+    claimed(tasks, "project_1", 5).await;
+
+    assert!(
+        claimed(tasks, "project_1", 5).await,
+        "every batch of one restyling claims the book anew"
+    );
+}
+
+pub async fn another_book_is_claimed_on_its_own(tasks: &impl QuotationRestylingTasks) {
+    claimed(tasks, "project_1", 5).await;
+
+    assert!(claimed(tasks, "project_2", 3).await);
+}
+
+macro_rules! restyling_case {
+    ($workbench:ty, $case:ident) => {
+        #[tokio::test]
+        async fn $case() {
+            use $crate::suite::Workbench;
+
+            let bench = <$workbench>::setup().await;
+            $crate::suite::$case(bench.tasks()).await;
+            bench.cleanup().await;
+        }
+    };
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -263,7 +326,15 @@ macro_rules! conformance_tests {
             $workbench,
             forgetting_what_was_never_remembered_is_harmless
         );
+        $crate::suite::restyling_case!($workbench, the_first_change_claims_the_book);
+        $crate::suite::restyling_case!($workbench, a_newer_change_takes_the_book_from_an_older_one);
+        $crate::suite::restyling_case!(
+            $workbench,
+            an_older_change_is_turned_away_and_leaves_the_newer_one_holding
+        );
+        $crate::suite::restyling_case!($workbench, the_same_change_claims_the_book_again);
+        $crate::suite::restyling_case!($workbench, another_book_is_claimed_on_its_own);
     };
 }
 
-pub(crate) use {conformance_case, conformance_tests};
+pub(crate) use {conformance_case, conformance_tests, restyling_case};
