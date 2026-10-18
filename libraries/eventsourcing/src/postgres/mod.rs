@@ -5,8 +5,6 @@ mod snapshots;
 mod writing;
 
 #[cfg(test)]
-mod announcing_tests;
-#[cfg(test)]
 mod tests;
 
 use crate::message_mapping::MessageMapping;

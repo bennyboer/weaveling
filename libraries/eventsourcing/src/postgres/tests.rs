@@ -1,20 +1,13 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
-use time::OffsetDateTime;
 
-use crate::agent::Agent;
 use crate::aggregate::AggregateId;
-use crate::event::{Event, Recorded};
-use crate::metadata::EventMetadata;
-use crate::postgres::{Codec, PostgresEventStore};
-use crate::store::{EventStore, StoreError};
-use crate::testing::Workbench;
-use crate::testing::sample::{SAMPLE, SampleEvent};
-use crate::testing::stored::{codec, message_for, nonsense};
-use crate::version::Version;
+use crate::codec::Codec;
+use crate::postgres::PostgresEventStore;
+use crate::testing::sample::{SAMPLE, SampleEvent, message_for};
+use crate::testing::stored::{codec, nonsense};
+use crate::testing::{Tables, Workbench};
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -56,301 +49,74 @@ impl Workbench for OnPostgres {
         &self.store
     }
 
+    async fn waiting(&self) -> Vec<String> {
+        sqlx::query_scalar(
+            "SELECT routing_key FROM outbox WHERE published_at IS NULL ORDER BY entry",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .expect("reading the outbox should succeed")
+    }
+
     async fn cleanup(self) {
         self.fixture.cleanup().await;
     }
 }
 
+#[async_trait]
+impl Tables for OnPostgres {
+    fn reading_with(&self, codec: Codec<SampleEvent>) -> Self::Store {
+        PostgresEventStore::new(self.pool.clone(), codec, message_for)
+    }
+
+    async fn close(&self) {
+        self.pool.close().await;
+    }
+
+    async fn lay_the_schema_down_again(&self) {
+        crate::postgres::migrations()
+            .run(&self.pool)
+            .await
+            .expect("a schema already laid down should be left alone");
+    }
+
+    async fn write_unreadable_event(&self, aggregate: &AggregateId, version: u64) {
+        sqlx::query(
+            "INSERT INTO events
+                (aggregate, kind, version, name, body, body_version, agent, occurred_at, is_snapshot)
+             VALUES ($1, $2, $3, 'CREATED', $4, 0, 'system', NOW(), false)",
+        )
+        .bind(aggregate.as_str())
+        .bind(SAMPLE.as_str())
+        .bind(version as i64)
+        .bind(nonsense())
+        .execute(&self.pool)
+        .await
+        .expect("writing a row by hand should succeed");
+    }
+
+    async fn push_versions_below_zero(&self, aggregate: &AggregateId) {
+        sqlx::query("UPDATE events SET version = -3, is_snapshot = true WHERE aggregate = $1")
+            .bind(aggregate.as_str())
+            .execute(&self.pool)
+            .await
+            .expect("editing the table by hand should succeed");
+    }
+
+    async fn columns(&self, aggregate: &AggregateId, version: u64) -> (String, i64, String) {
+        sqlx::query_as(
+            "SELECT name, body_version, agent FROM events WHERE aggregate = $1 AND version = $2",
+        )
+        .bind(aggregate.as_str())
+        .bind(version as i64)
+        .fetch_one(&self.pool)
+        .await
+        .expect("the row just written should be there")
+    }
+}
+
 crate::conformance_tests!(OnPostgres);
-
-fn at(aggregate: &AggregateId, version: u64, event: SampleEvent) -> Recorded<SampleEvent> {
-    Recorded {
-        metadata: EventMetadata {
-            aggregate: aggregate.clone(),
-            kind: SAMPLE,
-            version: Version::of(version),
-            agent: Agent::System,
-            occurred_at: OffsetDateTime::UNIX_EPOCH,
-            is_snapshot: event.is_snapshot(),
-        },
-        event,
-    }
-}
-
-fn a_creation() -> SampleEvent {
-    SampleEvent::Created {
-        title: "The Loom".to_owned(),
-        description: "A silent machine.".to_owned(),
-        kind: crate::testing::sample::SampleKind::Ordinary,
-    }
-}
-
-async fn a_started_stream(store: &PostgresEventStore<SampleEvent>, aggregate: &AggregateId) {
-    store
-        .append(
-            aggregate,
-            SAMPLE,
-            Version::ZERO,
-            &[at(aggregate, 1, a_creation())],
-        )
-        .await
-        .expect("starting a stream should succeed");
-}
-
-async fn titles_in(
-    store: &PostgresEventStore<SampleEvent>,
-    aggregate: &AggregateId,
-) -> Vec<String> {
-    store
-        .read_from(aggregate, SAMPLE, Version::ZERO)
-        .await
-        .expect("reading should succeed")
-        .into_iter()
-        .filter_map(|happened| match happened.event {
-            SampleEvent::TitleUpdated(title) => Some(title),
-            _ => None,
-        })
-        .collect()
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn two_writers_at_the_same_version_cannot_both_win() {
-    let bench = OnPostgres::setup().await;
-    let aggregate = AggregateId::from("sample_contested");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    let store = Arc::new(PostgresEventStore::new(
-        bench.pool.clone(),
-        codec(),
-        message_for,
-    ));
-    let batch = |named: &str| {
-        vec![
-            at(&aggregate, 2, SampleEvent::TitleUpdated(named.to_owned())),
-            at(
-                &aggregate,
-                3,
-                SampleEvent::DescriptionUpdated(named.to_owned()),
-            ),
-        ]
-    };
-
-    let (mine, yours) = tokio::join!(
-        {
-            let store = store.clone();
-            let aggregate = aggregate.clone();
-            let batch = batch("Mine");
-
-            async move {
-                store
-                    .append(&aggregate, SAMPLE, Version::of(1), &batch)
-                    .await
-            }
-        },
-        {
-            let store = store.clone();
-            let aggregate = aggregate.clone();
-            let batch = batch("Yours");
-
-            async move {
-                store
-                    .append(&aggregate, SAMPLE, Version::of(1), &batch)
-                    .await
-            }
-        }
-    );
-
-    assert_ne!(
-        mine.is_ok(),
-        yours.is_ok(),
-        "exactly one writer should win, got {mine:?} and {yours:?}"
-    );
-
-    let refused = mine.err().or(yours.err()).expect("one of them was refused");
-    assert!(
-        matches!(refused, StoreError::Outdated { .. }),
-        "a lost race is a stale version, not a backend failure: {refused:?}"
-    );
-    assert_eq!(
-        titles_in(bench.store(), &aggregate).await.len(),
-        1,
-        "the loser's events must not be mixed into the winner's"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_batch_that_collides_halfway_writes_none_of_itself() {
-    let bench = OnPostgres::setup().await;
-    let aggregate = AggregateId::from("sample_half");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    let refused = bench
-        .store()
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::of(1),
-            &[
-                at(
-                    &aggregate,
-                    2,
-                    SampleEvent::TitleUpdated("Second".to_owned()),
-                ),
-                at(
-                    &aggregate,
-                    1,
-                    SampleEvent::TitleUpdated("First again".to_owned()),
-                ),
-            ],
-        )
-        .await;
-
-    assert!(
-        matches!(refused, Err(StoreError::Outdated { .. })),
-        "a batch colliding with what is already written is a stale append: {refused:?}"
-    );
-    assert!(
-        titles_in(bench.store(), &aggregate).await.is_empty(),
-        "an append is all of its events or none of them"
-    );
-
-    let announced: i64 = sqlx::query_scalar("SELECT count(*) FROM outbox")
-        .fetch_one(&bench.pool)
-        .await
-        .expect("counting the outbox should succeed");
-
-    assert_eq!(
-        announced, 1,
-        "only the stream's start announced: the outbox row shares its append's transaction, so a \
-         refused append announces nothing"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_backend_that_cannot_be_reached_says_so() {
-    let bench = OnPostgres::setup().await;
-    let aggregate = AggregateId::from("sample_unreachable");
-
-    bench.pool.close().await;
-
-    let reading = bench
-        .store()
-        .read_from(&aggregate, SAMPLE, Version::ZERO)
-        .await;
-    let appending = bench
-        .store()
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::ZERO,
-            &[at(&aggregate, 1, a_creation())],
-        )
-        .await;
-
-    assert!(
-        matches!(reading, Err(StoreError::Backend { .. })),
-        "a store that cannot be reached has not gone out of date: {reading:?}"
-    );
-    assert!(
-        matches!(appending, Err(StoreError::Backend { .. })),
-        "a store that cannot be reached has not gone out of date: {appending:?}"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn an_event_written_in_a_shape_nothing_can_read_is_a_backend_failure() {
-    let bench = OnPostgres::setup().await;
-    let aggregate = AggregateId::from("sample_unreadable");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    sqlx::query(
-        "INSERT INTO events
-            (aggregate, kind, version, name, body, body_version, agent, occurred_at, is_snapshot)
-         VALUES ($1, $2, 2, 'CREATED', $3, 0, 'system', NOW(), false)",
-    )
-    .bind(aggregate.as_str())
-    .bind(SAMPLE.as_str())
-    .bind(nonsense())
-    .execute(&bench.pool)
-    .await
-    .expect("writing a row by hand should succeed");
-
-    let found = bench
-        .store()
-        .read_from(&aggregate, SAMPLE, Version::ZERO)
-        .await;
-
-    assert!(
-        matches!(found, Err(StoreError::Backend { .. })),
-        "an unreadable row should be reported, not skipped or panicked on: {found:?}"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn what_the_columns_say_matches_what_the_body_says() {
-    let bench = OnPostgres::setup().await;
-    let aggregate = AggregateId::from("sample_columns");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    let (name, shape, agent): (String, i64, String) = sqlx::query_as(
-        "SELECT name, body_version, agent FROM events WHERE aggregate = $1 AND version = 1",
-    )
-    .bind(aggregate.as_str())
-    .fetch_one(&bench.pool)
-    .await
-    .expect("the row we just wrote should be there");
-
-    assert_eq!(name, a_creation().name().as_str());
-    assert_eq!(shape as u64, a_creation().version().count());
-    assert_eq!(agent, "system");
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_codec_is_all_a_second_kind_of_event_needs() {
-    let fixture = PostgresFixture::setup().await;
-    let store: PostgresEventStore<SampleEvent> = PostgresEventStore::new(
-        ready_for("recoded", &fixture).await,
-        Codec {
-            body: |_| serde_json::json!("Deleted"),
-            event: |_| Some(SampleEvent::Deleted),
-        },
-        message_for,
-    );
-    let aggregate = AggregateId::from("sample_recoded");
-
-    store
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::ZERO,
-            &[at(&aggregate, 1, a_creation())],
-        )
-        .await
-        .expect("appending should succeed");
-
-    let found = store
-        .read_from(&aggregate, SAMPLE, Version::ZERO)
-        .await
-        .expect("reading should succeed");
-
-    assert_eq!(
-        found[0].event,
-        SampleEvent::Deleted,
-        "the SQL is written once and the shape on disk belongs to whoever supplied the codec"
-    );
-
-    fixture.cleanup().await;
-}
+crate::table_tests!(OnPostgres);
 
 async fn tables_in(pool: &PgPool, schema: &str) -> Vec<String> {
     sqlx::query_scalar::<_, String>("SELECT tablename::text FROM pg_tables WHERE schemaname = $1")
@@ -376,26 +142,6 @@ async fn the_event_store_leaves_the_usual_ledger_free_for_whoever_owns_the_datab
         !found.contains(&"_sqlx_migrations".to_owned()),
         "the default ledger belongs to the feature whose database this is, found {found:?}"
     );
-
-    fixture.cleanup().await;
-}
-
-#[tokio::test]
-async fn laying_the_schema_down_twice_changes_nothing() {
-    let fixture = PostgresFixture::setup().await;
-    let pool = ready_for("again", &fixture).await;
-
-    crate::postgres::migrations()
-        .run(&pool)
-        .await
-        .expect("a schema already laid down should be left alone");
-
-    let aggregate = AggregateId::from("sample_again");
-    a_started_stream(
-        &PostgresEventStore::new(pool.clone(), codec(), message_for),
-        &aggregate,
-    )
-    .await;
 
     fixture.cleanup().await;
 }
@@ -429,26 +175,4 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     );
 
     fixture.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_version_below_zero_is_a_backend_failure_not_a_huge_version() {
-    let bench = OnPostgres::setup().await;
-    let aggregate = AggregateId::from("sample_negative");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    sqlx::query("UPDATE events SET version = -3, is_snapshot = true WHERE aggregate = $1")
-        .bind(aggregate.as_str())
-        .execute(&bench.pool)
-        .await
-        .expect("editing the table by hand should succeed");
-
-    let found = bench.store().latest_snapshot(&aggregate, SAMPLE).await;
-
-    assert!(
-        matches!(found, Err(StoreError::Backend { .. })),
-        "-3 read as a u64 is eighteen quintillion, a version nothing could ever have written: {found:?}"
-    );
-
-    bench.cleanup().await;
 }

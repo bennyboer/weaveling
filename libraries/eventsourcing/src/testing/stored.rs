@@ -1,10 +1,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use messaging::{Message, RoutingKey};
-
 use crate::codec::Codec;
-use crate::event::{Event, Recorded};
 use crate::testing::sample::{SampleEvent, SampleKind};
 
 #[derive(Serialize, Deserialize)]
@@ -145,23 +142,6 @@ impl From<StoredKind> for SampleKind {
 
 pub(crate) fn nonsense() -> Value {
     serde_json::json!({ "WrittenByAHandFromAnotherAge": { "runes": 3 } })
-}
-
-pub(crate) fn message_for(happened: &Recorded<SampleEvent>) -> Option<Message> {
-    if !happened.event.is_publishable() {
-        return None;
-    }
-
-    let routing = format!(
-        "sample.{}",
-        happened.event.name().as_str().to_ascii_lowercase()
-    );
-
-    Some(Message::opening(
-        RoutingKey::parse(&routing).expect("an event name holds no wildcards"),
-        serde_json::json!({ "version": happened.metadata.version.count() }),
-        happened.metadata.occurred_at,
-    ))
 }
 
 #[cfg(test)]

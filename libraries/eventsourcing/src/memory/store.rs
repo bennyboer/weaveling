@@ -181,22 +181,63 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
+    use clock::SystemClock;
+    use messaging::{Message, Publisher, Undelivered};
+    use outbox::Outbox;
+
     use super::*;
     use crate::testing::Workbench;
-    use crate::testing::sample::SampleEvent;
+    use crate::testing::sample::{SampleEvent, message_for};
 
-    struct InMemory(InMemoryEventStore<SampleEvent>);
+    #[derive(Default)]
+    struct Heard(Mutex<Vec<String>>);
+
+    #[async_trait]
+    impl Publisher for Heard {
+        async fn publish(&self, message: Message) -> Result<(), Undelivered> {
+            self.0
+                .lock()
+                .expect("never poisoned")
+                .push(message.routing.to_string());
+
+            Ok(())
+        }
+    }
+
+    struct InMemory {
+        store: InMemoryEventStore<SampleEvent>,
+        outbox: Arc<InMemoryOutbox>,
+        heard: Arc<Heard>,
+    }
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemoryEventStore<SampleEvent>;
 
         async fn setup() -> Self {
-            Self(InMemoryEventStore::new())
+            let heard = Arc::new(Heard::default());
+            let outbox = Arc::new(InMemoryOutbox::new(heard.clone(), Arc::new(SystemClock)));
+
+            Self {
+                store: InMemoryEventStore::enqueuing_to(outbox.clone(), message_for),
+                outbox,
+                heard,
+            }
         }
 
         fn store(&self) -> &Self::Store {
-            &self.0
+            &self.store
+        }
+
+        async fn waiting(&self) -> Vec<String> {
+            self.outbox
+                .deliver(1_000)
+                .await
+                .expect("an outbox in memory always delivers");
+
+            self.heard.0.lock().expect("never poisoned").clone()
         }
 
         async fn cleanup(self) {}

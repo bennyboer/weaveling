@@ -1,7 +1,9 @@
 use crate::aggregate::AggregateId;
-use crate::event::Recorded;
+use crate::codec::Codec;
+use crate::event::{Event, Recorded};
 use crate::store::{EventStore, StoreError};
 use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind, recorded, stamped};
+use crate::testing::{Tables, Workbench};
 use crate::version::Version;
 
 fn a_creation() -> SampleEvent {
@@ -405,6 +407,257 @@ pub async fn appending_after_pruning_continues_the_version_count(
     );
 }
 
+fn retitled(title: &str) -> SampleEvent {
+    SampleEvent::TitleUpdated(title.to_owned())
+}
+
+async fn titles_in(store: &impl EventStore<SampleEvent>, aggregate: &AggregateId) -> Vec<String> {
+    store
+        .read_from(aggregate, SAMPLE, Version::ZERO)
+        .await
+        .expect("reading should succeed")
+        .into_iter()
+        .filter_map(|happened| match happened.event {
+            SampleEvent::TitleUpdated(title) => Some(title),
+            _ => None,
+        })
+        .collect()
+}
+
+pub async fn an_append_leaves_a_message_waiting_for_every_publishable_event(
+    bench: &impl Workbench,
+) {
+    let aggregate = AggregateId::from("sample_announced");
+
+    given_a_stream(
+        bench.store(),
+        &aggregate,
+        vec![a_creation(), retitled("Second")],
+    )
+    .await;
+
+    assert_eq!(
+        bench.waiting().await,
+        ["sample.created", "sample.title_updated"],
+        "an append enqueues, it does not publish"
+    );
+}
+
+pub async fn an_event_that_publishes_nothing_leaves_nothing_waiting(bench: &impl Workbench) {
+    let aggregate = AggregateId::from("sample_quiet");
+
+    given_a_stream(
+        bench.store(),
+        &aggregate,
+        vec![
+            a_creation(),
+            SampleEvent::Corrected("Quietly".to_owned()),
+            a_snapshot(),
+        ],
+    )
+    .await;
+
+    assert_eq!(
+        bench.waiting().await,
+        ["sample.created"],
+        "a correction and a snapshot are both unpublishable, so only the creation waits"
+    );
+}
+
+pub async fn a_refused_append_leaves_no_message_waiting(bench: &impl Workbench) {
+    let aggregate = AggregateId::from("sample_refused");
+
+    let refused = bench
+        .store()
+        .append(
+            &aggregate,
+            SAMPLE,
+            Version::of(7),
+            &[at(&aggregate, 8, a_creation())],
+        )
+        .await;
+
+    assert!(refused.is_err());
+    assert!(
+        bench.waiting().await.is_empty(),
+        "the event and its message are written together or not at all"
+    );
+}
+
+pub async fn two_writers_at_the_same_version_cannot_both_win(bench: &impl Tables) {
+    let aggregate = AggregateId::from("sample_contested");
+    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+    let batch = |named: &str| {
+        vec![
+            at(&aggregate, 2, retitled(named)),
+            at(
+                &aggregate,
+                3,
+                SampleEvent::DescriptionUpdated(named.to_owned()),
+            ),
+        ]
+    };
+    let (mine, yours) = (batch("Mine"), batch("Yours"));
+
+    let (mine, yours) = tokio::join!(
+        bench
+            .store()
+            .append(&aggregate, SAMPLE, Version::of(1), &mine),
+        bench
+            .store()
+            .append(&aggregate, SAMPLE, Version::of(1), &yours),
+    );
+
+    assert_ne!(
+        mine.is_ok(),
+        yours.is_ok(),
+        "exactly one writer should win, got {mine:?} and {yours:?}"
+    );
+    let refused = mine.err().or(yours.err()).expect("one of them was refused");
+    assert!(
+        matches!(refused, StoreError::Outdated { .. }),
+        "a lost race is a stale version, not a backend failure: {refused:?}"
+    );
+    assert_eq!(
+        titles_in(bench.store(), &aggregate).await.len(),
+        1,
+        "the loser's events must not be mixed into the winner's"
+    );
+}
+
+pub async fn a_batch_that_collides_halfway_writes_none_of_itself(bench: &impl Tables) {
+    let aggregate = AggregateId::from("sample_half");
+    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+
+    let refused = bench
+        .store()
+        .append(
+            &aggregate,
+            SAMPLE,
+            Version::of(1),
+            &[
+                at(&aggregate, 2, retitled("Second")),
+                at(&aggregate, 1, retitled("First again")),
+            ],
+        )
+        .await;
+
+    assert!(
+        matches!(refused, Err(StoreError::Outdated { .. })),
+        "a batch colliding with what is already written is a stale append: {refused:?}"
+    );
+    assert!(
+        titles_in(bench.store(), &aggregate).await.is_empty(),
+        "an append is all of its events or none of them"
+    );
+    assert_eq!(
+        bench.waiting().await,
+        ["sample.created"],
+        "only the stream's start is announced: the outbox row shares its append's transaction"
+    );
+}
+
+pub async fn a_backend_that_cannot_be_reached_says_so(bench: &impl Tables) {
+    let aggregate = AggregateId::from("sample_unreachable");
+
+    bench.close().await;
+
+    let reading = bench
+        .store()
+        .read_from(&aggregate, SAMPLE, Version::ZERO)
+        .await;
+    let appending = bench
+        .store()
+        .append(
+            &aggregate,
+            SAMPLE,
+            Version::ZERO,
+            &[at(&aggregate, 1, a_creation())],
+        )
+        .await;
+    assert!(
+        matches!(reading, Err(StoreError::Backend { .. })),
+        "a store that cannot be reached has not gone out of date: {reading:?}"
+    );
+    assert!(
+        matches!(appending, Err(StoreError::Backend { .. })),
+        "a store that cannot be reached has not gone out of date: {appending:?}"
+    );
+}
+
+pub async fn an_event_written_in_a_shape_nothing_can_read_is_a_backend_failure(
+    bench: &impl Tables,
+) {
+    let aggregate = AggregateId::from("sample_unreadable");
+    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+
+    bench.write_unreadable_event(&aggregate, 2).await;
+
+    let found = bench
+        .store()
+        .read_from(&aggregate, SAMPLE, Version::ZERO)
+        .await;
+    assert!(
+        matches!(found, Err(StoreError::Backend { .. })),
+        "an unreadable row should be reported, not skipped or panicked on: {found:?}"
+    );
+}
+
+pub async fn what_the_columns_say_matches_what_the_body_says(bench: &impl Tables) {
+    let aggregate = AggregateId::from("sample_columns");
+
+    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+
+    let (name, shape, agent) = bench.columns(&aggregate, 1).await;
+    assert_eq!(name, a_creation().name().as_str());
+    assert_eq!(shape as u64, a_creation().version().count());
+    assert_eq!(agent, "system");
+}
+
+pub async fn a_codec_is_all_a_second_kind_of_event_needs(bench: &impl Tables) {
+    let store = bench.reading_with(Codec {
+        body: |_| serde_json::json!("Deleted"),
+        event: |_| Some(SampleEvent::Deleted),
+    });
+    let aggregate = AggregateId::from("sample_recoded");
+
+    given_a_stream(&store, &aggregate, vec![a_creation()]).await;
+
+    let found = store
+        .read_from(&aggregate, SAMPLE, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(
+        found[0].event,
+        SampleEvent::Deleted,
+        "the SQL is written once and the shape on disk belongs to whoever supplied the codec"
+    );
+}
+
+pub async fn laying_the_schema_down_twice_changes_nothing(bench: &impl Tables) {
+    bench.lay_the_schema_down_again().await;
+
+    given_a_stream(
+        bench.store(),
+        &AggregateId::from("sample_again"),
+        vec![a_creation()],
+    )
+    .await;
+}
+
+pub async fn a_version_below_zero_is_a_backend_failure_not_a_huge_version(bench: &impl Tables) {
+    let aggregate = AggregateId::from("sample_negative");
+    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+
+    bench.push_versions_below_zero(&aggregate).await;
+
+    let found = bench.store().latest_snapshot(&aggregate, SAMPLE).await;
+    assert!(
+        matches!(found, Err(StoreError::Backend { .. })),
+        "-3 read as a u64 is eighteen quintillion, a version nothing could ever have written: {found:?}"
+    );
+}
+
 #[macro_export]
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -438,6 +691,52 @@ macro_rules! conformance_tests {
         $crate::conformance_case!(
             $workbench,
             appending_after_pruning_continues_the_version_count
+        );
+        $crate::bench_case!(
+            $workbench,
+            an_append_leaves_a_message_waiting_for_every_publishable_event
+        );
+        $crate::bench_case!(
+            $workbench,
+            an_event_that_publishes_nothing_leaves_nothing_waiting
+        );
+        $crate::bench_case!($workbench, a_refused_append_leaves_no_message_waiting);
+    };
+}
+
+#[macro_export]
+macro_rules! bench_case {
+    ($workbench:ty, $case:ident) => {
+        #[tokio::test(flavor = "multi_thread")]
+        async fn $case() {
+            use $crate::testing::Workbench;
+
+            let bench = <$workbench>::setup().await;
+            $crate::testing::suite::$case(&bench).await;
+            bench.cleanup().await;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! table_tests {
+    ($workbench:ty) => {
+        $crate::bench_case!($workbench, two_writers_at_the_same_version_cannot_both_win);
+        $crate::bench_case!(
+            $workbench,
+            a_batch_that_collides_halfway_writes_none_of_itself
+        );
+        $crate::bench_case!($workbench, a_backend_that_cannot_be_reached_says_so);
+        $crate::bench_case!(
+            $workbench,
+            an_event_written_in_a_shape_nothing_can_read_is_a_backend_failure
+        );
+        $crate::bench_case!($workbench, what_the_columns_say_matches_what_the_body_says);
+        $crate::bench_case!($workbench, a_codec_is_all_a_second_kind_of_event_needs);
+        $crate::bench_case!($workbench, laying_the_schema_down_twice_changes_nothing);
+        $crate::bench_case!(
+            $workbench,
+            a_version_below_zero_is_a_backend_failure_not_a_huge_version
         );
     };
 }

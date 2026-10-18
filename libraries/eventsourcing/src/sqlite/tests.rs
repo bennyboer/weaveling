@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
+
 use time::{Duration, OffsetDateTime};
 
 use crate::agent::Agent;
@@ -12,9 +13,9 @@ use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
 use crate::sqlite::SqliteEventStore;
 use crate::store::{EventStore, StoreError};
-use crate::testing::Workbench;
-use crate::testing::sample::{SAMPLE, SampleEvent};
-use crate::testing::stored::{codec, message_for, nonsense};
+use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind, message_for};
+use crate::testing::stored::{codec, nonsense};
+use crate::testing::{Tables, Workbench};
 use crate::version::Version;
 
 struct OnSqlite {
@@ -57,12 +58,86 @@ impl Workbench for OnSqlite {
         &self.store
     }
 
+    async fn waiting(&self) -> Vec<String> {
+        sqlx::query_scalar(
+            "SELECT routing_key FROM outbox WHERE published_at IS NULL ORDER BY entry",
+        )
+        .fetch_all(&self.pool)
+        .await
+        .expect("reading the outbox should succeed")
+    }
+
     async fn cleanup(self) {
         self.fixture.cleanup().await;
     }
 }
 
+#[async_trait]
+impl Tables for OnSqlite {
+    fn reading_with(&self, codec: Codec<SampleEvent>) -> Self::Store {
+        SqliteEventStore::new(self.pool.clone(), codec, message_for)
+    }
+
+    async fn close(&self) {
+        self.pool.close().await;
+    }
+
+    async fn lay_the_schema_down_again(&self) {
+        crate::sqlite::migrations()
+            .run(&self.pool)
+            .await
+            .expect("a schema already laid down should be left alone");
+    }
+
+    async fn write_unreadable_event(&self, aggregate: &AggregateId, version: u64) {
+        sqlx::query(
+            "INSERT INTO events
+                (aggregate, kind, version, name, body, body_version, agent, occurred_at, is_snapshot)
+             VALUES (?1, ?2, ?3, 'CREATED', ?4, 0, 'system', '1970-01-01T00:00:00.000000000Z', 0)",
+        )
+        .bind(aggregate.as_str())
+        .bind(SAMPLE.as_str())
+        .bind(version as i64)
+        .bind(nonsense().to_string())
+        .execute(&self.pool)
+        .await
+        .expect("writing a row by hand should succeed");
+    }
+
+    async fn push_versions_below_zero(&self, aggregate: &AggregateId) {
+        sqlx::query("UPDATE events SET version = -3, is_snapshot = 1 WHERE aggregate = ?1")
+            .bind(aggregate.as_str())
+            .execute(&self.pool)
+            .await
+            .expect("editing the file by hand should succeed");
+    }
+
+    async fn columns(&self, aggregate: &AggregateId, version: u64) -> (String, i64, String) {
+        sqlx::query_as(
+            "SELECT name, body_version, agent FROM events WHERE aggregate = ?1 AND version = ?2",
+        )
+        .bind(aggregate.as_str())
+        .bind(version as i64)
+        .fetch_one(&self.pool)
+        .await
+        .expect("the row just written should be there")
+    }
+}
+
 crate::conformance_tests!(OnSqlite);
+crate::table_tests!(OnSqlite);
+
+fn a_creation() -> SampleEvent {
+    SampleEvent::Created {
+        title: "The Loom".to_owned(),
+        description: "A silent machine.".to_owned(),
+        kind: SampleKind::Ordinary,
+    }
+}
+
+fn retitled(title: &str) -> SampleEvent {
+    SampleEvent::TitleUpdated(title.to_owned())
+}
 
 fn at(aggregate: &AggregateId, version: u64, event: SampleEvent) -> Recorded<SampleEvent> {
     Recorded {
@@ -78,18 +153,6 @@ fn at(aggregate: &AggregateId, version: u64, event: SampleEvent) -> Recorded<Sam
         },
         event,
     }
-}
-
-fn a_creation() -> SampleEvent {
-    SampleEvent::Created {
-        title: "The Loom".to_owned(),
-        description: "A silent machine.".to_owned(),
-        kind: crate::testing::sample::SampleKind::Ordinary,
-    }
-}
-
-fn retitled(title: &str) -> SampleEvent {
-    SampleEvent::TitleUpdated(title.to_owned())
 }
 
 async fn a_started_stream(store: &SqliteEventStore<SampleEvent>, aggregate: &AggregateId) {
@@ -115,13 +178,6 @@ async fn titles_in(store: &SqliteEventStore<SampleEvent>, aggregate: &AggregateI
             _ => None,
         })
         .collect()
-}
-
-async fn waiting(pool: &SqlitePool) -> Vec<String> {
-    sqlx::query_scalar("SELECT routing_key FROM outbox WHERE published_at IS NULL ORDER BY entry")
-        .fetch_all(pool)
-        .await
-        .expect("reading the outbox should succeed")
 }
 
 #[tokio::test]
@@ -151,229 +207,6 @@ async fn an_event_keeps_the_instant_it_happened_to_the_nanosecond() {
     bench.cleanup().await;
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn two_writers_at_the_same_version_cannot_both_win() {
-    let bench = OnSqlite::setup().await;
-    let aggregate = AggregateId::from("sample_contested");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    let store = Arc::new(SqliteEventStore::new(
-        bench.pool.clone(),
-        codec(),
-        message_for,
-    ));
-    let batch = |named: &str| {
-        vec![
-            at(&aggregate, 2, retitled(named)),
-            at(
-                &aggregate,
-                3,
-                SampleEvent::DescriptionUpdated(named.to_owned()),
-            ),
-        ]
-    };
-
-    let (mine, yours) = tokio::join!(
-        {
-            let store = store.clone();
-            let aggregate = aggregate.clone();
-            let batch = batch("Mine");
-
-            async move {
-                store
-                    .append(&aggregate, SAMPLE, Version::of(1), &batch)
-                    .await
-            }
-        },
-        {
-            let store = store.clone();
-            let aggregate = aggregate.clone();
-            let batch = batch("Yours");
-
-            async move {
-                store
-                    .append(&aggregate, SAMPLE, Version::of(1), &batch)
-                    .await
-            }
-        }
-    );
-
-    assert_ne!(
-        mine.is_ok(),
-        yours.is_ok(),
-        "exactly one writer should win, got {mine:?} and {yours:?}"
-    );
-    let refused = mine.err().or(yours.err()).expect("one of them was refused");
-    assert!(
-        matches!(refused, StoreError::Outdated { .. }),
-        "a lost race is a stale version, not a busy database: {refused:?}"
-    );
-    assert_eq!(
-        titles_in(bench.store(), &aggregate).await.len(),
-        1,
-        "the loser's events must not be mixed into the winner's"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_batch_that_collides_halfway_writes_none_of_itself() {
-    let bench = OnSqlite::setup().await;
-    let aggregate = AggregateId::from("sample_half");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    let refused = bench
-        .store()
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::of(1),
-            &[
-                at(&aggregate, 2, retitled("Second")),
-                at(&aggregate, 1, retitled("First again")),
-            ],
-        )
-        .await;
-
-    assert!(
-        matches!(refused, Err(StoreError::Outdated { .. })),
-        "a batch colliding with what is already written is a stale append: {refused:?}"
-    );
-    assert!(
-        titles_in(bench.store(), &aggregate).await.is_empty(),
-        "an append is all of its events or none of them"
-    );
-    assert_eq!(
-        waiting(&bench.pool).await,
-        vec!["sample.created"],
-        "only the stream's start announced: the outbox row shares its append's transaction"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_backend_that_cannot_be_reached_says_so() {
-    let bench = OnSqlite::setup().await;
-    let aggregate = AggregateId::from("sample_unreachable");
-
-    bench.pool.close().await;
-
-    let reading = bench
-        .store()
-        .read_from(&aggregate, SAMPLE, Version::ZERO)
-        .await;
-    let appending = bench
-        .store()
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::ZERO,
-            &[at(&aggregate, 1, a_creation())],
-        )
-        .await;
-
-    assert!(
-        matches!(reading, Err(StoreError::Backend { .. })),
-        "{reading:?}"
-    );
-    assert!(
-        matches!(appending, Err(StoreError::Backend { .. })),
-        "{appending:?}"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn an_event_written_in_a_shape_nothing_can_read_is_a_backend_failure() {
-    let bench = OnSqlite::setup().await;
-    let aggregate = AggregateId::from("sample_unreadable");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    sqlx::query(
-        "INSERT INTO events
-            (aggregate, kind, version, name, body, body_version, agent, occurred_at, is_snapshot)
-         VALUES (?1, ?2, 2, 'CREATED', ?3, 0, 'system', '1970-01-01T00:00:00.000000000Z', 0)",
-    )
-    .bind(aggregate.as_str())
-    .bind(SAMPLE.as_str())
-    .bind(nonsense().to_string())
-    .execute(&bench.pool)
-    .await
-    .expect("writing a row by hand should succeed");
-
-    let found = bench
-        .store()
-        .read_from(&aggregate, SAMPLE, Version::ZERO)
-        .await;
-
-    assert!(
-        matches!(found, Err(StoreError::Backend { .. })),
-        "an unreadable row should be reported, not skipped or panicked on: {found:?}"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn what_the_columns_say_matches_what_the_body_says() {
-    let bench = OnSqlite::setup().await;
-    let aggregate = AggregateId::from("sample_columns");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    let (name, shape, agent, occurred_at): (String, i64, String, String) = sqlx::query_as(
-        "SELECT name, body_version, agent, occurred_at FROM events WHERE aggregate = ?1 AND version = 1",
-    )
-    .bind(aggregate.as_str())
-    .fetch_one(&bench.pool)
-    .await
-    .expect("the row we just wrote should be there");
-
-    assert_eq!(name, a_creation().name().as_str());
-    assert_eq!(shape as u64, a_creation().version().count());
-    assert_eq!(agent, "system");
-    assert_eq!(
-        occurred_at, "2025-09-27T19:06:40.123456789Z",
-        "a file an author owns should be readable without the app"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_codec_is_all_a_second_kind_of_event_needs() {
-    let fixture = SqliteFixture::setup();
-    let store: SqliteEventStore<SampleEvent> = SqliteEventStore::new(
-        ready_for("recoded", &fixture).await,
-        Codec {
-            body: |_| serde_json::json!("Deleted"),
-            event: |_| Some(SampleEvent::Deleted),
-        },
-        message_for,
-    );
-    let aggregate = AggregateId::from("sample_recoded");
-
-    store
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::ZERO,
-            &[at(&aggregate, 1, a_creation())],
-        )
-        .await
-        .expect("appending should succeed");
-    let found = store
-        .read_from(&aggregate, SAMPLE, Version::ZERO)
-        .await
-        .expect("reading should succeed");
-
-    assert_eq!(found[0].event, SampleEvent::Deleted);
-
-    fixture.cleanup().await;
-}
-
 #[tokio::test]
 async fn the_event_store_leaves_the_usual_ledger_free_for_whoever_owns_the_file() {
     let fixture = SqliteFixture::setup();
@@ -399,25 +232,6 @@ async fn the_event_store_leaves_the_usual_ledger_free_for_whoever_owns_the_file(
 }
 
 #[tokio::test]
-async fn laying_the_schema_down_twice_changes_nothing() {
-    let fixture = SqliteFixture::setup();
-    let pool = ready_for("again", &fixture).await;
-
-    crate::sqlite::migrations()
-        .run(&pool)
-        .await
-        .expect("a schema already laid down should be left alone");
-
-    a_started_stream(
-        &SqliteEventStore::new(pool.clone(), codec(), message_for),
-        &AggregateId::from("sample_again"),
-    )
-    .await;
-
-    fixture.cleanup().await;
-}
-
-#[tokio::test]
 async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     let fixture = SqliteFixture::setup();
     let pool = ready_for("indexed", &fixture).await;
@@ -437,56 +251,6 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     );
 
     fixture.cleanup().await;
-}
-
-#[tokio::test]
-async fn an_append_leaves_a_message_waiting_for_every_publishable_event() {
-    let bench = OnSqlite::setup().await;
-    let aggregate = AggregateId::from("sample_announced");
-
-    bench
-        .store()
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::ZERO,
-            &[
-                at(&aggregate, 1, a_creation()),
-                at(&aggregate, 2, retitled("Second")),
-                at(&aggregate, 3, SampleEvent::Corrected("Quietly".to_owned())),
-            ],
-        )
-        .await
-        .expect("appending should succeed");
-
-    assert_eq!(
-        waiting(&bench.pool).await,
-        vec!["sample.created", "sample.title_updated"],
-        "a correction publishes nothing, so it leaves nothing waiting"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_refused_append_leaves_no_message_waiting() {
-    let bench = OnSqlite::setup().await;
-    let aggregate = AggregateId::from("sample_refused");
-
-    let refused = bench
-        .store()
-        .append(
-            &aggregate,
-            SAMPLE,
-            Version::of(7),
-            &[at(&aggregate, 8, a_creation())],
-        )
-        .await;
-
-    assert!(refused.is_err());
-    assert!(waiting(&bench.pool).await.is_empty());
-
-    bench.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -537,28 +301,6 @@ async fn a_writer_kept_waiting_by_another_is_told_it_is_stale_not_that_the_file_
          a writer, and SQLite says busy rather than waiting: {mine:?}"
     );
     assert_eq!(titles_in(bench.store(), &aggregate).await, vec!["Theirs"]);
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_version_below_zero_is_a_backend_failure_not_a_huge_version() {
-    let bench = OnSqlite::setup().await;
-    let aggregate = AggregateId::from("sample_negative");
-    a_started_stream(bench.store(), &aggregate).await;
-
-    sqlx::query("UPDATE events SET version = -3, is_snapshot = 1 WHERE aggregate = ?1")
-        .bind(aggregate.as_str())
-        .execute(&bench.pool)
-        .await
-        .expect("editing the file by hand should succeed");
-
-    let found = bench.store().latest_snapshot(&aggregate, SAMPLE).await;
-
-    assert!(
-        matches!(found, Err(StoreError::Backend { .. })),
-        "-3 read as a u64 is eighteen quintillion, a version nothing could ever have written: {found:?}"
-    );
 
     bench.cleanup().await;
 }
