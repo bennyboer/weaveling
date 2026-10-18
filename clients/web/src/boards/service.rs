@@ -5,7 +5,7 @@ use boards_contract::{
 use gloo_net::http::Request;
 
 use crate::boards::model::{Board, BoardId, Placement, PositionedIdea, Size, Spot};
-use crate::http::{ApiError, parsed};
+use crate::http::{ApiError, parsed, sent, sent_with};
 use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 
@@ -16,12 +16,7 @@ pub async fn open(project: &ProjectId) -> Result<Board, ApiError> {
     let payload = OpenBoardRequest {
         project: project.to_string(),
     };
-    let response = Request::post(BOARDS)
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(Request::post(BOARDS), &payload).await?;
 
     Ok(as_board(parsed(response, SUBJECT).await?))
 }
@@ -32,12 +27,7 @@ pub async fn pin(board: &BoardId, idea: &IdeaId, at: Placement) -> Result<Board,
         spot: to_spot_dto(at.spot),
         size: to_size_dto(at.size),
     };
-    let response = Request::post(&format!("{BOARDS}/{board}/ideas"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(Request::post(&format!("{BOARDS}/{board}/ideas")), &payload).await?;
 
     Ok(as_board(parsed(response, SUBJECT).await?))
 }
@@ -52,21 +42,17 @@ pub async fn reshape(
         spot: to.map(to_spot_dto),
         size: size.map(to_size_dto),
     };
-    let response = Request::patch(&format!("{BOARDS}/{board}/ideas/{idea}"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(
+        Request::patch(&format!("{BOARDS}/{board}/ideas/{idea}")),
+        &payload,
+    )
+    .await?;
 
     Ok(as_board(parsed(response, SUBJECT).await?))
 }
 
 pub async fn unpin(board: &BoardId, idea: &IdeaId) -> Result<(), ApiError> {
-    let response = Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent(Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}"))).await?;
 
     if response.ok() {
         return Ok(());

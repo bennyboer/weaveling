@@ -4,7 +4,7 @@ use scenes_contract::{
     SceneSummaryDTO,
 };
 
-use crate::http::{ApiError, checked, parsed};
+use crate::http::{ApiError, checked, parsed, sent, sent_with};
 use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::{Scene, SceneId, SceneSummary};
@@ -13,10 +13,7 @@ const SCENES: &str = "/api/scenes";
 const SUBJECT: &str = "scene";
 
 pub async fn open(id: &SceneId) -> Result<Scene, ApiError> {
-    let response = Request::get(&format!("{SCENES}/{id}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent(Request::get(&format!("{SCENES}/{id}"))).await?;
 
     Ok(as_scene(parsed(response, SUBJECT).await?))
 }
@@ -25,12 +22,7 @@ pub async fn retitle(id: &SceneId, title: &str) -> Result<Scene, ApiError> {
     let payload = RetitleSceneRequest {
         title: title.to_owned(),
     };
-    let response = Request::patch(&format!("{SCENES}/{id}"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(Request::patch(&format!("{SCENES}/{id}")), &payload).await?;
 
     Ok(as_scene(parsed(response, SUBJECT).await?))
 }
@@ -39,30 +31,19 @@ pub async fn link(id: &SceneId, idea: &IdeaId) -> Result<Scene, ApiError> {
     let payload = LinkIdeaRequest {
         idea: idea.to_string(),
     };
-    let response = Request::post(&format!("{SCENES}/{id}/ideas"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(Request::post(&format!("{SCENES}/{id}/ideas")), &payload).await?;
 
     Ok(as_scene(parsed(response, SUBJECT).await?))
 }
 
 pub async fn unlink(id: &SceneId, idea: &IdeaId) -> Result<Scene, ApiError> {
-    let response = Request::delete(&format!("{SCENES}/{id}/ideas/{idea}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent(Request::delete(&format!("{SCENES}/{id}/ideas/{idea}"))).await?;
 
     Ok(as_scene(parsed(response, SUBJECT).await?))
 }
 
 pub async fn delete(id: &SceneId) -> Result<(), ApiError> {
-    let response = Request::delete(&format!("{SCENES}/{id}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent(Request::delete(&format!("{SCENES}/{id}"))).await?;
 
     checked(response, SUBJECT).await.map(|_| ())
 }
@@ -76,10 +57,7 @@ pub async fn in_project(project: &ProjectId) -> Result<Vec<SceneSummary>, ApiErr
             Some(last) => format!("{SCENES}?project={project}&after={last}"),
             None => format!("{SCENES}?project={project}"),
         };
-        let response = Request::get(&asked)
-            .send()
-            .await
-            .map_err(|_| ApiError::Offline)?;
+        let response = sent(Request::get(&asked)).await?;
         let page: ScenePageDTO = parsed(response, SUBJECT).await?;
         listed.extend(page.scenes.into_iter().map(as_summary));
 
@@ -94,12 +72,7 @@ pub async fn create(project: &ProjectId) -> Result<Scene, ApiError> {
     let payload = CreateSceneRequest {
         project: project.to_string(),
     };
-    let response = Request::post(SCENES)
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(Request::post(SCENES), &payload).await?;
 
     Ok(as_scene(parsed(response, SUBJECT).await?))
 }

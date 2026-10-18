@@ -1,4 +1,5 @@
-use gloo_net::http::Response;
+use gloo_net::http::{RequestBuilder, Response};
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use thiserror::Error;
 
@@ -12,6 +13,22 @@ pub enum ApiError {
     Offline,
     #[error("Something unexpected went wrong. Please try again.")]
     Unexpected,
+}
+
+pub(crate) async fn sent(request: RequestBuilder) -> Result<Response, ApiError> {
+    request.send().await.map_err(|_| ApiError::Offline)
+}
+
+pub(crate) async fn sent_with(
+    request: RequestBuilder,
+    body: &impl Serialize,
+) -> Result<Response, ApiError> {
+    request
+        .json(body)
+        .map_err(|_| ApiError::Unexpected)?
+        .send()
+        .await
+        .map_err(|_| ApiError::Offline)
 }
 
 pub(crate) async fn parsed<T: DeserializeOwned>(

@@ -5,7 +5,7 @@ use outline_contract::{
     RetitleSectionRequest,
 };
 
-use crate::http::{ApiError, parsed};
+use crate::http::{ApiError, parsed, sent, sent_with};
 use crate::ideas::model::IdeaId;
 use crate::outline::model::{
     Attachment, Outline, OutlineChange, OutlineId, Section, SectionChange, SectionId,
@@ -20,12 +20,7 @@ pub async fn open(project: &ProjectId) -> Result<Outline, ApiError> {
     let payload = OpenOutlineRequest {
         project: project.to_string(),
     };
-    let response = Request::post(OUTLINES)
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(Request::post(OUTLINES), &payload).await?;
 
     Ok(as_outline(parsed(response, SUBJECT).await?))
 }
@@ -41,12 +36,11 @@ pub async fn add(
         after: after.map(|after| after.to_string()),
         title: title.to_owned(),
     };
-    let response = Request::post(&format!("{OUTLINES}/{outline}/sections"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(
+        Request::post(&format!("{OUTLINES}/{outline}/sections")),
+        &payload,
+    )
+    .await?;
     let added: AddedSectionResponse = parsed(response, SUBJECT).await?;
 
     Ok((SectionId::from(added.section), as_change(added.outline)))
@@ -60,12 +54,11 @@ pub async fn retitle(
     let payload = RetitleSectionRequest {
         title: title.to_owned(),
     };
-    let response = Request::patch(&format!("{OUTLINES}/{outline}/sections/{section}"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(
+        Request::patch(&format!("{OUTLINES}/{outline}/sections/{section}")),
+        &payload,
+    )
+    .await?;
 
     Ok(as_change(parsed(response, SUBJECT).await?))
 }
@@ -80,12 +73,11 @@ pub async fn place(
         under: under.map(|under| under.to_string()),
         after: after.map(|after| after.to_string()),
     };
-    let response = Request::put(&format!("{OUTLINES}/{outline}/sections/{section}/place"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(
+        Request::put(&format!("{OUTLINES}/{outline}/sections/{section}/place")),
+        &payload,
+    )
+    .await?;
 
     Ok(as_change(parsed(response, SUBJECT).await?))
 }
@@ -99,10 +91,10 @@ pub async fn demote(outline: &OutlineId, section: &SectionId) -> Result<OutlineC
 }
 
 pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
-    let response = Request::delete(&format!("{OUTLINES}/{outline}/sections/{section}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent(Request::delete(&format!(
+        "{OUTLINES}/{outline}/sections/{section}"
+    )))
+    .await?;
 
     Ok(as_change(parsed(response, SUBJECT).await?))
 }
@@ -118,12 +110,11 @@ pub async fn attach(
         section: to.to_string(),
         after: after.as_ref().map(to_dto),
     };
-    let response = Request::post(&format!("{OUTLINES}/{outline}/attachments"))
-        .json(&payload)
-        .map_err(|_| ApiError::Unexpected)?
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent_with(
+        Request::post(&format!("{OUTLINES}/{outline}/attachments")),
+        &payload,
+    )
+    .await?;
 
     Ok(as_change(parsed(response, SUBJECT).await?))
 }
@@ -133,10 +124,10 @@ pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), 
         Attachment::Scene(scene) => ("scenes", scene.to_string()),
         Attachment::Idea(idea) => ("ideas", idea.to_string()),
     };
-    let response = Request::delete(&format!("{OUTLINES}/{outline}/attachments/{kind}/{id}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent(Request::delete(&format!(
+        "{OUTLINES}/{outline}/attachments/{kind}/{id}"
+    )))
+    .await?;
 
     if response.ok() {
         return Ok(());
@@ -150,10 +141,10 @@ async fn urged(
     section: &SectionId,
     how: &str,
 ) -> Result<OutlineChange, ApiError> {
-    let response = Request::post(&format!("{OUTLINES}/{outline}/sections/{section}/{how}"))
-        .send()
-        .await
-        .map_err(|_| ApiError::Offline)?;
+    let response = sent(Request::post(&format!(
+        "{OUTLINES}/{outline}/sections/{section}/{how}"
+    )))
+    .await?;
 
     Ok(as_change(parsed(response, SUBJECT).await?))
 }

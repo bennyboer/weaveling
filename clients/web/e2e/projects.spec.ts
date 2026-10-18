@@ -105,6 +105,36 @@ test("a name the server rejects leaves the problem on screen", async ({
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("a project made while the server is out of reach says so", async ({
+  page,
+}) => {
+  await page.route("**/api/projects", (route) =>
+    route.request().method() === "POST" ? route.abort() : route.fallback(),
+  );
+  await titleField(page).fill("Unreachable");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+
+  await newProject(page)
+    .getByRole("button", { name: "Create project" })
+    .click();
+
+  await expect(newProject(page).getByRole("alert")).toContainText(
+    "Could not reach the server. Is it running?",
+  );
+});
+
+test("a list fetched while the server is out of reach says so", async ({
+  page,
+}) => {
+  await page.route("**/api/projects", (route) => route.abort());
+
+  await page.reload();
+
+  await expect(page.getByRole("alert")).toContainText(
+    "Could not reach the server. Is it running?",
+  );
+});
+
 test("a blank title cannot be submitted", async ({ page }) => {
   await titleField(page).fill("   ");
 
