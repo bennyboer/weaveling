@@ -3,9 +3,7 @@
     allow(dead_code, unused_imports, unused_macros)
 )]
 
-use std::sync::Mutex;
-
-use messaging::{Message, Publisher, RoutingKey, Undelivered};
+use messaging::{Message, RoutingKey};
 use scenes_core::{
     FRAGMENT, IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle,
     StoreError,
@@ -38,32 +36,6 @@ pub trait Tables: Workbench {
     async fn rows(&self) -> Vec<bool>;
 
     async fn count(&self, query: &'static str) -> i64;
-}
-
-#[derive(Default)]
-pub struct Heard {
-    messages: Mutex<Vec<Message>>,
-}
-
-#[async_trait::async_trait]
-impl Publisher for Heard {
-    async fn publish(&self, message: Message) -> Result<(), Undelivered> {
-        self.messages
-            .lock()
-            .expect("the heard messages are never poisoned")
-            .push(message);
-
-        Ok(())
-    }
-}
-
-impl Heard {
-    pub fn messages(&self) -> Vec<Message> {
-        self.messages
-            .lock()
-            .expect("the heard messages are never poisoned")
-            .clone()
-    }
 }
 
 pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {

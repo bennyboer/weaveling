@@ -3705,7 +3705,6 @@ dependencies = [
 name = "weaveling-ideas-tests"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "axum",
  "axum-test",
  "serde_json",
@@ -3872,7 +3871,6 @@ dependencies = [
 name = "weaveling-outline-tests"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "axum",
  "axum-test",
  "serde_json",

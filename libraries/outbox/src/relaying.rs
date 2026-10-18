@@ -143,43 +143,16 @@ async fn waiting(every: std::time::Duration, stopped: &mut watch::Receiver<bool>
 
 #[cfg(all(test, feature = "postgres"))]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
 
-    use async_trait::async_trait;
     use clock::SystemClock;
-    use messaging::{Message, Publisher, RoutingKey, Undelivered};
+    use messaging::{FakePublisher, Message, RoutingKey};
     use sqlx::PgPool;
     use test_harness::PostgresFixture;
 
     use super::*;
     use crate::outbox::Origin;
     use crate::postgres::{PostgresOutbox, enqueue};
-
-    #[derive(Default)]
-    struct Overheard {
-        published: Mutex<Vec<Message>>,
-    }
-
-    #[async_trait]
-    impl Publisher for Overheard {
-        async fn publish(&self, message: Message) -> Result<(), Undelivered> {
-            self.published
-                .lock()
-                .expect("published lock poisoned")
-                .push(message);
-
-            Ok(())
-        }
-    }
-
-    impl Overheard {
-        fn how_many(&self) -> usize {
-            self.published
-                .lock()
-                .expect("published lock poisoned")
-                .len()
-        }
-    }
 
     fn briskly() -> Cadence {
         Cadence {
@@ -232,7 +205,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let heard = Arc::new(Overheard::default());
+        let heard = Arc::new(FakePublisher::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
                 pool.clone(),
@@ -245,7 +218,7 @@ mod tests {
         a_waiting_message(&pool).await;
 
         assert!(
-            until(|| heard.how_many() == 1).await,
+            until(|| heard.heard().len() == 1).await,
             "nobody called deliver, so the task has to have done it itself"
         );
 
@@ -262,7 +235,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let heard = Arc::new(Overheard::default());
+        let heard = Arc::new(FakePublisher::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
                 pool.clone(),
@@ -273,14 +246,14 @@ mod tests {
         );
 
         a_waiting_message(&pool).await;
-        assert!(until(|| heard.how_many() == 1).await);
+        assert!(until(|| heard.heard().len() == 1).await);
 
         relay.stop().await;
         a_waiting_message(&pool).await;
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
         assert_eq!(
-            heard.how_many(),
+            heard.heard().len(),
             1,
             "a stopped relay must let go of the database, or shutdown would never finish"
         );
@@ -317,7 +290,7 @@ mod tests {
 
         let outbox = PostgresOutbox::new(
             pool.clone(),
-            Arc::new(Overheard::default()),
+            Arc::new(FakePublisher::default()),
             Arc::new(SystemClock),
         );
         let (_stopping, mut stopped) = watch::channel(false);
@@ -365,7 +338,7 @@ mod tests {
 
         let outbox = PostgresOutbox::new(
             pool.clone(),
-            Arc::new(Overheard::default()),
+            Arc::new(FakePublisher::default()),
             Arc::new(SystemClock),
         );
         let (stopping, mut stopped) = watch::channel(false);
@@ -400,7 +373,7 @@ mod tests {
 
         let outbox = PostgresOutbox::new(
             pool.clone(),
-            Arc::new(Overheard::default()),
+            Arc::new(FakePublisher::default()),
             Arc::new(SystemClock),
         );
         let (_stopping, mut stopped) = watch::channel(false);
@@ -445,7 +418,7 @@ mod tests {
             .await
             .expect("the schema should lay down");
 
-        let heard = Arc::new(Overheard::default());
+        let heard = Arc::new(FakePublisher::default());
         let relay = RelayTask::started(
             Arc::new(PostgresOutbox::new(
                 pool.clone(),
@@ -459,7 +432,7 @@ mod tests {
         a_waiting_message(&pool).await;
 
         assert!(
-            until(|| heard.how_many() == 1).await,
+            until(|| heard.heard().len() == 1).await,
             "polling is five minutes away, so only the notification can have woken it"
         );
 

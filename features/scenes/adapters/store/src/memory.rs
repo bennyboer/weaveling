@@ -245,16 +245,16 @@ impl SceneStore for InMemorySceneStore {
 #[cfg(test)]
 mod tests {
     use clock::FixedClock;
-    use messaging::Message;
+    use messaging::{FakePublisher, Message};
     use outbox::Outbox;
 
     use super::*;
-    use crate::suite::{Heard, Workbench, at, message_for};
+    use crate::suite::{Workbench, at, message_for};
 
     struct InMemory {
         store: InMemorySceneStore,
         outbox: Arc<InMemoryOutbox>,
-        heard: Arc<Heard>,
+        heard: Arc<FakePublisher>,
     }
 
     #[async_trait]
@@ -263,7 +263,7 @@ mod tests {
 
         async fn setup() -> Self {
             let clock = Arc::new(FixedClock::new(at(2_000)));
-            let heard = Arc::new(Heard::default());
+            let heard = Arc::new(FakePublisher::default());
             let outbox = Arc::new(InMemoryOutbox::new(heard.clone(), clock.clone()));
 
             Self {
@@ -283,7 +283,7 @@ mod tests {
                 .await
                 .expect("the in-memory outbox always delivers");
 
-            self.heard.messages()
+            self.heard.heard()
         }
 
         async fn cleanup(self) {}

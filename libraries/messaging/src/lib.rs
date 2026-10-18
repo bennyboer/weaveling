@@ -1,6 +1,7 @@
 mod consuming;
 mod deliveries;
 mod delivering;
+mod fake;
 mod in_process;
 mod listening;
 mod message;
@@ -19,6 +20,7 @@ pub use deliveries::InMemoryDeliveries;
 pub use delivering::{
     ATTEMPTS, BACKOFF, CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued, again_after,
 };
+pub use fake::FakePublisher;
 pub use in_process::InProcessDispatcher;
 pub use listening::{
     Delivery, Failure, Handler, InvalidListenerName, Listener, ListenerName, NotHandled,

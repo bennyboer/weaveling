@@ -19,6 +19,8 @@ A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscrip
 
 **A listener says what its refusal costs the author.** `WHEN_REFUSED` has no default, so a listener cannot be written without a plain sentence — "A change to an idea did not reach the list of ideas." — and the sentence sits beside the code it describes rather than in a list somewhere that goes stale. The dispatcher answers it by listener name, and `/api/service/refusals` sends it along; a dead letter whose listener is no longer wired gets none, and the client says something general instead.
 
+**`FakePublisher` stands in for a transport in tests.** It keeps what it is handed, and refuses everything once told to, so a test can read what was published or make a relay retry. It is plain `pub` for the reason `clock::FixedClock` is, since `cfg(test)` does not cross crate boundaries, and tests in seven crates had each written their own.
+
 **A listener's name is its queue name**, so two listeners may not share one — `listen` asserts against it, because a duplicate would quietly eat the other's messages and that is a wiring fault worth failing at startup.
 
 **The consumer is woken, not polled.** `enqueue` notifies — a `tokio::sync::Notify` in memory and on SQLite, `pg_notify` on PostgreSQL — so a new message is taken at once and the 200ms look is a backstop for deliveries that became due again on their own. Without it the retry curve would be decorative: a delivery re-due in 200ms would still wait for the next tick.

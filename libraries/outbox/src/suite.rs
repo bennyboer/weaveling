@@ -1,55 +1,13 @@
 #![cfg_attr(not(any(feature = "postgres", feature = "sqlite")), allow(dead_code))]
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use clock::FixedClock;
-use messaging::{Message, MessageId, Publisher, RoutingKey, Undelivered};
+use messaging::{FakePublisher, Message, MessageId, RoutingKey};
 use time::{Duration, OffsetDateTime};
 
 use crate::outbox::{CLAIM_FOR, Delivered, KEPT_FOR, Origin, Outbox};
-
-#[derive(Default)]
-pub struct Switchboard {
-    heard: Mutex<Vec<Message>>,
-    refusing: AtomicBool,
-}
-
-#[async_trait]
-impl Publisher for Switchboard {
-    async fn publish(&self, message: Message) -> Result<(), Undelivered> {
-        if self.refusing.load(Ordering::SeqCst) {
-            return Err(Undelivered {
-                routing: message.routing,
-                because: "the broker is not listening".into(),
-            });
-        }
-        self.heard
-            .lock()
-            .expect("the switchboard is never poisoned")
-            .push(message);
-
-        Ok(())
-    }
-}
-
-impl Switchboard {
-    pub fn refusing(&self, refusing: bool) {
-        self.refusing.store(refusing, Ordering::SeqCst);
-    }
-
-    pub fn heard(&self) -> Vec<Message> {
-        self.heard
-            .lock()
-            .expect("the switchboard is never poisoned")
-            .clone()
-    }
-
-    pub fn ids_heard(&self) -> Vec<MessageId> {
-        self.heard().iter().map(|message| message.id).collect()
-    }
-}
 
 pub enum Then {
     Commit,
@@ -60,7 +18,7 @@ pub enum Then {
 pub trait Workbench: Sized {
     type Outbox: Outbox;
 
-    async fn setup(publisher: Arc<Switchboard>, clock: Arc<FixedClock>) -> Self;
+    async fn setup(publisher: Arc<FakePublisher>, clock: Arc<FixedClock>) -> Self;
 
     fn outbox(&self) -> &Self::Outbox;
 
@@ -95,19 +53,19 @@ pub fn from_a_scene() -> Origin<'static> {
 
 pub struct Bench<W> {
     pub workbench: W,
-    pub heard: Arc<Switchboard>,
+    pub publisher: Arc<FakePublisher>,
     pub clock: Arc<FixedClock>,
 }
 
 impl<W: Workbench> Bench<W> {
     pub async fn setup() -> Self {
-        let heard = Arc::new(Switchboard::default());
+        let publisher = Arc::new(FakePublisher::default());
         let clock = Arc::new(FixedClock::new(at(2_000)));
-        let workbench = W::setup(heard.clone(), clock.clone()).await;
+        let workbench = W::setup(publisher.clone(), clock.clone()).await;
 
         Self {
             workbench,
-            heard,
+            publisher,
             clock,
         }
     }
@@ -148,6 +106,14 @@ impl<W: Workbench> Bench<W> {
         self.workbench.published().await.len()
     }
 
+    pub fn ids_heard(&self) -> Vec<MessageId> {
+        self.publisher
+            .heard()
+            .iter()
+            .map(|message| message.id)
+            .collect()
+    }
+
     pub async fn cleanup(self) {
         self.workbench.cleanup().await;
     }
@@ -164,7 +130,7 @@ pub async fn the_relay_publishes_what_is_waiting_and_marks_it<W: Workbench>() {
     assert_eq!(bench.deliver(10).await, delivered(1, 0));
 
     assert_eq!(
-        bench.heard.ids_heard(),
+        bench.ids_heard(),
         written,
         "the relay publishes the message it was handed, id and all"
     );
@@ -183,14 +149,14 @@ pub async fn the_relay_leaves_nothing_to_do_the_second_time<W: Workbench>() {
 
     assert_eq!(bench.deliver(10).await, delivered(0, 0));
 
-    assert_eq!(bench.heard.ids_heard().len(), 1);
+    assert_eq!(bench.ids_heard().len(), 1);
     bench.cleanup().await;
 }
 
 pub async fn a_message_the_broker_refuses_stays_waiting<W: Workbench>() {
     let bench = Bench::<W>::setup().await;
     bench.waiting(1).await;
-    bench.heard.refusing(true);
+    bench.publisher.refusing(true);
 
     assert_eq!(
         bench.deliver(10).await,
@@ -209,17 +175,17 @@ pub async fn a_message_the_broker_refuses_stays_waiting<W: Workbench>() {
 pub async fn a_retried_message_keeps_the_id_it_was_written_with<W: Workbench>() {
     let bench = Bench::<W>::setup().await;
     let written = bench.waiting(1).await;
-    bench.heard.refusing(true);
+    bench.publisher.refusing(true);
     bench.deliver(10).await;
 
-    bench.heard.refusing(false);
+    bench.publisher.refusing(false);
     bench
         .clock
         .set(at(2_000) + CLAIM_FOR + Duration::seconds(1));
     bench.deliver(10).await;
 
     assert_eq!(
-        bench.heard.ids_heard(),
+        bench.ids_heard(),
         written,
         "a retry must not mint a new id, or the far end cannot recognise the redelivery"
     );
@@ -229,9 +195,9 @@ pub async fn a_retried_message_keeps_the_id_it_was_written_with<W: Workbench>() 
 pub async fn a_claimed_message_is_left_alone_until_the_claim_runs_out<W: Workbench>() {
     let bench = Bench::<W>::setup().await;
     bench.waiting(1).await;
-    bench.heard.refusing(true);
+    bench.publisher.refusing(true);
     bench.deliver(10).await;
-    bench.heard.refusing(false);
+    bench.publisher.refusing(false);
 
     assert_eq!(
         bench.deliver(10).await,
@@ -328,7 +294,7 @@ pub async fn messages_are_published_in_the_order_they_were_written<W: Workbench>
     bench.deliver(10).await;
 
     assert_eq!(
-        bench.heard.ids_heard(),
+        bench.ids_heard(),
         written,
         "a detach overtaking the attach it undoes would leave a read model wrong for good"
     );
@@ -348,7 +314,7 @@ pub async fn a_message_enqueued_beside_a_write_is_relayed_whole_once_that_write_
     bench.deliver(10).await;
 
     assert_eq!(
-        bench.heard.heard(),
+        bench.publisher.heard(),
         [message],
         "a writer that is not event-sourced gets the same relay, id and all"
     );

@@ -2,20 +2,20 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clock::FixedClock;
-use messaging::Message;
+use messaging::{FakePublisher, Message};
 use outbox::{Outbox, PostgresOutbox};
 use scenes_core::{SceneId, StoreError};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
 use crate::postgres::{PostgresSceneStore, migrations};
-use crate::suite::{Heard, Tables, Workbench, at, message_for};
+use crate::suite::{Tables, Workbench, at, message_for};
 
 struct OnPostgres {
     fixture: PostgresFixture,
     pool: PgPool,
     store: PostgresSceneStore,
-    heard: Arc<Heard>,
+    heard: Arc<FakePublisher>,
 }
 
 struct Compacting(OnPostgres);
@@ -28,13 +28,13 @@ fn enqueuing(store: PostgresSceneStore) -> PostgresSceneStore {
     store.enqueuing(a_clock(), message_for)
 }
 
-async fn relayed(pool: &PgPool, heard: &Arc<Heard>) -> Vec<Message> {
+async fn relayed(pool: &PgPool, heard: &Arc<FakePublisher>) -> Vec<Message> {
     PostgresOutbox::new(pool.clone(), heard.clone(), a_clock())
         .deliver(100)
         .await
         .expect("the outbox should deliver");
 
-    heard.messages()
+    heard.heard()
 }
 
 async fn a_migrated_schema() -> (PostgresFixture, PgPool) {
@@ -63,7 +63,7 @@ impl Workbench for OnPostgres {
             fixture,
             store: enqueuing(PostgresSceneStore::new(pool.clone())),
             pool,
-            heard: Arc::new(Heard::default()),
+            heard: Arc::new(FakePublisher::default()),
         }
     }
 
@@ -91,7 +91,7 @@ impl Workbench for Compacting {
             fixture,
             store: enqueuing(PostgresSceneStore::compacting_after(pool.clone(), 1)),
             pool,
-            heard: Arc::new(Heard::default()),
+            heard: Arc::new(FakePublisher::default()),
         })
     }
 

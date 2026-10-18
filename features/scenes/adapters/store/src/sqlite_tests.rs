@@ -2,20 +2,20 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clock::FixedClock;
-use messaging::Message;
+use messaging::{FakePublisher, Message};
 use outbox::{Outbox, SqliteOutbox};
 use scenes_core::{SceneId, StoreError};
 use sqlx::{Row, SqlitePool};
 use test_harness::SqliteFixture;
 
 use crate::sqlite::{SqliteSceneStore, migrations};
-use crate::suite::{Heard, Tables, Workbench, at, message_for};
+use crate::suite::{Tables, Workbench, at, message_for};
 
 struct OnSqlite {
     fixture: SqliteFixture,
     pool: SqlitePool,
     store: SqliteSceneStore,
-    heard: Arc<Heard>,
+    heard: Arc<FakePublisher>,
 }
 
 struct Compacting(OnSqlite);
@@ -28,13 +28,13 @@ fn enqueuing(store: SqliteSceneStore) -> SqliteSceneStore {
     store.enqueuing(a_clock(), message_for)
 }
 
-async fn relayed(pool: &SqlitePool, heard: &Arc<Heard>) -> Vec<Message> {
+async fn relayed(pool: &SqlitePool, heard: &Arc<FakePublisher>) -> Vec<Message> {
     SqliteOutbox::new(pool.clone(), heard.clone(), a_clock())
         .deliver(100)
         .await
         .expect("the outbox should deliver");
 
-    heard.messages()
+    heard.heard()
 }
 
 async fn a_migrated_schema() -> (SqliteFixture, SqlitePool) {
@@ -63,7 +63,7 @@ impl Workbench for OnSqlite {
             fixture,
             store: enqueuing(SqliteSceneStore::new(pool.clone())),
             pool,
-            heard: Arc::new(Heard::default()),
+            heard: Arc::new(FakePublisher::default()),
         }
     }
 
@@ -91,7 +91,7 @@ impl Workbench for Compacting {
             fixture,
             store: enqueuing(SqliteSceneStore::compacting_after(pool.clone(), 1)),
             pool,
-            heard: Arc::new(Heard::default()),
+            heard: Arc::new(FakePublisher::default()),
         })
     }
 

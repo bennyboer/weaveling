@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clock::FixedClock;
-use messaging::Message;
+use messaging::{FakePublisher, Message};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use time::OffsetDateTime;
 
 use crate::postgres::{PostgresOutbox, enqueue};
-use crate::suite::{Bench, Switchboard, Then, Workbench, from_a_scene};
+use crate::suite::{Bench, Then, Workbench, from_a_scene};
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -20,7 +20,7 @@ struct OnPostgres {
 impl Workbench for OnPostgres {
     type Outbox = PostgresOutbox;
 
-    async fn setup(publisher: Arc<Switchboard>, clock: Arc<FixedClock>) -> Self {
+    async fn setup(publisher: Arc<FakePublisher>, clock: Arc<FixedClock>) -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("outbox").await;
         crate::postgres::migrations()

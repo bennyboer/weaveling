@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use clock::FixedClock;
 use clock::text;
-use messaging::Message;
+use messaging::{FakePublisher, Message};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 use time::OffsetDateTime;
@@ -11,7 +11,7 @@ use time::OffsetDateTime;
 use crate::outbox::Outbox;
 use crate::relaying::{Cadence, RelayTask};
 use crate::sqlite::{SqliteOutbox, enqueue};
-use crate::suite::{Bench, Switchboard, Then, Workbench, a_link_message, from_a_scene};
+use crate::suite::{Bench, Then, Workbench, a_link_message, from_a_scene};
 
 struct OnSqlite {
     fixture: SqliteFixture,
@@ -23,7 +23,7 @@ struct OnSqlite {
 impl Workbench for OnSqlite {
     type Outbox = SqliteOutbox;
 
-    async fn setup(publisher: Arc<Switchboard>, clock: Arc<FixedClock>) -> Self {
+    async fn setup(publisher: Arc<FakePublisher>, clock: Arc<FixedClock>) -> Self {
         let fixture = SqliteFixture::setup();
         let pool = fixture.create_database("outbox").await;
         crate::sqlite::migrations()
@@ -133,7 +133,7 @@ async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
         .expect("delivering should succeed");
 
     assert_eq!(
-        bench.heard.ids_heard(),
+        bench.ids_heard(),
         [message.id],
         "the bell rings inside the writer's transaction, so the relay's claim waits for the \
          write lock and sees the message once it commits"
@@ -157,7 +157,7 @@ async fn a_started_relay_delivers_by_polling_alone() {
 
     let mut delivered = false;
     for _ in 0..500 {
-        if bench.heard.ids_heard().len() == 2 {
+        if bench.ids_heard().len() == 2 {
             delivered = true;
             break;
         }

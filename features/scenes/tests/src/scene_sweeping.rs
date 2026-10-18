@@ -1,7 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use clock::FixedClock;
-use messaging::{Listener, Message, Publisher, RoutingKey, Undelivered};
+use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use scenes_core::{SceneId, SceneService};
@@ -13,26 +13,6 @@ use time::{Duration, OffsetDateTime};
 const A_PROJECT: &str = "project_1";
 const ANOTHER_PROJECT: &str = "project_2";
 
-#[derive(Default)]
-struct Overheard {
-    heard: Mutex<Vec<Message>>,
-}
-
-#[async_trait::async_trait]
-impl Publisher for Overheard {
-    async fn publish(&self, message: Message) -> Result<(), Undelivered> {
-        self.heard.lock().expect("lock poisoned").push(message);
-
-        Ok(())
-    }
-}
-
-impl Overheard {
-    fn what_it_heard(&self) -> Vec<Message> {
-        self.heard.lock().expect("lock poisoned").clone()
-    }
-}
-
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
@@ -40,12 +20,12 @@ fn at(seconds: i64) -> OffsetDateTime {
 struct Wired {
     sweep: DeleteOnProjectDeleted,
     scenes: SceneService,
-    overheard: Arc<Overheard>,
+    overheard: Arc<FakePublisher>,
 }
 
 fn a_workbench(at_most: usize) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_000)));
-    let overheard = Arc::new(Overheard::default());
+    let overheard = Arc::new(FakePublisher::default());
     let scenes = SceneService::new(Arc::new(InMemorySceneStore::new()), clock.clone());
 
     Wired {
@@ -83,7 +63,7 @@ impl Wired {
 
     fn carried_on(&self) -> Vec<Message> {
         self.overheard
-            .what_it_heard()
+            .heard()
             .into_iter()
             .filter(|message| message.routing.to_string() == MORE_TO_SWEEP)
             .collect()

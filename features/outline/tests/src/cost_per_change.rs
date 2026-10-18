@@ -1,11 +1,10 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use async_trait::async_trait;
 use axum_test::TestServer;
 use clock::{Clock, SystemClock};
 use eventsourcing::{Agent, AggregateId, EventStore};
-use messaging::{Listener, Message, Publisher, Undelivered};
+use messaging::{FakePublisher, Listener};
 use outbox::Outbox;
 use outline_contract::{AttachRequest, AttachmentDTO};
 use outline_core::{
@@ -20,35 +19,12 @@ const SAMPLES: usize = 9;
 const SPAN: usize = 100;
 const CHAPTER: usize = 50;
 
-#[derive(Default)]
-struct Overheard(Mutex<Vec<Message>>);
-
-#[async_trait]
-impl Publisher for Overheard {
-    async fn publish(&self, message: Message) -> Result<(), Undelivered> {
-        self.0.lock().expect("never poisoned").push(message);
-
-        Ok(())
-    }
-}
-
-impl Overheard {
-    fn last(&self) -> Message {
-        self.0
-            .lock()
-            .expect("never poisoned")
-            .last()
-            .cloned()
-            .expect("something was published")
-    }
-}
-
 struct Bench {
     outlines: OutlineService,
     events: Arc<dyn EventStore<OutlineEvent>>,
     catalog: Arc<dyn OutlineCatalog>,
     outbox: Arc<dyn Outbox>,
-    heard: Arc<Overheard>,
+    heard: Arc<FakePublisher>,
     indexer: Arc<dyn Listener>,
     server: TestServer,
     outline: OutlineId,
@@ -65,7 +41,7 @@ fn ms(taken: Duration) -> String {
     format!("{:.1}", taken.as_secs_f64() * 1_000.0)
 }
 
-fn telling(heard: &Arc<Overheard>) -> Context {
+fn telling(heard: &Arc<FakePublisher>) -> Context {
     Context {
         clock: Arc::new(SystemClock) as Arc<dyn Clock>,
         publisher: heard.clone(),
@@ -80,7 +56,7 @@ async fn timed<T>(work: impl IntoFuture<Output = T>) -> (T, Duration) {
 }
 
 impl Bench {
-    async fn on(ports: Ports, heard: Arc<Overheard>) -> Self {
+    async fn on(ports: Ports, heard: Arc<FakePublisher>) -> Self {
         let context = telling(&heard);
         let wired = outline_wiring::wire(&ports, &context);
         let outlines = outline_wiring::service(&ports, &context);
@@ -218,7 +194,12 @@ impl Bench {
             answering.push(taken);
 
             self.outbox.deliver(1_000).await.expect("delivering works");
-            let attached = self.heard.last();
+            let attached = self
+                .heard
+                .heard()
+                .last()
+                .cloned()
+                .expect("something was published");
             let (indexed, taken) = timed(self.indexer.handle(&attached)).await;
             indexed.expect("indexing should succeed");
             indexing.push(taken);
@@ -249,7 +230,7 @@ impl Bench {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "a measurement, run on purpose: cargo test -p weaveling-outline-tests --release cost_per_change -- --ignored --nocapture"]
 async fn cost_per_change() {
-    let heard = Arc::new(Overheard::default());
+    let heard = Arc::new(FakePublisher::default());
     let ports = OutlineFeature::in_memory(&telling(&heard));
     Bench::on(ports, heard).await.report("memory").await;
 
@@ -258,7 +239,7 @@ async fn cost_per_change() {
     for schema in OutlineFeature::sqlite_schema() {
         schema.run(&pool).await.expect("the schema lays down");
     }
-    let heard = Arc::new(Overheard::default());
+    let heard = Arc::new(FakePublisher::default());
     let ports =
         OutlineFeature::on_sqlite(pool, &telling(&heard)).expect("the outline wires on SQLite");
     Bench::on(ports, heard).await.report("sqlite").await;

@@ -151,11 +151,11 @@ mod tests {
 
     use async_trait::async_trait;
     use clock::FixedClock;
-    use messaging::Message;
+    use messaging::{FakePublisher, Message};
     use time::OffsetDateTime;
 
     use super::InMemoryOutbox;
-    use crate::suite::{Switchboard, Then, Workbench};
+    use crate::suite::{Then, Workbench};
 
     struct InMemory(InMemoryOutbox);
 
@@ -163,7 +163,7 @@ mod tests {
     impl Workbench for InMemory {
         type Outbox = InMemoryOutbox;
 
-        async fn setup(publisher: Arc<Switchboard>, clock: Arc<FixedClock>) -> Self {
+        async fn setup(publisher: Arc<FakePublisher>, clock: Arc<FixedClock>) -> Self {
             Self(InMemoryOutbox::new(publisher, clock))
         }
 

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore, Version};
@@ -6,7 +6,7 @@ use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use ideas_core::{IdeaCatalog, IdeaId, IdeaService, IdeaSummary, IdeaTitle, ProjectLink};
 use ideas_messaging::{AT_MOST, DiscardOnProjectDeleted};
-use messaging::{Listener, Message, Publisher, RoutingKey, Undelivered};
+use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -14,26 +14,6 @@ use time::{Duration, OffsetDateTime};
 use crate::wiring::wired;
 
 const A_PROJECT: &str = "project_1";
-
-#[derive(Default)]
-struct Overheard {
-    heard: Mutex<Vec<Message>>,
-}
-
-#[async_trait::async_trait]
-impl Publisher for Overheard {
-    async fn publish(&self, message: Message) -> Result<(), Undelivered> {
-        self.heard.lock().expect("lock poisoned").push(message);
-
-        Ok(())
-    }
-}
-
-impl Overheard {
-    fn what_it_heard(&self) -> Vec<Message> {
-        self.heard.lock().expect("lock poisoned").clone()
-    }
-}
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -43,13 +23,13 @@ struct Wired {
     sweep: DiscardOnProjectDeleted,
     ideas: IdeaService,
     catalog: Arc<InMemoryIdeaCatalog>,
-    overheard: Arc<Overheard>,
+    overheard: Arc<FakePublisher>,
 }
 
 fn a_workbench(at_most: usize) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_000)));
     let catalog = Arc::new(InMemoryIdeaCatalog::new());
-    let overheard = Arc::new(Overheard::default());
+    let overheard = Arc::new(FakePublisher::default());
     let ideas = IdeaService::new(
         Arc::new(InMemoryEventStore::new()),
         catalog.clone(),
@@ -107,7 +87,7 @@ impl Wired {
 
     fn carried_on(&self) -> Vec<Message> {
         self.overheard
-            .what_it_heard()
+            .heard()
             .into_iter()
             .filter(|message| message.routing.to_string() == MORE_TO_SWEEP)
             .collect()
