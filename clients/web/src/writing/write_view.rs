@@ -580,22 +580,7 @@ fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {
 
 fn scene_slot(section: Option<SectionId>, scene: SceneId, state: WriteViewState) -> impl IntoView {
     let place: NodeRef<Div> = NodeRef::new();
-    let near = Memo::new({
-        let scene = scene.clone();
-
-        move |_| state.viewport.is_near(&scene)
-    });
-
-    Effect::new(move || {
-        if let Some(watched) = place.get() {
-            state.viewport.watch(&watched);
-        }
-    });
-    on_cleanup(move || {
-        if let Some(watched) = place.get_untracked() {
-            state.viewport.stop_watching(&watched);
-        }
-    });
+    let near = state.viewport.watched(scene.clone(), place);
 
     html::div()
         .class("scene-slot")

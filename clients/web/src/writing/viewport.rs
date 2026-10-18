@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use js_sys::Array;
+use leptos::html::Div;
 use leptos::prelude::*;
 use web_sys::{Element, IntersectionObserverEntry};
 
-use crate::nearness::{KEPT, NEAR, Watching, entries_placed_by, observing};
+use crate::nearness::{Nearness, entries_placed_by};
 use crate::scenes::model::SceneId;
 use crate::writing::saving::Saving;
 
@@ -12,13 +13,11 @@ pub const SCENE_PLACE: &str = "data-place-of";
 
 #[derive(Clone, Copy)]
 pub struct Viewport {
-    owner: StoredValue<Option<Owner>, LocalStorage>,
-    near: StoredValue<HashMap<SceneId, RwSignal<bool>>>,
+    nearness: Nearness<SceneId>,
     heights: StoredValue<HashMap<SceneId, f64>>,
     leaving: StoredValue<HashSet<SceneId>>,
     landing: StoredValue<HashSet<SceneId>>,
     saving: Saving,
-    watching: StoredValue<Vec<Watching>, LocalStorage>,
 }
 
 fn entries_of(entries: Array) -> Vec<(SceneId, IntersectionObserverEntry)> {
@@ -31,84 +30,42 @@ fn entries_of(entries: Array) -> Vec<(SceneId, IntersectionObserverEntry)> {
 impl Viewport {
     pub fn around_the_window(saving: Saving) -> Self {
         let viewport = Self {
-            owner: StoredValue::new_local(Owner::current()),
-            near: StoredValue::new(HashMap::new()),
+            nearness: Nearness::around_the_window(),
             heights: StoredValue::new(HashMap::new()),
             leaving: StoredValue::new(HashSet::new()),
             landing: StoredValue::new(HashSet::new()),
             saving,
-            watching: StoredValue::new_local(Vec::new()),
         };
 
-        let coming_near = observing(NEAR, move |entries| {
-            for (scene, entry) in entries_of(entries) {
-                if entry.is_intersecting() {
-                    _ = viewport
-                        .landing
-                        .try_update_value(|landing| landing.remove(&scene));
-                    viewport.bring_near(scene);
+        viewport.nearness.observing(
+            move |entries| {
+                for (scene, entry) in entries_of(entries) {
+                    if entry.is_intersecting() {
+                        _ = viewport
+                            .landing
+                            .try_update_value(|landing| landing.remove(&scene));
+                        viewport.bring_near(scene);
+                    }
                 }
-            }
-        });
-        let going_far = observing(KEPT, move |entries| {
-            for (scene, entry) in entries_of(entries) {
-                if !entry.is_intersecting() {
-                    let height = entry.bounding_client_rect().height();
-                    viewport.went_far(scene, &entry.target(), height);
+            },
+            move |entries| {
+                for (scene, entry) in entries_of(entries) {
+                    if !entry.is_intersecting() {
+                        let height = entry.bounding_client_rect().height();
+                        viewport.went_far(scene, &entry.target(), height);
+                    }
                 }
-            }
-        });
-        viewport
-            .watching
-            .set_value(coming_near.into_iter().chain(going_far).collect());
+            },
+        );
 
         viewport
-    }
-
-    fn signal_of(self, scene: &SceneId) -> RwSignal<bool> {
-        if let Some(near) = self.near.with_value(|near| near.get(scene).copied()) {
-            return near;
-        }
-
-        let made = self.owner.with_value(|owner| match owner {
-            Some(owner) => owner.with(|| RwSignal::new(false)),
-            None => RwSignal::new(false),
-        });
-        self.near
-            .update_value(|near| _ = near.insert(scene.clone(), made));
-
-        made
-    }
-
-    pub fn watch(self, place: &Element) {
-        self.watching.with_value(|watching| {
-            for (observer, _) in watching {
-                observer.observe(place);
-            }
-        });
-    }
-
-    pub fn stop_watching(self, place: &Element) {
-        _ = self.watching.try_with_value(|watching| {
-            for (observer, _) in watching {
-                observer.unobserve(place);
-            }
-        });
-    }
-
-    pub fn is_near(self, scene: &SceneId) -> bool {
-        self.signal_of(scene).get()
     }
 
     pub fn bring_near(self, scene: SceneId) {
         _ = self
             .leaving
             .try_update_value(|leaving| leaving.remove(&scene));
-        let near = self.signal_of(&scene);
-
-        if !near.try_get_untracked().unwrap_or(true) {
-            near.set(true);
-        }
+        self.nearness.set(&scene, true);
     }
 
     pub fn hold_for_landing(self, scene: SceneId) {
@@ -155,11 +112,7 @@ impl Viewport {
     }
 
     fn let_go(self, scene: &SceneId) {
-        let near = self.signal_of(scene);
-
-        if near.try_get_untracked().unwrap_or(false) {
-            near.set(false);
-        }
+        self.nearness.set(scene, false);
     }
 
     pub fn kept_height(self, scene: &SceneId) -> Option<f64> {
@@ -168,11 +121,11 @@ impl Viewport {
             .flatten()
     }
 
+    pub fn watched(self, scene: SceneId, place: NodeRef<Div>) -> Memo<bool> {
+        self.nearness.watched(scene, place)
+    }
+
     pub fn close(self) {
-        _ = self.watching.try_with_value(|watching| {
-            for (observer, _) in watching {
-                observer.disconnect();
-            }
-        });
+        self.nearness.close();
     }
 }

@@ -178,22 +178,7 @@ fn group(
 fn leaves(place: String, attachments: Vec<Attachment>, held: Held) -> impl IntoView {
     let spot: NodeRef<Li> = NodeRef::new();
     let rows = attachments.len();
-    let near = Memo::new({
-        let place = place.clone();
-
-        move |_| held.in_view.is_near(&place)
-    });
-
-    Effect::new(move || {
-        if let Some(watched) = spot.get() {
-            held.in_view.watch(&watched);
-        }
-    });
-    on_cleanup(move || {
-        if let Some(watched) = spot.get_untracked() {
-            held.in_view.stop_watching(&watched);
-        }
-    });
+    let near = held.in_view.watched(place.clone(), spot);
 
     html::li()
         .class("leaves")
