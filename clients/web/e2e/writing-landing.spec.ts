@@ -18,7 +18,7 @@ test("the first time, Write lands at the start of the book", async ({
   await expect(scene(page, scenes["Part One"][0])).toHaveText("Begun");
 });
 
-test("Write lands where the author left off, after moving away and after a reload", async ({
+test("going back to where the author left off finds the very letter, after moving away and after a reload", async ({
   page,
 }) => {
   await aNewProject(page, "LeftOff");

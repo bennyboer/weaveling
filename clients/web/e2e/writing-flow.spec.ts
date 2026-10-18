@@ -314,28 +314,6 @@ test("a word jump inside a scene stays a word jump", async ({ page }) => {
   await expect(scene(page, first)).not.toContainText("very");
 });
 
-test("an empty book starts with its first heading", async ({ page }) => {
-  await aNewProject(page, "Beginning");
-  await openTheWritingView(page);
-  const first = flow(page).getByRole("heading");
-  await expect(first).toHaveAttribute(
-    "data-placeholder",
-    "Your book's first section",
-  );
-
-  await first.click();
-  await page.keyboard.type("Part One");
-  await page.keyboard.press("Enter");
-
-  await expect
-    .poll(() => savedTitles(page), {
-      message: "typing into an empty book makes its first section",
-    })
-    .toEqual(["Part One"]);
-  await page.reload();
-  await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);
-});
-
 test("words typed while the first section is being made are kept", async ({
   page,
 }) => {
@@ -557,10 +535,19 @@ test("an empty book is written from its first heading into its first scene", asy
 }) => {
   await aNewProject(page, "Blank");
   await openTheWritingView(page);
+  const first = flow(page).getByRole("heading");
+  await expect(first).toHaveAttribute(
+    "data-placeholder",
+    "Your book's first section",
+  );
 
-  await flow(page).getByRole("heading").click();
+  await first.click();
   await page.keyboard.type("Part One");
-  await expect.poll(() => savedTitles(page)).toEqual(["Part One"]);
+  await expect
+    .poll(() => savedTitles(page), {
+      message: "typing into an empty book makes its first section",
+    })
+    .toEqual(["Part One"]);
   await page.keyboard.press("ArrowDown");
   await page.keyboard.type("It began with a loom.");
 
@@ -575,6 +562,7 @@ test("an empty book is written from its first heading into its first scene", asy
     })
     .toContain("It began with a loom.");
   await page.reload();
+  await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);
   await expect(flow(page).locator(".scene .ProseMirror")).toContainText(
     "It began with a loom.",
   );

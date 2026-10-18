@@ -15,20 +15,6 @@ import {
   openTheBoard,
 } from "./support/shell";
 
-test("a pinned idea opens from the board", async ({ page }) => {
-  await anOpenProject(page, "Writing");
-  await captureIdea(page, "The loom remembers");
-  await openTheBoard(page);
-  await page.getByRole("button", { name: "Pin The loom remembers" }).click();
-
-  await openTheIdea(page, "The loom remembers");
-
-  await expect(
-    page.getByRole("heading", { name: "The loom remembers" }),
-  ).toBeVisible();
-  await expect(page).toHaveURL(/\/ideas\/the-loom-remembers-idea_/);
-});
-
 test("an opened idea leads back to the board", async ({ page }) => {
   await anOpenProject(page, "BackToBoard");
   await captureIdea(page, "The loom remembers");
