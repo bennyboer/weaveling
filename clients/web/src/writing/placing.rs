@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use leptos_router::hooks::use_navigate;
 
+use crate::dialog::modal;
 use crate::outline::model::Section;
 use crate::route;
 use crate::scenes::model::SceneId;
@@ -29,37 +30,30 @@ fn section_chooser(
         named => format!("“{named}” goes at the end of the section you choose."),
     };
 
-    html::div()
-        .class("overlay")
-        .on(ev::click, move |_| state.margin.return_to_writing())
-        .child(
-            html::div()
-                .class("dialog placing")
-                .role("dialog")
-                .attr("aria-modal", "true")
-                .attr("aria-label", "Bring into the book")
-                .on(ev::click, |event| event.stop_propagation())
-                .child((
-                    html::h2().child("Bring into the book"),
-                    html::p().child(told),
-                    html::ul()
-                        .class("sections")
-                        .attr("aria-label", "Sections of the book")
-                        .child(
-                            untrack(|| state.structure.sections())
-                                .into_iter()
-                                .map(|(depth, section)| {
-                                    section_choice(depth, section, scene.clone(), project, state)
-                                })
-                                .collect::<Vec<_>>(),
-                        ),
-                    html::div().class("dialog-actions").child(
-                        html::button()
-                            .on(ev::click, move |_| state.margin.return_to_writing())
-                            .child("Cancel"),
-                    ),
-                )),
-        )
+    modal(
+        "Bring into the book",
+        "placing",
+        move || state.margin.return_to_writing(),
+        (
+            html::p().child(told),
+            html::ul()
+                .class("sections")
+                .attr("aria-label", "Sections of the book")
+                .child(
+                    untrack(|| state.structure.sections())
+                        .into_iter()
+                        .map(|(depth, section)| {
+                            section_choice(depth, section, scene.clone(), project, state)
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            html::div().class("dialog-actions").child(
+                html::button()
+                    .on(ev::click, move |_| state.margin.return_to_writing())
+                    .child("Cancel"),
+            ),
+        ),
+    )
 }
 
 fn section_choice(

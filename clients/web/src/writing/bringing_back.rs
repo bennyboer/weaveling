@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{IntoView, ev, html};
 
+use crate::dialog::modal;
 use crate::inputs::typed;
 use crate::outline::model::SectionId;
 use crate::scenes::model::{SceneId, SceneSummary};
@@ -65,28 +66,21 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
     };
     let first_landing = landing.clone();
 
-    html::div()
-        .class("overlay")
-        .on(ev::click, move |_| state.margin.return_to_writing())
-        .child(
-            html::div()
-                .class("dialog")
-                .role("dialog")
-                .attr("aria-modal", "true")
-                .attr("aria-label", "Bring back a scene")
-                .on(ev::click, |event| event.stop_propagation())
-                .child((
-                    html::h2().child("Bring back a scene"),
-                    move || match waiting.get() {
-                        None => html::p().class("empty").child("Looking…").into_any(),
-                        Some(outside) if outside.is_empty() => html::p()
-                            .class("empty")
-                            .child("Every scene is in the book already.")
-                            .into_any(),
-                        Some(_) => {
-                            let entering = first_landing.clone();
+    modal(
+        "Bring back a scene",
+        "",
+        move || state.margin.return_to_writing(),
+        (
+            move || match waiting.get() {
+                None => html::p().class("empty").child("Looking…").into_any(),
+                Some(outside) if outside.is_empty() => html::p()
+                    .class("empty")
+                    .child("Every scene is in the book already.")
+                    .into_any(),
+                Some(_) => {
+                    let entering = first_landing.clone();
 
-                            (
+                    (
                                 html::p().child(
                                     "These scenes are not in the book. The one you choose goes in where you clicked.",
                                 ),
@@ -111,38 +105,38 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
                                     }),
                             )
                                 .into_any()
-                        }
-                    },
-                    move || {
-                        let found = matching();
+                }
+            },
+            move || {
+                let found = matching();
 
-                        match waiting.with(|waiting| {
-                            waiting.as_ref().is_some_and(|outside| !outside.is_empty())
-                        }) {
-                            false => ().into_any(),
-                            true if found.is_empty() => html::p()
-                                .class("empty")
-                                .child("No scene matches.")
-                                .into_any(),
-                            true => html::ul()
-                                .class("choices")
-                                .attr("aria-label", "Scenes not in the book")
-                                .child(
-                                    found
-                                        .into_iter()
-                                        .map(|scene| choice(scene, landing.clone(), state))
-                                        .collect::<Vec<_>>(),
-                                )
-                                .into_any(),
-                        }
-                    },
-                    html::div().class("dialog-actions").child(
-                        html::button()
-                            .on(ev::click, move |_| state.margin.return_to_writing())
-                            .child("Cancel"),
-                    ),
-                )),
-        )
+                match waiting
+                    .with(|waiting| waiting.as_ref().is_some_and(|outside| !outside.is_empty()))
+                {
+                    false => ().into_any(),
+                    true if found.is_empty() => html::p()
+                        .class("empty")
+                        .child("No scene matches.")
+                        .into_any(),
+                    true => html::ul()
+                        .class("choices")
+                        .attr("aria-label", "Scenes not in the book")
+                        .child(
+                            found
+                                .into_iter()
+                                .map(|scene| choice(scene, landing.clone(), state))
+                                .collect::<Vec<_>>(),
+                        )
+                        .into_any(),
+                }
+            },
+            html::div().class("dialog-actions").child(
+                html::button()
+                    .on(ev::click, move |_| state.margin.return_to_writing())
+                    .child("Cancel"),
+            ),
+        ),
+    )
 }
 
 fn choice(scene: SceneSummary, landing: Landing, state: WriteViewState) -> impl IntoView {

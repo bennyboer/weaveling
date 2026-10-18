@@ -2,6 +2,7 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
+use crate::dialog::modal;
 use crate::icons::{Icon, mark};
 use crate::ideas::model::{Idea, IdeaId};
 use crate::inputs::typed;
@@ -20,13 +21,6 @@ pub fn link_dialog(
         }
     });
 
-    let escaping = window_event_listener(ev::keydown, move |event| {
-        if event.key() == "Escape" {
-            close();
-        }
-    });
-    on_cleanup(move || escaping.remove());
-
     let matching = move || {
         let wanted = finding.get().to_lowercase();
 
@@ -37,70 +31,63 @@ pub fn link_dialog(
             .collect::<Vec<_>>()
     };
 
-    html::div()
-        .class("overlay")
-        .on(ev::click, move |_| close())
-        .child(
-            html::div()
-                .class("dialog")
-                .role("dialog")
-                .attr("aria-modal", "true")
-                .attr("aria-label", "Link ideas")
-                .on(ev::click, |event| event.stop_propagation())
-                .child((
-                    html::h2().child("Link ideas"),
-                    html::input()
-                        .r#type("search")
-                        .attr("aria-label", "Find an idea")
-                        .attr("placeholder", "Find an idea")
-                        .node_ref(search)
-                        .on(ev::input, move |event| {
-                            if let Some(field) = typed(&event) {
-                                finding.set(field.value());
-                            }
-                        }),
-                    move || {
-                        let found = matching();
+    modal(
+        "Link ideas",
+        "",
+        close,
+        (
+            html::input()
+                .r#type("search")
+                .attr("aria-label", "Find an idea")
+                .attr("placeholder", "Find an idea")
+                .node_ref(search)
+                .on(ev::input, move |event| {
+                    if let Some(field) = typed(&event) {
+                        finding.set(field.value());
+                    }
+                }),
+            move || {
+                let found = matching();
 
-                        if found.is_empty() {
-                            let why = match waiting.with(Vec::is_empty) {
-                                true => "Every idea in this project is already linked.",
-                                false => "No idea matches.",
-                            };
+                if found.is_empty() {
+                    let why = match waiting.with(Vec::is_empty) {
+                        true => "Every idea in this project is already linked.",
+                        false => "No idea matches.",
+                    };
 
-                            return html::p().class("empty").child(why).into_any();
-                        }
+                    return html::p().class("empty").child(why).into_any();
+                }
 
-                        html::ul()
-                            .class("choices")
-                            .attr("aria-label", "Ideas to link")
-                            .child(
-                                found
-                                    .into_iter()
-                                    .map(|idea| choice(idea, chosen))
-                                    .collect::<Vec<_>>(),
-                            )
-                            .into_any()
-                    },
-                    html::div().class("dialog-actions").child((
-                        html::button()
-                            .r#type("button")
-                            .on(ev::click, move |_| close())
-                            .child("Cancel"),
-                        html::button()
-                            .r#type("button")
-                            .disabled(move || chosen.with(Vec::is_empty))
-                            .on(ev::click, move |_| {
-                                link(chosen.get_untracked());
-                                close();
-                            })
-                            .child(move || match chosen.with(Vec::len) {
-                                0 | 1 => "Link".to_owned(),
-                                many => format!("Link {many}"),
-                            }),
-                    )),
-                )),
-        )
+                html::ul()
+                    .class("choices")
+                    .attr("aria-label", "Ideas to link")
+                    .child(
+                        found
+                            .into_iter()
+                            .map(|idea| choice(idea, chosen))
+                            .collect::<Vec<_>>(),
+                    )
+                    .into_any()
+            },
+            html::div().class("dialog-actions").child((
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| close())
+                    .child("Cancel"),
+                html::button()
+                    .r#type("button")
+                    .disabled(move || chosen.with(Vec::is_empty))
+                    .on(ev::click, move |_| {
+                        link(chosen.get_untracked());
+                        close();
+                    })
+                    .child(move || match chosen.with(Vec::len) {
+                        0 | 1 => "Link".to_owned(),
+                        many => format!("Link {many}"),
+                    }),
+            )),
+        ),
+    )
 }
 
 fn choice(idea: Idea, chosen: RwSignal<Vec<IdeaId>>) -> impl IntoView {

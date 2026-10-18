@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{IntoView, ev};
 
+use crate::dialog::modal;
 use crate::http::ApiError;
 use crate::icons::{Icon, mark};
 use crate::projects::details_form::{DetailsDraft, details_fields};
@@ -46,13 +47,6 @@ fn changing_dialog(
     let project = StoredValue::new(project);
     let known = StoredValue::new(known);
 
-    let escaping = window_event_listener(ev::keydown, move |event| {
-        if event.key() == "Escape" {
-            changing.set(false);
-        }
-    });
-    on_cleanup(move || escaping.remove());
-
     let save = move || {
         let name = draft.title.get_untracked();
         if name.trim().is_empty() || saving.get_untracked() {
@@ -86,39 +80,32 @@ fn changing_dialog(
         });
     };
 
-    html::div()
-        .class("overlay")
-        .on(ev::click, move |_| changing.set(false))
-        .child(
-            html::div()
-                .class("dialog project-details")
-                .role("dialog")
-                .attr("aria-modal", "true")
-                .attr("aria-label", "Project details")
-                .on(ev::click, |event| event.stop_propagation())
-                .child((
-                    html::h2().child("Project details"),
-                    details_fields(draft, field, move || refused.set(None), save),
-                    move || {
-                        refused.get().map(|failure| {
-                            html::p()
-                                .class("problem")
-                                .role("alert")
-                                .child(failure.to_string())
-                        })
-                    },
-                    html::div().class("dialog-actions").child((
-                        html::button()
-                            .r#type("button")
-                            .on(ev::click, move |_| changing.set(false))
-                            .child("Cancel"),
-                        html::button()
-                            .r#type("button")
-                            .class("primary")
-                            .disabled(move || draft.title.get().trim().is_empty() || saving.get())
-                            .on(ev::click, move |_| save())
-                            .child("Save"),
-                    )),
-                )),
-        )
+    modal(
+        "Project details",
+        "project-details",
+        move || changing.set(false),
+        (
+            details_fields(draft, field, move || refused.set(None), save),
+            move || {
+                refused.get().map(|failure| {
+                    html::p()
+                        .class("problem")
+                        .role("alert")
+                        .child(failure.to_string())
+                })
+            },
+            html::div().class("dialog-actions").child((
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| changing.set(false))
+                    .child("Cancel"),
+                html::button()
+                    .r#type("button")
+                    .class("primary")
+                    .disabled(move || draft.title.get().trim().is_empty() || saving.get())
+                    .on(ev::click, move |_| save())
+                    .child("Save"),
+            )),
+        ),
+    )
 }

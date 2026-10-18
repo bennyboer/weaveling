@@ -4,6 +4,7 @@ use leptos::{IntoView, ev};
 use leptos_router::NavigateOptions;
 use leptos_router::hooks::use_navigate;
 
+use crate::dialog::modal;
 use crate::projects::details_form::{DetailsDraft, details_fields};
 use crate::projects::languages::the_browser_s;
 use crate::projects::model::{ProjectDetails, ProjectId};
@@ -69,13 +70,6 @@ fn new_project_dialog(
     let attempted = RwSignal::new(false);
     let refused = workspace.refused_creation();
 
-    let escaping = window_event_listener(ev::keydown, move |event| {
-        if event.key() == "Escape" {
-            asking.set(false);
-        }
-    });
-    on_cleanup(move || escaping.remove());
-
     let create = move || {
         let name = draft.get_untracked();
         if name.trim().is_empty() {
@@ -86,45 +80,38 @@ fn new_project_dialog(
         workspace.create(name, details.details());
     };
 
-    html::div()
-        .class("overlay")
-        .on(ev::click, move |_| asking.set(false))
-        .child(
-            html::div()
-                .class("dialog project-details")
-                .role("dialog")
-                .attr("aria-modal", "true")
-                .attr("aria-label", "New project")
-                .on(ev::click, |event| event.stop_propagation())
-                .child((
-                    html::h2().child("New project"),
-                    details_fields(details, title, move || attempted.set(false), create),
-                    move || {
-                        attempted
-                            .get()
-                            .then(|| refused.get())
-                            .flatten()
-                            .map(|failure| {
-                                html::p()
-                                    .class("problem")
-                                    .role("alert")
-                                    .child(failure.to_string())
-                            })
-                    },
-                    html::div().class("dialog-actions").child((
-                        html::button()
-                            .r#type("button")
-                            .on(ev::click, move |_| asking.set(false))
-                            .child("Cancel"),
-                        html::button()
-                            .r#type("button")
-                            .class("primary")
-                            .disabled(move || draft.get().trim().is_empty() || creating.get())
-                            .on(ev::click, move |_| create())
-                            .child("Create project"),
-                    )),
-                )),
-        )
+    modal(
+        "New project",
+        "project-details",
+        move || asking.set(false),
+        (
+            details_fields(details, title, move || attempted.set(false), create),
+            move || {
+                attempted
+                    .get()
+                    .then(|| refused.get())
+                    .flatten()
+                    .map(|failure| {
+                        html::p()
+                            .class("problem")
+                            .role("alert")
+                            .child(failure.to_string())
+                    })
+            },
+            html::div().class("dialog-actions").child((
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| asking.set(false))
+                    .child("Cancel"),
+                html::button()
+                    .r#type("button")
+                    .class("primary")
+                    .disabled(move || draft.get().trim().is_empty() || creating.get())
+                    .on(ev::click, move |_| create())
+                    .child("Create project"),
+            )),
+        ),
+    )
 }
 
 fn go_into_a_project_once_it_lands(

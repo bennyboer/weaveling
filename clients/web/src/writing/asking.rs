@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
+use crate::dialog::modal;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 use crate::writing::side::Side;
@@ -31,38 +32,31 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
             let choices = untrack(|| question.with_value(|question| offered(question, state)));
             let cancel = move || state.margin.return_to_writing();
 
-            html::div()
-                .class("overlay")
-                .on(ev::click, move |_| cancel())
-                .child(
-                    html::div()
-                        .class("dialog")
-                        .role("dialog")
-                        .attr("aria-modal", "true")
-                        .attr("aria-label", title)
-                        .on(ev::click, |event| event.stop_propagation())
-                        .child((
-                            html::h2().child(title),
-                            html::p().child(told),
-                            html::div().class("dialog-actions").child((
+            modal(
+                title,
+                "",
+                cancel,
+                (
+                    html::p().child(told),
+                    html::div().class("dialog-actions").child((
+                        html::button()
+                            .on(ev::click, move |_| cancel())
+                            .child("Cancel"),
+                        choices
+                            .into_iter()
+                            .map(|(label, answer)| {
                                 html::button()
-                                    .on(ev::click, move |_| cancel())
-                                    .child("Cancel"),
-                                choices
-                                    .into_iter()
-                                    .map(|(label, answer)| {
-                                        html::button()
-                                            .class(("danger", answer == Answer::DeletedForGood))
-                                            .on(ev::click, move |_| {
-                                                state.margin.return_to_writing();
-                                                answered(question.get_value(), answer, state);
-                                            })
-                                            .child(label)
+                                    .class(("danger", answer == Answer::DeletedForGood))
+                                    .on(ev::click, move |_| {
+                                        state.margin.return_to_writing();
+                                        answered(question.get_value(), answer, state);
                                     })
-                                    .collect::<Vec<_>>(),
-                            )),
-                        )),
-                )
+                                    .child(label)
+                            })
+                            .collect::<Vec<_>>(),
+                    )),
+                ),
+            )
         })
     }
 }

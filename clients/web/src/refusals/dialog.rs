@@ -1,6 +1,7 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
+use crate::dialog::modal;
 use crate::moment::human_time;
 use crate::refusals::alarm::AlarmState;
 use crate::refusals::model::Refusal;
@@ -8,59 +9,45 @@ use crate::refusals::model::Refusal;
 const WORDLESS: &str = "A change did not reach everywhere it should have.";
 
 pub fn refusals_dialog(state: AlarmState) -> impl IntoView {
-    let escaping = window_event_listener(ev::keydown, move |event| {
-        if event.key() == "Escape" {
-            state.stop_looking();
-        }
-    });
-    on_cleanup(move || escaping.remove());
-
-    html::div()
-        .class("overlay")
-        .on(ev::click, move |_| state.stop_looking())
-        .child(
-            html::div()
-                .class("dialog refusals")
-                .role("dialog")
-                .attr("aria-modal", "true")
-                .attr("aria-label", "Changes that could not be applied")
-                .on(ev::click, |event| event.stop_propagation())
-                .child((
-                    html::h2().child("Changes that could not be applied"),
-                    html::p().class("tagline").child(
-                        "These were saved, but did not reach everywhere they should have. \
+    modal(
+        "Changes that could not be applied",
+        "refusals",
+        move || state.stop_looking(),
+        (
+            html::p().class("tagline").child(
+                "These were saved, but did not reach everywhere they should have. \
                          Try again once whatever stopped them is fixed, or acknowledge them \
                          to quiet the alarm.",
-                    ),
-                    move || {
-                        let refusals = state.refusals();
+            ),
+            move || {
+                let refusals = state.refusals();
 
-                        if refusals.is_empty() {
-                            return html::p()
-                                .class("empty")
-                                .child("Nothing is left to look at.")
-                                .into_any();
-                        }
+                if refusals.is_empty() {
+                    return html::p()
+                        .class("empty")
+                        .child("Nothing is left to look at.")
+                        .into_any();
+                }
 
-                        html::ul()
-                            .class("refused")
-                            .attr("aria-label", "Refused changes")
-                            .child(
-                                refusals
-                                    .into_iter()
-                                    .map(|refusal| refused(refusal, state))
-                                    .collect::<Vec<_>>(),
-                            )
-                            .into_any()
-                    },
-                    html::div().class("dialog-actions").child(
-                        html::button()
-                            .r#type("button")
-                            .on(ev::click, move |_| state.stop_looking())
-                            .child("Close"),
-                    ),
-                )),
-        )
+                html::ul()
+                    .class("refused")
+                    .attr("aria-label", "Refused changes")
+                    .child(
+                        refusals
+                            .into_iter()
+                            .map(|refusal| refused(refusal, state))
+                            .collect::<Vec<_>>(),
+                    )
+                    .into_any()
+            },
+            html::div().class("dialog-actions").child(
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| state.stop_looking())
+                    .child("Close"),
+            ),
+        ),
+    )
 }
 
 fn refused(refusal: Refusal, state: AlarmState) -> impl IntoView {

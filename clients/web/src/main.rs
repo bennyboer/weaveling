@@ -1,6 +1,7 @@
 mod app;
 mod appearances;
 mod boards;
+mod dialog;
 mod drawer;
 mod http;
 mod icons;
