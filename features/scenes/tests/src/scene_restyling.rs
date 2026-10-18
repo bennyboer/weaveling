@@ -165,7 +165,10 @@ impl Wired {
 
         loop {
             let before = self.carried_on().len();
-            self.restyle.handle(&asked).await.expect("task succeeds");
+            self.restyle
+                .handle(&asked)
+                .await
+                .expect("restyling succeeds");
 
             let carried = self.carried_on();
             if carried.len() == before {
@@ -213,7 +216,7 @@ async fn a_new_style_reaches_every_scene_of_the_book() {
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 3))
         .await
-        .expect("task succeeds");
+        .expect("restyling succeeds");
 
     assert_eq!(wired.saying(&book).await, vec!["„Ja.“"; 3]);
     assert!(
@@ -241,9 +244,13 @@ async fn a_book_larger_than_one_batch_is_restyled_batch_by_batch() {
 async fn a_continuation_carries_the_style_the_change_and_where_it_got_to() {
     let wired = a_workbench(2);
     let book = wired.holding(A_PROJECT, 3).await;
-    let asked = restyled(A_PROJECT, "curly", 3);
+    let asked = restyled(A_PROJECT, "low-high", 3);
 
-    wired.restyle.handle(&asked).await.expect("task succeeds");
+    wired
+        .restyle
+        .handle(&asked)
+        .await
+        .expect("restyling succeeds");
 
     let carried = wired.carried_on();
     let more: MoreToRestyleDTO =
@@ -252,14 +259,14 @@ async fn a_continuation_carries_the_style_the_change_and_where_it_got_to() {
         more,
         MoreToRestyleDTO {
             project: A_PROJECT.to_owned(),
-            quotation: "curly".to_owned(),
+            quotation: "low-high".to_owned(),
             change: 3,
             after: book[1].to_string(),
         }
     );
     assert_eq!(
         carried[0].conversation, asked.conversation,
-        "the whole task has to be followable as one thing"
+        "the whole restyling has to be followable as one thing"
     );
 }
 
@@ -273,7 +280,7 @@ async fn another_book_keeps_its_marks() {
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 3))
         .await
-        .expect("task succeeds");
+        .expect("restyling succeeds");
 
     assert_eq!(wired.saying(&theirs).await, vec!["»Ja.«"; 2]);
 }
@@ -284,9 +291,14 @@ async fn a_newer_style_stops_an_older_restyling_half_way() {
     let book = wired.holding(A_PROJECT, 3).await;
     wired
         .restyle
+        .handle(&restyled(A_PROJECT, "low-high", 3))
+        .await
+        .expect("restyling succeeds");
+    wired
+        .restyle
         .handle(&restyled(A_PROJECT, "curly", 5))
         .await
-        .expect("task succeeds");
+        .expect("restyling succeeds");
 
     wired
         .restyle
@@ -297,7 +309,7 @@ async fn a_newer_style_stops_an_older_restyling_half_way() {
     assert_eq!(
         wired.saying(&book[1..]).await,
         vec!["“Ja.”", "»Ja.«"],
-        "the older task would otherwise overwrite what the newer one did"
+        "the older restyling would otherwise overwrite what the newer one did"
     );
 }
 
@@ -309,7 +321,7 @@ async fn an_older_style_heard_late_is_not_begun() {
         .restyle
         .handle(&restyled(A_PROJECT, "curly", 5))
         .await
-        .expect("task succeeds");
+        .expect("restyling succeeds");
 
     wired
         .restyle
@@ -328,13 +340,13 @@ async fn the_latest_restyling_carries_on() {
         .restyle
         .handle(&restyled(A_PROJECT, "low-high", 5))
         .await
-        .expect("task succeeds");
+        .expect("restyling succeeds");
 
     wired
         .restyle
         .handle(&more_of(A_PROJECT, "low-high", 5, book[0]))
         .await
-        .expect("task succeeds");
+        .expect("restyling succeeds");
 
     assert_eq!(wired.saying(&book).await, vec!["„Ja.“"; 2]);
 }
@@ -344,7 +356,11 @@ async fn hearing_the_same_change_again_goes_through_the_book_again() {
     let wired = a_workbench(4);
     wired.holding(A_PROJECT, 1).await;
     let asked = restyled(A_PROJECT, "curly", 5);
-    wired.restyle.handle(&asked).await.expect("task succeeds");
+    wired
+        .restyle
+        .handle(&asked)
+        .await
+        .expect("restyling succeeds");
     let written_meanwhile = wired.holding(A_PROJECT, 1).await;
 
     wired
@@ -369,7 +385,7 @@ async fn a_continuation_nobody_remembers_beginning_carries_on() {
         .restyle
         .handle(&more_of(A_PROJECT, "curly", 5, book[0]))
         .await
-        .expect("task succeeds");
+        .expect("restyling succeeds");
 
     assert_eq!(
         wired.saying(&book[1..]).await,
@@ -442,4 +458,27 @@ async fn a_project_event_that_changes_no_style_is_refused() {
     );
 
     assert!(wired.restyle.handle(&renamed).await.is_err());
+}
+
+#[tokio::test]
+async fn a_continuation_heard_after_a_restart_still_turns_an_older_style_away() {
+    let wired = a_workbench(1);
+    let book = wired.holding(A_PROJECT, 2).await;
+    wired
+        .restyle
+        .handle(&more_of(A_PROJECT, "curly", 5, book[0]))
+        .await
+        .expect("restyling succeeds");
+
+    wired
+        .restyle
+        .handle(&restyled(A_PROJECT, "low-high", 3))
+        .await
+        .expect("an outdated change is not a failure");
+
+    assert_eq!(
+        wired.saying(&book[1..]).await,
+        vec!["“Ja.”"],
+        "the continuation tells of a newer change, so the older one must not begin"
+    );
 }

@@ -21,7 +21,7 @@ impl InMemoryRestylingTasks {
 
 #[async_trait]
 impl RestylingTasks for InMemoryRestylingTasks {
-    async fn begin(&self, project: &ProjectLink, change: u64) -> Result<bool, RestylingTaskError> {
+    async fn claim(&self, project: &ProjectLink, change: u64) -> Result<bool, RestylingTaskError> {
         let mut latest = self.latest();
         let known = latest.entry(project.clone()).or_insert(change);
         if *known > change {
@@ -30,16 +30,5 @@ impl RestylingTasks for InMemoryRestylingTasks {
         *known = change;
 
         Ok(true)
-    }
-
-    async fn is_latest(
-        &self,
-        project: &ProjectLink,
-        change: u64,
-    ) -> Result<bool, RestylingTaskError> {
-        Ok(self
-            .latest()
-            .get(project)
-            .is_none_or(|known| *known <= change))
     }
 }

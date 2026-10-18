@@ -71,7 +71,8 @@ impl RestyleOnQuotationChanged {
 
     async fn restyle(&self, asked: &Message) -> Result<(), NotRestyled> {
         let task = what_to_restyle(asked)?;
-        if !self.still_wanted(&task).await? {
+        let project = ProjectLink::from(task.project.as_str());
+        if !self.tasks.claim(&project, task.change).await? {
             return Ok(());
         }
         let batch = self
@@ -102,15 +103,6 @@ impl RestyleOnQuotationChanged {
         Ok(())
     }
 
-    async fn still_wanted(&self, task: &RestylingTask) -> Result<bool, RestylingTaskError> {
-        let project = ProjectLink::from(task.project.as_str());
-
-        match task.after {
-            None => self.tasks.begin(&project, task.change).await,
-            Some(_) => self.tasks.is_latest(&project, task.change).await,
-        }
-    }
-
     fn carry_on(&self, asked: &Message, task: &RestylingTask, after: SceneId) -> Message {
         asked.answering(
             RoutingKey::parse(MORE_TO_RESTYLE).expect("a declared routing key holds no wildcards"),
@@ -135,7 +127,7 @@ fn what_to_restyle(asked: &Message) -> Result<RestylingTask, NotRestyled> {
             project: carried.project,
             style: QuotationMarks::new(&carried.quotation)?,
             change: carried.change,
-            after: None,
+            after: Some(carried.after),
         });
     }
 

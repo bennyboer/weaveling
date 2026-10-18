@@ -13,11 +13,5 @@ pub enum RestylingTaskError {
 
 #[async_trait]
 pub trait RestylingTasks: Send + Sync {
-    async fn begin(&self, project: &ProjectLink, change: u64) -> Result<bool, RestylingTaskError>;
-
-    async fn is_latest(
-        &self,
-        project: &ProjectLink,
-        change: u64,
-    ) -> Result<bool, RestylingTaskError>;
+    async fn claim(&self, project: &ProjectLink, change: u64) -> Result<bool, RestylingTaskError>;
 }
