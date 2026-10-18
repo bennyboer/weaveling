@@ -2,8 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aNewProject, openTheBoard, views } from "./support/shell";
 import { aBookWithScenes } from "./support/book";
-
-const flow = (page: Page) => page.getByRole("article", { name: "The book" });
+import { flow, scene } from "./support/writing";
 
 const masthead = (page: Page) => page.locator(".masthead");
 
@@ -12,9 +11,6 @@ const focusLine = (page: Page) =>
 
 const focusButton = (page: Page) =>
   page.getByRole("button", { name: "Focus mode" });
-
-const scene = (page: Page, id: string) =>
-  flow(page).locator(`[data-scene="${id}"] .ProseMirror`);
 
 const opacityOf = (page: Page, selector: string) =>
   page.evaluate(

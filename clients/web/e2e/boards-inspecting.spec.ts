@@ -1,9 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { cardNamed, corkboard, select } from "./support/board";
-import { anOpenProject, captureIdea, openTheBoard } from "./support/shell";
-
-const API = "http://127.0.0.1:3000/api";
+import { anOpenProject, API, captureIdea, openTheBoard } from "./support/shell";
 
 const inspector = (page: Page) =>
   page.getByRole("region", { name: "Inspector" });

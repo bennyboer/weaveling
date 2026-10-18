@@ -1,22 +1,11 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import {
-  aNewProject,
-  aSceneMade,
-  scenesCatalogued,
-  views,
-} from "./support/shell";
+import { aNewProject, API, aSceneMade, scenesCatalogued } from "./support/shell";
 import { aBookShaped } from "./support/book";
-
-const API = "http://127.0.0.1:3000/api";
-
-const flow = (page: Page) => page.getByRole("article", { name: "The book" });
+import { flow, openTheWritingView, rail } from "./support/writing";
 
 const tab = (page: Page) =>
   page.getByRole("button", { name: "Contents", exact: true });
-
-const rail = (page: Page) =>
-  page.getByRole("complementary", { name: "Contents" });
 
 const entry = (page: Page, named: string) =>
   rail(page).getByRole("button", { name: named, exact: true });
@@ -72,11 +61,6 @@ async function aBookInParts(
   await scenesCatalogued(page, Object.values(scenes));
 
   return scenes;
-}
-
-async function openTheWritingView(page: Page) {
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
-  await expect(flow(page)).toBeVisible();
 }
 
 async function openTheContents(page: Page) {

@@ -1,14 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
-import {
-  aLooseScene,
-  sceneCatalogued,
-  aNewProject,
-  captureIdea,
-  openTheOutline,
-  openThePool,
-} from "./support/shell";
+import { aLooseScene, aNewProject, API, captureIdea, openTheOutline, openThePool, sceneCatalogued } from "./support/shell";
 
 const manuscript = (page: Page) =>
   page.getByRole("list", { name: "The manuscript" });
@@ -51,7 +44,7 @@ const shape = (page: Page) =>
 
 async function savedTitles(page: Page) {
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
-  const opened = await page.request.post("http://127.0.0.1:3000/api/outlines", {
+  const opened = await page.request.post(`${API}/outlines`, {
     data: { project },
   });
 

@@ -1,8 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject, sceneCatalogued } from "./support/shell";
-
-const API = "http://127.0.0.1:3000/api";
+import { aNewProject, API, sceneCatalogued } from "./support/shell";
 
 const projectSegment = (page: Page) =>
   new URL(page.url()).pathname.split("/")[2];

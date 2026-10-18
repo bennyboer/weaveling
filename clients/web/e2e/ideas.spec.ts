@@ -1,11 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import {
-  aNewProject,
-  anOpenProject,
-  catalogued,
-  onTheBoard,
-} from "./support/shell";
+import { aNewProject, anOpenProject, catalogued } from "./support/shell";
 
 const ideas = (page: Page) => page.getByRole("list", { name: "Ideas" });
 

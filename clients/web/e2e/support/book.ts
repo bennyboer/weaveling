@@ -1,8 +1,6 @@
 import { expect, type Page } from "@playwright/test";
 
-import { aSceneMade, scenesCatalogued } from "./shell";
-
-const API = "http://127.0.0.1:3000/api";
+import { API, aSceneMade, scenesCatalogued } from "./shell";
 
 export async function aBookShaped(
   page: Page,

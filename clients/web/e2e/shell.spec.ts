@@ -1,13 +1,8 @@
 import { test, expect } from "@playwright/test";
 
 import { corkboard } from "./support/board";
-import {
-  aNewProject,
-  captureIdea,
-  openTheOutline,
-  openThePool,
-  views,
-} from "./support/shell";
+import { aNewProject, API, captureIdea, openTheOutline, openThePool, views } from "./support/shell";
+import { projectOf } from "./support/writing";
 
 const statusBar = (page: import("@playwright/test").Page) =>
   page.getByRole("contentinfo", { name: "Status" });
@@ -240,7 +235,7 @@ for (const width of [375, 1440]) {
     await page.setViewportSize({ width, height: 700 });
     await aNewProject(page, "x");
     await page.request.patch(
-      `http://127.0.0.1:3000/api/projects/${new URL(page.url()).pathname.split("/")[2].split("-").pop()}`,
+      `${API}/projects/${projectOf(page)}`,
       { data: { name: "Kurz" } },
     );
     await page.reload();

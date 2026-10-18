@@ -1,12 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject, views } from "./support/shell";
+import { aNewProject, API, views } from "./support/shell";
 import { aBookWithScenes } from "./support/book";
-
-const API = "http://127.0.0.1:3000/api";
-
-const projectOf = (page: Page) =>
-  new URL(page.url()).pathname.split("/")[2].split("-").pop();
+import { projectOf } from "./support/writing";
 
 const masthead = (page: Page) => page.getByRole("heading", { level: 1 });
 

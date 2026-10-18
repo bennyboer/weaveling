@@ -1,19 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import {
-  aNewProject,
-  aSceneMade,
-  scenesCatalogued,
-  views,
-} from "./support/shell";
+import { aNewProject, API, aSceneMade, scenesCatalogued, views } from "./support/shell";
 import { aBookShaped } from "./support/book";
-
-const API = "http://127.0.0.1:3000/api";
-
-const flow = (page: Page) => page.getByRole("article", { name: "The book" });
-
-const rail = (page: Page) =>
-  page.getByRole("complementary", { name: "Contents" });
+import { flow, rail } from "./support/writing";
 
 const tray = (page: Page) =>
   page.getByRole("complementary", { name: "This scene" });

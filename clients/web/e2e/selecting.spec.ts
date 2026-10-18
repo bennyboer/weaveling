@@ -1,18 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import {
-  aNewProject,
-  aLooseScene,
-  aSceneMade,
-  scenesCatalogued,
-  views,
-} from "./support/shell";
+import { aLooseScene, aNewProject, API, aSceneMade, scenesCatalogued, views } from "./support/shell";
 import { aBookShaped, aBookWithScenes } from "./support/book";
-
-const flow = (page: Page) => page.getByRole("article", { name: "The book" });
-
-const scene = (page: Page, id: string) =>
-  flow(page).locator(`[data-scene="${id}"] .ProseMirror`);
+import { aBookInTheWritingView, flow, scene, theBook } from "./support/writing";
 
 const chosen = (page: Page) =>
   flow(page)
@@ -22,10 +12,7 @@ const chosen = (page: Page) =>
     );
 
 async function aBook(page: Page, named: string, scenes: number) {
-  await aNewProject(page, named);
-  const made = await aBookWithScenes(page, { "Part One": scenes });
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
-  await expect(flow(page)).toBeVisible();
+  const made = await aBookInTheWritingView(page, named, { "Part One": scenes });
 
   return made["Part One"];
 }
@@ -318,30 +305,6 @@ test("in an empty scene, Shift+Down chooses only that scene", async ({
   await page.keyboard.press("Shift+ArrowDown");
   await expect.poll(() => chosen(page)).toEqual([first, second]);
 });
-
-const API = "http://127.0.0.1:3000/api";
-
-const projectOf = (page: Page) =>
-  new URL(page.url()).pathname.split("/")[2].split("-").pop();
-
-async function theBook(page: Page) {
-  const opened = await page.request.post(`${API}/outlines`, {
-    data: { project: projectOf(page) },
-  });
-  const outline = await opened.json();
-
-  return outline.sections.map(
-    (section: {
-      title: string;
-      attachments: { kind: string; id: string }[];
-    }) => [
-      section.title,
-      section.attachments
-        .filter((attached) => attached.kind === "scene")
-        .map((attached) => attached.id),
-    ],
-  );
-}
 
 const sceneExists = async (page: Page, id: string) =>
   (await page.request.get(`${API}/scenes/${id}`)).ok();

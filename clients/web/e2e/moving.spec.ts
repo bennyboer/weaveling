@@ -1,54 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject, aLooseScene, views } from "./support/shell";
-import { aBookWithScenes } from "./support/book";
-
-const API = "http://127.0.0.1:3000/api";
-
-const flow = (page: Page) => page.getByRole("article", { name: "The book" });
-
-const scene = (page: Page, id: string) =>
-  flow(page).locator(`[data-scene="${id}"] .ProseMirror`);
+import { aLooseScene } from "./support/shell";
+import { aBookInTheWritingView, flow, scene, theBook } from "./support/writing";
 
 const grip = (page: Page, id: string) =>
   flow(page)
     .locator(`.scene-row:has([data-scene="${id}"])`)
     .getByRole("button", { name: "Move scene" });
-
-const projectOf = (page: Page) =>
-  new URL(page.url()).pathname.split("/")[2].split("-").pop();
-
-async function theBook(page: Page) {
-  const opened = await page.request.post(`${API}/outlines`, {
-    data: { project: projectOf(page) },
-  });
-  const outline = await opened.json();
-
-  return outline.sections.map(
-    (section: {
-      title: string;
-      attachments: { kind: string; id: string }[];
-    }) => [
-      section.title,
-      section.attachments
-        .filter((attached) => attached.kind === "scene")
-        .map((attached) => attached.id),
-    ],
-  );
-}
-
-async function writingIn(
-  page: Page,
-  named: string,
-  sections: Record<string, number>,
-) {
-  await aNewProject(page, named);
-  const made = await aBookWithScenes(page, sections);
-  await views(page).getByRole("link", { name: "Write", exact: true }).click();
-  await expect(flow(page)).toBeVisible();
-
-  return made;
-}
 
 async function pickedUp(page: Page, id: string) {
   await flow(page).locator(`.scene-row:has([data-scene="${id}"])`).hover();
@@ -67,7 +25,7 @@ async function carriedBelow(page: Page, id: string) {
 test("a scene carried by its grip lands below the scene it is let go under", async ({
   page,
 }) => {
-  const made = await writingIn(page, "Carrying", { "Part One": 3 });
+  const made = await aBookInTheWritingView(page, "Carrying", { "Part One": 3 });
   const [first, second, third] = made["Part One"];
 
   await pickedUp(page, first);
@@ -85,7 +43,7 @@ test("a scene carried by its grip lands below the scene it is let go under", asy
 });
 
 test("a scene carried into another section lands there", async ({ page }) => {
-  const made = await writingIn(page, "Elsewhere", {
+  const made = await aBookInTheWritingView(page, "Elsewhere", {
     "Part One": 2,
     "Part Two": 1,
   });
@@ -105,7 +63,7 @@ test("a scene carried into another section lands there", async ({ page }) => {
 });
 
 test("chosen scenes are carried together, in their order", async ({ page }) => {
-  const made = await writingIn(page, "Together", { "Part One": 4 });
+  const made = await aBookInTheWritingView(page, "Together", { "Part One": 4 });
   const [first, second, third, fourth] = made["Part One"];
   await scene(page, first).click();
   await page.keyboard.type("First.");
@@ -122,7 +80,7 @@ test("chosen scenes are carried together, in their order", async ({ page }) => {
 });
 
 test("Escape puts a carried scene back where it was", async ({ page }) => {
-  const made = await writingIn(page, "PutBack", { "Part One": 3 });
+  const made = await aBookInTheWritingView(page, "PutBack", { "Part One": 3 });
   const [first, second, third] = made["Part One"];
   let moved = false;
   page.on("request", (request) => {
@@ -143,7 +101,7 @@ test("Escape puts a carried scene back where it was", async ({ page }) => {
 });
 
 test("let go right below itself, a scene stays put", async ({ page }) => {
-  const made = await writingIn(page, "StaysPut", { "Part One": 2 });
+  const made = await aBookInTheWritingView(page, "StaysPut", { "Part One": 2 });
   const [first, second] = made["Part One"];
   let moved = false;
   page.on("request", (request) => {
@@ -164,7 +122,7 @@ test("let go right below itself, a scene stays put", async ({ page }) => {
 test("scenes outside the book have no grip, having no place to be moved to", async ({
   page,
 }) => {
-  await writingIn(page, "NoGrip", { "Part One": 1 });
+  await aBookInTheWritingView(page, "NoGrip", { "Part One": 1 });
   const loose = await aLooseScene(page);
   await page.goto(page.url().replace(/\/write$/, "/write/loose"));
   await expect(scene(page, loose)).toBeVisible();
@@ -176,7 +134,7 @@ test("carried to the window's edge, the book scrolls on towards where it can lan
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 600 });
-  const made = await writingIn(page, "Scrolling", { "Part One": 20 });
+  const made = await aBookInTheWritingView(page, "Scrolling", { "Part One": 20 });
   const [first] = made["Part One"];
   await pickedUp(page, first);
 
@@ -199,7 +157,7 @@ test("carried to the window's edge, the book scrolls on towards where it can lan
 });
 
 test("a drag the browser takes away puts the scene back", async ({ page }) => {
-  const made = await writingIn(page, "Cancelled", { "Part One": 2 });
+  const made = await aBookInTheWritingView(page, "Cancelled", { "Part One": 2 });
   const [first, second] = made["Part One"];
   await pickedUp(page, first);
   await carriedBelow(page, second);
@@ -225,7 +183,7 @@ test.describe("on a touchscreen", () => {
     page,
     context,
   }) => {
-    const made = await writingIn(page, "Touching", { "Part One": 3 });
+    const made = await aBookInTheWritingView(page, "Touching", { "Part One": 3 });
     const [first, second, third] = made["Part One"];
     const held = (await grip(page, first).boundingBox())!;
     const below = (await flow(page)

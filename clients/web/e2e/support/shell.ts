@@ -1,5 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
+export const API = "http://127.0.0.1:3000/api";
+
 const aName = (of: string) =>
   `Project ${of} ${crypto.randomUUID().slice(0, 8)}`;
 
@@ -68,7 +70,7 @@ export async function openThePool(page: Page) {
 
 export async function aSceneMade(page: Page): Promise<string> {
   const project = new URL(page.url()).pathname.split("/")[2];
-  const made = await page.request.post("http://127.0.0.1:3000/api/scenes", {
+  const made = await page.request.post(`${API}/scenes`, {
     data: { project: project.split("-").pop() },
   });
   expect(made.status()).toBe(201);
@@ -88,7 +90,7 @@ async function cataloguedScenes(
 ): Promise<{ id: string; title: string }[]> {
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
   const listed = await page.request.get(
-    `http://127.0.0.1:3000/api/scenes?project=${project}`,
+    `${API}/scenes?project=${project}`,
   );
 
   return (await listed.json()).scenes;
@@ -132,7 +134,7 @@ export async function sceneCatalogued(
 async function cataloguedTitles(page: Page): Promise<string[]> {
   const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
   const listed = await page.request.get(
-    `http://127.0.0.1:3000/api/ideas?project=${project}`,
+    `${API}/ideas?project=${project}`,
   );
 
   return (await listed.json()).map((idea: { title: string }) => idea.title);
