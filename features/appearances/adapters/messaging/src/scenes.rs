@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
 use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, SceneLink, Subject};
-use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
+use messaging::{Failure, Handler, Message};
 use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
 use serde_json::from_value;
 use thiserror::Error;
-
-const NAME: &str = "index-scene-appearances";
 
 pub struct SceneAppearancesProjector {
     catalog: Arc<dyn AppearanceCatalog>,
@@ -61,29 +59,12 @@ fn a_scene(id: String) -> Place {
 }
 
 #[async_trait::async_trait]
-impl Listener for SceneAppearancesProjector {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the scene appearances listener is named at compile time")
-    }
+impl Handler for SceneAppearancesProjector {
+    const NAME: &'static str = "index-scene-appearances";
+    const LISTENS_TO: &'static [&'static str] = &[IDEA_LINKED, IDEA_UNLINKED, DELETED];
+    const WHEN_REFUSED: &'static str = "Where an idea appears in your scenes was not updated.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        [IDEA_LINKED, IDEA_UNLINKED, DELETED]
-            .into_iter()
-            .map(|key| Subscription::parse(key).expect("a declared routing key holds no wildcards"))
-            .collect()
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "Where an idea appears in your scenes was not updated."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.index(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        Ok(self.index(message).await?)
     }
 }

@@ -3,8 +3,8 @@ use eventpublishing::{
 };
 use eventsourcing::Recorded;
 use ids::InvalidId;
-use messaging::{Message, Subscription};
-use projects_contract::{EVERY_PROJECT, ProjectEventDTO};
+use messaging::Message;
+use projects_contract::ProjectEventDTO;
 use projects_core::{ProjectEvent, ProjectId};
 use thiserror::Error;
 
@@ -14,10 +14,6 @@ pub enum UnreadableProjectEvent {
     NotAProjectEvent(#[from] UnreadableMessage),
     #[error("this message names something that is not a project")]
     NotAProjectId(#[source] InvalidId),
-}
-
-pub fn every_event() -> Subscription {
-    Subscription::parse(EVERY_PROJECT).expect("the project pattern is written at compile time")
 }
 
 pub fn event_in(
@@ -60,8 +56,8 @@ fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {
 mod tests {
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Recorded, Version};
-    use messaging::RoutingKey;
-    use projects_contract::{DELETED, DETAILS_CHANGED, RENAMED, STARTED};
+    use messaging::{RoutingKey, Subscription};
+    use projects_contract::{DELETED, DETAILS_CHANGED, EVERY_PROJECT, RENAMED, STARTED};
     use projects_core::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
     use projects_core::{KIND, ProjectName};
     use serde_json::json;
@@ -135,9 +131,11 @@ mod tests {
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
         assert_eq!(everything_from(KIND), EVERY_PROJECT);
         assert!(
-            everything_worth_publishing()
-                .into_iter()
-                .all(|(event, _)| { every_event().covers(&routing_for(KIND, event.name())) }),
+            everything_worth_publishing().into_iter().all(|(event, _)| {
+                Subscription::parse(EVERY_PROJECT)
+                    .expect("a declared pattern")
+                    .covers(&routing_for(KIND, event.name()))
+            }),
             "a listener asking for every project must handle all of them"
         );
     }

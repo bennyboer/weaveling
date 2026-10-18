@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
+use messaging::{Failure, Handler, Message};
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
 use serde_json::from_value;
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCountCatalog};
 use thiserror::Error;
-
-const NAME: &str = "keep-word-counts";
 
 pub struct WordCountsProjector {
     catalog: Arc<dyn WordCountCatalog>,
@@ -54,29 +52,12 @@ impl WordCountsProjector {
 }
 
 #[async_trait::async_trait]
-impl Listener for WordCountsProjector {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the word counts listener is named at compile time")
-    }
+impl Handler for WordCountsProjector {
+    const NAME: &'static str = "keep-word-counts";
+    const LISTENS_TO: &'static [&'static str] = &[WORDS_COUNTED, DELETED];
+    const WHEN_REFUSED: &'static str = "A scene's word count was not updated.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        [WORDS_COUNTED, DELETED]
-            .into_iter()
-            .map(|key| Subscription::parse(key).expect("a declared routing key holds no wildcards"))
-            .collect()
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "A scene's word count was not updated."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.keep(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        Ok(self.keep(message).await?)
     }
 }

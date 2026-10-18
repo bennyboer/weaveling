@@ -3,11 +3,8 @@ use eventpublishing::{
 };
 use eventsourcing::Recorded;
 use ids::InvalidId;
-use messaging::{Message, Subscription};
-use outline_contract::{
-    ATTACHED, AttachmentDTO, DETACHED, DISCARDED, EVERY_OUTLINE, OutlineEventDTO, SECTION_REMOVED,
-    STARTED,
-};
+use messaging::Message;
+use outline_contract::{AttachmentDTO, OutlineEventDTO};
 use outline_core::{Attachment, OutlineEvent, OutlineId};
 use thiserror::Error;
 
@@ -17,30 +14,6 @@ pub enum UnreadableOutlineEvent {
     NotAnOutlineEvent(#[from] UnreadableMessage),
     #[error("this message names something that is not an outline")]
     NotAnOutlineId(#[source] InvalidId),
-}
-
-pub fn every_event() -> Subscription {
-    Subscription::parse(EVERY_OUTLINE).expect("the outline pattern is written at compile time")
-}
-
-pub fn when_outline_discarded() -> Subscription {
-    Subscription::parse(DISCARDED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_started() -> Subscription {
-    Subscription::parse(STARTED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_attached() -> Subscription {
-    Subscription::parse(ATTACHED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_detached() -> Subscription {
-    Subscription::parse(DETACHED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_section_removed() -> Subscription {
-    Subscription::parse(SECTION_REMOVED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn event_in(
@@ -132,14 +105,24 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
 mod tests {
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
+    use messaging::{Handler, RoutingKey, Subscription};
     use outline_contract::{
-        SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED, SECTION_PROMOTED, SECTION_RETITLED,
+        ATTACHED, DETACHED, EVERY_OUTLINE, SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED,
+        SECTION_PROMOTED, SECTION_REMOVED, SECTION_RETITLED, STARTED,
     };
     use outline_core::{Attachment, KIND, PlacedSection, ProjectLink, SectionId, SectionTitle};
     use serde_json::json;
     use time::{Duration, OffsetDateTime};
 
     use super::*;
+
+    fn heard_by(patterns: &[&str], routing: &RoutingKey) -> bool {
+        patterns.iter().any(|pattern| {
+            Subscription::parse(pattern)
+                .expect("a declared pattern")
+                .covers(routing)
+        })
+    }
 
     fn at(seconds: i64) -> OffsetDateTime {
         OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -268,30 +251,33 @@ mod tests {
         assert!(
             everything_worth_publishing()
                 .into_iter()
-                .all(|(event, _)| every_event().covers(&routing_for(KIND, event.name()))),
+                .all(|(event, _)| heard_by(&[EVERY_OUTLINE], &routing_for(KIND, event.name()))),
             "a listener asking for every outline must hear all of them"
         );
     }
 
     #[test]
     fn restructuring_does_not_wake_the_catalog_projector() {
-        let listening = when_started();
-
         for (event, _) in everything_worth_publishing() {
-            let woken = listening.covers(&routing_for(KIND, event.name()));
+            let woken = heard_by(
+                <crate::OutlineCatalogProjector as Handler>::LISTENS_TO,
+                &routing_for(KIND, event.name()),
+            );
 
             assert_eq!(
                 woken,
-                matches!(event, OutlineEvent::Started { .. }),
-                "which outline a project has can only change when one is started, so a move must \
-                 not cost a projection write"
+                matches!(
+                    event,
+                    OutlineEvent::Started { .. } | OutlineEvent::Discarded
+                ),
+                "which outline a project has can only change when one is started or discarded, so \
+                 a move must not cost a projection write"
             );
         }
     }
 
     #[test]
     fn removing_a_section_wakes_the_attachment_index_because_it_detaches_scenes() {
-        let listening = [when_attached(), when_detached(), when_section_removed()];
         let removal = routing_for(
             KIND,
             OutlineEvent::SectionRemoved {
@@ -301,7 +287,10 @@ mod tests {
         );
 
         assert!(
-            listening.iter().any(|watching| watching.covers(&removal)),
+            heard_by(
+                <crate::AttachmentIndexProjector as Handler>::LISTENS_TO,
+                &removal
+            ),
             "a removed section returns its scenes to the pool, so the index would go stale without \
              it"
         );

@@ -1,34 +1,18 @@
 use std::sync::Arc;
 
-use boards_core::{
-    Board, BoardCatalog, BoardError, BoardEvent, BoardId, BoardService, CatalogError, IdeaLink,
-};
+use boards_contract::{IDEA_PINNED, IDEA_UNPINNED};
+use boards_core::{Board, BoardCatalog, BoardEvent, BoardId, BoardService, IdeaLink};
 use clock::Clock;
-use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
-use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use thiserror::Error;
+use eventsourcing::{AggregateId, EventSourcingService, EventStore};
+use messaging::{Failure, Handler, Message};
 
-use crate::letting_go::{NotLetGo, let_go_of_what_is_gone};
-use crate::publishing::{UnreadableBoardEvent, board_in, when_pinned, when_unpinned};
-
-const NAME: &str = "index-pinned-ideas";
+use crate::letting_go::let_go_of_what_is_gone;
+use crate::publishing::board_in;
 
 pub struct PinnedIdeasProjector {
     events: EventSourcingService<Board>,
     catalog: Arc<dyn BoardCatalog>,
     boards: BoardService,
-}
-
-#[derive(Debug, Error)]
-enum NotIndexed {
-    #[error(transparent)]
-    Unreadable(#[from] UnreadableBoardEvent),
-    #[error(transparent)]
-    Events(#[from] ServiceError<BoardError>),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    NotLetGo(#[from] NotLetGo),
 }
 
 impl PinnedIdeasProjector {
@@ -45,7 +29,7 @@ impl PinnedIdeasProjector {
         }
     }
 
-    async fn index(&self, board: &BoardId) -> Result<(), NotIndexed> {
+    async fn index(&self, board: &BoardId) -> Result<(), Failure> {
         let standing = self.events.latest(&AggregateId::from(board)).await?;
         if standing.state.is_discarded() {
             self.catalog.holds(*board, &[]).await?;
@@ -63,33 +47,16 @@ impl PinnedIdeasProjector {
 
         Ok(())
     }
-
-    async fn work_through(&self, message: &Message) -> Result<(), NotIndexed> {
-        self.index(&board_in(message)?).await
-    }
 }
 
 #[async_trait::async_trait]
-impl Listener for PinnedIdeasProjector {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the pin index listener is named at compile time")
-    }
+impl Handler for PinnedIdeasProjector {
+    const NAME: &'static str = "index-pinned-ideas";
+    const LISTENS_TO: &'static [&'static str] = &[IDEA_PINNED, IDEA_UNPINNED];
+    const WHEN_REFUSED: &'static str =
+        "A pin did not reach the record of which ideas a board holds.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_pinned(), when_unpinned()]
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "A pin did not reach the record of which ideas a board holds."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.work_through(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        self.index(&board_in(message)?).await
     }
 }

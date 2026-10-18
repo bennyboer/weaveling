@@ -7,14 +7,9 @@ use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use ideas_core::{
     CatalogError, IdeaCatalog, IdeaError, IdeaId, IdeaService, IdeaServiceError, ProjectLink,
 };
-use messaging::{
-    Delivery, Listener, ListenerName, Message, NotHandled, Publisher, RoutingKey, Subscription,
-    Undelivered,
-};
+use messaging::{Failure, Handler, Message, Publisher, RoutingKey, Undelivered};
 use projects_contract::{DELETED, ProjectEventDTO};
 use thiserror::Error;
-
-const NAME: &str = "discard-ideas-of-deleted-project";
 
 pub const AT_MOST: usize = 100;
 
@@ -40,14 +35,6 @@ enum NotSwept {
     Ideas(#[from] IdeaServiceError),
     #[error(transparent)]
     Undelivered(#[from] Undelivered),
-}
-
-pub fn when_project_deleted() -> Subscription {
-    Subscription::parse(DELETED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_more_to_sweep() -> Subscription {
-    Subscription::parse(MORE_TO_SWEEP).expect("a declared routing key holds no wildcards")
 }
 
 impl DiscardOnProjectDeleted {
@@ -146,26 +133,12 @@ fn nobody() -> Agent {
 }
 
 #[async_trait::async_trait]
-impl Listener for DiscardOnProjectDeleted {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the sweep listener is named at compile time")
-    }
+impl Handler for DiscardOnProjectDeleted {
+    const NAME: &'static str = "discard-ideas-of-deleted-project";
+    const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
+    const WHEN_REFUSED: &'static str = "The ideas of a deleted project were not cleared away.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_project_deleted(), when_more_to_sweep()]
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "The ideas of a deleted project were not cleared away."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.sweep(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        Ok(self.sweep(message).await?)
     }
 }

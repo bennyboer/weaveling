@@ -5,11 +5,13 @@ use eventsourcing::{Agent, InMemoryEventStore, Version};
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use ideas_core::{IdeaCatalog, IdeaId, IdeaService, IdeaSummary, IdeaTitle, ProjectLink};
-use ideas_messaging::DiscardOnProjectDeleted;
+use ideas_messaging::{AT_MOST, DiscardOnProjectDeleted};
 use messaging::{Listener, Message, Publisher, RoutingKey, Undelivered};
 use projects_contract::DELETED;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
+
+use crate::wiring::wired;
 
 const A_PROJECT: &str = "project_1";
 
@@ -268,5 +270,31 @@ async fn a_continuation_nobody_can_read_is_refused() {
     assert!(
         wired.sweep.handle(&nonsense).await.is_err(),
         "a continuation the sweep cannot act on belongs in dead letters, not dropped"
+    );
+}
+
+#[tokio::test]
+async fn a_project_larger_than_one_batch_is_swept_to_the_end_by_the_wired_sweep() {
+    let wired = wired(Arc::new(FixedClock::new(at(1_000))));
+    for nth in 0..=AT_MOST {
+        wired
+            .ideas
+            .capture(A_PROJECT, &format!("Idea {nth}"), &Agent::System)
+            .await
+            .expect("capturing should succeed");
+    }
+    wired.settle().await;
+
+    wired.outbox.enqueue(deleted());
+    wired.settle().await;
+
+    assert!(
+        wired
+            .catalog
+            .in_project(&ProjectLink::from(A_PROJECT))
+            .await
+            .expect("listing should succeed")
+            .is_empty(),
+        "every batch after the first is asked for by the sweep itself"
     );
 }

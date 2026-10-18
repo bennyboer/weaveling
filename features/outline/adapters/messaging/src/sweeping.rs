@@ -1,26 +1,11 @@
-use eventpublishing::{UnreadableMessage, published_in};
+use eventpublishing::published_in;
 use eventsourcing::{Agent, ServiceError};
-use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
+use messaging::{Failure, Handler, Message};
 use outline_core::{OutlineError, OutlineService, OutlineServiceError, ProjectLink};
 use projects_contract::{DELETED, ProjectEventDTO};
-use thiserror::Error;
-
-const NAME: &str = "discard-outlines-of-deleted-project";
 
 pub struct DiscardOutlinesOnProjectDeleted {
     outlines: OutlineService,
-}
-
-#[derive(Debug, Error)]
-enum NotSwept {
-    #[error(transparent)]
-    Unreadable(#[from] UnreadableMessage),
-    #[error(transparent)]
-    Refused(#[from] OutlineServiceError),
-}
-
-pub fn when_project_deleted() -> Subscription {
-    Subscription::parse(DELETED).expect("a declared routing key holds no wildcards")
 }
 
 impl DiscardOutlinesOnProjectDeleted {
@@ -28,7 +13,7 @@ impl DiscardOutlinesOnProjectDeleted {
         Self { outlines }
     }
 
-    async fn discard_everything(&self, project: &ProjectLink) -> Result<(), NotSwept> {
+    async fn discard_everything(&self, project: &ProjectLink) -> Result<(), Failure> {
         let Some(outline) = self.outlines.outline_of(project.as_str()).await? else {
             return Ok(());
         };
@@ -42,13 +27,6 @@ impl DiscardOutlinesOnProjectDeleted {
             Err(refused) if already_discarded(&refused) => Ok(()),
             Err(refused) => Err(refused.into()),
         }
-    }
-
-    async fn work_through(&self, message: &Message) -> Result<(), NotSwept> {
-        let deleted = published_in::<ProjectEventDTO>(message)?;
-
-        self.discard_everything(&ProjectLink::from(deleted.aggregate.id.as_str()))
-            .await
     }
 }
 
@@ -64,26 +42,15 @@ fn nobody() -> Agent {
 }
 
 #[async_trait::async_trait]
-impl Listener for DiscardOutlinesOnProjectDeleted {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the sweep listener is named at compile time")
-    }
+impl Handler for DiscardOutlinesOnProjectDeleted {
+    const NAME: &'static str = "discard-outlines-of-deleted-project";
+    const LISTENS_TO: &'static [&'static str] = &[DELETED];
+    const WHEN_REFUSED: &'static str = "The outline of a deleted project was not cleared away.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_project_deleted()]
-    }
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        let deleted = published_in::<ProjectEventDTO>(message)?;
 
-    fn when_refused(&self) -> &'static str {
-        "The outline of a deleted project was not cleared away."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.work_through(message)
+        self.discard_everything(&ProjectLink::from(deleted.aggregate.id.as_str()))
             .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
     }
 }

@@ -21,8 +21,8 @@ pub use delivering::{
 };
 pub use in_process::InProcessDispatcher;
 pub use listening::{
-    Delivery, InvalidListenerName, Listener, ListenerName, NotHandled, Notifications, Publisher,
-    Undelivered,
+    Delivery, Failure, Handler, InvalidListenerName, Listener, ListenerName, NotHandled,
+    Notifications, Publisher, Undelivered,
 };
 pub use message::{Conversation, Message, MessageId};
 pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};

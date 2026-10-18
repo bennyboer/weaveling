@@ -1,36 +1,18 @@
+use outline_contract::{ATTACHED, DETACHED, SECTION_REMOVED};
 use std::sync::Arc;
 
 use clock::Clock;
-use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
-use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use outline_core::{
-    CatalogError, Outline, OutlineCatalog, OutlineError, OutlineEvent, OutlineId, OutlineService,
-};
-use thiserror::Error;
+use eventsourcing::{AggregateId, EventSourcingService, EventStore};
+use messaging::{Failure, Handler, Message};
+use outline_core::{Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlineService};
 
-use crate::letting_go::{NotLetGo, let_go_of_what_is_gone};
-use crate::publishing::{
-    UnreadableOutlineEvent, outline_in, when_attached, when_detached, when_section_removed,
-};
-
-const NAME: &str = "index-attachments";
+use crate::letting_go::let_go_of_what_is_gone;
+use crate::publishing::outline_in;
 
 pub struct AttachmentIndexProjector {
     events: EventSourcingService<Outline>,
     catalog: Arc<dyn OutlineCatalog>,
     outlines: OutlineService,
-}
-
-#[derive(Debug, Error)]
-enum NotIndexed {
-    #[error(transparent)]
-    Unreadable(#[from] UnreadableOutlineEvent),
-    #[error(transparent)]
-    Events(#[from] ServiceError<OutlineError>),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    NotLetGo(#[from] NotLetGo),
 }
 
 impl AttachmentIndexProjector {
@@ -47,7 +29,7 @@ impl AttachmentIndexProjector {
         }
     }
 
-    async fn index(&self, outline: &OutlineId) -> Result<(), NotIndexed> {
+    async fn index(&self, outline: &OutlineId) -> Result<(), Failure> {
         let standing = self.events.latest(&AggregateId::from(outline)).await?;
         if standing.state.is_discarded() {
             self.catalog.holds(*outline, &[]).await?;
@@ -61,33 +43,16 @@ impl AttachmentIndexProjector {
 
         Ok(())
     }
-
-    async fn work_through(&self, message: &Message) -> Result<(), NotIndexed> {
-        self.index(&outline_in(message)?).await
-    }
 }
 
 #[async_trait::async_trait]
-impl Listener for AttachmentIndexProjector {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the attachment index listener is named at compile time")
-    }
+impl Handler for AttachmentIndexProjector {
+    const NAME: &'static str = "index-attachments";
+    const LISTENS_TO: &'static [&'static str] = &[ATTACHED, DETACHED, SECTION_REMOVED];
+    const WHEN_REFUSED: &'static str =
+        "A change to the outline did not reach the record of what it holds.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_attached(), when_detached(), when_section_removed()]
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "A change to the outline did not reach the record of what it holds."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.work_through(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        self.index(&outline_in(message)?).await
     }
 }

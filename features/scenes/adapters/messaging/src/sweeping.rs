@@ -2,16 +2,11 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventpublishing::{UnreadableMessage, published_in};
-use messaging::{
-    Delivery, Listener, ListenerName, Message, NotHandled, Publisher, RoutingKey, Subscription,
-    Undelivered,
-};
+use messaging::{Failure, Handler, Message, Publisher, RoutingKey, Undelivered};
 use projects_contract::{DELETED, ProjectEventDTO};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use scenes_core::{SceneId, SceneService, SceneServiceError, StoreError};
 use thiserror::Error;
-
-const NAME: &str = "delete-scenes-of-deleted-project";
 
 pub const AT_MOST: usize = 100;
 
@@ -32,14 +27,6 @@ enum NotSwept {
     Scenes(#[from] SceneServiceError),
     #[error(transparent)]
     Undelivered(#[from] Undelivered),
-}
-
-pub fn when_project_deleted() -> Subscription {
-    Subscription::parse(DELETED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_more_to_sweep() -> Subscription {
-    Subscription::parse(MORE_TO_SWEEP).expect("a declared routing key holds no wildcards")
 }
 
 impl DeleteOnProjectDeleted {
@@ -118,26 +105,12 @@ fn already_deleted(refused: &SceneServiceError) -> bool {
 }
 
 #[async_trait::async_trait]
-impl Listener for DeleteOnProjectDeleted {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the sweep listener is named at compile time")
-    }
+impl Handler for DeleteOnProjectDeleted {
+    const NAME: &'static str = "delete-scenes-of-deleted-project";
+    const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
+    const WHEN_REFUSED: &'static str = "The scenes of a deleted project were not cleared away.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_project_deleted(), when_more_to_sweep()]
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "The scenes of a deleted project were not cleared away."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.sweep(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        Ok(self.sweep(message).await?)
     }
 }

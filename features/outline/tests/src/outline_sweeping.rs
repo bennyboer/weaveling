@@ -126,3 +126,39 @@ async fn only_the_deleted_project_loses_its_outline() {
             .is_discarded()
     );
 }
+
+#[tokio::test]
+async fn a_swept_outline_leaves_the_catalog() {
+    let (wired, sweep) = a_workbench();
+    wired
+        .outlines
+        .open("project_1", &an_author())
+        .await
+        .expect("opening should succeed");
+    wired.settle().await;
+    let listed = || async {
+        wired
+            .catalog
+            .in_project(&"project_1".into())
+            .await
+            .expect("asking should succeed")
+            .len()
+    };
+    assert_eq!(
+        listed().await,
+        1,
+        "the start should have reached the catalog"
+    );
+
+    sweep
+        .handle(&deleted("project_1"))
+        .await
+        .expect("the sweep should take the deletion");
+    wired.settle().await;
+
+    assert_eq!(
+        listed().await,
+        0,
+        "a discarded outline must not stay listed"
+    );
+}

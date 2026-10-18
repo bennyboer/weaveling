@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
-use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
+use messaging::{Failure, Handler, Message};
 use outline_core::{Attachment, OutlineCatalog, OutlineService};
 use scenes_contract::{DELETED, SceneDeletedDTO};
 use thiserror::Error;
 
 use crate::letting_go::{NotLetGo, let_go_everywhere};
-
-const NAME: &str = "detach-deleted-scene";
 
 pub struct DetachOnSceneDeleted {
     outlines: OutlineService,
@@ -20,10 +18,6 @@ enum NotDetached {
     Unshaped(#[from] serde_json::Error),
     #[error(transparent)]
     NotLetGo(#[from] NotLetGo),
-}
-
-pub fn when_scene_deleted() -> Subscription {
-    Subscription::parse(DELETED).expect("a declared routing key holds no wildcards")
 }
 
 impl DetachOnSceneDeleted {
@@ -45,26 +39,12 @@ impl DetachOnSceneDeleted {
 }
 
 #[async_trait::async_trait]
-impl Listener for DetachOnSceneDeleted {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the scene deletion listener is named at compile time")
-    }
+impl Handler for DetachOnSceneDeleted {
+    const NAME: &'static str = "detach-deleted-scene";
+    const LISTENS_TO: &'static [&'static str] = &[DELETED];
+    const WHEN_REFUSED: &'static str = "A deleted scene could not be taken out of the outline.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        vec![when_scene_deleted()]
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "A deleted scene could not be taken out of the outline."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.work_through(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        Ok(self.work_through(message).await?)
     }
 }

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
+use messaging::{Failure, Handler, Message};
 use scenes_contract::{
     CREATED, DELETED, OPENING_CHANGED, OpeningChangedDTO, RETITLED, SceneCreatedDTO,
     SceneDeletedDTO, SceneRetitledDTO,
@@ -10,8 +10,6 @@ use scenes_core::{
 };
 use serde_json::from_value;
 use thiserror::Error;
-
-const NAME: &str = "catalogue-scene";
 
 pub struct CatalogueScenes {
     catalog: Arc<dyn SceneCatalog>,
@@ -86,29 +84,12 @@ impl CatalogueScenes {
 }
 
 #[async_trait::async_trait]
-impl Listener for CatalogueScenes {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME).expect("the catalogue listener is named at compile time")
-    }
+impl Handler for CatalogueScenes {
+    const NAME: &'static str = "catalogue-scene";
+    const LISTENS_TO: &'static [&'static str] = &[CREATED, RETITLED, OPENING_CHANGED, DELETED];
+    const WHEN_REFUSED: &'static str = "A scene's name in the outline was not updated.";
 
-    fn listens_to(&self) -> Vec<Subscription> {
-        [CREATED, RETITLED, OPENING_CHANGED, DELETED]
-            .into_iter()
-            .map(|key| Subscription::parse(key).expect("a declared routing key holds no wildcards"))
-            .collect()
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "A scene's name in the outline was not updated."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.catalogue(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        Ok(self.catalogue(message).await?)
     }
 }

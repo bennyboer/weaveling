@@ -1,13 +1,11 @@
-use boards_contract::{
-    BoardEventDTO, DISCARDED, EVERY_BOARD, IDEA_PINNED, IDEA_UNPINNED, STARTED, SizeDTO, SpotDTO,
-};
+use boards_contract::{BoardEventDTO, SizeDTO, SpotDTO};
 use boards_core::{BoardEvent, BoardId, Size, Spot};
 use eventpublishing::{
     PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
 };
 use eventsourcing::Recorded;
 use ids::InvalidId;
-use messaging::{Message, Subscription};
+use messaging::Message;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -16,26 +14,6 @@ pub enum UnreadableBoardEvent {
     NotABoardEvent(#[from] UnreadableMessage),
     #[error("this message names something that is not a board")]
     NotABoardId(#[source] InvalidId),
-}
-
-pub fn every_event() -> Subscription {
-    Subscription::parse(EVERY_BOARD).expect("the board pattern is written at compile time")
-}
-
-pub fn when_pinned() -> Subscription {
-    Subscription::parse(IDEA_PINNED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_unpinned() -> Subscription {
-    Subscription::parse(IDEA_UNPINNED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_board_discarded() -> Subscription {
-    Subscription::parse(DISCARDED).expect("a declared routing key holds no wildcards")
-}
-
-pub fn when_started() -> Subscription {
-    Subscription::parse(STARTED).expect("a declared routing key holds no wildcards")
 }
 
 pub fn event_in(message: &Message) -> Result<PublishedEvent<BoardEventDTO>, UnreadableBoardEvent> {
@@ -96,10 +74,13 @@ fn to_size_dto(size: Size) -> SizeDTO {
 
 #[cfg(test)]
 mod tests {
-    use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_RAISED, IDEA_RESIZED, IDEA_UNPINNED};
+    use boards_contract::{
+        EVERY_BOARD, IDEA_MOVED, IDEA_PINNED, IDEA_RAISED, IDEA_RESIZED, IDEA_UNPINNED, STARTED,
+    };
     use boards_core::{IdeaLink, KIND, PositionedIdea, ProjectLink};
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
+    use messaging::{Handler, RoutingKey, Subscription};
     use serde_json::json;
     use time::{Duration, OffsetDateTime};
 
@@ -197,24 +178,32 @@ mod tests {
         assert!(
             everything_worth_publishing()
                 .into_iter()
-                .all(|(event, _)| every_event().covers(&routing_for(KIND, event.name()))),
+                .all(|(event, _)| Subscription::parse(EVERY_BOARD)
+                    .expect("a declared pattern")
+                    .covers(&routing_for(KIND, event.name()))),
             "a listener asking for every board must hear all of them"
         );
     }
 
     #[test]
     fn a_drag_does_not_wake_the_catalog_projector() {
-        let listening = when_started();
+        let listening = |routing: &RoutingKey| {
+            <crate::BoardCatalogProjector as Handler>::LISTENS_TO
+                .iter()
+                .any(|pattern| {
+                    Subscription::parse(pattern)
+                        .expect("a declared pattern")
+                        .covers(routing)
+                })
+        };
 
-        assert!(
-            listening.covers(&routing_for(
-                KIND,
-                BoardEvent::Started {
-                    project: ProjectLink::from("project_1")
-                }
-                .name()
-            ))
-        );
+        assert!(listening(&routing_for(
+            KIND,
+            BoardEvent::Started {
+                project: ProjectLink::from("project_1")
+            }
+            .name()
+        )));
         for pinning in [
             a_pin(),
             BoardEvent::IdeaMoved {
@@ -226,7 +215,7 @@ mod tests {
             },
         ] {
             assert!(
-                !listening.covers(&routing_for(KIND, pinning.name())),
+                !listening(&routing_for(KIND, pinning.name())),
                 "which board a project has can only change when one is started, so a drop must not \
                  cost a projection write"
             );

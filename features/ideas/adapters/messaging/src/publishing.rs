@@ -2,10 +2,10 @@ use eventpublishing::{
     PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
 };
 use eventsourcing::Recorded;
-use ideas_contract::{EVERY_IDEA, IdeaEventDTO};
+use ideas_contract::IdeaEventDTO;
 use ideas_core::{IdeaEvent, IdeaId};
 use ids::InvalidId;
-use messaging::{Message, Subscription};
+use messaging::Message;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -14,10 +14,6 @@ pub enum UnreadableIdeaEvent {
     NotAIdeaEvent(#[from] UnreadableMessage),
     #[error("this message names something that is not an idea")]
     NotAIdeaId(#[source] InvalidId),
-}
-
-pub fn every_event() -> Subscription {
-    Subscription::parse(EVERY_IDEA).expect("the idea pattern is written at compile time")
 }
 
 pub fn event_in(message: &Message) -> Result<PublishedEvent<IdeaEventDTO>, UnreadableIdeaEvent> {
@@ -54,9 +50,9 @@ fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
 mod tests {
     use eventpublishing::{everything_from, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Recorded, Version};
-    use ideas_contract::{CAPTURED, DISCARDED, RETITLED};
+    use ideas_contract::{CAPTURED, DISCARDED, EVERY_IDEA, RETITLED};
     use ideas_core::{IdeaTitle, KIND, ProjectLink};
-    use messaging::RoutingKey;
+    use messaging::{RoutingKey, Subscription};
     use serde_json::json;
     use time::{Duration, OffsetDateTime};
 
@@ -127,9 +123,11 @@ mod tests {
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
         assert_eq!(everything_from(KIND), EVERY_IDEA);
         assert!(
-            everything_worth_publishing()
-                .into_iter()
-                .all(|(event, _)| { every_event().covers(&routing_for(KIND, event.name())) }),
+            everything_worth_publishing().into_iter().all(|(event, _)| {
+                Subscription::parse(EVERY_IDEA)
+                    .expect("a declared pattern")
+                    .covers(&routing_for(KIND, event.name()))
+            }),
             "a listener asking for every idea must handle all of them"
         );
     }

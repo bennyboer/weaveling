@@ -1,31 +1,35 @@
 use std::sync::Arc;
 
-use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, SectionLink, Subject};
-use eventpublishing::{UnreadableMessage, published_in};
-use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
+use appearances_core::{AppearanceCatalog, IdeaLink, Place, SectionLink, Subject};
+use eventpublishing::published_in;
+use messaging::{Failure, Handler, Message};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
-use thiserror::Error;
-
-const NAME: &str = "index-outline-appearances";
 
 pub struct OutlineAppearancesProjector {
     catalog: Arc<dyn AppearanceCatalog>,
-}
-
-#[derive(Debug, Error)]
-enum NotIndexed {
-    #[error(transparent)]
-    Unreadable(#[from] UnreadableMessage),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
 }
 
 impl OutlineAppearancesProjector {
     pub fn new(catalog: Arc<dyn AppearanceCatalog>) -> Self {
         Self { catalog }
     }
+}
 
-    async fn index(&self, message: &Message) -> Result<(), NotIndexed> {
+fn an_idea(id: String) -> Subject {
+    Subject::Idea(IdeaLink::from(id))
+}
+
+fn a_section(id: String) -> Place {
+    Place::Section(SectionLink::from(id))
+}
+
+#[async_trait::async_trait]
+impl Handler for OutlineAppearancesProjector {
+    const NAME: &'static str = "index-outline-appearances";
+    const LISTENS_TO: &'static [&'static str] = &[ATTACHED, DETACHED, SECTION_REMOVED];
+    const WHEN_REFUSED: &'static str = "Where an idea appears in the outline was not updated.";
+
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let published = published_in::<OutlineEventDTO>(message)?;
         let version = published.aggregate.version;
 
@@ -54,42 +58,5 @@ impl OutlineAppearancesProjector {
         }
 
         Ok(())
-    }
-}
-
-fn an_idea(id: String) -> Subject {
-    Subject::Idea(IdeaLink::from(id))
-}
-
-fn a_section(id: String) -> Place {
-    Place::Section(SectionLink::from(id))
-}
-
-#[async_trait::async_trait]
-impl Listener for OutlineAppearancesProjector {
-    fn named(&self) -> ListenerName {
-        ListenerName::parse(NAME)
-            .expect("the outline appearances listener is named at compile time")
-    }
-
-    fn listens_to(&self) -> Vec<Subscription> {
-        [ATTACHED, DETACHED, SECTION_REMOVED]
-            .into_iter()
-            .map(|key| Subscription::parse(key).expect("a declared routing key holds no wildcards"))
-            .collect()
-    }
-
-    fn when_refused(&self) -> &'static str {
-        "Where an idea appears in the outline was not updated."
-    }
-
-    fn delivery(&self) -> Delivery {
-        Delivery::Kept
-    }
-
-    async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        self.index(message)
-            .await
-            .map_err(|why| NotHandled::because(self.named(), message.routing.clone(), why))
     }
 }

@@ -5,5 +5,5 @@ mod unlinking;
 
 pub use cataloguing::CatalogueScenes;
 pub use publishing::message_for;
-pub use sweeping::{AT_MOST, DeleteOnProjectDeleted, when_more_to_sweep, when_project_deleted};
-pub use unlinking::{UnlinkOnDiscard, when_idea_discarded};
+pub use sweeping::{AT_MOST, DeleteOnProjectDeleted};
+pub use unlinking::UnlinkOnDiscard;
