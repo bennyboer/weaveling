@@ -3,12 +3,14 @@ use std::sync::Arc;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::FixedClock;
-use scenes_catalog::InMemorySceneCatalog;
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{
-    CreateSceneRequest, FRAGMENT, LinkIdeaRequest, RetitleSceneRequest, SceneDTO, ScenePageDTO,
-    SceneSummaryDTO,
+    CreateSceneRequest, FRAGMENT, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest,
+    SceneDTO, ScenePageDTO, SceneSummaryDTO,
 };
-use scenes_core::{ProjectLink, SceneCatalog, SceneId, SceneService, SceneTitle};
+use scenes_core::{
+    ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneService, SceneTitle,
+};
 use scenes_rest::PAGE;
 use scenes_store::InMemorySceneStore;
 use time::{Duration, OffsetDateTime};
@@ -360,4 +362,66 @@ async fn linking_to_a_scene_nobody_created_is_not_found() {
         .delete(&format!("/scenes/{UNKNOWN_ID}/ideas/idea_1"))
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+async fn restyling(tasks: InMemoryQuotationRestylingTasks) -> axum_test::TestResponse {
+    TestServer::new(scenes_rest::quotation_restylings(Arc::new(tasks)))
+        .get(&format!("/scenes/quotation-restylings/{A_PROJECT}"))
+        .await
+}
+
+#[tokio::test]
+async fn how_far_a_book_is_restyled_can_be_asked() {
+    let tasks = InMemoryQuotationRestylingTasks::new();
+    let project = ProjectLink::from(A_PROJECT);
+    tasks
+        .begin(&project, 3, 5)
+        .await
+        .expect("beginning should succeed");
+    tasks
+        .progressed(&project, 3, 2, false)
+        .await
+        .expect("counting should succeed");
+
+    let response = restyling(tasks).await;
+
+    response.assert_status_ok();
+    assert_eq!(
+        response.json::<QuotationRestylingDTO>(),
+        QuotationRestylingDTO {
+            change: 3,
+            total: 5,
+            done: 2,
+            finished: false,
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_book_never_restyled_is_not_found() {
+    restyling(InMemoryQuotationRestylingTasks::new())
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn more_done_than_was_counted_is_told_as_all_of_it() {
+    let tasks = InMemoryQuotationRestylingTasks::new();
+    let project = ProjectLink::from(A_PROJECT);
+    tasks
+        .begin(&project, 3, 2)
+        .await
+        .expect("beginning should succeed");
+    tasks
+        .progressed(&project, 3, 3, true)
+        .await
+        .expect("counting should succeed");
+
+    let told = restyling(tasks).await.json::<QuotationRestylingDTO>();
+
+    assert_eq!(
+        told.done, 2,
+        "a scene written while the book was restyled, or a batch delivered twice, \
+         must not take the bar past its end"
+    );
 }

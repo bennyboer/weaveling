@@ -7,12 +7,12 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use scenes_contract::{
-    CreateSceneRequest, LinkIdeaRequest, RetitleSceneRequest, SceneDTO, ScenePageDTO,
-    SceneSummaryDTO,
+    CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
+    ScenePageDTO, SceneSummaryDTO,
 };
 use scenes_core::{
-    CatalogError, ProjectLink, Scene, SceneCatalog, SceneId, SceneService, SceneServiceError,
-    SceneSummary, StoreError,
+    CatalogError, ProjectLink, QuotationRestylingTaskError, QuotationRestylingTasks, Scene,
+    SceneCatalog, SceneId, SceneService, SceneServiceError, SceneSummary, StoreError,
 };
 use serde::Deserialize;
 
@@ -41,6 +41,29 @@ pub fn router(service: SceneService, catalog: Arc<dyn SceneCatalog>) -> Router {
         .route("/scenes/{id}/ideas", post(link))
         .route("/scenes/{id}/ideas/{idea}", delete(unlink))
         .with_state(Scenes { service, catalog })
+}
+
+pub fn quotation_restylings(tasks: Arc<dyn QuotationRestylingTasks>) -> Router {
+    Router::new()
+        .route("/scenes/quotation-restylings/{project}", get(progress))
+        .with_state(tasks)
+}
+
+async fn progress(
+    State(tasks): State<Arc<dyn QuotationRestylingTasks>>,
+    Path(project): Path<String>,
+) -> Result<Json<QuotationRestylingDTO>, ApiError> {
+    let progress = tasks
+        .progress(&ProjectLink::from(project.as_str()))
+        .await?
+        .ok_or(ApiError::NeverRestyled(project))?;
+
+    Ok(Json(QuotationRestylingDTO {
+        change: progress.change,
+        total: progress.total,
+        done: progress.done.min(progress.total),
+        finished: progress.finished,
+    }))
 }
 
 pub const PAGE: usize = 1000;
@@ -153,11 +176,19 @@ fn to_dto(scene: &Scene) -> SceneDTO {
 enum ApiError {
     Scenes(SceneServiceError),
     Catalog(CatalogError),
+    Restylings(QuotationRestylingTaskError),
+    NeverRestyled(String),
 }
 
 impl From<SceneServiceError> for ApiError {
     fn from(error: SceneServiceError) -> Self {
         Self::Scenes(error)
+    }
+}
+
+impl From<QuotationRestylingTaskError> for ApiError {
+    fn from(error: QuotationRestylingTaskError) -> Self {
+        Self::Restylings(error)
     }
 }
 
@@ -177,6 +208,22 @@ impl IntoResponse for ApiError {
                 return (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "the scene catalog is unavailable".to_owned(),
+                )
+                    .into_response();
+            }
+            Self::Restylings(error) => {
+                tracing::error!(%error, "the quotation restyling tasks failed");
+
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "the progress of restyling is unavailable".to_owned(),
+                )
+                    .into_response();
+            }
+            Self::NeverRestyled(project) => {
+                return (
+                    StatusCode::NOT_FOUND,
+                    format!("the quotation marks of project {project} were never restyled"),
                 )
                     .into_response();
             }

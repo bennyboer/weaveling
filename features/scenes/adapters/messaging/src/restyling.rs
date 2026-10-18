@@ -72,17 +72,13 @@ impl RestyleOnQuotationChanged {
     async fn restyle(&self, asked: &Message) -> Result<(), NotRestyled> {
         let task = what_to_restyle(asked)?;
         let project = ProjectLink::from(task.project.as_str());
-        if !self.tasks.claim(&project, task.change).await? {
+        if !self.claimed(&project, &task).await? {
             return Ok(());
         }
         let batch = self
             .scenes
             .in_project(&task.project, task.after.as_deref(), self.at_most)
             .await?;
-
-        let Some(last) = batch.last().copied() else {
-            return Ok(());
-        };
 
         for scene in &batch {
             match self.restyler.restyle(*scene, task.style).await {
@@ -92,7 +88,14 @@ impl RestyleOnQuotationChanged {
             }
         }
 
-        if batch.len() < self.at_most {
+        let finished = batch.len() < self.at_most;
+        self.tasks
+            .progressed(&project, task.change, in_count(batch.len()), finished)
+            .await?;
+        let Some(last) = batch.last().copied() else {
+            return Ok(());
+        };
+        if finished {
             return Ok(());
         }
 
@@ -101,6 +104,36 @@ impl RestyleOnQuotationChanged {
             .await?;
 
         Ok(())
+    }
+
+    async fn claimed(
+        &self,
+        project: &ProjectLink,
+        task: &QuotationRestylingTask,
+    ) -> Result<bool, NotRestyled> {
+        if task.after.is_some() {
+            return Ok(self.tasks.claim(project, task.change).await?);
+        }
+        let total = self.scenes_in(&task.project).await?;
+
+        Ok(self.tasks.begin(project, task.change, total).await?)
+    }
+
+    async fn scenes_in(&self, project: &str) -> Result<u64, SceneServiceError> {
+        let mut total = 0;
+        let mut after: Option<String> = None;
+
+        loop {
+            let page = self
+                .scenes
+                .in_project(project, after.as_deref(), self.at_most)
+                .await?;
+            total += in_count(page.len());
+            match page.last() {
+                Some(last) if page.len() == self.at_most => after = Some(last.to_string()),
+                _ => return Ok(total),
+            }
+        }
     }
 
     fn carry_on(&self, asked: &Message, task: &QuotationRestylingTask, after: SceneId) -> Message {
@@ -145,6 +178,10 @@ fn what_to_restyle(asked: &Message) -> Result<QuotationRestylingTask, NotRestyle
         change: changed.aggregate.version,
         after: None,
     })
+}
+
+fn in_count(scenes: usize) -> u64 {
+    u64::try_from(scenes).expect("a number of scenes fits 64 bits")
 }
 
 fn deleted_meanwhile(refused: &SceneServiceError) -> bool {

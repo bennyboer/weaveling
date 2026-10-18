@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use scenes_core::{
-    CatalogError, ProjectLink, QuotationRestylingTaskError, QuotationRestylingTasks, SceneCatalog,
-    SceneId, SceneSummary, SceneTitle,
+    CatalogError, ProjectLink, QuotationRestylingProgress, QuotationRestylingTaskError,
+    QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary, SceneTitle,
 };
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
@@ -44,6 +44,26 @@ const IN_PROJECT_AFTER: &str = "
     WHERE project = $1 AND scene > $2
     ORDER BY scene
     LIMIT $3
+";
+
+const BEGIN: &str = "
+    INSERT INTO quotation_restyling_tasks (project, latest_change, total)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (project) DO UPDATE
+    SET latest_change = excluded.latest_change, total = excluded.total, done = 0, finished = FALSE
+    WHERE quotation_restyling_tasks.latest_change <= excluded.latest_change
+";
+
+const PROGRESSED: &str = "
+    UPDATE quotation_restyling_tasks
+    SET done = done + $3, finished = $4
+    WHERE project = $1 AND latest_change = $2
+";
+
+const PROGRESS: &str = "
+    SELECT latest_change, total, done, finished
+    FROM quotation_restyling_tasks
+    WHERE project = $1
 ";
 
 const CLAIM: &str = "
@@ -187,8 +207,39 @@ impl PostgresQuotationRestylingTasks {
     }
 }
 
+fn untold(failure: impl std::error::Error + Send + Sync + 'static) -> QuotationRestylingTaskError {
+    QuotationRestylingTaskError::Backend(Box::new(failure))
+}
+
+fn in_column(count: u64) -> i64 {
+    i64::try_from(count).expect("a count fits a signed 64-bit column")
+}
+
+fn counted(row: &sqlx::postgres::PgRow, column: &str) -> Result<u64, QuotationRestylingTaskError> {
+    let stored: i64 = row.try_get(column).map_err(untold)?;
+
+    u64::try_from(stored).map_err(untold)
+}
+
 #[async_trait]
 impl QuotationRestylingTasks for PostgresQuotationRestylingTasks {
+    async fn begin(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+        total: u64,
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        let written = sqlx::query(BEGIN)
+            .bind(project.to_string())
+            .bind(in_column(change))
+            .bind(in_column(total))
+            .execute(&self.pool)
+            .await
+            .map_err(untold)?;
+
+        Ok(written.rows_affected() == 1)
+    }
+
     async fn claim(
         &self,
         project: &ProjectLink,
@@ -196,11 +247,51 @@ impl QuotationRestylingTasks for PostgresQuotationRestylingTasks {
     ) -> Result<bool, QuotationRestylingTaskError> {
         let written = sqlx::query(CLAIM)
             .bind(project.to_string())
-            .bind(i64::try_from(change).expect("a version fits a signed 64-bit column"))
+            .bind(in_column(change))
             .execute(&self.pool)
             .await
-            .map_err(|failure| QuotationRestylingTaskError::Backend(Box::new(failure)))?;
+            .map_err(untold)?;
 
         Ok(written.rows_affected() == 1)
+    }
+
+    async fn progressed(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+        done: u64,
+        finished: bool,
+    ) -> Result<(), QuotationRestylingTaskError> {
+        sqlx::query(PROGRESSED)
+            .bind(project.to_string())
+            .bind(in_column(change))
+            .bind(in_column(done))
+            .bind(finished)
+            .execute(&self.pool)
+            .await
+            .map_err(untold)?;
+
+        Ok(())
+    }
+
+    async fn progress(
+        &self,
+        project: &ProjectLink,
+    ) -> Result<Option<QuotationRestylingProgress>, QuotationRestylingTaskError> {
+        let Some(row) = sqlx::query(PROGRESS)
+            .bind(project.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(untold)?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(QuotationRestylingProgress {
+            change: counted(&row, "latest_change")?,
+            total: counted(&row, "total")?,
+            done: counted(&row, "done")?,
+            finished: row.try_get("finished").map_err(untold)?,
+        }))
     }
 }

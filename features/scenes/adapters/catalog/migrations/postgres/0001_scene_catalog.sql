@@ -15,5 +15,8 @@ CREATE TABLE scene_catalog_gone (
 
 CREATE TABLE quotation_restyling_tasks (
     project        TEXT COLLATE "C" PRIMARY KEY,
-    latest_change  BIGINT           NOT NULL
+    latest_change  BIGINT           NOT NULL,
+    total          BIGINT           NOT NULL DEFAULT 0,
+    done           BIGINT           NOT NULL DEFAULT 0,
+    finished       BOOLEAN          NOT NULL DEFAULT FALSE
 );

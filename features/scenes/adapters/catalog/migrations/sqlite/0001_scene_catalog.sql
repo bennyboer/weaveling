@@ -15,5 +15,8 @@ CREATE TABLE scene_catalog_gone (
 
 CREATE TABLE quotation_restyling_tasks (
     project        TEXT    PRIMARY KEY,
-    latest_change  INTEGER NOT NULL
+    latest_change  INTEGER NOT NULL,
+    total          INTEGER NOT NULL DEFAULT 0,
+    done           INTEGER NOT NULL DEFAULT 0,
+    finished       INTEGER NOT NULL DEFAULT 0
 );

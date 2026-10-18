@@ -67,6 +67,14 @@ pub struct MoreQuotationMarksToRestyleDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct QuotationRestylingDTO {
+    pub change: u64,
+    pub total: u64,
+    pub done: u64,
+    pub finished: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct CreateSceneRequest {
     pub project: String,
 }

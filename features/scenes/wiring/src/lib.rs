@@ -39,7 +39,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
 
     Wired::serving(
-        scenes_rest::router(scenes, ports.catalog.clone()).merge(scenes_sync::router(live.clone())),
+        scenes_rest::router(scenes, ports.catalog.clone())
+            .merge(scenes_rest::quotation_restylings(
+                ports.quotation_restyling_tasks.clone(),
+            ))
+            .merge(scenes_sync::router(live.clone())),
     )
     .listening(vec![
         Arc::new(sweep),

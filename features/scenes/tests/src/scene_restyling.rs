@@ -8,7 +8,10 @@ use projects_contract::QUOTATION_CHANGED;
 use quotation::QuotationMarks;
 use scenes_catalog::InMemoryQuotationRestylingTasks;
 use scenes_contract::{FRAGMENT, MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
-use scenes_core::{SceneId, SceneRestyler, SceneService, SceneServiceError, StoreError};
+use scenes_core::{
+    ProjectLink, QuotationRestylingProgress, QuotationRestylingTasks, SceneId, SceneRestyler,
+    SceneService, SceneServiceError, StoreError,
+};
 use scenes_messaging::RestyleOnQuotationChanged;
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
@@ -50,6 +53,7 @@ struct Wired {
     restyle: RestyleOnQuotationChanged,
     scenes: SceneService,
     live: LiveScenes,
+    tasks: Arc<InMemoryQuotationRestylingTasks>,
     overheard: Arc<FakePublisher>,
 }
 
@@ -71,18 +75,20 @@ fn restyling_with(
 ) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_000)));
     let overheard = Arc::new(FakePublisher::default());
+    let tasks = Arc::new(InMemoryQuotationRestylingTasks::new());
 
     Wired {
         restyle: RestyleOnQuotationChanged::new(
             scenes.clone(),
             restyler,
-            Arc::new(InMemoryQuotationRestylingTasks::new()),
+            tasks.clone(),
             overheard.clone(),
             clock,
         )
         .taking_at_most(at_most),
         scenes,
         live,
+        tasks,
         overheard,
     }
 }
@@ -150,6 +156,13 @@ impl Wired {
         }
 
         said
+    }
+
+    async fn progress(&self) -> Option<QuotationRestylingProgress> {
+        self.tasks
+            .progress(&ProjectLink::from(A_PROJECT))
+            .await
+            .expect("reading progress should succeed")
     }
 
     fn carried_on(&self) -> Vec<Message> {
@@ -481,4 +494,65 @@ async fn a_continuation_heard_after_a_restart_still_turns_an_older_style_away() 
         vec!["“Ja.”"],
         "the continuation tells of a newer change, so the older one must not begin"
     );
+}
+
+fn so_far(total: u64, done: u64, finished: bool) -> Option<QuotationRestylingProgress> {
+    Some(QuotationRestylingProgress {
+        change: 3,
+        total,
+        done,
+        finished,
+    })
+}
+
+#[tokio::test]
+async fn a_restyling_counts_the_book_before_it_begins() {
+    let wired = a_workbench(2);
+    wired.holding(A_PROJECT, 5).await;
+    wired.holding(ANOTHER_PROJECT, 4).await;
+
+    wired
+        .restyle
+        .handle(&restyled(A_PROJECT, "curly", 3))
+        .await
+        .expect("restyling succeeds");
+
+    assert_eq!(
+        wired.progress().await,
+        so_far(5, 2, false),
+        "five scenes counted in pages of two, and the first batch of two done"
+    );
+}
+
+#[tokio::test]
+async fn a_restyling_is_finished_once_its_last_batch_is_done() {
+    let wired = a_workbench(2);
+    wired.holding(A_PROJECT, 5).await;
+
+    wired.restyle_through(restyled(A_PROJECT, "curly", 3)).await;
+
+    assert_eq!(wired.progress().await, so_far(5, 5, true));
+}
+
+#[tokio::test]
+async fn a_book_whose_last_batch_is_full_is_finished_by_the_empty_one_after() {
+    let wired = a_workbench(2);
+    wired.holding(A_PROJECT, 4).await;
+
+    wired.restyle_through(restyled(A_PROJECT, "curly", 3)).await;
+
+    assert_eq!(wired.progress().await, so_far(4, 4, true));
+}
+
+#[tokio::test]
+async fn a_book_without_scenes_is_finished_at_once() {
+    let wired = a_workbench(2);
+
+    wired
+        .restyle
+        .handle(&restyled(A_PROJECT, "curly", 3))
+        .await
+        .expect("restyling succeeds");
+
+    assert_eq!(wired.progress().await, so_far(0, 0, true));
 }

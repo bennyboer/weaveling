@@ -1,5 +1,6 @@
 use scenes_core::{
-    ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary, SceneTitle,
+    ProjectLink, QuotationRestylingProgress, QuotationRestylingTasks, SceneCatalog, SceneId,
+    SceneSummary, SceneTitle,
 };
 use time::{Duration, OffsetDateTime};
 
@@ -274,6 +275,94 @@ pub async fn another_book_is_claimed_on_its_own(tasks: &impl QuotationRestylingT
     assert!(claimed(tasks, "project_2", 3).await);
 }
 
+async fn begun(tasks: &impl QuotationRestylingTasks, change: u64, total: u64) -> bool {
+    tasks
+        .begin(&a_project("project_1"), change, total)
+        .await
+        .expect("beginning should succeed")
+}
+
+async fn progressed(tasks: &impl QuotationRestylingTasks, change: u64, done: u64, finished: bool) {
+    tasks
+        .progressed(&a_project("project_1"), change, done, finished)
+        .await
+        .expect("counting progress should succeed");
+}
+
+async fn progress(tasks: &impl QuotationRestylingTasks) -> Option<QuotationRestylingProgress> {
+    tasks
+        .progress(&a_project("project_1"))
+        .await
+        .expect("reading progress should succeed")
+}
+
+fn so_far(
+    change: u64,
+    total: u64,
+    done: u64,
+    finished: bool,
+) -> Option<QuotationRestylingProgress> {
+    Some(QuotationRestylingProgress {
+        change,
+        total,
+        done,
+        finished,
+    })
+}
+
+pub async fn a_book_never_restyled_has_no_progress(tasks: &impl QuotationRestylingTasks) {
+    assert_eq!(progress(tasks).await, None);
+}
+
+pub async fn a_restyling_counts_its_batches_until_it_is_finished(
+    tasks: &impl QuotationRestylingTasks,
+) {
+    assert!(begun(tasks, 5, 7).await);
+
+    progressed(tasks, 5, 4, false).await;
+    assert_eq!(progress(tasks).await, so_far(5, 7, 4, false));
+
+    progressed(tasks, 5, 3, true).await;
+    assert_eq!(progress(tasks).await, so_far(5, 7, 7, true));
+}
+
+pub async fn a_newer_change_begins_counting_afresh(tasks: &impl QuotationRestylingTasks) {
+    begun(tasks, 5, 7).await;
+    progressed(tasks, 5, 7, true).await;
+
+    assert!(begun(tasks, 6, 2).await);
+
+    assert_eq!(progress(tasks).await, so_far(6, 2, 0, false));
+}
+
+pub async fn an_older_change_neither_begins_nor_counts(tasks: &impl QuotationRestylingTasks) {
+    begun(tasks, 5, 7).await;
+
+    assert!(!begun(tasks, 3, 9).await);
+    progressed(tasks, 3, 2, true).await;
+
+    assert_eq!(
+        progress(tasks).await,
+        so_far(5, 7, 0, false),
+        "the bar shows the newest change, not what is left of an older one"
+    );
+}
+
+pub async fn a_batch_claiming_the_book_keeps_the_count(tasks: &impl QuotationRestylingTasks) {
+    begun(tasks, 5, 7).await;
+    progressed(tasks, 5, 2, false).await;
+
+    claimed(tasks, "project_1", 5).await;
+
+    assert_eq!(progress(tasks).await, so_far(5, 7, 2, false));
+}
+
+pub async fn a_claim_nobody_began_counts_from_nothing(tasks: &impl QuotationRestylingTasks) {
+    claimed(tasks, "project_1", 5).await;
+
+    assert_eq!(progress(tasks).await, so_far(5, 0, 0, false));
+}
+
 macro_rules! restyling_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -334,6 +423,15 @@ macro_rules! conformance_tests {
         );
         $crate::suite::restyling_case!($workbench, the_same_change_claims_the_book_again);
         $crate::suite::restyling_case!($workbench, another_book_is_claimed_on_its_own);
+        $crate::suite::restyling_case!($workbench, a_book_never_restyled_has_no_progress);
+        $crate::suite::restyling_case!(
+            $workbench,
+            a_restyling_counts_its_batches_until_it_is_finished
+        );
+        $crate::suite::restyling_case!($workbench, a_newer_change_begins_counting_afresh);
+        $crate::suite::restyling_case!($workbench, an_older_change_neither_begins_nor_counts);
+        $crate::suite::restyling_case!($workbench, a_batch_claiming_the_book_keeps_the_count);
+        $crate::suite::restyling_case!($workbench, a_claim_nobody_began_counts_from_nothing);
     };
 }
 
