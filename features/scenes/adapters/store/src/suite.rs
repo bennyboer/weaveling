@@ -1,3 +1,8 @@
+#![cfg_attr(
+    not(any(feature = "postgres", feature = "sqlite")),
+    allow(dead_code, unused_imports, unused_macros)
+)]
+
 use std::sync::Mutex;
 
 use messaging::{Message, Publisher, RoutingKey, Undelivered};
@@ -7,6 +12,8 @@ use scenes_core::{
 };
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
+
+use crate::compaction::COMPACT_AFTER;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 #[async_trait::async_trait]
@@ -20,6 +27,17 @@ pub trait Workbench: Sized {
     async fn enqueued(&self) -> Vec<Message>;
 
     async fn cleanup(self);
+}
+
+#[async_trait::async_trait]
+pub trait Tables: Workbench {
+    fn on_the_same_tables(&self, compacting_after: i64) -> Self::Store;
+
+    async fn compact(&self, id: SceneId) -> Result<bool, StoreError>;
+
+    async fn rows(&self) -> Vec<bool>;
+
+    async fn count(&self, query: &'static str) -> i64;
 }
 
 #[derive(Default)]
@@ -1029,7 +1047,7 @@ macro_rules! conformance_case {
     };
 }
 
-macro_rules! enqueuing_case {
+macro_rules! bench_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
         async fn $case() {
@@ -1099,33 +1117,285 @@ macro_rules! conformance_tests {
         );
         $crate::suite::conformance_case!($workbench, links_survive_further_writing);
         $crate::suite::conformance_case!($workbench, linking_leaves_the_title_and_the_text_alone);
-        $crate::suite::enqueuing_case!($workbench, linking_an_idea_enqueues_one_message);
-        $crate::suite::enqueuing_case!(
+        $crate::suite::bench_case!($workbench, linking_an_idea_enqueues_one_message);
+        $crate::suite::bench_case!(
             $workbench,
             unlinking_enqueues_only_for_a_link_that_was_there
         );
-        $crate::suite::enqueuing_case!($workbench, every_change_to_a_scene_counts_up);
-        $crate::suite::enqueuing_case!(
+        $crate::suite::bench_case!($workbench, every_change_to_a_scene_counts_up);
+        $crate::suite::bench_case!(
             $workbench,
             announcing_a_word_count_enqueues_it_with_the_scene_s_project
         );
-        $crate::suite::enqueuing_case!(
+        $crate::suite::bench_case!(
             $workbench,
             announcing_a_word_count_is_not_a_change_to_the_scene
         );
-        $crate::suite::enqueuing_case!($workbench, deleting_a_scene_enqueues_a_message);
-        $crate::suite::enqueuing_case!($workbench, a_refused_change_enqueues_nothing);
-        $crate::suite::enqueuing_case!($workbench, writing_enqueues_nothing);
-        $crate::suite::enqueuing_case!($workbench, creating_a_scene_is_announced_with_its_project);
-        $crate::suite::enqueuing_case!(
+        $crate::suite::bench_case!($workbench, deleting_a_scene_enqueues_a_message);
+        $crate::suite::bench_case!($workbench, a_refused_change_enqueues_nothing);
+        $crate::suite::bench_case!($workbench, writing_enqueues_nothing);
+        $crate::suite::bench_case!($workbench, creating_a_scene_is_announced_with_its_project);
+        $crate::suite::bench_case!(
             $workbench,
             a_retitle_is_announced_with_its_title_and_version
         );
-        $crate::suite::enqueuing_case!(
+        $crate::suite::bench_case!(
             $workbench,
             announcing_an_opening_enqueues_it_with_the_scene_s_project
         );
     };
 }
 
-pub(crate) use {conformance_case, conformance_tests, enqueuing_case};
+pub async fn an_update_is_one_row_and_never_rewrites_the_scene(bench: &impl Tables) {
+    let id = an_id(1_000);
+    bench
+        .store()
+        .create(&a_scene(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+
+    bench
+        .store()
+        .apply(id, &a_paragraph("Then it began."))
+        .await
+        .expect("apply should succeed");
+
+    assert_eq!(
+        bench.rows().await,
+        vec![true, false],
+        "a snapshot from create, then one appended update — the scene itself is never rewritten"
+    );
+}
+
+pub async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot(bench: &impl Tables) {
+    let store = bench.on_the_same_tables(3);
+    let id = an_id(1_000);
+    store
+        .create(&a_scene(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+
+    for nth in 0..5 {
+        store
+            .apply(id, &a_paragraph(&format!("Line {nth}.")))
+            .await
+            .expect("apply should succeed");
+    }
+
+    let parts = bench.rows().await;
+
+    assert!(
+        parts.len() < 6,
+        "six writes should not have left six rows: {parts:?}"
+    );
+    assert_eq!(
+        parts.first(),
+        Some(&true),
+        "what remains must begin with a snapshot: {parts:?}"
+    );
+
+    let found = store.load(id).await.expect("load should succeed");
+    assert!(
+        found.text().contains("The loom stood silent.") && found.text().contains("Line 4."),
+        "compaction must not lose prose, got {:?}",
+        found.text()
+    );
+}
+
+pub async fn compacting_a_short_tail_does_nothing(bench: &impl Tables) {
+    let id = an_id(1_000);
+    bench
+        .store()
+        .create(&a_scene(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+    bench
+        .store()
+        .apply(id, &a_paragraph("Then it began."))
+        .await
+        .expect("apply should succeed");
+
+    let collapsed = bench.compact(id).await.expect("compacting should succeed");
+
+    assert!(!collapsed, "two rows are not worth collapsing");
+    assert_eq!(bench.rows().await.len(), 2);
+}
+
+pub async fn compacting_a_scene_that_was_never_created_is_not_found(bench: &impl Tables) {
+    let never_written = an_id(1_000);
+
+    let refused = bench.compact(never_written).await;
+
+    assert!(
+        matches!(refused, Err(StoreError::NotFound(missing)) if missing == never_written),
+        "got {refused:?}"
+    );
+}
+
+pub async fn an_update_nothing_can_read_writes_no_row(bench: &impl Tables) {
+    let id = an_id(1_000);
+    bench
+        .store()
+        .create(&a_scene(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+
+    let refused = bench.store().apply(id, &[255, 255, 255, 255]).await;
+
+    assert!(
+        matches!(refused, Err(StoreError::Unusable(_))),
+        "got {refused:?}"
+    );
+    assert_eq!(
+        bench.rows().await,
+        vec![true],
+        "garbage must not reach the table, or every load would fail forever after"
+    );
+}
+
+pub async fn an_update_for_a_scene_that_does_not_exist_writes_no_row(bench: &impl Tables) {
+    let refused = bench
+        .store()
+        .apply(an_id(1_000), &a_paragraph("Out of nowhere."))
+        .await;
+
+    assert!(
+        matches!(refused, Err(StoreError::NotFound(_))),
+        "got {refused:?}"
+    );
+    assert!(bench.rows().await.is_empty());
+}
+
+pub async fn deleting_a_scene_takes_its_updates_with_it(bench: &impl Tables) {
+    let id = an_id(1_000);
+    bench
+        .store()
+        .create(&a_scene(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+    bench
+        .store()
+        .apply(id, &a_paragraph("Then it began."))
+        .await
+        .expect("apply should succeed");
+
+    bench
+        .store()
+        .delete(id)
+        .await
+        .expect("delete should succeed");
+
+    assert_eq!(bench.count("SELECT count(*) FROM scenes").await, 0);
+    assert!(
+        bench.rows().await.is_empty(),
+        "the parts are the scene — leaving them would leave a scene that load cannot find"
+    );
+}
+
+pub async fn a_scene_survives_being_reloaded_by_a_store_that_never_saw_the_writes(
+    bench: &impl Tables,
+) {
+    let id = an_id(1_000);
+    bench
+        .store()
+        .create(&a_scene(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+    bench
+        .store()
+        .apply(id, &a_paragraph("Then it began."))
+        .await
+        .expect("apply should succeed");
+
+    let elsewhere = bench.on_the_same_tables(COMPACT_AFTER);
+    let found = elsewhere.load(id).await.expect("load should succeed");
+
+    assert!(
+        found.text().contains("The loom stood silent.") && found.text().contains("Then it began."),
+        "prose has to come back out of the rows, not out of whoever wrote them, got {:?}",
+        found.text()
+    );
+}
+
+pub async fn deleting_a_scene_takes_its_links_with_it(bench: &impl Tables) {
+    let id = an_id(1_000);
+    bench
+        .store()
+        .create(&a_scene(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+    bench
+        .store()
+        .link(id, &IdeaLink::from("idea_1"))
+        .await
+        .expect("link should succeed");
+
+    bench
+        .store()
+        .delete(id)
+        .await
+        .expect("delete should succeed");
+
+    let links = bench.count("SELECT count(*) FROM scene_ideas").await;
+    assert_eq!(
+        links, 0,
+        "a link outliving its scene points at nothing, and nothing sweeps it later"
+    );
+}
+
+pub async fn a_tail_exactly_as_long_as_we_keep_is_left_as_it_is(bench: &impl Tables) {
+    let store = bench.on_the_same_tables(3);
+    let id = an_id(1_000);
+    store
+        .create(&a_scene(id, "The loom stood silent."))
+        .await
+        .expect("create should succeed");
+
+    for nth in 0..3 {
+        store
+            .apply(id, &a_paragraph(&format!("Line {nth}.")))
+            .await
+            .expect("apply should succeed");
+    }
+
+    assert_eq!(
+        bench.rows().await,
+        vec![true, false, false, false],
+        "keeping three updates means compacting on the fourth, not the third"
+    );
+}
+
+macro_rules! table_tests {
+    ($workbench:ty) => {
+        $crate::suite::bench_case!(
+            $workbench,
+            an_update_is_one_row_and_never_rewrites_the_scene
+        );
+        $crate::suite::bench_case!(
+            $workbench,
+            a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot
+        );
+        $crate::suite::bench_case!($workbench, compacting_a_short_tail_does_nothing);
+        $crate::suite::bench_case!(
+            $workbench,
+            compacting_a_scene_that_was_never_created_is_not_found
+        );
+        $crate::suite::bench_case!($workbench, an_update_nothing_can_read_writes_no_row);
+        $crate::suite::bench_case!(
+            $workbench,
+            an_update_for_a_scene_that_does_not_exist_writes_no_row
+        );
+        $crate::suite::bench_case!($workbench, deleting_a_scene_takes_its_updates_with_it);
+        $crate::suite::bench_case!(
+            $workbench,
+            a_scene_survives_being_reloaded_by_a_store_that_never_saw_the_writes
+        );
+        $crate::suite::bench_case!($workbench, deleting_a_scene_takes_its_links_with_it);
+        $crate::suite::bench_case!(
+            $workbench,
+            a_tail_exactly_as_long_as_we_keep_is_left_as_it_is
+        );
+    };
+}
+
+pub(crate) use {bench_case, conformance_case, conformance_tests, table_tests};

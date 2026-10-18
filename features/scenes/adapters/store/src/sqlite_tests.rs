@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use clock::FixedClock;
 use messaging::Message;
 use outbox::{Outbox, SqliteOutbox};
-use scenes_core::{IdeaLink, SceneStore, StoreError};
+use scenes_core::{SceneId, StoreError};
 use sqlx::{Row, SqlitePool};
 use test_harness::SqliteFixture;
 
 use crate::sqlite::{SqliteSceneStore, migrations};
-use crate::suite::{Heard, Workbench, a_paragraph, a_scene, an_id, at, message_for};
+use crate::suite::{Heard, Tables, Workbench, at, message_for};
 
 struct OnSqlite {
     fixture: SqliteFixture,
@@ -108,7 +108,16 @@ impl Workbench for Compacting {
     }
 }
 
-impl OnSqlite {
+#[async_trait]
+impl Tables for OnSqlite {
+    fn on_the_same_tables(&self, compacting_after: i64) -> SqliteSceneStore {
+        SqliteSceneStore::compacting_after(self.pool.clone(), compacting_after)
+    }
+
+    async fn compact(&self, id: SceneId) -> Result<bool, StoreError> {
+        self.store.compact(id).await
+    }
+
     async fn rows(&self) -> Vec<bool> {
         sqlx::query_scalar("SELECT is_snapshot FROM scene_updates ORDER BY seq")
             .fetch_all(&self.pool)
@@ -116,11 +125,11 @@ impl OnSqlite {
             .expect("reading the parts should succeed")
     }
 
-    async fn scenes(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM scenes")
+    async fn count(&self, query: &'static str) -> i64 {
+        sqlx::query_scalar(query)
             .fetch_one(&self.pool)
             .await
-            .expect("counting scenes should succeed")
+            .expect("counting should succeed")
     }
 }
 
@@ -128,210 +137,12 @@ mod appending {
     crate::suite::conformance_tests!(super::OnSqlite);
 }
 
+mod tables {
+    crate::suite::table_tests!(super::OnSqlite);
+}
+
 mod compacting {
     crate::suite::conformance_tests!(super::Compacting);
-}
-
-#[tokio::test]
-async fn an_update_is_one_row_and_never_rewrites_the_scene() {
-    let bench = OnSqlite::setup().await;
-    let id = an_id(1_000);
-    bench
-        .store
-        .create(&a_scene(id, "The loom stood silent."))
-        .await
-        .expect("create should succeed");
-
-    bench
-        .store
-        .apply(id, &a_paragraph("Then it began."))
-        .await
-        .expect("apply should succeed");
-
-    assert_eq!(
-        bench.rows().await,
-        vec![true, false],
-        "a snapshot from create, then one appended update — the scene itself is never rewritten"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot() {
-    let bench = OnSqlite::setup().await;
-    let store = SqliteSceneStore::compacting_after(bench.pool.clone(), 3);
-    let id = an_id(1_000);
-    store
-        .create(&a_scene(id, "The loom stood silent."))
-        .await
-        .expect("create should succeed");
-
-    for nth in 0..5 {
-        store
-            .apply(id, &a_paragraph(&format!("Line {nth}.")))
-            .await
-            .expect("apply should succeed");
-    }
-
-    let parts = bench.rows().await;
-
-    assert!(
-        parts.len() < 6,
-        "six writes should not have left six rows: {parts:?}"
-    );
-    assert_eq!(
-        parts.first(),
-        Some(&true),
-        "what remains must begin with a snapshot: {parts:?}"
-    );
-
-    let found = store.load(id).await.expect("load should succeed");
-    assert!(
-        found.text().contains("The loom stood silent.") && found.text().contains("Line 4."),
-        "compaction must not lose prose, got {:?}",
-        found.text()
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn compacting_a_short_tail_does_nothing() {
-    let bench = OnSqlite::setup().await;
-    let id = an_id(1_000);
-    bench
-        .store
-        .create(&a_scene(id, "The loom stood silent."))
-        .await
-        .expect("create should succeed");
-    bench
-        .store
-        .apply(id, &a_paragraph("Then it began."))
-        .await
-        .expect("apply should succeed");
-
-    let collapsed = bench
-        .store
-        .compact(id)
-        .await
-        .expect("compacting should succeed");
-
-    assert!(!collapsed, "two rows are not worth collapsing");
-    assert_eq!(bench.rows().await.len(), 2);
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn compacting_a_scene_that_was_never_created_is_not_found() {
-    let bench = OnSqlite::setup().await;
-    let never_written = an_id(1_000);
-
-    let refused = bench.store.compact(never_written).await;
-
-    assert!(
-        matches!(refused, Err(StoreError::NotFound(missing)) if missing == never_written),
-        "got {refused:?}"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn an_update_nothing_can_read_writes_no_row() {
-    let bench = OnSqlite::setup().await;
-    let id = an_id(1_000);
-    bench
-        .store
-        .create(&a_scene(id, "The loom stood silent."))
-        .await
-        .expect("create should succeed");
-
-    let refused = bench.store.apply(id, &[255, 255, 255, 255]).await;
-
-    assert!(
-        matches!(refused, Err(StoreError::Unusable(_))),
-        "got {refused:?}"
-    );
-    assert_eq!(
-        bench.rows().await,
-        vec![true],
-        "garbage must not reach the table, or every load would fail forever after"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn an_update_for_a_scene_that_does_not_exist_writes_no_row() {
-    let bench = OnSqlite::setup().await;
-
-    let refused = bench
-        .store
-        .apply(an_id(1_000), &a_paragraph("Out of nowhere."))
-        .await;
-
-    assert!(
-        matches!(refused, Err(StoreError::NotFound(_))),
-        "got {refused:?}"
-    );
-    assert!(bench.rows().await.is_empty());
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn deleting_a_scene_takes_its_updates_with_it() {
-    let bench = OnSqlite::setup().await;
-    let id = an_id(1_000);
-    bench
-        .store
-        .create(&a_scene(id, "The loom stood silent."))
-        .await
-        .expect("create should succeed");
-    bench
-        .store
-        .apply(id, &a_paragraph("Then it began."))
-        .await
-        .expect("apply should succeed");
-
-    bench.store.delete(id).await.expect("delete should succeed");
-
-    assert_eq!(bench.scenes().await, 0);
-    assert!(
-        bench.rows().await.is_empty(),
-        "the parts are the scene — leaving them would leave a scene that load cannot find"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_scene_survives_being_reloaded_by_a_store_that_never_saw_the_writes() {
-    let bench = OnSqlite::setup().await;
-    let id = an_id(1_000);
-    bench
-        .store
-        .create(&a_scene(id, "The loom stood silent."))
-        .await
-        .expect("create should succeed");
-    bench
-        .store
-        .apply(id, &a_paragraph("Then it began."))
-        .await
-        .expect("apply should succeed");
-
-    let elsewhere = SqliteSceneStore::new(bench.pool.clone());
-    let found = elsewhere.load(id).await.expect("load should succeed");
-
-    assert!(
-        found.text().contains("The loom stood silent.") && found.text().contains("Then it began."),
-        "prose has to come back out of the rows, not out of whoever wrote them, got {:?}",
-        found.text()
-    );
-
-    bench.cleanup().await;
 }
 
 #[tokio::test]
@@ -368,61 +179,6 @@ async fn walking_a_project_comes_out_of_the_index() {
     assert!(
         !plan.contains("SCAN scenes") && !plan.contains("TEMP B-TREE"),
         "a scan or a sort here is silent; the sweep keeps working and only gets slower: {plan}"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn deleting_a_scene_takes_its_links_with_it() {
-    let bench = OnSqlite::setup().await;
-    let id = an_id(1_000);
-    bench
-        .store
-        .create(&a_scene(id, "The loom stood silent."))
-        .await
-        .expect("create should succeed");
-    bench
-        .store
-        .link(id, &IdeaLink::from("idea_1"))
-        .await
-        .expect("link should succeed");
-
-    bench.store.delete(id).await.expect("delete should succeed");
-
-    let links: i64 = sqlx::query_scalar("SELECT count(*) FROM scene_ideas")
-        .fetch_one(&bench.pool)
-        .await
-        .expect("counting should succeed");
-    assert_eq!(
-        links, 0,
-        "a link outliving its scene points at nothing, and nothing sweeps it later"
-    );
-
-    bench.cleanup().await;
-}
-
-#[tokio::test]
-async fn a_tail_exactly_as_long_as_we_keep_is_left_as_it_is() {
-    let bench = OnSqlite::setup().await;
-    let store = SqliteSceneStore::compacting_after(bench.pool.clone(), 3);
-    let id = an_id(1_000);
-    store
-        .create(&a_scene(id, "The loom stood silent."))
-        .await
-        .expect("create should succeed");
-
-    for nth in 0..3 {
-        store
-            .apply(id, &a_paragraph(&format!("Line {nth}.")))
-            .await
-            .expect("apply should succeed");
-    }
-
-    assert_eq!(
-        bench.rows().await,
-        vec![true, false, false, false],
-        "keeping three updates means compacting on the fourth, not the third"
     );
 
     bench.cleanup().await;
