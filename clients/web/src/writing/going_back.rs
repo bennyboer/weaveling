@@ -7,15 +7,15 @@ use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::write_view_state::WriteViewState;
 
 pub fn going_back(state: WriteViewState) -> impl IntoView {
-    let in_sight = RwSignal::new(false);
+    let in_sight = RwSignal::new(None::<bool>);
     let look = move || {
         let seen = state
             .left_off
             .offered_untracked()
             .is_some_and(|scene| is_in_sight(&scene));
 
-        if in_sight.get_untracked() != seen {
-            in_sight.set(seen);
+        if in_sight.get_untracked() != Some(seen) {
+            in_sight.set(Some(seen));
         }
     };
 
@@ -35,7 +35,7 @@ pub fn going_back(state: WriteViewState) -> impl IntoView {
         state
             .left_off
             .offered()
-            .filter(|_| !in_sight.get())
+            .filter(|_| in_sight.get() == Some(false))
             .map(|scene| {
                 let named = move || {
                     let label = state.labels.of_scene(&scene);

@@ -282,11 +282,22 @@ test("with the scene left off in already in sight, the way back is not offered",
   await scene(page, first).click();
   await page.keyboard.type("Left here.");
   await expect(saveState(page)).toHaveText("All saved");
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (document.querySelector(".going-back")) {
+        document.documentElement.dataset.offered = "once";
+      }
+    }).observe(document, { childList: true, subtree: true });
+  });
 
   await page.reload();
 
   await expect(scene(page, first)).toBeInViewport();
-  await expect(backToWhereYouLeftOffButton(page), "the scene is right there to click into").toHaveCount(0);
+  await expect(backToWhereYouLeftOffButton(page)).toHaveCount(0);
+  expect(
+    await page.evaluate(() => document.documentElement.dataset.offered ?? "never"),
+    "the scene is right there to click into, so not even a flash of the offer",
+  ).toBe("never");
 });
 
 test("the offer steps aside while its scene is in sight, and comes back once it is not", async ({
