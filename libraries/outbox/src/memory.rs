@@ -147,132 +147,56 @@ impl Notifications for Waiting {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
 
+    use async_trait::async_trait;
     use clock::FixedClock;
-    use messaging::{RoutingKey, Undelivered};
-    use time::Duration;
+    use messaging::Message;
+    use time::OffsetDateTime;
 
-    use super::*;
+    use super::InMemoryOutbox;
+    use crate::suite::{Switchboard, Then, Workbench};
 
-    #[derive(Default)]
-    struct Overheard {
-        heard: Mutex<Vec<Message>>,
-        refusing: AtomicBool,
-    }
+    struct InMemory(InMemoryOutbox);
 
     #[async_trait]
-    impl Publisher for Overheard {
-        async fn publish(&self, message: Message) -> Result<(), Undelivered> {
-            if self.refusing.load(Ordering::SeqCst) {
-                return Err(Undelivered::because(message.routing.clone(), Refused));
+    impl Workbench for InMemory {
+        type Outbox = InMemoryOutbox;
+
+        async fn setup(publisher: Arc<Switchboard>, clock: Arc<FixedClock>) -> Self {
+            Self(InMemoryOutbox::new(publisher, clock))
+        }
+
+        fn outbox(&self) -> &InMemoryOutbox {
+            &self.0
+        }
+
+        async fn enqueue(&self, messages: &[Message], then: Then) {
+            match then {
+                Then::Commit => messages
+                    .iter()
+                    .for_each(|message| self.0.enqueue(message.clone())),
+                Then::RollBack => panic!("nothing in memory is written inside a transaction"),
             }
-
-            self.heard.lock().expect("lock poisoned").push(message);
-
-            Ok(())
-        }
-    }
-
-    impl Overheard {
-        fn refusing() -> Arc<Self> {
-            let overheard = Self::default();
-            overheard.refusing.store(true, Ordering::SeqCst);
-
-            Arc::new(overheard)
         }
 
-        fn relent(&self) {
-            self.refusing.store(false, Ordering::SeqCst);
+        async fn published(&self) -> Vec<bool> {
+            self.0
+                .held()
+                .iter()
+                .map(|entry| entry.published_at.is_some())
+                .collect()
         }
 
-        fn how_many(&self) -> usize {
-            self.heard.lock().expect("lock poisoned").len()
+        async fn all_published_at(&self, when: OffsetDateTime) {
+            self.0
+                .held()
+                .iter_mut()
+                .for_each(|entry| entry.published_at = Some(when));
         }
+
+        async fn cleanup(self) {}
     }
 
-    #[derive(Debug, thiserror::Error)]
-    #[error("refused")]
-    struct Refused;
-
-    fn at(seconds: i64) -> OffsetDateTime {
-        OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
-    }
-
-    fn a_message() -> Message {
-        Message::opening(
-            RoutingKey::parse("sample.started").expect("a plain key is fine"),
-            serde_json::json!({ "nothing": "much" }),
-            at(1_000),
-        )
-    }
-
-    #[tokio::test]
-    async fn a_published_message_leaves_the_queue() {
-        let publisher = Arc::new(Overheard::default());
-        let outbox = InMemoryOutbox::new(publisher.clone(), Arc::new(FixedClock::new(at(1_000))));
-        outbox.enqueue(a_message());
-
-        let delivered = outbox.deliver(16).await.expect("delivering should succeed");
-
-        assert_eq!(
-            delivered,
-            Delivered {
-                published: 1,
-                refused: 0
-            }
-        );
-        assert_eq!(outbox.waiting_to_be_published(), 0);
-        assert_eq!(publisher.how_many(), 1);
-    }
-
-    #[tokio::test]
-    async fn a_refused_message_stays_waiting() {
-        let outbox =
-            InMemoryOutbox::new(Overheard::refusing(), Arc::new(FixedClock::new(at(1_000))));
-        outbox.enqueue(a_message());
-
-        let delivered = outbox
-            .deliver(16)
-            .await
-            .expect("a refusal is not a failure");
-
-        assert_eq!(
-            delivered,
-            Delivered {
-                published: 0,
-                refused: 1
-            }
-        );
-        assert_eq!(
-            outbox.waiting_to_be_published(),
-            1,
-            "a message nobody took is not published, and losing it here would lose it for good"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_refused_message_is_held_back_until_its_claim_expires() {
-        let publisher = Arc::new(Overheard::default());
-        publisher.refusing.store(true, Ordering::SeqCst);
-        let clock = Arc::new(FixedClock::new(at(1_000)));
-        let outbox = InMemoryOutbox::new(publisher.clone(), clock.clone());
-        outbox.enqueue(a_message());
-
-        outbox.deliver(16).await.expect("the first try is refused");
-        publisher.relent();
-        let straight_away = outbox.deliver(16).await.expect("delivering should succeed");
-
-        assert_eq!(
-            straight_away.published, 0,
-            "the claim is the backoff: retrying in the same breath would spin on a message that is \
-             failing for a reason a moment cannot fix"
-        );
-
-        clock.set(at(1_000) + CLAIM_FOR + Duration::seconds(1));
-        let later = outbox.deliver(16).await.expect("delivering should succeed");
-
-        assert_eq!(later.published, 1);
-        assert_eq!(outbox.waiting_to_be_published(), 0);
-    }
+    crate::outbox_conformance_tests!(InMemory);
 }

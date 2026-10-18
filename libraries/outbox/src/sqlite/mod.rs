@@ -3,8 +3,6 @@ mod outbox;
 mod schema;
 
 #[cfg(test)]
-mod outbox_tests;
-#[cfg(test)]
 mod tests;
 
 pub use enqueuing::enqueue;

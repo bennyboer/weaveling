@@ -2,6 +2,9 @@ mod memory;
 mod outbox;
 mod relaying;
 
+#[cfg(test)]
+mod suite;
+
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
