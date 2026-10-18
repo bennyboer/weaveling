@@ -4,7 +4,7 @@ use leptos::{IntoView, ev};
 
 use crate::projects::languages::BOOK_LANGUAGES;
 use crate::projects::model::ProjectDetails;
-use crate::projects::quotation::QuotationMarks;
+use quotation::QuotationMarks;
 
 #[derive(Clone, Copy)]
 pub struct DetailsDraft {

@@ -48,6 +48,7 @@ time = { workspace = true, features = [
 ] }
 
 messaging-contract = { version = "0.1.0", path = "../../libraries/messaging-contract", package = "weaveling-messaging-contract" }
+quotation = { version = "0.1.0", path = "../../libraries/quotation", package = "weaveling-quotation" }
 words = { version = "0.1.0", path = "../../libraries/words", package = "weaveling-words" }
 
 appearances-contract = { version = "0.1.0", path = "../../features/appearances/contract", package = "weaveling-appearances-contract" }

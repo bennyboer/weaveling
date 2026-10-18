@@ -3,6 +3,8 @@ use std::iter::once;
 
 use thiserror::Error;
 
+pub use quotation::{InvalidQuotationMarks, QuotationMarks};
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct BookLanguage(String);
 
@@ -100,58 +102,6 @@ impl Display for ProjectDescription {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum QuotationMarks {
-    PointingIn,
-    LowHigh,
-    Curly,
-    SpacedOut,
-    PointingOut,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum InvalidQuotationMarks {
-    #[error("{0:?} is not a quotation style; one of {styles}", styles = QuotationMarks::named())]
-    Unknown(String),
-}
-
-impl QuotationMarks {
-    pub const ALL: [Self; 5] = [
-        Self::PointingIn,
-        Self::LowHigh,
-        Self::Curly,
-        Self::SpacedOut,
-        Self::PointingOut,
-    ];
-
-    pub fn new(raw: &str) -> Result<Self, InvalidQuotationMarks> {
-        Self::ALL
-            .into_iter()
-            .find(|style| style.as_str() == raw.trim())
-            .ok_or_else(|| InvalidQuotationMarks::Unknown(raw.to_owned()))
-    }
-
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::PointingIn => "pointing-in",
-            Self::LowHigh => "low-high",
-            Self::Curly => "curly",
-            Self::SpacedOut => "spaced-out",
-            Self::PointingOut => "pointing-out",
-        }
-    }
-
-    fn named() -> String {
-        Self::ALL.map(Self::as_str).join(", ")
-    }
-}
-
-impl Display for QuotationMarks {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        f.write_str(self.as_str())
-    }
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ProjectDetails {
     pub language: Option<BookLanguage>,
@@ -189,18 +139,6 @@ mod tests {
                 "{refused:?} should not pass as a language"
             );
         }
-    }
-
-    #[test]
-    fn a_quotation_style_is_one_of_five_by_name() {
-        for style in QuotationMarks::ALL {
-            assert_eq!(QuotationMarks::new(style.as_str()), Ok(style));
-        }
-        assert_eq!(
-            QuotationMarks::new("guillemets"),
-            Err(InvalidQuotationMarks::Unknown("guillemets".to_owned())),
-            "only the five named styles are known"
-        );
     }
 
     #[test]

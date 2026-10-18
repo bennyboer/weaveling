@@ -173,7 +173,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
             let marks = marks.get();
             if editors_made.get() > 0 {
                 state.editors.told(&scene, |editor| {
-                    editor.set_quotation_marks(&marks.opening(), &marks.closing())
+                    editor.set_quotation_marks(marks.opening(), marks.closing())
                 });
             }
         }

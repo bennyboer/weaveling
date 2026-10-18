@@ -11,3 +11,4 @@ time = { workspace = true }
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+quotation = { version = "0.1.0", path = "../../../libraries/quotation", package = "weaveling-quotation" }

@@ -7,7 +7,7 @@ use time::format_description::well_known::Rfc3339;
 
 use crate::http::{ApiError, checked, parsed, sent, sent_with};
 use crate::projects::model::{DescribedProject, Project, ProjectDetails, ProjectId};
-use crate::projects::quotation::QuotationMarks;
+use quotation::QuotationMarks;
 
 const PROJECTS: &str = "/api/projects";
 const SUBJECT: &str = "project";

@@ -3585,6 +3585,7 @@ dependencies = [
  "weaveling-messaging-contract",
  "weaveling-outline-contract",
  "weaveling-projects-contract",
+ "weaveling-quotation",
  "weaveling-scenes-contract",
  "weaveling-statistics-contract",
  "weaveling-words",
@@ -3941,6 +3942,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-quotation",
 ]
 
 [[package]]
@@ -4019,6 +4021,13 @@ dependencies = [
  "weaveling-projects-rest",
  "weaveling-projects-store",
  "weaveling-wiring",
+]
+
+[[package]]
+name = "weaveling-quotation"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
 ]
 
 [[package]]

@@ -3,8 +3,8 @@ use leptos::task::spawn_local;
 
 use crate::http::ApiError;
 use crate::projects::model::{DescribedProject, ProjectId};
-use crate::projects::quotation::QuotationMarks;
 use crate::projects::service;
+use quotation::QuotationMarks;
 
 #[derive(Clone, Copy)]
 pub struct OpenProject {

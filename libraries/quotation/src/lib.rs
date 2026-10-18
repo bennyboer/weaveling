@@ -1,12 +1,20 @@
-const NARROW_SPACE: &str = "\u{202F}";
+use std::fmt::{self, Display, Formatter};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+use thiserror::Error;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum QuotationMarks {
     PointingIn,
     LowHigh,
     Curly,
     SpacedOut,
     PointingOut,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum InvalidQuotationMarks {
+    #[error("{0:?} is not a quotation style; one of {styles}", styles = QuotationMarks::listed())]
+    Unknown(String),
 }
 
 impl QuotationMarks {
@@ -17,6 +25,14 @@ impl QuotationMarks {
         Self::SpacedOut,
         Self::PointingOut,
     ];
+
+    pub fn new(raw: &str) -> Result<Self, InvalidQuotationMarks> {
+        Self::named(raw.trim()).ok_or_else(|| InvalidQuotationMarks::Unknown(raw.to_owned()))
+    }
+
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|style| style.name() == name)
+    }
 
     pub fn of_language(language: Option<&str>) -> Self {
         let primary = language
@@ -32,10 +48,6 @@ impl QuotationMarks {
         }
     }
 
-    pub fn named(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|style| style.name() == name)
-    }
-
     pub fn name(self) -> &'static str {
         match self {
             Self::PointingIn => "pointing-in",
@@ -46,28 +58,38 @@ impl QuotationMarks {
         }
     }
 
-    pub fn opening(self) -> String {
+    pub fn opening(self) -> &'static str {
         match self {
-            Self::PointingIn => "»".to_owned(),
-            Self::LowHigh => "„".to_owned(),
-            Self::Curly => "“".to_owned(),
-            Self::SpacedOut => format!("«{NARROW_SPACE}"),
-            Self::PointingOut => "«".to_owned(),
+            Self::PointingIn => "»",
+            Self::LowHigh => "„",
+            Self::Curly => "“",
+            Self::SpacedOut => "«\u{202F}",
+            Self::PointingOut => "«",
         }
     }
 
-    pub fn closing(self) -> String {
+    pub fn closing(self) -> &'static str {
         match self {
-            Self::PointingIn => "«".to_owned(),
-            Self::LowHigh => "“".to_owned(),
-            Self::Curly => "”".to_owned(),
-            Self::SpacedOut => format!("{NARROW_SPACE}»"),
-            Self::PointingOut => "»".to_owned(),
+            Self::PointingIn => "«",
+            Self::LowHigh => "“",
+            Self::Curly => "”",
+            Self::SpacedOut => "\u{202F}»",
+            Self::PointingOut => "»",
         }
     }
 
     pub fn shown(self) -> String {
         format!("{}…{}", self.opening(), self.closing())
+    }
+
+    fn listed() -> String {
+        Self::ALL.map(Self::name).join(", ")
+    }
+}
+
+impl Display for QuotationMarks {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
     }
 }
 
@@ -108,8 +130,21 @@ mod tests {
     fn every_style_is_known_by_its_name() {
         for style in QuotationMarks::ALL {
             assert_eq!(QuotationMarks::named(style.name()), Some(style));
+            assert_eq!(QuotationMarks::new(style.name()), Ok(style));
         }
         assert_eq!(QuotationMarks::named("guillemets"), None);
+    }
+
+    #[test]
+    fn a_name_is_read_with_the_spaces_around_it_left_out() {
+        assert_eq!(
+            QuotationMarks::new(" low-high "),
+            Ok(QuotationMarks::LowHigh)
+        );
+        assert_eq!(
+            QuotationMarks::new("guillemets"),
+            Err(InvalidQuotationMarks::Unknown("guillemets".to_owned()))
+        );
     }
 
     #[test]

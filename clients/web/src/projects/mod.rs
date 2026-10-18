@@ -6,7 +6,6 @@ pub mod new_project;
 pub mod open_project;
 pub mod overlays;
 pub mod project_details;
-pub mod quotation;
 pub mod row;
 pub mod service;
 pub mod workspace;

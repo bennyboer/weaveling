@@ -61,7 +61,7 @@ impl From<&ProjectEvent> for StoredProjectEvent {
             },
             ProjectEvent::DetailsChanged(details) => Self::DetailsChanged {
                 language: details.language.as_ref().map(ToString::to_string),
-                quotation: details.quotation.map(|style| style.as_str().to_owned()),
+                quotation: details.quotation.map(|style| style.name().to_owned()),
                 description: details.description.to_string(),
             },
             ProjectEvent::Deleted => Self::Deleted,
@@ -74,7 +74,7 @@ impl From<&ProjectEvent> for StoredProjectEvent {
             } => Self::Snapshotted {
                 name: name.as_str().to_owned(),
                 language: details.language.as_ref().map(ToString::to_string),
-                quotation: details.quotation.map(|style| style.as_str().to_owned()),
+                quotation: details.quotation.map(|style| style.name().to_owned()),
                 description: details.description.to_string(),
                 created_at: *created_at,
                 updated_at: *updated_at,

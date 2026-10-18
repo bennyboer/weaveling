@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use time::OffsetDateTime;
 
-use crate::projects::quotation::QuotationMarks;
+use quotation::QuotationMarks;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProjectId(String);
