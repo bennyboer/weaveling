@@ -455,7 +455,7 @@ test("outside the book, chosen scenes can only be deleted for good", async ({
   await expect.poll(() => sceneExists(page, first)).toBe(false);
 });
 
-test("scenes begun in the view, taken out of the book, show among those outside it at once", async ({
+test("scenes begun in the view, taken out of the book, show among those outside it at once, before the catalog has heard of them", async ({
   page,
 }) => {
   const [first] = await aBook(page, "BegunHere", 1);
@@ -467,6 +467,17 @@ test("scenes begun in the view, taken out of the book, show among those outside 
   const [, begun] = (await theBook(page))[0][1];
   await expect(scene(page, begun)).toHaveText("Begun right here.");
   await page.keyboard.press("ControlOrMeta+End");
+  await page.route("**/api/scenes?project=*", async (route) => {
+    const response = await route.fetch();
+    const listed = await response.json();
+    await route.fulfill({
+      response,
+      json: {
+        ...listed,
+        scenes: listed.scenes.filter((held: { id: string }) => held.id !== begun),
+      },
+    });
+  });
 
   await page.keyboard.press("Shift+ArrowDown");
   await page.keyboard.press("Delete");

@@ -8,6 +8,7 @@ use crate::http::{ApiError, checked, parsed, sent, sent_with};
 use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::{Scene, SceneId, SceneSummary};
+use crate::scenes::written;
 
 const SCENES: &str = "/api/scenes";
 const SUBJECT: &str = "scene";
@@ -44,8 +45,10 @@ pub async fn unlink(id: &SceneId, idea: &IdeaId) -> Result<Scene, ApiError> {
 
 pub async fn delete(id: &SceneId) -> Result<(), ApiError> {
     let response = sent(Request::delete(&format!("{SCENES}/{id}"))).await?;
+    checked(response, SUBJECT).await?;
+    written::forget(id);
 
-    checked(response, SUBJECT).await.map(|_| ())
+    Ok(())
 }
 
 pub async fn in_project(project: &ProjectId) -> Result<Vec<SceneSummary>, ApiError> {
@@ -63,7 +66,7 @@ pub async fn in_project(project: &ProjectId) -> Result<Vec<SceneSummary>, ApiErr
 
         match page.next {
             Some(next) => after = Some(next),
-            None => return Ok(listed),
+            None => return Ok(written::caught_up(project, listed)),
         }
     }
 }
@@ -73,8 +76,10 @@ pub async fn create(project: &ProjectId) -> Result<Scene, ApiError> {
         project: project.to_string(),
     };
     let response = sent_with(Request::post(SCENES), &payload).await?;
+    let made = as_scene(parsed(response, SUBJECT).await?);
+    written::remember(project, made.summarized());
 
-    Ok(as_scene(parsed(response, SUBJECT).await?))
+    Ok(made)
 }
 
 fn as_scene(dto: SceneDTO) -> Scene {
