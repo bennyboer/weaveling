@@ -108,7 +108,7 @@ test("what the server last counted never stands over what is being written", asy
     answered = true;
   });
   await page.reload();
-  await backToWhereILeftOff(page);
+  await scene(page, only).click();
   await expect(scene(page, only)).toBeFocused();
   await page.keyboard.press("End");
   await page.keyboard.type(" four");
@@ -207,7 +207,7 @@ test("a scene coming near is named in the margin before its text arrives", async
     });
   });
   await page.reload();
-  await backToWhereILeftOff(page);
+  await scene(page, first).click();
   await expect(scene(page, first)).toBeFocused();
   await expect(
     flow(page).locator(`.scene-slot.waiting[data-place-of="${last}"]`),

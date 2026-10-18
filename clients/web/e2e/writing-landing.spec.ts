@@ -2,10 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
 import { aNewProject, openTheOutline, views } from "./support/shell";
-import { aBookInTheWritingView, asked, backToWhereILeftOff, beginning, flow, following, menuItem, openTheWritingView, saveState, scene, sceneActions, theBookIsIn, titled } from "./support/writing";
-
-const goingBack = (page: Page) =>
-  page.getByRole("button", { name: /Back to where you left off/ });
+import { aBookInTheWritingView, asked, backToWhereILeftOff, backToWhereYouLeftOffButton, beginning, flow, following, menuItem, openTheWritingView, saveState, scene, sceneActions, theBookIsIn, titled } from "./support/writing";
 
 test("the first time, Write lands at the start of the book", async ({
   page,
@@ -13,7 +10,7 @@ test("the first time, Write lands at the start of the book", async ({
   const scenes = await aBookInTheWritingView(page, "FirstLanding", { "Part One": 1, "Part Two": 1 });
 
   await expect(scene(page, scenes["Part One"][0])).toBeFocused();
-  await expect(goingBack(page), "nothing was left off yet").toHaveCount(0);
+  await expect(backToWhereYouLeftOffButton(page), "nothing was left off yet").toHaveCount(0);
   await page.keyboard.type("Begun");
   await expect(scene(page, scenes["Part One"][0])).toHaveText("Begun");
 });
@@ -22,9 +19,11 @@ test("going back to where the author left off finds the very letter, after movin
   page,
 }) => {
   await aNewProject(page, "LeftOff");
-  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
-  const later = scene(page, scenes["Part Two"][0]);
+  const scenes = await aBookWithScenes(page, { "Part One": 14 });
+  const far = scenes["Part One"][11];
+  const later = scene(page, far);
   await openTheWritingView(page);
+  await flow(page).locator(`[data-place-of="${far}"]`).scrollIntoViewIfNeeded();
   await later.click();
   await page.keyboard.type("Alpha Beta");
   await page.keyboard.press("Home");
@@ -184,7 +183,7 @@ test("following the scene left off in lands where the author left off in it", as
 
   await expect(scene(page, second)).toBeFocused();
   await expect(
-    goingBack(page),
+    backToWhereYouLeftOffButton(page),
     "a scene followed to needs no way back",
   ).toHaveCount(0);
   await page.keyboard.type("X");
@@ -238,7 +237,7 @@ test("Write opens at the start of the book, and offers the way back to where the
   await views(page).getByRole("link", { name: "Board", exact: true }).click();
   await openTheWritingView(page);
 
-  await expect(goingBack(page)).toContainText("The far scene");
+  await expect(backToWhereYouLeftOffButton(page)).toContainText("The far scene");
   expect(
     await page.evaluate(() => window.scrollY),
     "the book is open at its start",
@@ -246,28 +245,69 @@ test("Write opens at the start of the book, and offers the way back to where the
   await expect(scene(page, first)).not.toBeFocused();
   await expect(scene(page, far)).not.toBeFocused();
 
-  await goingBack(page).click();
+  await backToWhereYouLeftOffButton(page).click();
 
   await expect(scene(page, far)).toBeFocused();
   await expect(scene(page, far)).toBeInViewport();
-  await expect(goingBack(page), "taken, the offer goes").toHaveCount(0);
+  await expect(backToWhereYouLeftOffButton(page), "taken, the offer goes").toHaveCount(0);
   await page.keyboard.type("X");
   await expect(scene(page, far)).toHaveText("AXlpha Beta");
 });
 
 test("putting the cursor in the book lets the offer go", async ({ page }) => {
   await aNewProject(page, "OfferLetGo");
-  const scenes = await aBookWithScenes(page, { "Part One": 2 });
-  const [first, second] = scenes["Part One"];
+  const scenes = await aBookWithScenes(page, { "Part One": 14 });
+  const [first] = scenes["Part One"];
+  const far = scenes["Part One"][11];
   await openTheWritingView(page);
-  await scene(page, second).click();
+  await flow(page).locator(`[data-place-of="${far}"]`).scrollIntoViewIfNeeded();
+  await scene(page, far).click();
   await page.keyboard.type("Left here.");
   await expect(saveState(page)).toHaveText("All saved");
   await page.reload();
-  await expect(goingBack(page)).toBeVisible();
+  await expect(backToWhereYouLeftOffButton(page)).toBeVisible();
 
   await scene(page, first).click();
 
-  await expect(goingBack(page)).toHaveCount(0);
+  await expect(backToWhereYouLeftOffButton(page)).toHaveCount(0);
   await expect(scene(page, first)).toBeFocused();
+});
+
+test("with the scene left off in already in sight, the way back is not offered", async ({
+  page,
+}) => {
+  await aNewProject(page, "InSight");
+  const [first] = (await aBookWithScenes(page, { "Part One": 2 }))["Part One"];
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await page.keyboard.type("Left here.");
+  await expect(saveState(page)).toHaveText("All saved");
+
+  await page.reload();
+
+  await expect(scene(page, first)).toBeInViewport();
+  await expect(backToWhereYouLeftOffButton(page), "the scene is right there to click into").toHaveCount(0);
+});
+
+test("the offer steps aside while its scene is in sight, and comes back once it is not", async ({
+  page,
+}) => {
+  await aNewProject(page, "OfferAside");
+  const scenes = await aBookWithScenes(page, { "Part One": 14 });
+  const far = scenes["Part One"][11];
+  await openTheWritingView(page);
+  await flow(page).locator(`[data-place-of="${far}"]`).scrollIntoViewIfNeeded();
+  await scene(page, far).click();
+  await page.keyboard.type("Left here.");
+  await expect(saveState(page)).toHaveText("All saved");
+  await page.reload();
+  await expect(backToWhereYouLeftOffButton(page)).toBeVisible();
+
+  await flow(page).locator(`[data-place-of="${far}"]`).scrollIntoViewIfNeeded();
+  await expect(backToWhereYouLeftOffButton(page)).toHaveCount(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+
+  await expect(backToWhereYouLeftOffButton(page)).toBeVisible();
+  await backToWhereYouLeftOffButton(page).click();
+  await expect(scene(page, far)).toBeFocused();
 });

@@ -47,6 +47,11 @@ impl LeftOff {
             .with(|offered| offered.as_ref().map(|(scene, _)| scene.clone()))
     }
 
+    pub fn offered_untracked(self) -> Option<SceneId> {
+        self.offered
+            .with_untracked(|offered| offered.as_ref().map(|(scene, _)| scene.clone()))
+    }
+
     pub fn go_back(self) {
         if let Some((scene, at)) = self.offered.get_untracked() {
             self.offered.set(None);

@@ -177,11 +177,10 @@ test("writing outside the book leaves where you left off in the book alone", asy
   page,
 }) => {
   await aNewProject(page, "LooseLeftOff");
-  const [, second] = (await aBookWithScenes(page, { "Part One": 2 }))[
-    "Part One"
-  ];
+  const second = (await aBookWithScenes(page, { "Part One": 14 }))["Part One"][11];
   const loose = await aLooseScene(page);
   await openTheWritingView(page);
+  await flow(page).locator(`[data-place-of="${second}"]`).scrollIntoViewIfNeeded();
   await scene(page, second).click();
   await page.keyboard.type("Here.");
   await expect(saveState(page)).toHaveText("All saved");
@@ -304,16 +303,19 @@ test("a scene in the book followed into the other side goes back to the book", a
 });
 
 test("each side lands where you left off on it", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
   await aNewProject(page, "LeftOffSides");
-  const [, placed] = (await aBookWithScenes(page, { "Part One": 2 }))[
-    "Part One"
-  ];
-  await aLooseScene(page);
-  const loose = await aLooseScene(page);
+  const placed = (await aBookWithScenes(page, { "Part One": 14 }))["Part One"][11];
+  let loose = "";
+  for (let made = 0; made < 10; made++) {
+    loose = await aLooseScene(page);
+  }
   await openTheWritingView(page);
+  await flow(page).locator(`[data-place-of="${placed}"]`).scrollIntoViewIfNeeded();
   await scene(page, placed).click();
   await page.keyboard.type("In the book.");
   await openTheLooseSide(page);
+  await flow(page).locator(`[data-place-of="${loose}"]`).scrollIntoViewIfNeeded();
   await scene(page, loose).click();
   await page.keyboard.type("Outside.");
   await expect(saveState(page)).toHaveText("All saved");

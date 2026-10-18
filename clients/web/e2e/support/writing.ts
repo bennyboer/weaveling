@@ -131,10 +131,11 @@ export const offered = (page: Page) =>
 
 export const statusNote = (page: Page) => page.locator(".status-note");
 
+export const backToWhereYouLeftOffButton = (page: Page) =>
+  page.getByRole("button", { name: /Back to where you left off/ });
+
 export async function backToWhereILeftOff(page: Page) {
-  await page
-    .getByRole("button", { name: /Back to where you left off/ })
-    .click();
+  await backToWhereYouLeftOffButton(page).click();
 }
 
 export const saveState = (page: Page) => statusNote(page).locator(".save-state");
