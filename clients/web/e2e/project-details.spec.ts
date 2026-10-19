@@ -146,6 +146,24 @@ test("a title the server refuses is told inside the dialog, which stays", async 
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
+test("details changed elsewhere meanwhile are not overwritten", async ({ page }) => {
+  await aNewProject(page, "Elsewhere");
+  await openTheDetails(page);
+  const meanwhile = await page.request.put(
+    `${API}/projects/${projectOf(page)}/details`,
+    { data: { description: "Written in another tab." } },
+  );
+  expect(meanwhile.ok()).toBe(true);
+
+  await details(page).getByLabel("Description").fill("Written here.");
+  await details(page).getByRole("button", { name: "Save" }).click();
+
+  await expect(details(page).getByRole("alert")).toContainText(
+    "changed elsewhere meanwhile",
+  );
+  expect((await onServer(page)).description).toBe("Written in another tab.");
+});
+
 test("Escape leaves the details as they were", async ({ page }) => {
   const title = await aNewProject(page, "Escaping");
 

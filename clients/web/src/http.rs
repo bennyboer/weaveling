@@ -9,6 +9,10 @@ pub enum ApiError {
     Rejected(String),
     #[error("That {0} no longer exists.")]
     NotFound(&'static str),
+    #[error(
+        "This {0} was changed elsewhere meanwhile. Close this and open it again to see how it stands."
+    )]
+    Outdated(&'static str),
     #[error("Could not reach the server. Is it running?")]
     Offline,
     #[error("Something unexpected went wrong. Please try again.")]
@@ -53,6 +57,7 @@ pub(crate) async fn checked(
     match response.status() {
         400 => Err(rejection(response).await),
         404 => Err(ApiError::NotFound(subject)),
+        412 => Err(ApiError::Outdated(subject)),
         _ => Err(ApiError::Unexpected),
     }
 }

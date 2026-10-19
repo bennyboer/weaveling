@@ -60,11 +60,13 @@ fn changing_dialog(
 
         spawn_local(async move {
             let renamed = match name.trim() == before.name {
-                true => Ok(()),
-                false => service::rename(&project, name.trim()).await.map(|_| ()),
+                true => Ok(before.version),
+                false => service::rename(&project, name.trim())
+                    .await
+                    .map(|renamed| renamed.version),
             };
             let changed = match renamed {
-                Ok(()) => service::change_details(&project, &details).await,
+                Ok(version) => service::change_details(&project, &details, version).await,
                 Err(failure) => Err(failure),
             };
 

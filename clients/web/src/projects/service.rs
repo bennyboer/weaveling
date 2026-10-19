@@ -6,7 +6,7 @@ use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::http::{ApiError, checked, parsed, sent, sent_with};
-use crate::projects::model::{DescribedProject, Project, ProjectDetails, ProjectId};
+use crate::projects::model::{DescribedProject, Project, ProjectDetails, ProjectId, Version};
 use quotation::QuotationMarks;
 
 const PROJECTS: &str = "/api/projects";
@@ -40,13 +40,19 @@ pub async fn details(id: &ProjectId) -> Result<DescribedProject, ApiError> {
 pub async fn change_details(
     id: &ProjectId,
     details: &ProjectDetails,
+    saved_against: Version,
 ) -> Result<DescribedProject, ApiError> {
     let payload = ChangeDetailsRequest {
         language: details.language.clone(),
         quotation: details.quotation.map(|style| style.name().to_owned()),
         description: details.description.clone(),
     };
-    let response = sent_with(Request::put(&format!("{PROJECTS}/{id}/details")), &payload).await?;
+    let response = sent_with(
+        Request::put(&format!("{PROJECTS}/{id}/details"))
+            .header("If-Match", &format!("\"{saved_against}\"")),
+        &payload,
+    )
+    .await?;
 
     Ok(as_described(parsed(response, SUBJECT).await?))
 }
@@ -72,6 +78,7 @@ fn as_project(dto: ProjectDTO) -> Result<Project, ApiError> {
 
     Ok(Project {
         id: ProjectId::from(dto.id),
+        version: Version::from(dto.version),
         name: dto.name,
         updated_at,
     })
@@ -79,6 +86,7 @@ fn as_project(dto: ProjectDTO) -> Result<Project, ApiError> {
 
 fn as_described(found: ProjectDetailsDTO) -> DescribedProject {
     DescribedProject {
+        version: Version::from(found.version),
         name: found.name,
         details: ProjectDetails {
             language: found.language,
