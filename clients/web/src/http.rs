@@ -13,6 +13,8 @@ pub enum ApiError {
         "This {0} was changed elsewhere meanwhile. Close this and open it again to see how it stands."
     )]
     Outdated(&'static str),
+    #[error("Someone else changed this meanwhile, so that could not be done.")]
+    Overtaken,
     #[error("Could not reach the server. Is it running?")]
     Offline,
     #[error("Something unexpected went wrong. Please try again.")]

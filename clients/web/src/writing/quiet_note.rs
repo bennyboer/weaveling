@@ -69,6 +69,17 @@ pub fn quiet_note(state: WriteViewState) -> impl IntoView {
         }
     });
 
+    Effect::new(move |told_before: Option<u64>| {
+        let times = state.structure.overtaken();
+        if told_before.is_some_and(|before| before < times) {
+            state.quiet_note.tell(
+                "Someone else changed the book meanwhile, so that could not be done. It shows the book as it is now."
+                    .to_owned(),
+            );
+        }
+        times
+    });
+
     move || {
         state.quiet_note.told().map(|saying| {
             html::div().class("quiet-note").role("status").child((

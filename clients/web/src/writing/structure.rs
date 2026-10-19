@@ -4,6 +4,7 @@ use std::pin::Pin;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+use crate::http::ApiError;
 use crate::ideas::model::IdeaId;
 use crate::live::Following;
 use crate::outline::model::{Attachment, Outline, OutlineChange, OutlineId, Section, SectionId};
@@ -33,6 +34,8 @@ pub struct Structure {
     reload_in_flight: StoredValue<bool>,
     rearranged_by_others: RwSignal<Vec<SectionId>>,
     removed_by_others: RwSignal<Vec<Removed>>,
+    overtaken: RwSignal<u64>,
+    caught_up_after_refusal: StoredValue<bool>,
     outdated_meanwhile: StoredValue<bool>,
     problems: Problems,
     saving: Saving,
@@ -49,6 +52,8 @@ impl Structure {
             reload_in_flight: StoredValue::new(false),
             rearranged_by_others: RwSignal::new(Vec::new()),
             removed_by_others: RwSignal::new(Vec::new()),
+            overtaken: RwSignal::new(0),
+            caught_up_after_refusal: StoredValue::new(false),
             outdated_meanwhile: StoredValue::new(false),
             problems,
             saving,
@@ -106,7 +111,11 @@ impl Structure {
                     return;
                 };
                 let before = self.read_untracked(Clone::clone);
-                let mine_in_flight = self.writing.try_get_value().unwrap_or(true);
+                let after_refusal = self
+                    .caught_up_after_refusal
+                    .try_update_value(std::mem::take)
+                    .unwrap_or(false);
+                let mine_in_flight = after_refusal || self.writing.try_get_value().unwrap_or(true);
                 match service::open(&project).await {
                     Ok(opened) if !self.outline.is_disposed() => {
                         self.adopt(opened);
@@ -138,6 +147,21 @@ impl Structure {
 
     pub fn project(self) -> ProjectId {
         self.project.get_value()
+    }
+
+    pub fn overtaken(self) -> u64 {
+        self.overtaken.get()
+    }
+
+    fn refused(self, failure: ApiError) {
+        match failure {
+            ApiError::Overtaken => {
+                self.overtaken.update(|times| *times += 1);
+                self.caught_up_after_refusal.set_value(true);
+                self.reload();
+            }
+            failure => self.problems.report(failure),
+        }
     }
 
     pub fn removed_by_others(self) -> Vec<Removed> {
@@ -378,7 +402,7 @@ impl Structure {
         self.in_turn(async move {
             match service::retitle(&outline, &section, &title).await {
                 Ok(renamed) => self.take(renamed),
-                Err(failure) => self.problems.report(failure),
+                Err(failure) => self.refused(failure),
             }
         });
     }
@@ -415,7 +439,7 @@ impl Structure {
                     self.take(placed);
                     then();
                 }
-                Err(failure) => self.problems.report(failure),
+                Err(failure) => self.refused(failure),
             }
         });
     }
@@ -451,7 +475,7 @@ impl Structure {
 
             match moved {
                 Ok(moved) => self.take(moved),
-                Err(failure) => self.problems.report(failure),
+                Err(failure) => self.refused(failure),
             }
         });
     }
@@ -486,7 +510,7 @@ impl Structure {
                         self.take(placed);
                         behind = Some(pinned);
                     }
-                    Err(failure) => return self.problems.report(failure),
+                    Err(failure) => return self.refused(failure),
                 }
             }
         });
@@ -500,7 +524,7 @@ impl Structure {
         self.in_turn(async move {
             match service::detach(&outline, &Attachment::Idea(idea)).await {
                 Ok(()) => self.refresh().await,
-                Err(failure) => self.problems.report(failure),
+                Err(failure) => self.refused(failure),
             }
         });
     }
@@ -513,7 +537,7 @@ impl Structure {
         self.in_turn(async move {
             match service::detach(&outline, &Attachment::Scene(scene)).await {
                 Ok(()) => self.refresh().await,
-                Err(failure) => self.problems.report(failure),
+                Err(failure) => self.refused(failure),
             }
         });
     }
@@ -526,10 +550,10 @@ impl Structure {
         self.in_turn(async move {
             if let Err(failure) = service::detach(&outline, &Attachment::Scene(scene.clone())).await
             {
-                return self.problems.report(failure);
+                return self.refused(failure);
             }
             if let Err(failure) = scenes::delete(&scene).await {
-                self.problems.report(failure);
+                self.refused(failure);
             }
             self.refresh().await;
         });
@@ -543,7 +567,7 @@ impl Structure {
         self.in_turn(async move {
             match service::remove(&outline, &section).await {
                 Ok(removed) => self.take(removed),
-                Err(failure) => self.problems.report(failure),
+                Err(failure) => self.refused(failure),
             }
         });
     }

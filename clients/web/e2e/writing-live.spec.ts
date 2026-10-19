@@ -769,3 +769,31 @@ test("where I am reading holds while sections come and go above it", async ({
   await page.waitForTimeout(300);
   expect(Math.abs((await at()) - before)).toBeLessThanOrEqual(2);
 });
+
+test("a change made from a view that is behind is refused gently, and the view catches up", async ({
+  page,
+}) => {
+  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, () => {});
+  const { outline, ids } = await aBookFollowedLive(page, "LiveOvertaken");
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+  await page.waitForTimeout(300);
+  await expect(
+    heading(page, "Part Two"),
+    "this view hears nothing",
+  ).toBeVisible();
+  await heading(page, "Part Two").click();
+
+  await page.keyboard.press("Tab");
+
+  await expect(
+    page.getByRole("status").filter({ hasText: "meanwhile" }),
+  ).toHaveText(
+    "Someone else changed the book meanwhile, so that could not be done. It shows the book as it is now.",
+  );
+  await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

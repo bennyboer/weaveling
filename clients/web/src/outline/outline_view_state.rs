@@ -80,9 +80,32 @@ impl OutlineViewState {
             });
         };
 
+        let opening = {
+            let id = project.clone();
+
+            Action::new_local(move |()| {
+                let id = id.clone();
+
+                async move {
+                    match service::open(&id).await {
+                        Ok(told) => arrived(told),
+                        Err(failure) => problem.set(Some(failure)),
+                    }
+                }
+            })
+        };
+        opening.dispatch(());
+
+        let failed = move |failure: ApiError| {
+            if failure == ApiError::Overtaken {
+                opening.dispatch(());
+            }
+            problem.set(Some(failure));
+        };
+
         let settled = move |answer: Result<OutlineChange, ApiError>| match answer {
             Ok(told) => changed(told),
-            Err(failure) => problem.set(Some(failure)),
+            Err(failure) => failed(failure),
         };
 
         let listing_scenes = {
@@ -116,22 +139,6 @@ impl OutlineViewState {
             })
         };
         listing_ideas.dispatch(());
-
-        let opening = {
-            let id = project.clone();
-
-            Action::new_local(move |()| {
-                let id = id.clone();
-
-                async move {
-                    match service::open(&id).await {
-                        Ok(told) => arrived(told),
-                        Err(failure) => problem.set(Some(failure)),
-                    }
-                }
-            })
-        };
-        opening.dispatch(());
 
         let adding = Action::new_local(
             move |(under, after, title): &(Option<SectionId>, Option<SectionId>, String)| {

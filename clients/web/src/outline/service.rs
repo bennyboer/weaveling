@@ -1,4 +1,4 @@
-use gloo_net::http::Request;
+use gloo_net::http::{Request, Response};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -41,6 +41,7 @@ pub async fn add(
         &payload,
     )
     .await?;
+    overtaken(&response)?;
     let added: AddedSectionResponse = parsed(response, SUBJECT).await?;
 
     Ok((SectionId::from(added.section), as_change(added.outline)))
@@ -60,7 +61,7 @@ pub async fn retitle(
     )
     .await?;
 
-    Ok(as_change(parsed(response, SUBJECT).await?))
+    changed(response).await
 }
 
 pub async fn place(
@@ -79,7 +80,7 @@ pub async fn place(
     )
     .await?;
 
-    Ok(as_change(parsed(response, SUBJECT).await?))
+    changed(response).await
 }
 
 pub async fn promote(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
@@ -96,7 +97,7 @@ pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<OutlineC
     )))
     .await?;
 
-    Ok(as_change(parsed(response, SUBJECT).await?))
+    changed(response).await
 }
 
 pub async fn attach(
@@ -116,7 +117,7 @@ pub async fn attach(
     )
     .await?;
 
-    Ok(as_change(parsed(response, SUBJECT).await?))
+    changed(response).await
 }
 
 pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), ApiError> {
@@ -132,8 +133,22 @@ pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), 
     if response.ok() {
         return Ok(());
     }
+    overtaken(&response)?;
 
     Err(ApiError::Unexpected)
+}
+
+async fn changed(response: Response) -> Result<OutlineChange, ApiError> {
+    overtaken(&response)?;
+
+    Ok(as_change(parsed(response, SUBJECT).await?))
+}
+
+fn overtaken(response: &Response) -> Result<(), ApiError> {
+    match response.status() {
+        404 | 422 => Err(ApiError::Overtaken),
+        _ => Ok(()),
+    }
 }
 
 async fn urged(
@@ -146,7 +161,7 @@ async fn urged(
     )))
     .await?;
 
-    Ok(as_change(parsed(response, SUBJECT).await?))
+    changed(response).await
 }
 
 fn to_dto(attachment: &Attachment) -> AttachmentDTO {

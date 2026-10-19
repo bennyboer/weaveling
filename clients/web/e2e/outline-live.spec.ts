@@ -266,3 +266,71 @@ test("typing the very title someone else gave meanwhile asks nothing", async ({
   await page.waitForTimeout(300);
   await expect(renamedMeanwhile(page)).toHaveCount(0);
 });
+
+test("a move made from an outline that is behind is refused gently, and the outline catches up", async ({
+  page,
+}) => {
+  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, () => {});
+  const { outline, ids } = await anOutlineFollowedLive(
+    page,
+    "OutlineOvertaken",
+  );
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+  await page.waitForTimeout(300);
+  await expect(
+    titleOf(page, "Part Two"),
+    "this outline hears nothing",
+  ).toBeVisible();
+  await titleOf(page, "Part Two").click();
+
+  await page.keyboard.press("Alt+ArrowUp");
+
+  await expect(
+    page.getByText("Someone else changed this meanwhile"),
+  ).toBeVisible();
+  await expect(titleOf(page, "Part Two")).toHaveCount(0);
+});
+
+async function anOutlineThatHearsNothing(
+  page: Page,
+  named: string,
+  sections: { title: string; after?: string }[],
+) {
+  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, () => {});
+  await aNewProject(page, named);
+  const book = await aBookShaped(page, sections);
+  await openTheOutline(page);
+
+  return book;
+}
+
+test("a move placed after a section removed meanwhile is refused gently", async ({
+  page,
+}) => {
+  const { outline, ids } = await anOutlineThatHearsNothing(
+    page,
+    "OutlineGoneNeighbour",
+    [
+      { title: "Part One" },
+      { title: "Part Two", after: "Part One" },
+      { title: "Part Three", after: "Part Two" },
+    ],
+  );
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part One"]}`,
+  );
+  await titleOf(page, "Part Three").click();
+
+  await page.keyboard.press("Alt+ArrowUp");
+
+  await expect(
+    page.getByText("Someone else changed this meanwhile"),
+  ).toBeVisible();
+  await expect(titleOf(page, "Part One")).toHaveCount(0);
+});
