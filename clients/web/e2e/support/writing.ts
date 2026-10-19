@@ -147,7 +147,7 @@ export async function holdingWhatIsWritten(page: Page) {
   const servers: { send: (frame: string | Buffer) => void }[] = [];
   let holding = false;
 
-  await page.routeWebSocket(/\/api\/sync$/, (socket) => {
+  await page.routeWebSocket(/\/api\/scenes\/sync$/, (socket) => {
     const server = socket.connectToServer();
     servers.push(server);
 

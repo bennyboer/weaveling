@@ -18,7 +18,7 @@ const RECONNECT_AT_MOST = 2500;
 function endpoint() {
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
 
-  return `${scheme}//${window.location.host}/api/sync`;
+  return `${scheme}//${window.location.host}/api/scenes/sync`;
 }
 
 function enveloped(kind, scene, frame) {

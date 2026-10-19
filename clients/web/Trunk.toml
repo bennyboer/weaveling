@@ -15,7 +15,7 @@ command = "node"
 command_arguments = ["js/build.mjs"]
 
 [[proxy]]
-backend = "ws://127.0.0.1:3000/api/sync"
+backend = "ws://127.0.0.1:3000/api/scenes/sync"
 ws = true
 
 [[proxy]]

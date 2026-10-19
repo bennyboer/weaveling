@@ -59,7 +59,7 @@ test("a scene whose text has not arrived still counts, by what the server last c
     )
     .toBe(3);
 
-  await page.routeWebSocket(/\/api\/sync$/, (socket) => {
+  await page.routeWebSocket(/\/api\/scenes\/sync$/, (socket) => {
     const server = socket.connectToServer();
     socket.onMessage((frame) => server.send(frame));
     server.onMessage((frame) => {
@@ -197,7 +197,7 @@ test("a scene coming near is named in the margin before its text arrives", async
   await page.keyboard.type("A");
   await expect(saveState(page)).toHaveText("All saved");
 
-  await page.routeWebSocket(/\/api\/sync$/, (socket) => {
+  await page.routeWebSocket(/\/api\/scenes\/sync$/, (socket) => {
     const server = socket.connectToServer();
     socket.onMessage((frame) => server.send(frame));
     server.onMessage((frame) => {
@@ -261,7 +261,7 @@ test("a dropped connection comes back, and what was written meanwhile is saved",
 }) => {
   let down = false;
   let live: { close: () => Promise<void> } | null = null;
-  await page.routeWebSocket(/\/api\/sync$/, (socket) => {
+  await page.routeWebSocket(/\/api\/scenes\/sync$/, (socket) => {
     if (down) {
       socket.close();
       return;
@@ -437,7 +437,7 @@ test("leaving the writing view closes its connection", async ({ page }) => {
   await aNewProject(page, "TearDown");
   const sockets: { isClosed(): boolean }[] = [];
   page.on("websocket", (socket) => {
-    if (socket.url().endsWith("/api/sync")) {
+    if (socket.url().endsWith("/api/scenes/sync")) {
       sockets.push(socket);
     }
   });

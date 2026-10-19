@@ -102,7 +102,7 @@ function enveloped(kind, scene, frame) {
 
 function written(scene, update) {
   return new Promise((done, failed) => {
-    const socket = new WebSocket(`${API.replace(/^http/, "ws")}/sync`);
+    const socket = new WebSocket(`${API.replace(/^http/, "ws")}/scenes/sync`);
     socket.binaryType = "arraybuffer";
     const vector = Y.encodeStateVector((() => {
       const doc = new Y.Doc();

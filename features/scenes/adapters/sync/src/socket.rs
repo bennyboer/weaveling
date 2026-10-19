@@ -11,7 +11,9 @@ use crate::connection::Connection;
 use crate::live_scenes::LiveScenes;
 
 pub fn router(live: LiveScenes) -> Router {
-    Router::new().route("/sync", get(attach)).with_state(live)
+    Router::new()
+        .route("/scenes/sync", get(attach))
+        .with_state(live)
 }
 
 async fn attach(upgrade: WebSocketUpgrade, State(live): State<LiveScenes>) -> Response {

@@ -99,12 +99,23 @@ async fn the_refusals_are_mounted_under_the_service() {
 
 #[tokio::test]
 async fn there_is_no_socket_for_one_scene_any_more() {
-    let (status, _) = get("/api/sync/weaveling").await;
+    let (status, _) = get("/api/scenes/sync/weaveling").await;
 
     assert_eq!(
         status,
         StatusCode::NOT_FOUND,
-        "every scene travels on the one socket at /api/sync"
+        "every scene travels on the one socket at /api/scenes/sync"
+    );
+}
+
+#[tokio::test]
+async fn the_socket_is_found_under_the_feature_it_belongs_to() {
+    let (status, _) = get("/api/sync").await;
+
+    assert_eq!(
+        status,
+        StatusCode::NOT_FOUND,
+        "every route starts with its feature, the scenes' socket too"
     );
 }
 
@@ -161,14 +172,13 @@ async fn the_live_scenes_are_settled_before_the_service_stops() {
 
 #[tokio::test]
 async fn the_socket_for_many_scenes_is_mounted_under_api() {
-    let (status, _) = get("/api/sync").await;
+    let (status, body) = get("/api/scenes/sync").await;
 
-    assert_ne!(
-        status,
-        StatusCode::NOT_FOUND,
-        "the route is there, and refuses a request that is not a socket"
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body.contains("upgrade"),
+        "the socket itself refuses a request that is not a socket, rather than a scene route          reading `sync` as a scene's id: {body}"
     );
-    assert!(status.is_client_error());
 }
 
 #[tokio::test(flavor = "multi_thread")]
