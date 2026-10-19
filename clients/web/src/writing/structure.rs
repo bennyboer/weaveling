@@ -567,7 +567,7 @@ impl Structure {
         });
     }
 
-    async fn refresh(self) {
+    pub async fn refresh(self) {
         match service::open(&self.project()).await {
             Ok(opened) => self.adopt(opened),
             Err(failure) => self.problems.report(failure),

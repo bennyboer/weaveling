@@ -6,7 +6,9 @@ import {
   flow,
   heading,
   menuItem,
+  newScene,
   openTheWritingView,
+  projectOf,
   projectsOutline,
   savedTitles,
   scene,
@@ -618,4 +620,113 @@ test("the inspector says when the section it shows was removed", async ({
   await expect(
     page.getByRole("complementary", { name: "This section" }),
   ).toContainText("This section was removed.");
+});
+
+const placeGone = (page: Page) =>
+  page.getByRole("dialog", { name: "Its place is gone" });
+
+async function holdingBack(page: Page, method: string, url: RegExp) {
+  await page.route(url, async (route) => {
+    if (route.request().method() !== method) {
+      return route.continue();
+    }
+    await new Promise((later) => setTimeout(later, 800));
+    await route.continue();
+  });
+}
+
+async function aNewSceneWhosePlaceGoes(page: Page, named: string) {
+  await aNewProject(page, named);
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  await followingLive(page);
+  const { outline, ids } = await placedOnServer(page);
+  await scene(page, scenes["Part Two"][0]).click();
+  await page.keyboard.press("ControlOrMeta+End");
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(newScene(page)).toBeFocused();
+  await holdingBack(page, "POST", /\/api\/scenes$/);
+
+  await page.keyboard.type("Hello");
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+}
+
+test("a new scene whose place is removed while it begins asks where its words go", async ({
+  page,
+}) => {
+  await aNewSceneWhosePlaceGoes(page, "LiveUnplacedScene");
+
+  await expect(placeGone(page)).toContainText(
+    "Someone else removed where your new scene was going. It begins “Hello”.",
+  );
+  await expect(
+    placeGone(page).getByRole("button"),
+    "the words have to go somewhere, so there is no way back",
+  ).toHaveText(["Discard", "Put it at the end of the book"]);
+});
+
+test("a new scene put at the end of the book keeps its words", async ({
+  page,
+}) => {
+  await aNewSceneWhosePlaceGoes(page, "LiveUnplacedSceneKept");
+
+  await placeGone(page)
+    .getByRole("button", { name: "Put it at the end of the book" })
+    .click();
+
+  await expect(flow(page).locator(".ProseMirror").last()).toHaveText("Hello");
+  await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);
+});
+
+test("a new scene discarded leaves nothing behind", async ({ page }) => {
+  await aNewSceneWhosePlaceGoes(page, "LiveUnplacedSceneGone");
+
+  await placeGone(page).getByRole("button", { name: "Discard" }).click();
+
+  await expect(placeGone(page)).toHaveCount(0);
+  await expect
+    .poll(
+      async () => {
+        const listed = await page.request.get(
+          `${API}/scenes?project=${projectOf(page)}`,
+        );
+        return (await listed.json()).scenes.length;
+      },
+      { message: "the empty scene made for the words is deleted again" },
+    )
+    .toBe(2);
+});
+
+test("a new section whose neighbour is removed while it begins can go to the end of the book", async ({
+  page,
+}) => {
+  const { outline, ids } = await aBookFollowedLive(page, "LiveUnplacedSection");
+  await heading(page, "Part Two").click();
+  await page.keyboard.press("Enter");
+  await page.keyboard.press("Enter");
+  await expect(
+    flow(page).locator('[data-placeholder="A new section"]'),
+  ).toBeFocused();
+  await holdingBack(page, "POST", /\/api\/outlines\/[^/]+\/sections$/);
+
+  await page.keyboard.type("Part Three");
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+
+  await expect(placeGone(page)).toContainText(
+    "Someone else removed what your new section “Part Three” was going after.",
+  );
+  await placeGone(page)
+    .getByRole("button", { name: "Put it at the end of the book" })
+    .click();
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One", "Part Three"]);
 });

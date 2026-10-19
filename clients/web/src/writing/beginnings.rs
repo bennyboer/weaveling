@@ -21,6 +21,12 @@ pub enum Pending {
     },
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Unplaced {
+    Scene { scene: SceneId, begins: String },
+    Section { titled: String },
+}
+
 #[derive(Clone, Copy)]
 pub struct Beginnings {
     structure: Structure,
@@ -32,6 +38,7 @@ pub struct Beginnings {
     opening: RwSignal<HashSet<SectionId>>,
     opening_words: StoredValue<HashMap<SectionId, String>>,
     opened: StoredValue<HashMap<SceneId, SectionId>>,
+    unplaced: RwSignal<Option<Unplaced>>,
 }
 
 impl Beginnings {
@@ -46,6 +53,7 @@ impl Beginnings {
             opening: RwSignal::new(HashSet::new()),
             opening_words: StoredValue::new(HashMap::new()),
             opened: StoredValue::new(HashMap::new()),
+            unplaced: RwSignal::new(None),
         }
     }
 
@@ -129,7 +137,7 @@ impl Beginnings {
         self.beginning_section.set_value(true);
 
         self.structure.in_turn(async move {
-            match service::add(&outline, under, after, "").await {
+            match service::add(&outline, under, after.clone(), "").await {
                 Ok((section, opened)) => {
                     self.focus_next.set_value(Some(section.clone()));
                     self.pending.set(None);
@@ -143,7 +151,17 @@ impl Beginnings {
                 }
                 Err(failure) => {
                     self.beginning_section.set_value(false);
-                    self.problems.report(failure);
+                    self.structure.refresh().await;
+                    let gone = after
+                        .as_ref()
+                        .is_some_and(|after| self.structure.title_of(after).is_none());
+                    if !gone {
+                        return self.problems.report(failure);
+                    }
+                    self.pending.set(None);
+                    self.unplaced.set(Some(Unplaced::Section {
+                        titled: self.section_words.get_value(),
+                    }));
                 }
             }
         });
@@ -189,16 +207,75 @@ impl Beginnings {
 
             match service::attach(
                 &outline,
-                &Attachment::Scene(made.id),
+                &Attachment::Scene(made.id.clone()),
                 &section,
                 after.map(Attachment::Scene),
             )
             .await
             {
                 Ok(placed) => self.structure.take(placed),
-                Err(failure) => self.could_not_begin(&section, failure),
+                Err(failure) => {
+                    self.structure.refresh().await;
+                    if self.structure.title_of(&section).is_some() {
+                        return self.could_not_begin(&section, failure);
+                    }
+                    self.opening.update(|opening| _ = opening.remove(&section));
+                    let begins = self
+                        .opening_words
+                        .with_value(|words| words.get(&section).cloned())
+                        .unwrap_or_default();
+                    self.unplaced.set(Some(Unplaced::Scene {
+                        scene: made.id,
+                        begins,
+                    }));
+                }
             }
         });
+    }
+
+    pub fn unplaced(self) -> Option<Unplaced> {
+        self.unplaced.get()
+    }
+
+    pub fn let_unplaced_be_asked(self) {
+        self.unplaced.set(None);
+    }
+
+    pub fn put_at_the_end(self, unplaced: Unplaced) {
+        match unplaced {
+            Unplaced::Scene { scene, .. } => {
+                if let Some(last) = self.structure.last_section() {
+                    let after = self.structure.scenes_of(&last).last().cloned();
+                    self.structure.bring_back(scene, last, after);
+                }
+            }
+            Unplaced::Section { .. } => {
+                let after = self.structure.top_level().last().cloned();
+                self.begin_section_at(None, after);
+            }
+        }
+    }
+
+    pub fn discard(self, unplaced: Unplaced) {
+        match unplaced {
+            Unplaced::Scene { scene, .. } => {
+                if let Some(section) = self
+                    .opened
+                    .try_update_value(|opened| opened.remove(&scene))
+                    .flatten()
+                {
+                    self.opening_words
+                        .update_value(|words| _ = words.remove(&section));
+                }
+                let problems = self.problems;
+                self.structure.in_turn(async move {
+                    if let Err(failure) = scenes::delete(&scene).await {
+                        problems.report(failure);
+                    }
+                });
+            }
+            Unplaced::Section { .. } => {}
+        }
     }
 
     pub fn opening_words_are(self, section: SectionId, typed: String) {

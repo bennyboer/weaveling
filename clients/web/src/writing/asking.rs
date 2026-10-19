@@ -7,6 +7,7 @@ use leptos_router::hooks::use_navigate;
 use crate::dialog::modal;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
+use crate::writing::beginnings::Unplaced;
 use crate::writing::heading::KeptTitle;
 use crate::writing::side::Side;
 use crate::writing::write_view_state::WriteViewState;
@@ -23,6 +24,7 @@ pub enum Asking {
         title: String,
         scene: SceneId,
     },
+    PlaceGone(Unplaced),
     RenamedMeanwhile {
         section: SectionId,
         mine: String,
@@ -39,10 +41,18 @@ enum Answer {
     KeptMine,
     TakenTheirs,
     ShownElsewhere,
+    PutAtTheEnd,
+    Discarded,
 }
 
 pub fn asking(state: WriteViewState) -> impl IntoView {
     let navigate = StoredValue::new_local(use_navigate());
+    Effect::new(move || {
+        if let Some(unplaced) = state.beginnings.unplaced() {
+            state.beginnings.let_unplaced_be_asked();
+            state.margin.ask(Asking::PlaceGone(unplaced));
+        }
+    });
 
     move || {
         state.margin.asking().map(|question| {
@@ -58,9 +68,11 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
                 (
                     html::p().child(told),
                     html::div().class("dialog-actions").child((
-                        html::button()
-                            .on(ev::click, move |_| cancel())
-                            .child(untrack(|| question.with_value(way_back))),
+                        untrack(|| question.with_value(way_back)).map(|way_back| {
+                            html::button()
+                                .on(ev::click, move |_| cancel())
+                                .child(way_back)
+                        }),
                         choices
                             .into_iter()
                             .map(|(label, answer)| {
@@ -84,10 +96,11 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
     }
 }
 
-fn way_back(question: &Asking) -> &'static str {
+fn way_back(question: &Asking) -> Option<&'static str> {
     match question {
-        Asking::RemovedMeanwhile { .. } => "Keep writing",
-        _ => "Cancel",
+        Asking::RemovedMeanwhile { .. } => Some("Keep writing"),
+        Asking::PlaceGone(_) => None,
+        _ => Some("Cancel"),
     }
 }
 
@@ -103,6 +116,10 @@ fn offered(question: &Asking, state: WriteViewState) -> Vec<(&'static str, Answe
         Asking::DeleteScene(_) => vec![("Delete", Answer::DeletedForGood)],
         Asking::RemoveSection(_) => vec![("Remove", Answer::Confirmed)],
         Asking::RemovedMeanwhile { .. } => vec![("Show it", Answer::ShownElsewhere)],
+        Asking::PlaceGone(_) => vec![
+            ("Discard", Answer::Discarded),
+            ("Put it at the end of the book", Answer::PutAtTheEnd),
+        ],
         Asking::RenamedMeanwhile { .. } => vec![
             ("Take theirs", Answer::TakenTheirs),
             ("Keep mine", Answer::KeptMine),
@@ -147,6 +164,20 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
                 ),
             )
         }
+        Asking::PlaceGone(Unplaced::Scene { begins, .. }) => (
+            "Its place is gone",
+            format!(
+                "Someone else removed where your new scene was going. It begins “{}”.",
+                begins.trim()
+            ),
+        ),
+        Asking::PlaceGone(Unplaced::Section { titled }) => (
+            "Its place is gone",
+            format!(
+                "Someone else removed what your new section “{}” was going after.",
+                titled.trim()
+            ),
+        ),
         Asking::RenamedMeanwhile { mine, theirs, .. } => (
             "Renamed meanwhile",
             format!(
@@ -203,6 +234,10 @@ fn answered(question: Asking, answer: Answer, state: WriteViewState, go_to: impl
             Side::Loose => state.loose.delete(scene),
         },
         Asking::RemovedMeanwhile { scene, .. } => go_to(&loose_and_at(&scene)),
+        Asking::PlaceGone(unplaced) => match answer {
+            Answer::PutAtTheEnd => state.beginnings.put_at_the_end(unplaced),
+            _ => state.beginnings.discard(unplaced),
+        },
         Asking::RenamedMeanwhile {
             section,
             mine,
