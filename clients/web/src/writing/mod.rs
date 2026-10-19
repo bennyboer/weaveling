@@ -22,6 +22,8 @@ mod moving;
 mod opening;
 mod placing;
 mod problems;
+mod quiet_note;
+mod rearranged;
 mod saving;
 mod scene_ideas;
 mod scene_in_flow;

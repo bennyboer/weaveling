@@ -19,6 +19,7 @@ use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::margin::Margin;
 use crate::writing::moving::Moving;
 use crate::writing::problems::Problems;
+use crate::writing::quiet_note::QuietNote;
 use crate::writing::saving::Saving;
 use crate::writing::scene_ideas::SceneIdeas;
 use crate::writing::settings::Settings;
@@ -54,6 +55,7 @@ pub struct WriteViewState {
     pub side: Side,
     pub loose: LooseScenes,
     pub connection: StoredValue<SyncConnection, LocalStorage>,
+    pub quiet_note: QuietNote,
 }
 
 impl WriteViewState {
@@ -92,6 +94,7 @@ impl WriteViewState {
             side,
             loose,
             connection: StoredValue::new_local(SyncConnection::new()),
+            quiet_note: QuietNote::none(),
         };
         keep_apart(state.book_rail.drawer(), state.inspector.drawer());
         let listing = project.clone();

@@ -31,6 +31,7 @@ use crate::writing::menus::{
 };
 use crate::writing::opening::{opening, pending_first_scene, pending_scene};
 use crate::writing::placing::placing;
+use crate::writing::quiet_note::quiet_note;
 use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
 use crate::writing::settings_dialog::settings_dialog;
 use crate::writing::side::Side;
@@ -234,6 +235,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         (side == Side::Book).then(|| contents(state)),
         drawer_toggles(state),
         going_back(state),
+        quiet_note(state),
         ideas_to_choose(state),
         settings_dialog(state),
         placing(state, placed_from),

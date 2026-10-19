@@ -13,6 +13,7 @@ use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
 use crate::writing::cursor_kept::keeping_the_cursor;
 use crate::writing::problems::Problems;
+use crate::writing::rearranged::{placements, rearranged};
 use crate::writing::saving::Saving;
 
 type Write = Pin<Box<dyn Future<Output = ()>>>;
@@ -30,6 +31,7 @@ pub struct Structure {
     writing: StoredValue<bool>,
     following: StoredValue<Option<Following>, LocalStorage>,
     reload_in_flight: StoredValue<bool>,
+    rearranged_by_others: RwSignal<Vec<SectionId>>,
     outdated_meanwhile: StoredValue<bool>,
     problems: Problems,
     saving: Saving,
@@ -44,6 +46,7 @@ impl Structure {
             writing: StoredValue::new(false),
             following: StoredValue::new_local(None),
             reload_in_flight: StoredValue::new(false),
+            rearranged_by_others: RwSignal::new(Vec::new()),
             outdated_meanwhile: StoredValue::new(false),
             problems,
             saving,
@@ -100,8 +103,22 @@ impl Structure {
                 let Some(project) = self.project.try_get_value() else {
                     return;
                 };
+                let before = self.read_untracked(placements);
+                let mine_in_flight = self.writing.try_get_value().unwrap_or(true);
                 match service::open(&project).await {
-                    Ok(opened) if !self.outline.is_disposed() => self.adopt(opened),
+                    Ok(opened) if !self.outline.is_disposed() => {
+                        self.adopt(opened);
+                        let mine_in_flight =
+                            mine_in_flight || self.writing.try_get_value().unwrap_or(true);
+                        if let (Some(before), Some(after), false) =
+                            (before, self.read_untracked(placements), mine_in_flight)
+                        {
+                            let moved = rearranged(&before, &after);
+                            if !moved.is_empty() {
+                                self.rearranged_by_others.set(moved);
+                            }
+                        }
+                    }
                     Ok(_) => return,
                     Err(failure) => self.problems.report(failure),
                 }
@@ -115,6 +132,10 @@ impl Structure {
 
     pub fn project(self) -> ProjectId {
         self.project.get_value()
+    }
+
+    pub fn rearranged_by_others(self) -> Vec<SectionId> {
+        self.rearranged_by_others.get()
     }
 
     pub fn is_open(self) -> bool {

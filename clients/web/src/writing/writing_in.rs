@@ -26,6 +26,12 @@ impl WritingIn {
         }
     }
 
+    pub fn last_written_in(self) -> Option<SectionId> {
+        self.section
+            .get()
+            .filter(|section| self.structure.title_of(section).is_some())
+    }
+
     pub fn section(self) -> Option<SectionId> {
         self.section
             .get()

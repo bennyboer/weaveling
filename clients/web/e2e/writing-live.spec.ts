@@ -12,12 +12,7 @@ import {
   shown,
 } from "./support/writing";
 
-async function aBookFollowedLive(page: Page, named: string) {
-  await aNewProject(page, named);
-  const book = await aBookShaped(page, [
-    { title: "Part One" },
-    { title: "Part Two", after: "Part One" },
-  ]);
+async function followingLive(page: Page) {
   let opened = 0;
   page.on("response", (response) => {
     if (
@@ -34,7 +29,18 @@ async function aBookFollowedLive(page: Page, named: string) {
     })
     .toBeGreaterThanOrEqual(2);
 
-  return { ...book, reloads: () => opened };
+  return () => opened;
+}
+
+async function aBookFollowedLive(page: Page, named: string) {
+  await aNewProject(page, named);
+  const book = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  const reloads = await followingLive(page);
+
+  return { ...book, reloads };
 }
 
 async function anotherAuthor(
@@ -382,17 +388,7 @@ test("a scene I am writing in keeps my cursor when another author moves its sect
   await aNewProject(page, "LiveMovedUnder");
   const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
   const [mine] = scenes["Part Two"];
-  let opened = 0;
-  page.on("response", (response) => {
-    if (
-      response.request().method() === "POST" &&
-      response.url().endsWith("/api/outlines")
-    ) {
-      opened += 1;
-    }
-  });
-  await openTheWritingView(page);
-  await expect.poll(() => opened).toBeGreaterThanOrEqual(2);
+  await followingLive(page);
   const { outline, ids } = await placedOnServer(page);
   await scene(page, mine).click();
   await page.keyboard.type("Hello");
@@ -410,4 +406,80 @@ test("a scene I am writing in keeps my cursor when another author moves its sect
   await page.keyboard.type(" world");
 
   await expect.poll(() => shown(page, mine)).toBe("Hello world");
+});
+
+const quietNote = (page: Page) =>
+  page.getByRole("status").filter({ hasText: "rearranged the book" });
+
+test("a quiet note says when someone else rearranges the book around where I write", async ({
+  page,
+}) => {
+  await aNewProject(page, "LiveNoted");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  await followingLive(page);
+  const { outline, ids } = await placedOnServer(page);
+  await scene(page, scenes["Part Two"][0]).click();
+
+  await anotherAuthor(
+    page,
+    "put",
+    `/outlines/${outline}/sections/${ids["Part Two"]}/place`,
+    { under: null, after: null },
+  );
+
+  await expect(quietNote(page)).toHaveText(
+    "Someone else rearranged the book around “Part Two”.",
+  );
+  await quietNote(page).getByRole("button", { name: "Dismiss" }).click();
+  await expect(quietNote(page)).toHaveCount(0);
+});
+
+test("writing in a chapter, the note names the part that was moved", async ({
+  page,
+}) => {
+  await aNewProject(page, "LiveNotedPart");
+  const { outline, ids } = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Chapter 1", under: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await followingLive(page);
+  await heading(page, "Chapter 1").click();
+
+  await anotherAuthor(
+    page,
+    "put",
+    `/outlines/${outline}/sections/${ids["Part One"]}/place`,
+    { under: null, after: ids["Part Two"] },
+  );
+
+  await expect(quietNote(page)).toHaveText(
+    "Someone else rearranged the book around “Part One”.",
+  );
+});
+
+test("nesting a section myself tells me nothing", async ({ page }) => {
+  await aBookFollowedLive(page, "LiveNestedMyself");
+  await heading(page, "Part Two").click();
+
+  await page.keyboard.press("Tab");
+
+  await expect(heading(page, "Part Two")).toHaveAttribute("aria-level", "3");
+  await page.waitForTimeout(1000);
+  await expect(quietNote(page)).toHaveCount(0);
+});
+
+test("a section added beside mine tells me nothing", async ({ page }) => {
+  const { outline, ids } = await aBookFollowedLive(page, "LiveAddedBeside");
+  await heading(page, "Part Two").click();
+
+  await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
+    title: "Part One and a half",
+    under: null,
+    after: ids["Part One"],
+  });
+
+  await expect(heading(page, "Part One and a half")).toBeVisible();
+  await page.waitForTimeout(500);
+  await expect(quietNote(page)).toHaveCount(0);
 });
