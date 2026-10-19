@@ -510,3 +510,35 @@ test("a section's menu nests and lifts it, offering only what is possible", asyn
   await menuItem(page, "Lift out a level").click();
   await expect(headingAt(page, "Part Two", 2)).toBeVisible();
 });
+
+test("nesting and lifting in a section's menu show their keys, faded beside them", async ({
+  page,
+}) => {
+  await aNewProject(page, "MenuShowsKeys");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await openTheWritingView(page);
+
+  await sectionActions(page, "Part Two").click();
+  const nesting = flow(page).getByRole("menuitem", {
+    name: "Nest under the previous section",
+    exact: true,
+  });
+  await expect(nesting).toHaveAttribute("aria-keyshortcuts", "Tab");
+  await expect(nesting.locator("kbd")).toHaveText("Tab");
+  await expect(
+    menuItem(page, "Remove section").locator("kbd"),
+    "an item without a key shows none",
+  ).toHaveCount(0);
+  await nesting.click();
+
+  await sectionActions(page, "Part Two").click();
+  const lifting = flow(page).getByRole("menuitem", {
+    name: "Lift out a level",
+    exact: true,
+  });
+  await expect(lifting).toHaveAttribute("aria-keyshortcuts", "Shift+Tab");
+  await expect(lifting.locator("kbd")).toHaveText("Shift+Tab");
+});

@@ -105,13 +105,13 @@ pub fn section_margin(
 
                 (
                     state.structure.can_nest(&section).then(|| {
-                        item("Nest under the previous section", false, move || {
+                        keyed_item("Nest under the previous section", "Tab", move || {
                             state.margin.close();
                             nest(nested.clone(), state);
                         })
                     }),
                     state.structure.can_lift(&section).then(|| {
-                        item("Lift out a level", false, move || {
+                        keyed_item("Lift out a level", "Shift+Tab", move || {
                             state.margin.close();
                             lift(lifted.clone(), state);
                         })
@@ -254,6 +254,8 @@ fn begin_scene_at(landing: &Landing, state: WriteViewState) {
     }
 }
 
+const OPENS_THE_MENU: &str = "Shift+F10";
+
 fn margin_menu(
     named: &'static str,
     icon: Icon,
@@ -267,6 +269,7 @@ fn margin_menu(
         move |_| state.margin.is_open(&marked, menu_kind)
     });
     let menu: NodeRef<Div> = NodeRef::new();
+    let opened_by = matches!(menu_kind, Menu::Changing).then_some(OPENS_THE_MENU);
 
     Effect::new(move || {
         if let Some(shown) = menu.get()
@@ -284,6 +287,8 @@ fn margin_menu(
                 .class("menu-button")
                 .class(("dotted", matches!(icon, Icon::More)))
                 .attr("aria-label", named)
+                .attr("aria-keyshortcuts", opened_by)
+                .attr("title", opened_by.map(|keys| format!("{named} ({keys})")))
                 .attr("aria-haspopup", "menu")
                 .attr("aria-expanded", move || open.get().to_string())
                 .attr("tabindex", "-1")
@@ -359,6 +364,18 @@ fn item(
         .class(("danger", danger))
         .on(ev::click, move |_| chosen())
         .child(named)
+}
+
+fn keyed_item(
+    named: &'static str,
+    keys: &'static str,
+    chosen: impl Fn() + Send + Sync + 'static,
+) -> impl IntoView {
+    html::button()
+        .role("menuitem")
+        .attr("aria-keyshortcuts", keys)
+        .on(ev::click, move |_| chosen())
+        .child((named, html::kbd().attr("aria-hidden", "true").child(keys)))
 }
 
 fn scene_label(scene: SceneId, state: WriteViewState) -> impl IntoView {

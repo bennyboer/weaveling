@@ -229,6 +229,19 @@
       &:hover {
         background: color-mix(in srgb, var(--ink) 8%, transparent);
       }
+
+      &:has(kbd) {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 2rem;
+      }
+    }
+
+    kbd {
+      color: var(--muted);
+      font: inherit;
+      font-size: 0.85em;
     }
   }
 

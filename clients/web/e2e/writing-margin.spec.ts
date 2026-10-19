@@ -263,6 +263,32 @@ test("Shift+F10 opens the menu of the scene being written, and Escape goes back 
   await expect(scene(page, only)).toBeFocused();
 });
 
+test("the scene's and the section's menu buttons name Shift+F10, the add menus do not", async ({
+  page,
+}) => {
+  await aNewProject(page, "MenuNamesItsKey");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  const [only] = scenes["Part One"];
+  await openTheWritingView(page);
+
+  await expect(sceneActions(page, only)).toHaveAttribute(
+    "aria-keyshortcuts",
+    "Shift+F10",
+  );
+  await expect(sceneActions(page, only)).toHaveAttribute(
+    "title",
+    "Scene actions (Shift+F10)",
+  );
+  await expect(sectionActions(page, "Part One")).toHaveAttribute(
+    "title",
+    "Section actions (Shift+F10)",
+  );
+  await expect(
+    addHere(gapBelow(page, only)),
+    "Shift+F10 does not open the menus that add",
+  ).not.toHaveAttribute("aria-keyshortcuts");
+});
+
 test("Shift+F10 in a heading opens its section's menu", async ({ page }) => {
   await aNewProject(page, "HeadingKeys");
   await aBookShaped(page, [{ title: "Part One" }]);
