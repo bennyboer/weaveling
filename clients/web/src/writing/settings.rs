@@ -4,6 +4,7 @@ use crate::kept::{forget, keep, recall};
 
 const SPELLING: &str = "weaveling.writing.spellcheck";
 const JUSTIFIED: &str = "weaveling.writing.justified";
+const TYPEWRITER: &str = "weaveling.writing.typewriter";
 const OFF: &str = "off";
 const ON: &str = "on";
 
@@ -11,6 +12,7 @@ const ON: &str = "on";
 pub struct Settings {
     spelling: RwSignal<bool>,
     justified: RwSignal<bool>,
+    typewriter: RwSignal<bool>,
     open: RwSignal<bool>,
 }
 
@@ -19,6 +21,7 @@ impl Settings {
         Self {
             spelling: RwSignal::new(recall(SPELLING).as_deref() != Some(OFF)),
             justified: RwSignal::new(recall(JUSTIFIED).as_deref() == Some(ON)),
+            typewriter: RwSignal::new(recall(TYPEWRITER).as_deref() == Some(ON)),
             open: RwSignal::new(false),
         }
     }
@@ -44,6 +47,18 @@ impl Settings {
         match wanted {
             true => keep(JUSTIFIED, ON),
             false => forget(JUSTIFIED),
+        }
+    }
+
+    pub fn scrolls_like_a_typewriter(self) -> bool {
+        self.typewriter.get()
+    }
+
+    pub fn scroll_like_a_typewriter(self, wanted: bool) {
+        self.typewriter.set(wanted);
+        match wanted {
+            true => keep(TYPEWRITER, ON),
+            false => forget(TYPEWRITER),
         }
     }
 

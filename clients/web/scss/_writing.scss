@@ -5,6 +5,10 @@
   padding: 3.5rem 1.5rem 50vh;
   font: 300 1.25rem/1.6 var(--reading);
 
+  &.typewriter {
+    padding-top: 50vh;
+  }
+
   .heading {
     position: relative;
     font-family: var(--heading);

@@ -230,6 +230,10 @@ test("renaming, nesting with Tab and renaming on in the same field asks nothing"
   await page.keyboard.type(", drafted");
 
   await page.keyboard.press("Tab");
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One", "Part Two, drafted"]);
+  await page.waitForTimeout(300);
   await expect(page.locator("input.title:focus")).toHaveValue(
     "Part Two, drafted",
   );

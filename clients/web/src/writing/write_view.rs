@@ -36,6 +36,7 @@ use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
 use crate::writing::settings_dialog::settings_dialog;
 use crate::writing::side::Side;
 use crate::writing::status_note::status_note;
+use crate::writing::typewriter::typewriter_scrolling;
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -193,6 +194,9 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
             state.settings.checks_spelling().to_string()
         })
         .class(("justified", move || state.settings.justifies()))
+        .class(("typewriter", move || {
+            state.settings.scrolls_like_a_typewriter()
+        }))
         .on(ev::focusin, move |event| {
             state.left_off.let_go_of_the_offer();
             if !is_the_book_itself(&event) {
@@ -242,6 +246,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         quiet_note(state),
         ideas_to_choose(state),
         settings_dialog(state),
+        typewriter_scrolling(state),
         placing(state, placed_from),
     )
 }

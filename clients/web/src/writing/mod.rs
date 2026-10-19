@@ -32,6 +32,7 @@ mod settings_dialog;
 pub mod side;
 mod status_note;
 mod structure;
+mod typewriter;
 mod viewport;
 mod walk;
 mod word_count;

@@ -7,6 +7,7 @@ use crate::writing::write_view_state::WriteViewState;
 const SPELLING: &str = "Underlines words the browser's dictionary does not know.";
 const JUSTIFIED: &str =
     "Sets lines flush on both sides like a printed page, hyphenating words in the book's language.";
+const TYPEWRITER: &str = "Keeps the line you are writing in the middle of the window.";
 
 pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
     let settings = state.settings;
@@ -29,6 +30,12 @@ pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
                         JUSTIFIED,
                         move || settings.justifies(),
                         move |wanted| settings.justify(wanted),
+                    ),
+                    setting(
+                        "Typewriter scrolling",
+                        TYPEWRITER,
+                        move || settings.scrolls_like_a_typewriter(),
+                        move |wanted| settings.scroll_like_a_typewriter(wanted),
                     ),
                     html::div().class("dialog-actions").child(
                         html::button()
