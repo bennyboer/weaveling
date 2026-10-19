@@ -1,17 +1,19 @@
 use gloo_net::http::Request;
 use scenes_contract::{
-    CreateSceneRequest, LinkIdeaRequest, RetitleSceneRequest, SceneDTO, ScenePageDTO,
-    SceneSummaryDTO,
+    CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
+    ScenePageDTO, SceneSummaryDTO,
 };
 
 use crate::http::{ApiError, checked, parsed, sent, sent_with};
 use crate::ideas::model::IdeaId;
-use crate::projects::model::ProjectId;
+use crate::projects::model::{ProjectId, Version};
 use crate::scenes::model::{Scene, SceneId, SceneSummary};
+use crate::scenes::restyling::QuotationRestyling;
 use crate::scenes::written;
 
 const SCENES: &str = "/api/scenes";
 const SUBJECT: &str = "scene";
+const RESTYLING: &str = "rewriting of the quotation marks";
 
 pub async fn open(id: &SceneId) -> Result<Scene, ApiError> {
     let response = sent(Request::get(&format!("{SCENES}/{id}"))).await?;
@@ -69,6 +71,26 @@ pub async fn in_project(project: &ProjectId) -> Result<Vec<SceneSummary>, ApiErr
             None => return Ok(written::caught_up(project, listed)),
         }
     }
+}
+
+pub async fn quotation_restyling(
+    project: &ProjectId,
+) -> Result<Option<QuotationRestyling>, ApiError> {
+    let response = sent(Request::get(&format!(
+        "{SCENES}/quotation-restylings/{project}"
+    )))
+    .await?;
+    if response.status() == 404 {
+        return Ok(None);
+    }
+    let found: QuotationRestylingDTO = parsed(response, RESTYLING).await?;
+
+    Ok(Some(QuotationRestyling {
+        change: Version::from(found.change),
+        total: found.total,
+        done: found.done,
+        finished: found.finished,
+    }))
 }
 
 pub async fn create(project: &ProjectId) -> Result<Scene, ApiError> {

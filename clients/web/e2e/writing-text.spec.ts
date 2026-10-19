@@ -2,7 +2,20 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
 import { aNewProject } from "./support/shell";
-import { aBookInTheWritingView, cataloguedOpening, flow, heading, label, openTheWritingView, quotationMarks, saveState, scene, shown, statusNote, theBookIsIn } from "./support/writing";
+import {
+  aBookInTheWritingView,
+  cataloguedOpening,
+  flow,
+  heading,
+  label,
+  openTheWritingView,
+  quotationMarks,
+  saveState,
+  scene,
+  shown,
+  statusNote,
+  theBookIsIn,
+} from "./support/writing";
 
 const writingSettings = (page: Page) =>
   page.getByRole("dialog", { name: "Writing settings" });
@@ -35,7 +48,8 @@ const howTheTextSits = (page: Page, id: string) =>
       range.selectNodeContents(paragraph);
       const firstLine = range.getClientRects()[0];
       const inside =
-        paragraph.getBoundingClientRect().right - parseFloat(style.paddingRight);
+        paragraph.getBoundingClientRect().right -
+        parseFloat(style.paddingRight);
 
       return {
         align: style.textAlign,
@@ -192,7 +206,7 @@ test("a typed \" begins what is said and another ends it, drawn in the book's ma
   await expect(quotationMarks(page, only)).toHaveText(["»", "«", "»", "«"]);
 });
 
-test("the opening mark is there as soon as \" is typed, the closing one once it is typed again", async ({
+test('the opening mark is there as soon as " is typed, the closing one once it is typed again', async ({
   page,
 }) => {
   const only = await quoting(page, "QuotingBegun", "de");
@@ -211,9 +225,7 @@ test("a book with no language quotes as English does", async ({ page }) => {
 
   await page.keyboard.type('"Come here," she said.');
 
-  await expect
-    .poll(() => shown(page, only))
-    .toBe("“Come here,” she said.");
+  await expect.poll(() => shown(page, only)).toBe("“Come here,” she said.");
 });
 
 test("French marks are set with narrow spaces inside", async ({ page }) => {
@@ -221,9 +233,7 @@ test("French marks are set with narrow spaces inside", async ({ page }) => {
 
   await page.keyboard.type('"Viens"');
 
-  await expect
-    .poll(() => shown(page, only))
-    .toBe("« Viens »");
+  await expect.poll(() => shown(page, only)).toBe("« Viens »");
 });
 
 test("a typed ' becomes an apostrophe", async ({ page }) => {
@@ -242,10 +252,17 @@ test("a quotation style chosen while writing redraws what is already said", asyn
   await expect.poll(() => shown(page, only)).toBe("»Eins« ");
 
   await page.getByRole("button", { name: "Project details" }).click();
-  const details = page.getByRole("dialog", { name: "Project details" });
-  await details.getByLabel("Quotation marks").selectOption({ label: "„…“" });
-  await details.getByRole("button", { name: "Save" }).click();
-  await expect(details).toHaveCount(0);
+  const projectDetails = page.getByRole("dialog", { name: "Project details" });
+  await projectDetails
+    .getByLabel("Quotation marks")
+    .selectOption({ label: "„…“" });
+  await projectDetails.getByRole("button", { name: "Save" }).click();
+  await projectDetails
+    .getByRole("button", { name: "Change the marks" })
+    .click();
+  await expect(projectDetails).toContainText("Every scene now quotes „…“.");
+  await projectDetails.getByRole("button", { name: "Close" }).click();
+  await expect(projectDetails).toBeHidden();
   await scene(page, only).click();
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type('"Zwei"');
@@ -253,7 +270,9 @@ test("a quotation style chosen while writing redraws what is already said", asyn
   await expect.poll(() => shown(page, only)).toBe("„Eins“ „Zwei“");
 });
 
-test("a mark is a letter the cursor steps over like any other", async ({ page }) => {
+test("a mark is a letter the cursor steps over like any other", async ({
+  page,
+}) => {
   const only = await quoting(page, "QuotingStepped", "de");
   await page.keyboard.type('"Komm her"');
 
@@ -275,9 +294,16 @@ test("a style chosen while writing is not taken back by undoing what was typed",
   await page.keyboard.type("zwei");
   await expect.poll(() => shown(page, only)).toBe("»Eins« zwei");
   await page.getByRole("button", { name: "Project details" }).click();
-  const details = page.getByRole("dialog", { name: "Project details" });
-  await details.getByLabel("Quotation marks").selectOption({ label: "„…“" });
-  await details.getByRole("button", { name: "Save" }).click();
+  const projectDetails = page.getByRole("dialog", { name: "Project details" });
+  await projectDetails
+    .getByLabel("Quotation marks")
+    .selectOption({ label: "„…“" });
+  await projectDetails.getByRole("button", { name: "Save" }).click();
+  await projectDetails
+    .getByRole("button", { name: "Change the marks" })
+    .click();
+  await expect(projectDetails).toContainText("Every scene now quotes „…“.");
+  await projectDetails.getByRole("button", { name: "Close" }).click();
   await expect.poll(() => shown(page, only)).toBe("„Eins“ zwei");
   await scene(page, only).click();
 
@@ -298,12 +324,10 @@ test("what is said stays one pair of marks with emphasis inside it", async ({
   await page.keyboard.type(' Sache."');
 
   await expect(quotationMarks(page, only)).toHaveText(["»", "«"]);
-  await expect
-    .poll(() => shown(page, only))
-    .toBe("»Das ist meine Sache.«");
+  await expect.poll(() => shown(page, only)).toBe("»Das ist meine Sache.«");
 });
 
-test("selected text becomes what is said when \" is typed over it", async ({
+test('selected text becomes what is said when " is typed over it', async ({
   page,
 }) => {
   const only = await quoting(page, "QuotingSelected", "de");
@@ -361,7 +385,8 @@ test("copied from within a scene, what is said comes with the book's marks", asy
         const [item] = await navigator.clipboard.read();
         const html = await (await item.getType("text/html")).text();
 
-        return new DOMParser().parseFromString(html, "text/html").body.textContent;
+        return new DOMParser().parseFromString(html, "text/html").body
+          .textContent;
       }),
     )
     .toBe("»Komm her,« sagte sie.");
@@ -390,7 +415,9 @@ test("what is said, pasted back in, stays what is said with one pair of marks", 
   );
 });
 
-test("Ctrl+Shift+2 begins a line of dialogue and ends it again", async ({ page }) => {
+test("Ctrl+Shift+2 begins a line of dialogue and ends it again", async ({
+  page,
+}) => {
   const only = await quoting(page, "DialogueKey", "de");
 
   await page.keyboard.press("ControlOrMeta+Shift+2");
@@ -402,7 +429,9 @@ test("Ctrl+Shift+2 begins a line of dialogue and ends it again", async ({ page }
   await expect(quotationMarks(page, only)).toHaveText(["»", "«"]);
 });
 
-test("Ctrl+Shift+2 makes selected text dialogue, and plain again", async ({ page }) => {
+test("Ctrl+Shift+2 makes selected text dialogue, and plain again", async ({
+  page,
+}) => {
   const only = await quoting(page, "DialogueKeySelected", "de");
   await page.keyboard.type("Sie sagte Ja.");
   await page.keyboard.press("End");
@@ -427,12 +456,14 @@ test("the text sits ragged right by default, its paragraphs ending without a lon
 
   await page.keyboard.insertText(LONG_PARAGRAPH);
 
-  await expect.poll(() => howTheTextSits(page, only)).toEqual({
-    align: "start",
-    hyphens: "manual",
-    wrap: "pretty",
-    flush: false,
-  });
+  await expect
+    .poll(() => howTheTextSits(page, only))
+    .toEqual({
+      align: "start",
+      hyphens: "manual",
+      wrap: "pretty",
+      flush: false,
+    });
 });
 
 test("justified text in the writing settings sets lines flush and hyphenated, across a reload", async ({
@@ -461,7 +492,9 @@ test("justified text in the writing settings sets lines flush and hyphenated, ac
   await statusNote(page)
     .getByRole("button", { name: "Writing settings" })
     .click();
-  await expect(writingSettings(page).getByLabel("Justified text")).toBeChecked();
+  await expect(
+    writingSettings(page).getByLabel("Justified text"),
+  ).toBeChecked();
   await writingSettings(page).getByLabel("Justified text").uncheck();
   await page.keyboard.press("Escape");
 
@@ -471,7 +504,10 @@ test("justified text in the writing settings sets lines flush and hyphenated, ac
   await page.reload();
   await expect(scene(page, only)).toContainText("Am Morgen");
   await expect
-    .poll(() => howTheTextSits(page, only), "switched back, the text stays ragged after a reload")
+    .poll(
+      () => howTheTextSits(page, only),
+      "switched back, the text stays ragged after a reload",
+    )
     .toMatchObject({ align: "start", flush: false });
 });
 

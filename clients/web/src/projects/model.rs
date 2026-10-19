@@ -32,6 +32,13 @@ pub struct DescribedProject {
     pub details: ProjectDetails,
 }
 
+impl ProjectDetails {
+    pub fn quotation_marks(&self) -> QuotationMarks {
+        self.quotation
+            .unwrap_or_else(|| QuotationMarks::of_language(self.language.as_deref()))
+    }
+}
+
 impl From<String> for ProjectId {
     fn from(given: String) -> Self {
         Self(given)

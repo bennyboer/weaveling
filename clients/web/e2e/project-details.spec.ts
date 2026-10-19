@@ -2,23 +2,26 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aNewProject, API, views } from "./support/shell";
 import { aBookWithScenes } from "./support/book";
-import { projectOf } from "./support/writing";
+import { projectOf, theBookIsIn } from "./support/writing";
 
 const masthead = (page: Page) => page.getByRole("heading", { level: 1 });
 
-const detailsButton = (page: Page) =>
+const projectDetailsButton = (page: Page) =>
   page.getByRole("button", { name: "Project details" });
 
-const details = (page: Page) =>
+const projectDetails = (page: Page) =>
   page.getByRole("dialog", { name: "Project details" });
 
 async function onServer(page: Page) {
   return (await page.request.get(`${API}/projects/${projectOf(page)}`)).json();
 }
 
-async function openTheDetails(page: Page) {
-  await detailsButton(page).click();
-  await expect(details(page)).toBeVisible();
+const changeTheMarks = (page: Page) =>
+  projectDetails(page).getByRole("button", { name: "Change the marks" });
+
+async function openTheProjectDetails(page: Page) {
+  await projectDetailsButton(page).click();
+  await expect(projectDetails(page)).toBeVisible();
 }
 
 test("the masthead names the project as it was written, not as its address spells it", async ({
@@ -38,13 +41,13 @@ test("the details open with what the project holds", async ({ page }) => {
   expect(changed.ok()).toBe(true);
   await page.reload();
 
-  await openTheDetails(page);
+  await openTheProjectDetails(page);
 
-  await expect(details(page).getByLabel("Title")).toHaveValue(title);
-  await expect(details(page).getByLabel("Language of the book")).toHaveValue(
-    "fr",
-  );
-  await expect(details(page).getByLabel("Description")).toHaveValue(
+  await expect(projectDetails(page).getByLabel("Title")).toHaveValue(title);
+  await expect(
+    projectDetails(page).getByLabel("Language of the book"),
+  ).toHaveValue("fr");
+  await expect(projectDetails(page).getByLabel("Description")).toHaveValue(
     "Deux villes.",
   );
 });
@@ -55,34 +58,34 @@ test("a project's title, language and description can be changed from inside it"
   await aNewProject(page, "Changing");
   const renamed = `Renamed ${crypto.randomUUID().slice(0, 8)}`;
 
-  await openTheDetails(page);
-  await details(page).getByLabel("Title").fill(renamed);
-  await details(page)
+  await openTheProjectDetails(page);
+  await projectDetails(page).getByLabel("Title").fill(renamed);
+  await projectDetails(page)
     .getByLabel("Language of the book")
-    .selectOption({ label: "German (Deutsch)" });
-  await details(page).getByLabel("Description").fill("Zwei Städte.");
-  await details(page).getByRole("button", { name: "Save" }).click();
+    .selectOption({ label: "Dutch (Nederlands)" });
+  await projectDetails(page).getByLabel("Description").fill("Twee steden.");
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
 
-  await expect(details(page)).toHaveCount(0);
+  await expect(projectDetails(page)).toBeHidden();
   await expect(
     masthead(page),
     "the masthead follows the new title at once",
   ).toHaveText(renamed);
   const found = await onServer(page);
   expect(found.name).toBe(renamed);
-  expect(found.language).toBe("de");
-  expect(found.description).toBe("Zwei Städte.");
+  expect(found.language).toBe("nl");
+  expect(found.description).toBe("Twee steden.");
 });
 
 test("Enter in the title saves the details", async ({ page }) => {
   await aNewProject(page, "Entering");
   const renamed = `Entered ${crypto.randomUUID().slice(0, 8)}`;
 
-  await openTheDetails(page);
-  await details(page).getByLabel("Title").fill(renamed);
-  await details(page).getByLabel("Title").press("Enter");
+  await openTheProjectDetails(page);
+  await projectDetails(page).getByLabel("Title").fill(renamed);
+  await projectDetails(page).getByLabel("Title").press("Enter");
 
-  await expect(details(page)).toHaveCount(0);
+  await expect(projectDetails(page)).toBeHidden();
   await expect(masthead(page)).toHaveText(renamed);
 });
 
@@ -95,11 +98,11 @@ test("a title left as it was is not renamed", async ({ page }) => {
     }
   });
 
-  await openTheDetails(page);
-  await details(page).getByLabel("Description").fill("Only this.");
-  await details(page).getByRole("button", { name: "Save" }).click();
+  await openTheProjectDetails(page);
+  await projectDetails(page).getByLabel("Description").fill("Only this.");
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
 
-  await expect(details(page)).toHaveCount(0);
+  await expect(projectDetails(page)).toBeHidden();
   await expect
     .poll(async () => (await onServer(page)).description)
     .toBe("Only this.");
@@ -115,11 +118,12 @@ test("the book takes its new language without leaving the writing view", async (
   const book = page.getByRole("article", { name: "The book" });
   await expect(book.locator(".scene .ProseMirror")).toHaveCount(1);
 
-  await openTheDetails(page);
-  await details(page)
+  await openTheProjectDetails(page);
+  await projectDetails(page)
     .getByLabel("Language of the book")
     .selectOption({ label: "French (Français)" });
-  await details(page).getByRole("button", { name: "Save" }).click();
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
+  await changeTheMarks(page).click();
 
   await expect(book).toHaveAttribute("lang", "fr");
 });
@@ -129,11 +133,11 @@ test("a title the server refuses is told inside the dialog, which stays", async 
 }) => {
   const title = await aNewProject(page, "Refused");
 
-  await openTheDetails(page);
-  await details(page).getByLabel("Title").fill("a".repeat(201));
-  await details(page).getByRole("button", { name: "Save" }).click();
+  await openTheProjectDetails(page);
+  await projectDetails(page).getByLabel("Title").fill("a".repeat(201));
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
 
-  await expect(details(page).getByRole("alert")).toContainText(
+  await expect(projectDetails(page).getByRole("alert")).toContainText(
     "at most 200 characters",
   );
   await expect(
@@ -142,23 +146,25 @@ test("a title the server refuses is told inside the dialog, which stays", async 
   ).toHaveCount(1);
   await expect(masthead(page)).toHaveText(title);
 
-  await details(page).getByLabel("Title").fill("A shorter title");
+  await projectDetails(page).getByLabel("Title").fill("A shorter title");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("details changed elsewhere meanwhile are not overwritten", async ({ page }) => {
+test("details changed elsewhere meanwhile are not overwritten", async ({
+  page,
+}) => {
   await aNewProject(page, "Elsewhere");
-  await openTheDetails(page);
+  await openTheProjectDetails(page);
   const meanwhile = await page.request.put(
     `${API}/projects/${projectOf(page)}/details`,
     { data: { description: "Written in another tab." } },
   );
   expect(meanwhile.ok()).toBe(true);
 
-  await details(page).getByLabel("Description").fill("Written here.");
-  await details(page).getByRole("button", { name: "Save" }).click();
+  await projectDetails(page).getByLabel("Description").fill("Written here.");
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
 
-  await expect(details(page).getByRole("alert")).toContainText(
+  await expect(projectDetails(page).getByRole("alert")).toContainText(
     "changed elsewhere meanwhile",
   );
   expect((await onServer(page)).description).toBe("Written in another tab.");
@@ -167,24 +173,24 @@ test("details changed elsewhere meanwhile are not overwritten", async ({ page })
 test("Escape leaves the details as they were", async ({ page }) => {
   const title = await aNewProject(page, "Escaping");
 
-  await openTheDetails(page);
-  await details(page).getByLabel("Title").fill("Never kept");
+  await openTheProjectDetails(page);
+  await projectDetails(page).getByLabel("Title").fill("Never kept");
   await page.keyboard.press("Escape");
 
-  await expect(details(page)).toHaveCount(0);
+  await expect(projectDetails(page)).toBeHidden();
   await expect(masthead(page)).toHaveText(title);
-  await openTheDetails(page);
-  await expect(details(page).getByLabel("Title")).toHaveValue(title);
+  await openTheProjectDetails(page);
+  await expect(projectDetails(page).getByLabel("Title")).toHaveValue(title);
 });
 
 test("a blank title cannot be saved", async ({ page }) => {
   await aNewProject(page, "Blank");
 
-  await openTheDetails(page);
-  await details(page).getByLabel("Title").fill("   ");
+  await openTheProjectDetails(page);
+  await projectDetails(page).getByLabel("Title").fill("   ");
 
   await expect(
-    details(page).getByRole("button", { name: "Save" }),
+    projectDetails(page).getByRole("button", { name: "Save" }),
   ).toBeDisabled();
 });
 
@@ -193,9 +199,9 @@ test("a long name is cut short in the masthead, and told in full on hover", asyn
 }) => {
   await aNewProject(page, "Long");
   const long = "Test ".repeat(30).trim();
-  await openTheDetails(page);
-  await details(page).getByLabel("Title").fill(long);
-  await details(page).getByRole("button", { name: "Save" }).click();
+  await openTheProjectDetails(page);
+  await projectDetails(page).getByLabel("Title").fill(long);
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
   await expect(masthead(page)).toHaveAttribute("title", long);
 
   const seen = await page.evaluate(() => {
@@ -222,23 +228,23 @@ test("the quotation marks follow the book's language until a style is chosen", a
   page,
 }) => {
   await aNewProject(page, "Quoting");
-  await openTheDetails(page);
-  const marks = details(page).getByLabel("Quotation marks");
-  await details(page)
+  await openTheProjectDetails(page);
+  const marks = projectDetails(page).getByLabel("Quotation marks");
+  await projectDetails(page)
     .getByLabel("Language of the book")
     .selectOption({ label: "German (Deutsch)" });
 
   await expect(marks.locator("option").first()).toHaveText(
     "As the language has it, »…«",
   );
-  await details(page)
+  await projectDetails(page)
     .getByLabel("Language of the book")
     .selectOption({ label: "English" });
   await expect(marks.locator("option").first()).toHaveText(
     "As the language has it, “…”",
   );
-  await details(page).getByRole("button", { name: "Save" }).click();
-  await expect(details(page)).toHaveCount(0);
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
+  await expect(projectDetails(page)).toBeHidden();
 
   const found = await onServer(page);
   expect(found.quotation, "following the language stores no style").toBe(null);
@@ -246,18 +252,104 @@ test("the quotation marks follow the book's language until a style is chosen", a
 
 test("a quotation style chosen for the book is kept", async ({ page }) => {
   await aNewProject(page, "QuotingChosen");
-  await openTheDetails(page);
+  await openTheProjectDetails(page);
 
-  await details(page)
+  await projectDetails(page)
     .getByLabel("Quotation marks")
     .selectOption({ label: "„…“" });
-  await details(page).getByRole("button", { name: "Save" }).click();
-  await expect(details(page)).toHaveCount(0);
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
+  await changeTheMarks(page).click();
+  await projectDetails(page).getByRole("button", { name: "Close" }).click();
+  await expect(projectDetails(page)).toBeHidden();
 
   expect((await onServer(page)).quotation).toBe("low-high");
   await page.reload();
-  await openTheDetails(page);
-  await expect(details(page).getByLabel("Quotation marks")).toHaveValue(
+  await openTheProjectDetails(page);
+  await expect(projectDetails(page).getByLabel("Quotation marks")).toHaveValue(
     "low-high",
   );
+});
+
+test("new quotation marks are asked about first, and Back keeps the details open", async ({
+  page,
+}) => {
+  await aNewProject(page, "AskedFirst");
+  await openTheProjectDetails(page);
+  await projectDetails(page)
+    .getByLabel("Quotation marks")
+    .selectOption({ label: "„…“" });
+
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
+
+  await expect(projectDetails(page)).toContainText(
+    "Changing the quotation marks from “…” to „…“ rewrites them in every scene of the book.",
+  );
+  expect(
+    (await onServer(page)).quotation,
+    "nothing is saved before it is confirmed",
+  ).toBe(null);
+
+  await projectDetails(page).getByRole("button", { name: "Back" }).click();
+
+  await expect(projectDetails(page).getByLabel("Quotation marks")).toHaveValue(
+    "low-high",
+  );
+});
+
+test("details that leave the marks as they look are saved without asking", async ({
+  page,
+}) => {
+  await aNewProject(page, "NotAsked");
+  await theBookIsIn(page, "de");
+  await openTheProjectDetails(page);
+  await projectDetails(page)
+    .getByLabel("Language of the book")
+    .selectOption({ label: "Danish (Dansk)" });
+
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
+
+  await expect(
+    projectDetails(page),
+    "the marks stay »…«, so the dialog closes without asking",
+  ).toBeHidden();
+  expect((await onServer(page)).language).toBe("da");
+});
+
+test("confirmed, the dialog follows the book being rewritten until every scene is done", async ({
+  page,
+}) => {
+  await aNewProject(page, "Followed");
+  await aBookWithScenes(page, { "Part One": 3 });
+  let asked = 0;
+  await page.route("**/api/scenes/quotation-restylings/**", async (route) => {
+    asked += 1;
+    if (asked > 1) {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      json: { change: 1_000_000, total: 3, done: 1, finished: false },
+    });
+  });
+  await openTheProjectDetails(page);
+  await projectDetails(page)
+    .getByLabel("Quotation marks")
+    .selectOption({ label: "»…«" });
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
+
+  await changeTheMarks(page).click();
+
+  const bar = projectDetails(page).getByRole("progressbar", {
+    name: "Rewriting the quotation marks",
+  });
+  await expect(projectDetails(page)).toContainText(
+    "Rewriting the quotation marks: 1 of 3 scenes.",
+  );
+  await expect(bar).toHaveAttribute("value", "1");
+  await expect(bar).toHaveAttribute("max", "3");
+  await expect(projectDetails(page)).toContainText(
+    "Every scene now quotes »…«.",
+  );
+  await expect(bar).toHaveAttribute("value", "1");
+  await expect(bar).toHaveAttribute("max", "1");
 });

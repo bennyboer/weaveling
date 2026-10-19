@@ -72,15 +72,10 @@ impl OpenProject {
 
     pub fn quotation_marks(self) -> QuotationMarks {
         self.described.with(|described| {
-            let details = described.as_ref().map(|held| &held.details);
-
-            details
-                .and_then(|details| details.quotation)
-                .unwrap_or_else(|| {
-                    QuotationMarks::of_language(
-                        details.and_then(|details| details.language.as_deref()),
-                    )
-                })
+            described.as_ref().map_or_else(
+                || QuotationMarks::of_language(None),
+                |held| held.details.quotation_marks(),
+            )
         })
     }
 

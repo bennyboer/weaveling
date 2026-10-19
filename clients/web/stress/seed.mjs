@@ -9,6 +9,7 @@ const CHAPTERS = Number(process.env.STRESS_CHAPTERS ?? 15);
 const SCENES = Number(process.env.STRESS_SCENES ?? 10_000);
 const WORDS = Number(process.env.STRESS_WORDS ?? 100);
 const AT_ONCE = Number(process.env.STRESS_AT_ONCE ?? 16);
+const DIALOGUE = process.env.STRESS_DIALOGUE === "1";
 
 const VOCABULARY = (
   "the loom stood silent in the grey light of morning while she counted threads " +
@@ -62,13 +63,25 @@ function proseOf(nth) {
     const length = Math.min(left, 30 + (nth % 20));
     const words = Array.from({ length }, () => VOCABULARY[word++ % VOCABULARY.length]);
     const paragraph = new Y.XmlElement("paragraph");
-    paragraph.insert(0, [new Y.XmlText(`${words.join(" ")}.`)]);
+    paragraph.insert(0, [DIALOGUE ? said(words) : new Y.XmlText(`${words.join(" ")}.`)]);
     paragraphs.push(paragraph);
     left -= length;
   }
   fragment.insert(0, paragraphs);
 
   return Y.encodeStateAsUpdate(doc);
+}
+
+function said(words) {
+  const spoken = Math.ceil(words.length / 3);
+  const text = new Y.XmlText();
+  text.applyDelta([
+    { insert: "“", attributes: { quote: { side: "opening" } } },
+    { insert: `${words.slice(0, spoken).join(" ")},` },
+    { insert: "”", attributes: { quote: { side: "closing" } } },
+    { insert: ` ${words.slice(spoken).join(" ")}.` },
+  ]);
+  return text;
 }
 
 function framed(kind, write) {
