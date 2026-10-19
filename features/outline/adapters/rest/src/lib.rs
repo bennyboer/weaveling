@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -17,6 +17,7 @@ use outline_core::{
     Attachment, Changed, InvalidSectionTitle, Outline, OutlineError, OutlineService,
     OutlineServiceError, PlacedSection, SectionId, SectionTitle,
 };
+use serde::Deserialize;
 use serving::{Unreadable, demanded, refusal, tag};
 
 pub fn router(outlines: OutlineService) -> Router {
@@ -60,16 +61,21 @@ async fn open(
 
 pub fn live(broadcaster: Broadcaster) -> Router {
     Router::new()
-        .route("/outlines/{outline}/live", get(follow))
+        .route("/outlines/live", get(follow))
         .with_state(broadcaster)
 }
 
 async fn follow(
     upgrade: WebSocketUpgrade,
     State(broadcaster): State<Broadcaster>,
-    Path(outline): Path<String>,
+    Query(followed): Query<Followed>,
 ) -> Response {
-    streaming(upgrade, broadcaster.hear(&outline))
+    streaming(upgrade, broadcaster.hear(&followed.outline))
+}
+
+#[derive(Deserialize)]
+struct Followed {
+    outline: String,
 }
 
 async fn find(

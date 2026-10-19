@@ -110,7 +110,7 @@ async fn there_is_no_socket_for_one_scene_any_more() {
 
 #[tokio::test]
 async fn the_outline_is_followed_live_under_api() {
-    let (status, body) = get("/api/outlines/outline_031VkO0hnpeQZUiAB7nDma/live").await;
+    let (status, body) = get("/api/outlines/live?outline=outline_031VkO0hnpeQZUiAB7nDma").await;
 
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(

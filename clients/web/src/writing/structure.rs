@@ -5,6 +5,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::ideas::model::IdeaId;
+use crate::live::Following;
 use crate::outline::model::{Attachment, Outline, OutlineChange, OutlineId, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -26,6 +27,9 @@ pub struct Structure {
     outline: RwSignal<Option<Outline>>,
     writes: StoredValue<VecDeque<Write>, LocalStorage>,
     writing: StoredValue<bool>,
+    following: StoredValue<Option<Following>, LocalStorage>,
+    reload_in_flight: StoredValue<bool>,
+    outdated_meanwhile: StoredValue<bool>,
     problems: Problems,
     saving: Saving,
 }
@@ -37,19 +41,75 @@ impl Structure {
             outline: RwSignal::new(None),
             writes: StoredValue::new_local(VecDeque::new()),
             writing: StoredValue::new(false),
+            following: StoredValue::new_local(None),
+            reload_in_flight: StoredValue::new(false),
+            outdated_meanwhile: StoredValue::new(false),
             problems,
             saving,
         };
         let project = project.clone();
+        on_cleanup(move || _ = structure.following.try_update_value(|held| *held = None));
 
         spawn_local(async move {
             match service::open(&project).await {
-                Ok(opened) => structure.outline.set(Some(opened)),
+                Ok(opened) => {
+                    let outline = opened.id.clone();
+                    structure.outline.set(Some(opened));
+                    structure.follow(&outline);
+                }
                 Err(failure) => structure.problems.report(failure),
             }
         });
 
         structure
+    }
+
+    fn follow(self, outline: &OutlineId) {
+        let following = Following::start(
+            &format!("/api/outlines/live?outline={outline}"),
+            move |version| self.heard_of(version),
+            move || self.reload(),
+        );
+        _ = self
+            .following
+            .try_update_value(|held| *held = Some(following));
+    }
+
+    fn heard_of(self, version: u64) {
+        let behind = self
+            .outline
+            .try_with_untracked(|held| held.as_ref().is_some_and(|held| held.version < version))
+            .unwrap_or(false);
+
+        if behind {
+            self.reload();
+        }
+    }
+
+    fn reload(self) {
+        if self.reload_in_flight.try_get_value().unwrap_or(true) {
+            _ = self.outdated_meanwhile.try_set_value(true);
+            return;
+        }
+        _ = self.reload_in_flight.try_set_value(true);
+
+        spawn_local(async move {
+            loop {
+                _ = self.outdated_meanwhile.try_set_value(false);
+                let Some(project) = self.project.try_get_value() else {
+                    return;
+                };
+                match service::open(&project).await {
+                    Ok(opened) if !self.outline.is_disposed() => self.adopt(opened),
+                    Ok(_) => return,
+                    Err(failure) => self.problems.report(failure),
+                }
+                if !self.outdated_meanwhile.try_get_value().unwrap_or(false) {
+                    break;
+                }
+            }
+            _ = self.reload_in_flight.try_set_value(false);
+        });
     }
 
     pub fn project(self) -> ProjectId {

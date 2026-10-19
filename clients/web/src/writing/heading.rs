@@ -50,6 +50,7 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
     };
     let saved = StoredValue::new(written.clone());
     let waiting = StoredValue::new(None::<TimeoutHandle>);
+    let known = StoredValue::new(section.title.clone());
 
     let save = move |id: SectionId| {
         if let Some(handle) = waiting.get_value() {
@@ -70,6 +71,26 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
     };
 
     let level = level_of(depth);
+
+    Effect::new({
+        let id = id.clone();
+
+        move || {
+            let (Some(title), Some(shown)) = (state.structure.title_of(&id), host.get()) else {
+                return;
+            };
+            if known.with_value(|before| before == &title) {
+                return;
+            }
+            known.set_value(title.clone());
+            let editing =
+                shown.matches(":focus").unwrap_or(false) || waiting.with_value(Option::is_some);
+            if !editing {
+                saved.set_value(title.clone());
+                shown.set_text_content(Some(&title));
+            }
+        }
+    });
 
     Effect::new({
         let id = id.clone();

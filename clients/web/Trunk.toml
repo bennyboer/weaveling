@@ -19,4 +19,8 @@ backend = "ws://127.0.0.1:3000/api/scenes/sync"
 ws = true
 
 [[proxy]]
+backend = "ws://127.0.0.1:3000/api/outlines/live"
+ws = true
+
+[[proxy]]
 backend = "http://127.0.0.1:3000/api"

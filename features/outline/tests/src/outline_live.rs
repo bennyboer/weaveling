@@ -46,7 +46,7 @@ async fn a_section_added(server: &TestServer, outline: &str, title: &str) {
 
 async fn following(server: &TestServer, outline: &str) -> TestWebSocket {
     server
-        .get_websocket(&format!("/outlines/{outline}/live"))
+        .get_websocket(&format!("/outlines/live?outline={outline}"))
         .await
         .into_websocket()
         .await

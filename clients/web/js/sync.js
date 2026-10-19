@@ -3,6 +3,8 @@ import * as decoding from "lib0/decoding";
 import * as awarenessProtocol from "y-protocols/awareness";
 import * as syncProtocol from "y-protocols/sync";
 
+import { ReconnectingSocket } from "./reconnecting.js";
+
 const JOIN = 0;
 const LEAVE = 1;
 const CARRY = 2;
@@ -11,15 +13,6 @@ const REFUSED = 3;
 const MESSAGE_SYNC = 0;
 const MESSAGE_AWARENESS = 1;
 const MESSAGE_QUERY_AWARENESS = 3;
-
-const RECONNECT_FIRST = 100;
-const RECONNECT_AT_MOST = 2500;
-
-function endpoint() {
-  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
-
-  return `${scheme}//${window.location.host}/api/scenes/sync`;
-}
 
 function enveloped(kind, scene, frame) {
   const encoder = encoding.createEncoder();
@@ -35,36 +28,20 @@ function enveloped(kind, scene, frame) {
 export class SyncConnection {
   constructor() {
     this.scenes = new Map();
-    this.open = false;
-    this.closed = false;
-    this.failures = 0;
-    this.connect();
-  }
-
-  connect() {
-    const socket = new WebSocket(endpoint());
-    socket.binaryType = "arraybuffer";
-    this.socket = socket;
-
-    socket.onopen = () => {
-      this.open = true;
-      this.failures = 0;
-      for (const scene of this.scenes.values()) {
-        this.begin(scene);
-      }
-    };
-    socket.onmessage = (event) => this.hear(new Uint8Array(event.data));
-    socket.onclose = () => {
-      this.open = false;
-      for (const scene of this.scenes.values()) {
-        scene.disconnected();
-      }
-      if (!this.closed) {
-        const wait = Math.min(RECONNECT_FIRST * 2 ** this.failures, RECONNECT_AT_MOST);
-        this.failures += 1;
-        setTimeout(() => this.connect(), wait);
-      }
-    };
+    this.socket = new ReconnectingSocket("/api/scenes/sync", {
+      binary: true,
+      opened: () => {
+        for (const scene of this.scenes.values()) {
+          this.begin(scene);
+        }
+      },
+      heard: (data) => this.hear(new Uint8Array(data)),
+      dropped: () => {
+        for (const scene of this.scenes.values()) {
+          scene.disconnected();
+        }
+      },
+    });
   }
 
   begin(scene) {
@@ -74,7 +51,7 @@ export class SyncConnection {
 
   join(scene) {
     this.scenes.set(scene.id, scene);
-    if (this.open) {
+    if (this.socket.open) {
       this.begin(scene);
     }
   }
@@ -84,13 +61,13 @@ export class SyncConnection {
       return;
     }
     this.scenes.delete(scene.id);
-    if (this.open) {
+    if (this.socket.open) {
       this.socket.send(enveloped(LEAVE, scene.id));
     }
   }
 
   send(scene, frame) {
-    if (this.open && this.scenes.get(scene.id) === scene) {
+    if (this.socket.open && this.scenes.get(scene.id) === scene) {
       this.socket.send(enveloped(CARRY, scene.id, frame));
     }
   }
@@ -111,8 +88,6 @@ export class SyncConnection {
   }
 
   close() {
-    this.closed = true;
-    this.open = false;
     this.socket.close();
   }
 }

@@ -3908,6 +3908,7 @@ name = "weaveling-outline-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
  "tracing",
  "weaveling-eventsourcing",
  "weaveling-ids",
