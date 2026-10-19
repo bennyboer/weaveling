@@ -4,6 +4,7 @@ use leptos_router::hooks::use_navigate;
 use crate::http::ApiError;
 use crate::ideas::model::Idea;
 use crate::ideas::service as idea_service;
+use crate::live::Following;
 use crate::outline::model::{Attachment, Outline, OutlineChange, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -292,6 +293,70 @@ impl OutlineViewState {
                 }
             })
         };
+
+        let following = StoredValue::new_local(None::<Following>);
+        on_cleanup(move || _ = following.try_update_value(|held| *held = None));
+        Effect::new(move || {
+            let Some(id) = confirmed.with(|held| held.as_ref().map(|held| held.id.clone())) else {
+                return;
+            };
+            if following.with_value(Option::is_some) {
+                return;
+            }
+            following.set_value(Some(Following::start(
+                &format!("/api/outlines/live?outline={id}"),
+                move |version| {
+                    let behind = confirmed
+                        .try_with_untracked(|held| {
+                            held.as_ref().is_some_and(|held| held.version < version)
+                        })
+                        .unwrap_or(false);
+                    if behind {
+                        opening.dispatch(());
+                    }
+                },
+                move || _ = opening.dispatch(()),
+            )));
+        });
+
+        Effect::new(move || {
+            let Some(attached) = confirmed.with(|held| {
+                held.as_ref().map(|held| {
+                    held.sections
+                        .iter()
+                        .flat_map(|section| section.attachments.clone())
+                        .collect::<Vec<_>>()
+                })
+            }) else {
+                return;
+            };
+            let unknown_scene = untrack(|| {
+                scenes.with(|known| {
+                    known.as_ref().is_some_and(|known| {
+                        attached.iter().any(|attached| match attached {
+                            Attachment::Scene(scene) => known.iter().all(|held| &held.id != scene),
+                            Attachment::Idea(_) => false,
+                        })
+                    })
+                })
+            });
+            let unknown_idea = untrack(|| {
+                ideas.with(|known| {
+                    known.as_ref().is_some_and(|known| {
+                        attached.iter().any(|attached| match attached {
+                            Attachment::Idea(idea) => known.iter().all(|held| &held.id != idea),
+                            Attachment::Scene(_) => false,
+                        })
+                    })
+                })
+            });
+            if unknown_scene {
+                listing_scenes.dispatch(());
+            }
+            if unknown_idea {
+                listing_ideas.dispatch(());
+            }
+        });
 
         Self {
             problem,

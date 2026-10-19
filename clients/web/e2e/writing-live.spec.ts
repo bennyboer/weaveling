@@ -730,3 +730,42 @@ test("a new section whose neighbour is removed while it begins can go to the end
     .poll(() => savedTitles(page))
     .toEqual(["Part One", "Part Three"]);
 });
+
+test("where I am reading holds while sections come and go above it", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 420 });
+  await aNewProject(page, "LiveReading");
+  await aBookWithScenes(page, {
+    "Part One": 3,
+    "Part Two": 3,
+    "Part Three": 3,
+  });
+  await followingLive(page);
+  const { outline, ids } = await placedOnServer(page);
+  const reading = heading(page, "Part Three");
+  await reading.evaluate((shown) => shown.scrollIntoView({ block: "start" }));
+  await page.mouse.wheel(0, -60);
+  await page.waitForTimeout(300);
+  const at = async () => (await reading.boundingBox())!.y;
+  const before = await at();
+  expect(before, "the book is long enough to scroll").toBeGreaterThan(0);
+
+  await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
+    title: "A prologue",
+    under: null,
+    after: null,
+  });
+  await expect(heading(page, "A prologue")).toBeAttached();
+  await page.waitForTimeout(300);
+  expect(Math.abs((await at()) - before)).toBeLessThanOrEqual(2);
+
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part One"]}`,
+  );
+  await expect(heading(page, "Part One")).toHaveCount(0);
+  await page.waitForTimeout(300);
+  expect(Math.abs((await at()) - before)).toBeLessThanOrEqual(2);
+});

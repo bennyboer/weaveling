@@ -221,6 +221,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
     let toolbarred = id.clone();
     let hollowed = id.clone();
     let field = NodeRef::<html::Input>::new();
+    let began_with = StoredValue::new(None::<String>);
     let bearing = id.clone();
 
     Effect::new(move |_| {
@@ -340,18 +341,31 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     let mine = valued.clone();
                     let own = Memo::new(move |_| state.title_of(&mine));
 
-                    move || own.get()
+                    move || {
+                        let title = own.get();
+
+                        match field
+                            .get_untracked()
+                            .filter(|shown| shown.matches(":focus").unwrap_or(false))
+                        {
+                            Some(typing) => typing.value(),
+                            None => title,
+                        }
+                    }
                 })
                 .node_ref(field)
                 .on(ev::focusin, {
                     let mine = named.clone();
 
-                    move |_| held.editing.set(Some(mine.clone()))
+                    move |_| {
+                        began_with.set_value(Some(state.title_of(&mine)));
+                        held.editing.set(Some(mine.clone()));
+                    }
                 })
                 .on(ev::keydown, move |event| match event.key().as_str() {
                     "Enter" => {
                         event.prevent_default();
-                        settle(&event, &named, state);
+                        settle(&event, &named, state, began_with);
                         state.add(
                             state
                                 .sections()
@@ -364,7 +378,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     }
                     "Tab" => {
                         event.prevent_default();
-                        settle(&event, &urged, state);
+                        settle(&event, &urged, state, began_with);
                         state.urge(
                             urged.clone(),
                             match event.shift_key() {
@@ -391,7 +405,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .on(ev::focusout, {
                     let mine = pruned.clone();
 
-                    move |event| settle(&event, &mine, state)
+                    move |event| settle(&event, &mine, state, began_with)
                 }),
             move || {
                 (!bears(&hollowed, held)).then(|| {
@@ -729,15 +743,22 @@ fn shown_or_blank(shown: &str) -> String {
     }
 }
 
-fn settle(event: &ev::Event, section: &SectionId, state: OutlineViewState) {
+fn settle(
+    event: &ev::Event,
+    section: &SectionId,
+    state: OutlineViewState,
+    began_with: StoredValue<Option<String>>,
+) {
     let written = event_target_value(event);
-    let was = state
-        .sections()
-        .into_iter()
-        .find(|held| &held.id == section)
-        .map(|held| held.title);
+    let now = state.title_of(section);
 
-    if was.as_deref() != Some(written.as_str()) {
+    if began_with.with_value(|began| began.as_deref() == Some(written.as_str())) {
+        if now != written {
+            event_target::<HtmlInputElement>(event).set_value(&now);
+        }
+        return;
+    }
+    if now != written {
         state.retitle(section.clone(), written);
     }
 }
