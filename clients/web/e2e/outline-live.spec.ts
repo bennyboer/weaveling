@@ -162,3 +162,107 @@ test("a scene the listing does not know yet is asked for once, not over and over
     "asked again once for the change that brought it, not in a loop until the listing catches up",
   ).toBeLessThanOrEqual(2);
 });
+
+const renamedMeanwhile = (page: Page) =>
+  page.getByRole("dialog", { name: "Renamed meanwhile" });
+
+async function bothRenamed(page: Page, named: string) {
+  const { outline, ids, reloads } = await anOutlineFollowedLive(page, named);
+  await titleOf(page, "Part One").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+  const before = reloads();
+  await anotherAuthor(
+    page,
+    "patch",
+    `/outlines/${outline}/sections/${ids["Part One"]}`,
+    { title: "The Beginning" },
+  );
+  await expect.poll(() => reloads()).toBeGreaterThan(before);
+  await page.keyboard.press("Escape");
+}
+
+test("a title renamed elsewhere while I rename it asks which name stays", async ({
+  page,
+}) => {
+  await bothRenamed(page, "OutlineLiveBoth");
+
+  await expect(renamedMeanwhile(page)).toContainText(
+    "someone else renamed it to “The Beginning”. Yours is “Part One, drafted”.",
+  );
+});
+
+test("keeping my title over one given meanwhile keeps mine", async ({
+  page,
+}) => {
+  await bothRenamed(page, "OutlineLiveKept");
+
+  await renamedMeanwhile(page)
+    .getByRole("button", { name: "Keep mine" })
+    .click();
+
+  await expect(titleOf(page, "Part One, drafted")).toHaveValue(
+    "Part One, drafted",
+  );
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One, drafted", "Part Two"]);
+});
+
+test("taking the title given meanwhile drops mine", async ({ page }) => {
+  await bothRenamed(page, "OutlineLiveTook");
+
+  await renamedMeanwhile(page)
+    .getByRole("button", { name: "Take theirs" })
+    .click();
+
+  await expect(titleOf(page, "The Beginning")).toHaveValue("The Beginning");
+  await page.waitForTimeout(500);
+  expect(await savedTitles(page)).toEqual(["The Beginning", "Part Two"]);
+});
+
+test("renaming, nesting with Tab and renaming on in the same field asks nothing", async ({
+  page,
+}) => {
+  await anOutlineFollowedLive(page, "OutlineLiveTabbed");
+  await titleOf(page, "Part Two").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+
+  await page.keyboard.press("Tab");
+  await expect(page.locator("input.title:focus")).toHaveValue(
+    "Part Two, drafted",
+  );
+  await page.keyboard.type(" again");
+  await page.keyboard.press("Escape");
+
+  await expect(renamedMeanwhile(page)).toHaveCount(0);
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One", "Part Two, drafted again"]);
+});
+
+test("typing the very title someone else gave meanwhile asks nothing", async ({
+  page,
+}) => {
+  const { outline, ids, reloads } = await anOutlineFollowedLive(
+    page,
+    "OutlineLiveSame",
+  );
+  await titleOf(page, "Part One").click();
+  await page.keyboard.press("ControlOrMeta+A");
+  await page.keyboard.type("The Beginning");
+  const before = reloads();
+  await anotherAuthor(
+    page,
+    "patch",
+    `/outlines/${outline}/sections/${ids["Part One"]}`,
+    { title: "The Beginning" },
+  );
+  await expect.poll(() => reloads()).toBeGreaterThan(before);
+
+  await page.keyboard.press("Escape");
+
+  await page.waitForTimeout(300);
+  await expect(renamedMeanwhile(page)).toHaveCount(0);
+});

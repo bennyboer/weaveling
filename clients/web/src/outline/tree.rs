@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::time::Duration;
 
 use leptos::html::{self, Li};
 use leptos::prelude::*;
@@ -7,6 +8,7 @@ use leptos_router::components::A;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};
 
+use crate::dialog::modal;
 use crate::icons::{Icon, mark};
 use crate::outline::in_view::{InView, LEAVES_PLACE};
 use crate::outline::model::{Attachment, Section, SectionId};
@@ -33,6 +35,15 @@ struct Held {
     folded: RwSignal<HashSet<SectionId>>,
     in_view: InView,
     state: OutlineViewState,
+    renamed_meanwhile: RwSignal<Option<RenamedMeanwhile>>,
+}
+
+#[derive(Clone)]
+struct RenamedMeanwhile {
+    section: SectionId,
+    mine: String,
+    theirs: String,
+    field: NodeRef<html::Input>,
 }
 
 const FLOCK: usize = 50;
@@ -55,6 +66,7 @@ pub fn OutlineView(project: String) -> impl IntoView {
         folded: RwSignal::new(HashSet::new()),
         in_view,
         state: OutlineViewState::open(&route::project_id(&project)),
+        renamed_meanwhile: RwSignal::new(None),
     };
     let state = held.state;
 
@@ -63,6 +75,11 @@ pub fn OutlineView(project: String) -> impl IntoView {
             state
                 .problem()
                 .map(|failure| problem_to_dismiss(failure, move || state.dismiss()))
+        },
+        move || {
+            held.renamed_meanwhile
+                .get()
+                .map(|asked| renamed_meanwhile(asked, held))
         },
         laid_out(
             html::div()
@@ -365,7 +382,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .on(ev::keydown, move |event| match event.key().as_str() {
                     "Enter" => {
                         event.prevent_default();
-                        settle(&event, &named, state, began_with);
+                        settle(&event, &named, held, began_with, field);
                         state.add(
                             state
                                 .sections()
@@ -378,7 +395,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     }
                     "Tab" => {
                         event.prevent_default();
-                        settle(&event, &urged, state, began_with);
+                        settle(&event, &urged, held, began_with, field);
                         state.urge(
                             urged.clone(),
                             match event.shift_key() {
@@ -405,7 +422,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .on(ev::focusout, {
                     let mine = pruned.clone();
 
-                    move |event| settle(&event, &mine, state, began_with)
+                    move |event| settle(&event, &mine, held, began_with, field)
                 }),
             move || {
                 (!bears(&hollowed, held)).then(|| {
@@ -746,19 +763,73 @@ fn shown_or_blank(shown: &str) -> String {
 fn settle(
     event: &ev::Event,
     section: &SectionId,
-    state: OutlineViewState,
+    held: Held,
     began_with: StoredValue<Option<String>>,
+    field: NodeRef<html::Input>,
 ) {
     let written = event_target_value(event);
-    let now = state.title_of(section);
+    let now = held.state.title_of(section);
+    let began = began_with.get_value();
 
-    if began_with.with_value(|began| began.as_deref() == Some(written.as_str())) {
+    if began.as_deref() == Some(written.as_str()) {
         if now != written {
             event_target::<HtmlInputElement>(event).set_value(&now);
         }
         return;
     }
-    if now != written {
-        state.retitle(section.clone(), written);
+    if now == written {
+        return;
     }
+    if began.is_some_and(|began| began != now) {
+        let asked = RenamedMeanwhile {
+            section: section.clone(),
+            mine: written,
+            theirs: now,
+            field,
+        };
+        _ = set_timeout(
+            move || held.renamed_meanwhile.set(Some(asked)),
+            Duration::ZERO,
+        );
+        return;
+    }
+    held.state.retitle(section.clone(), written);
+}
+
+fn renamed_meanwhile(asked: RenamedMeanwhile, held: Held) -> impl IntoView {
+    let close = move || held.renamed_meanwhile.set(None);
+    let told = format!(
+        "While you were editing this title, someone else renamed it to “{}”. Yours is “{}”.",
+        asked.theirs, asked.mine
+    );
+    let theirs = asked.clone();
+    let mine = asked;
+
+    modal(
+        "Renamed meanwhile",
+        "",
+        close,
+        (
+            html::p().child(told),
+            html::div().class("dialog-actions").child((
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| {
+                        if let Some(shown) = theirs.field.get_untracked() {
+                            shown.set_value(&theirs.theirs);
+                        }
+                        close();
+                    })
+                    .child("Take theirs"),
+                html::button()
+                    .r#type("button")
+                    .class("primary")
+                    .on(ev::click, move |_| {
+                        held.state.retitle(mine.section.clone(), mine.mine.clone());
+                        close();
+                    })
+                    .child("Keep mine"),
+            )),
+        ),
+    )
 }
