@@ -4,7 +4,7 @@ use clock::FixedClock;
 use eventsourcing::{Agent, AgentId};
 use messaging::{Listener, Message, RoutingKey};
 use outline_core::OutlineCatalog;
-use outline_messaging::DiscardOutlinesOnProjectDeleted;
+use outline_messaging::DiscardOutlinesOnProjectDeletedListener;
 use projects_contract::DELETED;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -19,9 +19,9 @@ fn an_author() -> Agent {
     Agent::User(AgentId::from("author-7"))
 }
 
-fn a_workbench() -> (Wired, DiscardOutlinesOnProjectDeleted) {
+fn a_workbench() -> (Wired, DiscardOutlinesOnProjectDeletedListener) {
     let wired = wired(Arc::new(FixedClock::new(at(1_000))));
-    let sweep = DiscardOutlinesOnProjectDeleted::new(wired.outlines.clone());
+    let sweep = DiscardOutlinesOnProjectDeletedListener::new(wired.outlines.clone());
 
     (wired, sweep)
 }

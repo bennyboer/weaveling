@@ -9,13 +9,13 @@ use outline_core::{Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlineServ
 use crate::letting_go::let_go_of_what_is_gone;
 use crate::publishing::outline_in;
 
-pub struct AttachmentIndexProjector {
+pub struct IndexAttachmentsListener {
     events: EventSourcingService<Outline>,
     catalog: Arc<dyn OutlineCatalog>,
     outlines: OutlineService,
 }
 
-impl AttachmentIndexProjector {
+impl IndexAttachmentsListener {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
         catalog: Arc<dyn OutlineCatalog>,
@@ -46,7 +46,7 @@ impl AttachmentIndexProjector {
 }
 
 #[async_trait::async_trait]
-impl Handler for AttachmentIndexProjector {
+impl Handler for IndexAttachmentsListener {
     const NAME: &'static str = "index-attachments";
     const LISTENS_TO: &'static [&'static str] = &[ATTACHED, DETACHED, SECTION_REMOVED];
     const WHEN_REFUSED: &'static str =

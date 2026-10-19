@@ -138,7 +138,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "31b698c5f9a010f6573133b09e0de5408834d0c82f8d7475a89fc1867a71cd90"
 dependencies = [
  "axum-core",
- "base64",
+ "base64 0.22.1",
  "bytes",
  "form_urlencoded",
  "futures-util",
@@ -160,7 +160,7 @@ dependencies = [
  "sha1 0.10.7",
  "sync_wrapper",
  "tokio",
- "tokio-tungstenite",
+ "tokio-tungstenite 0.29.0",
  "tower",
  "tower-layer",
  "tower-service",
@@ -194,11 +194,13 @@ checksum = "7bf0893561659ea1365921a0aed8bbb620fae83dae00b53fe64d41fea4877640"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.23.1",
  "bytes",
  "bytesize",
  "cookie",
  "educe",
  "expect-json",
+ "futures-util",
  "http",
  "http-body-util",
  "hyper",
@@ -211,8 +213,10 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "tokio",
+ "tokio-tungstenite 0.30.0",
  "tower",
  "url",
+ "uuid",
 ]
 
 [[package]]
@@ -226,6 +230,12 @@ name = "base64"
 version = "0.22.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
+
+[[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "bitflags"
@@ -369,6 +379,12 @@ dependencies = [
  "cfg-if",
  "wasm-bindgen",
 ]
+
+[[package]]
+name = "const-oid"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a6ef517f0926dd24a1582492c791b6a4818a4d94e789a334894aa15b0d12f55c"
 
 [[package]]
 name = "const-str"
@@ -585,6 +601,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f1dd6dbb5841937940781866fa1281a1ff7bd3bf827091440879f9994983d5c2"
 dependencies = [
  "block-buffer 0.12.1",
+ "const-oid",
  "crypto-common 0.2.2",
  "ctutils",
 ]
@@ -1512,7 +1529,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f77f79718842d90ccde9bece9954ad6e5eee4534c79b4e83bb5387f73a93bab"
 dependencies = [
  "any_spawner",
- "base64",
+ "base64 0.22.1",
  "codee",
  "futures",
  "hydration_context",
@@ -2314,7 +2331,7 @@ version = "0.9.0-beta2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a60afdb446bb1b4ce93901e6892882550f91e1d6ff5e127ffa438121103505d"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "const-str",
  "const_format",
@@ -2507,7 +2524,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05b44e85bf579a8eeb4ceaa77a3a523baf2bf0e9bac7e40f405d537b5d2d5ccb"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "cfg-if",
  "crc",
@@ -2611,7 +2628,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "87a2bdd6e83f6b3ea525ca9fee568030508b58355a43d0b2c1674d5f79dcd65e"
 dependencies = [
  "atoi",
- "base64",
+ "base64 0.22.1",
  "bitflags",
  "byteorder",
  "crc",
@@ -2901,7 +2918,19 @@ dependencies = [
  "futures-util",
  "log",
  "tokio",
- "tungstenite",
+ "tungstenite 0.29.0",
+]
+
+[[package]]
+name = "tokio-tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "17a073bfed563fa236697a068031408a93cd9522e08abf9933ead3e73411bd71"
+dependencies = [
+ "futures-util",
+ "log",
+ "tokio",
+ "tungstenite 0.30.0",
 ]
 
 [[package]]
@@ -3091,6 +3120,22 @@ dependencies = [
  "log",
  "rand 0.9.5",
  "sha1 0.10.7",
+ "thiserror",
+]
+
+[[package]]
+name = "tungstenite"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e48ac77174b19c110a50ab2128b24215ac9cb40e0e12e093fb602d175c569d22"
+dependencies = [
+ "bytes",
+ "data-encoding",
+ "http",
+ "httparse",
+ "log",
+ "rand 0.10.3",
+ "sha1 0.11.0",
  "thiserror",
 ]
 
@@ -3750,6 +3795,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-live"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "axum-test",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-eventpublishing",
+ "weaveling-messaging",
+]
+
+[[package]]
 name = "weaveling-messaging"
 version = "0.1.0"
 dependencies = [
@@ -3852,6 +3911,7 @@ dependencies = [
  "tracing",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-live",
  "weaveling-outline-contract",
  "weaveling-outline-core",
  "weaveling-serving",
@@ -3901,8 +3961,10 @@ dependencies = [
  "sqlx",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-outbox",
  "weaveling-outline-catalog",
+ "weaveling-outline-contract",
  "weaveling-outline-core",
  "weaveling-outline-messaging",
  "weaveling-outline-rest",

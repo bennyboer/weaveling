@@ -3,7 +3,7 @@ use std::sync::Arc;
 use eventsourcing::EventStore;
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaCatalog, IdeaEvent, IdeaService};
-use ideas_messaging::{DiscardOnProjectDeleted, IdeaCatalogProjector};
+use ideas_messaging::{CatalogueIdeasListener, DiscardOnProjectDeletedListener};
 use outbox::Outbox;
 use wiring::{Context, EventSourced, Feature, Wired};
 
@@ -23,12 +23,12 @@ pub fn service(ports: &Ports, context: &Context) -> IdeaService {
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let ideas = service(ports, context);
-    let projector = IdeaCatalogProjector::new(
+    let projector = CatalogueIdeasListener::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),
     );
-    let sweep = DiscardOnProjectDeleted::new(
+    let sweep = DiscardOnProjectDeletedListener::new(
         ideas.clone(),
         ports.catalog.clone(),
         context.publisher.clone(),

@@ -4,11 +4,11 @@ use messaging::{Failure, Handler, Message};
 use outline_core::{OutlineError, OutlineService, OutlineServiceError, ProjectLink};
 use projects_contract::{DELETED, ProjectEventDTO};
 
-pub struct DiscardOutlinesOnProjectDeleted {
+pub struct DiscardOutlinesOnProjectDeletedListener {
     outlines: OutlineService,
 }
 
-impl DiscardOutlinesOnProjectDeleted {
+impl DiscardOutlinesOnProjectDeletedListener {
     pub fn new(outlines: OutlineService) -> Self {
         Self { outlines }
     }
@@ -42,7 +42,7 @@ fn nobody() -> Agent {
 }
 
 #[async_trait::async_trait]
-impl Handler for DiscardOutlinesOnProjectDeleted {
+impl Handler for DiscardOutlinesOnProjectDeletedListener {
     const NAME: &'static str = "discard-outlines-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
     const WHEN_REFUSED: &'static str = "The outline of a deleted project was not cleared away.";

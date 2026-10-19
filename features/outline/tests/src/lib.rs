@@ -8,6 +8,9 @@ mod outline_api;
 mod outline_cataloguing;
 
 #[cfg(test)]
+mod outline_live;
+
+#[cfg(test)]
 mod outline_tidying;
 
 #[cfg(test)]

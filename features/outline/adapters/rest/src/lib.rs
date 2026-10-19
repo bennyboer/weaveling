@@ -1,11 +1,13 @@
 use axum::Json;
 use axum::Router;
+use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use eventsourcing::{Agent, ServiceError, Standing, Version};
+use live::{Broadcaster, streaming};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -54,6 +56,20 @@ async fn open(
         &opened.id.to_string(),
         &opened.standing,
     ))
+}
+
+pub fn live(broadcaster: Broadcaster) -> Router {
+    Router::new()
+        .route("/outlines/{outline}/live", get(follow))
+        .with_state(broadcaster)
+}
+
+async fn follow(
+    upgrade: WebSocketUpgrade,
+    State(broadcaster): State<Broadcaster>,
+    Path(outline): Path<String>,
+) -> Response {
+    streaming(upgrade, broadcaster.hear(&outline))
 }
 
 async fn find(

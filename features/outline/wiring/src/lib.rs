@@ -1,15 +1,19 @@
 use std::sync::Arc;
 
 use eventsourcing::EventStore;
+use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use outline_catalog::InMemoryOutlineCatalog;
+use outline_contract::EVERY_OUTLINE;
 use outline_core::{OutlineCatalog, OutlineEvent, OutlineService};
 use outline_messaging::{
-    AttachmentIndexProjector, DetachOnDiscard, DetachOnSceneDeleted,
-    DiscardOutlinesOnProjectDeleted, OutlineCatalogProjector,
+    CatalogueOutlinesListener, DetachOnDiscardListener, DetachOnSceneDeletedListener,
+    DiscardOutlinesOnProjectDeletedListener, IndexAttachmentsListener,
 };
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, EventSourced, Feature, Wired};
+
+pub const LIVE: &str = "broadcast-outline-changes";
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<OutlineEvent>>,
@@ -28,28 +32,35 @@ pub fn service(ports: &Ports, context: &Context) -> OutlineService {
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let outlines = service(ports, context);
-    let catalogue = OutlineCatalogProjector::new(
+    let catalogue = CatalogueOutlinesListener::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),
     );
-    let index = AttachmentIndexProjector::new(
+    let index = IndexAttachmentsListener::new(
         ports.events.clone(),
         ports.catalog.clone(),
         outlines.clone(),
         context.clock.clone(),
     );
-    let detach_discarded_ideas = DetachOnDiscard::new(outlines.clone(), ports.catalog.clone());
-    let detach_deleted_scenes = DetachOnSceneDeleted::new(outlines.clone(), ports.catalog.clone());
-    let sweep = DiscardOutlinesOnProjectDeleted::new(outlines.clone());
+    let detach_discarded_ideas =
+        DetachOnDiscardListener::new(outlines.clone(), ports.catalog.clone());
+    let detach_deleted_scenes =
+        DetachOnSceneDeletedListener::new(outlines.clone(), ports.catalog.clone());
+    let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
+    let broadcaster = Broadcaster::new();
+    let broadcast = BroadcastChangesListener::new(LIVE, EVERY_OUTLINE, broadcaster.clone());
 
-    Wired::serving(outline_rest::router(outlines)).listening(vec![
-        Arc::new(catalogue),
-        Arc::new(index),
-        Arc::new(detach_discarded_ideas),
-        Arc::new(detach_deleted_scenes),
-        Arc::new(sweep),
-    ])
+    Wired::serving(outline_rest::router(outlines).merge(outline_rest::live(broadcaster))).listening(
+        vec![
+            Arc::new(broadcast),
+            Arc::new(catalogue),
+            Arc::new(index),
+            Arc::new(detach_discarded_ideas),
+            Arc::new(detach_deleted_scenes),
+            Arc::new(sweep),
+        ],
+    )
 }
 
 pub struct OutlineFeature;

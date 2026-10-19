@@ -4,7 +4,7 @@ use clock::FixedClock;
 use ideas_contract::DISCARDED;
 use messaging::{Listener, Message, RoutingKey, Subscription};
 use scenes_core::{IdeaLink, SceneId, SceneService};
-use scenes_messaging::UnlinkOnDiscard;
+use scenes_messaging::UnlinkOnDiscardListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -17,7 +17,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 
 struct Wired {
     scenes: SceneService,
-    unlink: UnlinkOnDiscard,
+    unlink: UnlinkOnDiscardListener,
 }
 
 fn a_workbench() -> Wired {
@@ -27,7 +27,7 @@ fn a_workbench() -> Wired {
     );
 
     Wired {
-        unlink: UnlinkOnDiscard::new(scenes.clone()),
+        unlink: UnlinkOnDiscardListener::new(scenes.clone()),
         scenes,
     }
 }

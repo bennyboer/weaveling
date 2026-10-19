@@ -5,7 +5,7 @@ use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use scenes_core::{SceneId, SceneService};
-use scenes_messaging::DeleteOnProjectDeleted;
+use scenes_messaging::DeleteOnProjectDeletedListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -18,7 +18,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 struct Wired {
-    sweep: DeleteOnProjectDeleted,
+    sweep: DeleteOnProjectDeletedListener,
     scenes: SceneService,
     overheard: Arc<FakePublisher>,
 }
@@ -29,7 +29,7 @@ fn a_workbench(at_most: usize) -> Wired {
     let scenes = SceneService::new(Arc::new(InMemorySceneStore::new()), clock.clone());
 
     Wired {
-        sweep: DeleteOnProjectDeleted::new(scenes.clone(), overheard.clone(), clock)
+        sweep: DeleteOnProjectDeletedListener::new(scenes.clone(), overheard.clone(), clock)
             .taking_at_most(at_most),
         scenes,
         overheard,

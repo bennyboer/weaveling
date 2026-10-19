@@ -1,0 +1,96 @@
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::http::StatusCode;
+use axum_test::{TestServer, TestWebSocket};
+use clock::FixedClock;
+use outline_contract::{AddSectionRequest, OpenOutlineRequest, OutlineDTO};
+use serde_json::Value;
+use time::OffsetDateTime;
+use tokio::time::timeout;
+
+use crate::wiring::{Wired, wired};
+
+fn served() -> (Wired, TestServer) {
+    let wired = wired(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
+    let server = TestServer::builder()
+        .http_transport()
+        .build(wired.routes.clone());
+
+    (wired, server)
+}
+
+async fn an_open_outline(server: &TestServer, project: &str) -> String {
+    let response = server
+        .post("/outlines")
+        .json(&OpenOutlineRequest {
+            project: project.to_owned(),
+        })
+        .await;
+    response.assert_status(StatusCode::OK);
+
+    response.json::<OutlineDTO>().id
+}
+
+async fn a_section_added(server: &TestServer, outline: &str, title: &str) {
+    server
+        .post(&format!("/outlines/{outline}/sections"))
+        .json(&AddSectionRequest {
+            under: None,
+            after: None,
+            title: title.to_owned(),
+        })
+        .await
+        .assert_status(StatusCode::CREATED);
+}
+
+async fn following(server: &TestServer, outline: &str) -> TestWebSocket {
+    server
+        .get_websocket(&format!("/outlines/{outline}/live"))
+        .await
+        .into_websocket()
+        .await
+}
+
+async fn told(socket: &mut TestWebSocket) -> Value {
+    let frame = timeout(Duration::from_secs(1), socket.receive_text())
+        .await
+        .expect("a change is told while it is fresh");
+
+    serde_json::from_str(&frame).expect("a frame is JSON")
+}
+
+#[tokio::test]
+async fn whoever_follows_an_outline_is_told_each_change_by_its_version() {
+    let (wired, server) = served();
+    let outline = an_open_outline(&server, "project_1").await;
+    wired.settle().await;
+    let mut socket = following(&server, &outline).await;
+
+    a_section_added(&server, &outline, "Part One").await;
+    wired.settle().await;
+
+    let frame = told(&mut socket).await;
+    let now: OutlineDTO = server.get(&format!("/outlines/{outline}")).await.json();
+    assert_eq!(frame["version"], now.version);
+    assert_eq!(frame["event"]["name"], "SECTION_ADDED");
+}
+
+#[tokio::test]
+async fn another_book_changing_is_not_told() {
+    let (wired, server) = served();
+    let mine = an_open_outline(&server, "project_1").await;
+    let theirs = an_open_outline(&server, "project_2").await;
+    wired.settle().await;
+    let mut socket = following(&server, &mine).await;
+
+    a_section_added(&server, &theirs, "Their part").await;
+    a_section_added(&server, &mine, "My part").await;
+    wired.settle().await;
+
+    let frame = told(&mut socket).await;
+    assert_eq!(
+        frame["event"]["title"], "My part",
+        "the first thing told is about the book being followed"
+    );
+}

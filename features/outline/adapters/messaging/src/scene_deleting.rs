@@ -7,7 +7,7 @@ use thiserror::Error;
 
 use crate::letting_go::{NotLetGo, let_go_everywhere};
 
-pub struct DetachOnSceneDeleted {
+pub struct DetachOnSceneDeletedListener {
     outlines: OutlineService,
     catalog: Arc<dyn OutlineCatalog>,
 }
@@ -20,7 +20,7 @@ enum NotDetached {
     NotLetGo(#[from] NotLetGo),
 }
 
-impl DetachOnSceneDeleted {
+impl DetachOnSceneDeletedListener {
     pub fn new(outlines: OutlineService, catalog: Arc<dyn OutlineCatalog>) -> Self {
         Self { outlines, catalog }
     }
@@ -39,7 +39,7 @@ impl DetachOnSceneDeleted {
 }
 
 #[async_trait::async_trait]
-impl Handler for DetachOnSceneDeleted {
+impl Handler for DetachOnSceneDeletedListener {
     const NAME: &'static str = "detach-deleted-scene";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
     const WHEN_REFUSED: &'static str = "A deleted scene could not be taken out of the outline.";

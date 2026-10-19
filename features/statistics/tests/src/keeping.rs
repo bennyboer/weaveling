@@ -5,7 +5,7 @@ use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
 use serde_json::to_value;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, WordCount, WordCountCatalog};
-use statistics_messaging::WordCountsProjector;
+use statistics_messaging::ProjectWordCountsListener;
 use time::{Duration, OffsetDateTime};
 
 fn at(seconds: i64) -> OffsetDateTime {
@@ -14,14 +14,14 @@ fn at(seconds: i64) -> OffsetDateTime {
 
 struct Wired {
     catalog: Arc<InMemoryWordCountCatalog>,
-    projector: WordCountsProjector,
+    projector: ProjectWordCountsListener,
 }
 
 fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemoryWordCountCatalog::new());
 
     Wired {
-        projector: WordCountsProjector::new(catalog.clone()),
+        projector: ProjectWordCountsListener::new(catalog.clone()),
         catalog,
     }
 }

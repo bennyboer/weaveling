@@ -5,11 +5,11 @@ use eventpublishing::published_in;
 use messaging::{Failure, Handler, Message};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
 
-pub struct OutlineAppearancesProjector {
+pub struct ProjectOutlineAppearancesListener {
     catalog: Arc<dyn AppearanceCatalog>,
 }
 
-impl OutlineAppearancesProjector {
+impl ProjectOutlineAppearancesListener {
     pub fn new(catalog: Arc<dyn AppearanceCatalog>) -> Self {
         Self { catalog }
     }
@@ -24,7 +24,7 @@ fn a_section(id: String) -> Place {
 }
 
 #[async_trait::async_trait]
-impl Handler for OutlineAppearancesProjector {
+impl Handler for ProjectOutlineAppearancesListener {
     const NAME: &'static str = "index-outline-appearances";
     const LISTENS_TO: &'static [&'static str] = &[ATTACHED, DETACHED, SECTION_REMOVED];
     const WHEN_REFUSED: &'static str = "Where an idea appears in the outline was not updated.";

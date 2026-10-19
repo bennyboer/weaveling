@@ -7,19 +7,19 @@ use messaging::{Failure, Handler, Message};
 
 use crate::letting_go::let_go_everywhere;
 
-pub struct UnpinOnDiscard {
+pub struct UnpinOnDiscardListener {
     boards: BoardService,
     catalog: Arc<dyn BoardCatalog>,
 }
 
-impl UnpinOnDiscard {
+impl UnpinOnDiscardListener {
     pub fn new(boards: BoardService, catalog: Arc<dyn BoardCatalog>) -> Self {
         Self { boards, catalog }
     }
 }
 
 #[async_trait::async_trait]
-impl Handler for UnpinOnDiscard {
+impl Handler for UnpinOnDiscardListener {
     const NAME: &'static str = "unpin-discarded-idea";
     const LISTENS_TO: &'static [&'static str] = &[DISCARDED];
     const WHEN_REFUSED: &'static str = "A discarded idea could not be taken off a board.";

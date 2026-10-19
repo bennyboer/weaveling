@@ -6,7 +6,7 @@ use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDel
 use serde_json::from_value;
 use thiserror::Error;
 
-pub struct SceneAppearancesProjector {
+pub struct ProjectSceneAppearancesListener {
     catalog: Arc<dyn AppearanceCatalog>,
 }
 
@@ -18,7 +18,7 @@ enum NotIndexed {
     Catalog(#[from] CatalogError),
 }
 
-impl SceneAppearancesProjector {
+impl ProjectSceneAppearancesListener {
     pub fn new(catalog: Arc<dyn AppearanceCatalog>) -> Self {
         Self { catalog }
     }
@@ -59,7 +59,7 @@ fn a_scene(id: String) -> Place {
 }
 
 #[async_trait::async_trait]
-impl Handler for SceneAppearancesProjector {
+impl Handler for ProjectSceneAppearancesListener {
     const NAME: &'static str = "index-scene-appearances";
     const LISTENS_TO: &'static [&'static str] = &[IDEA_LINKED, IDEA_UNLINKED, DELETED];
     const WHEN_REFUSED: &'static str = "Where an idea appears in your scenes was not updated.";

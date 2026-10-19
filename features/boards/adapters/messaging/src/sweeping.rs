@@ -4,11 +4,11 @@ use eventsourcing::{Agent, ServiceError};
 use messaging::{Failure, Handler, Message};
 use projects_contract::{DELETED, ProjectEventDTO};
 
-pub struct DiscardBoardsOnProjectDeleted {
+pub struct DiscardBoardsOnProjectDeletedListener {
     boards: BoardService,
 }
 
-impl DiscardBoardsOnProjectDeleted {
+impl DiscardBoardsOnProjectDeletedListener {
     pub fn new(boards: BoardService) -> Self {
         Self { boards }
     }
@@ -42,7 +42,7 @@ fn nobody() -> Agent {
 }
 
 #[async_trait::async_trait]
-impl Handler for DiscardBoardsOnProjectDeleted {
+impl Handler for DiscardBoardsOnProjectDeletedListener {
     const NAME: &'static str = "discard-boards-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
     const WHEN_REFUSED: &'static str = "The board of a deleted project was not cleared away.";

@@ -2,7 +2,7 @@ mod publishing;
 mod sweeping;
 
 pub use publishing::{UnreadableIdeaEvent, event_in, idea_in, message_for};
-pub use sweeping::{AT_MOST, DiscardOnProjectDeleted};
+pub use sweeping::{AT_MOST, DiscardOnProjectDeletedListener};
 
 use std::sync::Arc;
 
@@ -13,12 +13,12 @@ use ideas_contract::EVERY_IDEA;
 use ideas_core::{Idea, IdeaCatalog, IdeaEvent, IdeaId, IdeaSummary};
 use messaging::{Failure, Handler, Message};
 
-pub struct IdeaCatalogProjector {
+pub struct CatalogueIdeasListener {
     events: EventSourcingService<Idea>,
     catalog: Arc<dyn IdeaCatalog>,
 }
 
-impl IdeaCatalogProjector {
+impl CatalogueIdeasListener {
     pub fn new(
         store: Arc<dyn EventStore<IdeaEvent>>,
         catalog: Arc<dyn IdeaCatalog>,
@@ -46,7 +46,7 @@ impl IdeaCatalogProjector {
 }
 
 #[async_trait]
-impl Handler for IdeaCatalogProjector {
+impl Handler for CatalogueIdeasListener {
     const NAME: &'static str = "catalogue-idea";
     const LISTENS_TO: &'static [&'static str] = &[EVERY_IDEA];
     const WHEN_REFUSED: &'static str = "A change to an idea did not reach the list of ideas.";

@@ -20,7 +20,7 @@ pub struct Unflaky(String);
 #[error("refused on purpose, because {WEAVELING_FLAKY} is set")]
 struct OnPurpose;
 
-pub struct Flaky {
+pub struct FlakyListener {
     listener: Arc<dyn Listener>,
     flakiness: Flakiness,
 }
@@ -47,7 +47,7 @@ impl Flakiness {
     }
 }
 
-impl Flaky {
+impl FlakyListener {
     pub fn wrapping(listener: Arc<dyn Listener>, flakiness: Flakiness) -> Arc<dyn Listener> {
         Arc::new(Self {
             listener,
@@ -57,7 +57,7 @@ impl Flaky {
 }
 
 #[async_trait]
-impl Listener for Flaky {
+impl Listener for FlakyListener {
     fn named(&self) -> ListenerName {
         self.listener.named()
     }

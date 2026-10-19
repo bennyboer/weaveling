@@ -3,7 +3,8 @@ use std::sync::Arc;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
 use boards_messaging::{
-    BoardCatalogProjector, DiscardBoardsOnProjectDeleted, PinnedIdeasProjector, UnpinOnDiscard,
+    CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, ProjectPinnedIdeasListener,
+    UnpinOnDiscardListener,
 };
 use eventsourcing::EventStore;
 use outbox::Outbox;
@@ -27,19 +28,19 @@ pub fn service(ports: &Ports, context: &Context) -> BoardService {
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let boards = service(ports, context);
-    let catalogue = BoardCatalogProjector::new(
+    let catalogue = CatalogueBoardsListener::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),
     );
-    let index = PinnedIdeasProjector::new(
+    let index = ProjectPinnedIdeasListener::new(
         ports.events.clone(),
         ports.catalog.clone(),
         boards.clone(),
         context.clock.clone(),
     );
-    let unpin_discarded_ideas = UnpinOnDiscard::new(boards.clone(), ports.catalog.clone());
-    let sweep = DiscardBoardsOnProjectDeleted::new(boards.clone());
+    let unpin_discarded_ideas = UnpinOnDiscardListener::new(boards.clone(), ports.catalog.clone());
+    let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
 
     Wired::serving(boards_rest::router(boards)).listening(vec![
         Arc::new(catalogue),

@@ -109,6 +109,17 @@ async fn there_is_no_socket_for_one_scene_any_more() {
 }
 
 #[tokio::test]
+async fn the_outline_is_followed_live_under_api() {
+    let (status, body) = get("/api/outlines/outline_031VkO0hnpeQZUiAB7nDma/live").await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body.contains("upgrade"),
+        "the live channel refuses a request that is not a socket: {body}"
+    );
+}
+
+#[tokio::test]
 async fn the_socket_is_found_under_the_feature_it_belongs_to() {
     let (status, _) = get("/api/sync").await;
 

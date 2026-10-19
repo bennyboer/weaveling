@@ -4,7 +4,7 @@ use eventsourcing::EventStore;
 use outbox::Outbox;
 use projects_catalog::InMemoryProjectCatalog;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectService};
-use projects_messaging::ProjectCatalogProjector;
+use projects_messaging::CatalogueProjectsListener;
 use wiring::{Context, EventSourced, Feature, Wired};
 
 pub struct Ports {
@@ -22,7 +22,7 @@ pub fn service(ports: &Ports, context: &Context) -> ProjectService {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    let projector = ProjectCatalogProjector::new(
+    let projector = CatalogueProjectsListener::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.clock.clone(),

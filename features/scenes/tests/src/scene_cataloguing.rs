@@ -4,7 +4,7 @@ use messaging::{Listener, Message, RoutingKey};
 use scenes_catalog::InMemorySceneCatalog;
 use scenes_contract::{CREATED, DELETED, OPENING_CHANGED, RETITLED};
 use scenes_core::{ProjectLink, SceneCatalog, SceneChange, SceneId, SceneSummary, SceneTitle};
-use scenes_messaging::{CatalogueScenes, message_for};
+use scenes_messaging::{CatalogueScenesListener, message_for};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
@@ -22,14 +22,14 @@ fn a_title(saying: &str) -> SceneTitle {
 
 struct Wired {
     catalog: Arc<InMemorySceneCatalog>,
-    catalogue: CatalogueScenes,
+    catalogue: CatalogueScenesListener,
 }
 
 fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemorySceneCatalog::new());
 
     Wired {
-        catalogue: CatalogueScenes::new(catalog.clone()),
+        catalogue: CatalogueScenesListener::new(catalog.clone()),
         catalog,
     }
 }

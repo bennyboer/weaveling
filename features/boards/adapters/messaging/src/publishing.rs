@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn a_drag_does_not_wake_the_catalog_projector() {
         let listening = |routing: &RoutingKey| {
-            <crate::BoardCatalogProjector as Handler>::LISTENS_TO
+            <crate::CatalogueBoardsListener as Handler>::LISTENS_TO
                 .iter()
                 .any(|pattern| {
                     Subscription::parse(pattern)

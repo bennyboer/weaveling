@@ -5,7 +5,7 @@ use eventsourcing::{Agent, InMemoryEventStore, Version};
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use ideas_core::{IdeaCatalog, IdeaId, IdeaService, IdeaSummary, IdeaTitle, ProjectLink};
-use ideas_messaging::{AT_MOST, DiscardOnProjectDeleted};
+use ideas_messaging::{AT_MOST, DiscardOnProjectDeletedListener};
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use serde_json::json;
@@ -20,7 +20,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 struct Wired {
-    sweep: DiscardOnProjectDeleted,
+    sweep: DiscardOnProjectDeletedListener,
     ideas: IdeaService,
     catalog: Arc<InMemoryIdeaCatalog>,
     overheard: Arc<FakePublisher>,
@@ -37,7 +37,7 @@ fn a_workbench(at_most: usize) -> Wired {
     );
 
     Wired {
-        sweep: DiscardOnProjectDeleted::new(
+        sweep: DiscardOnProjectDeletedListener::new(
             ideas.clone(),
             catalog.clone(),
             overheard.clone(),

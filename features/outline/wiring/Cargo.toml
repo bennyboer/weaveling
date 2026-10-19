@@ -14,6 +14,8 @@ registry = { version = "0.1.0", path = "../../../libraries/registry", package = 
 
 outline-core = { version = "0.1.0", path = "../core", package = "weaveling-outline-core" }
 outline-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-outline-rest" }
+outline-contract = { version = "0.1.0", path = "../contract", package = "weaveling-outline-contract" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 outline-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-outline-messaging" }
 outline-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-outline-catalog" }
 outline-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-outline-store" }

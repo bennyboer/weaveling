@@ -9,12 +9,12 @@ use outline_core::{Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlineSumm
 
 use crate::publishing::outline_in;
 
-pub struct OutlineCatalogProjector {
+pub struct CatalogueOutlinesListener {
     events: EventSourcingService<Outline>,
     catalog: Arc<dyn OutlineCatalog>,
 }
 
-impl OutlineCatalogProjector {
+impl CatalogueOutlinesListener {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
         catalog: Arc<dyn OutlineCatalog>,
@@ -42,7 +42,7 @@ impl OutlineCatalogProjector {
 }
 
 #[async_trait]
-impl Handler for OutlineCatalogProjector {
+impl Handler for CatalogueOutlinesListener {
     const NAME: &'static str = "catalogue-outline";
     const LISTENS_TO: &'static [&'static str] = &[STARTED, DISCARDED];
     const WHEN_REFUSED: &'static str = "An outline did not reach the list of outlines.";

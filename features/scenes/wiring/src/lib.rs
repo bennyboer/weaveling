@@ -6,7 +6,8 @@ use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneService, SceneStore};
 use scenes_messaging::{
-    CatalogueScenes, DeleteOnProjectDeleted, RestyleOnQuotationChanged, UnlinkOnDiscard,
+    CatalogueScenesListener, DeleteOnProjectDeletedListener, RestyleOnQuotationChangedListener,
+    UnlinkOnDiscardListener,
 };
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
@@ -21,16 +22,16 @@ pub struct Ports {
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let scenes = SceneService::new(ports.store.clone(), context.clock.clone());
-    let unlink = UnlinkOnDiscard::new(scenes.clone());
-    let sweep = DeleteOnProjectDeleted::new(
+    let unlink = UnlinkOnDiscardListener::new(scenes.clone());
+    let sweep = DeleteOnProjectDeletedListener::new(
         scenes.clone(),
         context.publisher.clone(),
         context.clock.clone(),
     );
-    let catalogue = CatalogueScenes::new(ports.catalog.clone());
+    let catalogue = CatalogueScenesListener::new(ports.catalog.clone());
 
     let live = LiveScenes::new(scenes.clone());
-    let restyle = RestyleOnQuotationChanged::new(
+    let restyle = RestyleOnQuotationChangedListener::new(
         scenes.clone(),
         Arc::new(live.clone()),
         ports.quotation_restyling_tasks.clone(),

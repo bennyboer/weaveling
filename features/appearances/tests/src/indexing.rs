@@ -3,7 +3,7 @@ use std::sync::Arc;
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, SectionLink, Subject};
 use appearances_messaging::{
-    ForgetDiscardedIdea, OutlineAppearancesProjector, SceneAppearancesProjector,
+    ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
 use messaging::{Listener, Message, RoutingKey};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
@@ -17,18 +17,18 @@ fn at(seconds: i64) -> OffsetDateTime {
 
 struct Wired {
     catalog: Arc<InMemoryAppearanceCatalog>,
-    outline: OutlineAppearancesProjector,
-    scenes: SceneAppearancesProjector,
-    ideas: ForgetDiscardedIdea,
+    outline: ProjectOutlineAppearancesListener,
+    scenes: ProjectSceneAppearancesListener,
+    ideas: ForgetDiscardedIdeaListener,
 }
 
 fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemoryAppearanceCatalog::new());
 
     Wired {
-        outline: OutlineAppearancesProjector::new(catalog.clone()),
-        scenes: SceneAppearancesProjector::new(catalog.clone()),
-        ideas: ForgetDiscardedIdea::new(catalog.clone()),
+        outline: ProjectOutlineAppearancesListener::new(catalog.clone()),
+        scenes: ProjectSceneAppearancesListener::new(catalog.clone()),
+        ideas: ForgetDiscardedIdeaListener::new(catalog.clone()),
         catalog,
     }
 }

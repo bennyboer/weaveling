@@ -3,7 +3,7 @@ use std::sync::Arc;
 use outbox::Outbox;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::WordCountCatalog;
-use statistics_messaging::WordCountsProjector;
+use statistics_messaging::ProjectWordCountsListener;
 use wiring::{Context, Feature, Wired};
 
 pub struct Ports {
@@ -12,7 +12,7 @@ pub struct Ports {
 
 pub fn wire(ports: &Ports) -> Wired {
     Wired::serving(statistics_rest::router(ports.catalog.clone())).listening(vec![Arc::new(
-        WordCountsProjector::new(ports.catalog.clone()),
+        ProjectWordCountsListener::new(ports.catalog.clone()),
     )])
 }
 

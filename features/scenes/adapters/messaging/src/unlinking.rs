@@ -3,18 +3,18 @@ use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
 use scenes_core::SceneService;
 
-pub struct UnlinkOnDiscard {
+pub struct UnlinkOnDiscardListener {
     scenes: SceneService,
 }
 
-impl UnlinkOnDiscard {
+impl UnlinkOnDiscardListener {
     pub fn new(scenes: SceneService) -> Self {
         Self { scenes }
     }
 }
 
 #[async_trait::async_trait]
-impl Handler for UnlinkOnDiscard {
+impl Handler for UnlinkOnDiscardListener {
     const NAME: &'static str = "unlink-discarded-idea";
     const LISTENS_TO: &'static [&'static str] = &[DISCARDED];
     const WHEN_REFUSED: &'static str = "A discarded idea could not be unlinked from its scenes.";

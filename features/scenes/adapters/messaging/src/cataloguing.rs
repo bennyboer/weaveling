@@ -11,7 +11,7 @@ use scenes_core::{
 use serde_json::from_value;
 use thiserror::Error;
 
-pub struct CatalogueScenes {
+pub struct CatalogueScenesListener {
     catalog: Arc<dyn SceneCatalog>,
 }
 
@@ -32,7 +32,7 @@ fn scene_id(raw: &str) -> Result<SceneId, NotCatalogued> {
         .map_err(|_| NotCatalogued::NotASceneId(raw.to_owned()))
 }
 
-impl CatalogueScenes {
+impl CatalogueScenesListener {
     pub fn new(catalog: Arc<dyn SceneCatalog>) -> Self {
         Self { catalog }
     }
@@ -84,7 +84,7 @@ impl CatalogueScenes {
 }
 
 #[async_trait::async_trait]
-impl Handler for CatalogueScenes {
+impl Handler for CatalogueScenesListener {
     const NAME: &'static str = "catalogue-scene";
     const LISTENS_TO: &'static [&'static str] = &[CREATED, RETITLED, OPENING_CHANGED, DELETED];
     const WHEN_REFUSED: &'static str = "A scene's name in the outline was not updated.";

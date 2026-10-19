@@ -19,7 +19,7 @@ use statistics_wiring::StatisticsFeature;
 use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context, assemble};
 
-use crate::flaky::Flaky;
+use crate::flaky::FlakyListener;
 
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
@@ -136,7 +136,7 @@ pub fn app(adapters: Adapters) -> Router {
 
         for listener in feature.listeners {
             adapters.dispatcher.listen(match adapters.flakiness {
-                Some(flakiness) => Flaky::wrapping(listener, flakiness),
+                Some(flakiness) => FlakyListener::wrapping(listener, flakiness),
                 None => listener,
             });
         }

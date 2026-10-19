@@ -6,7 +6,7 @@ use serde_json::from_value;
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCountCatalog};
 use thiserror::Error;
 
-pub struct WordCountsProjector {
+pub struct ProjectWordCountsListener {
     catalog: Arc<dyn WordCountCatalog>,
 }
 
@@ -18,7 +18,7 @@ enum NotKept {
     Catalog(#[from] CatalogError),
 }
 
-impl WordCountsProjector {
+impl ProjectWordCountsListener {
     pub fn new(catalog: Arc<dyn WordCountCatalog>) -> Self {
         Self { catalog }
     }
@@ -52,7 +52,7 @@ impl WordCountsProjector {
 }
 
 #[async_trait::async_trait]
-impl Handler for WordCountsProjector {
+impl Handler for ProjectWordCountsListener {
     const NAME: &'static str = "keep-word-counts";
     const LISTENS_TO: &'static [&'static str] = &[WORDS_COUNTED, DELETED];
     const WHEN_REFUSED: &'static str = "A scene's word count was not updated.";

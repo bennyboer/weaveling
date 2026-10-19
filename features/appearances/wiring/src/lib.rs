@@ -3,7 +3,7 @@ use std::sync::Arc;
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::AppearanceCatalog;
 use appearances_messaging::{
-    ForgetDiscardedIdea, OutlineAppearancesProjector, SceneAppearancesProjector,
+    ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
 use outbox::Outbox;
 use wiring::{Context, Feature, Wired};
@@ -14,9 +14,11 @@ pub struct Ports {
 
 pub fn wire(ports: &Ports) -> Wired {
     Wired::serving(appearances_rest::router(ports.catalog.clone())).listening(vec![
-        Arc::new(OutlineAppearancesProjector::new(ports.catalog.clone())),
-        Arc::new(SceneAppearancesProjector::new(ports.catalog.clone())),
-        Arc::new(ForgetDiscardedIdea::new(ports.catalog.clone())),
+        Arc::new(ProjectOutlineAppearancesListener::new(
+            ports.catalog.clone(),
+        )),
+        Arc::new(ProjectSceneAppearancesListener::new(ports.catalog.clone())),
+        Arc::new(ForgetDiscardedIdeaListener::new(ports.catalog.clone())),
     ])
 }
 

@@ -11,12 +11,12 @@ use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use messaging::{Failure, Handler, Message};
 use projects_core::{Project, ProjectCatalog, ProjectEvent, ProjectId, ProjectSummary};
 
-pub struct ProjectCatalogProjector {
+pub struct CatalogueProjectsListener {
     events: EventSourcingService<Project>,
     catalog: Arc<dyn ProjectCatalog>,
 }
 
-impl ProjectCatalogProjector {
+impl CatalogueProjectsListener {
     pub fn new(
         store: Arc<dyn EventStore<ProjectEvent>>,
         catalog: Arc<dyn ProjectCatalog>,
@@ -44,7 +44,7 @@ impl ProjectCatalogProjector {
 }
 
 #[async_trait]
-impl Handler for ProjectCatalogProjector {
+impl Handler for CatalogueProjectsListener {
     const NAME: &'static str = "catalogue-project";
     const LISTENS_TO: &'static [&'static str] = &[EVERY_PROJECT];
     const WHEN_REFUSED: &'static str = "A change to a project did not reach your list of projects.";

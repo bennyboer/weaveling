@@ -5,18 +5,18 @@ use eventpublishing::published_in;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
 
-pub struct ForgetDiscardedIdea {
+pub struct ForgetDiscardedIdeaListener {
     catalog: Arc<dyn AppearanceCatalog>,
 }
 
-impl ForgetDiscardedIdea {
+impl ForgetDiscardedIdeaListener {
     pub fn new(catalog: Arc<dyn AppearanceCatalog>) -> Self {
         Self { catalog }
     }
 }
 
 #[async_trait::async_trait]
-impl Handler for ForgetDiscardedIdea {
+impl Handler for ForgetDiscardedIdeaListener {
     const NAME: &'static str = "forget-appearances-of-discarded-idea";
     const LISTENS_TO: &'static [&'static str] = &[DISCARDED];
     const WHEN_REFUSED: &'static str = "A discarded idea is still listed where it appeared.";

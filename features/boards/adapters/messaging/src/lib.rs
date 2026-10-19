@@ -4,8 +4,8 @@ mod pinning;
 mod publishing;
 mod sweeping;
 
-pub use discarding::UnpinOnDiscard;
-pub use pinning::PinnedIdeasProjector;
+pub use discarding::UnpinOnDiscardListener;
+pub use pinning::ProjectPinnedIdeasListener;
 
 pub use publishing::{UnreadableBoardEvent, board_in, event_in, message_for};
 
@@ -18,12 +18,12 @@ use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use messaging::{Failure, Handler, Message};
 
-pub struct BoardCatalogProjector {
+pub struct CatalogueBoardsListener {
     events: EventSourcingService<Board>,
     catalog: Arc<dyn BoardCatalog>,
 }
 
-impl BoardCatalogProjector {
+impl CatalogueBoardsListener {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
         catalog: Arc<dyn BoardCatalog>,
@@ -51,7 +51,7 @@ impl BoardCatalogProjector {
 }
 
 #[async_trait]
-impl Handler for BoardCatalogProjector {
+impl Handler for CatalogueBoardsListener {
     const NAME: &'static str = "catalogue-board";
     const LISTENS_TO: &'static [&'static str] = &[STARTED, DISCARDED];
     const WHEN_REFUSED: &'static str = "A board did not reach the list of boards.";
@@ -61,4 +61,4 @@ impl Handler for BoardCatalogProjector {
     }
 }
 
-pub use sweeping::DiscardBoardsOnProjectDeleted;
+pub use sweeping::DiscardBoardsOnProjectDeletedListener;

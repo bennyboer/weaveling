@@ -14,7 +14,7 @@ use thiserror::Error;
 
 use crate::AT_MOST;
 
-pub struct RestyleOnQuotationChanged {
+pub struct RestyleOnQuotationChangedListener {
     scenes: SceneService,
     restyler: Arc<dyn SceneRestyler>,
     tasks: Arc<dyn QuotationRestylingTasks>,
@@ -46,7 +46,7 @@ struct QuotationRestylingTask {
     after: Option<String>,
 }
 
-impl RestyleOnQuotationChanged {
+impl RestyleOnQuotationChangedListener {
     pub fn new(
         scenes: SceneService,
         restyler: Arc<dyn SceneRestyler>,
@@ -189,7 +189,7 @@ fn deleted_meanwhile(refused: &SceneServiceError) -> bool {
 }
 
 #[async_trait::async_trait]
-impl Handler for RestyleOnQuotationChanged {
+impl Handler for RestyleOnQuotationChangedListener {
     const NAME: &'static str = "restyle-quotation-marks-of-project";
     const LISTENS_TO: &'static [&'static str] =
         &[QUOTATION_CHANGED, MORE_QUOTATION_MARKS_TO_RESTYLE];

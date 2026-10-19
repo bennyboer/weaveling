@@ -10,7 +10,7 @@ use thiserror::Error;
 
 pub const AT_MOST: usize = 100;
 
-pub struct DeleteOnProjectDeleted {
+pub struct DeleteOnProjectDeletedListener {
     scenes: SceneService,
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
@@ -29,7 +29,7 @@ enum NotSwept {
     Undelivered(#[from] Undelivered),
 }
 
-impl DeleteOnProjectDeleted {
+impl DeleteOnProjectDeletedListener {
     pub fn new(scenes: SceneService, publisher: Arc<dyn Publisher>, clock: Arc<dyn Clock>) -> Self {
         Self {
             scenes,
@@ -105,7 +105,7 @@ fn already_deleted(refused: &SceneServiceError) -> bool {
 }
 
 #[async_trait::async_trait]
-impl Handler for DeleteOnProjectDeleted {
+impl Handler for DeleteOnProjectDeletedListener {
     const NAME: &'static str = "delete-scenes-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
     const WHEN_REFUSED: &'static str = "The scenes of a deleted project were not cleared away.";

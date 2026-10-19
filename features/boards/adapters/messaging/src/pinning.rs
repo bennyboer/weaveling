@@ -9,13 +9,13 @@ use messaging::{Failure, Handler, Message};
 use crate::letting_go::let_go_of_what_is_gone;
 use crate::publishing::board_in;
 
-pub struct PinnedIdeasProjector {
+pub struct ProjectPinnedIdeasListener {
     events: EventSourcingService<Board>,
     catalog: Arc<dyn BoardCatalog>,
     boards: BoardService,
 }
 
-impl PinnedIdeasProjector {
+impl ProjectPinnedIdeasListener {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
         catalog: Arc<dyn BoardCatalog>,
@@ -50,7 +50,7 @@ impl PinnedIdeasProjector {
 }
 
 #[async_trait::async_trait]
-impl Handler for PinnedIdeasProjector {
+impl Handler for ProjectPinnedIdeasListener {
     const NAME: &'static str = "index-pinned-ideas";
     const LISTENS_TO: &'static [&'static str] = &[IDEA_PINNED, IDEA_UNPINNED];
     const WHEN_REFUSED: &'static str =

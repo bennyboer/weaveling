@@ -13,7 +13,7 @@ use thiserror::Error;
 
 pub const AT_MOST: usize = 100;
 
-pub struct DiscardOnProjectDeleted {
+pub struct DiscardOnProjectDeletedListener {
     ideas: IdeaService,
     catalog: Arc<dyn IdeaCatalog>,
     publisher: Arc<dyn Publisher>,
@@ -37,7 +37,7 @@ enum NotSwept {
     Undelivered(#[from] Undelivered),
 }
 
-impl DiscardOnProjectDeleted {
+impl DiscardOnProjectDeletedListener {
     pub fn new(
         ideas: IdeaService,
         catalog: Arc<dyn IdeaCatalog>,
@@ -133,7 +133,7 @@ fn nobody() -> Agent {
 }
 
 #[async_trait::async_trait]
-impl Handler for DiscardOnProjectDeleted {
+impl Handler for DiscardOnProjectDeletedListener {
     const NAME: &'static str = "discard-ideas-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED, MORE_TO_SWEEP];
     const WHEN_REFUSED: &'static str = "The ideas of a deleted project were not cleared away.";

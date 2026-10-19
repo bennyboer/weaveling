@@ -1,0 +1,18 @@
+[package]
+name = "weaveling-live"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["sync", "macros"] }
+
+eventpublishing = { version = "0.1.0", path = "../eventpublishing", package = "weaveling-eventpublishing" }
+messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
+
+[dev-dependencies]
+axum-test = { workspace = true, features = ["ws"] }
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time"] }

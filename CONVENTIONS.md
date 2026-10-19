@@ -13,7 +13,7 @@ Weaveling's domain language is deliberate — an idea is *captured*, a project i
 | Layer | Register | Example |
 | --- | --- | --- |
 | `core` — aggregate, command, event, error, service | The domain's own words | `IdeaCommand::Capture`, `ProjectEvent::Started` |
-| `adapters/*`, `wiring`, `libraries/*` | Plain and technical | `to_dto`, `to_response`, `ProjectCatalogProjector` |
+| `adapters/*`, `wiring`, `libraries/*` | Plain and technical | `to_dto`, `to_response`, `CatalogueProjectsListener` |
 | Test function names | A sentence that states the claim | `a_notification_delivers_long_before_the_next_poll_would` |
 | Test helpers | Read at the call site, article-prefixed | `a_title()`, `an_author()`, `at(1_000)` |
 
@@ -37,7 +37,7 @@ Rust reserves `to_*` for methods by convention, but these are free functions pas
 
 ### A type is named for what it is, spelled out
 
-No bare abstract nouns. `Publishing` was once the only bare word in an export list that already read `UnreadableProjectEvent`, `ProjectCatalogProjector`, `ProjectSummary`, and it said less than `ProjectEventPublisher`, the name it became.
+No bare abstract nouns. `Publishing` was once the only bare word in an export list that already read `UnreadableProjectEvent`, `CatalogueProjectsListener`, `ProjectSummary`, and it said less than `ProjectEventPublisher`, the name it became.
 
 The shapes each feature repeats:
 
@@ -51,7 +51,9 @@ In the client, a component is named for its role. A **`<Thing>Page`** is what a 
 
 In the client, a component that loads and changes things keeps that in **`<Component>State`**, beside it and named for it in full — `BoardViewState` for `BoardView`, `ScenePageState` for `ScenePage`, `InspectorState` for `inspector` — and the views take it as `state`. Not `BoardState`: that reads as the state of a board rather than of the view showing one. When a state does several jobs, it is composed of parts named for each job, as `WriteViewState` is of `Structure`, `Walk` and `Beginnings`, with the `Problems` they report into held above them all, and callers say which part they mean (`state.walk.leave(…)`). Named for the view, not for how it got its data: the inspector's state is the same whether the idea came from the address or, docked on the board, from a selection.
 
-Singular, built on the aggregate's own name — `ProjectCatalogProjector`, not `ProjectsCatalogProjector`. The crate is plural (`projects_messaging`); the types inside it are not.
+Singular, built on the aggregate's own name — `ProjectSummary`, `ProjectEventDTO`, not `ProjectsSummary`. The crate is plural (`projects_messaging`); the types inside it are not.
+
+A listener is named for what it does, a verb phrase ending in **`Listener`** — `CatalogueProjectsListener`, `DeleteOnProjectDeletedListener`, `BroadcastChangesListener` — so the wiring reads as a list of what happens, and a listener is known for one wherever it is used. Not `ProjectCatalogProjector`: a role noun says what it is, not what it does, and two in a row say even less.
 
 ### A contract crate has three suffixes and no fourth
 

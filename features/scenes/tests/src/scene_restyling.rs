@@ -12,7 +12,7 @@ use scenes_core::{
     ProjectLink, QuotationRestylingProgress, QuotationRestylingTasks, SceneId, SceneRestyler,
     SceneService, SceneServiceError, StoreError,
 };
-use scenes_messaging::RestyleOnQuotationChanged;
+use scenes_messaging::RestyleOnQuotationChangedListener;
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
 use serde_json::json;
@@ -50,7 +50,7 @@ impl SceneRestyler for Vanishing {
 }
 
 struct Wired {
-    restyle: RestyleOnQuotationChanged,
+    restyle: RestyleOnQuotationChangedListener,
     scenes: SceneService,
     live: LiveScenes,
     tasks: Arc<InMemoryQuotationRestylingTasks>,
@@ -78,7 +78,7 @@ fn restyling_with(
     let tasks = Arc::new(InMemoryQuotationRestylingTasks::new());
 
     Wired {
-        restyle: RestyleOnQuotationChanged::new(
+        restyle: RestyleOnQuotationChangedListener::new(
             scenes.clone(),
             restyler,
             tasks.clone(),

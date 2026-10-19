@@ -260,7 +260,7 @@ mod tests {
     fn restructuring_does_not_wake_the_catalog_projector() {
         for (event, _) in everything_worth_publishing() {
             let woken = heard_by(
-                <crate::OutlineCatalogProjector as Handler>::LISTENS_TO,
+                <crate::CatalogueOutlinesListener as Handler>::LISTENS_TO,
                 &routing_for(KIND, event.name()),
             );
 
@@ -288,7 +288,7 @@ mod tests {
 
         assert!(
             heard_by(
-                <crate::AttachmentIndexProjector as Handler>::LISTENS_TO,
+                <crate::IndexAttachmentsListener as Handler>::LISTENS_TO,
                 &removal
             ),
             "a removed section returns its scenes to the pool, so the index would go stale without \

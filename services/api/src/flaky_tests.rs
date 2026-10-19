@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use messaging::{Listener, ListenerName, Message, NotHandled, RoutingKey, Subscription};
 use time::macros::datetime;
 
-use crate::flaky::{Flakiness, Flaky};
+use crate::flaky::{Flakiness, FlakyListener};
 
 struct Willing;
 
@@ -36,7 +36,7 @@ fn a_message() -> Message {
 }
 
 async fn refused_out_of(share: &str, tries: usize) -> usize {
-    let flaky = Flaky::wrapping(
+    let flaky = FlakyListener::wrapping(
         Arc::new(Willing),
         Flakiness::parse(share).expect("a share from 0 to 1 is fine"),
     );
@@ -73,7 +73,7 @@ async fn half_flakiness_refuses_some_and_lets_some_through() {
 
 #[tokio::test]
 async fn a_flaky_listener_is_still_the_listener_it_wraps() {
-    let flaky = Flaky::wrapping(
+    let flaky = FlakyListener::wrapping(
         Arc::new(Willing),
         Flakiness::parse("1").expect("a share from 0 to 1 is fine"),
     );

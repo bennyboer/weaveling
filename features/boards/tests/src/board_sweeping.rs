@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use boards_core::BoardCatalog;
-use boards_messaging::DiscardBoardsOnProjectDeleted;
+use boards_messaging::DiscardBoardsOnProjectDeletedListener;
 use clock::FixedClock;
 use eventsourcing::{Agent, AgentId};
 use messaging::{Listener, Message, RoutingKey};
@@ -19,9 +19,9 @@ fn an_author() -> Agent {
     Agent::User(AgentId::from("author-7"))
 }
 
-fn a_workbench() -> (Wired, DiscardBoardsOnProjectDeleted) {
+fn a_workbench() -> (Wired, DiscardBoardsOnProjectDeletedListener) {
     let wired = wired(Arc::new(FixedClock::new(at(1_000))));
-    let sweep = DiscardBoardsOnProjectDeleted::new(wired.boards.clone());
+    let sweep = DiscardBoardsOnProjectDeletedListener::new(wired.boards.clone());
 
     (wired, sweep)
 }
