@@ -5,10 +5,12 @@ import { aNewProject, API } from "./support/shell";
 import {
   flow,
   heading,
+  menuItem,
   openTheWritingView,
   projectsOutline,
   savedTitles,
   scene,
+  sectionActions,
   shown,
 } from "./support/writing";
 
@@ -482,4 +484,138 @@ test("a section added beside mine tells me nothing", async ({ page }) => {
   await expect(heading(page, "Part One and a half")).toBeVisible();
   await page.waitForTimeout(500);
   await expect(quietNote(page)).toHaveCount(0);
+});
+
+const removedMeanwhile = (page: Page) =>
+  page.getByRole("dialog", { name: "Removed meanwhile" });
+
+async function writingInASceneOfPartTwo(page: Page, named: string) {
+  await aNewProject(page, named);
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  const [mine] = scenes["Part Two"];
+  await followingLive(page);
+  const { outline, ids } = await placedOnServer(page);
+  await scene(page, mine).click();
+  await page.keyboard.type("Hello");
+  await expect.poll(() => shown(page, mine)).toBe("Hello");
+
+  return { mine, outline, ids };
+}
+
+test("a section removed while I write in its scene asks, and Show it goes to my scene", async ({
+  page,
+}) => {
+  const { mine, outline, ids } = await writingInASceneOfPartTwo(
+    page,
+    "LiveRemovedUnder",
+  );
+
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+
+  await expect(removedMeanwhile(page)).toContainText(
+    "Someone else removed “Part Two”.",
+  );
+  await removedMeanwhile(page).getByRole("button", { name: "Show it" }).click();
+  await expect(page).toHaveURL(/\/write\/loose/);
+  await expect.poll(() => shown(page, mine)).toBe("Hello");
+});
+
+test("keeping on writing after my section was removed stays in the book", async ({
+  page,
+}) => {
+  const { outline, ids } = await writingInASceneOfPartTwo(
+    page,
+    "LiveRemovedStay",
+  );
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+
+  await removedMeanwhile(page)
+    .getByRole("button", { name: "Keep writing" })
+    .click();
+
+  await expect(removedMeanwhile(page)).toHaveCount(0);
+  await expect(page).toHaveURL(/\/write$/);
+});
+
+test("a section removed while I am in its heading is told quietly", async ({
+  page,
+}) => {
+  const { outline, ids } = await aBookFollowedLive(page, "LiveRemovedHeading");
+  await heading(page, "Part Two").click();
+
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+
+  await expect(
+    page.getByRole("status").filter({ hasText: "removed" }),
+  ).toHaveText("Someone else removed “Part Two”.");
+  await expect(removedMeanwhile(page)).toHaveCount(0);
+});
+
+test("having left my scene for its section's heading, the removal is told quietly", async ({
+  page,
+}) => {
+  const { outline, ids } = await writingInASceneOfPartTwo(
+    page,
+    "LiveRemovedAfterLeaving",
+  );
+  await heading(page, "Part Two").click();
+
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+
+  await expect(
+    page.getByRole("status").filter({ hasText: "removed" }),
+  ).toHaveText("Someone else removed “Part Two”.");
+  await expect(removedMeanwhile(page)).toHaveCount(0);
+});
+
+test("removing my own section asks nothing more", async ({ page }) => {
+  await aBookFollowedLive(page, "LiveRemovedMyself");
+  await heading(page, "Part Two").click();
+
+  await sectionActions(page, "Part Two").click();
+  await menuItem(page, "Remove section").click();
+
+  await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);
+  await page.waitForTimeout(1000);
+  await expect(removedMeanwhile(page)).toHaveCount(0);
+  await expect(
+    page.getByRole("status").filter({ hasText: "removed" }),
+  ).toHaveCount(0);
+});
+
+test("the inspector says when the section it shows was removed", async ({
+  page,
+}) => {
+  const { outline, ids } = await aBookFollowedLive(
+    page,
+    "LiveRemovedInspected",
+  );
+  await heading(page, "Part Two").click();
+  await page.getByRole("button", { name: "This section", exact: true }).click();
+
+  await anotherAuthor(
+    page,
+    "delete",
+    `/outlines/${outline}/sections/${ids["Part Two"]}`,
+  );
+
+  await expect(
+    page.getByRole("complementary", { name: "This section" }),
+  ).toContainText("This section was removed.");
 });

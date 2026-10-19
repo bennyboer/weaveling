@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::outline::model::{Outline, SectionId};
+use crate::scenes::model::SceneId;
 
 pub struct Placement {
     parent: Option<SectionId>,
@@ -28,6 +29,26 @@ pub fn placements(book: &Outline) -> HashMap<SectionId, Placement> {
                     siblings,
                 },
             )
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Removed {
+    pub section: SectionId,
+    pub title: String,
+    pub scenes: Vec<SceneId>,
+}
+
+pub fn removed(before: &Outline, after: &Outline) -> Vec<Removed> {
+    before
+        .sections
+        .iter()
+        .filter(|was| after.sections.iter().all(|now| now.id != was.id))
+        .map(|was| Removed {
+            section: was.id.clone(),
+            title: was.title.clone(),
+            scenes: was.scenes(),
         })
         .collect()
 }
@@ -86,6 +107,34 @@ mod tests {
         let mut found: Vec<String> = found.into_iter().map(|id| id.to_string()).collect();
         found.sort();
         found
+    }
+
+    #[test]
+    fn a_section_gone_from_the_book_is_removed_with_its_title_and_scenes() {
+        let mut part = section("two", None);
+        part.title = "Part Two".to_owned();
+        part.attachments = vec![crate::outline::model::Attachment::Scene(SceneId::from(
+            "scene_1".to_owned(),
+        ))];
+        let before = Outline {
+            id: OutlineId::from("outline_1".to_owned()),
+            version: 1,
+            sections: vec![section("one", None), part],
+        };
+        let after = Outline {
+            sections: vec![section("one", None)],
+            ..before.clone()
+        };
+
+        assert_eq!(
+            removed(&before, &after),
+            vec![Removed {
+                section: SectionId::from("two".to_owned()),
+                title: "Part Two".to_owned(),
+                scenes: vec![SceneId::from("scene_1".to_owned())],
+            }]
+        );
+        assert!(removed(&before, &before).is_empty());
     }
 
     #[test]

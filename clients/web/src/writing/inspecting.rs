@@ -53,18 +53,33 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
                     drawn_from(scene, project, state),
                 )
                     .into_any(),
-                Some(Inspected::Section(section)) => (
-                    html::p().class("section-name").child({
+                Some(Inspected::Section(section)) => {
+                    let still_there = {
                         let section = section.clone();
 
-                        move || match state.structure.title_of(&section) {
-                            Some(title) if !title.trim().is_empty() => title,
-                            _ => "Untitled section".to_owned(),
-                        }
-                    }),
-                    pinned(section, project, state),
-                )
-                    .into_any(),
+                        Memo::new(move |_| state.structure.title_of(&section).is_some())
+                    };
+
+                    (move || match still_there.get() {
+                        false => html::p()
+                            .class("nothing-yet")
+                            .child("This section was removed.")
+                            .into_any(),
+                        true => (
+                            html::p().class("section-name").child({
+                                let section = section.clone();
+
+                                move || match state.structure.title_of(&section) {
+                                    Some(title) if !title.trim().is_empty() => title,
+                                    _ => "Untitled section".to_owned(),
+                                }
+                            }),
+                            pinned(section.clone(), project, state),
+                        )
+                            .into_any(),
+                    })
+                    .into_any()
+                }
             },
         },
     )

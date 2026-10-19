@@ -1,6 +1,9 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
+use leptos_router::NavigateOptions;
+use leptos_router::hooks::use_navigate;
+
 use crate::dialog::modal;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
@@ -15,6 +18,10 @@ pub enum Asking {
     RemoveChosen {
         scenes: Vec<SceneId>,
         sections: Vec<SectionId>,
+    },
+    RemovedMeanwhile {
+        title: String,
+        scene: SceneId,
     },
     RenamedMeanwhile {
         section: SectionId,
@@ -31,9 +38,12 @@ enum Answer {
     DeletedForGood,
     KeptMine,
     TakenTheirs,
+    ShownElsewhere,
 }
 
 pub fn asking(state: WriteViewState) -> impl IntoView {
+    let navigate = StoredValue::new_local(use_navigate());
+
     move || {
         state.margin.asking().map(|question| {
             let (title, told) = worded(&question, state);
@@ -50,7 +60,7 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
                     html::div().class("dialog-actions").child((
                         html::button()
                             .on(ev::click, move |_| cancel())
-                            .child("Cancel"),
+                            .child(untrack(|| question.with_value(way_back))),
                         choices
                             .into_iter()
                             .map(|(label, answer)| {
@@ -58,7 +68,11 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
                                     .class(("danger", answer == Answer::DeletedForGood))
                                     .on(ev::click, move |_| {
                                         state.margin.return_to_writing();
-                                        answered(question.get_value(), answer, state);
+                                        answered(question.get_value(), answer, state, |to| {
+                                            navigate.with_value(|navigate| {
+                                                navigate(to, NavigateOptions::default())
+                                            })
+                                        });
                                     })
                                     .child(label)
                             })
@@ -70,10 +84,25 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
     }
 }
 
+fn way_back(question: &Asking) -> &'static str {
+    match question {
+        Asking::RemovedMeanwhile { .. } => "Keep writing",
+        _ => "Cancel",
+    }
+}
+
+fn loose_and_at(scene: &SceneId) -> String {
+    let path = window().location().pathname().unwrap_or_default();
+    let book = path.trim_end_matches('/').trim_end_matches("/loose");
+
+    format!("{book}/loose?scene={scene}")
+}
+
 fn offered(question: &Asking, state: WriteViewState) -> Vec<(&'static str, Answer)> {
     match question {
         Asking::DeleteScene(_) => vec![("Delete", Answer::DeletedForGood)],
         Asking::RemoveSection(_) => vec![("Remove", Answer::Confirmed)],
+        Asking::RemovedMeanwhile { .. } => vec![("Show it", Answer::ShownElsewhere)],
         Asking::RenamedMeanwhile { .. } => vec![
             ("Take theirs", Answer::TakenTheirs),
             ("Keep mine", Answer::KeptMine),
@@ -101,6 +130,21 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
             (
                 "Delete this scene?",
                 format!("{named} and everything written in it will be gone for good. Deleting cannot be undone."),
+            )
+        }
+        Asking::RemovedMeanwhile { title, scene } => {
+            let shown = untrack(|| state.labels.of_scene(scene)).shown;
+            let named = match shown.trim() {
+                "" => "Your scene".to_owned(),
+                shown => format!("Your scene “{shown}”"),
+            };
+
+            (
+                "Removed meanwhile",
+                format!(
+                    "Someone else removed “{}”. {named} is outside the book now, among the scenes not in it.",
+                    title.trim()
+                ),
             )
         }
         Asking::RenamedMeanwhile { mine, theirs, .. } => (
@@ -152,12 +196,13 @@ fn counting(count: usize, thing: &str) -> String {
     }
 }
 
-fn answered(question: Asking, answer: Answer, state: WriteViewState) {
+fn answered(question: Asking, answer: Answer, state: WriteViewState, go_to: impl Fn(&str)) {
     match question {
         Asking::DeleteScene(scene) => match state.side {
             Side::Book => state.structure.delete(scene),
             Side::Loose => state.loose.delete(scene),
         },
+        Asking::RemovedMeanwhile { scene, .. } => go_to(&loose_and_at(&scene)),
         Asking::RenamedMeanwhile {
             section,
             mine,

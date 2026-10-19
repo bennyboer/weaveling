@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::icons::{Icon, mark};
+use crate::writing::asking::Asking;
 use crate::writing::write_view_state::WriteViewState;
 
 #[derive(Clone, Copy)]
@@ -46,6 +47,25 @@ pub fn quiet_note(state: WriteViewState) -> impl IntoView {
                 return;
             }
             around = state.structure.parent_of(&section);
+        }
+    });
+
+    Effect::new(move || {
+        let removed = state.structure.removed_by_others();
+        let Some((section, scene)) = untrack(|| state.writing_in.was_writing_in()) else {
+            return;
+        };
+        let Some(mine) = removed.into_iter().find(|gone| gone.section == section) else {
+            return;
+        };
+        match scene {
+            Some(scene) => state.margin.ask(Asking::RemovedMeanwhile {
+                title: mine.title,
+                scene,
+            }),
+            None => state
+                .quiet_note
+                .tell(format!("Someone else removed “{}”.", mine.title.trim())),
         }
     });
 

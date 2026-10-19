@@ -1,12 +1,14 @@
 use leptos::prelude::*;
 
 use crate::outline::model::SectionId;
+use crate::scenes::model::SceneId;
 use crate::writing::structure::Structure;
 
 #[derive(Clone, Copy)]
 pub struct WritingIn {
     structure: Structure,
     section: RwSignal<Option<SectionId>>,
+    scene: StoredValue<Option<SceneId>>,
 }
 
 impl WritingIn {
@@ -14,6 +16,7 @@ impl WritingIn {
         Self {
             structure,
             section: RwSignal::new(None),
+            scene: StoredValue::new(None),
         }
     }
 
@@ -24,6 +27,16 @@ impl WritingIn {
         {
             self.section.set(Some(section));
         }
+    }
+
+    pub fn wrote_in(self, scene: Option<SceneId>) {
+        self.scene.set_value(scene);
+    }
+
+    pub fn was_writing_in(self) -> Option<(SectionId, Option<SceneId>)> {
+        let section = self.section.get_untracked()?;
+
+        Some((section, self.scene.get_value()))
     }
 
     pub fn last_written_in(self) -> Option<SectionId> {

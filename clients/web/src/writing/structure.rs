@@ -13,7 +13,7 @@ use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
 use crate::writing::cursor_kept::keeping_the_cursor;
 use crate::writing::problems::Problems;
-use crate::writing::rearranged::{placements, rearranged};
+use crate::writing::rearranged::{Removed, placements, rearranged, removed};
 use crate::writing::saving::Saving;
 
 type Write = Pin<Box<dyn Future<Output = ()>>>;
@@ -32,6 +32,7 @@ pub struct Structure {
     following: StoredValue<Option<Following>, LocalStorage>,
     reload_in_flight: StoredValue<bool>,
     rearranged_by_others: RwSignal<Vec<SectionId>>,
+    removed_by_others: RwSignal<Vec<Removed>>,
     outdated_meanwhile: StoredValue<bool>,
     problems: Problems,
     saving: Saving,
@@ -47,6 +48,7 @@ impl Structure {
             following: StoredValue::new_local(None),
             reload_in_flight: StoredValue::new(false),
             rearranged_by_others: RwSignal::new(Vec::new()),
+            removed_by_others: RwSignal::new(Vec::new()),
             outdated_meanwhile: StoredValue::new(false),
             problems,
             saving,
@@ -103,7 +105,7 @@ impl Structure {
                 let Some(project) = self.project.try_get_value() else {
                     return;
                 };
-                let before = self.read_untracked(placements);
+                let before = self.read_untracked(Clone::clone);
                 let mine_in_flight = self.writing.try_get_value().unwrap_or(true);
                 match service::open(&project).await {
                     Ok(opened) if !self.outline.is_disposed() => {
@@ -111,11 +113,15 @@ impl Structure {
                         let mine_in_flight =
                             mine_in_flight || self.writing.try_get_value().unwrap_or(true);
                         if let (Some(before), Some(after), false) =
-                            (before, self.read_untracked(placements), mine_in_flight)
+                            (before, self.read_untracked(Clone::clone), mine_in_flight)
                         {
-                            let moved = rearranged(&before, &after);
+                            let moved = rearranged(&placements(&before), &placements(&after));
                             if !moved.is_empty() {
                                 self.rearranged_by_others.set(moved);
+                            }
+                            let gone = removed(&before, &after);
+                            if !gone.is_empty() {
+                                self.removed_by_others.set(gone);
                             }
                         }
                     }
@@ -132,6 +138,10 @@ impl Structure {
 
     pub fn project(self) -> ProjectId {
         self.project.get_value()
+    }
+
+    pub fn removed_by_others(self) -> Vec<Removed> {
+        self.removed_by_others.get()
     }
 
     pub fn rearranged_by_others(self) -> Vec<SectionId> {

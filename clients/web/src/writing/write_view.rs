@@ -202,9 +202,13 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
                 state.writing_in.moved_to(section);
             }
             if let Some(scene) = scene_around(&event) {
+                state.writing_in.wrote_in(Some(scene.clone()));
                 state.inspector.follow(Inspected::Scene(scene));
-            } else if let Some(section) = heading_of(&event) {
-                state.inspector.follow(Inspected::Section(section));
+            } else {
+                state.writing_in.wrote_in(None);
+                if let Some(section) = heading_of(&event) {
+                    state.inspector.follow(Inspected::Section(section));
+                }
             }
         })
         .child((
