@@ -1,8 +1,26 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aBookWithScenes } from "./support/book";
-import { aNewProject, API, openTheOutline, sceneCatalogued } from "./support/shell";
-import { flow, heading, label, openTheWritingView, projectOf, scene, sceneTab, sceneTray, shown, statusNote, titled, trayTitle } from "./support/writing";
+import { aBookShaped, aBookWithScenes } from "./support/book";
+import {
+  aNewProject,
+  API,
+  openTheOutline,
+  sceneCatalogued,
+} from "./support/shell";
+import {
+  flow,
+  heading,
+  label,
+  openTheWritingView,
+  projectOf,
+  scene,
+  inspectorTab,
+  inspector,
+  shown,
+  statusNote,
+  titled,
+  inspectedSceneTitle,
+} from "./support/writing";
 
 async function aTitledPair(page: Page) {
   await aNewProject(page, "Tray");
@@ -35,8 +53,37 @@ async function anIdeaLinkedTo(page: Page, scene: string, title: string) {
   return id as string;
 }
 
+async function anIdeaPinnedTo(
+  page: Page,
+  outline: string,
+  section: string,
+  title: string,
+  after: string | null = null,
+) {
+  const id = await anIdea(page, title);
+  const pinned = await page.request.post(
+    `${API}/outlines/${outline}/attachments`,
+    {
+      data: {
+        attachment: { kind: "idea", id },
+        section,
+        after: after ? { kind: "idea", id: after } : null,
+      },
+    },
+  );
+  expect(pinned.ok(), await pinned.text()).toBe(true);
+
+  return id;
+}
+
+const inspectedSection = (page: Page) =>
+  page.getByRole("complementary", { name: "This section" });
+
+const pinnedIdeas = (page: Page) =>
+  inspectedSection(page).getByRole("list", { name: "Pinned ideas" });
+
 const drawnFrom = (page: Page) =>
-  sceneTray(page).getByRole("list", { name: "Drawn from" });
+  inspector(page).getByRole("list", { name: "Drawn from" });
 
 const linkDialog = (page: Page) =>
   page.getByRole("dialog", { name: "Link ideas" });
@@ -45,31 +92,106 @@ test("the tray is shut at first and opens from its tab on the scene the cursor i
   page,
 }) => {
   const [, second] = await aTitledPair(page);
-  await expect(sceneTray(page)).toBeHidden();
+  await expect(inspector(page)).toBeHidden();
 
   await scene(page, second).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
-  await expect(sceneTab(page)).toHaveAttribute("aria-expanded", "true");
-  await expect(trayTitle(page)).toHaveValue("The loom");
+  await expect(inspectorTab(page)).toHaveAttribute("aria-expanded", "true");
+  await expect(inspectedSceneTitle(page)).toHaveValue("The loom");
 });
 
-test("the tray follows the cursor, and keeps the last scene when the cursor leaves the scenes", async ({
+test("the tray follows the cursor from scene to scene, and into a heading", async ({
   page,
 }) => {
   const [first, second] = await aTitledPair(page);
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
   await scene(page, first).click();
-  await expect(trayTitle(page)).toHaveValue("The arrival");
+  await expect(inspectedSceneTitle(page)).toHaveValue("The arrival");
   await scene(page, second).click();
-  await expect(trayTitle(page)).toHaveValue("The loom");
+  await expect(inspectedSceneTitle(page)).toHaveValue("The loom");
   await flow(page).getByRole("heading", { name: "Part One" }).click();
 
+  await expect(inspectedSection(page)).toContainText("Part One");
   await expect(
-    trayTitle(page),
-    "reaching for the tray must not empty it",
+    page.getByRole("button", { name: "This section", exact: true }),
+    "the tab says what the tray is showing",
+  ).toBeVisible();
+});
+
+test("a heading still being typed leaves the tray as it was", async ({
+  page,
+}) => {
+  const [, second] = await aTitledPair(page);
+  await inspectorTab(page).click();
+  await scene(page, second).click();
+
+  await page.keyboard.press("ControlOrMeta+End");
+  for (let nth = 0; nth < 3; nth++) await page.keyboard.press("Enter");
+
+  await expect(
+    flow(page).locator('[data-placeholder="A new section"]'),
+  ).toBeFocused();
+  await expect(
+    inspectedSceneTitle(page),
+    "the new heading is no section yet, least of all the one before it",
   ).toHaveValue("The loom");
+});
+
+test("reaching for the tray keeps what it shows", async ({ page }) => {
+  const [, second] = await aTitledPair(page);
+  await inspectorTab(page).click();
+  await scene(page, second).click();
+
+  await inspectedSceneTitle(page).click();
+
+  await expect(inspectedSceneTitle(page)).toHaveValue("The loom");
+});
+
+test("a heading's pinned ideas are shown in the tray, each leading to its idea", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayPinned");
+  const { outline, ids } = await aBookShaped(page, [{ title: "Part One" }]);
+  const debt = await anIdeaPinnedTo(
+    page,
+    outline,
+    ids["Part One"],
+    "The weaver's debt",
+  );
+  await anIdeaPinnedTo(
+    page,
+    outline,
+    ids["Part One"],
+    "A war in the valley",
+    debt,
+  );
+  await openTheWritingView(page);
+
+  await flow(page).getByRole("heading", { name: "Part One" }).click();
+  await page.getByRole("button", { name: "This section", exact: true }).click();
+
+  await expect(pinnedIdeas(page).getByRole("link")).toHaveText([
+    "The weaver's debt",
+    "A war in the valley",
+  ]);
+  await expect(
+    pinnedIdeas(page).getByRole("link", { name: "The weaver's debt" }),
+  ).toHaveAttribute("href", new RegExp(`/ideas/[^/]*${debt}$`));
+});
+
+test("a heading with nothing pinned says where ideas are pinned", async ({
+  page,
+}) => {
+  await aTitledPair(page);
+  await inspectorTab(page).click();
+
+  await flow(page).getByRole("heading", { name: "Part One" }).click();
+
+  await expect(inspectedSection(page)).toContainText(
+    "No ideas pinned here. Pin them in the outline.",
+  );
 });
 
 test("an untitled scene is named in the tray by its opening words", async ({
@@ -79,8 +201,8 @@ test("an untitled scene is named in the tray by its opening words", async ({
   const [only] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
   await openTheWritingView(page);
   await scene(page, only).click();
-  await sceneTab(page).click();
-  await expect(trayTitle(page)).toHaveAttribute(
+  await inspectorTab(page).click();
+  await expect(inspectedSceneTitle(page)).toHaveAttribute(
     "placeholder",
     "An empty scene",
   );
@@ -88,11 +210,11 @@ test("an untitled scene is named in the tray by its opening words", async ({
   await scene(page, only).click();
   await page.keyboard.type("The loom stood silent.");
 
-  await expect(trayTitle(page)).toHaveAttribute(
+  await expect(inspectedSceneTitle(page)).toHaveAttribute(
     "placeholder",
     "The loom stood silent.",
   );
-  await expect(trayTitle(page)).toHaveValue("");
+  await expect(inspectedSceneTitle(page)).toHaveValue("");
 });
 
 test("the tray stays open or shut across a reload, and Escape in it shuts it", async ({
@@ -100,28 +222,28 @@ test("the tray stays open or shut across a reload, and Escape in it shuts it", a
 }) => {
   const [first] = await aTitledPair(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
   await page.reload();
-  await expect(sceneTray(page)).toBeVisible();
+  await expect(inspector(page)).toBeVisible();
 
-  await sceneTray(page).getByRole("button", { name: "Close the tray" }).focus();
+  await inspector(page).getByRole("button", { name: "Close the tray" }).focus();
   await page.keyboard.press("Escape");
-  await expect(sceneTray(page)).toBeHidden();
+  await expect(inspector(page)).toBeHidden();
   await page.reload();
   await expect(flow(page)).toBeVisible();
-  await expect(sceneTray(page)).toBeHidden();
+  await expect(inspector(page)).toBeHidden();
 });
 
 test("Escape while writing leaves the tray open", async ({ page }) => {
   const [first] = await aTitledPair(page);
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
   await scene(page, first).click();
 
   await page.keyboard.press("Escape");
 
   await expect(
-    sceneTray(page),
+    inspector(page),
     "Escape in the prose belongs to the margin, not the tray",
   ).toBeVisible();
 });
@@ -134,9 +256,9 @@ test("on a wide window the open tray sits beside the column and ends above the s
   await scene(page, first).click();
   const noteBefore = (await statusNote(page).boundingBox())!;
 
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
-  const tray = (await sceneTray(page).locator(".inside").boundingBox())!;
+  const tray = (await inspector(page).locator(".inside").boundingBox())!;
   const written = (await scene(page, first).boundingBox())!;
   const note = (await statusNote(page).boundingBox())!;
   expect(written.x + written.width).toBeLessThanOrEqual(tray.x);
@@ -165,13 +287,13 @@ test("on a phone the tray slides over the text and is toggled from the status ba
   await scene(page, first).click();
 
   await page.getByRole("button", { name: "This scene", exact: true }).click();
-  const tray = (await sceneTray(page).boundingBox())!;
+  const tray = (await inspector(page).boundingBox())!;
   expect(tray.x).toBeGreaterThanOrEqual(0);
   expect(tray.x + tray.width).toBeLessThanOrEqual(400);
-  await expect(trayTitle(page)).toHaveValue("The arrival");
+  await expect(inspectedSceneTitle(page)).toHaveValue("The arrival");
 
   await page.getByRole("button", { name: "This scene", exact: true }).click();
-  await expect(sceneTray(page)).toBeHidden();
+  await expect(inspector(page)).toBeHidden();
 });
 
 test("a scene renamed in the tray is named so in the margin, on the server and in the outline", async ({
@@ -180,10 +302,10 @@ test("a scene renamed in the tray is named so in the margin, on the server and i
   const [first] = await aTitledPair(page);
   await scene(page, first).click();
   await page.keyboard.type("Begun.");
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
-  await trayTitle(page).fill("The homecoming");
-  await trayTitle(page).press("Enter");
+  await inspectedSceneTitle(page).fill("The homecoming");
+  await inspectedSceneTitle(page).press("Enter");
 
   await expect(label(page, first)).toHaveText("The homecoming");
   await expect(
@@ -204,13 +326,13 @@ test("Escape in the tray's title drops what was typed and keeps the tray open", 
 }) => {
   const [first] = await aTitledPair(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
-  await trayTitle(page).fill("Not this");
-  await trayTitle(page).press("Escape");
+  await inspectedSceneTitle(page).fill("Not this");
+  await inspectedSceneTitle(page).press("Escape");
 
-  await expect(trayTitle(page)).toHaveValue("The arrival");
-  await expect(sceneTray(page)).toBeVisible();
+  await expect(inspectedSceneTitle(page)).toHaveValue("The arrival");
+  await expect(inspector(page)).toBeVisible();
   await expect(scene(page, first)).toBeFocused();
   await expect(label(page, first)).toHaveText("The arrival");
 });
@@ -221,13 +343,13 @@ test("a title cleared in the tray leaves the opening words to name the scene", a
   const [first] = await aTitledPair(page);
   await scene(page, first).click();
   await page.keyboard.type("The loom stood silent.");
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
-  await trayTitle(page).fill("");
-  await trayTitle(page).press("Enter");
+  await inspectedSceneTitle(page).fill("");
+  await inspectedSceneTitle(page).press("Enter");
 
   await expect(label(page, first)).toHaveText("The loom stood silent.");
-  await expect(trayTitle(page)).toHaveAttribute(
+  await expect(inspectedSceneTitle(page)).toHaveAttribute(
     "placeholder",
     "The loom stood silent.",
   );
@@ -238,7 +360,7 @@ test("a scene renamed in the margin is named so in the open tray", async ({
 }) => {
   const [first] = await aTitledPair(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
   await flow(page)
     .locator(`.scene-row:has([data-scene="${first}"])`)
@@ -250,7 +372,7 @@ test("a scene renamed in the margin is named so in the open tray", async ({
     .fill("Renamed");
   await flow(page).getByRole("textbox", { name: "Scene title" }).press("Enter");
 
-  await expect(trayTitle(page)).toHaveValue("Renamed");
+  await expect(inspectedSceneTitle(page)).toHaveValue("Renamed");
 });
 
 test("the tray lists the ideas a scene draws on, each leading to its idea", async ({
@@ -263,7 +385,7 @@ test("the tray lists the ideas a scene draws on, each leading to its idea", asyn
   await openTheWritingView(page);
   await scene(page, first).click();
 
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
   await expect(drawnFrom(page).getByRole("link")).toHaveText([
     "The loom remembers",
@@ -284,7 +406,7 @@ test("an idea unlinked in the tray no longer counts for the scene", async ({
   const war = await anIdeaLinkedTo(page, first, "A war down the valley");
   await openTheWritingView(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
   await drawnFrom(page)
     .getByRole("button", { name: "Unlink The loom remembers" })
@@ -312,7 +434,7 @@ test("the tray's ideas follow the cursor to the next scene, and a scene without 
   await anIdeaLinkedTo(page, first, "The loom remembers");
   await openTheWritingView(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
   await expect(drawnFrom(page).getByRole("link")).toHaveText([
     "The loom remembers",
   ]);
@@ -320,7 +442,7 @@ test("the tray's ideas follow the cursor to the next scene, and a scene without 
   await scene(page, second).click();
 
   await expect(drawnFrom(page)).toHaveCount(0);
-  await expect(sceneTray(page)).toContainText("No ideas linked yet.");
+  await expect(inspector(page)).toContainText("No ideas linked yet.");
 });
 
 test("ideas linked from the tray are listed in the order they were picked, and kept", async ({
@@ -333,9 +455,9 @@ test("ideas linked from the tray are listed in the order they were picked, and k
   const winter = await anIdea(page, "Winter comes early");
   await openTheWritingView(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
-  await sceneTray(page).getByRole("button", { name: "Link an idea" }).click();
+  await inspector(page).getByRole("button", { name: "Link an idea" }).click();
   await linkDialog(page).getByLabel("Winter comes early").check();
   await linkDialog(page).getByLabel("The loom remembers").check();
   await linkDialog(page).getByRole("button", { name: "Link 2" }).click();
@@ -362,9 +484,9 @@ test("the tray's dialog offers only ideas the scene does not draw on yet", async
   await anIdea(page, "A war down the valley");
   await openTheWritingView(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
-  await sceneTray(page).getByRole("button", { name: "Link an idea" }).click();
+  await inspector(page).getByRole("button", { name: "Link an idea" }).click();
 
   await expect(
     linkDialog(page).getByRole("list", { name: "Ideas to link" }),
@@ -379,15 +501,15 @@ test("Escape closes the tray's dialog and leaves the tray open", async ({
   await anIdea(page, "The loom remembers");
   await openTheWritingView(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
-  await sceneTray(page).getByRole("button", { name: "Link an idea" }).click();
+  await inspectorTab(page).click();
+  await inspector(page).getByRole("button", { name: "Link an idea" }).click();
   await expect(linkDialog(page)).toBeVisible();
 
   await page.keyboard.press("Escape");
 
   await expect(linkDialog(page)).toBeHidden();
-  await expect(sceneTray(page)).toBeVisible();
-  await expect(sceneTray(page)).toContainText("No ideas linked yet.");
+  await expect(inspector(page)).toBeVisible();
+  await expect(inspector(page)).toContainText("No ideas linked yet.");
 });
 
 test("the tray's dialog finds ideas by name", async ({ page }) => {
@@ -397,8 +519,8 @@ test("the tray's dialog finds ideas by name", async ({ page }) => {
   await anIdea(page, "A war down the valley");
   await openTheWritingView(page);
   await scene(page, first).click();
-  await sceneTab(page).click();
-  await sceneTray(page).getByRole("button", { name: "Link an idea" }).click();
+  await inspectorTab(page).click();
+  await inspector(page).getByRole("button", { name: "Link an idea" }).click();
 
   await linkDialog(page)
     .getByRole("searchbox", { name: "Find an idea" })

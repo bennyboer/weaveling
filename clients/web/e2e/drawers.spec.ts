@@ -1,6 +1,12 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aNewProject, API, aSceneMade, scenesCatalogued, views } from "./support/shell";
+import {
+  aNewProject,
+  API,
+  aSceneMade,
+  scenesCatalogued,
+  views,
+} from "./support/shell";
 import { aBookShaped } from "./support/book";
 import { flow, rail } from "./support/writing";
 
@@ -197,7 +203,7 @@ test("beside a wide book both drawers stay open, and the one opened last gives w
   await aWritingView(page, 1440);
   await page.evaluate(() => {
     localStorage.setItem("weaveling.book-rail.width", "800");
-    localStorage.setItem("weaveling.scene-tray.width", "800");
+    localStorage.setItem("weaveling.inspector.width", "800");
   });
   await page.reload();
   await page.getByRole("button", { name: "Contents", exact: true }).click();

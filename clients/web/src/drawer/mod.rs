@@ -62,7 +62,7 @@ impl Drawer {
 
 pub struct Inside<Head, Body> {
     pub id: &'static str,
-    pub named: &'static str,
+    pub named: TextProp,
     pub called: &'static str,
     pub head: Head,
     pub body: Body,
@@ -122,7 +122,7 @@ where
         html::aside()
             .id(id)
             .class(format!("drawer {edge_class} {id}"))
-            .attr("aria-label", named)
+            .attr("aria-label", move || named.get())
             .attr("hidden", move || (!drawer.is_open()).then_some(""))
             .style(("width", move || format!("{}px", width.shown())))
             .on(ev::keydown, escaping)

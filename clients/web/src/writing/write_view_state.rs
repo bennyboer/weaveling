@@ -12,6 +12,7 @@ use crate::writing::copying::Copying;
 use crate::writing::drawers::keep_apart;
 use crate::writing::editors::Editors;
 use crate::writing::focus::Focus;
+use crate::writing::inspector::Inspector;
 use crate::writing::labels::Labels;
 use crate::writing::left_off::LeftOff;
 use crate::writing::loose_scenes::LooseScenes;
@@ -20,7 +21,6 @@ use crate::writing::moving::Moving;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
 use crate::writing::scene_ideas::SceneIdeas;
-use crate::writing::scene_tray::SceneTray;
 use crate::writing::settings::Settings;
 use crate::writing::side::Side;
 use crate::writing::structure::Structure;
@@ -43,7 +43,7 @@ pub struct WriteViewState {
     pub word_count: WordCount,
     pub left_off: LeftOff,
     pub viewport: Viewport,
-    pub scene_tray: SceneTray,
+    pub inspector: Inspector,
     pub book_rail: BookRail,
     pub scene_ideas: SceneIdeas,
     pub choosing: Choosing,
@@ -81,7 +81,7 @@ impl WriteViewState {
             word_count: WordCount::of(structure, writing_in),
             left_off: LeftOff::in_project(project, side, structure, loose, walk, viewport),
             viewport,
-            scene_tray: SceneTray::as_last_left(),
+            inspector: Inspector::as_last_left(),
             book_rail: BookRail::as_last_left(),
             scene_ideas: SceneIdeas::of(project, problems, saving),
             choosing,
@@ -93,7 +93,7 @@ impl WriteViewState {
             loose,
             connection: StoredValue::new_local(SyncConnection::new()),
         };
-        keep_apart(state.book_rail.drawer(), state.scene_tray.drawer());
+        keep_apart(state.book_rail.drawer(), state.inspector.drawer());
         let listing = project.clone();
         let counting = project.clone();
 

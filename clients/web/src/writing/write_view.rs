@@ -23,6 +23,8 @@ use crate::writing::focus::focus_line;
 use crate::writing::going_back::going_back;
 use crate::writing::heading::pending_heading;
 use crate::writing::heading::{first_heading, level_of, section_heading};
+use crate::writing::inspecting::{ideas_to_link, inspecting};
+use crate::writing::inspector::Inspected;
 use crate::writing::margin::Edge;
 use crate::writing::menus::{
     book_edge, insertion, open_menu_where_writing, scene_margin, section_margin,
@@ -33,7 +35,6 @@ use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
 use crate::writing::settings_dialog::settings_dialog;
 use crate::writing::side::Side;
 use crate::writing::status_note::status_note;
-use crate::writing::this_scene::{ideas_to_link, this_scene};
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -200,7 +201,9 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
                 state.writing_in.moved_to(section);
             }
             if let Some(scene) = scene_around(&event) {
-                state.scene_tray.follow(scene);
+                state.inspector.follow(Inspected::Scene(scene));
+            } else if let Some(section) = heading_of(&event) {
+                state.inspector.follow(Inspected::Section(section));
             }
         })
         .child((
@@ -227,7 +230,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         asking(state),
         bringing_back(state),
         status_note(state),
-        this_scene(state, segment),
+        inspecting(state, segment),
         (side == Side::Book).then(|| contents(state)),
         drawer_toggles(state),
         going_back(state),
@@ -435,6 +438,17 @@ fn scene_around(event: &FocusEvent) -> Option<SceneId> {
         .ok()??
         .get_attribute("data-scene")
         .map(SceneId::from)
+}
+
+fn heading_of(event: &FocusEvent) -> Option<SectionId> {
+    event
+        .target()?
+        .dyn_into::<Element>()
+        .ok()?
+        .closest(".heading-row[data-section]")
+        .ok()??
+        .get_attribute("data-section")
+        .map(SectionId::from)
 }
 
 fn section_around(event: &FocusEvent) -> Option<SectionId> {

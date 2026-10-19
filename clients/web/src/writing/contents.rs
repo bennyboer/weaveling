@@ -36,7 +36,7 @@ pub fn contents(state: WriteViewState) -> impl IntoView {
         || "Contents".to_owned(),
         Inside {
             id: BOOK_RAIL,
-            named: "Contents",
+            named: "Contents".into(),
             called: "the contents",
             head: (
                 html::p().class("tally").child("Contents"),

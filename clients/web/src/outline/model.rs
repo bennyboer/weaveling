@@ -70,6 +70,16 @@ impl Display for SectionId {
 }
 
 impl Section {
+    pub fn ideas(&self) -> Vec<IdeaId> {
+        self.attachments
+            .iter()
+            .filter_map(|attachment| match attachment {
+                Attachment::Idea(idea) => Some(idea.clone()),
+                Attachment::Scene(_) => None,
+            })
+            .collect()
+    }
+
     pub fn scenes(&self) -> Vec<SceneId> {
         self.attachments
             .iter()

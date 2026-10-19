@@ -6,47 +6,112 @@ use leptos_router::components::A;
 use crate::drawer::{Edge, Inside, drawer};
 use crate::icons::{Icon, mark};
 use crate::ideas::model::IdeaId;
+use crate::outline::model::SectionId;
 use crate::route;
 use crate::scenes::link_dialog::link_dialog;
 use crate::scenes::model::SceneId;
+use crate::writing::inspector::Inspected;
 use crate::writing::write_view_state::WriteViewState;
 
-pub const SCENE_TRAY: &str = "scene-tray";
+pub const INSPECTOR: &str = "inspector";
 
-pub fn this_scene(state: WriteViewState, project: String) -> impl IntoView {
-    let tray = state.scene_tray;
+pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
+    let tray = state.inspector;
     let project = StoredValue::new(project);
 
     Effect::new(move || {
-        if tray.drawer().is_open()
-            && let Some(scene) = tray.scene()
-        {
-            state.scene_ideas.look_up(scene);
+        if !tray.drawer().is_open() {
+            return;
+        }
+        match tray.followed() {
+            Some(Inspected::Scene(scene)) => state.scene_ideas.look_up(scene),
+            Some(Inspected::Section(_)) => state.scene_ideas.know_the_ideas(),
+            None => {}
         }
     });
+    let named = move || match tray.followed() {
+        Some(Inspected::Section(_)) => "This section".to_owned(),
+        _ => "This scene".to_owned(),
+    };
 
     drawer(
         tray.drawer(),
         Edge::Right,
-        || "This scene".to_owned(),
+        named,
         Inside {
-            id: SCENE_TRAY,
-            named: "This scene",
+            id: INSPECTOR,
+            named: named.into(),
             called: "the tray",
-            head: html::p().class("tally").child("This scene"),
-            body: move || match tray.scene() {
+            head: html::p().class("tally").child(named),
+            body: move || match tray.followed() {
                 None => html::p()
                     .class("nothing-yet")
-                    .child("Put the cursor in a scene to see it here.")
+                    .child("Put the cursor in a scene or a heading to see it here.")
                     .into_any(),
-                Some(scene) => (
+                Some(Inspected::Scene(scene)) => (
                     title_field(scene.clone(), state),
                     drawn_from(scene, project, state),
+                )
+                    .into_any(),
+                Some(Inspected::Section(section)) => (
+                    html::p().class("section-name").child({
+                        let section = section.clone();
+
+                        move || match state.structure.title_of(&section) {
+                            Some(title) if !title.trim().is_empty() => title,
+                            _ => "Untitled section".to_owned(),
+                        }
+                    }),
+                    pinned(section, project, state),
                 )
                     .into_any(),
             },
         },
     )
+}
+
+fn pinned(
+    section: SectionId,
+    project: StoredValue<String>,
+    state: WriteViewState,
+) -> impl IntoView {
+    html::section().class("drawn-from").child((
+        html::h3().class("tally").child("Pinned ideas"),
+        move || {
+            let ideas = state.structure.ideas_of(&section);
+            match ideas.is_empty() {
+                true => html::p()
+                    .class("empty")
+                    .child("No ideas pinned here. Pin them in the outline.")
+                    .into_any(),
+                false => html::ul()
+                    .attr("aria-label", "Pinned ideas")
+                    .child(
+                        ideas
+                            .into_iter()
+                            .map(|idea| pinned_idea(idea, project, state))
+                            .collect::<Vec<_>>(),
+                    )
+                    .into_any(),
+            }
+        },
+    ))
+}
+
+fn pinned_idea(idea: IdeaId, project: StoredValue<String>, state: WriteViewState) -> impl IntoView {
+    move || {
+        let named = state.scene_ideas.named(&idea);
+        let at = project.with_value(|project| route::idea(project, &idea, &named));
+
+        html::li().child((
+            mark(Icon::Idea),
+            view! {
+                <A href=at attr:class="name">
+                    {named}
+                </A>
+            },
+        ))
+    }
 }
 
 fn title_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
@@ -170,7 +235,7 @@ fn linked_idea(
 }
 
 pub fn ideas_to_link(state: WriteViewState) -> impl IntoView {
-    let tray = state.scene_tray;
+    let tray = state.inspector;
     let ideas = state.scene_ideas;
 
     move || {

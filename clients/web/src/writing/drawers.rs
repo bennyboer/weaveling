@@ -5,8 +5,8 @@ use crate::drawer::Drawer;
 use crate::drawer::width::{DrawerWidth, NARROWEST, PAGE_LEFT_IN_SIGHT};
 use crate::icons::{Icon, mark};
 use crate::writing::contents::BOOK_RAIL;
+use crate::writing::inspecting::INSPECTOR;
 use crate::writing::side::Side;
-use crate::writing::this_scene::SCENE_TRAY;
 use crate::writing::write_view_state::WriteViewState;
 
 const LYING_OVER_THE_BOOK: f64 = 960.0;
@@ -57,7 +57,7 @@ pub fn keep_apart(rail: Drawer, tray: Drawer) {
 }
 
 pub fn drawer_toggles(state: WriteViewState) -> impl IntoView {
-    let (rail, tray) = (state.book_rail.drawer(), state.scene_tray.drawer());
+    let (rail, tray) = (state.book_rail.drawer(), state.inspector.drawer());
 
     html::div().class("drawer-toggles").child((
         (state.side == Side::Book).then(|| {
@@ -74,7 +74,7 @@ pub fn drawer_toggles(state: WriteViewState) -> impl IntoView {
             .r#type("button")
             .attr("aria-label", "This scene")
             .attr("title", "This scene")
-            .attr("aria-controls", SCENE_TRAY)
+            .attr("aria-controls", INSPECTOR)
             .attr("aria-expanded", move || tray.is_open().to_string())
             .on(ev::click, move |_| tray.toggle())
             .child(mark(Icon::Scene)),

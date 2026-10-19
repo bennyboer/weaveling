@@ -4,6 +4,7 @@ use std::pin::Pin;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+use crate::ideas::model::IdeaId;
 use crate::outline::model::{Attachment, Outline, OutlineChange, OutlineId, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -87,6 +88,16 @@ impl Structure {
                 .as_ref()
                 .and_then(|book| book.sections.iter().find(|held| &held.id == section))
                 .map(Section::scenes)
+                .unwrap_or_default()
+        })
+    }
+
+    pub fn ideas_of(self, section: &SectionId) -> Vec<IdeaId> {
+        self.outline.with(|outline| {
+            outline
+                .as_ref()
+                .and_then(|book| book.sections.iter().find(|held| &held.id == section))
+                .map(Section::ideas)
                 .unwrap_or_default()
         })
     }

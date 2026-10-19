@@ -2,7 +2,27 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
 import { aLooseScene, aNewProject } from "./support/shell";
-import { aBookInTheWritingView, asked, backToWhereILeftOff, beginning, flow, following, menuItem, offered, openTheWritingView, saveState, scene, sceneActions, sceneOnServer, sceneTab, sectionActions, statusNote, theBook, titled, trayTitle } from "./support/writing";
+import {
+  aBookInTheWritingView,
+  asked,
+  backToWhereILeftOff,
+  beginning,
+  flow,
+  following,
+  menuItem,
+  offered,
+  openTheWritingView,
+  saveState,
+  scene,
+  sceneActions,
+  sceneOnServer,
+  inspectorTab,
+  sectionActions,
+  statusNote,
+  theBook,
+  titled,
+  inspectedSceneTitle,
+} from "./support/writing";
 
 const sides = (page: Page) =>
   page.getByRole("navigation", { name: "Sides of the work" });
@@ -124,9 +144,9 @@ test("the tray names a scene outside the book", async ({ page }) => {
   await openTheLooseSide(page);
 
   await scene(page, loose).click();
-  await sceneTab(page).click();
+  await inspectorTab(page).click();
 
-  await expect(trayTitle(page)).toHaveValue("The cut scene");
+  await expect(inspectedSceneTitle(page)).toHaveValue("The cut scene");
 });
 
 test("with every scene in the book, the switch stays out of the way and the other side says so", async ({
@@ -177,10 +197,14 @@ test("writing outside the book leaves where you left off in the book alone", asy
   page,
 }) => {
   await aNewProject(page, "LooseLeftOff");
-  const second = (await aBookWithScenes(page, { "Part One": 14 }))["Part One"][11];
+  const second = (await aBookWithScenes(page, { "Part One": 14 }))[
+    "Part One"
+  ][11];
   const loose = await aLooseScene(page);
   await openTheWritingView(page);
-  await flow(page).locator(`[data-place-of="${second}"]`).scrollIntoViewIfNeeded();
+  await flow(page)
+    .locator(`[data-place-of="${second}"]`)
+    .scrollIntoViewIfNeeded();
   await scene(page, second).click();
   await page.keyboard.type("Here.");
   await expect(saveState(page)).toHaveText("All saved");
@@ -305,17 +329,23 @@ test("a scene in the book followed into the other side goes back to the book", a
 test("each side lands where you left off on it", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 420 });
   await aNewProject(page, "LeftOffSides");
-  const placed = (await aBookWithScenes(page, { "Part One": 14 }))["Part One"][11];
+  const placed = (await aBookWithScenes(page, { "Part One": 14 }))[
+    "Part One"
+  ][11];
   let loose = "";
   for (let made = 0; made < 10; made++) {
     loose = await aLooseScene(page);
   }
   await openTheWritingView(page);
-  await flow(page).locator(`[data-place-of="${placed}"]`).scrollIntoViewIfNeeded();
+  await flow(page)
+    .locator(`[data-place-of="${placed}"]`)
+    .scrollIntoViewIfNeeded();
   await scene(page, placed).click();
   await page.keyboard.type("In the book.");
   await openTheLooseSide(page);
-  await flow(page).locator(`[data-place-of="${loose}"]`).scrollIntoViewIfNeeded();
+  await flow(page)
+    .locator(`[data-place-of="${loose}"]`)
+    .scrollIntoViewIfNeeded();
   await scene(page, loose).click();
   await page.keyboard.type("Outside.");
   await expect(saveState(page)).toHaveText("All saved");
@@ -366,7 +396,10 @@ test("a scene begun in the view and taken out of the book shows up outside it at
 test("the scenes of a section removed from the book show up outside it at once", async ({
   page,
 }) => {
-  await aBookInTheWritingView(page, "RemovedAtOnce", { "Part One": 0, "Part Two": 1 });
+  await aBookInTheWritingView(page, "RemovedAtOnce", {
+    "Part One": 0,
+    "Part Two": 1,
+  });
   const begun = await aSceneBegunHere(page);
 
   await sectionActions(page, "Part One").click();

@@ -3,7 +3,8 @@ import { expect, type Page } from "@playwright/test";
 import { aBookWithScenes } from "./book";
 import { aNewProject, API, sceneCatalogued, views } from "./shell";
 
-export const flow = (page: Page) => page.getByRole("article", { name: "The book" });
+export const flow = (page: Page) =>
+  page.getByRole("article", { name: "The book" });
 
 export const scene = (page: Page, id: string) =>
   flow(page).locator(`[data-scene="${id}"] .ProseMirror`);
@@ -138,7 +139,8 @@ export async function backToWhereILeftOff(page: Page) {
   await backToWhereYouLeftOffButton(page).click();
 }
 
-export const saveState = (page: Page) => statusNote(page).locator(".save-state");
+export const saveState = (page: Page) =>
+  statusNote(page).locator(".save-state");
 
 export async function holdingWhatIsWritten(page: Page) {
   const held: (string | Buffer)[] = [];
@@ -186,14 +188,14 @@ export async function holding(page: Page, method: string, url: string) {
 export const wordCount = (page: Page) =>
   statusNote(page).getByRole("button", { name: /words? in/ });
 
-export const sceneTab = (page: Page) =>
+export const inspectorTab = (page: Page) =>
   page.getByRole("button", { name: "This scene" });
 
-export const sceneTray = (page: Page) =>
+export const inspector = (page: Page) =>
   page.getByRole("complementary", { name: "This scene" });
 
-export const trayTitle = (page: Page) =>
-  sceneTray(page).getByRole("textbox", { name: "Scene title" });
+export const inspectedSceneTitle = (page: Page) =>
+  inspector(page).getByRole("textbox", { name: "Scene title" });
 
 export const following = (page: Page, side: string, scene: string) =>
   page.goto(

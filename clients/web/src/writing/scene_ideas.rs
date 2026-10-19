@@ -78,17 +78,7 @@ impl SceneIdeas {
     }
 
     pub fn look_up(self, scene: SceneId) {
-        if !self.ideas_asked.get_value() {
-            self.ideas_asked.set_value(true);
-            let project = self.project.get_value();
-
-            spawn_local(async move {
-                match ideas::list(&project).await {
-                    Ok(found) => self.ideas.set(Some(found)),
-                    Err(failure) => self.problems.report(failure),
-                }
-            });
-        }
+        self.know_the_ideas();
 
         if !self
             .asked
@@ -109,6 +99,20 @@ impl SceneIdeas {
                 }
             }
         });
+    }
+
+    pub fn know_the_ideas(self) {
+        if !self.ideas_asked.get_value() {
+            self.ideas_asked.set_value(true);
+            let project = self.project.get_value();
+
+            spawn_local(async move {
+                match ideas::list(&project).await {
+                    Ok(found) => self.ideas.set(Some(found)),
+                    Err(failure) => self.problems.report(failure),
+                }
+            });
+        }
     }
 
     pub fn link(self, scene: SceneId, chosen: Vec<IdeaId>) {

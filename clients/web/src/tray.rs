@@ -25,7 +25,7 @@ pub fn laid_out(
             tally,
             Inside {
                 id: "tray",
-                named: "Tray",
+                named: "Tray".into(),
                 called: "the tray",
                 head: (),
                 body: kept,
