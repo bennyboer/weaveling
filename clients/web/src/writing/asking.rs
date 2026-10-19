@@ -4,6 +4,7 @@ use leptos::{IntoView, ev, html};
 use crate::dialog::modal;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
+use crate::writing::heading::KeptTitle;
 use crate::writing::side::Side;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -15,6 +16,12 @@ pub enum Asking {
         scenes: Vec<SceneId>,
         sections: Vec<SectionId>,
     },
+    RenamedMeanwhile {
+        section: SectionId,
+        mine: String,
+        theirs: String,
+        kept: KeptTitle,
+    },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -22,6 +29,8 @@ enum Answer {
     Confirmed,
     TakenOut,
     DeletedForGood,
+    KeptMine,
+    TakenTheirs,
 }
 
 pub fn asking(state: WriteViewState) -> impl IntoView {
@@ -65,6 +74,10 @@ fn offered(question: &Asking, state: WriteViewState) -> Vec<(&'static str, Answe
     match question {
         Asking::DeleteScene(_) => vec![("Delete", Answer::DeletedForGood)],
         Asking::RemoveSection(_) => vec![("Remove", Answer::Confirmed)],
+        Asking::RenamedMeanwhile { .. } => vec![
+            ("Take theirs", Answer::TakenTheirs),
+            ("Keep mine", Answer::KeptMine),
+        ],
         Asking::RemoveChosen { .. } => match state.side {
             Side::Book => vec![
                 ("Take out of the book", Answer::TakenOut),
@@ -90,6 +103,12 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
                 format!("{named} and everything written in it will be gone for good. Deleting cannot be undone."),
             )
         }
+        Asking::RenamedMeanwhile { mine, theirs, .. } => (
+            "Renamed meanwhile",
+            format!(
+                "While you were editing this heading, someone else renamed it to “{theirs}”. Yours is “{mine}”."
+            ),
+        ),
         Asking::RemoveSection(_) => (
             "Remove this section?",
             "Its scenes leave the book but are not deleted: they wait among the scenes not in the book. Sections inside it move up to take its place.".to_owned(),
@@ -138,6 +157,25 @@ fn answered(question: Asking, answer: Answer, state: WriteViewState) {
         Asking::DeleteScene(scene) => match state.side {
             Side::Book => state.structure.delete(scene),
             Side::Loose => state.loose.delete(scene),
+        },
+        Asking::RenamedMeanwhile {
+            section,
+            mine,
+            theirs,
+            kept,
+        } => match answer {
+            Answer::KeptMine => {
+                kept.keep(mine.clone(), theirs);
+                state.structure.retitle(section, mine);
+            }
+            _ => {
+                kept.take(theirs.clone());
+                if let Ok(Some(shown)) = document().query_selector(&format!(
+                    ".heading-row[data-section=\"{section}\"] .heading"
+                )) {
+                    shown.set_text_content(Some(&theirs));
+                }
+            }
         },
         Asking::RemoveSection(section) => {
             state

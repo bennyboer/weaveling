@@ -6,6 +6,7 @@ use leptos::{IntoView, ev, html};
 use web_sys::{HtmlDivElement, KeyboardEvent, Node};
 
 use crate::outline::model::{Section, SectionId};
+use crate::writing::asking::Asking;
 use crate::writing::beginnings::Pending;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -36,6 +37,24 @@ pub fn lift(section: SectionId, state: WriteViewState) {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct KeptTitle {
+    saved: StoredValue<String>,
+    basis: StoredValue<String>,
+}
+
+impl KeptTitle {
+    pub fn take(self, theirs: String) {
+        _ = self.saved.try_set_value(theirs.clone());
+        _ = self.basis.try_set_value(theirs);
+    }
+
+    pub fn keep(self, mine: String, theirs: String) {
+        _ = self.saved.try_set_value(mine);
+        _ = self.basis.try_set_value(theirs);
+    }
+}
+
 pub fn section_heading(depth: usize, section: Section, state: WriteViewState) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let id = section.id.clone();
@@ -48,9 +67,12 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
         }
         titled => titled.to_owned(),
     };
-    let saved = StoredValue::new(written.clone());
+    let kept = KeptTitle {
+        saved: StoredValue::new(written.clone()),
+        basis: StoredValue::new(section.title.clone()),
+    };
     let waiting = StoredValue::new(None::<TimeoutHandle>);
-    let known = StoredValue::new(section.title.clone());
+    let heard = StoredValue::new(section.title.clone());
 
     let save = move |id: SectionId| {
         if let Some(handle) = waiting.get_value() {
@@ -62,11 +84,26 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
         let Some(shown) = host.get_untracked() else {
             return;
         };
-        let title = shown.text_content().unwrap_or_default().trim().to_owned();
+        let mine = shown.text_content().unwrap_or_default().trim().to_owned();
+        let theirs = heard.get_value();
 
-        if saved.with_value(|before| before != &title) {
-            saved.set_value(title.clone());
-            state.structure.retitle(id, title);
+        if kept.basis.with_value(|basis| basis != &theirs) {
+            if kept.saved.with_value(|saved| saved == &mine) || mine == theirs {
+                kept.take(theirs.clone());
+                shown.set_text_content(Some(&theirs));
+            } else {
+                state.margin.ask(Asking::RenamedMeanwhile {
+                    section: id,
+                    mine,
+                    theirs,
+                    kept,
+                });
+            }
+            return;
+        }
+        if kept.saved.with_value(|saved| saved != &mine) {
+            kept.saved.set_value(mine.clone());
+            state.structure.retitle(id, mine);
         }
     };
 
@@ -79,14 +116,18 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
             let (Some(title), Some(shown)) = (state.structure.title_of(&id), host.get()) else {
                 return;
             };
-            if known.with_value(|before| before == &title) {
+            if heard.with_value(|before| before == &title) {
                 return;
             }
-            known.set_value(title.clone());
+            heard.set_value(title.clone());
+            if kept.saved.with_value(|saved| saved == &title) {
+                kept.basis.set_value(title);
+                return;
+            }
             let editing =
                 shown.matches(":focus").unwrap_or(false) || waiting.with_value(Option::is_some);
             if !editing {
-                saved.set_value(title.clone());
+                kept.take(title.clone());
                 shown.set_text_content(Some(&title));
             }
         }

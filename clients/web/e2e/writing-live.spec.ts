@@ -2,7 +2,12 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aBookShaped } from "./support/book";
 import { aNewProject, API } from "./support/shell";
-import { flow, heading, openTheWritingView } from "./support/writing";
+import {
+  flow,
+  heading,
+  openTheWritingView,
+  savedTitles,
+} from "./support/writing";
 
 async function aBookFollowedLive(page: Page, named: string) {
   await aNewProject(page, named);
@@ -179,4 +184,154 @@ test("a channel that keeps dropping just after opening is tried again less and l
     connections - first,
     "waiting twice as long each time, it reconnects a handful of times in two seconds, not twenty",
   ).toBeLessThanOrEqual(6);
+});
+
+const renamedMeanwhile = (page: Page) =>
+  page.getByRole("dialog", { name: "Renamed meanwhile" });
+
+async function renamedWhileIAmInIt(page: Page, named: string) {
+  const { outline, ids, reloads } = await aBookFollowedLive(page, named);
+  await heading(page, "Part One").click();
+  const before = reloads();
+  await anotherAuthor(
+    page,
+    "patch",
+    `/outlines/${outline}/sections/${ids["Part One"]}`,
+    { title: "The Beginning" },
+  );
+  await expect.poll(() => reloads()).toBeGreaterThan(before);
+}
+
+test("a heading renamed elsewhere while I rename it asks which name stays", async ({
+  page,
+}) => {
+  await renamedWhileIAmInIt(page, "LiveBothRenamed");
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+
+  await page.keyboard.press("Enter");
+
+  await expect(renamedMeanwhile(page)).toContainText(
+    "someone else renamed it to “The Beginning”. Yours is “Part One, drafted”.",
+  );
+});
+
+test("keeping my name over one given meanwhile keeps mine everywhere", async ({
+  page,
+}) => {
+  await renamedWhileIAmInIt(page, "LiveKeptMine");
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+  await page.keyboard.press("Enter");
+
+  await renamedMeanwhile(page)
+    .getByRole("button", { name: "Keep mine" })
+    .click();
+
+  await expect(heading(page, "Part One, drafted")).toBeVisible();
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One, drafted", "Part Two"]);
+});
+
+test("taking the name given meanwhile drops mine", async ({ page }) => {
+  await renamedWhileIAmInIt(page, "LiveTookTheirs");
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+  await page.keyboard.press("Enter");
+
+  await renamedMeanwhile(page)
+    .getByRole("button", { name: "Take theirs" })
+    .click();
+
+  await expect(heading(page, "The Beginning")).toBeVisible();
+  await expect(heading(page, "Part One, drafted")).toHaveCount(0);
+  await page.waitForTimeout(500);
+  expect(await savedTitles(page)).toEqual(["The Beginning", "Part Two"]);
+});
+
+test("a heading renamed elsewhere while I only sat in it takes the new name without asking", async ({
+  page,
+}) => {
+  await renamedWhileIAmInIt(page, "LiveSatIn");
+
+  await page.keyboard.press("Enter");
+
+  await expect(heading(page, "The Beginning")).toBeVisible();
+  await expect(renamedMeanwhile(page)).toHaveCount(0);
+});
+
+test("a heading renamed in two goes, saved in between, never asks", async ({
+  page,
+}) => {
+  await aBookFollowedLive(page, "LiveTwoGoes");
+  await heading(page, "Part One").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One, drafted", "Part Two"]);
+  await page.waitForTimeout(300);
+
+  await page.keyboard.type(" twice");
+  await page.keyboard.press("Enter");
+
+  await expect(renamedMeanwhile(page)).toHaveCount(0);
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One, drafted twice", "Part Two"]);
+});
+
+for (const [answer, settled] of [
+  ["Keep mine", "Part One, drafted, again"],
+  ["Take theirs", "The Beginning, again"],
+] as const) {
+  test(`having answered “${answer}”, renaming further asks nothing more`, async ({
+    page,
+  }) => {
+    await renamedWhileIAmInIt(page, `LiveFurther${answer.split(" ")[0]}`);
+    await page.keyboard.press("End");
+    await page.keyboard.type(", drafted");
+    await page.keyboard.press("Enter");
+    await renamedMeanwhile(page).getByRole("button", { name: answer }).click();
+    await expect(renamedMeanwhile(page)).toHaveCount(0);
+    await page.waitForTimeout(300);
+
+    await heading(page, settled.replace(", again", "")).click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(", again");
+    await page.keyboard.press("Enter");
+
+    await expect(renamedMeanwhile(page)).toHaveCount(0);
+    await expect.poll(() => savedTitles(page)).toEqual([settled, "Part Two"]);
+  });
+}
+
+test("having kept mine, the server agreeing while I edit on asks nothing", async ({
+  page,
+}) => {
+  await renamedWhileIAmInIt(page, "LiveKeptThenEdited");
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+  await page.keyboard.press("Enter");
+  const heldBack = async (route: import("@playwright/test").Route) => {
+    await new Promise((later) => setTimeout(later, 800));
+    await route.continue();
+  };
+  await page.route("**/api/outlines/*/sections/*", heldBack);
+  await page.route("**/api/outlines", heldBack);
+  await renamedMeanwhile(page)
+    .getByRole("button", { name: "Keep mine" })
+    .click();
+
+  await heading(page, "Part One, drafted").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(", again");
+  await page.waitForTimeout(1500);
+  await page.keyboard.press("Enter");
+
+  await expect(renamedMeanwhile(page)).toHaveCount(0);
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One, drafted, again", "Part Two"]);
 });
