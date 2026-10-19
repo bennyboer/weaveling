@@ -10,16 +10,17 @@ import {
 import {
   flow,
   heading,
+  inspectedSceneTitle,
+  inspector,
+  inspectorTab,
   label,
   openTheWritingView,
   projectOf,
+  projectsOutline,
   scene,
-  inspectorTab,
-  inspector,
   shown,
   statusNote,
   titled,
-  inspectedSceneTitle,
 } from "./support/writing";
 
 async function aTitledPair(page: Page) {
@@ -181,17 +182,95 @@ test("a heading's pinned ideas are shown in the tray, each leading to its idea",
   ).toHaveAttribute("href", new RegExp(`/ideas/[^/]*${debt}$`));
 });
 
-test("a heading with nothing pinned says where ideas are pinned", async ({
-  page,
-}) => {
+test("a heading with nothing pinned says so", async ({ page }) => {
   await aTitledPair(page);
   await inspectorTab(page).click();
 
   await flow(page).getByRole("heading", { name: "Part One" }).click();
 
-  await expect(inspectedSection(page)).toContainText(
-    "No ideas pinned here. Pin them in the outline.",
+  await expect(inspectedSection(page)).toContainText("No ideas pinned here.");
+});
+
+const pinDialog = (page: Page) =>
+  page.getByRole("dialog", { name: "Pin ideas" });
+
+async function pinnedOnServer(page: Page, title: string) {
+  const outline = await projectsOutline(page);
+  const section = outline.sections.find(
+    (held: { title: string }) => held.title === title,
   );
+
+  return section.attachments
+    .filter((attached: { kind: string }) => attached.kind === "idea")
+    .map((attached: { id: string }) => attached.id);
+}
+
+async function aBookWithPins(page: Page) {
+  await aNewProject(page, "Pinning");
+  const { outline, ids } = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  const already = await anIdeaPinnedTo(
+    page,
+    outline,
+    ids["Part One"],
+    "Already here",
+  );
+  await anIdeaPinnedTo(page, outline, ids["Part Two"], "Pinned elsewhere");
+  const winter = await anIdea(page, "Winter comes early");
+  const loom = await anIdea(page, "The loom remembers");
+  await openTheWritingView(page);
+  await flow(page).getByRole("heading", { name: "Part One" }).click();
+  await page.getByRole("button", { name: "This section", exact: true }).click();
+
+  return { already, winter, loom };
+}
+
+test("ideas are pinned to a section from the inspector, after what it holds", async ({
+  page,
+}) => {
+  const { already, winter, loom } = await aBookWithPins(page);
+
+  await inspectedSection(page)
+    .getByRole("button", { name: "Pin an idea" })
+    .click();
+  await expect(
+    pinDialog(page)
+      .getByRole("list", { name: "Ideas to pin" })
+      .getByRole("checkbox"),
+    "an idea pinned anywhere in the outline is not offered again",
+  ).toHaveCount(2);
+  await pinDialog(page).getByLabel("Winter comes early").check();
+  await pinDialog(page).getByLabel("The loom remembers").check();
+  await pinDialog(page).getByRole("button", { name: "Pin 2" }).click();
+
+  await expect(pinDialog(page)).toBeHidden();
+  await expect(pinnedIdeas(page).getByRole("link")).toHaveText([
+    "Already here",
+    "Winter comes early",
+    "The loom remembers",
+  ]);
+  await expect
+    .poll(() => pinnedOnServer(page, "Part One"))
+    .toEqual([already, winter, loom]);
+});
+
+test("an idea unpinned in the inspector leaves the outline and is offered again", async ({
+  page,
+}) => {
+  await aBookWithPins(page);
+
+  await pinnedIdeas(page)
+    .getByRole("button", { name: "Unpin Already here" })
+    .click();
+
+  await expect(inspectedSection(page)).toContainText("No ideas pinned here.");
+  await expect.poll(() => pinnedOnServer(page, "Part One")).toEqual([]);
+  await inspectedSection(page)
+    .getByRole("button", { name: "Pin an idea" })
+    .click();
+  await expect(pinDialog(page).getByLabel("Already here")).toBeVisible();
 });
 
 test("an untitled scene is named in the tray by its opening words", async ({

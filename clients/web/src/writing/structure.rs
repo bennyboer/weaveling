@@ -350,6 +350,55 @@ impl Structure {
         });
     }
 
+    pub fn is_pinned(self, idea: &IdeaId) -> bool {
+        self.outline.with(|outline| {
+            outline
+                .as_ref()
+                .is_some_and(|book| book.holds(&Attachment::Idea(idea.clone())))
+        })
+    }
+
+    pub fn pin(self, section: SectionId, ideas: Vec<IdeaId>) {
+        let Some(outline) = self.id() else {
+            return;
+        };
+        let mut behind = self
+            .read_untracked(|book| {
+                book.sections
+                    .iter()
+                    .find(|held| held.id == section)
+                    .and_then(|held| held.attachments.last().cloned())
+            })
+            .flatten();
+
+        self.in_turn(async move {
+            for idea in ideas {
+                let pinned = Attachment::Idea(idea);
+
+                match service::attach(&outline, &pinned, &section, behind.take()).await {
+                    Ok(placed) => {
+                        self.take(placed);
+                        behind = Some(pinned);
+                    }
+                    Err(failure) => return self.problems.report(failure),
+                }
+            }
+        });
+    }
+
+    pub fn unpin(self, idea: IdeaId) {
+        let Some(outline) = self.id() else {
+            return;
+        };
+
+        self.in_turn(async move {
+            match service::detach(&outline, &Attachment::Idea(idea)).await {
+                Ok(()) => self.refresh().await,
+                Err(failure) => self.problems.report(failure),
+            }
+        });
+    }
+
     pub fn take_out(self, scene: SceneId) {
         let Some(outline) = self.id() else {
             return;

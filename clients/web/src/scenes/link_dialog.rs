@@ -5,7 +5,23 @@ use leptos::{IntoView, ev};
 use crate::dialog::modal;
 use crate::icons::{Icon, mark};
 use crate::ideas::model::{Idea, IdeaId};
+#[derive(Clone, Copy)]
+pub struct Wording {
+    pub title: &'static str,
+    pub listed: &'static str,
+    pub every_one_taken: &'static str,
+    pub verb: &'static str,
+}
+
+pub const LINKING: Wording = Wording {
+    title: "Link ideas",
+    listed: "Ideas to link",
+    every_one_taken: "Every idea in this project is already linked.",
+    verb: "Link",
+};
+
 pub fn link_dialog(
+    wording: Wording,
     waiting: Signal<Vec<Idea>>,
     link: impl Fn(Vec<IdeaId>) + Copy + Send + Sync + 'static,
     close: impl Fn() + Copy + Send + Sync + 'static,
@@ -31,7 +47,7 @@ pub fn link_dialog(
     };
 
     modal(
-        "Link ideas",
+        wording.title,
         "",
         close,
         (
@@ -48,7 +64,7 @@ pub fn link_dialog(
 
                 if found.is_empty() {
                     let why = match waiting.with(Vec::is_empty) {
-                        true => "Every idea in this project is already linked.",
+                        true => wording.every_one_taken,
                         false => "No idea matches.",
                     };
 
@@ -57,7 +73,7 @@ pub fn link_dialog(
 
                 html::ul()
                     .class("choices")
-                    .attr("aria-label", "Ideas to link")
+                    .attr("aria-label", wording.listed)
                     .child(
                         found
                             .into_iter()
@@ -79,8 +95,8 @@ pub fn link_dialog(
                         close();
                     })
                     .child(move || match chosen.with(Vec::len) {
-                        0 | 1 => "Link".to_owned(),
-                        many => format!("Link {many}"),
+                        0 | 1 => wording.verb.to_owned(),
+                        many => format!("{} {many}", wording.verb),
                     }),
             )),
         ),

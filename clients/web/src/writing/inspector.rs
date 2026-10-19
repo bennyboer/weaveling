@@ -12,36 +12,40 @@ pub enum Inspected {
 
 #[derive(Clone, Copy)]
 pub struct Inspector {
-    followed: RwSignal<Option<Inspected>>,
+    inspected: RwSignal<Option<Inspected>>,
     drawer: Drawer,
 }
 
 impl Inspector {
     pub fn as_last_left() -> Self {
         Self {
-            followed: RwSignal::new(None),
+            inspected: RwSignal::new(None),
             drawer: Drawer::as_last_left("weaveling.inspector", false),
         }
     }
 
-    pub fn followed(self) -> Option<Inspected> {
-        self.followed.get()
+    pub fn inspected(self) -> Option<Inspected> {
+        self.inspected.get()
+    }
+
+    pub fn inspected_untracked(self) -> Option<Inspected> {
+        self.inspected.get_untracked()
     }
 
     pub fn scene(self) -> Option<SceneId> {
-        self.followed.with(scene_in)
+        self.inspected.with(scene_in)
     }
 
     pub fn scene_untracked(self) -> Option<SceneId> {
-        self.followed.with_untracked(scene_in)
+        self.inspected.with_untracked(scene_in)
     }
 
-    pub fn follow(self, followed: Inspected) {
+    pub fn follow(self, inspected: Inspected) {
         if self
-            .followed
-            .with_untracked(|held| held.as_ref() != Some(&followed))
+            .inspected
+            .with_untracked(|held| held.as_ref() != Some(&inspected))
         {
-            self.followed.set(Some(followed));
+            self.inspected.set(Some(inspected));
         }
     }
 
@@ -50,8 +54,8 @@ impl Inspector {
     }
 }
 
-fn scene_in(followed: &Option<Inspected>) -> Option<SceneId> {
-    match followed {
+fn scene_in(inspected: &Option<Inspected>) -> Option<SceneId> {
+    match inspected {
         Some(Inspected::Scene(scene)) => Some(scene.clone()),
         _ => None,
     }

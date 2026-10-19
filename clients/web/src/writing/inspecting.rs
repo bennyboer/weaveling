@@ -8,7 +8,7 @@ use crate::icons::{Icon, mark};
 use crate::ideas::model::IdeaId;
 use crate::outline::model::SectionId;
 use crate::route;
-use crate::scenes::link_dialog::link_dialog;
+use crate::scenes::link_dialog::{LINKING, Wording, link_dialog};
 use crate::scenes::model::SceneId;
 use crate::writing::inspector::Inspected;
 use crate::writing::write_view_state::WriteViewState;
@@ -16,26 +16,26 @@ use crate::writing::write_view_state::WriteViewState;
 pub const INSPECTOR: &str = "inspector";
 
 pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
-    let tray = state.inspector;
+    let inspector = state.inspector;
     let project = StoredValue::new(project);
 
     Effect::new(move || {
-        if !tray.drawer().is_open() {
+        if !inspector.drawer().is_open() {
             return;
         }
-        match tray.followed() {
+        match inspector.inspected() {
             Some(Inspected::Scene(scene)) => state.scene_ideas.look_up(scene),
             Some(Inspected::Section(_)) => state.scene_ideas.know_the_ideas(),
             None => {}
         }
     });
-    let named = move || match tray.followed() {
+    let named = move || match inspector.inspected() {
         Some(Inspected::Section(_)) => "This section".to_owned(),
         _ => "This scene".to_owned(),
     };
 
     drawer(
-        tray.drawer(),
+        inspector.drawer(),
         Edge::Right,
         named,
         Inside {
@@ -43,7 +43,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
             named: named.into(),
             called: "the tray",
             head: html::p().class("tally").child(named),
-            body: move || match tray.followed() {
+            body: move || match inspector.inspected() {
                 None => html::p()
                     .class("nothing-yet")
                     .child("Put the cursor in a scene or a heading to see it here.")
@@ -82,7 +82,7 @@ fn pinned(
             match ideas.is_empty() {
                 true => html::p()
                     .class("empty")
-                    .child("No ideas pinned here. Pin them in the outline.")
+                    .child("No ideas pinned here.")
                     .into_any(),
                 false => html::ul()
                     .attr("aria-label", "Pinned ideas")
@@ -95,6 +95,11 @@ fn pinned(
                     .into_any(),
             }
         },
+        html::button()
+            .r#type("button")
+            .class("link-an-idea")
+            .on(ev::click, move |_| state.scene_ideas.start_picking())
+            .child((mark(Icon::Plus), "Pin an idea")),
     ))
 }
 
@@ -103,13 +108,22 @@ fn pinned_idea(idea: IdeaId, project: StoredValue<String>, state: WriteViewState
         let named = state.scene_ideas.named(&idea);
         let at = project.with_value(|project| route::idea(project, &idea, &named));
 
+        let unpinned = idea.clone();
+        let shown = named.clone();
+
         html::li().child((
             mark(Icon::Idea),
             view! {
                 <A href=at attr:class="name">
-                    {named}
+                    {shown}
                 </A>
             },
+            html::button()
+                .r#type("button")
+                .attr("aria-label", format!("Unpin {named}"))
+                .attr("title", format!("Unpin {named}"))
+                .on(ev::click, move |_| state.structure.unpin(unpinned.clone()))
+                .child(mark(Icon::Remove)),
         ))
     }
 }
@@ -234,25 +248,56 @@ fn linked_idea(
     ))
 }
 
-pub fn ideas_to_link(state: WriteViewState) -> impl IntoView {
-    let tray = state.inspector;
+const PINNING: Wording = Wording {
+    title: "Pin ideas",
+    listed: "Ideas to pin",
+    every_one_taken: "Every idea in this project is already pinned in the outline.",
+    verb: "Pin",
+};
+
+pub fn ideas_to_choose(state: WriteViewState) -> impl IntoView {
+    let inspector = state.inspector;
     let ideas = state.scene_ideas;
 
     move || {
-        ideas.is_picking().then(|| {
-            link_dialog(
+        if !ideas.is_picking() {
+            return None;
+        }
+
+        Some(match inspector.inspected_untracked() {
+            Some(Inspected::Section(section)) => {
+                let section = StoredValue::new(section);
+
+                link_dialog(
+                    PINNING,
+                    Signal::derive(move || {
+                        ideas
+                            .every_idea()
+                            .into_iter()
+                            .filter(|idea| !state.structure.is_pinned(&idea.id))
+                            .collect()
+                    }),
+                    move |chosen| state.structure.pin(section.get_value(), chosen),
+                    move || ideas.stop_picking(),
+                )
+                .into_any()
+            }
+            _ => link_dialog(
+                LINKING,
                 Signal::derive(move || {
-                    tray.scene()
+                    inspector
+                        .scene()
                         .map(|scene| ideas.waiting_for(&scene))
                         .unwrap_or_default()
                 }),
                 move |chosen| {
-                    if let Some(scene) = tray.scene_untracked() {
+                    if let Some(scene) = inspector.scene_untracked() {
                         ideas.link(scene, chosen);
                     }
                 },
                 move || ideas.stop_picking(),
             )
+            .into_any(),
         })
     }
 }

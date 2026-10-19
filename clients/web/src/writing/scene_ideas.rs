@@ -52,6 +52,10 @@ impl SceneIdeas {
         })
     }
 
+    pub fn every_idea(self) -> Vec<Idea> {
+        self.ideas.get().unwrap_or_default()
+    }
+
     pub fn waiting_for(self, scene: &SceneId) -> Vec<Idea> {
         let linked = self.linked_to(scene).unwrap_or_default();
 

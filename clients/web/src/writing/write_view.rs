@@ -23,7 +23,7 @@ use crate::writing::focus::focus_line;
 use crate::writing::going_back::going_back;
 use crate::writing::heading::pending_heading;
 use crate::writing::heading::{first_heading, level_of, section_heading};
-use crate::writing::inspecting::{ideas_to_link, inspecting};
+use crate::writing::inspecting::{ideas_to_choose, inspecting};
 use crate::writing::inspector::Inspected;
 use crate::writing::margin::Edge;
 use crate::writing::menus::{
@@ -234,7 +234,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         (side == Side::Book).then(|| contents(state)),
         drawer_toggles(state),
         going_back(state),
-        ideas_to_link(state),
+        ideas_to_choose(state),
         settings_dialog(state),
         placing(state, placed_from),
     )
