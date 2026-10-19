@@ -55,7 +55,11 @@ impl KeptTitle {
     }
 }
 
-pub fn section_heading(depth: usize, section: Section, state: WriteViewState) -> impl IntoView {
+pub fn section_heading(
+    depth: Memo<usize>,
+    section: Section,
+    state: WriteViewState,
+) -> impl IntoView {
     let host: NodeRef<Div> = NodeRef::new();
     let id = section.id.clone();
     let written = match section.title.as_str() {
@@ -107,8 +111,6 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
         }
     };
 
-    let level = level_of(depth);
-
     Effect::new({
         let id = id.clone();
 
@@ -157,9 +159,9 @@ pub fn section_heading(depth: usize, section: Section, state: WriteViewState) ->
     });
 
     html::div()
-        .class(format!("heading level-{level}"))
+        .class(move || format!("heading level-{}", level_of(depth.get())))
         .role("heading")
-        .attr("aria-level", level.to_string())
+        .attr("aria-level", move || level_of(depth.get()).to_string())
         .attr("contenteditable", "plaintext-only")
         .attr("spellcheck", "false")
         .attr("data-placeholder", UNTITLED)

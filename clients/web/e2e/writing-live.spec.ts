@@ -1,12 +1,15 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aBookShaped } from "./support/book";
+import { aBookShaped, aBookWithScenes } from "./support/book";
 import { aNewProject, API } from "./support/shell";
 import {
   flow,
   heading,
   openTheWritingView,
+  projectsOutline,
   savedTitles,
+  scene,
+  shown,
 } from "./support/writing";
 
 async function aBookFollowedLive(page: Page, named: string) {
@@ -36,7 +39,7 @@ async function aBookFollowedLive(page: Page, named: string) {
 
 async function anotherAuthor(
   page: Page,
-  method: "post" | "patch" | "delete",
+  method: "post" | "patch" | "put" | "delete",
   path: string,
   data?: object,
 ) {
@@ -334,4 +337,77 @@ test("having kept mine, the server agreeing while I edit on asks nothing", async
   await expect
     .poll(() => savedTitles(page))
     .toEqual(["Part One, drafted, again", "Part Two"]);
+});
+
+async function placedOnServer(page: Page) {
+  const outline = await projectsOutline(page);
+  const ids: Record<string, string> = Object.fromEntries(
+    outline.sections.map((held: { title: string; section: string }) => [
+      held.title,
+      held.section,
+    ]),
+  );
+
+  return { outline: outline.id as string, ids };
+}
+
+test("a heading I am typing in keeps my words and my cursor when another author nests it", async ({
+  page,
+}) => {
+  const { outline, ids } = await aBookFollowedLive(page, "LiveNested");
+  await heading(page, "Part Two").click();
+  await page.keyboard.press("End");
+
+  await page.keyboard.type(", rewritten");
+  await anotherAuthor(
+    page,
+    "post",
+    `/outlines/${outline}/sections/${ids["Part Two"]}/demote`,
+  );
+  await expect(heading(page, "Part Two, rewritten")).toHaveAttribute(
+    "aria-level",
+    "3",
+  );
+  await page.keyboard.type(" again");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => savedTitles(page))
+    .toEqual(["Part One", "Part Two, rewritten again"]);
+});
+
+test("a scene I am writing in keeps my cursor when another author moves its section", async ({
+  page,
+}) => {
+  await aNewProject(page, "LiveMovedUnder");
+  const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
+  const [mine] = scenes["Part Two"];
+  let opened = 0;
+  page.on("response", (response) => {
+    if (
+      response.request().method() === "POST" &&
+      response.url().endsWith("/api/outlines")
+    ) {
+      opened += 1;
+    }
+  });
+  await openTheWritingView(page);
+  await expect.poll(() => opened).toBeGreaterThanOrEqual(2);
+  const { outline, ids } = await placedOnServer(page);
+  await scene(page, mine).click();
+  await page.keyboard.type("Hello");
+
+  await anotherAuthor(
+    page,
+    "put",
+    `/outlines/${outline}/sections/${ids["Part Two"]}/place`,
+    { under: null, after: null },
+  );
+  await expect(flow(page).getByRole("heading")).toHaveText([
+    "Part Two",
+    "Part One",
+  ]);
+  await page.keyboard.type(" world");
+
+  await expect.poll(() => shown(page, mine)).toBe("Hello world");
 });

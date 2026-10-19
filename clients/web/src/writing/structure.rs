@@ -11,6 +11,7 @@ use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
+use crate::writing::cursor_kept::keeping_the_cursor;
 use crate::writing::problems::Problems;
 use crate::writing::saving::Saving;
 
@@ -285,6 +286,20 @@ impl Structure {
             .flatten()
     }
 
+    pub fn depth_in_book(self, section: &SectionId) -> usize {
+        self.outline.with(|outline| {
+            outline
+                .as_ref()
+                .and_then(|book| {
+                    book.in_reading_order()
+                        .into_iter()
+                        .find(|(_, held)| &held.id == section)
+                        .map(|(depth, _)| depth)
+                })
+                .unwrap_or(0)
+        })
+    }
+
     pub fn depth_of(self, section: &SectionId) -> usize {
         self.read_untracked(|book| {
             book.in_reading_order()
@@ -545,7 +560,7 @@ impl Structure {
         });
 
         if newer {
-            self.outline.set(Some(arrived));
+            keeping_the_cursor(|| self.outline.set(Some(arrived)));
         }
     }
 }

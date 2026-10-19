@@ -5,6 +5,7 @@ mod bringing_back;
 mod choosing;
 mod contents;
 mod copying;
+mod cursor_kept;
 mod drawers;
 mod editors;
 mod focus;

@@ -22,7 +22,7 @@ use crate::writing::drawers::drawer_toggles;
 use crate::writing::focus::focus_line;
 use crate::writing::going_back::going_back;
 use crate::writing::heading::pending_heading;
-use crate::writing::heading::{first_heading, level_of, section_heading};
+use crate::writing::heading::{first_heading, section_heading};
 use crate::writing::inspecting::{ideas_to_choose, inspecting};
 use crate::writing::inspector::Inspected;
 use crate::writing::margin::Edge;
@@ -469,10 +469,10 @@ fn book(state: WriteViewState) -> impl IntoView {
         {book_edge(Edge::Start, state)}
         <For
             each=move || state.structure.sections()
-            key=|(depth, section)| (section.id.clone(), *depth)
-            let:((depth, section))
+            key=|(_, section)| section.id.clone()
+            let:((_, section))
         >
-            {section_in_flow(depth, section, state)}
+            {section_in_flow(section, state)}
         </For>
         {move || (!ends_in_a_scene.get()).then(|| book_edge(Edge::End, state))}
     }
@@ -519,8 +519,13 @@ fn loose_side(state: WriteViewState) -> impl IntoView {
     }
 }
 
-fn section_in_flow(depth: usize, section: Section, state: WriteViewState) -> impl IntoView {
+fn section_in_flow(section: Section, state: WriteViewState) -> impl IntoView {
     let id = section.id.clone();
+    let depth = Memo::new({
+        let id = id.clone();
+
+        move |_| state.structure.depth_in_book(&id)
+    });
     let empty = Memo::new({
         let id = id.clone();
 
@@ -542,7 +547,7 @@ fn section_in_flow(depth: usize, section: Section, state: WriteViewState) -> imp
                 .attr("data-section", id.to_string())
                 .child((
                     section_heading(depth, section, state),
-                    section_margin(id.clone(), level_of(depth), state),
+                    section_margin(id.clone(), depth, state),
                 )),
             html::div().class("scenes").child(scenes_of(id, state)),
             move || {

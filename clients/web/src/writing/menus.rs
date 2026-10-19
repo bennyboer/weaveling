@@ -9,6 +9,7 @@ use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
+use crate::writing::heading::level_of;
 use crate::writing::heading::{lift, nest};
 use crate::writing::margin::{Edge, Marked, Menu};
 use crate::writing::side::Side;
@@ -83,11 +84,15 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
     ))
 }
 
-pub fn section_margin(section: SectionId, level: usize, state: WriteViewState) -> impl IntoView {
+pub fn section_margin(
+    section: SectionId,
+    depth: Memo<usize>,
+    state: WriteViewState,
+) -> impl IntoView {
     let marked = Marked::Section(section.clone());
 
     html::div()
-        .class(format!("heading-margin level-{level}"))
+        .class(move || format!("heading-margin level-{}", level_of(depth.get())))
         .child((margin_menu(
             "Section actions",
             Icon::More,
