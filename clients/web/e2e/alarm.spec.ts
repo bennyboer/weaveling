@@ -330,3 +330,27 @@ test("a refusal arriving after a dismissal brings the note back", async ({
 
   await expect(note(page)).toBeVisible({ timeout: 7_000 });
 });
+
+test("the alarm asks again when it is told the refusals changed, and not otherwise", async ({
+  page,
+}) => {
+  let asked = 0;
+  await page.route(REFUSALS, (route) => {
+    asked += 1;
+    return route.fulfill({ json: asked > 1 ? [refused(7)] : [] });
+  });
+  let tell: (frame: string) => void = () => {};
+  await page.routeWebSocket(/\/api\/service\/refusals\/live$/, (socket) => {
+    tell = (frame) => socket.send(frame);
+  });
+
+  await page.goto("/");
+  await expect.poll(() => asked).toBe(1);
+  await page.waitForTimeout(6000);
+  expect(asked, "nothing is asked for while nothing is told").toBe(1);
+
+  tell(JSON.stringify({ version: 1, event: { name: "REFUSALS_CHANGED" } }));
+
+  await expect(alarm(page)).toBeVisible();
+  expect(asked).toBe(2);
+});

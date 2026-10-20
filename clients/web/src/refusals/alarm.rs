@@ -1,17 +1,15 @@
 use std::collections::BTreeSet;
-use std::time::Duration;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{IntoView, ev, html};
 
 use crate::icons::{Icon, mark};
+use crate::live::Following;
 use crate::refusals::dialog::refusals_dialog;
 use crate::refusals::model::Refusal;
 use crate::refusals::service;
 use crate::speech::said;
-
-const ASK_EVERY: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy)]
 pub struct AlarmState {
@@ -20,6 +18,7 @@ pub struct AlarmState {
     pulsing: RwSignal<bool>,
     noting: RwSignal<bool>,
     looking: RwSignal<bool>,
+    following: StoredValue<Option<Following>, LocalStorage>,
 }
 
 impl AlarmState {
@@ -30,12 +29,14 @@ impl AlarmState {
             pulsing: RwSignal::new(false),
             noting: RwSignal::new(false),
             looking: RwSignal::new(false),
+            following: StoredValue::new_local(None),
         };
 
-        state.ask();
-        if let Err(failure) = set_interval(move || state.ask(), ASK_EVERY) {
-            leptos::logging::error!("the alarm cannot ask again: {failure:?}");
-        }
+        state.following.set_value(Some(Following::start(
+            "/api/service/refusals/live",
+            move |_| state.ask(),
+            move || state.ask(),
+        )));
 
         state
     }

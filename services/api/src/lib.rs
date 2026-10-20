@@ -11,6 +11,7 @@ use axum::routing::get;
 use boards_wiring::BoardFeature;
 use clock::Clock;
 use ideas_wiring::IdeaFeature;
+use live::Broadcaster;
 use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use outline_wiring::OutlineFeature;
 use projects_wiring::ProjectFeature;
@@ -20,6 +21,7 @@ use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context, assemble};
 
 use crate::flaky::FlakyListener;
+use crate::refusals::TellingDeliveries;
 
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
@@ -33,13 +35,18 @@ pub struct Adapters {
     clock: Arc<dyn Clock>,
     dispatcher: Arc<InProcessDispatcher>,
     deliveries: Arc<dyn Deliveries>,
+    refusals: Broadcaster,
     features: Vec<Assembled>,
     flakiness: Option<Flakiness>,
 }
 
 impl Adapters {
     pub async fn assembled(storage: Storage, clock: Arc<dyn Clock>) -> Result<Self, Unprepared> {
-        let deliveries = deliveries(&storage).await?;
+        let refusals = Broadcaster::new();
+        let deliveries: Arc<dyn Deliveries> = Arc::new(TellingDeliveries::around(
+            deliveries(&storage).await?,
+            refusals.clone(),
+        ));
         let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
         let context = Context {
             clock: clock.clone(),
@@ -60,6 +67,7 @@ impl Adapters {
             clock,
             dispatcher,
             deliveries,
+            refusals,
             features,
             flakiness: None,
         })
@@ -128,6 +136,7 @@ pub fn app(adapters: Adapters) -> Router {
             adapters.deliveries.clone(),
             adapters.dispatcher.clone(),
             adapters.clock.clone(),
+            adapters.refusals.clone(),
         ));
     let mut api = Router::new().nest("/service", service);
 

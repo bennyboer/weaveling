@@ -27,4 +27,8 @@ backend = "ws://127.0.0.1:3000/api/boards/live"
 ws = true
 
 [[proxy]]
+backend = "ws://127.0.0.1:3000/api/service/refusals/live"
+ws = true
+
+[[proxy]]
 backend = "http://127.0.0.1:3000/api"

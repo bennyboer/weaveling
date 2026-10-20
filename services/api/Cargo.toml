@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
-axum = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
 sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
 time = { workspace = true }
@@ -22,6 +22,8 @@ clock = { version = "0.1.0", path = "../../libraries/clock", package = "weavelin
 wiring = { version = "0.1.0", path = "../../libraries/wiring", package = "weaveling-wiring" }
 messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "weaveling-messaging" }
 serving = { version = "0.1.0", path = "../../libraries/serving", package = "weaveling-serving" }
+live = { version = "0.1.0", path = "../../libraries/live", package = "weaveling-live" }
+serde_json = { workspace = true }
 messaging-contract = { version = "0.1.0", path = "../../libraries/messaging-contract", package = "weaveling-messaging-contract" }
 outbox = { version = "0.1.0", path = "../../libraries/outbox", package = "weaveling-outbox" }
 
@@ -68,8 +70,7 @@ sqlite = [
 
 [dev-dependencies]
 tower = { workspace = true }
-axum-test = { workspace = true }
-serde_json = { workspace = true }
+axum-test = { workspace = true, features = ["ws"] }
 time = { workspace = true, features = ["macros"] }
 sqlx = { workspace = true }
 test-harness = { version = "0.1.0", path = "../../libraries/test-harness", package = "weaveling-test-harness" }

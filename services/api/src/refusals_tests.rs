@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::http::StatusCode;
-use axum_test::TestServer;
+use axum_test::{TestServer, TestWebSocket};
 use clock::FixedClock;
+use live::Broadcaster;
 use messaging::{
     Deliveries, InMemoryDeliveries, InProcessDispatcher, Listener, ListenerName, Message,
     NotHandled, RoutingKey, Subscription,
@@ -12,7 +13,7 @@ use messaging_contract::RefusalDTO;
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
 
-use crate::refusals::router;
+use crate::refusals::{TellingDeliveries, router};
 
 const OCCURRED: OffsetDateTime = datetime!(2026-10-08 09:00 UTC);
 
@@ -46,22 +47,35 @@ impl Listener for Cataloguing {
 }
 
 struct Refused {
-    deliveries: Arc<InMemoryDeliveries>,
+    deliveries: Arc<dyn Deliveries>,
     server: TestServer,
 }
 
 impl Refused {
     fn nothing_yet() -> Self {
-        let deliveries = Arc::new(InMemoryDeliveries::new());
+        let broadcaster = Broadcaster::new();
+        let deliveries: Arc<dyn Deliveries> = Arc::new(TellingDeliveries::around(
+            Arc::new(InMemoryDeliveries::new()),
+            broadcaster.clone(),
+        ));
         let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
         dispatcher.listen(Arc::new(Cataloguing));
-        let server = TestServer::new(router(
+        let server = TestServer::builder().http_transport().build(router(
             deliveries.clone(),
             dispatcher,
             Arc::new(FixedClock::new(ASKED)),
+            broadcaster,
         ));
 
         Self { deliveries, server }
+    }
+
+    async fn followed(&self) -> TestWebSocket {
+        self.server
+            .get_websocket("/refusals/live")
+            .await
+            .into_websocket()
+            .await
     }
 
     async fn given_up_on(&self, routing: &str) {
@@ -231,4 +245,83 @@ async fn an_id_that_is_not_a_number_is_a_bad_request() {
     let response = refused.server.post("/refusals/latest/retry").await;
 
     response.assert_status(StatusCode::BAD_REQUEST);
+}
+
+async fn told(socket: &mut TestWebSocket) -> serde_json::Value {
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(1), socket.receive_text())
+        .await
+        .expect("a change of the refusals is told while it is fresh");
+
+    serde_json::from_str(&frame).expect("a frame is JSON")
+}
+
+#[tokio::test]
+async fn whoever_follows_the_refusals_is_told_when_a_delivery_is_given_up() {
+    let refused = Refused::nothing_yet();
+    let mut socket = refused.followed().await;
+
+    refused.given_up_on("idea.captured").await;
+
+    assert_eq!(told(&mut socket).await["event"]["name"], "REFUSALS_CHANGED");
+}
+
+#[tokio::test]
+async fn acknowledging_and_retrying_are_told_too_each_with_a_newer_version() {
+    let refused = Refused::nothing_yet();
+    refused.given_up_on("idea.captured").await;
+    refused.given_up_on("idea.retitled").await;
+    let listed = refused.listed().await;
+    let mut socket = refused.followed().await;
+
+    refused
+        .server
+        .post(&format!("/refusals/{}/acknowledge", listed[0].id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    let acknowledged = told(&mut socket).await;
+    refused
+        .server
+        .post(&format!("/refusals/{}/retry", listed[1].id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    let retried = told(&mut socket).await;
+
+    assert!(retried["version"].as_u64() > acknowledged["version"].as_u64());
+}
+
+#[tokio::test]
+async fn a_delivery_refused_but_offered_again_tells_nothing() {
+    let refused = Refused::nothing_yet();
+    let mut socket = refused.followed().await;
+    let message = Message::opening(
+        RoutingKey::parse("idea.captured").expect("a plain key is fine"),
+        serde_json::json!({ "nothing": "much" }),
+        OCCURRED,
+    );
+    refused
+        .deliveries
+        .enqueue(
+            &ListenerName::parse(CATALOGUING).expect("a plain name is fine"),
+            &message,
+        )
+        .await
+        .expect("enqueuing should succeed");
+    let claimed = refused
+        .deliveries
+        .claim_due(OCCURRED, 16)
+        .await
+        .expect("claiming should succeed");
+
+    refused
+        .deliveries
+        .mark_as_refused(claimed[0].id, "not yet", GIVEN_UP)
+        .await
+        .expect("refusing should succeed");
+
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(200), socket.receive_text())
+            .await
+            .is_err(),
+        "a delivery that will be offered again is not a refusal anyone needs to see"
+    );
 }

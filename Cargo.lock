@@ -4353,6 +4353,7 @@ dependencies = [
  "weaveling-boards-wiring",
  "weaveling-clock",
  "weaveling-ideas-wiring",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-messaging-contract",
  "weaveling-outbox",
