@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use fluent_bundle::{FluentArgs, FluentBundle, FluentResource};
 use leptos::logging::warn;
 use unic_langid::LanguageIdentifier;
@@ -5,13 +7,13 @@ use unic_langid::LanguageIdentifier;
 use crate::speech::language::Language;
 
 thread_local! {
-    static CATALOGUES: Vec<FluentBundle<FluentResource>> =
-        Language::EVERY.into_iter().map(catalogue_of).collect();
+    static CATALOGUES: [OnceCell<FluentBundle<FluentResource>>; Language::EVERY.len()] =
+        Default::default();
 }
 
 pub fn worded(language: Language, message: &str, args: Option<&FluentArgs>) -> String {
     CATALOGUES.with(|catalogues| {
-        let catalogue = &catalogues[language as usize];
+        let catalogue = catalogues[language as usize].get_or_init(|| catalogue_of(language));
         let Some(pattern) = catalogue
             .get_message(message)
             .and_then(|found| found.value())
@@ -128,6 +130,21 @@ mod tests {
             worded(Language::German, "delete-project-fate", Some(&args)),
             "„The loom“ ist dann für immer weg. Löschen lässt sich nicht rückgängig machen."
         );
+    }
+
+    #[test]
+    fn only_the_language_spoken_is_read() {
+        worded(Language::German, "workspace-heading", None);
+
+        CATALOGUES.with(|catalogues| {
+            for language in Language::EVERY {
+                assert_eq!(
+                    catalogues[language as usize].get().is_some(),
+                    language == Language::German,
+                    "{language:?}"
+                );
+            }
+        });
     }
 
     #[test]
