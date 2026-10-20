@@ -3,6 +3,7 @@ use std::fmt::{self, Display, Formatter};
 use words::opening_of;
 
 use crate::ideas::model::IdeaId;
+use crate::speech::say;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(String);
@@ -39,7 +40,7 @@ impl SceneSummary {
         }
 
         match self.opening.as_str() {
-            "" => "Empty".to_owned(),
+            "" => say("scene-empty"),
             opening => opening.to_owned(),
         }
     }

@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
+use fluent_bundle::FluentArgs;
 use leptos::html::{self, Li};
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
@@ -15,6 +16,7 @@ use crate::outline::model::{Attachment, Section, SectionId};
 use crate::outline::outline_view_state::{OutlineViewState, Urge};
 use crate::problem::problem_to_dismiss;
 use crate::route;
+use crate::speech::{Speech, said, say, say_about};
 use crate::tray::laid_out;
 
 #[derive(Clone, PartialEq, Eq)]
@@ -85,17 +87,14 @@ pub fn OutlineView(project: String) -> impl IntoView {
             html::div()
                 .class("manuscript")
                 .child((
-                    html::p().class("tally").child("Manuscript"),
+                    html::p().class("tally").child(said("outline-manuscript")),
                     html::ul()
                         .class("branches")
-                        .attr("aria-label", "The manuscript")
+                        .attr("aria-label", said("outline-the-manuscript"))
                         .child(move || twigs(None, held)),
                     move || {
-                        (state.ready() && state.sections().is_empty()).then(|| {
-                            html::p()
-                                .class("empty")
-                                .child("Nothing in the book yet. Add a section to begin.")
-                        })
+                        (state.ready() && state.sections().is_empty())
+                            .then(|| html::p().class("empty").child(said("outline-nothing-yet")))
                     },
                     html::button()
                         .r#type("button")
@@ -104,11 +103,17 @@ pub fn OutlineView(project: String) -> impl IntoView {
                         .on(ev::click, move |_| {
                             state.add(None, last_top(state), String::new())
                         })
-                        .child((mark(Icon::Plus), "Add a section")),
+                        .child((mark(Icon::Plus), said("outline-add-section"))),
                 ))
                 .into_any(),
             kept(held).into_any(),
-            move || format!("Not in the book \u{00b7} {}", state.waiting_scenes().len()),
+            move || {
+                say_about(
+                    "outline-not-in-the-book",
+                    "count",
+                    &state.waiting_scenes().len().to_string(),
+                )
+            },
         ),
     ))
 }
@@ -159,8 +164,8 @@ fn branch(section: Section, held: Held) -> AnyView {
 
             (bears(&under, held) && !shut).then(|| {
                 html::ul().class("twigs").child((
-                    group(under.clone(), "Scenes", scenes, held),
-                    group(under.clone(), "Ideas", ideas, held),
+                    group(under.clone(), "scenes", scenes, held),
+                    group(under.clone(), "ideas", ideas, held),
                     twigs(Some(under.clone()), held),
                 ))
             })
@@ -170,7 +175,7 @@ fn branch(section: Section, held: Held) -> AnyView {
 
 fn group(
     section: SectionId,
-    named: &'static str,
+    kind: &'static str,
     attachments: Vec<Attachment>,
     held: Held,
 ) -> Option<impl IntoView> {
@@ -178,16 +183,19 @@ fn group(
         html::li().class("kind").child((
             html::div()
                 .class("row")
-                .child(html::span().class("kind-label").child(named)),
-            html::ul().class("twigs").attr("aria-label", named).child(
-                attachments
-                    .chunks(FLOCK)
-                    .enumerate()
-                    .map(|(nth, flock)| {
-                        leaves(format!("{section}/{named}/{nth}"), flock.to_vec(), held)
-                    })
-                    .collect::<Vec<_>>(),
-            ),
+                .child(html::span().class("kind-label").child(named_as(kind))),
+            html::ul()
+                .class("twigs")
+                .attr("aria-label", named_as(kind))
+                .child(
+                    attachments
+                        .chunks(FLOCK)
+                        .enumerate()
+                        .map(|(nth, flock)| {
+                            leaves(format!("{section}/{kind}/{nth}"), flock.to_vec(), held)
+                        })
+                        .collect::<Vec<_>>(),
+                ),
         ))
     })
 }
@@ -324,7 +332,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     .r#type("button")
                     .class("fold")
                     .attr("aria-label", move || {
-                        format!("Fold {}", shown_or_blank(&state.title_of(&named)))
+                        about_section("outline-fold", &state.title_of(&named))
                     })
                     .attr("aria-expanded", move || {
                         (!held.folded.with(|shut| shut.contains(&told))).to_string()
@@ -351,9 +359,9 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .attr("aria-label", {
                     let mine = labelled.clone();
 
-                    move || format!("Section {}", shown_or_blank(&state.title_of(&mine)))
+                    move || about_section("outline-section", &state.title_of(&mine))
                 })
-                .placeholder("Untitled")
+                .placeholder(said("untitled"))
                 .prop("value", {
                     let mine = valued.clone();
                     let own = Memo::new(move |_| state.title_of(&mine));
@@ -437,7 +445,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 .attr("aria-label", {
                     let mine = toolbarred.clone();
 
-                    move || format!("Actions for {}", shown_or_blank(&state.title_of(&mine)))
+                    move || about_section("outline-actions", &state.title_of(&mine))
                 })
                 .child((
                     urging(Urge::Earlier, pruned.clone(), state),
@@ -459,7 +467,7 @@ fn grip(section: SectionId, held: Held) -> impl IntoView {
         .r#type("button")
         .class("grip")
         .attr("aria-label", move || {
-            format!("Move {}", shown_or_blank(&state.title_of(&labelled)))
+            about_section("outline-move", &state.title_of(&labelled))
         })
         .on(ev::pointerdown, move |event| {
             event.stop_propagation();
@@ -566,7 +574,7 @@ fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
                 </A>
             },
             deed(
-                format!("Take {shown} out of the book"),
+                say_about("outline-take-out", "name", &shown),
                 Icon::Remove,
                 move || state.detach(taken.clone()),
             ),
@@ -577,12 +585,16 @@ fn kept(held: Held) -> impl IntoView {
     let state = held.state;
 
     (
-        html::p()
-            .class("tally")
-            .child(move || format!("Not in the book \u{00b7} {}", state.waiting_scenes().len())),
+        html::p().class("tally").child(move || {
+            say_about(
+                "outline-not-in-the-book",
+                "count",
+                &state.waiting_scenes().len().to_string(),
+            )
+        }),
         html::ul()
             .class("waiting")
-            .attr("aria-label", "Scenes not in the book")
+            .attr("aria-label", said("outline-scenes-waiting"))
             .child(move || {
                 state
                     .waiting_scenes()
@@ -598,13 +610,13 @@ fn kept(held: Held) -> impl IntoView {
             (state.ready() && state.waiting_scenes().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child("Every scene has a place in the book.")
+                    .child(said("outline-every-scene-placed"))
             })
         },
-        html::p().class("tally").child("Ideas"),
+        html::p().class("tally").child(said("outline-ideas")),
         html::ul()
             .class("waiting")
-            .attr("aria-label", "Ideas not in the book")
+            .attr("aria-label", said("outline-ideas-waiting"))
             .child(move || {
                 state
                     .waiting_ideas()
@@ -616,10 +628,7 @@ fn kept(held: Held) -> impl IntoView {
                     })
                     .collect::<Vec<_>>()
             }),
-        html::p().class("how").child(
-            "Drag onto a section, or click it and then click where it goes. A scene becomes \
-             the book; an idea is a note beside it.",
-        ),
+        html::p().class("how").child(said("outline-how-to-place")),
     )
 }
 
@@ -636,7 +645,11 @@ fn carried(attachment: Attachment, shown: String, held: Held) -> impl IntoView {
                 held.carrying
                     .with(|attachment| attachment.as_ref() == Some(&mine))
             }))
-            .attr("aria-label", format!("Place {shown}"))
+            .attr("aria-label", {
+                let shown = shown.clone();
+
+                move || say_about("outline-place", "name", &shown)
+            })
             .on(ev::pointerdown, move |event| {
                 if let Some(under) = event
                     .current_target()
@@ -687,10 +700,10 @@ fn twigs_under(section: &SectionId, held: Held) -> Vec<Section> {
 
 fn urging(urge: Urge, section: SectionId, state: OutlineViewState) -> impl IntoView {
     let (named, icon) = match urge {
-        Urge::Earlier => ("Move earlier", Icon::Earlier),
-        Urge::Later => ("Move later", Icon::Later),
-        Urge::Promote => ("Promote", Icon::Promote),
-        Urge::Demote => ("Demote", Icon::Demote),
+        Urge::Earlier => ("outline-move-earlier", Icon::Earlier),
+        Urge::Later => ("outline-move-later", Icon::Later),
+        Urge::Promote => ("outline-promote", Icon::Promote),
+        Urge::Demote => ("outline-demote", Icon::Demote),
     };
     let asked = section.clone();
     let labelled = section.clone();
@@ -698,7 +711,7 @@ fn urging(urge: Urge, section: SectionId, state: OutlineViewState) -> impl IntoV
     html::button()
         .r#type("button")
         .attr("aria-label", move || {
-            format!("{named} {}", shown_or_blank(&state.title_of(&labelled)))
+            about_section(named, &state.title_of(&labelled))
         })
         .prop("disabled", move || !state.can(&asked, urge))
         .on(ev::click, move |event| {
@@ -715,10 +728,10 @@ fn writing(section: SectionId, state: OutlineViewState) -> impl IntoView {
     html::button()
         .r#type("button")
         .attr("aria-label", move || {
-            format!("Write in {}", shown_or_blank(&state.title_of(&labelled)))
+            about_section("outline-write-in", &state.title_of(&labelled))
         })
         .attr("title", move || {
-            format!("Write in {}", shown_or_blank(&state.title_of(&titled)))
+            about_section("outline-write-in", &state.title_of(&titled))
         })
         .on(ev::click, move |event| {
             event.stop_propagation();
@@ -733,7 +746,7 @@ fn pruning(section: SectionId, state: OutlineViewState) -> impl IntoView {
     html::button()
         .r#type("button")
         .attr("aria-label", move || {
-            format!("Remove {}", shown_or_blank(&state.title_of(&labelled)))
+            about_section("outline-remove", &state.title_of(&labelled))
         })
         .on(ev::click, move |event| {
             event.stop_propagation();
@@ -753,9 +766,20 @@ fn deed(what: String, icon: Icon, done: impl Fn() + 'static) -> impl IntoView {
         .child(mark(icon))
 }
 
+fn about_section(message: &str, title: &str) -> String {
+    say_about(message, "section", &shown_or_blank(title))
+}
+
+fn named_as(kind: &'static str) -> impl Fn() -> String + Send + Sync + 'static {
+    move || match kind {
+        "scenes" => say("outline-scenes"),
+        _ => say("outline-ideas"),
+    }
+}
+
 fn shown_or_blank(shown: &str) -> String {
     match shown.is_empty() {
-        true => "Untitled".to_owned(),
+        true => say("untitled"),
         false => shown.to_owned(),
     }
 }
@@ -798,15 +822,23 @@ fn settle(
 
 fn renamed_meanwhile(asked: RenamedMeanwhile, held: Held) -> impl IntoView {
     let close = move || held.renamed_meanwhile.set(None);
-    let told = format!(
-        "While you were editing this title, someone else renamed it to “{}”. Yours is “{}”.",
-        asked.theirs, asked.mine
-    );
+    let speech = expect_context::<Speech>();
+    let told = {
+        let (theirs, mine) = (asked.theirs.clone(), asked.mine.clone());
+
+        move || {
+            let mut args = FluentArgs::new();
+            args.set("theirs", theirs.clone());
+            args.set("mine", mine.clone());
+
+            speech.say_with("renamed-meanwhile-told", &args)
+        }
+    };
     let theirs = asked.clone();
     let mine = asked;
 
     modal(
-        "Renamed meanwhile",
+        Signal::derive(said("renamed-meanwhile")),
         "",
         close,
         (
@@ -820,7 +852,7 @@ fn renamed_meanwhile(asked: RenamedMeanwhile, held: Held) -> impl IntoView {
                         }
                         close();
                     })
-                    .child("Take theirs"),
+                    .child(said("renamed-meanwhile-theirs")),
                 html::button()
                     .r#type("button")
                     .class("primary")
@@ -828,7 +860,7 @@ fn renamed_meanwhile(asked: RenamedMeanwhile, held: Held) -> impl IntoView {
                         held.state.retitle(mine.section.clone(), mine.mine.clone());
                         close();
                     })
-                    .child("Keep mine"),
+                    .child(said("renamed-meanwhile-mine")),
             )),
         ),
     )

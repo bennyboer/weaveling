@@ -338,3 +338,20 @@ test("a move placed after a section removed meanwhile is refused gently", async 
   ).toBeVisible();
   await expect(titleOf(page, "Part One")).toHaveCount(0);
 });
+
+test("asked which name stays, the question follows the language chosen meanwhile", async ({
+  page,
+}) => {
+  await bothRenamed(page, "OutlineLiveSpoken");
+  await expect(renamedMeanwhile(page)).toBeVisible();
+
+  await page.getByRole("combobox", { name: "Language" }).selectOption("de");
+
+  const asked = page.getByRole("dialog", { name: "Inzwischen umbenannt" });
+  await expect(asked).toContainText(
+    "Während du diesen Titel bearbeitet hast, hat jemand anderes ihn in „The Beginning“ umbenannt. Deiner lautet „Part One, drafted“.",
+  );
+  await expect(asked.getByRole("button", { name: "Ihren übernehmen" })).toBeVisible();
+  await expect(asked.getByRole("button", { name: "Meinen behalten" })).toBeVisible();
+});
+

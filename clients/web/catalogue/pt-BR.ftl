@@ -183,3 +183,32 @@ drawer-resize =
         [contents] Redimensionar o sumário
        *[other] Redimensionar
     }
+
+scene-empty = Vazia
+outline-manuscript = Manuscrito
+outline-the-manuscript = O manuscrito
+outline-nothing-yet = Ainda não há nada no livro. Adicione uma seção para começar.
+outline-add-section = Adicionar uma seção
+outline-not-in-the-book = Fora do livro · { $count }
+outline-scenes = Cenas
+outline-ideas = Ideias
+outline-fold = Recolher { $section }
+outline-section = Seção { $section }
+outline-actions = Ações para { $section }
+outline-move = Mover { $section }
+outline-move-earlier = Adiantar { $section }
+outline-move-later = Atrasar { $section }
+outline-promote = Subir { $section } um nível
+outline-demote = Descer { $section } um nível
+outline-write-in = Escrever em { $section }
+outline-remove = Remover { $section }
+outline-take-out = Tirar { $name } do livro
+outline-scenes-waiting = Cenas fora do livro
+outline-every-scene-placed = Cada cena tem seu lugar no livro.
+outline-ideas-waiting = Ideias fora do livro
+outline-place = Posicionar { $name }
+outline-how-to-place = Arraste para uma seção, ou clique nela e depois onde ela vai. Uma cena vira o livro; uma ideia, uma nota ao lado.
+renamed-meanwhile = Renomeado enquanto isso
+renamed-meanwhile-told = Enquanto você editava este título, outra pessoa o renomeou para “{ $theirs }”. O seu é “{ $mine }”.
+renamed-meanwhile-theirs = Ficar com o dela
+renamed-meanwhile-mine = Manter o meu

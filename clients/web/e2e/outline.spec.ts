@@ -742,7 +742,7 @@ test.describe("a chapter far longer than the window", () => {
   });
 
   const group = (page: Page, nth: number) =>
-    page.locator(`[data-leaves$="/Scenes/${nth}"]`);
+    page.locator(`[data-leaves$="/scenes/${nth}"]`);
 
   const leafOf = (page: Page, scene: string) =>
     page.locator(`.leaf a[href$="${scene}"]`);
@@ -797,3 +797,20 @@ test.describe("a chapter far longer than the window", () => {
     await expect(leafOf(page, book.scenes[0])).toBeFocused();
   });
 });
+
+test("a section title the server refuses is told as it is, not as overtaken", async ({
+  page,
+}) => {
+  await aNewProject(page, "TooLongATitle");
+  await openTheOutline(page);
+  await addSections(page, ["Part One"]);
+  await page.keyboard.press("Escape");
+
+  await titles(page).first().fill("a".repeat(2049));
+  await page.keyboard.press("Escape");
+
+  await expect(page.getByRole("alert")).toContainText(
+    "A section's title can be at most 2048 characters long; this one has 2049.",
+  );
+});
+

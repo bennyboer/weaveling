@@ -71,7 +71,7 @@ pub(crate) async fn checked(
     }
 }
 
-async fn rejection(response: Response) -> ApiError {
+pub(crate) async fn rejection(response: Response) -> ApiError {
     let status = response.status();
     let a_problem = response
         .headers()

@@ -5,8 +5,10 @@ import {
   aNewProject,
   anOpenProject,
   API,
+  aLooseScene,
   captureIdea,
   openTheBoard,
+  openTheOutline,
 } from "./support/shell";
 import { flow } from "./support/writing";
 
@@ -285,6 +287,47 @@ test("the board speaks the language chosen, at once", async ({ page }) => {
   ).toHaveCount(1);
   await page.getByRole("button", { name: "Ablage schließen" }).click();
   await expect(page.getByRole("button", { name: "Ablage schließen" })).toHaveCount(0);
+});
+
+test("the outline speaks the language chosen, at once", async ({ page }) => {
+  await aNewProject(page, "Gliederung");
+  await aLooseScene(page);
+  await openTheOutline(page);
+
+  await picker(page, "Language").selectOption("de");
+
+  await expect(page.getByRole("list", { name: "Das Manuskript" })).toHaveCount(1);
+  await expect(
+    page.getByText("Noch nichts im Buch. Leg einen Abschnitt an, um zu beginnen."),
+  ).toBeVisible();
+  await expect(page.getByText("Nicht im Buch · 1").first()).toBeVisible();
+  await expect(
+    page
+      .getByRole("list", { name: "Szenen, die nicht im Buch stehen" })
+      .getByRole("button", { name: "Leer einordnen" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("list", { name: "Ideen, die nicht im Buch stehen" }),
+  ).toHaveCount(1);
+  await page.getByRole("button", { name: "Abschnitt anlegen" }).click();
+
+  await expect(
+    page.getByRole("textbox", { name: "Abschnitt Ohne Titel" }),
+  ).toHaveAttribute("placeholder", "Ohne Titel");
+  const actions = page.getByRole("toolbar", { name: "Aktionen für Ohne Titel" });
+  for (const named of [
+    "Ohne Titel nach vorn",
+    "Ohne Titel nach hinten",
+    "Ohne Titel eine Ebene höher",
+    "Ohne Titel eine Ebene tiefer",
+    "In Ohne Titel schreiben",
+    "Ohne Titel entfernen",
+  ]) {
+    await expect(actions.getByRole("button", { name: named })).toHaveCount(1);
+  }
+  await expect(
+    page.getByRole("button", { name: "Ohne Titel verschieben" }),
+  ).toHaveCount(1);
 });
 
 test.describe("a browser asking for a language the app does not speak", () => {

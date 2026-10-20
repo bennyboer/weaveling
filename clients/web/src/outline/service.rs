@@ -2,10 +2,10 @@ use gloo_net::http::{Request, Response};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
-    RetitleSectionRequest,
+    RetitleSectionRequest, refused,
 };
 
-use crate::http::{ApiError, parsed, sent, sent_with};
+use crate::http::{ApiError, checked, parsed, rejection, sent, sent_with};
 use crate::ideas::model::IdeaId;
 use crate::outline::model::{
     Attachment, Outline, OutlineChange, OutlineId, Section, SectionChange, SectionId,
@@ -41,8 +41,7 @@ pub async fn add(
         &payload,
     )
     .await?;
-    overtaken(&response)?;
-    let added: AddedSectionResponse = parsed(response, SUBJECT).await?;
+    let added: AddedSectionResponse = parsed(answered(response).await?, SUBJECT).await?;
 
     Ok((SectionId::from(added.section), as_change(added.outline)))
 }
@@ -130,24 +129,32 @@ pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), 
     )))
     .await?;
 
-    if response.ok() {
-        return Ok(());
-    }
-    overtaken(&response)?;
-
-    Err(ApiError::Unexpected)
+    checked(answered(response).await?, SUBJECT)
+        .await
+        .map(|_| ())
 }
+
+const TOLD_AS_THEY_ARE: [&str; 2] = [refused::TITLE_TOO_LONG, refused::TITLE_CONTROL_CHARACTER];
 
 async fn changed(response: Response) -> Result<OutlineChange, ApiError> {
-    overtaken(&response)?;
-
-    Ok(as_change(parsed(response, SUBJECT).await?))
+    Ok(as_change(parsed(answered(response).await?, SUBJECT).await?))
 }
 
-fn overtaken(response: &Response) -> Result<(), ApiError> {
-    match response.status() {
-        404 | 422 => Err(ApiError::Overtaken),
-        _ => Ok(()),
+async fn answered(response: Response) -> Result<Response, ApiError> {
+    if !matches!(response.status(), 404 | 422) {
+        return Ok(response);
+    }
+
+    match rejection(response).await {
+        ApiError::Rejected(refusal)
+            if refusal
+                .kind
+                .as_deref()
+                .is_some_and(|kind| TOLD_AS_THEY_ARE.contains(&kind)) =>
+        {
+            Err(ApiError::Rejected(refusal))
+        }
+        _ => Err(ApiError::Overtaken),
     }
 }
 

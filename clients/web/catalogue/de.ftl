@@ -183,3 +183,32 @@ drawer-resize =
         [contents] Breite des Inhaltsverzeichnisses ändern
        *[other] Breite ändern
     }
+
+scene-empty = Leer
+outline-manuscript = Manuskript
+outline-the-manuscript = Das Manuskript
+outline-nothing-yet = Noch nichts im Buch. Leg einen Abschnitt an, um zu beginnen.
+outline-add-section = Abschnitt anlegen
+outline-not-in-the-book = Nicht im Buch · { $count }
+outline-scenes = Szenen
+outline-ideas = Ideen
+outline-fold = { $section } einklappen
+outline-section = Abschnitt { $section }
+outline-actions = Aktionen für { $section }
+outline-move = { $section } verschieben
+outline-move-earlier = { $section } nach vorn
+outline-move-later = { $section } nach hinten
+outline-promote = { $section } eine Ebene höher
+outline-demote = { $section } eine Ebene tiefer
+outline-write-in = In { $section } schreiben
+outline-remove = { $section } entfernen
+outline-take-out = { $name } aus dem Buch nehmen
+outline-scenes-waiting = Szenen, die nicht im Buch stehen
+outline-every-scene-placed = Jede Szene hat ihren Platz im Buch.
+outline-ideas-waiting = Ideen, die nicht im Buch stehen
+outline-place = { $name } einordnen
+outline-how-to-place = Zieh sie auf einen Abschnitt, oder klick sie an und dann dorthin, wo sie hingehört. Eine Szene wird zum Buch, eine Idee zur Notiz daneben.
+renamed-meanwhile = Inzwischen umbenannt
+renamed-meanwhile-told = Während du diesen Titel bearbeitet hast, hat jemand anderes ihn in „{ $theirs }“ umbenannt. Deiner lautet „{ $mine }“.
+renamed-meanwhile-theirs = Ihren übernehmen
+renamed-meanwhile-mine = Meinen behalten

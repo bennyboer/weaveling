@@ -183,3 +183,32 @@ drawer-resize =
         [contents] Resize the contents
        *[other] Resize
     }
+
+scene-empty = Empty
+outline-manuscript = Manuscript
+outline-the-manuscript = The manuscript
+outline-nothing-yet = Nothing in the book yet. Add a section to begin.
+outline-add-section = Add a section
+outline-not-in-the-book = Not in the book · { $count }
+outline-scenes = Scenes
+outline-ideas = Ideas
+outline-fold = Fold { $section }
+outline-section = Section { $section }
+outline-actions = Actions for { $section }
+outline-move = Move { $section }
+outline-move-earlier = Move earlier { $section }
+outline-move-later = Move later { $section }
+outline-promote = Promote { $section }
+outline-demote = Demote { $section }
+outline-write-in = Write in { $section }
+outline-remove = Remove { $section }
+outline-take-out = Take { $name } out of the book
+outline-scenes-waiting = Scenes not in the book
+outline-every-scene-placed = Every scene has a place in the book.
+outline-ideas-waiting = Ideas not in the book
+outline-place = Place { $name }
+outline-how-to-place = Drag onto a section, or click it and then click where it goes. A scene becomes the book; an idea is a note beside it.
+renamed-meanwhile = Renamed meanwhile
+renamed-meanwhile-told = While you were editing this title, someone else renamed it to “{ $theirs }”. Yours is “{ $mine }”.
+renamed-meanwhile-theirs = Take theirs
+renamed-meanwhile-mine = Keep mine
