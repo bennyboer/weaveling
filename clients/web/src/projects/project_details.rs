@@ -1,15 +1,15 @@
-use std::time::Duration;
-
 use fluent_bundle::FluentArgs;
 use leptos::html::{self, Input};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{IntoView, ev};
 use quotation::QuotationMarks;
+use scenes_contract::QuotationRestylingDTO;
 
 use crate::dialog::modal;
 use crate::http::ApiError;
 use crate::icons::{Icon, mark};
+use crate::live::{Following, Told};
 use crate::problem::problem;
 use crate::projects::details_form::{DetailsDraft, details_fields};
 use crate::projects::model::{DescribedProject, ProjectId, Version};
@@ -18,8 +18,6 @@ use crate::projects::service;
 use crate::scenes::restyling::{Restyled, standing};
 use crate::scenes::service as scenes;
 use crate::speech::{Speech, said};
-
-const FOLLOW_EVERY: Duration = Duration::from_millis(500);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Stage {
@@ -69,6 +67,8 @@ fn changing_dialog(
     let refused = RwSignal::new(None::<ApiError>);
     let stage = RwSignal::new(Stage::Editing);
     let restyled = RwSignal::new(Restyled::Waiting);
+    let following = StoredValue::new_local(None::<Following>);
+    on_cleanup(move || _ = following.try_update_value(|held| *held = None));
     let project = StoredValue::new(project);
     let known = StoredValue::new(known);
 
@@ -109,7 +109,7 @@ fn changing_dialog(
                 Ok((described, saved_against)) => {
                     open_project.keep(described);
                     stage.set(Stage::Restyling { to });
-                    follow(project, saved_against, restyled);
+                    following.set_value(Some(follow(project, saved_against, restyled)));
                 }
                 Err(failure) => {
                     refused.set(Some(failure));
@@ -217,20 +217,23 @@ fn shown_on_the_bar(restyled: Restyled) -> (Option<String>, String) {
     }
 }
 
-fn follow(project: ProjectId, saved_against: Version, restyled: RwSignal<Restyled>) {
-    spawn_local(async move {
-        let found = scenes::quotation_restyling(&project).await;
-        if restyled.is_disposed() {
-            return;
-        }
-        if let Ok(found) = found {
-            restyled.set(standing(found, saved_against));
-        }
-        if restyled.get_untracked() != Restyled::Finished {
-            _ = set_timeout(
-                move || follow(project, saved_against, restyled),
-                FOLLOW_EVERY,
-            );
-        }
-    });
+fn follow(project: ProjectId, saved_against: Version, restyled: RwSignal<Restyled>) -> Following {
+    let asked = project.clone();
+
+    Following::start(
+        &format!("/api/scenes/quotation-restylings/live?project={project}"),
+        move |told: Told| {
+            if let Ok(found) = serde_json::from_value::<QuotationRestylingDTO>(told.event) {
+                _ = restyled.try_set(standing(Some(found.into()), saved_against));
+            }
+        },
+        move || {
+            let project = asked.clone();
+            spawn_local(async move {
+                if let Ok(found) = scenes::quotation_restyling(&project).await {
+                    _ = restyled.try_set(standing(found, saved_against));
+                }
+            });
+        },
+    )
 }

@@ -6,7 +6,7 @@ edition.workspace = true
 [dev-dependencies]
 async-trait = { workspace = true }
 axum = { workspace = true }
-axum-test = { workspace = true }
+axum-test = { workspace = true, features = ["ws"] }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "time", "test-util"] }
 serde_json = { workspace = true }
@@ -27,3 +27,4 @@ scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveli
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
 ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }

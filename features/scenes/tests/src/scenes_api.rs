@@ -4,6 +4,7 @@ use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
+use live::Broadcaster;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{
     CreateSceneRequest, FRAGMENT, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest,
@@ -12,7 +13,7 @@ use scenes_contract::{
 use scenes_core::{
     ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneService, SceneTitle,
 };
-use scenes_rest::PAGE;
+use scenes_rest::{PAGE, TellingRestylingTasks};
 use scenes_store::InMemorySceneStore;
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
@@ -387,9 +388,125 @@ async fn linking_to_a_scene_nobody_created_is_not_found() {
 }
 
 async fn restyling(tasks: InMemoryQuotationRestylingTasks) -> axum_test::TestResponse {
-    TestServer::new(scenes_rest::quotation_restylings(Arc::new(tasks)))
-        .get(&format!("/scenes/quotation-restylings/{A_PROJECT}"))
+    TestServer::new(scenes_rest::quotation_restylings(
+        Arc::new(tasks),
+        Broadcaster::new(),
+    ))
+    .get(&format!("/scenes/quotation-restylings/{A_PROJECT}"))
+    .await
+}
+
+struct RestylingFollowed {
+    tasks: Arc<dyn QuotationRestylingTasks>,
+    socket: axum_test::TestWebSocket,
+    _server: TestServer,
+}
+
+async fn a_restyling_followed(project: &str) -> RestylingFollowed {
+    let broadcaster = Broadcaster::new();
+    let tasks: Arc<dyn QuotationRestylingTasks> = Arc::new(TellingRestylingTasks::around(
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
+        broadcaster.clone(),
+    ));
+    let server = TestServer::builder()
+        .http_transport()
+        .build(scenes_rest::quotation_restylings(
+            tasks.clone(),
+            broadcaster,
+        ));
+    let socket = server
+        .get_websocket(&format!(
+            "/scenes/quotation-restylings/live?project={project}"
+        ))
         .await
+        .into_websocket()
+        .await;
+
+    RestylingFollowed {
+        tasks,
+        socket,
+        _server: server,
+    }
+}
+
+async fn told_progress(socket: &mut axum_test::TestWebSocket) -> QuotationRestylingDTO {
+    let frame = tokio::time::timeout(std::time::Duration::from_secs(1), socket.receive_text())
+        .await
+        .expect("progress is told while it is fresh");
+    let frame: serde_json::Value = serde_json::from_str(&frame).expect("a frame is JSON");
+
+    serde_json::from_value(frame["event"].clone()).expect("the frame carries the progress")
+}
+
+#[tokio::test]
+async fn whoever_follows_a_book_s_restyling_is_told_as_it_begins_and_as_it_goes() {
+    let mut followed = a_restyling_followed(A_PROJECT).await;
+    let project = ProjectLink::from(A_PROJECT);
+
+    followed
+        .tasks
+        .begin(&project, 3, 5)
+        .await
+        .expect("beginning should succeed");
+    let begun = told_progress(&mut followed.socket).await;
+    followed
+        .tasks
+        .progressed(&project, 3, 5, true)
+        .await
+        .expect("counting should succeed");
+    let finished = told_progress(&mut followed.socket).await;
+
+    assert_eq!(
+        begun,
+        QuotationRestylingDTO {
+            change: 3,
+            total: 5,
+            done: 0,
+            finished: false,
+        }
+    );
+    assert_eq!(
+        finished,
+        QuotationRestylingDTO {
+            change: 3,
+            total: 5,
+            done: 5,
+            finished: true,
+        }
+    );
+}
+
+#[tokio::test]
+async fn an_older_change_that_cannot_begin_and_another_book_tell_nothing() {
+    let mut followed = a_restyling_followed(A_PROJECT).await;
+    let project = ProjectLink::from(A_PROJECT);
+    followed
+        .tasks
+        .begin(&project, 3, 5)
+        .await
+        .expect("beginning should succeed");
+    told_progress(&mut followed.socket).await;
+
+    followed
+        .tasks
+        .begin(&project, 2, 9)
+        .await
+        .expect("an older change is turned away, not failed");
+    followed
+        .tasks
+        .begin(&ProjectLink::from("project_other"), 1, 1)
+        .await
+        .expect("beginning should succeed");
+
+    assert!(
+        tokio::time::timeout(
+            std::time::Duration::from_millis(200),
+            followed.socket.receive_text()
+        )
+        .await
+        .is_err(),
+        "neither an older change nor another book is this book's progress"
+    );
 }
 
 #[tokio::test]

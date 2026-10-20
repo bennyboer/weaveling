@@ -11,6 +11,7 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 
 scenes-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-scenes-catalog" }

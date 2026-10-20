@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use live::Broadcaster;
 use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneService, SceneStore};
@@ -31,19 +32,23 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let catalogue = CatalogueScenesListener::new(ports.catalog.clone());
 
     let live = LiveScenes::new(scenes.clone());
+    let restylings = Broadcaster::new();
+    let tasks: Arc<dyn QuotationRestylingTasks> =
+        Arc::new(scenes_rest::TellingRestylingTasks::around(
+            ports.quotation_restyling_tasks.clone(),
+            restylings.clone(),
+        ));
     let restyle = RestyleOnQuotationChangedListener::new(
         scenes.clone(),
         Arc::new(live.clone()),
-        ports.quotation_restyling_tasks.clone(),
+        tasks.clone(),
         context.publisher.clone(),
         context.clock.clone(),
     );
 
     Wired::serving(
         scenes_rest::router(scenes, ports.catalog.clone())
-            .merge(scenes_rest::quotation_restylings(
-                ports.quotation_restyling_tasks.clone(),
-            ))
+            .merge(scenes_rest::quotation_restylings(tasks, restylings))
             .merge(scenes_sync::router(live.clone())),
     )
     .listening(vec![

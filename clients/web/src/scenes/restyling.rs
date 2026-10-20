@@ -1,3 +1,5 @@
+use scenes_contract::QuotationRestylingDTO;
+
 use crate::projects::model::Version;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -6,6 +8,17 @@ pub struct QuotationRestyling {
     pub total: u64,
     pub done: u64,
     pub finished: bool,
+}
+
+impl From<QuotationRestylingDTO> for QuotationRestyling {
+    fn from(found: QuotationRestylingDTO) -> Self {
+        Self {
+            change: Version::from(found.change),
+            total: found.total,
+            done: found.done,
+            finished: found.finished,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

@@ -6,7 +6,7 @@ use scenes_contract::{
 
 use crate::http::{ApiError, checked, parsed, sent, sent_with};
 use crate::ideas::model::IdeaId;
-use crate::projects::model::{ProjectId, Version};
+use crate::projects::model::ProjectId;
 use crate::scenes::model::{Scene, SceneId, SceneSummary};
 use crate::scenes::restyling::QuotationRestyling;
 use crate::scenes::written;
@@ -85,12 +85,7 @@ pub async fn quotation_restyling(
     }
     let found: QuotationRestylingDTO = parsed(response, RESTYLING).await?;
 
-    Ok(Some(QuotationRestyling {
-        change: Version::from(found.change),
-        total: found.total,
-        done: found.done,
-        finished: found.finished,
-    }))
+    Ok(Some(QuotationRestyling::from(found)))
 }
 
 pub async fn create(project: &ProjectId) -> Result<Scene, ApiError> {

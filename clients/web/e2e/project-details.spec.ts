@@ -345,19 +345,17 @@ test("details that leave the marks as they look are saved without asking", async
 test("confirmed, the dialog follows the book being rewritten until every scene is done", async ({
   page,
 }) => {
+  let tell: (event: object) => void = () => {};
+  await page.routeWebSocket(/\/api\/scenes\/quotation-restylings\/live\?project=/, (socket) => {
+    tell = (event) => socket.send(JSON.stringify({ version: 1, event }));
+  });
   await aNewProject(page, "Followed");
   await aBookWithScenes(page, { "Part One": 3 });
-  let asked = 0;
-  await page.route("**/api/scenes/quotation-restylings/**", async (route) => {
-    asked += 1;
-    if (asked > 1) {
-      await route.continue();
-      return;
-    }
-    await route.fulfill({
+  await page.route("**/api/scenes/quotation-restylings/*", (route) =>
+    route.fulfill({
       json: { change: 1_000_000, total: 3, done: 1, finished: false },
-    });
-  });
+    }),
+  );
   await openTheProjectDetails(page);
   await projectDetails(page)
     .getByLabel("Quotation marks")
@@ -374,9 +372,32 @@ test("confirmed, the dialog follows the book being rewritten until every scene i
   );
   await expect(bar).toHaveAttribute("value", "1");
   await expect(bar).toHaveAttribute("max", "3");
+  tell({ change: 1_000_000, total: 3, done: 2, finished: false });
+  await expect(projectDetails(page)).toContainText(
+    "Rewriting the quotation marks: 2 of 3 scenes.",
+  );
+  tell({ change: 1_000_000, total: 3, done: 3, finished: true });
   await expect(projectDetails(page)).toContainText(
     "Every scene now quotes »…«.",
   );
   await expect(bar).toHaveAttribute("value", "1");
   await expect(bar).toHaveAttribute("max", "1");
+});
+
+test("with nothing standing in for the server, the dialog follows a real rewriting to its end", async ({
+  page,
+}) => {
+  await aNewProject(page, "FollowedForReal");
+  await aBookWithScenes(page, { "Part One": 3 });
+  await openTheProjectDetails(page);
+  await projectDetails(page)
+    .getByLabel("Quotation marks")
+    .selectOption({ label: "»…«" });
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
+
+  await changeTheMarks(page).click();
+
+  await expect(projectDetails(page)).toContainText(
+    "Every scene now quotes »…«.",
+  );
 });

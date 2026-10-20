@@ -105,19 +105,17 @@ test.describe("a browser asking for German, about a project's details", () => {
   test("rewriting the quotation marks is asked and followed in German, one scene told as one", async ({
     page,
   }) => {
+    let tell: (event: object) => void = () => {};
+    await page.routeWebSocket(/\/api\/scenes\/quotation-restylings\/live\?project=/, (socket) => {
+      tell = (event) => socket.send(JSON.stringify({ version: 1, event }));
+    });
     await aNewProject(page, "Zeichen", { boardNamed: "Pinnwand" });
     await aBookWithScenes(page, { "Part One": 1 });
-    let asked = 0;
-    await page.route("**/api/scenes/quotation-restylings/**", async (route) => {
-      asked += 1;
-      if (asked > 1) {
-        await route.continue();
-        return;
-      }
-      await route.fulfill({
+    await page.route("**/api/scenes/quotation-restylings/*", (route) =>
+      route.fulfill({
         json: { change: 1_000_000, total: 1, done: 0, finished: false },
-      });
-    });
+      }),
+    );
     await page.getByRole("button", { name: "Projektdetails" }).click();
     const details = page.getByRole("dialog", { name: "Projektdetails" });
     await details.getByLabel("Anführungszeichen").selectOption({ label: "»…«" });
@@ -136,6 +134,7 @@ test.describe("a browser asking for German, about a project's details", () => {
         name: "Die Anführungszeichen werden neu gesetzt",
       }),
     ).toBeVisible();
+    tell({ change: 1_000_000, total: 1, done: 1, finished: true });
     await expect(details).toContainText("Jede Szene setzt jetzt »…«.");
     await details.getByRole("button", { name: "Schließen" }).click();
     await expect(details).toHaveCount(0);

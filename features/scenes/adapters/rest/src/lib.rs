@@ -1,21 +1,27 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use async_trait::async_trait;
 
 use axum::Json;
 use axum::Router;
+use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{FromRef, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
+use live::{Broadcaster, streaming};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO, SceneSummaryDTO, refused,
 };
 use scenes_core::{
-    CatalogError, InvalidSceneTitle, ProjectLink, QuotationRestylingTaskError,
-    QuotationRestylingTasks, Scene, SceneCatalog, SceneId, SceneService, SceneServiceError,
-    SceneSummary, StoreError,
+    CatalogError, InvalidSceneTitle, ProjectLink, QuotationRestylingProgress,
+    QuotationRestylingTaskError, QuotationRestylingTasks, Scene, SceneCatalog, SceneId,
+    SceneService, SceneServiceError, SceneSummary, StoreError,
 };
 use serde::Deserialize;
+use serde_json::json;
 use serving::{NOT_FOUND, Problem};
 
 #[derive(Clone)]
@@ -45,10 +51,120 @@ pub fn router(service: SceneService, catalog: Arc<dyn SceneCatalog>) -> Router {
         .with_state(Scenes { service, catalog })
 }
 
-pub fn quotation_restylings(tasks: Arc<dyn QuotationRestylingTasks>) -> Router {
+#[derive(Clone)]
+struct Restylings {
+    tasks: Arc<dyn QuotationRestylingTasks>,
+    broadcaster: Broadcaster,
+}
+
+impl FromRef<Restylings> for Arc<dyn QuotationRestylingTasks> {
+    fn from_ref(restylings: &Restylings) -> Self {
+        restylings.tasks.clone()
+    }
+}
+
+pub fn quotation_restylings(
+    tasks: Arc<dyn QuotationRestylingTasks>,
+    broadcaster: Broadcaster,
+) -> Router {
     Router::new()
+        .route("/scenes/quotation-restylings/live", get(follow_restyling))
         .route("/scenes/quotation-restylings/{project}", get(progress))
-        .with_state(tasks)
+        .with_state(Restylings { tasks, broadcaster })
+}
+
+async fn follow_restyling(
+    upgrade: WebSocketUpgrade,
+    State(restylings): State<Restylings>,
+    Query(followed): Query<FollowedBook>,
+) -> Response {
+    streaming(upgrade, restylings.broadcaster.hear(&followed.project))
+}
+
+#[derive(Deserialize)]
+struct FollowedBook {
+    project: String,
+}
+
+pub struct TellingRestylingTasks {
+    kept: Arc<dyn QuotationRestylingTasks>,
+    broadcaster: Broadcaster,
+    told: AtomicU64,
+}
+
+impl TellingRestylingTasks {
+    pub fn around(kept: Arc<dyn QuotationRestylingTasks>, broadcaster: Broadcaster) -> Self {
+        Self {
+            kept,
+            broadcaster,
+            told: AtomicU64::new(0),
+        }
+    }
+
+    async fn tell(&self, project: &ProjectLink) {
+        let Ok(Some(progress)) = self.kept.progress(project).await else {
+            return;
+        };
+        let version = self.told.fetch_add(1, Ordering::Relaxed) + 1;
+        let frame = json!({ "version": version, "event": as_dto(progress) });
+        self.broadcaster.tell(project.as_str(), frame.to_string());
+    }
+}
+
+#[async_trait]
+impl QuotationRestylingTasks for TellingRestylingTasks {
+    async fn begin(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+        total: u64,
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        let begun = self.kept.begin(project, change, total).await?;
+        if begun {
+            self.tell(project).await;
+        }
+
+        Ok(begun)
+    }
+
+    async fn claim(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        self.kept.claim(project, change).await
+    }
+
+    async fn progressed(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+        done: u64,
+        finished: bool,
+    ) -> Result<(), QuotationRestylingTaskError> {
+        self.kept
+            .progressed(project, change, done, finished)
+            .await?;
+        self.tell(project).await;
+
+        Ok(())
+    }
+
+    async fn progress(
+        &self,
+        project: &ProjectLink,
+    ) -> Result<Option<QuotationRestylingProgress>, QuotationRestylingTaskError> {
+        self.kept.progress(project).await
+    }
+}
+
+fn as_dto(progress: QuotationRestylingProgress) -> QuotationRestylingDTO {
+    QuotationRestylingDTO {
+        change: progress.change,
+        total: progress.total,
+        done: progress.done.min(progress.total),
+        finished: progress.finished,
+    }
 }
 
 async fn progress(
@@ -60,12 +176,7 @@ async fn progress(
         .await?
         .ok_or(ApiError::NeverRestyled(project))?;
 
-    Ok(Json(QuotationRestylingDTO {
-        change: progress.change,
-        total: progress.total,
-        done: progress.done.min(progress.total),
-        finished: progress.finished,
-    }))
+    Ok(Json(as_dto(progress)))
 }
 
 pub const PAGE: usize = 1000;

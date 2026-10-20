@@ -4251,8 +4251,11 @@ dependencies = [
 name = "weaveling-scenes-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "serde",
+ "serde_json",
+ "weaveling-live",
  "weaveling-scenes-contract",
  "weaveling-scenes-core",
  "weaveling-serving",
@@ -4303,6 +4306,7 @@ dependencies = [
  "tokio",
  "weaveling-clock",
  "weaveling-ideas-contract",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-projects-contract",
  "weaveling-quotation",
@@ -4323,6 +4327,7 @@ dependencies = [
  "async-trait",
  "sqlx",
  "weaveling-clock",
+ "weaveling-live",
  "weaveling-outbox",
  "weaveling-scenes-catalog",
  "weaveling-scenes-core",
