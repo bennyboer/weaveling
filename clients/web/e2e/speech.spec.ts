@@ -574,6 +574,20 @@ test("the contents and the tray speak the language chosen", async ({ page }) => 
 test.describe("a browser asking for German, about what went wrong", () => {
   test.use({ locale: "de-DE" });
 
+  test("a project's stamp is told in German", async ({ page }) => {
+    const title = `Datiert ${crypto.randomUUID().slice(0, 8)}`;
+    await page.request.post(`${API}/projects`, { data: { name: title, language: "de" } });
+
+    await page.goto("/");
+
+    const month = new Intl.DateTimeFormat("de-DE", { month: "short" })
+      .format(new Date())
+      .replace(".", "");
+    await expect(
+      page.getByRole("listitem").filter({ hasText: title }).locator(".stamp"),
+    ).toHaveText(new RegExp(`^\\d{1,2}\\. ${month}\\.? 20\\d\\d, \\d{2}:\\d{2}$`));
+  });
+
   test("an address that leads nowhere says so in German", async ({ page }) => {
     await page.goto("/nowhere/at/all");
 
@@ -621,7 +635,7 @@ test.describe("a browser asking for German, about what went wrong", () => {
       .getByRole("listitem");
     await expect(entry).toContainText("Eine Änderung kam nicht überall an, wo sie hin sollte.");
     await expect(entry.locator(".when")).toHaveText(
-      /^Aufgegeben am \d{2} \S+ 2026, \d{2}:\d{2}$/,
+      /^Aufgegeben am 10\. Okt\. 2026, \d{2}:01$/,
     );
     await entry.getByText("Details").click();
     await expect(entry.locator("dt")).toHaveText(["Empfänger", "Nachricht", "Versuche", "Grund"]);

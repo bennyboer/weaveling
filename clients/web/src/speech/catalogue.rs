@@ -251,6 +251,23 @@ mod tests {
     }
 
     #[test]
+    fn a_moment_is_told_in_each_language_s_own_order() {
+        let mut args = FluentArgs::new();
+        args.set("day", 10);
+        args.set("month", 10);
+        args.set("year", "2026");
+        args.set("hour", "09");
+        args.set("minute", "01");
+        let told = |language| worded(language, "moment", Some(&args));
+
+        assert_eq!(told(Language::English), "10 Oct 2026, 09:01");
+        assert_eq!(told(Language::German), "10. Okt. 2026, 09:01");
+        assert_eq!(told(Language::Spanish), "10 oct 2026, 09:01");
+        assert_eq!(told(Language::French), "10 oct. 2026 à 09:01");
+        assert_eq!(told(Language::Portuguese), "10 de out. de 2026, 09:01");
+    }
+
+    #[test]
     fn a_message_no_catalogue_knows_shows_its_name() {
         assert_eq!(
             worded(Language::German, "nowhere-worded", None),

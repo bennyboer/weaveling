@@ -389,3 +389,19 @@ alarm-note = Einige Änderungen konnten nicht übernommen werden.
 alarm-show = Anzeigen
 missing = An dieser Adresse ist nichts gewoben.
 missing-back = Zurück zu deinen Projekten
+
+moment =
+    { $day }. { $month ->
+        [1] Jan.
+        [2] Feb.
+        [3] März
+        [4] Apr.
+        [5] Mai
+        [6] Juni
+        [7] Juli
+        [8] Aug.
+        [9] Sept.
+        [10] Okt.
+        [11] Nov.
+       *[12] Dez.
+    } { $year }, { $hour }:{ $minute }

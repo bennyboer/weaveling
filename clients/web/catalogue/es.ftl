@@ -389,3 +389,19 @@ alarm-note = Algunos cambios no se pudieron aplicar.
 alarm-show = Mostrar
 missing = No hay nada tejido en esta dirección.
 missing-back = Volver a tus proyectos
+
+moment =
+    { $day } { $month ->
+        [1] ene
+        [2] feb
+        [3] mar
+        [4] abr
+        [5] may
+        [6] jun
+        [7] jul
+        [8] ago
+        [9] sept
+        [10] oct
+        [11] nov
+       *[12] dic
+    } { $year }, { $hour }:{ $minute }
