@@ -16,7 +16,7 @@ language-machine-translated = { $language } (maschinell übersetzt)
 
 workspace-heading = Deine Projekte
 workspace-tagline = Bring uns deine winzigen, zerbrechlichen Ideen für Geschichten, und wir helfen dir, sie zu einem großen Epos zu verweben.
-workspace-loading = Wird geladen…
+loading = Wird geladen…
 workspace-empty = Noch keine Projekte. Jedes Epos beginnt als kleines Durcheinander.
 
 new-project-working-title = Ein Arbeitstitel…
@@ -149,7 +149,7 @@ board-actions = Aktionen für { $idea }
 board-rename = { $idea } umbenennen
 board-open = { $idea } öffnen
 board-unpin = { $idea } abnehmen
-board-capturing = Was ist die Idee?
+idea-asked = Was ist die Idee?
 board-zoom = Zoom
 board-zoom-out = Verkleinern
 board-zoom-reset = Zoom zurücksetzen
@@ -212,3 +212,8 @@ renamed-meanwhile = Inzwischen umbenannt
 renamed-meanwhile-told = Während du diesen Titel bearbeitet hast, hat jemand anderes ihn in „{ $theirs }“ umbenannt. Deiner lautet „{ $mine }“.
 renamed-meanwhile-theirs = Ihren übernehmen
 renamed-meanwhile-mine = Meinen behalten
+
+ideas = Ideen
+ideas-capture = Festhalten
+ideas-empty = Noch keine Ideen. Schieß eine Idee rein und schau, wohin sie führt.
+idea-opening = Wird geöffnet…

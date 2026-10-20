@@ -16,7 +16,7 @@ language-machine-translated = { $language } (machine-translated)
 
 workspace-heading = Your projects
 workspace-tagline = Bring us your tiny, fragile story ideas, and we will help you weave them into a full epic.
-workspace-loading = Loading…
+loading = Loading…
 workspace-empty = No projects yet. Every epic starts as a little mess.
 
 new-project-working-title = A working title…
@@ -149,7 +149,7 @@ board-actions = Actions for { $idea }
 board-rename = Rename { $idea }
 board-open = Open { $idea }
 board-unpin = Unpin { $idea }
-board-capturing = What is the idea?
+idea-asked = What is the idea?
 board-zoom = Zoom
 board-zoom-out = Zoom out
 board-zoom-reset = Reset the zoom
@@ -212,3 +212,8 @@ renamed-meanwhile = Renamed meanwhile
 renamed-meanwhile-told = While you were editing this title, someone else renamed it to “{ $theirs }”. Yours is “{ $mine }”.
 renamed-meanwhile-theirs = Take theirs
 renamed-meanwhile-mine = Keep mine
+
+ideas = Ideas
+ideas-capture = Capture
+ideas-empty = No ideas yet. Shoot an idea in and see where it goes.
+idea-opening = Opening…

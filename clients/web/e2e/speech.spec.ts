@@ -199,9 +199,9 @@ test.describe("a browser asking for German, about a project's details", () => {
       .click();
 
     await page
-      .getByRole("textbox", { name: "What is the idea?" })
+      .getByRole("textbox", { name: "Was ist die Idee?" })
       .fill("a".repeat(2049));
-    await page.getByRole("button", { name: "Capture", exact: true }).click();
+    await page.getByRole("button", { name: "Festhalten" }).click();
 
     await expect(page.getByRole("alert")).toHaveText(
       "Der Titel einer Idee darf höchstens 2048 Zeichen lang sein, dieser hat 2049.",
@@ -328,6 +328,31 @@ test("the outline speaks the language chosen, at once", async ({ page }) => {
   await expect(
     page.getByRole("button", { name: "Ohne Titel verschieben" }),
   ).toHaveCount(1);
+});
+
+test("the ideas speak the language chosen, at once", async ({ page }) => {
+  await anOpenProject(page, "Ideen");
+
+  await picker(page, "Language").selectOption("de");
+
+  await expect(page.getByRole("heading", { name: "Ideen", exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Noch keine Ideen. Schieß eine Idee rein und schau, wohin sie führt."),
+  ).toBeVisible();
+  const asked = page.getByRole("textbox", { name: "Was ist die Idee?" });
+  await expect(asked).toHaveAttribute("placeholder", "Was ist die Idee?");
+  await asked.fill("The loom remembers");
+  await page.getByRole("button", { name: "Festhalten" }).click();
+  await expect(
+    page.getByRole("list", { name: "Ideen" }).getByText("The loom remembers"),
+  ).toBeVisible();
+
+  await page.route("**/api/ideas/idea_*", async (route) => {
+    await new Promise((settled) => setTimeout(settled, 1500));
+    await route.continue();
+  });
+  await page.getByRole("list", { name: "Ideen" }).getByText("The loom remembers").click();
+  await expect(page.getByText("Wird geöffnet…")).toBeVisible();
 });
 
 test.describe("a browser asking for a language the app does not speak", () => {

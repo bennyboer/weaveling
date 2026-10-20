@@ -16,7 +16,7 @@ language-machine-translated = { $language } (traducción automática)
 
 workspace-heading = Tus proyectos
 workspace-tagline = Tráenos tus pequeñas y frágiles ideas para historias, y te ayudaremos a tejerlas hasta formar una gran epopeya.
-workspace-loading = Cargando…
+loading = Cargando…
 workspace-empty = Todavía no hay proyectos. Toda epopeya empieza siendo un pequeño desorden.
 
 new-project-working-title = Un título provisional…
@@ -149,7 +149,7 @@ board-actions = Acciones para { $idea }
 board-rename = Cambiar el nombre de { $idea }
 board-open = Abrir { $idea }
 board-unpin = Quitar { $idea } del tablero
-board-capturing = ¿Cuál es la idea?
+idea-asked = ¿Cuál es la idea?
 board-zoom = Zoom
 board-zoom-out = Alejar
 board-zoom-reset = Restablecer el zoom
@@ -212,3 +212,8 @@ renamed-meanwhile = Renombrado mientras tanto
 renamed-meanwhile-told = Mientras editabas este título, alguien lo renombró a «{ $theirs }». El tuyo es «{ $mine }».
 renamed-meanwhile-theirs = Quedarse con el suyo
 renamed-meanwhile-mine = Mantener el mío
+
+ideas = Ideas
+ideas-capture = Apuntar
+ideas-empty = Todavía no hay ideas. Lanza una idea y mira adónde lleva.
+idea-opening = Abriendo…

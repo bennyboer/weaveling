@@ -48,7 +48,7 @@ fn placeholder(workspace: Workspace) -> Option<impl IntoView> {
     }
 
     let message = if workspace.loading() {
-        "workspace-loading"
+        "loading"
     } else {
         "workspace-empty"
     };

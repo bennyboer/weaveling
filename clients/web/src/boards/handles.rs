@@ -36,7 +36,7 @@ impl Naming {
 
     pub fn asked(&self) -> String {
         match self {
-            Self::Capturing { .. } => say("board-capturing"),
+            Self::Capturing { .. } => say("idea-asked"),
             Self::Renaming { was, .. } => say_about("board-rename", "idea", was),
         }
     }

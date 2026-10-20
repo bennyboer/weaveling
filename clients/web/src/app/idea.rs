@@ -8,6 +8,7 @@ use crate::ideas::inspector_state::InspectorState;
 use crate::problem::problem;
 use crate::route;
 use crate::shell::{Inside, masthead};
+use crate::speech::said;
 
 #[component]
 pub fn IdeaPage() -> impl IntoView {
@@ -26,9 +27,14 @@ pub fn IdeaPage() -> impl IntoView {
         move || masthead(Some(Inside::of(&state.project(), None))),
         html::main().child(html::div().class("column").child((
             move || state.problem().map(problem),
-            move || match ready.get() {
-                true => inspector(state).into_any(),
-                false => html::p().class("empty").child("Opening…").into_any(),
+            move || {
+                match ready.get() {
+                    true => inspector(state).into_any(),
+                    false => html::p()
+                        .class("empty")
+                        .child(said("idea-opening"))
+                        .into_any(),
+                }
             },
         ))),
     )

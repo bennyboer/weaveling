@@ -9,6 +9,7 @@ use crate::ideas::model::Idea;
 use crate::ideas::service;
 use crate::problem::problem;
 use crate::route;
+use crate::speech::said;
 
 #[component]
 pub fn Pool(project: String) -> impl IntoView {
@@ -69,7 +70,7 @@ pub fn Pool(project: String) -> impl IntoView {
     };
 
     html::section().class("pool").child((
-        html::h2().child("Ideas"),
+        html::h2().child(said("ideas")),
         html::form()
             .class("capture")
             .on(ev::submit, move |event| {
@@ -79,19 +80,21 @@ pub fn Pool(project: String) -> impl IntoView {
             .child((
                 html::input()
                     .r#type("text")
-                    .attr("aria-label", "What is the idea?")
-                    .placeholder("What is the idea?")
+                    .attr("aria-label", said("idea-asked"))
+                    .placeholder(said("idea-asked"))
                     .node_ref(title),
                 html::button()
                     .r#type("submit")
                     .disabled(capturing.pending())
-                    .child("Capture"),
+                    .child(said("ideas-capture")),
             )),
         move || failed.get().map(problem),
-        move || (ideas().is_empty()).then(|| html::p().class("empty").child(nothing_yet(listed))),
+        move || {
+            (ideas().is_empty()).then(|| html::p().class("empty").child(said(nothing_yet(listed))))
+        },
         html::ul()
             .class("ideas")
-            .attr("aria-label", "Ideas")
+            .attr("aria-label", said("ideas"))
             .child(move || {
                 ideas()
                     .into_iter()
@@ -103,9 +106,9 @@ pub fn Pool(project: String) -> impl IntoView {
 
 fn nothing_yet(listed: LocalResource<Result<Vec<Idea>, ApiError>>) -> &'static str {
     if listed.get().is_none() {
-        "Loading…"
+        "loading"
     } else {
-        "No ideas yet. Shoot an idea in and see where it goes."
+        "ideas-empty"
     }
 }
 
