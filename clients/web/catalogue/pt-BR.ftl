@@ -370,3 +370,22 @@ link-ideas-confirm =
     }
 find-an-idea = Procurar uma ideia
 no-idea-matches = Nenhuma ideia corresponde.
+
+refusals = Alterações que não puderam ser aplicadas
+refusals-told = Foram salvas, mas não chegaram a todos os lugares aonde deviam. Tente de novo quando o que as impediu for resolvido, ou confirme-as para silenciar o alarme.
+refusals-none = Não há mais nada para ver.
+refusals-list = Alterações recusadas
+close = Fechar
+refusal-wordless = Uma alteração não chegou a todos os lugares aonde devia.
+refusal-given-up = Abandonada em { $when }
+refusal-details = Detalhes
+refusal-listener = Receptor
+refusal-message = Mensagem
+refusal-attempts = Tentativas
+refusal-reason = Motivo
+refusal-retry = Tentar de novo
+refusal-acknowledge = Confirmar
+alarm-note = Algumas alterações não puderam ser aplicadas.
+alarm-show = Mostrar
+missing = Não há nada tecido neste endereço.
+missing-back = Voltar para seus projetos

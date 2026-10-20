@@ -9,6 +9,7 @@ use crate::icons::{Icon, mark};
 use crate::refusals::dialog::refusals_dialog;
 use crate::refusals::model::Refusal;
 use crate::refusals::service;
+use crate::speech::said;
 
 const ASK_EVERY: Duration = Duration::from_secs(5);
 
@@ -131,7 +132,7 @@ pub fn alarm(state: AlarmState) -> impl IntoView {
                     .class("alarm")
                     .class(("raised", move || state.raised()))
                     .class(("pulsing", move || state.is_pulsing()))
-                    .attr("aria-label", "Changes that could not be applied")
+                    .attr("aria-label", said("refusals"))
                     .on(ev::click, move |_| state.start_looking())
                     .on(ev::animationend, move |_| state.stop_pulsing())
                     .child(mark(Icon::Flash))
@@ -144,16 +145,16 @@ pub fn alarm(state: AlarmState) -> impl IntoView {
 
 fn note(state: AlarmState) -> impl IntoView {
     html::div().class("refused-note").role("status").child((
-        html::span().child("Some changes could not be applied."),
+        html::span().child(said("alarm-note")),
         html::button()
             .r#type("button")
             .class("show")
             .on(ev::click, move |_| state.start_looking())
-            .child("Show"),
+            .child(said("alarm-show")),
         html::button()
             .r#type("button")
             .class("dismiss")
-            .attr("aria-label", "Dismiss")
+            .attr("aria-label", said("problem-dismiss"))
             .on(ev::click, move |_| state.dismiss_note())
             .child(mark(Icon::Remove)),
     ))

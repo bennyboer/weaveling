@@ -370,3 +370,22 @@ link-ideas-confirm =
     }
 find-an-idea = Idee suchen
 no-idea-matches = Keine Idee passt.
+
+refusals = Änderungen, die nicht übernommen werden konnten
+refusals-told = Sie wurden gespeichert, kamen aber nicht überall an, wo sie hin sollten. Versuch es noch einmal, sobald behoben ist, was sie aufgehalten hat, oder bestätige sie, damit der Alarm verstummt.
+refusals-none = Hier gibt es nichts mehr zu sehen.
+refusals-list = Abgewiesene Änderungen
+close = Schließen
+refusal-wordless = Eine Änderung kam nicht überall an, wo sie hin sollte.
+refusal-given-up = Aufgegeben am { $when }
+refusal-details = Details
+refusal-listener = Empfänger
+refusal-message = Nachricht
+refusal-attempts = Versuche
+refusal-reason = Grund
+refusal-retry = Noch einmal versuchen
+refusal-acknowledge = Bestätigen
+alarm-note = Einige Änderungen konnten nicht übernommen werden.
+alarm-show = Anzeigen
+missing = An dieser Adresse ist nichts gewoben.
+missing-back = Zurück zu deinen Projekten

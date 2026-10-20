@@ -370,3 +370,22 @@ link-ideas-confirm =
     }
 find-an-idea = Find an idea
 no-idea-matches = No idea matches.
+
+refusals = Changes that could not be applied
+refusals-told = These were saved, but did not reach everywhere they should have. Try again once whatever stopped them is fixed, or acknowledge them to quiet the alarm.
+refusals-none = Nothing is left to look at.
+refusals-list = Refused changes
+close = Close
+refusal-wordless = A change did not reach everywhere it should have.
+refusal-given-up = Given up on { $when }
+refusal-details = Details
+refusal-listener = Listener
+refusal-message = Message
+refusal-attempts = Attempts
+refusal-reason = Reason
+refusal-retry = Try again
+refusal-acknowledge = Acknowledge
+alarm-note = Some changes could not be applied.
+alarm-show = Show
+missing = There is nothing woven at this address.
+missing-back = Back to your projects

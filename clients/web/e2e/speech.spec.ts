@@ -571,6 +571,70 @@ test("the contents and the tray speak the language chosen", async ({ page }) => 
   await expect(pinning.getByText("Keine Idee passt.")).toBeVisible();
 });
 
+test.describe("a browser asking for German, about what went wrong", () => {
+  test.use({ locale: "de-DE" });
+
+  test("an address that leads nowhere says so in German", async ({ page }) => {
+    await page.goto("/nowhere/at/all");
+
+    await expect(page.getByText("An dieser Adresse ist nichts gewoben.")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "Zurück zu deinen Projekten" }),
+    ).toBeVisible();
+  });
+
+  test("the alarm and the changes it holds speak German", async ({ page }) => {
+    await page.route("**/api/service/refusals", (route) =>
+      route.fulfill({
+        json: [
+          {
+            id: 1,
+            listener: "catalogue-idea",
+            routing: "idea.captured",
+            attempts: 5,
+            why: "the projection had not landed",
+            plainly: null,
+            occurred_at: "2026-10-10T09:00:00Z",
+            given_up_at: "2026-10-10T09:01:00Z",
+            acknowledged_at: null,
+          },
+        ],
+      }),
+    );
+
+    await page.goto("/");
+
+    const status = page.getByRole("contentinfo", { name: "Status" });
+    await expect(status.getByRole("status")).toContainText(
+      "Einige Änderungen konnten nicht übernommen werden.",
+    );
+    await expect(status.getByRole("button", { name: "Schließen" })).toHaveCount(1);
+    await status.getByRole("button", { name: "Anzeigen" }).click();
+    const refused = page.getByRole("dialog", {
+      name: "Änderungen, die nicht übernommen werden konnten",
+    });
+    await expect(refused).toContainText(
+      "Sie wurden gespeichert, kamen aber nicht überall an, wo sie hin sollten.",
+    );
+    const entry = refused
+      .getByRole("list", { name: "Abgewiesene Änderungen" })
+      .getByRole("listitem");
+    await expect(entry).toContainText("Eine Änderung kam nicht überall an, wo sie hin sollte.");
+    await expect(entry.locator(".when")).toHaveText(
+      /^Aufgegeben am \d{2} \S+ 2026, \d{2}:\d{2}$/,
+    );
+    await entry.getByText("Details").click();
+    await expect(entry.locator("dt")).toHaveText(["Empfänger", "Nachricht", "Versuche", "Grund"]);
+    await expect(entry.getByRole("button")).toHaveText(["Noch einmal versuchen", "Bestätigen"]);
+    await expect(refused.getByRole("button", { name: "Schließen" }).last()).toBeVisible();
+    await expect(
+      status.getByRole("button", {
+        name: "Änderungen, die nicht übernommen werden konnten",
+      }),
+    ).toHaveCount(1);
+  });
+});
+
 test.describe("a browser asking for a language the app does not speak", () => {
   test.use({ locale: "it-IT" });
 
