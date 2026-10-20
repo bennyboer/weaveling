@@ -6,6 +6,7 @@ use crate::drawer::{Edge, Inside, drawer};
 use crate::icons::{Icon, mark};
 use crate::outline::model::{Section, SectionId};
 use crate::scenes::model::SceneId;
+use crate::speech::{said, say, say_about};
 use crate::writing::book_rail::Fold;
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::walk::{Stop, Towards};
@@ -33,13 +34,13 @@ pub fn contents(state: WriteViewState) -> impl IntoView {
     drawer(
         rail.drawer(),
         Edge::Left,
-        || "Contents".to_owned(),
+        || say("contents"),
         Inside {
             id: BOOK_RAIL,
-            named: "Contents".into(),
+            named: said("contents").into(),
             called: "contents",
             head: (
-                html::p().class("tally").child("Contents"),
+                html::p().class("tally").child(said("contents")),
                 folding_everything(state),
             ),
             body: html::ol().class("rail-entries").child(move || {
@@ -77,16 +78,16 @@ fn folding_everything(state: WriteViewState) -> impl IntoView {
         html::button()
             .r#type("button")
             .class("fold-all")
-            .attr("aria-label", "Unfold all")
-            .attr("title", "Unfold all")
+            .attr("aria-label", said("contents-unfold-all"))
+            .attr("title", said("contents-unfold-all"))
             .disabled(all_unfolded)
             .on(ev::click, move |_| rail.unfold_all())
             .child(mark(Icon::UnfoldAll)),
         html::button()
             .r#type("button")
             .class("fold-all")
-            .attr("aria-label", "Fold all")
-            .attr("title", "Fold all")
+            .attr("aria-label", said("contents-fold-all"))
+            .attr("title", said("contents-fold-all"))
             .disabled(all_folded)
             .on(ev::click, move |_| rail.fold_all())
             .child(mark(Icon::FoldAll)),
@@ -142,7 +143,7 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
         } => {
             let unfolded = fold != Fold::Folded;
             let shown = match title.trim() {
-                "" => "Untitled section".to_owned(),
+                "" => say("heading-untitled"),
                 _ => title,
             };
             let turning = id.clone();
@@ -159,8 +160,8 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
                             .attr(
                                 "aria-label",
                                 match unfolded {
-                                    true => format!("Fold {shown}"),
-                                    false => format!("Unfold {shown}"),
+                                    true => say_about("outline-fold", "section", &shown),
+                                    false => say_about("contents-unfold", "section", &shown),
                                 },
                             )
                             .on(ev::click, move |_| {
@@ -194,7 +195,7 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
                             let label = state.labels.of_scene(&named);
 
                             match label.shown.trim() {
-                                "" => "An empty scene".to_owned(),
+                                "" => say("scene-an-empty-one"),
                                 _ => label.shown,
                             }
                         }),

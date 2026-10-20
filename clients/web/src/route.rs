@@ -1,6 +1,7 @@
 use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
+use crate::speech::say;
 
 pub const WORKSPACE: &str = "/";
 
@@ -65,7 +66,7 @@ pub fn named(segment: &str) -> String {
             .map(capitalised)
             .collect::<Vec<_>>()
             .join(" "),
-        _ => "Untitled".to_owned(),
+        _ => say("untitled"),
     }
 }
 

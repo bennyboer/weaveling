@@ -335,3 +335,38 @@ bring-back-none = Jede Szene steht schon im Buch.
 bring-back-told = Diese Szenen stehen nicht im Buch. Die gewählte kommt dorthin, wo du geklickt hast.
 bring-back-find = Szene suchen
 bring-back-no-match = Keine Szene passt.
+
+contents-unfold-all = Alles aufklappen
+contents-fold-all = Alles einklappen
+contents-unfold = { $section } aufklappen
+this-section = Dieser Abschnitt
+inspector-nothing-yet = Setz den Cursor in eine Szene oder eine Überschrift, um sie hier zu sehen.
+inspector-section-removed = Dieser Abschnitt wurde entfernt.
+pinned-ideas = Vermerkte Ideen
+pinned-none = Hier sind keine Ideen vermerkt.
+pin-an-idea = Idee vermerken
+section-unpin = { $idea } lösen
+drawn-from = Schöpft aus
+drawn-from-none = Noch keine Ideen verknüpft.
+link-an-idea = Idee verknüpfen
+unlink-idea = Verknüpfung mit { $idea } lösen
+pin-ideas = Ideen vermerken
+ideas-to-pin = Ideen zum Vermerken
+every-idea-pinned = Jede Idee dieses Projekts ist in der Gliederung schon vermerkt.
+pin-ideas-confirm =
+    { $count ->
+        [0] Vermerken
+        [1] Vermerken
+       *[other] { $count } vermerken
+    }
+link-ideas = Ideen verknüpfen
+ideas-to-link = Ideen zum Verknüpfen
+every-idea-linked = Jede Idee dieses Projekts ist schon verknüpft.
+link-ideas-confirm =
+    { $count ->
+        [0] Verknüpfen
+        [1] Verknüpfen
+       *[other] { $count } verknüpfen
+    }
+find-an-idea = Idee suchen
+no-idea-matches = Keine Idee passt.

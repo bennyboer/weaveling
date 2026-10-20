@@ -1,3 +1,4 @@
+use fluent_bundle::FluentArgs;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
@@ -5,19 +6,20 @@ use leptos::{IntoView, ev};
 use crate::dialog::modal;
 use crate::icons::{Icon, mark};
 use crate::ideas::model::{Idea, IdeaId};
+use crate::speech::{said, say_with};
 #[derive(Clone, Copy)]
 pub struct Wording {
     pub title: &'static str,
     pub listed: &'static str,
     pub every_one_taken: &'static str,
-    pub verb: &'static str,
+    pub confirmed: &'static str,
 }
 
 pub const LINKING: Wording = Wording {
-    title: "Link ideas",
-    listed: "Ideas to link",
-    every_one_taken: "Every idea in this project is already linked.",
-    verb: "Link",
+    title: "link-ideas",
+    listed: "ideas-to-link",
+    every_one_taken: "every-idea-linked",
+    confirmed: "link-ideas-confirm",
 };
 
 pub fn link_dialog(
@@ -47,14 +49,14 @@ pub fn link_dialog(
     };
 
     modal(
-        wording.title,
+        Signal::derive(said(wording.title)),
         "",
         close,
         (
             html::input()
                 .r#type("search")
-                .attr("aria-label", "Find an idea")
-                .attr("placeholder", "Find an idea")
+                .attr("aria-label", said("find-an-idea"))
+                .attr("placeholder", said("find-an-idea"))
                 .node_ref(search)
                 .on(ev::input, move |event| {
                     finding.set(event_target_value(&event));
@@ -65,15 +67,15 @@ pub fn link_dialog(
                 if found.is_empty() {
                     let why = match waiting.with(Vec::is_empty) {
                         true => wording.every_one_taken,
-                        false => "No idea matches.",
+                        false => "no-idea-matches",
                     };
 
-                    return html::p().class("empty").child(why).into_any();
+                    return html::p().class("empty").child(said(why)).into_any();
                 }
 
                 html::ul()
                     .class("choices")
-                    .attr("aria-label", wording.listed)
+                    .attr("aria-label", said(wording.listed))
                     .child(
                         found
                             .into_iter()
@@ -86,7 +88,7 @@ pub fn link_dialog(
                 html::button()
                     .r#type("button")
                     .on(ev::click, move |_| close())
-                    .child("Cancel"),
+                    .child(said("cancel")),
                 html::button()
                     .r#type("button")
                     .disabled(move || chosen.with(Vec::is_empty))
@@ -94,9 +96,11 @@ pub fn link_dialog(
                         link(chosen.get_untracked());
                         close();
                     })
-                    .child(move || match chosen.with(Vec::len) {
-                        0 | 1 => wording.verb.to_owned(),
-                        many => format!("{} {many}", wording.verb),
+                    .child(move || {
+                        let mut args = FluentArgs::new();
+                        args.set("count", chosen.with(Vec::len));
+
+                        say_with(wording.confirmed, &args)
                     }),
             )),
         ),

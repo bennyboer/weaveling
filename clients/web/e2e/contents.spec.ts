@@ -258,3 +258,16 @@ test("the scenes not in the book have no contents", async ({ page }) => {
   await expect(tab(page)).toHaveCount(0);
   await expect(rail(page)).toHaveCount(0);
 });
+
+test("a section without a title is named untitled in the contents", async ({
+  page,
+}) => {
+  await aNewProject(page, "ContentsUntitled");
+  await aBookShaped(page, [{ title: "" }]);
+  await openTheWritingView(page);
+
+  await openTheContents(page);
+
+  await expect.poll(() => shown(page)).toEqual(["0 Untitled section"]);
+});
+

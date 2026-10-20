@@ -335,3 +335,38 @@ bring-back-none = Every scene is in the book already.
 bring-back-told = These scenes are not in the book. The one you choose goes in where you clicked.
 bring-back-find = Find a scene
 bring-back-no-match = No scene matches.
+
+contents-unfold-all = Unfold all
+contents-fold-all = Fold all
+contents-unfold = Unfold { $section }
+this-section = This section
+inspector-nothing-yet = Put the cursor in a scene or a heading to see it here.
+inspector-section-removed = This section was removed.
+pinned-ideas = Pinned ideas
+pinned-none = No ideas pinned here.
+pin-an-idea = Pin an idea
+section-unpin = Unpin { $idea }
+drawn-from = Drawn from
+drawn-from-none = No ideas linked yet.
+link-an-idea = Link an idea
+unlink-idea = Unlink { $idea }
+pin-ideas = Pin ideas
+ideas-to-pin = Ideas to pin
+every-idea-pinned = Every idea in this project is already pinned in the outline.
+pin-ideas-confirm =
+    { $count ->
+        [0] Pin
+        [1] Pin
+       *[other] Pin { $count }
+    }
+link-ideas = Link ideas
+ideas-to-link = Ideas to link
+every-idea-linked = Every idea in this project is already linked.
+link-ideas-confirm =
+    { $count ->
+        [0] Link
+        [1] Link
+       *[other] Link { $count }
+    }
+find-an-idea = Find an idea
+no-idea-matches = No idea matches.

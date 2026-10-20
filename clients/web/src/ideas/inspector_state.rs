@@ -173,7 +173,7 @@ impl InspectorState {
                     .iter()
                     .find(|scene| scene.id == id)
                     .map(SceneSummary::shown_as)
-                    .unwrap_or_else(|| "Untitled".to_owned());
+                    .unwrap_or_else(|| say("untitled"));
 
                 (id, named)
             })

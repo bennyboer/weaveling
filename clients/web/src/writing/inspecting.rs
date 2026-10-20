@@ -10,6 +10,7 @@ use crate::outline::model::SectionId;
 use crate::route;
 use crate::scenes::link_dialog::{LINKING, Wording, link_dialog};
 use crate::scenes::model::SceneId;
+use crate::speech::{said, say, say_about};
 use crate::writing::inspector::Inspected;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -30,8 +31,8 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
         }
     });
     let named = move || match inspector.inspected() {
-        Some(Inspected::Section(_)) => "This section".to_owned(),
-        _ => "This scene".to_owned(),
+        Some(Inspected::Section(_)) => say("this-section"),
+        _ => say("this-scene"),
     };
 
     drawer(
@@ -46,7 +47,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
             body: move || match inspector.inspected() {
                 None => html::p()
                     .class("nothing-yet")
-                    .child("Put the cursor in a scene or a heading to see it here.")
+                    .child(said("inspector-nothing-yet"))
                     .into_any(),
                 Some(Inspected::Scene(scene)) => (
                     title_field(scene.clone(), state),
@@ -63,7 +64,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
                     (move || match still_there.get() {
                         false => html::p()
                             .class("nothing-yet")
-                            .child("This section was removed.")
+                            .child(said("inspector-section-removed"))
                             .into_any(),
                         true => (
                             html::p().class("section-name").child({
@@ -71,7 +72,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
 
                                 move || match state.structure.title_of(&section) {
                                     Some(title) if !title.trim().is_empty() => title,
-                                    _ => "Untitled section".to_owned(),
+                                    _ => say("heading-untitled"),
                                 }
                             }),
                             pinned(section.clone(), project, state),
@@ -91,16 +92,16 @@ fn pinned(
     state: WriteViewState,
 ) -> impl IntoView {
     html::section().class("drawn-from").child((
-        html::h3().class("tally").child("Pinned ideas"),
+        html::h3().class("tally").child(said("pinned-ideas")),
         move || {
             let ideas = state.structure.ideas_of(&section);
             match ideas.is_empty() {
                 true => html::p()
                     .class("empty")
-                    .child("No ideas pinned here.")
+                    .child(said("pinned-none"))
                     .into_any(),
                 false => html::ul()
-                    .attr("aria-label", "Pinned ideas")
+                    .attr("aria-label", said("pinned-ideas"))
                     .child(
                         ideas
                             .into_iter()
@@ -114,7 +115,7 @@ fn pinned(
             .r#type("button")
             .class("link-an-idea")
             .on(ev::click, move |_| state.scene_ideas.start_picking())
-            .child((mark(Icon::Plus), "Pin an idea")),
+            .child((mark(Icon::Plus), said("pin-an-idea"))),
     ))
 }
 
@@ -135,8 +136,8 @@ fn pinned_idea(idea: IdeaId, project: StoredValue<String>, state: WriteViewState
             },
             html::button()
                 .r#type("button")
-                .attr("aria-label", format!("Unpin {named}"))
-                .attr("title", format!("Unpin {named}"))
+                .attr("aria-label", say_about("section-unpin", "idea", &named))
+                .attr("title", say_about("section-unpin", "idea", &named))
                 .on(ev::click, move |_| state.structure.unpin(unpinned.clone()))
                 .child(mark(Icon::Remove)),
         ))
@@ -167,10 +168,10 @@ fn title_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
     html::input()
         .r#type("text")
         .class("scene-name")
-        .attr("aria-label", "Scene title")
+        .attr("aria-label", said("scene-title"))
         .attr("placeholder", move || {
             label.with(|label| match label.shown.as_str() {
-                "" => "An empty scene".to_owned(),
+                "" => say("scene-an-empty-one"),
                 opening if !label.titled => opening.to_owned(),
                 _ => String::new(),
             })
@@ -210,15 +211,15 @@ fn drawn_from(
     state: WriteViewState,
 ) -> impl IntoView {
     html::section().class("drawn-from").child((
-        html::h3().class("tally").child("Drawn from"),
+        html::h3().class("tally").child(said("drawn-from")),
         move || match state.scene_ideas.linked_to(&scene) {
             None => ().into_any(),
             Some(linked) if linked.is_empty() => html::p()
                 .class("empty")
-                .child("No ideas linked yet.")
+                .child(said("drawn-from-none"))
                 .into_any(),
             Some(linked) => html::ul()
-                .attr("aria-label", "Drawn from")
+                .attr("aria-label", said("drawn-from"))
                 .child(
                     linked
                         .into_iter()
@@ -231,7 +232,7 @@ fn drawn_from(
             .r#type("button")
             .class("link-an-idea")
             .on(ev::click, move |_| state.scene_ideas.start_picking())
-            .child((mark(Icon::Plus), "Link an idea")),
+            .child((mark(Icon::Plus), said("link-an-idea"))),
     ))
 }
 
@@ -254,8 +255,8 @@ fn linked_idea(
         },
         html::button()
             .r#type("button")
-            .attr("aria-label", format!("Unlink {named}"))
-            .attr("title", format!("Unlink {named}"))
+            .attr("aria-label", say_about("unlink-idea", "idea", &named))
+            .attr("title", say_about("unlink-idea", "idea", &named))
             .on(ev::click, move |_| {
                 state.scene_ideas.unlink(scene.clone(), idea.clone())
             })
@@ -264,10 +265,10 @@ fn linked_idea(
 }
 
 const PINNING: Wording = Wording {
-    title: "Pin ideas",
-    listed: "Ideas to pin",
-    every_one_taken: "Every idea in this project is already pinned in the outline.",
-    verb: "Pin",
+    title: "pin-ideas",
+    listed: "ideas-to-pin",
+    every_one_taken: "every-idea-pinned",
+    confirmed: "pin-ideas-confirm",
 };
 
 pub fn ideas_to_choose(state: WriteViewState) -> impl IntoView {

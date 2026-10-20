@@ -613,3 +613,42 @@ test("the tray's dialog finds ideas by name", async ({ page }) => {
     .fill("nothing like it");
   await expect(linkDialog(page)).toContainText("No idea matches.");
 });
+
+test("with every idea already linked, the tray's dialog says so", async ({
+  page,
+}) => {
+  await aNewProject(page, "TrayEveryIdeaLinked");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  await anIdeaLinkedTo(page, first, "The loom remembers");
+  await openTheWritingView(page);
+  await scene(page, first).click();
+  await inspectorTab(page).click();
+
+  await inspector(page).getByRole("button", { name: "Link an idea" }).click();
+
+  await expect(linkDialog(page)).toContainText(
+    "Every idea in this project is already linked.",
+  );
+});
+
+test("a section removed meanwhile is told as removed in the tray", async ({
+  page,
+}) => {
+  await aNewProject(page, "TraySectionRemoved");
+  const { outline, ids } = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await openTheWritingView(page);
+  await flow(page).getByRole("heading", { name: "Part One" }).click();
+  await page.getByRole("button", { name: "This section", exact: true }).click();
+  await expect(inspectedSection(page)).toContainText("Part One");
+
+  const removed = await page.request.delete(
+    `${API}/outlines/${outline}/sections/${ids["Part One"]}`,
+  );
+  expect(removed.ok()).toBe(true);
+
+  await expect(inspectedSection(page)).toContainText("This section was removed.");
+});
+

@@ -335,3 +335,38 @@ bring-back-none = Toutes les scènes sont déjà dans le livre.
 bring-back-told = Ces scènes ne sont pas dans le livre. Celle que vous choisissez entre là où vous avez cliqué.
 bring-back-find = Chercher une scène
 bring-back-no-match = Aucune scène ne correspond.
+
+contents-unfold-all = Tout déplier
+contents-fold-all = Tout replier
+contents-unfold = Déplier { $section }
+this-section = Cette section
+inspector-nothing-yet = Placez le curseur dans une scène ou un titre pour le voir ici.
+inspector-section-removed = Cette section a été supprimée.
+pinned-ideas = Idées notées
+pinned-none = Aucune idée notée ici.
+pin-an-idea = Noter une idée
+section-unpin = Retirer { $idea }
+drawn-from = S’inspire de
+drawn-from-none = Aucune idée liée pour l’instant.
+link-an-idea = Lier une idée
+unlink-idea = Délier { $idea }
+pin-ideas = Noter des idées
+ideas-to-pin = Idées à noter
+every-idea-pinned = Toutes les idées de ce projet sont déjà notées dans le plan.
+pin-ideas-confirm =
+    { $count ->
+        [0] Noter
+        [1] Noter
+       *[other] Noter { $count }
+    }
+link-ideas = Lier des idées
+ideas-to-link = Idées à lier
+every-idea-linked = Toutes les idées de ce projet sont déjà liées.
+link-ideas-confirm =
+    { $count ->
+        [0] Lier
+        [1] Lier
+       *[other] Lier { $count }
+    }
+find-an-idea = Chercher une idée
+no-idea-matches = Aucune idée ne correspond.

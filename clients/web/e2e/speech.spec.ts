@@ -7,10 +7,11 @@ import {
   API,
   aLooseScene,
   captureIdea,
+  catalogued,
   openTheBoard,
   openTheOutline,
 } from "./support/shell";
-import { flow, openTheWritingView, scene } from "./support/writing";
+import { flow, openTheWritingView, projectOf, scene } from "./support/writing";
 
 const spoken = (page: Page) =>
   page.evaluate(() => document.documentElement.getAttribute("lang"));
@@ -516,6 +517,58 @@ test("bringing a scene back and placing one speak the language chosen", async ({
   await expect(
     placing.getByRole("list", { name: "Abschnitte des Buchs" }),
   ).toBeVisible();
+});
+
+test("the contents and the tray speak the language chosen", async ({ page }) => {
+  await aNewProject(page, "Ablage");
+  const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
+  const captured = await page.request.post(`${API}/ideas`, {
+    data: { project: projectOf(page), title: "The loom remembers" },
+  });
+  expect(captured.status()).toBe(201);
+  await catalogued(page, ["The loom remembers"]);
+  await openTheWritingView(page);
+  await picker(page, "Language").selectOption("de");
+  const book = page.getByRole("article", { name: "Das Buch" });
+
+  await page.getByRole("button", { name: "Inhalt", exact: true }).click();
+  const rail = page.getByRole("complementary", { name: "Inhalt" });
+  await expect(rail.getByRole("button", { name: "Alles aufklappen" })).toHaveCount(1);
+  await expect(rail.getByRole("button", { name: "Alles einklappen" })).toHaveCount(1);
+  await rail.getByRole("button", { name: "Part One aufklappen" }).click();
+  await expect(rail.getByRole("button", { name: "Part One einklappen" })).toHaveCount(1);
+  await expect(rail.getByRole("button", { name: "Eine leere Szene" })).toBeVisible();
+  await rail.getByRole("button", { name: "Inhaltsverzeichnis schließen" }).click();
+
+  await book.locator(`[data-scene="${first}"] .ProseMirror`).click();
+  await page.getByRole("button", { name: "Diese Szene" }).click();
+  const tray = page.getByRole("complementary", { name: "Diese Szene" });
+  await expect(tray.getByRole("textbox", { name: "Szenentitel" })).toBeVisible();
+  await expect(tray.getByRole("heading", { name: "Schöpft aus" })).toBeVisible();
+  await expect(tray.getByText("Noch keine Ideen verknüpft.")).toBeVisible();
+  await tray.getByRole("button", { name: "Idee verknüpfen" }).click();
+  const linking = page.getByRole("dialog", { name: "Ideen verknüpfen" });
+  await expect(linking.getByRole("searchbox", { name: "Idee suchen" })).toBeVisible();
+  await expect(linking.getByRole("button", { name: "Verknüpfen" })).toBeDisabled();
+  await linking
+    .getByRole("list", { name: "Ideen zum Verknüpfen" })
+    .getByLabel("The loom remembers")
+    .check();
+  await linking.getByRole("button", { name: "Verknüpfen" }).click();
+  await expect(
+    tray
+      .getByRole("list", { name: "Schöpft aus" })
+      .getByRole("button", { name: "Verknüpfung mit The loom remembers lösen" }),
+  ).toBeVisible();
+
+  await book.getByRole("heading", { name: "Part One" }).click();
+  const section = page.getByRole("complementary", { name: "Dieser Abschnitt" });
+  await expect(section.getByRole("heading", { name: "Vermerkte Ideen" })).toBeVisible();
+  await expect(section.getByText("Hier sind keine Ideen vermerkt.")).toBeVisible();
+  await section.getByRole("button", { name: "Idee vermerken" }).click();
+  const pinning = page.getByRole("dialog", { name: "Ideen vermerken" });
+  await pinning.getByRole("searchbox", { name: "Idee suchen" }).fill("nirgends");
+  await expect(pinning.getByText("Keine Idee passt.")).toBeVisible();
 });
 
 test.describe("a browser asking for a language the app does not speak", () => {
