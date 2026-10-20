@@ -6,7 +6,7 @@ edition.workspace = true
 [dependencies]
 axum = { workspace = true }
 serde = { workspace = true }
-tracing = { workspace = true }
 
 statistics-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-statistics-contract" }
 statistics-core = { version = "0.1.0", path = "../../core", package = "weaveling-statistics-core" }
+serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }

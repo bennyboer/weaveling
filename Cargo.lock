@@ -3547,9 +3547,9 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "serde",
- "tracing",
  "weaveling-appearances-contract",
  "weaveling-appearances-core",
+ "weaveling-serving",
 ]
 
 [[package]]
@@ -4249,9 +4249,9 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "serde",
- "tracing",
  "weaveling-scenes-contract",
  "weaveling-scenes-core",
+ "weaveling-serving",
 ]
 
 [[package]]
@@ -4355,6 +4355,7 @@ dependencies = [
  "weaveling-outline-wiring",
  "weaveling-projects-wiring",
  "weaveling-scenes-wiring",
+ "weaveling-serving",
  "weaveling-statistics-wiring",
  "weaveling-test-harness",
  "weaveling-wiring",
@@ -4418,7 +4419,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "serde",
- "tracing",
+ "weaveling-serving",
  "weaveling-statistics-contract",
  "weaveling-statistics-core",
 ]

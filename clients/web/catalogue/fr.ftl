@@ -133,3 +133,7 @@ refused-section-would-contain-itself = Une section ne peut pas être déplacée 
 refused-section-neighbour-not-found = À cet endroit, il n’y a rien après quoi le placer.
 refused-not-in-the-outline = Ceci n’est pas dans le plan.
 refused-outline-discarded = Ce plan a été abandonné entre-temps.
+refused-scene-id-invalid = Ce n’est pas un identifiant de scène valide.
+refused-scene-title-control-character = Le titre d’une scène ne peut pas contenir de caractères de contrôle.
+refused-scene-title-too-long = Le titre d’une scène peut compter au plus { $max } caractères ; celui-ci en a { $actual }.
+refused-quotation-never-restyled = Les guillemets de ce livre n’ont jamais été réécrits.

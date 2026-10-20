@@ -133,3 +133,7 @@ refused-section-would-contain-itself = Ein Abschnitt kann nicht in sich selbst v
 refused-section-neighbour-not-found = An dieser Stelle steht nichts, hinter das es kommen könnte.
 refused-not-in-the-outline = Das steht nicht in der Gliederung.
 refused-outline-discarded = Diese Gliederung wurde inzwischen verworfen.
+refused-scene-id-invalid = Das ist keine gültige Szenen-ID.
+refused-scene-title-control-character = Der Titel einer Szene darf keine Steuerzeichen enthalten.
+refused-scene-title-too-long = Der Titel einer Szene darf höchstens { $max } Zeichen lang sein, dieser hat { $actual }.
+refused-quotation-never-restyled = Die Anführungszeichen dieses Buchs wurden nie neu gesetzt.

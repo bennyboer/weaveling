@@ -1,22 +1,34 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use axum_test::TestServer;
+use axum::http::header::CONTENT_TYPE;
+use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{
     CreateSceneRequest, FRAGMENT, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest,
-    SceneDTO, ScenePageDTO, SceneSummaryDTO,
+    SceneDTO, ScenePageDTO, SceneSummaryDTO, refused,
 };
 use scenes_core::{
     ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneService, SceneTitle,
 };
 use scenes_rest::PAGE;
 use scenes_store::InMemorySceneStore;
+use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const UNKNOWN_ID: &str = "scene_031VkO0hnpeQZUiAB7nDma";
+
+fn refused_as(response: TestResponse, status: StatusCode, kind: &str) -> Value {
+    response.assert_status(status);
+    assert_eq!(response.header(CONTENT_TYPE), "application/problem+json");
+    let told: Value = response.json();
+    assert_eq!(told["type"], kind, "{told}");
+    assert_eq!(told["status"], status.as_u16(), "{told}");
+
+    told
+}
 
 const A_PROJECT: &str = "project_1";
 
@@ -120,7 +132,7 @@ async fn a_malformed_id_is_a_bad_request() {
 
     let response = server.get("/scenes/weaveling").await;
 
-    response.assert_status(StatusCode::BAD_REQUEST);
+    refused_as(response, StatusCode::BAD_REQUEST, refused::ID_INVALID);
 }
 
 #[tokio::test]
@@ -129,7 +141,7 @@ async fn an_unknown_scene_is_not_found() {
 
     let response = server.get(&format!("/scenes/{UNKNOWN_ID}")).await;
 
-    response.assert_status(StatusCode::NOT_FOUND);
+    refused_as(response, StatusCode::NOT_FOUND, "not-found");
 }
 
 #[tokio::test]
@@ -142,10 +154,11 @@ async fn a_deleted_scene_is_gone() {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
-    server
-        .get(&format!("/scenes/{}", created.id))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    refused_as(
+        server.get(&format!("/scenes/{}", created.id)).await,
+        StatusCode::NOT_FOUND,
+        "not-found",
+    );
 }
 
 #[tokio::test]
@@ -154,10 +167,10 @@ async fn deleting_an_unknown_scene_is_not_found() {
 
     let response = server.delete(&format!("/scenes/{UNKNOWN_ID}")).await;
 
-    response.assert_status(StatusCode::NOT_FOUND);
+    refused_as(response, StatusCode::NOT_FOUND, "not-found");
 }
 
-async fn retitled(server: &TestServer, id: &str, title: &str) -> axum_test::TestResponse {
+async fn retitled(server: &TestServer, id: &str, title: &str) -> TestResponse {
     server
         .patch(&format!("/scenes/{id}"))
         .json(&RetitleSceneRequest {
@@ -198,7 +211,11 @@ async fn a_title_the_domain_refuses_is_unprocessable() {
 
     let response = retitled(&server, &created.id, "The\u{7}loom").await;
 
-    response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    refused_as(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::TITLE_CONTROL_CHARACTER,
+    );
 }
 
 #[tokio::test]
@@ -207,7 +224,7 @@ async fn retitling_a_scene_nobody_created_is_not_found() {
 
     let response = retitled(&server, UNKNOWN_ID, "Nowhere").await;
 
-    response.assert_status(StatusCode::NOT_FOUND);
+    refused_as(response, StatusCode::NOT_FOUND, "not-found");
 }
 
 async fn a_catalog_holding(count: i64) -> Arc<InMemorySceneCatalog> {
@@ -314,7 +331,7 @@ async fn a_listing_after_something_that_is_no_scene_is_a_bad_request() {
         .get(&format!("/scenes?project={A_PROJECT}&after=idea_1"))
         .await;
 
-    response.assert_status(StatusCode::BAD_REQUEST);
+    refused_as(response, StatusCode::BAD_REQUEST, refused::ID_INVALID);
 }
 
 async fn linked(server: &TestServer, id: &str, idea: &str) -> axum_test::TestResponse {
@@ -355,13 +372,18 @@ async fn an_idea_can_be_linked_and_unlinked() {
 async fn linking_to_a_scene_nobody_created_is_not_found() {
     let server = new_server_with(a_service());
 
-    linked(&server, UNKNOWN_ID, "idea_1")
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-    server
-        .delete(&format!("/scenes/{UNKNOWN_ID}/ideas/idea_1"))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    refused_as(
+        linked(&server, UNKNOWN_ID, "idea_1").await,
+        StatusCode::NOT_FOUND,
+        "not-found",
+    );
+    refused_as(
+        server
+            .delete(&format!("/scenes/{UNKNOWN_ID}/ideas/idea_1"))
+            .await,
+        StatusCode::NOT_FOUND,
+        "not-found",
+    );
 }
 
 async fn restyling(tasks: InMemoryQuotationRestylingTasks) -> axum_test::TestResponse {
@@ -399,9 +421,11 @@ async fn how_far_a_book_is_restyled_can_be_asked() {
 
 #[tokio::test]
 async fn a_book_never_restyled_is_not_found() {
-    restyling(InMemoryQuotationRestylingTasks::new())
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    refused_as(
+        restyling(InMemoryQuotationRestylingTasks::new()).await,
+        StatusCode::NOT_FOUND,
+        refused::NEVER_RESTYLED,
+    );
 }
 
 #[tokio::test]
@@ -424,4 +448,20 @@ async fn more_done_than_was_counted_is_told_as_all_of_it() {
         "a scene written while the book was restyled, or a batch delivered twice, \
          must not take the bar past its end"
     );
+}
+
+#[tokio::test]
+async fn a_title_too_long_is_refused_telling_how_long_it_may_be() {
+    let server = new_server_with(a_service());
+    let created = a_scene(&server).await;
+
+    let response = retitled(&server, &created.id, &"a".repeat(SceneTitle::MAX_CHARS + 1)).await;
+
+    let told = refused_as(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::TITLE_TOO_LONG,
+    );
+    assert_eq!(told["max"], SceneTitle::MAX_CHARS);
+    assert_eq!(told["actual"], SceneTitle::MAX_CHARS + 1);
 }

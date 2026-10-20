@@ -133,3 +133,7 @@ refused-section-would-contain-itself = A section cannot be moved inside itself.
 refused-section-neighbour-not-found = There is nothing at that place to sit after.
 refused-not-in-the-outline = This is not in the outline.
 refused-outline-discarded = This outline was discarded meanwhile.
+refused-scene-id-invalid = That is not a valid scene ID.
+refused-scene-title-control-character = A scene's title cannot hold control characters.
+refused-scene-title-too-long = A scene's title can be at most { $max } characters long; this one has { $actual }.
+refused-quotation-never-restyled = The quotation marks of this book were never rewritten.

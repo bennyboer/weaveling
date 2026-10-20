@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Deserialize;
+use serving::Problem;
 use statistics_contract::WordCountDTO;
 use statistics_core::{CatalogError, ProjectLink, WordCount, WordCountCatalog};
 
@@ -48,12 +48,6 @@ impl From<CatalogError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        tracing::error!(error = %self.0, "the word count catalog failed");
-
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "the word count catalog is unavailable",
-        )
-            .into_response()
+        Problem::unexpected(self.0).into_response()
     }
 }

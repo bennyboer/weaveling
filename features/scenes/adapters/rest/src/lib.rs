@@ -8,13 +8,15 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
-    ScenePageDTO, SceneSummaryDTO,
+    ScenePageDTO, SceneSummaryDTO, refused,
 };
 use scenes_core::{
-    CatalogError, ProjectLink, QuotationRestylingTaskError, QuotationRestylingTasks, Scene,
-    SceneCatalog, SceneId, SceneService, SceneServiceError, SceneSummary, StoreError,
+    CatalogError, InvalidSceneTitle, ProjectLink, QuotationRestylingTaskError,
+    QuotationRestylingTasks, Scene, SceneCatalog, SceneId, SceneService, SceneServiceError,
+    SceneSummary, StoreError,
 };
 use serde::Deserialize;
+use serving::{NOT_FOUND, Problem};
 
 #[derive(Clone)]
 struct Scenes {
@@ -200,58 +202,35 @@ impl From<CatalogError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let error = match self {
-            Self::Scenes(error) => error,
-            Self::Catalog(error) => {
-                tracing::error!(%error, "the scene catalog failed");
+        match self {
+            Self::Scenes(refusal) => problem_of(refusal),
+            Self::Catalog(failure) => Problem::unexpected(failure),
+            Self::Restylings(failure) => Problem::unexpected(failure),
+            Self::NeverRestyled(project) => Problem::not_found(
+                refused::NEVER_RESTYLED,
+                format!("the quotation marks of project {project} were never restyled"),
+            ),
+        }
+        .into_response()
+    }
+}
 
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "the scene catalog is unavailable".to_owned(),
-                )
-                    .into_response();
+fn problem_of(refusal: SceneServiceError) -> Problem {
+    match refusal {
+        SceneServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        SceneServiceError::Untitled(reason) => match reason {
+            InvalidSceneTitle::ControlCharacter => {
+                Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
             }
-            Self::Restylings(error) => {
-                tracing::error!(%error, "the quotation restyling tasks failed");
-
-                return (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "the progress of restyling is unavailable".to_owned(),
-                )
-                    .into_response();
+            InvalidSceneTitle::TooLong { max, actual } => {
+                Problem::unprocessable(refused::TITLE_TOO_LONG, reason)
+                    .with("max", max)
+                    .with("actual", actual)
             }
-            Self::NeverRestyled(project) => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    format!("the quotation marks of project {project} were never restyled"),
-                )
-                    .into_response();
-            }
-        };
-        let (status, message) = match error {
-            SceneServiceError::InvalidId(error) => (StatusCode::BAD_REQUEST, error.to_string()),
-            SceneServiceError::Untitled(error) => {
-                (StatusCode::UNPROCESSABLE_ENTITY, error.to_string())
-            }
-            SceneServiceError::Store(StoreError::NotFound(id)) => {
-                (StatusCode::NOT_FOUND, format!("scene {id} was not found"))
-            }
-            SceneServiceError::Store(StoreError::Conflict(id)) => {
-                (StatusCode::CONFLICT, format!("scene {id} already exists"))
-            }
-            SceneServiceError::Store(error @ StoreError::Unusable(_)) => {
-                (StatusCode::BAD_REQUEST, error.to_string())
-            }
-            SceneServiceError::Store(error @ StoreError::Backend(_)) => {
-                tracing::error!(%error, "the scene store failed");
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "the scene store is unavailable".to_owned(),
-                )
-            }
-        };
-
-        (status, message).into_response()
+        },
+        SceneServiceError::Store(missing @ StoreError::NotFound(_)) => {
+            Problem::not_found(NOT_FOUND, missing)
+        }
+        beyond_reach => Problem::unexpected(beyond_reach),
     }
 }

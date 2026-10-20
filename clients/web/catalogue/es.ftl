@@ -133,3 +133,7 @@ refused-section-would-contain-itself = Una sección no puede moverse dentro de s
 refused-section-neighbour-not-found = En ese lugar no hay nada detrás de lo que ponerlo.
 refused-not-in-the-outline = Esto no está en el esquema.
 refused-outline-discarded = Este esquema se descartó mientras tanto.
+refused-scene-id-invalid = Eso no es un ID de escena válido.
+refused-scene-title-control-character = El título de una escena no puede contener caracteres de control.
+refused-scene-title-too-long = El título de una escena puede tener como máximo { $max } caracteres; este tiene { $actual }.
+refused-quotation-never-restyled = Las comillas de este libro nunca se reescribieron.

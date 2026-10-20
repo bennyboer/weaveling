@@ -10,6 +10,7 @@ use clock::Clock;
 use clock::text::serialize;
 use messaging::{DeadLetter, Deliveries, DeliveryError, InProcessDispatcher};
 use messaging_contract::RefusalDTO;
+use serving::Problem;
 
 #[derive(Clone)]
 struct Refusals {
@@ -89,12 +90,6 @@ impl From<DeliveryError> for Unserved {
 
 impl IntoResponse for Unserved {
     fn into_response(self) -> Response {
-        tracing::error!(error = %self.0, "a refusals request could not be served");
-
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "something went wrong".to_owned(),
-        )
-            .into_response()
+        Problem::unexpected(self.0).into_response()
     }
 }

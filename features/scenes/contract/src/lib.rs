@@ -111,3 +111,17 @@ pub struct LinkIdeaRequest {
 pub struct RetitleSceneRequest {
     pub title: String,
 }
+
+pub mod refused {
+    pub const ID_INVALID: &str = "scene-id-invalid";
+    pub const TITLE_CONTROL_CHARACTER: &str = "scene-title-control-character";
+    pub const TITLE_TOO_LONG: &str = "scene-title-too-long";
+    pub const NEVER_RESTYLED: &str = "quotation-never-restyled";
+
+    pub const EVERY: [&str; 4] = [
+        ID_INVALID,
+        TITLE_CONTROL_CHARACTER,
+        TITLE_TOO_LONG,
+        NEVER_RESTYLED,
+    ];
+}

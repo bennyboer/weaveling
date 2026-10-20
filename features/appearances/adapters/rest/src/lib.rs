@@ -3,11 +3,11 @@ use std::sync::Arc;
 use appearances_contract::PlaceDTO;
 use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, Subject};
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use serde::Deserialize;
+use serving::Problem;
 
 pub fn router(catalog: Arc<dyn AppearanceCatalog>) -> Router {
     Router::new()
@@ -52,12 +52,6 @@ impl From<CatalogError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        tracing::error!(error = %self.0, "the appearance catalog failed");
-
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "the appearance catalog is unavailable",
-        )
-            .into_response()
+        Problem::unexpected(self.0).into_response()
     }
 }
