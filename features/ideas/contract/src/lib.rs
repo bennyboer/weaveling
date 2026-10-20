@@ -41,3 +41,17 @@ pub enum IdeaEventDTO {
     #[serde(rename = "DISCARDED")]
     Discarded,
 }
+
+pub mod refused {
+    pub const ID_INVALID: &str = "idea-id-invalid";
+    pub const TITLE_CONTROL_CHARACTER: &str = "idea-title-control-character";
+    pub const TITLE_TOO_LONG: &str = "idea-title-too-long";
+    pub const DISCARDED: &str = "idea-discarded";
+
+    pub const EVERY: [&str; 4] = [
+        ID_INVALID,
+        TITLE_CONTROL_CHARACTER,
+        TITLE_TOO_LONG,
+        DISCARDED,
+    ];
+}

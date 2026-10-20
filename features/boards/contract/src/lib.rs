@@ -78,3 +78,13 @@ pub enum BoardEventDTO {
     #[serde(rename = "DISCARDED")]
     Discarded,
 }
+
+pub mod refused {
+    pub const ID_INVALID: &str = "board-id-invalid";
+    pub const ALREADY_PINNED: &str = "idea-already-pinned";
+    pub const NOT_PINNED: &str = "idea-not-pinned";
+    pub const SHAPELESS: &str = "card-shapeless";
+    pub const DISCARDED: &str = "board-discarded";
+
+    pub const EVERY: [&str; 5] = [ID_INVALID, ALREADY_PINNED, NOT_PINNED, SHAPELESS, DISCARDED];
+}

@@ -208,9 +208,8 @@ fn problem_of(refusal: ProjectServiceError) -> Problem {
             }
         },
         ProjectServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
-            ProjectError::NotStartedYet => Problem::refused(refused::NOT_STARTED_YET, refusal),
-            ProjectError::AlreadyStarted => Problem::refused(refused::ALREADY_STARTED, refusal),
             ProjectError::Deleted => Problem::refused(refused::DELETED, refusal),
+            beyond_reach => Problem::unexpected(beyond_reach),
         }),
         unserveable => Problem::unexpected(unserveable),
     }

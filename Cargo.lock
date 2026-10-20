@@ -3641,7 +3641,6 @@ name = "weaveling-boards-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
- "tracing",
  "weaveling-boards-contract",
  "weaveling-boards-core",
  "weaveling-eventsourcing",
@@ -3821,7 +3820,6 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "serde",
- "tracing",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-ideas-core",
@@ -4000,7 +3998,6 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "serde",
- "tracing",
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-live",

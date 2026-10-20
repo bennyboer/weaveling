@@ -86,11 +86,9 @@ pub mod refused {
     pub const QUOTATION_UNKNOWN: &str = "quotation-marks-unknown";
     pub const DESCRIPTION_CONTROL_CHARACTER: &str = "project-description-control-character";
     pub const DESCRIPTION_TOO_LONG: &str = "project-description-too-long";
-    pub const NOT_STARTED_YET: &str = "project-not-started-yet";
-    pub const ALREADY_STARTED: &str = "project-already-started";
     pub const DELETED: &str = "project-deleted";
 
-    pub const EVERY: [&str; 11] = [
+    pub const EVERY: [&str; 9] = [
         ID_INVALID,
         NAME_BLANK,
         NAME_CONTROL_CHARACTER,
@@ -99,8 +97,6 @@ pub mod refused {
         QUOTATION_UNKNOWN,
         DESCRIPTION_CONTROL_CHARACTER,
         DESCRIPTION_TOO_LONG,
-        NOT_STARTED_YET,
-        ALREADY_STARTED,
         DELETED,
     ];
 }

@@ -30,6 +30,14 @@ impl Problem {
         Self::new(StatusCode::CONFLICT, kind, detail)
     }
 
+    pub fn not_found(kind: &'static str, detail: impl Display) -> Self {
+        Self::new(StatusCode::NOT_FOUND, kind, detail)
+    }
+
+    pub fn unprocessable(kind: &'static str, detail: impl Display) -> Self {
+        Self::new(StatusCode::UNPROCESSABLE_ENTITY, kind, detail)
+    }
+
     pub fn unexpected(error: impl Display) -> Self {
         tracing::error!(error = %error, "a request could not be served");
 

@@ -128,3 +128,27 @@ pub enum OutlineEventDTO {
     #[serde(rename = "DISCARDED")]
     Discarded,
 }
+
+pub mod refused {
+    pub const ID_INVALID: &str = "outline-id-invalid";
+    pub const TITLE_CONTROL_CHARACTER: &str = "section-title-control-character";
+    pub const TITLE_TOO_LONG: &str = "section-title-too-long";
+    pub const NO_SUCH_KIND: &str = "outline-holds-no-such-kind";
+    pub const NO_SUCH_SECTION: &str = "section-not-found";
+    pub const WOULD_CONTAIN_ITSELF: &str = "section-would-contain-itself";
+    pub const NO_SUCH_NEIGHBOUR: &str = "section-neighbour-not-found";
+    pub const NOT_ATTACHED: &str = "not-in-the-outline";
+    pub const DISCARDED: &str = "outline-discarded";
+
+    pub const EVERY: [&str; 9] = [
+        ID_INVALID,
+        TITLE_CONTROL_CHARACTER,
+        TITLE_TOO_LONG,
+        NO_SUCH_KIND,
+        NO_SUCH_SECTION,
+        WOULD_CONTAIN_ITSELF,
+        NO_SUCH_NEIGHBOUR,
+        NOT_ATTACHED,
+        DISCARDED,
+    ];
+}

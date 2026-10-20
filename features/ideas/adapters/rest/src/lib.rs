@@ -6,10 +6,10 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use eventsourcing::{Agent, Standing, Version};
-use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
-use ideas_core::{Idea, IdeaService, IdeaServiceError, IdeaSummary};
+use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
+use ideas_core::{Idea, IdeaError, IdeaService, IdeaServiceError, IdeaSummary, InvalidIdeaTitle};
 use serde::Deserialize;
-use serving::{Unreadable, demanded, refusal, tag};
+use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
 pub fn router(ideas: IdeaService) -> Router {
     Router::new()
@@ -131,27 +131,31 @@ impl From<Unreadable> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let refused = match self {
-            Self::Unreadable(reason) => {
-                return (StatusCode::BAD_REQUEST, reason.to_string()).into_response();
+        match self {
+            Self::Unreadable(reason) => Problem::rejected(UNREADABLE, reason),
+            Self::Refused(refusal) => problem_of(refusal),
+        }
+        .into_response()
+    }
+}
+
+fn problem_of(refusal: IdeaServiceError) -> Problem {
+    match refusal {
+        IdeaServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        IdeaServiceError::InvalidTitle(reason) => match reason {
+            InvalidIdeaTitle::ControlCharacter => {
+                Problem::rejected(refused::TITLE_CONTROL_CHARACTER, reason)
             }
-            Self::Refused(refused) => refused,
-        };
-
-        let (status, message) = match refused {
-            IdeaServiceError::InvalidId(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
-            IdeaServiceError::InvalidTitle(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
-            IdeaServiceError::Events(events) => refusal(&events),
-            unserveable => {
-                tracing::error!(error = %unserveable, "an idea request could not be served");
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "something went wrong".to_owned(),
-                )
+            InvalidIdeaTitle::TooLong { max, actual } => {
+                Problem::rejected(refused::TITLE_TOO_LONG, reason)
+                    .with("max", max)
+                    .with("actual", actual)
             }
-        };
-
-        (status, message).into_response()
+        },
+        IdeaServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
+            IdeaError::Discarded => Problem::refused(refused::DISCARDED, refusal),
+            beyond_reach => Problem::unexpected(beyond_reach),
+        }),
+        unserveable => Problem::unexpected(unserveable),
     }
 }

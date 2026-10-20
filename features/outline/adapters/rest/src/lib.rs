@@ -6,19 +6,19 @@ use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
-use eventsourcing::{Agent, ServiceError, Standing, Version};
+use eventsourcing::{Agent, Standing, Version};
 use live::{Broadcaster, streaming};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
-    RetitleSectionRequest,
+    RetitleSectionRequest, refused,
 };
 use outline_core::{
     Attachment, Changed, InvalidSectionTitle, Outline, OutlineError, OutlineService,
     OutlineServiceError, PlacedSection, SectionId, SectionTitle,
 };
 use serde::Deserialize;
-use serving::{Unreadable, demanded, refusal, tag};
+use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
 pub fn router(outlines: OutlineService) -> Router {
     Router::new()
@@ -405,56 +405,43 @@ impl From<Unreadable> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let refused = match self {
-            Self::Unreadable(reason) => {
-                return (StatusCode::BAD_REQUEST, reason.to_string()).into_response();
-            }
-            Self::Untitled(reason) => {
-                return (StatusCode::UNPROCESSABLE_ENTITY, reason.to_string()).into_response();
-            }
-            Self::NoSuchKind => {
-                return (
-                    StatusCode::NOT_FOUND,
-                    "an outline holds scenes and ideas, and nothing else",
-                )
-                    .into_response();
-            }
-            Self::Refused(refused) => refused,
-        };
-
-        let (status, message) = match refused {
-            OutlineServiceError::InvalidId(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
-            OutlineServiceError::Events(ServiceError::Refused(OutlineError::NoSuchSection)) => (
-                StatusCode::NOT_FOUND,
-                OutlineError::NoSuchSection.to_string(),
+        match self {
+            Self::Unreadable(reason) => Problem::rejected(UNREADABLE, reason),
+            Self::Untitled(reason) => match reason {
+                InvalidSectionTitle::ControlCharacter => {
+                    Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
+                }
+                InvalidSectionTitle::TooLong { max, actual } => {
+                    Problem::unprocessable(refused::TITLE_TOO_LONG, reason)
+                        .with("max", max)
+                        .with("actual", actual)
+                }
+            },
+            Self::NoSuchKind => Problem::not_found(
+                refused::NO_SUCH_KIND,
+                "an outline holds scenes and ideas, and nothing else",
             ),
-            OutlineServiceError::Events(ServiceError::Refused(OutlineError::NotAttached)) => {
-                (StatusCode::NOT_FOUND, OutlineError::NotAttached.to_string())
-            }
-            OutlineServiceError::Events(ServiceError::Refused(OutlineError::AlreadyThere)) => {
-                (StatusCode::CONFLICT, OutlineError::AlreadyThere.to_string())
-            }
-            OutlineServiceError::Events(ServiceError::Refused(
-                OutlineError::WouldContainItself,
-            )) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                OutlineError::WouldContainItself.to_string(),
-            ),
-            OutlineServiceError::Events(ServiceError::Refused(OutlineError::NoSuchNeighbour)) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                OutlineError::NoSuchNeighbour.to_string(),
-            ),
-            OutlineServiceError::Events(events) => refusal(&events),
-            unserveable => {
-                tracing::error!(error = %unserveable, "an outline request could not be served");
+            Self::Refused(refusal) => problem_of(refusal),
+        }
+        .into_response()
+    }
+}
 
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "something went wrong".to_owned(),
-                )
+fn problem_of(refusal: OutlineServiceError) -> Problem {
+    match refusal {
+        OutlineServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        OutlineServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
+            OutlineError::NoSuchSection => Problem::not_found(refused::NO_SUCH_SECTION, refusal),
+            OutlineError::WouldContainItself => {
+                Problem::unprocessable(refused::WOULD_CONTAIN_ITSELF, refusal)
             }
-        };
-
-        (status, message).into_response()
+            OutlineError::NoSuchNeighbour => {
+                Problem::unprocessable(refused::NO_SUCH_NEIGHBOUR, refusal)
+            }
+            OutlineError::NotAttached => Problem::not_found(refused::NOT_ATTACHED, refusal),
+            OutlineError::Discarded => Problem::refused(refused::DISCARDED, refusal),
+            beyond_reach => Problem::unexpected(beyond_reach),
+        }),
+        unserveable => Problem::unexpected(unserveable),
     }
 }

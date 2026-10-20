@@ -215,7 +215,13 @@ mod tests {
 
     #[test]
     fn every_refusal_the_server_names_is_worded() {
-        for kind in projects_contract::refused::EVERY {
+        let every = projects_contract::refused::EVERY
+            .into_iter()
+            .chain(boards_contract::refused::EVERY)
+            .chain(ideas_contract::refused::EVERY)
+            .chain(outline_contract::refused::EVERY);
+
+        for kind in every {
             assert!(
                 knows(Language::English, &format!("refused-{kind}")),
                 "{kind} is not worded"

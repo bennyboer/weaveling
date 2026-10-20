@@ -7,13 +7,13 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use boards_contract::{
     BoardDTO, OpenBoardRequest, PinIdeaRequest, PositionedIdeaDTO, ReshapeIdeaRequest, SizeDTO,
-    SpotDTO,
+    SpotDTO, refused,
 };
 use boards_core::{
     Board, BoardError, BoardService, BoardServiceError, IdeaLink, PositionedIdea, Size, Spot,
 };
-use eventsourcing::{Agent, ServiceError, Standing, Version};
-use serving::{Unreadable, demanded, refusal, tag};
+use eventsourcing::{Agent, Standing, Version};
+use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
 pub fn router(boards: BoardService) -> Router {
     Router::new()
@@ -178,33 +178,24 @@ impl From<Unreadable> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let refused = match self {
-            Self::Unreadable(reason) => {
-                return (StatusCode::BAD_REQUEST, reason.to_string()).into_response();
-            }
-            Self::Refused(refused) => refused,
-        };
+        match self {
+            Self::Unreadable(reason) => Problem::rejected(UNREADABLE, reason),
+            Self::Refused(refusal) => problem_of(refusal),
+        }
+        .into_response()
+    }
+}
 
-        let (status, message) = match refused {
-            BoardServiceError::InvalidId(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
-            BoardServiceError::Events(ServiceError::Refused(BoardError::NotPinned)) => {
-                (StatusCode::NOT_FOUND, BoardError::NotPinned.to_string())
-            }
-            BoardServiceError::Events(ServiceError::Refused(BoardError::Shapeless)) => (
-                StatusCode::UNPROCESSABLE_ENTITY,
-                BoardError::Shapeless.to_string(),
-            ),
-            BoardServiceError::Events(events) => refusal(&events),
-            unserveable => {
-                tracing::error!(error = %unserveable, "a board request could not be served");
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "something went wrong".to_owned(),
-                )
-            }
-        };
-
-        (status, message).into_response()
+fn problem_of(refusal: BoardServiceError) -> Problem {
+    match refusal {
+        BoardServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        BoardServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
+            BoardError::AlreadyPinned => Problem::refused(refused::ALREADY_PINNED, refusal),
+            BoardError::NotPinned => Problem::not_found(refused::NOT_PINNED, refusal),
+            BoardError::Shapeless => Problem::unprocessable(refused::SHAPELESS, refusal),
+            BoardError::Discarded => Problem::refused(refused::DISCARDED, refusal),
+            beyond_reach => Problem::unexpected(beyond_reach),
+        }),
+        unserveable => Problem::unexpected(unserveable),
     }
 }

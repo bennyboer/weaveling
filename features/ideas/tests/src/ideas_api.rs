@@ -1,15 +1,27 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use axum_test::TestServer;
+use axum::http::header::CONTENT_TYPE;
+use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
-use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
+use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
 use ideas_core::IdeaTitle;
 
 use crate::wiring::{Wired, wired};
+use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 
 const UNKNOWN_ID: &str = "idea_031VkO0hnpeQZUiAB7nDma";
+
+fn refused_as(response: TestResponse, status: StatusCode, kind: &str) -> Value {
+    response.assert_status(status);
+    assert_eq!(response.header(CONTENT_TYPE), "application/problem+json");
+    let told: Value = response.json();
+    assert_eq!(told["type"], kind, "{told}");
+    assert_eq!(told["status"], status.as_u16(), "{told}");
+
+    told
+}
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -109,30 +121,33 @@ async fn a_captured_idea_can_be_fetched_again() {
 async fn an_idea_nobody_captured_is_not_found() {
     let server = a_server();
 
-    server
-        .get(&format!("/ideas/{UNKNOWN_ID}"))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    refused_as(
+        server.get(&format!("/ideas/{UNKNOWN_ID}")).await,
+        StatusCode::NOT_FOUND,
+        "not-found",
+    );
 }
 
 #[tokio::test]
 async fn an_id_of_another_kind_is_a_bad_request() {
     let server = a_server();
 
-    server
-        .get("/ideas/scene_031VkO0hnpeQZUiAB7nDma")
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
+    refused_as(
+        server.get("/ideas/scene_031VkO0hnpeQZUiAB7nDma").await,
+        StatusCode::BAD_REQUEST,
+        refused::ID_INVALID,
+    );
 }
 
 #[tokio::test]
 async fn an_id_without_its_prefix_is_a_bad_request() {
     let server = a_server();
 
-    server
-        .get("/ideas/031VkO0hnpeQZUiAB7nDma")
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
+    refused_as(
+        server.get("/ideas/031VkO0hnpeQZUiAB7nDma").await,
+        StatusCode::BAD_REQUEST,
+        refused::ID_INVALID,
+    );
 }
 
 #[tokio::test]
@@ -156,13 +171,18 @@ async fn a_title_the_domain_refuses_is_a_bad_request() {
     let server = a_server();
     let captured = an_idea(&server, "The Loom").await;
 
-    server
-        .patch(&format!("/ideas/{}", captured.id))
-        .json(&RetitleIdeaRequest {
-            title: "a".repeat(IdeaTitle::MAX_CHARS + 1),
-        })
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
+    let told = refused_as(
+        server
+            .patch(&format!("/ideas/{}", captured.id))
+            .json(&RetitleIdeaRequest {
+                title: "a".repeat(IdeaTitle::MAX_CHARS + 1),
+            })
+            .await,
+        StatusCode::BAD_REQUEST,
+        refused::TITLE_TOO_LONG,
+    );
+    assert_eq!(told["max"], IdeaTitle::MAX_CHARS);
+    assert_eq!(told["actual"], IdeaTitle::MAX_CHARS + 1);
 }
 
 #[tokio::test]
@@ -175,23 +195,27 @@ async fn a_discarded_idea_is_gone_from_the_authors_point_of_view() {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
-    server
-        .patch(&format!("/ideas/{}", captured.id))
-        .json(&RetitleIdeaRequest {
-            title: "Too late".to_owned(),
-        })
-        .await
-        .assert_status(StatusCode::CONFLICT);
+    refused_as(
+        server
+            .patch(&format!("/ideas/{}", captured.id))
+            .json(&RetitleIdeaRequest {
+                title: "Too late".to_owned(),
+            })
+            .await,
+        StatusCode::CONFLICT,
+        refused::DISCARDED,
+    );
 }
 
 #[tokio::test]
 async fn discarding_something_that_was_never_captured_is_not_found() {
     let server = a_server();
 
-    server
-        .delete(&format!("/ideas/{UNKNOWN_ID}"))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    refused_as(
+        server.delete(&format!("/ideas/{UNKNOWN_ID}")).await,
+        StatusCode::NOT_FOUND,
+        "not-found",
+    );
 }
 
 #[tokio::test]
@@ -262,14 +286,17 @@ async fn a_change_from_a_version_that_has_moved_on_is_refused() {
         .await
         .assert_status_ok();
 
-    server
-        .patch(&format!("/ideas/{}", captured.id))
-        .add_header("if-match", "\"1\"")
-        .json(&RetitleIdeaRequest {
-            title: "Working from a stale copy".to_owned(),
-        })
-        .await
-        .assert_status(StatusCode::PRECONDITION_FAILED);
+    refused_as(
+        server
+            .patch(&format!("/ideas/{}", captured.id))
+            .add_header("if-match", "\"1\"")
+            .json(&RetitleIdeaRequest {
+                title: "Working from a stale copy".to_owned(),
+            })
+            .await,
+        StatusCode::PRECONDITION_FAILED,
+        "outdated",
+    );
 
     let response = server.get(&format!("/ideas/{}", captured.id)).await;
     assert_eq!(
@@ -291,11 +318,14 @@ async fn discarding_from_a_stale_version_is_refused() {
         .await
         .assert_status_ok();
 
-    server
-        .delete(&format!("/ideas/{}", captured.id))
-        .add_header("if-match", "\"1\"")
-        .await
-        .assert_status(StatusCode::PRECONDITION_FAILED);
+    refused_as(
+        server
+            .delete(&format!("/ideas/{}", captured.id))
+            .add_header("if-match", "\"1\"")
+            .await,
+        StatusCode::PRECONDITION_FAILED,
+        "outdated",
+    );
 
     server
         .get(&format!("/ideas/{}", captured.id))
@@ -330,14 +360,17 @@ async fn an_if_match_that_is_not_a_version_is_a_bad_request() {
     let server = a_server();
     let captured = an_idea(&server, "The Loom").await;
 
-    server
-        .patch(&format!("/ideas/{}", captured.id))
-        .add_header("if-match", "\"not-a-version\"")
-        .json(&RetitleIdeaRequest {
-            title: "Nowhere".to_owned(),
-        })
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
+    refused_as(
+        server
+            .patch(&format!("/ideas/{}", captured.id))
+            .add_header("if-match", "\"not-a-version\"")
+            .json(&RetitleIdeaRequest {
+                title: "Nowhere".to_owned(),
+            })
+            .await,
+        StatusCode::BAD_REQUEST,
+        "unreadable",
+    );
 }
 
 #[tokio::test]
@@ -345,37 +378,46 @@ async fn a_version_that_never_existed_is_a_failed_precondition_not_a_missing_ide
     let server = a_server();
     let captured = an_idea(&server, "The Loom").await;
 
-    server
-        .patch(&format!("/ideas/{}", captured.id))
-        .add_header("if-match", "\"0\"")
-        .json(&RetitleIdeaRequest {
-            title: "Stale".to_owned(),
-        })
-        .await
-        .assert_status(StatusCode::PRECONDITION_FAILED);
+    refused_as(
+        server
+            .patch(&format!("/ideas/{}", captured.id))
+            .add_header("if-match", "\"0\"")
+            .json(&RetitleIdeaRequest {
+                title: "Stale".to_owned(),
+            })
+            .await,
+        StatusCode::PRECONDITION_FAILED,
+        "outdated",
+    );
 
-    server
-        .patch(&format!("/ideas/{}", captured.id))
-        .add_header("if-match", "\"99\"")
-        .json(&RetitleIdeaRequest {
-            title: "From the future".to_owned(),
-        })
-        .await
-        .assert_status(StatusCode::PRECONDITION_FAILED);
+    refused_as(
+        server
+            .patch(&format!("/ideas/{}", captured.id))
+            .add_header("if-match", "\"99\"")
+            .json(&RetitleIdeaRequest {
+                title: "From the future".to_owned(),
+            })
+            .await,
+        StatusCode::PRECONDITION_FAILED,
+        "outdated",
+    );
 }
 
 #[tokio::test]
 async fn a_precondition_on_an_idea_nobody_captured_is_still_not_found() {
     let server = a_server();
 
-    server
-        .patch(&format!("/ideas/{UNKNOWN_ID}"))
-        .add_header("if-match", "\"1\"")
-        .json(&RetitleIdeaRequest {
-            title: "Nowhere".to_owned(),
-        })
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    refused_as(
+        server
+            .patch(&format!("/ideas/{UNKNOWN_ID}"))
+            .add_header("if-match", "\"1\"")
+            .json(&RetitleIdeaRequest {
+                title: "Nowhere".to_owned(),
+            })
+            .await,
+        StatusCode::NOT_FOUND,
+        "not-found",
+    );
 }
 
 #[tokio::test]
@@ -452,14 +494,17 @@ async fn a_refused_change_leaves_the_listing_alone() {
     let server = a_server();
     let captured = an_idea(&server, "The Loom").await;
 
-    server
-        .patch(&format!("/ideas/{}", captured.id))
-        .add_header("if-match", "\"99\"")
-        .json(&RetitleIdeaRequest {
-            title: "Never happened".to_owned(),
-        })
-        .await
-        .assert_status(StatusCode::PRECONDITION_FAILED);
+    refused_as(
+        server
+            .patch(&format!("/ideas/{}", captured.id))
+            .add_header("if-match", "\"99\"")
+            .json(&RetitleIdeaRequest {
+                title: "Never happened".to_owned(),
+            })
+            .await,
+        StatusCode::PRECONDITION_FAILED,
+        "outdated",
+    );
 
     let listed = server.listed("project_1").await;
 
@@ -468,4 +513,23 @@ async fn a_refused_change_leaves_the_listing_alone() {
         "a change that never landed must not reach the listing either"
     );
     assert_eq!(listed[0].version, 1);
+}
+
+#[tokio::test]
+async fn an_idea_title_with_a_control_character_is_refused_as_such() {
+    let server = a_server();
+    let captured = an_idea(&server, "The Loom").await;
+
+    let response = server
+        .patch(&format!("/ideas/{}", captured.id))
+        .json(&RetitleIdeaRequest {
+            title: "The\u{7} Loom".to_owned(),
+        })
+        .await;
+
+    refused_as(
+        response,
+        StatusCode::BAD_REQUEST,
+        refused::TITLE_CONTROL_CHARACTER,
+    );
 }

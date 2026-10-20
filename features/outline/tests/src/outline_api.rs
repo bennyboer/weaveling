@@ -1,12 +1,16 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use axum_test::TestServer;
+use axum::http::header::CONTENT_TYPE;
+use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
+use eventsourcing::Agent;
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, MoveSectionRequest,
-    OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, RetitleSectionRequest,
+    OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, RetitleSectionRequest, refused,
 };
+use outline_core::{OutlineService, SectionTitle};
+use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 
 use crate::shapes::shaped;
@@ -15,12 +19,28 @@ use crate::wiring::wired;
 const UNKNOWN_OUTLINE: &str = "outline_031VkO0hnpeQZUiAB7nDma";
 const UNKNOWN_SECTION: &str = "section_031VkO0hnpeQZUiAB7nDma";
 
+fn refused_as(response: TestResponse, status: StatusCode, kind: &str) -> Value {
+    response.assert_status(status);
+    assert_eq!(response.header(CONTENT_TYPE), "application/problem+json");
+    let told: Value = response.json();
+    assert_eq!(told["type"], kind, "{told}");
+    assert_eq!(told["status"], status.as_u16(), "{told}");
+
+    told
+}
+
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
 fn a_server() -> TestServer {
-    TestServer::new(wired(Arc::new(FixedClock::new(at(1_700_000_000)))).routes)
+    a_server_and_its_outlines().0
+}
+
+fn a_server_and_its_outlines() -> (TestServer, OutlineService) {
+    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+
+    (TestServer::new(wired.routes), wired.outlines)
 }
 
 async fn an_open_outline(server: &TestServer) -> OutlineDTO {
@@ -327,7 +347,11 @@ async fn a_section_cannot_be_moved_inside_itself() {
         })
         .await;
 
-    response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    refused_as(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::WOULD_CONTAIN_ITSELF,
+    );
 }
 
 #[tokio::test]
@@ -506,10 +530,11 @@ async fn an_unnamed_section_is_stored_as_empty_rather_than_as_untitled() {
 async fn an_outline_nobody_started_is_not_found() {
     let server = a_server();
 
-    server
-        .get(&format!("/outlines/{UNKNOWN_OUTLINE}"))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    refused_as(
+        server.get(&format!("/outlines/{UNKNOWN_OUTLINE}")).await,
+        StatusCode::NOT_FOUND,
+        "not-found",
+    );
 }
 
 #[tokio::test]
@@ -517,23 +542,27 @@ async fn a_section_nobody_added_is_not_found() {
     let server = a_server();
     let outline = an_open_outline(&server).await;
 
-    server
-        .post(&format!(
-            "/outlines/{}/sections/{UNKNOWN_SECTION}/promote",
-            outline.id
-        ))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    refused_as(
+        server
+            .post(&format!(
+                "/outlines/{}/sections/{UNKNOWN_SECTION}/promote",
+                outline.id
+            ))
+            .await,
+        StatusCode::NOT_FOUND,
+        refused::NO_SUCH_SECTION,
+    );
 }
 
 #[tokio::test]
 async fn an_address_that_is_not_an_id_is_refused_before_anything_is_looked_up() {
     let server = a_server();
 
-    server
-        .get("/outlines/not-an-outline")
-        .await
-        .assert_status(StatusCode::BAD_REQUEST);
+    refused_as(
+        server.get("/outlines/not-an-outline").await,
+        StatusCode::BAD_REQUEST,
+        refused::ID_INVALID,
+    );
 }
 
 #[tokio::test]
@@ -638,4 +667,122 @@ async fn a_retitle_answers_with_the_shape_of_the_book_and_no_scenes() {
         attachments_sent(&change),
         vec![("The Silent Loom".to_owned(), None)]
     );
+}
+
+#[tokio::test]
+async fn a_section_title_too_long_is_refused_telling_how_long_it_may_be() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+    let added = a_section(&server, &outline.id, "Chapter 1", None, None).await;
+
+    let response = server
+        .patch(&format!(
+            "/outlines/{}/sections/{}",
+            outline.id, added.section
+        ))
+        .json(&RetitleSectionRequest {
+            title: "a".repeat(SectionTitle::MAX_CHARS + 1),
+        })
+        .await;
+
+    let told = refused_as(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::TITLE_TOO_LONG,
+    );
+    assert_eq!(told["max"], SectionTitle::MAX_CHARS);
+    assert_eq!(told["actual"], SectionTitle::MAX_CHARS + 1);
+}
+
+#[tokio::test]
+async fn a_section_title_with_a_control_character_is_refused_as_such() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+
+    let response = server
+        .post(&format!("/outlines/{}/sections", outline.id))
+        .json(&AddSectionRequest {
+            under: None,
+            after: None,
+            title: "Chapter\u{7} 1".to_owned(),
+        })
+        .await;
+
+    refused_as(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::TITLE_CONTROL_CHARACTER,
+    );
+}
+
+#[tokio::test]
+async fn a_section_placed_after_one_that_is_not_beside_it_is_refused() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+
+    let response = server
+        .post(&format!("/outlines/{}/sections", outline.id))
+        .json(&AddSectionRequest {
+            under: None,
+            after: Some(UNKNOWN_SECTION.to_owned()),
+            title: "Chapter 1".to_owned(),
+        })
+        .await;
+
+    refused_as(
+        response,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::NO_SUCH_NEIGHBOUR,
+    );
+}
+
+#[tokio::test]
+async fn detaching_what_is_not_in_the_outline_is_refused() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+
+    let response = server
+        .delete(&format!(
+            "/outlines/{}/attachments/scenes/scene_1",
+            outline.id
+        ))
+        .await;
+
+    refused_as(response, StatusCode::NOT_FOUND, refused::NOT_ATTACHED);
+}
+
+#[tokio::test]
+async fn an_outline_holds_no_other_kind_of_thing() {
+    let server = a_server();
+    let outline = an_open_outline(&server).await;
+
+    let response = server
+        .delete(&format!(
+            "/outlines/{}/attachments/tapestries/tapestry_1",
+            outline.id
+        ))
+        .await;
+
+    refused_as(response, StatusCode::NOT_FOUND, refused::NO_SUCH_KIND);
+}
+
+#[tokio::test]
+async fn an_outline_discarded_with_its_project_refuses_what_comes_after() {
+    let (server, outlines) = a_server_and_its_outlines();
+    let outline = an_open_outline(&server).await;
+    outlines
+        .discard(&outline.id, None, &Agent::Anonymous)
+        .await
+        .expect("discarding should succeed");
+
+    let response = server
+        .post(&format!("/outlines/{}/sections", outline.id))
+        .json(&AddSectionRequest {
+            under: None,
+            after: None,
+            title: "Chapter 1".to_owned(),
+        })
+        .await;
+
+    refused_as(response, StatusCode::CONFLICT, refused::DISCARDED);
 }

@@ -181,6 +181,25 @@ test.describe("a browser asking for German, about a project's details", () => {
     );
   });
 
+  test("an idea's title the server refuses is told in German, with its numbers", async ({
+    page,
+  }) => {
+    await aNewProject(page, "Ideen");
+    await page
+      .getByRole("navigation", { name: "Ansichten" })
+      .getByRole("link", { name: "Ideen" })
+      .click();
+
+    await page
+      .getByRole("textbox", { name: "What is the idea?" })
+      .fill("a".repeat(2049));
+    await page.getByRole("button", { name: "Capture", exact: true }).click();
+
+    await expect(page.getByRole("alert")).toHaveText(
+      "Der Titel einer Idee darf höchstens 2048 Zeichen lang sein, dieser hat 2049.",
+    );
+  });
+
   test("a project gone meanwhile is told as a project, in German", async ({
     page,
   }) => {

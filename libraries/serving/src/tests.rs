@@ -79,58 +79,6 @@ fn a_tag_reads_back_as_the_version_it_came_from() {
     assert_eq!(demanded(&asking(&tag(version))), Ok(Some(version)));
 }
 
-#[test]
-fn something_that_is_not_there_is_not_found() {
-    let (status, message) = refusal(&a_missing_idea());
-
-    assert_eq!(status, StatusCode::NOT_FOUND);
-    assert_eq!(
-        message, "there is no idea with id idea_1",
-        "the aggregate says its own kind, so the wording cannot drift from the feature"
-    );
-}
-
-#[test]
-fn a_domain_refusal_is_a_conflict() {
-    let (status, message) = refusal(&ServiceError::Refused(AlreadyCaptured));
-
-    assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(message, "an idea cannot be captured twice");
-}
-
-#[test]
-fn a_stale_version_fails_the_precondition() {
-    let outdated: ServiceError<AlreadyCaptured> = ServiceError::Store(StoreError::Outdated {
-        aggregate: AggregateId::from("idea_1"),
-        kind: KIND,
-        expected: Version::of(1),
-    });
-
-    let (status, message) = refusal(&outdated);
-
-    assert_eq!(status, StatusCode::PRECONDITION_FAILED);
-    assert_eq!(
-        message,
-        "this idea has moved on since the version you asked for"
-    );
-}
-
-#[test]
-fn anything_we_cannot_explain_stays_unexplained() {
-    let broken: ServiceError<AlreadyCaptured> = ServiceError::Unusable {
-        aggregate: AggregateId::from("idea_1"),
-        kind: KIND,
-    };
-
-    let (status, message) = refusal(&broken);
-
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(
-        message, "something went wrong",
-        "a broken stream is our problem to fix, not the caller's to read about"
-    );
-}
-
 async fn told(problem: Problem) -> (StatusCode, Value) {
     let response = problem.into_response();
     let status = response.status();
