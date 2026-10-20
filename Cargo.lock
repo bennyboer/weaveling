@@ -3641,9 +3641,11 @@ name = "weaveling-boards-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
  "weaveling-boards-contract",
  "weaveling-boards-core",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-serving",
 ]
 
@@ -3687,12 +3689,14 @@ version = "0.1.0"
 dependencies = [
  "sqlx",
  "weaveling-boards-catalog",
+ "weaveling-boards-contract",
  "weaveling-boards-core",
  "weaveling-boards-messaging",
  "weaveling-boards-rest",
  "weaveling-boards-store",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-outbox",
  "weaveling-registry",
  "weaveling-wiring",

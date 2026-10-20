@@ -11,9 +11,11 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
 
+boards-contract = { version = "0.1.0", path = "../contract", package = "weaveling-boards-contract" }
 boards-core = { version = "0.1.0", path = "../core", package = "weaveling-boards-core" }
 boards-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-boards-rest" }
 boards-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-boards-messaging" }

@@ -9,6 +9,8 @@ mod board_tidying;
 
 #[cfg(test)]
 mod boards_api;
+#[cfg(test)]
+mod boards_live;
 
 #[cfg(test)]
 mod wiring;

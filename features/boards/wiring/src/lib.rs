@@ -1,15 +1,19 @@
 use std::sync::Arc;
 
 use boards_catalog::InMemoryBoardCatalog;
+use boards_contract::EVERY_BOARD;
 use boards_core::{BoardCatalog, BoardEvent, BoardService};
 use boards_messaging::{
     CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, ProjectPinnedIdeasListener,
     UnpinOnDiscardListener,
 };
 use eventsourcing::EventStore;
+use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, EventSourced, Feature, Wired};
+
+pub const LIVE: &str = "broadcast-board-changes";
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<BoardEvent>>,
@@ -41,13 +45,18 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
     let unpin_discarded_ideas = UnpinOnDiscardListener::new(boards.clone(), ports.catalog.clone());
     let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
+    let broadcaster = Broadcaster::new();
+    let broadcast = BroadcastChangesListener::new(LIVE, EVERY_BOARD, broadcaster.clone());
 
-    Wired::serving(boards_rest::router(boards)).listening(vec![
-        Arc::new(catalogue),
-        Arc::new(index),
-        Arc::new(unpin_discarded_ideas),
-        Arc::new(sweep),
-    ])
+    Wired::serving(boards_rest::router(boards).merge(boards_rest::live(broadcaster))).listening(
+        vec![
+            Arc::new(broadcast),
+            Arc::new(catalogue),
+            Arc::new(index),
+            Arc::new(unpin_discarded_ideas),
+            Arc::new(sweep),
+        ],
+    )
 }
 
 pub struct BoardFeature;

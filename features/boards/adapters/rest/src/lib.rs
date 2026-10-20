@@ -1,6 +1,7 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::ws::WebSocketUpgrade;
+use axum::extract::{Path, Query, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -13,7 +14,28 @@ use boards_core::{
     Board, BoardError, BoardService, BoardServiceError, IdeaLink, PositionedIdea, Size, Spot,
 };
 use eventsourcing::{Agent, Standing, Version};
+use live::{Broadcaster, streaming};
+use serde::Deserialize;
 use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
+
+pub fn live(broadcaster: Broadcaster) -> Router {
+    Router::new()
+        .route("/boards/live", get(follow))
+        .with_state(broadcaster)
+}
+
+async fn follow(
+    upgrade: WebSocketUpgrade,
+    State(broadcaster): State<Broadcaster>,
+    Query(followed): Query<Followed>,
+) -> Response {
+    streaming(upgrade, broadcaster.hear(&followed.board))
+}
+
+#[derive(Deserialize)]
+struct Followed {
+    board: String,
+}
 
 pub fn router(boards: BoardService) -> Router {
     Router::new()

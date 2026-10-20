@@ -7,6 +7,7 @@ use crate::boards::viewport::Viewport;
 use crate::http::ApiError;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as ideas;
+use crate::live::Following;
 use crate::projects::model::ProjectId;
 
 const STEP: i64 = 40;
@@ -114,6 +115,54 @@ impl BoardViewState {
             })
         };
         opening.dispatch(());
+
+        let following = StoredValue::new_local(None::<Following>);
+        on_cleanup(move || _ = following.try_update_value(|held| *held = None));
+        Effect::new(move || {
+            let Some(id) = confirmed.with(|held| held.as_ref().map(|held| held.id.clone())) else {
+                return;
+            };
+            if following.with_value(Option::is_some) {
+                return;
+            }
+            following.set_value(Some(Following::start(
+                &format!("/api/boards/live?board={id}"),
+                move |version| {
+                    let behind = confirmed
+                        .try_with_untracked(|held| {
+                            held.as_ref().is_some_and(|held| held.version < version)
+                        })
+                        .unwrap_or(false);
+                    if behind {
+                        opening.dispatch(());
+                    }
+                },
+                move || _ = opening.dispatch(()),
+            )));
+        });
+
+        let listed_again_at = StoredValue::new(None::<u64>);
+        Effect::new(move || {
+            let Some(version) = confirmed.with(|held| held.as_ref().map(|held| held.version))
+            else {
+                return;
+            };
+            let unknown = pool.with(|held| {
+                held.as_ref().is_some_and(|known| {
+                    confirmed.with_untracked(|open| {
+                        open.as_ref().is_some_and(|open| {
+                            open.ideas
+                                .iter()
+                                .any(|pinned| known.iter().all(|idea| idea.id != pinned.idea))
+                        })
+                    })
+                })
+            });
+            if unknown && listed_again_at.get_value() != Some(version) {
+                listed_again_at.set_value(Some(version));
+                listing.dispatch(());
+            }
+        });
 
         let capturing = {
             let id = project.clone();
