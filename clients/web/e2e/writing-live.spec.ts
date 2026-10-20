@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aBookShaped, aBookWithScenes } from "./support/book";
-import { aNewProject, API } from "./support/shell";
+import { aNewProject, aSceneMade, API, sceneCatalogued } from "./support/shell";
 import {
   flow,
   heading,
@@ -18,6 +18,14 @@ import {
 
 async function followingLive(page: Page) {
   let opened = 0;
+  let told = 0;
+  page.on("websocket", (socket) => {
+    if (socket.url().includes("/api/outlines/live")) {
+      socket.on("framereceived", () => {
+        told += 1;
+      });
+    }
+  });
   page.on("response", (response) => {
     if (
       response.request().method() === "POST" &&
@@ -33,7 +41,7 @@ async function followingLive(page: Page) {
     })
     .toBeGreaterThanOrEqual(2);
 
-  return () => opened;
+  return { reloads: () => opened, heard: () => told };
 }
 
 async function aBookFollowedLive(page: Page, named: string) {
@@ -42,9 +50,9 @@ async function aBookFollowedLive(page: Page, named: string) {
     { title: "Part One" },
     { title: "Part Two", after: "Part One" },
   ]);
-  const reloads = await followingLive(page);
+  const { reloads, heard } = await followingLive(page);
 
-  return { ...book, reloads };
+  return { ...book, reloads, heard };
 }
 
 async function anotherAuthor(
@@ -203,16 +211,16 @@ const renamedMeanwhile = (page: Page) =>
   page.getByRole("dialog", { name: "Renamed meanwhile" });
 
 async function renamedWhileIAmInIt(page: Page, named: string) {
-  const { outline, ids, reloads } = await aBookFollowedLive(page, named);
+  const { outline, ids, heard } = await aBookFollowedLive(page, named);
   await heading(page, "Part One").click();
-  const before = reloads();
+  const before = heard();
   await anotherAuthor(
     page,
     "patch",
     `/outlines/${outline}/sections/${ids["Part One"]}`,
     { title: "The Beginning" },
   );
-  await expect.poll(() => reloads()).toBeGreaterThan(before);
+  await expect.poll(() => heard()).toBeGreaterThan(before);
 }
 
 test("a heading renamed elsewhere while I rename it asks which name stays", async ({
@@ -796,4 +804,102 @@ test("a change made from a view that is behind is refused gently, and the view c
   );
   await expect(flow(page).getByRole("heading")).toHaveText(["Part One"]);
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a section another author adds is taken into the book, without opening it again", async ({
+  page,
+}) => {
+  const { outline, ids, reloads, heard } = await aBookFollowedLive(page, "LiveTakenIn");
+  const before = reloads();
+  const told = heard();
+
+  await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
+    title: "Part Three",
+    under: null,
+    after: ids["Part Two"],
+  });
+
+  await expect(heading(page, "Part Three")).toBeVisible();
+  await expect.poll(() => heard()).toBeGreaterThan(told);
+  await page.waitForTimeout(500);
+  expect(reloads(), "the section was taken in as it came").toBe(before);
+});
+
+test("a change missed on the way opens the book again, and the book comes out right", async ({
+  page,
+}) => {
+  let passed = 0;
+  let connected = false;
+  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
+    connected = true;
+    const server = socket.connectToServer();
+    server.onMessage((frame) => {
+      passed += 1;
+      if (passed !== 2) {
+        socket.send(frame);
+      }
+    });
+  });
+  await aNewProject(page, "LiveMissed");
+  const { outline, ids } = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await openTheWritingView(page);
+  await expect.poll(() => connected).toBe(true);
+  await page.waitForTimeout(300);
+
+  for (const [section, title] of [
+    ["Part One", "The Beginning"],
+    ["Part One", "The Very Beginning"],
+    ["Part Two", "The Middle"],
+  ]) {
+    await anotherAuthor(page, "patch", `/outlines/${outline}/sections/${ids[section]}`, {
+      title,
+    });
+  }
+
+  await expect.poll(() => passed).toBeGreaterThanOrEqual(3);
+  await expect(heading(page, "The Middle")).toBeVisible();
+  await expect(
+    heading(page, "The Very Beginning"),
+    "the rename that was missed is there too, so the book was opened again",
+  ).toBeVisible();
+});
+
+
+test("a change another author makes while mine is on its way is caught up once mine is through", async ({
+  page,
+}) => {
+  const { outline, ids } = await aBookFollowedLive(page, "LiveWhileMine");
+  const theirs = await aSceneMade(page);
+  await sceneCatalogued(page, theirs);
+  let released: () => void = () => {};
+  const mineThrough = new Promise<void>((through) => {
+    released = through;
+  });
+  await page.route("**/api/outlines/*/sections/*", async (route) => {
+    if (route.request().method() === "PATCH") {
+      await mineThrough;
+    }
+    await route.continue();
+  });
+  await heading(page, "Part One").click();
+  await page.keyboard.press("End");
+  await page.keyboard.type(", drafted");
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+
+  await anotherAuthor(page, "post", `/outlines/${outline}/attachments`, {
+    attachment: { kind: "scene", id: theirs },
+    section: ids["Part Two"],
+    after: null,
+  });
+  await page.waitForTimeout(500);
+  released();
+
+  await expect(
+    flow(page).locator(`[data-scene="${theirs}"]`),
+    "the scene they placed while my rename was on its way",
+  ).toHaveCount(1);
 });

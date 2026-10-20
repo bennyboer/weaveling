@@ -6,7 +6,7 @@ use leptos::task::spawn_local;
 
 use crate::http::ApiError;
 use crate::ideas::model::IdeaId;
-use crate::live::Following;
+use crate::live::{Following, Told};
 use crate::outline::model::{Attachment, Outline, OutlineChange, OutlineId, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -16,6 +16,7 @@ use crate::writing::cursor_kept::keeping_the_cursor;
 use crate::writing::problems::Problems;
 use crate::writing::rearranged::{Removed, placements, rearranged, removed};
 use crate::writing::saving::Saving;
+use outline_contract::OutlineEventDTO;
 
 type Write = Pin<Box<dyn Future<Output = ()>>>;
 
@@ -37,6 +38,7 @@ pub struct Structure {
     overtaken: RwSignal<u64>,
     caught_up_after_refusal: StoredValue<bool>,
     outdated_meanwhile: StoredValue<bool>,
+    told_while_writing: StoredValue<bool>,
     problems: Problems,
     saving: Saving,
 }
@@ -55,6 +57,7 @@ impl Structure {
             overtaken: RwSignal::new(0),
             caught_up_after_refusal: StoredValue::new(false),
             outdated_meanwhile: StoredValue::new(false),
+            told_while_writing: StoredValue::new(false),
             problems,
             saving,
         };
@@ -78,7 +81,7 @@ impl Structure {
     fn follow(self, outline: &OutlineId) {
         let following = Following::start(
             &format!("/api/outlines/live?outline={outline}"),
-            move |told| self.heard_of(told.version),
+            move |told| self.heard_of(told),
             move || self.reload(),
         );
         _ = self
@@ -86,14 +89,38 @@ impl Structure {
             .try_update_value(|held| *held = Some(following));
     }
 
-    fn heard_of(self, version: u64) {
-        let behind = self
-            .outline
-            .try_with_untracked(|held| held.as_ref().is_some_and(|held| held.version < version))
-            .unwrap_or(false);
+    fn heard_of(self, told: Told) {
+        let Some(Some(held)) = self.outline.try_get_untracked() else {
+            return;
+        };
+        if told.version <= held.version {
+            return;
+        }
+        if self.writing.try_get_value().unwrap_or(true) {
+            _ = self.told_while_writing.try_set_value(true);
+            return;
+        }
+        let next = (told.version == held.version + 1)
+            .then(|| serde_json::from_value::<OutlineEventDTO>(told.event).ok())
+            .flatten()
+            .and_then(|event| held.clone().taken_in(event));
+        let Some(next) = next else {
+            return self.reload();
+        };
+        self.adopt(next);
+        if let Some(after) = self.read_untracked(Clone::clone) {
+            self.notice(&held, &after);
+        }
+    }
 
-        if behind {
-            self.reload();
+    fn notice(self, before: &Outline, after: &Outline) {
+        let moved = rearranged(&placements(before), &placements(after));
+        if !moved.is_empty() {
+            self.rearranged_by_others.set(moved);
+        }
+        let gone = removed(before, after);
+        if !gone.is_empty() {
+            self.removed_by_others.set(gone);
         }
     }
 
@@ -124,14 +151,7 @@ impl Structure {
                         if let (Some(before), Some(after), false) =
                             (before, self.read_untracked(Clone::clone), mine_in_flight)
                         {
-                            let moved = rearranged(&placements(&before), &placements(&after));
-                            if !moved.is_empty() {
-                                self.rearranged_by_others.set(moved);
-                            }
-                            let gone = removed(&before, &after);
-                            if !gone.is_empty() {
-                                self.removed_by_others.set(gone);
-                            }
+                            self.notice(&before, &after);
                         }
                     }
                     Ok(_) => return,
@@ -588,6 +608,13 @@ impl Structure {
                 self.saving.write_done();
             }
             _ = self.writing.try_update_value(|writing| *writing = false);
+            let told_meanwhile = self
+                .told_while_writing
+                .try_update_value(std::mem::take)
+                .unwrap_or(false);
+            if told_meanwhile {
+                self.reload();
+            }
         });
     }
 
