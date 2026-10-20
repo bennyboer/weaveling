@@ -4,17 +4,7 @@ export class LiveFollowing {
   constructor(path, heard, opened) {
     this.socket = new ReconnectingSocket(path, {
       opened: () => opened(),
-      heard: (data) => {
-        let frame;
-        try {
-          frame = JSON.parse(data);
-        } catch {
-          return;
-        }
-        if (typeof frame.version === "number") {
-          heard(frame.version);
-        }
-      },
+      heard: (data) => heard(String(data)),
     });
   }
 

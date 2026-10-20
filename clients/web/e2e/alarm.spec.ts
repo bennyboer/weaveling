@@ -61,6 +61,21 @@ async function aServerHolding(page: Page, start: Refused[]) {
 
 const asked = (page: Page) => page.waitForResponse(REFUSALS);
 
+async function told(page: Page) {
+  let tell = () => {};
+  let changes = 0;
+  await page.routeWebSocket(/\/api\/service\/refusals\/live$/, (socket) => {
+    tell = () => {
+      changes += 1;
+      socket.send(
+        JSON.stringify({ version: changes, event: { name: "REFUSALS_CHANGED" } }),
+      );
+    };
+  });
+
+  return () => tell();
+}
+
 async function lookingAtTheRefusals(page: Page) {
   await page.goto("/");
   await alarm(page).click();
@@ -114,6 +129,7 @@ test("a refusal arriving later raises the alarm within a few seconds", async ({
 }) => {
   let answer: Refused[] = [];
   await answering(page, () => answer);
+  const tell = await told(page);
   const first = asked(page);
   await page.goto("/");
   await first;
@@ -121,10 +137,10 @@ test("a refusal arriving later raises the alarm within a few seconds", async ({
   await expect(alarm(page)).toHaveCount(0);
 
   answer = [refused(1)];
+  tell();
 
-  await expect(alarm(page), "the client asks every five seconds").toHaveClass(
+  await expect(alarm(page), "told of it, the client asks at once").toHaveClass(
     /raised/,
-    { timeout: 7_000 },
   );
 });
 
@@ -132,12 +148,15 @@ test("a new refusal pulses, then settles, and is not pulsed for again", async ({
   page,
 }) => {
   await answering(page, () => [refused(1)]);
+  const tell = await told(page);
 
   await page.goto("/");
 
   await expect(alarm(page)).toHaveClass(/pulsing/);
   await expect(alarm(page)).not.toHaveClass(/pulsing/, { timeout: 3_000 });
-  await asked(page);
+  const again = asked(page);
+  tell();
+  await again;
   await page.waitForTimeout(A_BEAT);
   expect(
     await alarm(page).getAttribute("class"),
@@ -304,11 +323,14 @@ test("a dismissed note stays away for refusals already heard of", async ({
   page,
 }) => {
   await answering(page, () => [refused(1)]);
+  const tell = await told(page);
   await page.goto("/");
 
   await note(page).getByRole("button", { name: "Dismiss" }).click();
   await expect(note(page)).toHaveCount(0);
-  await asked(page);
+  const again = asked(page);
+  tell();
+  await again;
   await page.waitForTimeout(A_BEAT);
 
   await expect(note(page)).toHaveCount(0);
@@ -323,34 +345,33 @@ test("a refusal arriving after a dismissal brings the note back", async ({
 }) => {
   let answer = [refused(1)];
   await answering(page, () => answer);
+  const tell = await told(page);
   await page.goto("/");
   await note(page).getByRole("button", { name: "Dismiss" }).click();
 
   answer = [refused(1), refused(2)];
+  tell();
 
-  await expect(note(page)).toBeVisible({ timeout: 7_000 });
+  await expect(note(page)).toBeVisible();
 });
 
 test("the alarm asks again when it is told the refusals changed, and not otherwise", async ({
   page,
 }) => {
-  let asked = 0;
+  let asking = 0;
   await page.route(REFUSALS, (route) => {
-    asked += 1;
-    return route.fulfill({ json: asked > 1 ? [refused(7)] : [] });
+    asking += 1;
+    return route.fulfill({ json: asking > 1 ? [refused(7)] : [] });
   });
-  let tell: (frame: string) => void = () => {};
-  await page.routeWebSocket(/\/api\/service\/refusals\/live$/, (socket) => {
-    tell = (frame) => socket.send(frame);
-  });
+  const tell = await told(page);
 
   await page.goto("/");
-  await expect.poll(() => asked).toBe(1);
+  await expect.poll(() => asking).toBe(1);
   await page.waitForTimeout(6000);
-  expect(asked, "nothing is asked for while nothing is told").toBe(1);
+  expect(asking, "nothing is asked for while nothing is told").toBe(1);
 
-  tell(JSON.stringify({ version: 1, event: { name: "REFUSALS_CHANGED" } }));
+  tell();
 
   await expect(alarm(page)).toBeVisible();
-  expect(asked).toBe(2);
+  expect(asking).toBe(2);
 });

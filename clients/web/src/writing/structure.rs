@@ -78,7 +78,7 @@ impl Structure {
     fn follow(self, outline: &OutlineId) {
         let following = Following::start(
             &format!("/api/outlines/live?outline={outline}"),
-            move |version| self.heard_of(version),
+            move |told| self.heard_of(told.version),
             move || self.reload(),
         );
         _ = self

@@ -1,3 +1,5 @@
+use serde::Deserialize;
+use serde_json::Value;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -6,21 +8,36 @@ extern "C" {
     type LiveFollowing;
 
     #[wasm_bindgen(constructor)]
-    fn new(path: &str, heard: &Closure<dyn Fn(f64)>, opened: &Closure<dyn Fn()>) -> LiveFollowing;
+    fn new(
+        path: &str,
+        heard: &Closure<dyn Fn(String)>,
+        opened: &Closure<dyn Fn()>,
+    ) -> LiveFollowing;
 
     #[wasm_bindgen(method)]
     fn close(this: &LiveFollowing);
 }
 
+#[derive(Deserialize)]
+pub struct Told {
+    pub version: u64,
+    #[serde(default)]
+    pub event: Value,
+}
+
 pub struct Following {
     connection: LiveFollowing,
-    _heard: Closure<dyn Fn(f64)>,
+    _heard: Closure<dyn Fn(String)>,
     _opened: Closure<dyn Fn()>,
 }
 
 impl Following {
-    pub fn start(path: &str, heard: impl Fn(u64) + 'static, opened: impl Fn() + 'static) -> Self {
-        let heard = Closure::<dyn Fn(f64)>::new(move |version: f64| heard(version as u64));
+    pub fn start(path: &str, heard: impl Fn(Told) + 'static, opened: impl Fn() + 'static) -> Self {
+        let heard = Closure::<dyn Fn(String)>::new(move |frame: String| {
+            if let Ok(told) = serde_json::from_str::<Told>(&frame) {
+                heard(told);
+            }
+        });
         let opened = Closure::<dyn Fn()>::new(opened);
         let connection = LiveFollowing::new(path, &heard, &opened);
 
@@ -35,5 +52,20 @@ impl Following {
 impl Drop for Following {
     fn drop(&mut self) {
         self.connection.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use boards_contract::BoardEventDTO;
+
+    use super::*;
+
+    #[test]
+    fn a_frame_as_the_server_sends_it_is_read_with_its_event() {
+        let told: Told = serde_json::from_str(r#"{"event":{"at":{"x":400,"y":200},"idea":"idea_1","name":"IDEA_PINNED","size":{"height":84,"width":168}},"version":2}"#).expect("a frame");
+
+        assert_eq!(told.version, 2);
+        assert!(serde_json::from_value::<BoardEventDTO>(told.event).is_ok());
     }
 }

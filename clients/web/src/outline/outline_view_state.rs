@@ -4,7 +4,7 @@ use leptos_router::hooks::use_navigate;
 use crate::http::ApiError;
 use crate::ideas::model::Idea;
 use crate::ideas::service as idea_service;
-use crate::live::Following;
+use crate::live::{Following, Told};
 use crate::outline::model::{Attachment, Outline, OutlineChange, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -312,7 +312,8 @@ impl OutlineViewState {
             }
             following.set_value(Some(Following::start(
                 &format!("/api/outlines/live?outline={id}"),
-                move |version| {
+                move |told: Told| {
+                    let version = told.version;
                     let behind = confirmed
                         .try_with_untracked(|held| {
                             held.as_ref().is_some_and(|held| held.version < version)

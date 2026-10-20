@@ -7,8 +7,9 @@ use crate::boards::viewport::Viewport;
 use crate::http::ApiError;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as ideas;
-use crate::live::Following;
+use crate::live::{Following, Told};
 use crate::projects::model::ProjectId;
+use boards_contract::BoardEventDTO;
 
 const STEP: i64 = 40;
 const COLUMNS: i64 = 3;
@@ -127,14 +128,20 @@ impl BoardViewState {
             }
             following.set_value(Some(Following::start(
                 &format!("/api/boards/live?board={id}"),
-                move |version| {
-                    let behind = confirmed
-                        .try_with_untracked(|held| {
-                            held.as_ref().is_some_and(|held| held.version < version)
-                        })
-                        .unwrap_or(false);
-                    if behind {
-                        opening.dispatch(());
+                move |told: Told| {
+                    let Some(Some(held)) = confirmed.try_get_untracked() else {
+                        return;
+                    };
+                    if told.version <= held.version {
+                        return;
+                    }
+                    let next = (told.version == held.version + 1)
+                        .then(|| serde_json::from_value::<BoardEventDTO>(told.event).ok())
+                        .flatten()
+                        .and_then(|event| held.taken_in(event));
+                    match next {
+                        Some(next) => arrived(next),
+                        None => _ = opening.dispatch(()),
                     }
                 },
                 move || _ = opening.dispatch(()),

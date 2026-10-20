@@ -133,3 +133,75 @@ test("an idea the list of ideas does not hold yet is asked for once per change, 
     "asked again once for the change that brought it, not over and over while the list lags",
   ).toBeLessThanOrEqual(2);
 });
+
+const openings = (page: Page) => {
+  let opened = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/boards") {
+      opened += 1;
+    }
+  });
+
+  return () => opened;
+};
+
+test("a change that follows on the board as held is taken in, without opening the board again", async ({
+  page,
+}) => {
+  const { board, loom } = await aBoardFollowedLive(page, "BoardLiveTakenIn");
+  await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
+  await expect(cardNamed(page, "The loom remembers")).toBeVisible();
+  const opened = openings(page);
+  const before = await seenAt(page, "The loom remembers");
+
+  await anotherAuthor(page, "patch", `/boards/${board}/ideas/${loom}`, {
+    spot: { x: 600, y: 300 },
+  });
+
+  await expect
+    .poll(async () => (await seenAt(page, "The loom remembers")).x - before.x)
+    .toBe(200);
+  await page.waitForTimeout(500);
+  expect(opened(), "the move was taken in as it came").toBe(0);
+});
+
+test("a change missed on the way opens the board again, and the board comes out right", async ({
+  page,
+}) => {
+  await aNewProject(page, "BoardLiveMissed");
+  const loom = await anIdea(page, "The loom remembers");
+  await catalogued(page, ["The loom remembers"]);
+  const board = await theBoard(page);
+  let passed = 0;
+  await page.routeWebSocket(/\/api\/boards\/live\?board=/, (socket) => {
+    const server = socket.connectToServer();
+    server.onMessage((frame) => {
+      passed += 1;
+      if (passed !== 2) {
+        socket.send(frame);
+      }
+    });
+  });
+  await page.reload();
+  await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();
+  await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
+  await expect(cardNamed(page, "The loom remembers")).toBeVisible();
+  const before = await seenAt(page, "The loom remembers");
+  const opened = openings(page);
+
+  await anotherAuthor(page, "patch", `/boards/${board}/ideas/${loom}`, {
+    spot: { x: 600, y: 300 },
+  });
+  await anotherAuthor(page, "patch", `/boards/${board}/ideas/${loom}`, {
+    size: { width: 240, height: 120 },
+  });
+
+  await expect.poll(() => passed).toBeGreaterThanOrEqual(3);
+  await expect
+    .poll(async () => {
+      const now = await seenAt(page, "The loom remembers");
+      return { x: now.x - before.x, width: now.width };
+    }, { message: "the move that was missed is there too, so the board was opened again" })
+    .toEqual({ x: 200, width: Math.round(before.width * 240 / 168) });
+  expect(opened()).toBeGreaterThan(0);
+});
