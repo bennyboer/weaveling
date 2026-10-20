@@ -217,3 +217,46 @@ ideas = Ideen
 ideas-capture = Festhalten
 ideas-empty = Noch keine Ideen. Schieß eine Idee rein und schau, wohin sie führt.
 idea-opening = Wird geöffnet…
+
+book = Das Buch
+writing-sides = Seiten des Werks
+writing-side-book = Das Buch
+writing-side-loose = Nicht im Buch
+writing-every-scene-placed = Jede Szene steht im Buch.
+heading-untitled = Abschnitt ohne Titel
+heading-first = Der erste Abschnitt deines Buchs
+heading-next = Ein neuer Abschnitt
+scene-invitation = Eine leere Szene. Fang an zu schreiben…
+scene-next = Eine neue Szene
+scene-an-empty-one = Eine leere Szene
+status-focus = Fokusmodus
+status-focus-hint = Fokusmodus (Strg+Umschalt+F)
+writing-settings = Schreibeinstellungen
+count-whole-book = Das ganze Buch zählen
+count-section = Den Abschnitt zählen, in dem du schreibst
+digit-group = { "." }
+words =
+    { $count ->
+        [one] { $shown } Wort
+       *[other] { $shown } Wörter
+    }
+words-not-in-the-book = { $words } nicht im Buch
+words-in-the-book = { $words } im Buch
+words-in-section = { $words } in „{ $section }“
+words-in-this-section = { $words } in diesem Abschnitt
+saving = Wird gespeichert…
+all-saved = Alles gespeichert
+setting-spelling = Rechtschreibung prüfen
+setting-spelling-hint = Unterstreicht Wörter, die das Wörterbuch des Browsers nicht kennt.
+setting-justified = Blocksatz
+setting-justified-hint = Setzt die Zeilen auf beiden Seiten bündig wie eine gedruckte Seite und trennt Wörter in der Sprache des Buchs.
+setting-typewriter = Schreibmaschinenmodus
+setting-typewriter-hint = Hält die Zeile, in der du schreibst, in der Mitte des Fensters.
+settings-close = Schließen
+contents = Inhalt
+this-scene = Diese Szene
+where-you-are = Wo du bist
+quiet-rearranged = Jemand anderes hat das Buch rund um „{ $section }“ umgestellt.
+quiet-removed = Jemand anderes hat „{ $section }“ entfernt.
+quiet-overtaken = Jemand anderes hat das Buch inzwischen geändert, deshalb ging das nicht. Es zeigt das Buch, wie es jetzt ist.
+going-back = Zurück zu der Stelle, an der du aufgehört hast

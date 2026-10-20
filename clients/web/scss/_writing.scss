@@ -67,7 +67,7 @@
     word-wrap: break-word;
 
     > p:only-child:has(> br.ProseMirror-trailingBreak:only-child)::before {
-      content: "An empty scene. Start writing…";
+      content: var(--empty-scene);
       position: absolute;
       color: var(--muted);
       opacity: 0.6;

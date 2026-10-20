@@ -217,3 +217,46 @@ ideas = Ideas
 ideas-capture = Capture
 ideas-empty = No ideas yet. Shoot an idea in and see where it goes.
 idea-opening = Opening…
+
+book = The book
+writing-sides = Sides of the work
+writing-side-book = The book
+writing-side-loose = Not in the book
+writing-every-scene-placed = Every scene is in the book.
+heading-untitled = Untitled section
+heading-first = Your book's first section
+heading-next = A new section
+scene-invitation = An empty scene. Start writing…
+scene-next = A new scene
+scene-an-empty-one = An empty scene
+status-focus = Focus mode
+status-focus-hint = Focus mode (Ctrl+Shift+F)
+writing-settings = Writing settings
+count-whole-book = Count the whole book
+count-section = Count the section being written
+digit-group = { "," }
+words =
+    { $count ->
+        [one] { $shown } word
+       *[other] { $shown } words
+    }
+words-not-in-the-book = { $words } not in the book
+words-in-the-book = { $words } in the book
+words-in-section = { $words } in “{ $section }”
+words-in-this-section = { $words } in this section
+saving = Saving…
+all-saved = All saved
+setting-spelling = Check spelling
+setting-spelling-hint = Underlines words the browser's dictionary does not know.
+setting-justified = Justified text
+setting-justified-hint = Sets lines flush on both sides like a printed page, hyphenating words in the book's language.
+setting-typewriter = Typewriter scrolling
+setting-typewriter-hint = Keeps the line you are writing in the middle of the window.
+settings-close = Close
+contents = Contents
+this-scene = This scene
+where-you-are = Where you are
+quiet-rearranged = Someone else rearranged the book around “{ $section }”.
+quiet-removed = Someone else removed “{ $section }”.
+quiet-overtaken = Someone else changed the book meanwhile, so that could not be done. It shows the book as it is now.
+going-back = Back to where you left off

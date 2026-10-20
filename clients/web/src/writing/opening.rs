@@ -4,14 +4,15 @@ use leptos::{IntoView, ev, html};
 
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
+use crate::speech::said;
 use crate::writing::beginnings::Pending;
 use crate::writing::heading::walk_on;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
-const INVITATION: &str = "An empty scene. Start writing\u{2026}";
+const INVITATION: &str = "scene-invitation";
 
-const NEXT: &str = "A new scene";
+const NEXT: &str = "scene-next";
 
 #[derive(Clone)]
 enum Line {
@@ -71,8 +72,8 @@ fn scene_line(section: SectionId, line: Line, state: WriteViewState) -> impl Int
         .class("opening")
         .attr("contenteditable", "plaintext-only")
         .attr("role", "textbox")
-        .attr("aria-label", NEXT)
-        .attr("data-placeholder", INVITATION)
+        .attr("aria-label", said(NEXT))
+        .attr("data-placeholder", said(INVITATION))
         .node_ref(host)
         .on(ev::input, {
             let section = section.clone();

@@ -217,3 +217,46 @@ ideas = Ideas
 ideas-capture = Apuntar
 ideas-empty = Todavía no hay ideas. Lanza una idea y mira adónde lleva.
 idea-opening = Abriendo…
+
+book = El libro
+writing-sides = Lados de la obra
+writing-side-book = El libro
+writing-side-loose = Fuera del libro
+writing-every-scene-placed = Todas las escenas están en el libro.
+heading-untitled = Sección sin título
+heading-first = La primera sección de tu libro
+heading-next = Una sección nueva
+scene-invitation = Una escena vacía. Empieza a escribir…
+scene-next = Una escena nueva
+scene-an-empty-one = Una escena vacía
+status-focus = Modo concentración
+status-focus-hint = Modo concentración (Ctrl+Mayús+F)
+writing-settings = Ajustes de escritura
+count-whole-book = Contar todo el libro
+count-section = Contar la sección en la que escribes
+digit-group = { "." }
+words =
+    { $count ->
+        [one] { $shown } palabra
+       *[other] { $shown } palabras
+    }
+words-not-in-the-book = { $words } fuera del libro
+words-in-the-book = { $words } en el libro
+words-in-section = { $words } en «{ $section }»
+words-in-this-section = { $words } en esta sección
+saving = Guardando…
+all-saved = Todo guardado
+setting-spelling = Revisar la ortografía
+setting-spelling-hint = Subraya las palabras que el diccionario del navegador no conoce.
+setting-justified = Texto justificado
+setting-justified-hint = Alinea las líneas por ambos lados como una página impresa y divide las palabras en el idioma del libro.
+setting-typewriter = Desplazamiento de máquina de escribir
+setting-typewriter-hint = Mantiene la línea que escribes en el centro de la ventana.
+settings-close = Cerrar
+contents = Índice
+this-scene = Esta escena
+where-you-are = Dónde estás
+quiet-rearranged = Alguien más reorganizó el libro en torno a «{ $section }».
+quiet-removed = Alguien más quitó «{ $section }».
+quiet-overtaken = Alguien más cambió el libro mientras tanto, así que no se pudo hacer. Muestra el libro tal como está ahora.
+going-back = Volver a donde lo dejaste

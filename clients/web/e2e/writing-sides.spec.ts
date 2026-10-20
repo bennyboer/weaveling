@@ -6,6 +6,7 @@ import {
   aBookInTheWritingView,
   asked,
   backToWhereILeftOff,
+  backToWhereYouLeftOffButton,
   beginning,
   flow,
   following,
@@ -219,6 +220,33 @@ test("writing outside the book leaves where you left off in the book alone", asy
 
   await backToWhereILeftOff(page);
   await expect(scene(page, second)).toBeFocused();
+});
+
+test("a scene left empty where I left off is offered back as an empty scene", async ({
+  page,
+}) => {
+  await aNewProject(page, "LeftEmpty");
+  const second = (await aBookWithScenes(page, { "Part One": 14 }))[
+    "Part One"
+  ][11];
+  await aLooseScene(page);
+  await openTheWritingView(page);
+  await flow(page)
+    .locator(`[data-place-of="${second}"]`)
+    .scrollIntoViewIfNeeded();
+  await scene(page, second).click();
+  await page.keyboard.type("x");
+  await page.keyboard.press("Backspace");
+  await expect(saveState(page)).toHaveText("All saved");
+  await openTheLooseSide(page);
+
+  await sides(page)
+    .getByRole("link", { name: "The book", exact: true })
+    .click();
+
+  await expect(
+    backToWhereYouLeftOffButton(page).locator(".where"),
+  ).toHaveText("An empty scene");
 });
 
 test("a scene outside the book is brought into the section chosen, and the cursor lands in it", async ({

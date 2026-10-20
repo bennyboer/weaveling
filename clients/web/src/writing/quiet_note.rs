@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::icons::{Icon, mark};
+use crate::speech::{said, say, say_about};
 use crate::writing::asking::Asking;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -40,10 +41,9 @@ pub fn quiet_note(state: WriteViewState) -> impl IntoView {
         while let Some(section) = around {
             if rearranged.contains(&section) {
                 let title = untrack(|| state.structure.title_of(&section)).unwrap_or_default();
-                state.quiet_note.tell(format!(
-                    "Someone else rearranged the book around “{}”.",
-                    title.trim()
-                ));
+                state
+                    .quiet_note
+                    .tell(say_about("quiet-rearranged", "section", title.trim()));
                 return;
             }
             around = state.structure.parent_of(&section);
@@ -65,17 +65,14 @@ pub fn quiet_note(state: WriteViewState) -> impl IntoView {
             }),
             None => state
                 .quiet_note
-                .tell(format!("Someone else removed “{}”.", mine.title.trim())),
+                .tell(say_about("quiet-removed", "section", mine.title.trim())),
         }
     });
 
     Effect::new(move |told_before: Option<u64>| {
         let times = state.structure.overtaken();
         if told_before.is_some_and(|before| before < times) {
-            state.quiet_note.tell(
-                "Someone else changed the book meanwhile, so that could not be done. It shows the book as it is now."
-                    .to_owned(),
-            );
+            state.quiet_note.tell(say("quiet-overtaken"));
         }
         times
     });
@@ -86,8 +83,8 @@ pub fn quiet_note(state: WriteViewState) -> impl IntoView {
                 html::span().child(saying),
                 html::button()
                     .r#type("button")
-                    .attr("aria-label", "Dismiss")
-                    .attr("title", "Dismiss")
+                    .attr("aria-label", said("problem-dismiss"))
+                    .attr("title", said("problem-dismiss"))
                     .on(ev::click, move |_| state.quiet_note.dismiss())
                     .child(mark(Icon::Remove)),
             ))

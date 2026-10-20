@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, html};
 
 use crate::projects::open_project::OpenProject;
+use crate::speech::said;
 use crate::writing::write_view_state::WriteViewState;
 
 const FOCUSED: &str = "focused";
@@ -56,7 +57,7 @@ pub fn focus_line(state: WriteViewState) -> impl IntoView {
 
             html::nav()
                 .class("focus-line")
-                .attr("aria-label", "Where you are")
+                .attr("aria-label", said("where-you-are"))
                 .child((
                     html::span()
                         .class("project")

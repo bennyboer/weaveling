@@ -6,6 +6,7 @@ use leptos::{IntoView, ev, html};
 use web_sys::{HtmlDivElement, KeyboardEvent, Node};
 
 use crate::outline::model::{Section, SectionId};
+use crate::speech::said;
 use crate::writing::asking::Asking;
 use crate::writing::beginnings::Pending;
 use crate::writing::walk::{Stop, Towards};
@@ -13,11 +14,11 @@ use crate::writing::write_view_state::WriteViewState;
 
 const SAVE_AFTER: Duration = Duration::from_millis(700);
 
-pub const UNTITLED: &str = "Untitled section";
+const UNTITLED: &str = "heading-untitled";
 
-const FIRST: &str = "Your book's first section";
+const FIRST: &str = "heading-first";
 
-const NEXT: &str = "A new section";
+const NEXT: &str = "heading-next";
 
 pub fn level_of(depth: usize) -> usize {
     depth.min(2) + 2
@@ -164,7 +165,7 @@ pub fn section_heading(
         .attr("aria-level", move || level_of(depth.get()).to_string())
         .attr("contenteditable", "plaintext-only")
         .attr("spellcheck", "false")
-        .attr("data-placeholder", UNTITLED)
+        .attr("data-placeholder", said(UNTITLED))
         .node_ref(host)
         .child(written)
         .on(ev::input, {
@@ -278,7 +279,7 @@ fn new_heading(after: Option<SectionId>, depth: usize, state: WriteViewState) ->
         .attr("spellcheck", "false")
         .attr(
             "data-placeholder",
-            if after.is_some() { NEXT } else { FIRST },
+            said(if after.is_some() { NEXT } else { FIRST }),
         )
         .node_ref(host)
         .on(ev::input, {

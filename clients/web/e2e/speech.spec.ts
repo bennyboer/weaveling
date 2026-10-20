@@ -10,7 +10,7 @@ import {
   openTheBoard,
   openTheOutline,
 } from "./support/shell";
-import { flow } from "./support/writing";
+import { flow, openTheWritingView, scene } from "./support/writing";
 
 const spoken = (page: Page) =>
   page.evaluate(() => document.documentElement.getAttribute("lang"));
@@ -355,6 +355,59 @@ test("the ideas speak the language chosen, at once", async ({ page }) => {
   await expect(page.getByText("Wird geöffnet…")).toBeVisible();
 });
 
+test("the writing view speaks the language chosen, at once", async ({
+  page,
+}) => {
+  await aNewProject(page, "Schreiben");
+  const scenes = await aBookWithScenes(page, { "Part One": 1 });
+  await aLooseScene(page);
+  await openTheWritingView(page);
+  await scene(page, scenes["Part One"][0]).click();
+  await page.keyboard.type("Der Webstuhl schwieg");
+
+  await picker(page, "Language").selectOption("de");
+
+  const book = page.getByRole("article", { name: "Das Buch" });
+  await expect(book).toBeVisible();
+  expect(
+    await book.evaluate((shown) =>
+      getComputedStyle(shown).getPropertyValue("--empty-scene"),
+    ),
+  ).toBe('"Eine leere Szene. Fang an zu schreiben…"');
+  await expect(book.getByRole("heading", { name: "Part One" })).toHaveAttribute(
+    "data-placeholder",
+    "Abschnitt ohne Titel",
+  );
+  const sides = page.getByRole("navigation", { name: "Seiten des Werks" });
+  await expect(sides.getByRole("link")).toHaveText(["Das Buch", "Nicht im Buch1"]);
+  const toggles = page.locator(".drawer-toggles button");
+  await expect(toggles.nth(0)).toHaveAttribute("aria-label", "Inhalt");
+  await expect(toggles.nth(1)).toHaveAttribute("aria-label", "Diese Szene");
+  await expect(page.getByText("3 Wörter in „Part One“")).toBeVisible();
+  await expect(page.getByText("3 Wörter in „Part One“")).toHaveAttribute(
+    "title",
+    "Das ganze Buch zählen",
+  );
+  await expect(page.getByText("Alles gespeichert")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Fokusmodus" })).toHaveAttribute(
+    "title",
+    "Fokusmodus (Strg+Umschalt+F)",
+  );
+
+  await page.getByRole("button", { name: "Schreibeinstellungen" }).click();
+  const settings = page.getByRole("dialog", { name: "Schreibeinstellungen" });
+  for (const named of ["Rechtschreibung prüfen", "Blocksatz", "Schreibmaschinenmodus"]) {
+    await expect(settings.getByLabel(named)).toHaveCount(1);
+  }
+  await expect(
+    settings.getByText("Hält die Zeile, in der du schreibst, in der Mitte des Fensters."),
+  ).toBeVisible();
+  await settings.getByRole("button", { name: "Schließen" }).click();
+
+  await page.getByRole("button", { name: "Fokusmodus" }).click();
+  await expect(page.getByRole("navigation", { name: "Wo du bist" })).toBeVisible();
+});
+
 test.describe("a browser asking for a language the app does not speak", () => {
   test.use({ locale: "it-IT" });
 
@@ -420,7 +473,10 @@ test("the book keeps its own language, whatever the app speaks", async ({
     .getByRole("link", { name: "Schreiben" })
     .click();
 
-  await expect(flow(page)).toHaveAttribute("lang", "en");
+  await expect(page.getByRole("article", { name: "Das Buch" })).toHaveAttribute(
+    "lang",
+    "en",
+  );
   expect(await spoken(page)).toBe("de");
 });
 

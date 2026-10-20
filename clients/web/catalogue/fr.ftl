@@ -217,3 +217,46 @@ ideas = Idées
 ideas-capture = Noter
 ideas-empty = Pas encore d’idées. Lancez une idée et voyez où elle mène.
 idea-opening = Ouverture…
+
+book = Le livre
+writing-sides = Côtés de l’œuvre
+writing-side-book = Le livre
+writing-side-loose = Hors du livre
+writing-every-scene-placed = Toutes les scènes sont dans le livre.
+heading-untitled = Section sans titre
+heading-first = La première section de votre livre
+heading-next = Une nouvelle section
+scene-invitation = Une scène vide. Commencez à écrire…
+scene-next = Une nouvelle scène
+scene-an-empty-one = Une scène vide
+status-focus = Mode concentration
+status-focus-hint = Mode concentration (Ctrl+Maj+F)
+writing-settings = Réglages d’écriture
+count-whole-book = Compter tout le livre
+count-section = Compter la section en cours d’écriture
+digit-group = { "\u202F" }
+words =
+    { $count ->
+        [one] { $shown } mot
+       *[other] { $shown } mots
+    }
+words-not-in-the-book = { $words } hors du livre
+words-in-the-book = { $words } dans le livre
+words-in-section = { $words } dans « { $section } »
+words-in-this-section = { $words } dans cette section
+saving = Enregistrement…
+all-saved = Tout est enregistré
+setting-spelling = Vérifier l’orthographe
+setting-spelling-hint = Souligne les mots que le dictionnaire du navigateur ne connaît pas.
+setting-justified = Texte justifié
+setting-justified-hint = Aligne les lignes des deux côtés comme une page imprimée, en coupant les mots dans la langue du livre.
+setting-typewriter = Défilement machine à écrire
+setting-typewriter-hint = Garde la ligne que vous écrivez au milieu de la fenêtre.
+settings-close = Fermer
+contents = Table des matières
+this-scene = Cette scène
+where-you-are = Où vous êtes
+quiet-rearranged = Quelqu’un d’autre a réorganisé le livre autour de « { $section } ».
+quiet-removed = Quelqu’un d’autre a supprimé « { $section } ».
+quiet-overtaken = Quelqu’un d’autre a modifié le livre entre-temps, cela n’a donc pas pu être fait. Le livre est affiché tel qu’il est maintenant.
+going-back = Revenir là où vous en étiez

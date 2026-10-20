@@ -1,9 +1,11 @@
 use std::time::Duration;
 
+use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::icons::{Icon, mark};
+use crate::speech::{said, say, say_about, say_with};
 use crate::writing::side::Side;
 use crate::writing::word_count::Counted;
 use crate::writing::write_view_state::WriteViewState;
@@ -38,16 +40,16 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
         html::button()
             .r#type("button")
             .class("enter-focus")
-            .attr("aria-label", "Focus mode")
-            .attr("title", "Focus mode (Ctrl+Shift+F)")
+            .attr("aria-label", said("status-focus"))
+            .attr("title", said("status-focus-hint"))
             .attr("aria-pressed", move || state.focus.is_on().to_string())
             .on(ev::click, move |_| state.focus.toggle())
             .child(mark(Icon::Focus)),
         html::button()
             .r#type("button")
             .class("open-settings")
-            .attr("aria-label", "Writing settings")
-            .attr("title", "Writing settings")
+            .attr("aria-label", said("writing-settings"))
+            .attr("title", said("writing-settings"))
             .on(ev::click, move |_| state.settings.open())
             .child(mark(Icon::Settings)),
         match state.side {
@@ -55,8 +57,8 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
                 .r#type("button")
                 .class("word-count")
                 .attr("title", move || match state.word_count.counted() {
-                    Counted::Section => "Count the whole book",
-                    Counted::Book => "Count the section being written",
+                    Counted::Section => say("count-whole-book"),
+                    Counted::Book => say("count-section"),
                 })
                 .on(ev::click, move |_| state.word_count.toggle())
                 .child(move || counted(state))
@@ -66,15 +68,15 @@ pub fn status_note(state: WriteViewState) -> impl IntoView {
                 .child(move || {
                     let words = state.word_count.words_in(&state.loose.in_order());
 
-                    format!("{} not in the book", in_words(words))
+                    say_about("words-not-in-the-book", "words", &in_words(words))
                 })
                 .into_any(),
         },
         html::span().class("save-state").child(move || {
             if shown_saving.get() {
-                (mark(Icon::Saving), html::span().child("Saving…"))
+                (mark(Icon::Saving), html::span().child(said("saving")))
             } else {
-                (mark(Icon::Saved), html::span().child("All saved"))
+                (mark(Icon::Saved), html::span().child(said("all-saved")))
             }
         }),
     ))
@@ -84,15 +86,21 @@ fn counted(state: WriteViewState) -> String {
     let words = in_words(state.word_count.words());
 
     match state.word_count.counted() {
-        Counted::Book => format!("{words} in the book"),
+        Counted::Book => say_about("words-in-the-book", "words", &words),
         Counted::Section => match state
             .writing_in
             .section()
             .and_then(|section| state.structure.title_of(&section))
             .filter(|title| !title.trim().is_empty())
         {
-            Some(title) => format!("{words} in “{title}”"),
-            None => format!("{words} in this section"),
+            Some(title) => {
+                let mut args = FluentArgs::new();
+                args.set("words", words);
+                args.set("section", title);
+
+                say_with("words-in-section", &args)
+            }
+            None => say_about("words-in-this-section", "words", &words),
         },
     }
 }
@@ -105,10 +113,27 @@ fn in_words(count: usize) -> String {
         .rev()
         .map(|group| String::from_utf8_lossy(group).into_owned())
         .collect::<Vec<_>>()
-        .join(",");
+        .join(&say("digit-group"));
+    let mut args = FluentArgs::new();
+    args.set("count", count);
+    args.set("shown", grouped);
 
-    match count {
-        1 => "1 word".to_owned(),
-        _ => format!("{grouped} words"),
+    say_with("words", &args)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn one_word_is_told_as_one() {
+        assert_eq!(in_words(1), "1 word");
+    }
+
+    #[test]
+    fn many_words_are_grouped_by_thousands() {
+        assert_eq!(in_words(0), "0 words");
+        assert_eq!(in_words(999), "999 words");
+        assert_eq!(in_words(1_234_567), "1,234,567 words");
     }
 }

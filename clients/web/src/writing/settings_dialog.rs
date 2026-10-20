@@ -2,12 +2,8 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::dialog::modal;
+use crate::speech::said;
 use crate::writing::write_view_state::WriteViewState;
-
-const SPELLING: &str = "Underlines words the browser's dictionary does not know.";
-const JUSTIFIED: &str =
-    "Sets lines flush on both sides like a printed page, hyphenating words in the book's language.";
-const TYPEWRITER: &str = "Keeps the line you are writing in the middle of the window.";
 
 pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
     let settings = state.settings;
@@ -15,25 +11,25 @@ pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
     move || {
         settings.is_open().then(|| {
             modal(
-                "Writing settings",
+                Signal::derive(said("writing-settings")),
                 "writing-settings",
                 move || settings.close(),
                 (
                     setting(
-                        "Check spelling",
-                        SPELLING,
+                        "setting-spelling",
+                        "setting-spelling-hint",
                         move || settings.checks_spelling(),
                         move |wanted| settings.check_spelling(wanted),
                     ),
                     setting(
-                        "Justified text",
-                        JUSTIFIED,
+                        "setting-justified",
+                        "setting-justified-hint",
                         move || settings.justifies(),
                         move |wanted| settings.justify(wanted),
                     ),
                     setting(
-                        "Typewriter scrolling",
-                        TYPEWRITER,
+                        "setting-typewriter",
+                        "setting-typewriter-hint",
                         move || settings.scrolls_like_a_typewriter(),
                         move |wanted| settings.scroll_like_a_typewriter(wanted),
                     ),
@@ -41,7 +37,7 @@ pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
                         html::button()
                             .r#type("button")
                             .on(ev::click, move |_| settings.close())
-                            .child("Close"),
+                            .child(said("settings-close")),
                     ),
                 ),
             )
@@ -62,6 +58,6 @@ fn setting(
             .on(ev::change, move |event| {
                 turned(event_target_checked(&event));
             }),
-        html::span().child((named, html::small().child(told))),
+        html::span().child((said(named), html::small().child(said(told)))),
     ))
 }

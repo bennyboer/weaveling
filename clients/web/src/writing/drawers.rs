@@ -4,6 +4,7 @@ use leptos::{IntoView, ev, html};
 use crate::drawer::Drawer;
 use crate::drawer::width::{DrawerWidth, NARROWEST, PAGE_LEFT_IN_SIGHT};
 use crate::icons::{Icon, mark};
+use crate::speech::said;
 use crate::writing::contents::BOOK_RAIL;
 use crate::writing::inspecting::INSPECTOR;
 use crate::writing::side::Side;
@@ -63,8 +64,8 @@ pub fn drawer_toggles(state: WriteViewState) -> impl IntoView {
         (state.side == Side::Book).then(|| {
             html::button()
                 .r#type("button")
-                .attr("aria-label", "Contents")
-                .attr("title", "Contents")
+                .attr("aria-label", said("contents"))
+                .attr("title", said("contents"))
                 .attr("aria-controls", BOOK_RAIL)
                 .attr("aria-expanded", move || rail.is_open().to_string())
                 .on(ev::click, move |_| rail.toggle())
@@ -72,8 +73,8 @@ pub fn drawer_toggles(state: WriteViewState) -> impl IntoView {
         }),
         html::button()
             .r#type("button")
-            .attr("aria-label", "This scene")
-            .attr("title", "This scene")
+            .attr("aria-label", said("this-scene"))
+            .attr("title", said("this-scene"))
             .attr("aria-controls", INSPECTOR)
             .attr("aria-expanded", move || tray.is_open().to_string())
             .on(ev::click, move |_| tray.toggle())

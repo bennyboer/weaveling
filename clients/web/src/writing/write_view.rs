@@ -13,6 +13,7 @@ use crate::projects::open_project::OpenProject;
 use crate::route;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::SyncConnection;
+use crate::speech::{said, say};
 use crate::writing::asking::{Asking, asking};
 use crate::writing::beginnings::Pending;
 use crate::writing::bringing_back::{Landing, bringing_back};
@@ -187,7 +188,10 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
 
     let book_view = html::article()
         .class("writing")
-        .attr("aria-label", "The book")
+        .attr("aria-label", said("book"))
+        .style(("--empty-scene", move || {
+            as_css_text(&say("scene-invitation"))
+        }))
         .attr("tabindex", "-1")
         .attr("lang", move || open_project.language())
         .attr("spellcheck", move || {
@@ -496,16 +500,16 @@ fn side_switch(project: String, state: WriteViewState) -> impl IntoView {
 
     html::nav()
         .class("side-switch")
-        .attr("aria-label", "Sides of the work")
+        .attr("aria-label", said("writing-sides"))
         .child((
             view! {
                 <A href=book exact=true>
-                    "The book"
+                    {said("writing-side-book")}
                 </A>
             },
             view! {
                 <A href=elsewhere exact=true>
-                    "Not in the book"
+                    {said("writing-side-loose")}
                     <span class="tally">{move || loose.get()}</span>
                 </A>
             },
@@ -518,7 +522,7 @@ fn loose_side(state: WriteViewState) -> impl IntoView {
     view! {
         {move || {
             none.get()
-                .then(|| html::p().class("every-scene-placed").child("Every scene is in the book."))
+                .then(|| html::p().class("every-scene-placed").child(said("writing-every-scene-placed")))
         }}
         <For
             each=move || state.loose.in_order()
@@ -661,5 +665,23 @@ fn pending_after(section: SectionId, scene: SceneId, state: WriteViewState) -> i
         wanted
             .get()
             .then(|| pending_scene(section.clone(), scene.clone(), state))
+    }
+}
+
+fn as_css_text(text: &str) -> String {
+    format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_text_for_css_keeps_its_quotes_and_backslashes_inside() {
+        assert_eq!(as_css_text("An empty scene"), "\"An empty scene\"");
+        assert_eq!(
+            as_css_text("a \"quiet\" one\\"),
+            "\"a \\\"quiet\\\" one\\\\\""
+        );
     }
 }
