@@ -17,6 +17,7 @@ mod refusals;
 mod route;
 mod scenes;
 mod shell;
+mod speech;
 mod statistics;
 mod theme;
 mod tray;

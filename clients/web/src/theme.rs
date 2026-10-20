@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 
 use crate::kept::{keep, recall};
+use crate::speech::said;
 
 const REMEMBERED: &str = "weaveling.theme";
 const MARKED: &str = "data-theme";
@@ -33,11 +34,11 @@ impl Theme {
         }
     }
 
-    fn named(self) -> &'static str {
+    fn message(self) -> &'static str {
         match self {
-            Self::Light => "Light",
-            Self::System => "Follow the system",
-            Self::Dark => "Dark",
+            Self::Light => "theme-light",
+            Self::System => "theme-system",
+            Self::Dark => "theme-dark",
         }
     }
 }
@@ -48,7 +49,7 @@ pub fn picker() -> impl IntoView {
     html::div()
         .class("theming")
         .attr("role", "group")
-        .attr("aria-label", "Theme")
+        .attr("aria-label", said("theme"))
         .child(
             Theme::EVERY
                 .into_iter()
@@ -60,7 +61,7 @@ pub fn picker() -> impl IntoView {
 fn swatch(theme: Theme, chosen: RwSignal<Theme>) -> impl IntoView {
     html::button()
         .r#type("button")
-        .attr("aria-label", theme.named())
+        .attr("aria-label", said(theme.message()))
         .attr("aria-pressed", move || {
             if chosen.get() == theme {
                 "true"

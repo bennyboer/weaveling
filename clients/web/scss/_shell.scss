@@ -153,6 +153,55 @@
       color: var(--accent);
     }
   }
+
+  .speaking {
+    position: relative;
+    display: flex;
+    align-items: center;
+    align-self: center;
+    flex-shrink: 0;
+    height: 2rem;
+    padding: 0 0.3rem 0 0.55rem;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    color: var(--muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+
+    span {
+      display: flex;
+      align-items: center;
+      gap: 0.15rem;
+    }
+
+    svg {
+      width: 0.9rem;
+      height: 0.9rem;
+    }
+
+    &:hover {
+      color: var(--ink);
+    }
+
+    &:has(select:focus-visible) {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    select {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    option {
+      background: var(--paper);
+      color: var(--ink);
+    }
+  }
 }
 
 @media (width <= 60rem) {

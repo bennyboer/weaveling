@@ -11,6 +11,7 @@ use crate::projects::languages::the_browser_s;
 use crate::projects::model::{ProjectDetails, ProjectId};
 use crate::projects::workspace::Workspace;
 use crate::route;
+use crate::speech::said;
 
 #[component]
 pub fn NewProject(workspace: Workspace) -> impl IntoView {
@@ -31,7 +32,7 @@ pub fn NewProject(workspace: Workspace) -> impl IntoView {
     html::div().class("new-project").child((
         html::input()
             .r#type("text")
-            .placeholder("A working title…")
+            .placeholder(said("new-project-working-title"))
             .prop("value", move || draft.get())
             .on(ev::input, move |event| {
                 draft.set(event_target_value(&event))
@@ -44,7 +45,7 @@ pub fn NewProject(workspace: Workspace) -> impl IntoView {
         html::button()
             .disabled(unusable)
             .on(ev::click, move |_| ask())
-            .child("Create"),
+            .child(said("new-project-create")),
         move || {
             asking
                 .get()
@@ -82,7 +83,7 @@ fn new_project_dialog(
     };
 
     modal(
-        "New project",
+        Signal::derive(said("new-project-dialog")),
         "project-details",
         move || asking.set(false),
         (
@@ -98,13 +99,13 @@ fn new_project_dialog(
                 html::button()
                     .r#type("button")
                     .on(ev::click, move |_| asking.set(false))
-                    .child("Cancel"),
+                    .child(said("new-project-cancel")),
                 html::button()
                     .r#type("button")
                     .class("primary")
                     .disabled(move || draft.get().trim().is_empty() || creating.get())
                     .on(ev::click, move |_| create())
-                    .child("Create project"),
+                    .child(said("new-project-confirm")),
             )),
         ),
     )

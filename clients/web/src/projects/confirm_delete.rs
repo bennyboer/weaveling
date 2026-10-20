@@ -1,3 +1,4 @@
+use fluent_bundle::FluentArgs;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
@@ -5,24 +6,33 @@ use leptos::{IntoView, ev};
 use crate::dialog::modal;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
+use crate::speech::{Speech, said};
 
 #[component]
 pub fn ConfirmDelete(workspace: Workspace, overlays: Overlays) -> impl IntoView {
+    let speech = expect_context::<Speech>();
+
     move || {
         overlays.confirming().get().map(|project| {
             let id = project.id.clone();
-            let fate = format!("“{}” will be gone for good.", project.name);
+            let name = project.name.clone();
+            let fate = move || {
+                let mut args = FluentArgs::new();
+                args.set("name", name.clone());
+
+                speech.say_with("delete-project-fate", &args)
+            };
 
             modal(
-                "Delete this project?",
+                Signal::derive(said("delete-project-dialog")),
                 "",
                 move || overlays.dismiss(),
                 (
-                    html::p().child((fate, " Deleting cannot be undone.")),
+                    html::p().child(fate),
                     html::div().class("dialog-actions").child((
                         html::button()
                             .on(ev::click, move |_| overlays.dismiss())
-                            .child("Cancel"),
+                            .child(said("delete-project-cancel")),
                         html::button()
                             .class("danger")
                             .disabled(workspace.deleting())
@@ -30,7 +40,7 @@ pub fn ConfirmDelete(workspace: Workspace, overlays: Overlays) -> impl IntoView 
                                 overlays.dismiss();
                                 workspace.delete(id.clone());
                             })
-                            .child("Delete"),
+                            .child(said("delete-project-confirm")),
                     )),
                 ),
             )

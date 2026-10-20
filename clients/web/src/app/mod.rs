@@ -23,12 +23,14 @@ use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
 use crate::shell::status_bar;
+use crate::speech::Speech;
 
 #[component]
 pub fn App() -> impl IntoView {
     let workspace = Workspace::listing();
     let overlays = Overlays::none();
     provide_context(OpenProject::none());
+    provide_context(Speech::heard());
 
     window_event_listener(ev::click, move |_| overlays.close_menu());
     window_event_listener(ev::keydown, move |event| {

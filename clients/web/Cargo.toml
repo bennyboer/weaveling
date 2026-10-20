@@ -5,11 +5,13 @@ edition.workspace = true
 
 [dependencies]
 console_error_panic_hook = { workspace = true }
+fluent-bundle = { workspace = true }
 gloo-net = { workspace = true }
 leptos = { workspace = true, features = ["csr"] }
 leptos_router = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+unic-langid = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 web-sys = { workspace = true, features = [
@@ -58,3 +60,6 @@ ideas-contract = { version = "0.1.0", path = "../../features/ideas/contract", pa
 scenes-contract = { version = "0.1.0", path = "../../features/scenes/contract", package = "weaveling-scenes-contract" }
 projects-contract = { version = "0.1.0", path = "../../features/projects/contract", package = "weaveling-projects-contract" }
 statistics-contract = { version = "0.1.0", path = "../../features/statistics/contract", package = "weaveling-statistics-contract" }
+
+[dev-dependencies]
+fluent-syntax = { workspace = true }

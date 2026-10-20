@@ -9,6 +9,7 @@ use crate::projects::model::Project;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
 use crate::route;
+use crate::speech::said;
 
 #[component]
 pub fn ProjectRow(project: Project, workspace: Workspace, overlays: Overlays) -> impl IntoView {
@@ -83,10 +84,10 @@ pub fn ProjectRow(project: Project, workspace: Workspace, overlays: Overlays) ->
                                 draft.get().trim().is_empty() || workspace.renaming().get()
                             })
                             .on(ev::click, move |_| commit.run(()))
-                            .child("Save"),
+                            .child(said("project-rename-save")),
                         html::button()
                             .on(ev::click, move |_| set_editing.set(false))
-                            .child("Cancel"),
+                            .child(said("project-rename-cancel")),
                     ))
                     .into_any()
             } else {
@@ -124,7 +125,7 @@ fn RowMenu(
         .child((
             html::button()
                 .class("menu-button")
-                .attr("aria-label", "More actions")
+                .attr("aria-label", said("project-more-actions"))
                 .attr("aria-haspopup", "menu")
                 .attr("aria-expanded", move || open().to_string())
                 .on(ev::click, move |_| overlays.toggle_menu(row_id.get_value()))
@@ -138,7 +139,7 @@ fn RowMenu(
                                 overlays.close_menu();
                                 on_rename.run(());
                             })
-                            .child("Rename"),
+                            .child(said("project-rename")),
                         html::button()
                             .class("danger")
                             .role("menuitem")
@@ -146,7 +147,7 @@ fn RowMenu(
                                 overlays.close_menu();
                                 overlays.ask_to_delete(row.get_value());
                             })
-                            .child("Delete"),
+                            .child(said("project-delete")),
                     ))
                 })
             },

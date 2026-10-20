@@ -9,16 +9,15 @@ use crate::projects::overlays::Overlays;
 use crate::projects::row::{ProjectRow, ProjectRowProps};
 use crate::projects::workspace::Workspace;
 use crate::shell::masthead;
+use crate::speech::said;
 
 #[component]
 pub fn WorkspacePage(workspace: Workspace, overlays: Overlays) -> impl IntoView {
     (
         masthead(None),
         html::main().child(html::div().class("column").child((
-            html::h1().child("Your projects"),
-            html::p().class("tagline").child(
-                "Bring us your tiny, fragile story ideas, and we will help you weave them into a full epic.",
-            ),
+            html::h1().child(said("workspace-heading")),
+            html::p().class("tagline").child(said("workspace-tagline")),
             NewProject(NewProjectProps { workspace }),
             move || workspace.problem().map(problem),
             move || placeholder(workspace),
@@ -49,10 +48,10 @@ fn placeholder(workspace: Workspace) -> Option<impl IntoView> {
     }
 
     let message = if workspace.loading() {
-        "Loading…"
+        "workspace-loading"
     } else {
-        "No projects yet. Every epic starts as a little mess."
+        "workspace-empty"
     };
 
-    Some(html::p().class("empty").child(message))
+    Some(html::p().class("empty").child(said(message)))
 }

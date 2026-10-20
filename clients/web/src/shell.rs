@@ -7,6 +7,7 @@ use crate::projects::open_project::OpenProject;
 use crate::projects::project_details::project_details;
 use crate::refusals::alarm::{AlarmState, alarm};
 use crate::route;
+use crate::speech::{picker, said};
 use crate::theme;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -18,12 +19,12 @@ pub enum Viewing {
 }
 
 impl Viewing {
-    fn named(&self) -> &'static str {
+    fn message(&self) -> &'static str {
         match self {
-            Self::Board => "Board",
-            Self::Outline => "Outline",
-            Self::Ideas => "Ideas",
-            Self::Write => "Write",
+            Self::Board => "view-board",
+            Self::Outline => "view-outline",
+            Self::Ideas => "view-ideas",
+            Self::Write => "view-write",
         }
     }
 
@@ -60,20 +61,21 @@ pub fn mark() -> impl IntoView {
 pub fn masthead(inside: Option<Inside>) -> impl IntoView {
     html::header().class("masthead").child((
         view! {
-            <A href=route::WORKSPACE attr:class="wordmark" attr:aria-label="All projects">
+            <A href=route::WORKSPACE attr:class="wordmark" attr:aria-label=said("masthead-all-projects")>
                 {mark()}
                 <span>"Weaveling"</span>
             </A>
         },
         inside.map(whereabouts),
         theme::picker(),
+        picker::picker(),
     ))
 }
 
 pub fn status_bar() -> impl IntoView {
     html::footer()
         .class("status-bar")
-        .attr("aria-label", "Status")
+        .attr("aria-label", said("status-bar"))
         .child(alarm(AlarmState::new()))
 }
 
@@ -98,7 +100,7 @@ fn whereabouts(inside: Inside) -> impl IntoView {
         )),
         html::nav()
             .class("views")
-            .attr("aria-label", "Views")
+            .attr("aria-label", said("masthead-views"))
             .child(
                 [
                     Viewing::Write,
@@ -119,7 +121,7 @@ fn tab(view: Viewing, project: String, here: Option<Viewing>) -> impl IntoView {
 
     view! {
         <A href=at attr:class=move || if here { "view here" } else { "view" }>
-            <span>{view.named()}</span>
+            <span>{said(view.message())}</span>
         </A>
     }
 }

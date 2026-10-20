@@ -2,11 +2,12 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 pub fn modal(
-    title: &'static str,
+    title: impl Into<Signal<String>>,
     style_class: &'static str,
     close: impl Fn() + Copy + Send + Sync + 'static,
     body: impl IntoView + 'static,
 ) -> impl IntoView {
+    let title = title.into();
     let escaping = window_event_listener(ev::keydown, move |event| {
         if event.key() == "Escape" {
             close();
