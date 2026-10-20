@@ -3711,7 +3711,6 @@ dependencies = [
  "leptos",
  "leptos_router",
  "serde",
- "thiserror",
  "time",
  "unic-langid",
  "wasm-bindgen",

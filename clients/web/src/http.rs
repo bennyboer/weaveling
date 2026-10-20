@@ -1,23 +1,14 @@
 use gloo_net::http::{RequestBuilder, Response};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApiError {
-    #[error("{0}")]
     Rejected(String),
-    #[error("That {0} no longer exists.")]
     NotFound(&'static str),
-    #[error(
-        "This {0} was changed elsewhere meanwhile. Close this and open it again to see how it stands."
-    )]
     Outdated(&'static str),
-    #[error("Someone else changed this meanwhile, so that could not be done.")]
     Overtaken,
-    #[error("Could not reach the server. Is it running?")]
     Offline,
-    #[error("Something unexpected went wrong. Please try again.")]
     Unexpected,
 }
 

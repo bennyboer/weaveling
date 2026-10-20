@@ -1,9 +1,11 @@
+use fluent_bundle::FluentArgs;
 use leptos::html::{self, Input};
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
 use crate::projects::languages::BOOK_LANGUAGES;
 use crate::projects::model::ProjectDetails;
+use crate::speech::{Speech, said};
 use quotation::QuotationMarks;
 
 #[derive(Clone, Copy)]
@@ -44,6 +46,8 @@ pub fn details_fields(
     edited: impl Fn() + Copy + Send + Sync + 'static,
     submit: impl Fn() + Copy + Send + Sync + 'static,
 ) -> impl IntoView {
+    let speech = expect_context::<Speech>();
+
     Effect::new(move || {
         if let Some(field) = title.get() {
             let _ = field.focus();
@@ -53,7 +57,7 @@ pub fn details_fields(
 
     (
         html::label().class("field").child((
-            html::span().child("Title"),
+            html::span().child(said("details-title")),
             html::input()
                 .r#type("text")
                 .node_ref(title)
@@ -69,7 +73,7 @@ pub fn details_fields(
                 }),
         )),
         html::label().class("field").child((
-            html::span().child("Language of the book"),
+            html::span().child(said("details-book-language")),
             html::select()
                 .on(ev::change, move |event| {
                     draft.language.set(event_target_value(&event))
@@ -78,23 +82,21 @@ pub fn details_fields(
                     html::option()
                         .value("")
                         .prop("selected", move || draft.language.get().is_empty())
-                        .child("Not set"),
+                        .child(said("details-book-language-unset")),
                     BOOK_LANGUAGES
                         .iter()
-                        .map(|(tag, named)| {
+                        .map(|tag| {
                             html::option()
                                 .value(*tag)
                                 .prop("selected", move || draft.language.get() == *tag)
-                                .child(*named)
+                                .child(move || speech.say(&format!("book-language-{tag}")))
                         })
                         .collect::<Vec<_>>(),
                 )),
-            html::small().child(
-                "The language the book is written in, used wherever its text depends on it.",
-            ),
+            html::small().child(said("details-book-language-hint")),
         )),
         html::label().class("field").child((
-            html::span().child("Quotation marks"),
+            html::span().child(said("details-quotation")),
             html::select()
                 .on(ev::change, move |event| {
                     draft.quotation.set(event_target_value(&event))
@@ -107,10 +109,10 @@ pub fn details_fields(
                             let language = draft.language.get();
                             let chosen = Some(language.as_str()).filter(|tag| !tag.is_empty());
 
-                            format!(
-                                "As the language has it, {}",
-                                QuotationMarks::of_language(chosen).shown()
-                            )
+                            let mut args = FluentArgs::new();
+                            args.set("marks", QuotationMarks::of_language(chosen).shown());
+
+                            speech.say_with("details-quotation-as-the-language-has-it", &args)
                         }),
                     QuotationMarks::ALL
                         .iter()
@@ -124,16 +126,13 @@ pub fn details_fields(
                         })
                         .collect::<Vec<_>>(),
                 )),
-            html::small().child("The marks around what is said, put in as \" is typed."),
+            html::small().child(said("details-quotation-hint")),
         )),
         html::label().class("field").child((
-            html::span().child("Description"),
+            html::span().child(said("details-description")),
             html::textarea()
                 .attr("rows", "3")
-                .attr(
-                    "placeholder",
-                    "What the book is about, in a few lines. Optional.",
-                )
+                .attr("placeholder", said("details-description-placeholder"))
                 .prop("value", move || draft.description.get())
                 .on(ev::input, move |event| {
                     draft.description.set(event_target_value(&event))

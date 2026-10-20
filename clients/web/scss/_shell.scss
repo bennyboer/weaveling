@@ -234,6 +234,15 @@
       height: auto;
     }
 
+    .speaking {
+      margin-left: -0.5rem;
+      padding: 0 0.5rem;
+
+      svg {
+        display: none;
+      }
+    }
+
     .views {
       order: 1;
       flex-basis: calc(100% + 2rem);

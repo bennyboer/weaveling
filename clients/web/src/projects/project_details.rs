@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+use fluent_bundle::FluentArgs;
 use leptos::html::{self, Input};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -16,6 +17,7 @@ use crate::projects::open_project::OpenProject;
 use crate::projects::service;
 use crate::scenes::restyling::{Restyled, standing};
 use crate::scenes::service as scenes;
+use crate::speech::{Speech, said};
 
 const FOLLOW_EVERY: Duration = Duration::from_millis(500);
 
@@ -39,8 +41,8 @@ pub fn project_details(project: ProjectId) -> impl IntoView {
         html::button()
             .r#type("button")
             .class("project-details-button")
-            .attr("aria-label", "Project details")
-            .attr("title", "Project details")
+            .attr("aria-label", said("project-details"))
+            .attr("title", said("project-details"))
             .disabled(move || open_project.described().is_none())
             .on(ev::click, move |_| changing.set(true))
             .child(mark(Icon::Cogwheel)),
@@ -60,6 +62,7 @@ fn changing_dialog(
     changing: RwSignal<bool>,
     open_project: OpenProject,
 ) -> impl IntoView {
+    let speech = expect_context::<Speech>();
     let draft = DetailsDraft::of(RwSignal::new(known.name.clone()), &known.details);
     let field: NodeRef<Input> = NodeRef::new();
     let saving = RwSignal::new(false);
@@ -118,7 +121,7 @@ fn changing_dialog(
     };
 
     modal(
-        "Project details",
+        Signal::derive(said("project-details")),
         "project-details",
         move || changing.set(false),
         move || match stage.get() {
@@ -129,34 +132,35 @@ fn changing_dialog(
                     html::button()
                         .r#type("button")
                         .on(ev::click, move |_| changing.set(false))
-                        .child("Cancel"),
+                        .child(said("project-details-cancel")),
                     html::button()
                         .r#type("button")
                         .class("primary")
                         .disabled(move || draft.title.get().trim().is_empty() || saving.get())
                         .on(ev::click, move |_| save(false))
-                        .child("Save"),
+                        .child(said("project-details-save")),
                 )),
             )
                 .into_any(),
             Stage::Confirming { from, to } => (
-                html::p().child(format!(
-                    "Changing the quotation marks from {} to {} rewrites them in every scene of \
-                     the book. In a long book that takes a while.",
-                    from.shown(),
-                    to.shown()
-                )),
+                html::p().child(move || {
+                    let mut args = FluentArgs::new();
+                    args.set("from", from.shown());
+                    args.set("to", to.shown());
+
+                    speech.say_with("project-details-changing-the-marks", &args)
+                }),
                 html::div().class("dialog-actions").child((
                     html::button()
                         .r#type("button")
                         .on(ev::click, move |_| stage.set(Stage::Editing))
-                        .child("Back"),
+                        .child(said("project-details-back")),
                     html::button()
                         .r#type("button")
                         .class("primary")
                         .disabled(move || saving.get())
                         .on(ev::click, move |_| save(true))
-                        .child("Change the marks"),
+                        .child(said("project-details-change-the-marks")),
                 )),
             )
                 .into_any(),
@@ -170,19 +174,29 @@ fn restyling(
     restyled: RwSignal<Restyled>,
     changing: RwSignal<bool>,
 ) -> impl IntoView {
+    let speech = expect_context::<Speech>();
+
     (
-        html::p()
-            .attr("aria-live", "polite")
-            .child(move || match restyled.get() {
-                Restyled::Waiting => "Rewriting the quotation marks…".to_owned(),
+        html::p().attr("aria-live", "polite").child(move || {
+            let mut args = FluentArgs::new();
+            match restyled.get() {
+                Restyled::Waiting => speech.say("restyling-waiting"),
                 Restyled::Running { done, total } => {
-                    format!("Rewriting the quotation marks: {done} of {total} scenes.")
+                    args.set("done", done);
+                    args.set("total", total);
+
+                    speech.say_with("restyling-running", &args)
                 }
-                Restyled::Finished => format!("Every scene now quotes {}.", to.shown()),
-            }),
+                Restyled::Finished => {
+                    args.set("marks", to.shown());
+
+                    speech.say_with("restyling-finished", &args)
+                }
+            }
+        }),
         html::progress()
             .class("restyling")
-            .attr("aria-label", "Rewriting the quotation marks")
+            .attr("aria-label", said("restyling"))
             .attr("max", move || shown_on_the_bar(restyled.get()).1)
             .attr("value", move || shown_on_the_bar(restyled.get()).0),
         html::div().class("dialog-actions").child(
@@ -190,7 +204,7 @@ fn restyling(
                 .r#type("button")
                 .class("primary")
                 .on(ev::click, move |_| changing.set(false))
-                .child("Close"),
+                .child(said("restyling-close")),
         ),
     )
 }

@@ -7,7 +7,7 @@ use crate::scenes::model::SceneId;
 use crate::statistics::model::SceneWordCount;
 
 const WORD_COUNTS: &str = "/api/statistics/word-counts";
-const SUBJECT: &str = "word counts";
+const SUBJECT: &str = "word-counts";
 
 pub async fn word_counts(project: &ProjectId) -> Result<Vec<SceneWordCount>, ApiError> {
     let response = sent(Request::get(&format!("{WORD_COUNTS}?project={project}"))).await?;

@@ -57,7 +57,7 @@ fn source_of(language: Language) -> &'static str {
 mod tests {
     use std::collections::BTreeSet;
 
-    use fluent_syntax::ast::{Entry, Expression, InlineExpression, PatternElement};
+    use fluent_syntax::ast::{Entry, Expression, InlineExpression, Pattern, PatternElement};
     use fluent_syntax::parser::parse;
 
     use super::*;
@@ -74,28 +74,62 @@ mod tests {
                 _ => None,
             })
             .map(|message| {
-                let asked_for = message
-                    .value
-                    .map(|pattern| {
-                        pattern
-                            .elements
-                            .into_iter()
-                            .filter_map(|element| match element {
-                                PatternElement::Placeable {
-                                    expression:
-                                        Expression::Inline(InlineExpression::VariableReference {
-                                            id,
-                                        }),
-                                } => Some(id.name.to_owned()),
-                                _ => None,
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let mut asked_for = BTreeSet::new();
+                if let Some(pattern) = &message.value {
+                    gather(pattern, &mut asked_for);
+                }
 
                 (message.id.name.to_owned(), asked_for)
             })
             .collect()
+    }
+
+    fn gather(pattern: &Pattern<&str>, asked_for: &mut BTreeSet<String>) {
+        for element in &pattern.elements {
+            match element {
+                PatternElement::Placeable {
+                    expression: Expression::Inline(inline),
+                } => asked(inline, asked_for),
+                PatternElement::Placeable {
+                    expression: Expression::Select { selector, variants },
+                } => {
+                    asked(selector, asked_for);
+                    for variant in variants {
+                        gather(&variant.value, asked_for);
+                    }
+                }
+                PatternElement::TextElement { .. } => {}
+            }
+        }
+    }
+
+    fn asked(inline: &InlineExpression<&str>, asked_for: &mut BTreeSet<String>) {
+        if let InlineExpression::VariableReference { id } = inline {
+            asked_for.insert(id.name.to_owned());
+        }
+    }
+
+    #[test]
+    fn the_names_a_message_asks_for_are_found_in_its_choices_too() {
+        let parsed = parse(
+            "chosen = { $count ->
+    [one] { $name }
+   *[other] { $place }
+}
+",
+        )
+        .unwrap_or_else(|(_, errors)| panic!("{errors:?}"));
+        let Some(Entry::Message(message)) = parsed.body.first() else {
+            panic!("no message");
+        };
+        let mut asked_for = BTreeSet::new();
+
+        gather(message.value.as_ref().unwrap(), &mut asked_for);
+
+        assert_eq!(
+            asked_for,
+            BTreeSet::from(["count".to_owned(), "name".to_owned(), "place".to_owned()])
+        );
     }
 
     #[test]
@@ -145,6 +179,26 @@ mod tests {
                 );
             }
         });
+    }
+
+    #[test]
+    fn a_count_takes_the_form_its_language_gives_it() {
+        let rewriting = |done: u32, total: u32| {
+            let mut args = FluentArgs::new();
+            args.set("done", done);
+            args.set("total", total);
+
+            worded(Language::German, "restyling-running", Some(&args))
+        };
+
+        assert_eq!(
+            rewriting(0, 1),
+            "Die Anführungszeichen werden neu gesetzt: 0 von 1 Szene."
+        );
+        assert_eq!(
+            rewriting(1, 3),
+            "Die Anführungszeichen werden neu gesetzt: 1 von 3 Szenen."
+        );
     }
 
     #[test]

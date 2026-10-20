@@ -10,7 +10,6 @@ gloo-net = { workspace = true }
 leptos = { workspace = true, features = ["csr"] }
 leptos_router = { workspace = true }
 serde = { workspace = true }
-thiserror = { workspace = true }
 unic-langid = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }

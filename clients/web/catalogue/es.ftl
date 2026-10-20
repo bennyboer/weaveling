@@ -36,3 +36,72 @@ delete-project-cancel = Cancelar
 delete-project-confirm = Eliminar
 
 new-project-cancel = Cancelar
+
+details-title = Título
+details-book-language = Idioma del libro
+details-book-language-unset = Sin indicar
+details-book-language-hint = El idioma en que está escrito el libro, usado allí donde su texto depende de él.
+details-quotation = Comillas
+details-quotation-as-the-language-has-it = Las del idioma, { $marks }
+details-quotation-hint = Los signos alrededor de lo que se dice, puestos al escribir ".
+details-description = Descripción
+details-description-placeholder = De qué trata el libro, en pocas líneas. Opcional.
+
+book-language-de = Alemán (Deutsch)
+book-language-en = Inglés (English)
+book-language-fr = Francés (Français)
+book-language-es = Español
+book-language-it = Italiano
+book-language-nl = Neerlandés (Nederlands)
+book-language-pt = Portugués (Português)
+book-language-pl = Polaco (Polski)
+book-language-sv = Sueco (Svenska)
+book-language-da = Danés (Dansk)
+book-language-nb = Noruego (Norsk)
+book-language-fi = Finés (Suomi)
+book-language-cs = Checo (Čeština)
+
+project-details = Detalles del proyecto
+project-details-cancel = Cancelar
+project-details-save = Guardar
+project-details-changing-the-marks = Cambiar las comillas de { $from } a { $to } las reescribe en todas las escenas del libro. En un libro largo, eso lleva un rato.
+project-details-back = Volver
+project-details-change-the-marks = Cambiar las comillas
+
+restyling = Reescribiendo las comillas
+restyling-waiting = Reescribiendo las comillas…
+restyling-running = Reescribiendo las comillas: { $done } de { $total } { $total ->
+        [one] escena
+       *[other] escenas
+    }.
+restyling-finished = Todas las escenas usan ahora { $marks }.
+restyling-close = Cerrar
+
+problem-not-found =
+    { $subject ->
+        [appearances] Esas apariciones ya no existen.
+        [board] Ese tablero ya no existe.
+        [idea] Esa idea ya no existe.
+        [outline] Ese esquema ya no existe.
+        [project] Ese proyecto ya no existe.
+        [refusal] Ese rechazo ya no existe.
+        [scene] Esa escena ya no existe.
+        [word-counts] Esos recuentos de palabras ya no existen.
+       *[other] Eso ya no existe.
+    }
+problem-outdated =
+    { $subject ->
+        [appearances] Estas apariciones se cambiaron en otro lugar mientras tanto. Cierra esto y vuelve a abrirlo para ver cómo están.
+        [board] Este tablero se cambió en otro lugar mientras tanto. Cierra esto y vuelve a abrirlo para ver cómo está.
+        [idea] Esta idea se cambió en otro lugar mientras tanto. Cierra esto y vuelve a abrirla para ver cómo está.
+        [outline] Este esquema se cambió en otro lugar mientras tanto. Cierra esto y vuelve a abrirlo para ver cómo está.
+        [project] Este proyecto se cambió en otro lugar mientras tanto. Cierra esto y vuelve a abrirlo para ver cómo está.
+        [refusal] Este rechazo se cambió en otro lugar mientras tanto. Cierra esto y vuelve a abrirlo para ver cómo está.
+        [scene] Esta escena se cambió en otro lugar mientras tanto. Cierra esto y vuelve a abrirla para ver cómo está.
+        [word-counts] Estos recuentos de palabras se cambiaron en otro lugar mientras tanto. Cierra esto y vuelve a abrirlo para ver cómo están.
+       *[other] Esto se cambió en otro lugar mientras tanto. Cierra esto y vuelve a abrirlo para ver cómo está.
+    }
+problem-overtaken = Alguien más lo cambió mientras tanto, así que no se pudo hacer.
+problem-offline = No se pudo conectar con el servidor. Inténtalo de nuevo en un momento.
+problem-unexpected = Algo inesperado salió mal. Inténtalo de nuevo.
+problem-dismiss = Descartar

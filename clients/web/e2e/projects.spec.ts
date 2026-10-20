@@ -119,7 +119,7 @@ test("a project made while the server is out of reach says so", async ({
     .click();
 
   await expect(newProject(page).getByRole("alert")).toContainText(
-    "Could not reach the server. Is it running?",
+    "Could not reach the server. Please try again in a moment.",
   );
 });
 
@@ -131,7 +131,7 @@ test("a list fetched while the server is out of reach says so", async ({
   await page.reload();
 
   await expect(page.getByRole("alert")).toContainText(
-    "Could not reach the server. Is it running?",
+    "Could not reach the server. Please try again in a moment.",
   );
 });
 

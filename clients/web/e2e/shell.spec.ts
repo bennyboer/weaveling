@@ -212,6 +212,7 @@ for (const width of [375, 700, 900, 1100]) {
           inside(`.views a[href="${view.getAttribute("href")}"]`),
         ),
         theming: inside(".theming"),
+        speaking: inside(".speaking"),
       };
     });
 
@@ -221,6 +222,7 @@ for (const width of [375, 700, 900, 1100]) {
     expect(seen.details).toBe(true);
     expect(seen.views, "every view can be reached").toBe(true);
     expect(seen.theming).toBe(true);
+    expect(seen.speaking, "the language can be chosen").toBe(true);
     await expect(page.getByRole("heading", { level: 1 })).toHaveAttribute(
       "title",
       title,
