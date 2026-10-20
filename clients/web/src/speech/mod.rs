@@ -6,7 +6,7 @@ use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 
 use crate::kept::{keep, recall};
-use crate::speech::catalogue::worded;
+use crate::speech::catalogue::{knows, worded};
 use crate::speech::language::{Language, the_reader_s};
 
 const SPOKEN: &str = "weaveling.language";
@@ -44,6 +44,10 @@ impl Speech {
 
     pub fn say_with(self, message: &str, args: &FluentArgs) -> String {
         worded(self.spoken.get(), message, Some(args))
+    }
+
+    pub fn knows(self, message: &str) -> bool {
+        knows(self.spoken.get(), message)
     }
 }
 

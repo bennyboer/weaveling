@@ -142,6 +142,45 @@ test.describe("a browser asking for German, about a project's details", () => {
     );
   });
 
+  test("a title the server refuses is told in German, with its numbers", async ({
+    page,
+  }) => {
+    await aNewProject(page, "Zu lang");
+    await page.getByRole("button", { name: "Projektdetails" }).click();
+    const details = page.getByRole("dialog", { name: "Projektdetails" });
+
+    await details.getByLabel("Titel").fill("a".repeat(201));
+    await details.getByRole("button", { name: "Speichern" }).click();
+
+    await expect(details.getByRole("alert")).toHaveText(
+      "Ein Titel darf höchstens 200 Zeichen lang sein, dieser hat 201.",
+    );
+  });
+
+  test("renaming a project deleted meanwhile is told in German", async ({
+    page,
+  }) => {
+    const title = `Gelöscht ${crypto.randomUUID().slice(0, 8)}`;
+    const made = await page.request.post(`${API}/projects`, {
+      data: { name: title, language: "de" },
+    });
+    const { id } = await made.json();
+    await page.goto("/");
+    const row = page.getByRole("listitem").filter({ hasText: title });
+    await expect(row).toBeVisible();
+    await page.request.delete(`${API}/projects/${id}`);
+
+    await row.getByRole("button", { name: "Weitere Aktionen" }).click();
+    await page.getByRole("menuitem", { name: "Umbenennen" }).click();
+    const renaming = page.getByRole("listitem").getByRole("textbox");
+    await renaming.fill(`${title} neu`);
+    await renaming.press("Enter");
+
+    await expect(page.getByRole("alert")).toHaveText(
+      "Dieses Projekt wurde inzwischen gelöscht.",
+    );
+  });
+
   test("a project gone meanwhile is told as a project, in German", async ({
     page,
   }) => {

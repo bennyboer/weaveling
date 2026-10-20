@@ -105,3 +105,15 @@ problem-overtaken = Outra pessoa alterou isso enquanto isso, então não foi pos
 problem-offline = Não foi possível acessar o servidor. Tente de novo em instantes.
 problem-unexpected = Algo inesperado deu errado. Tente de novo.
 problem-dismiss = Dispensar
+
+refused-project-id-invalid = Isso não é um ID de projeto válido.
+refused-project-name-blank = Um projeto precisa de um título.
+refused-project-name-control-character = Um título não pode conter caracteres de controle.
+refused-project-name-too-long = Um título pode ter no máximo { $max } caracteres; este tem { $actual }.
+refused-book-language-not-a-tag = “{ $tag }” não é uma etiqueta de idioma como “de”, “en” ou “en-GB”.
+refused-quotation-marks-unknown = “{ $name }” não são aspas que o Weaveling conheça.
+refused-project-description-control-character = Uma descrição não pode conter caracteres de controle além de quebras de linha.
+refused-project-description-too-long = Uma descrição pode ter no máximo { $max } caracteres; esta tem { $actual }.
+refused-project-not-started-yet = Este projeto ainda não foi iniciado.
+refused-project-already-started = Este projeto já foi iniciado.
+refused-project-deleted = Este projeto foi excluído enquanto isso.

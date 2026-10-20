@@ -3711,6 +3711,7 @@ dependencies = [
  "leptos",
  "leptos_router",
  "serde",
+ "serde_json",
  "time",
  "unic-langid",
  "wasm-bindgen",
@@ -4120,7 +4121,6 @@ name = "weaveling-projects-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
- "tracing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-projects-contract",
@@ -4368,7 +4368,9 @@ name = "weaveling-serving"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde_json",
  "thiserror",
+ "tokio",
  "tracing",
  "weaveling-eventsourcing",
 ]

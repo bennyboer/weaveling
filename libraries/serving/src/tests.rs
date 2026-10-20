@@ -1,6 +1,9 @@
-use axum::http::header::IF_MATCH;
+use axum::body::to_bytes;
+use axum::http::header::{CONTENT_TYPE, IF_MATCH};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::response::IntoResponse;
 use eventsourcing::{AggregateId, AggregateType, ServiceError, StoreError, Version};
+use serde_json::{Value, json};
 use thiserror::Error;
 
 use super::*;
@@ -126,4 +129,98 @@ fn anything_we_cannot_explain_stays_unexplained() {
         message, "something went wrong",
         "a broken stream is our problem to fix, not the caller's to read about"
     );
+}
+
+async fn told(problem: Problem) -> (StatusCode, Value) {
+    let response = problem.into_response();
+    let status = response.status();
+    assert_eq!(response.headers()[CONTENT_TYPE], PROBLEM);
+    let body = to_bytes(response.into_body(), usize::MAX)
+        .await
+        .expect("a body");
+
+    (
+        status,
+        serde_json::from_slice(&body).expect("a problem document"),
+    )
+}
+
+#[tokio::test]
+async fn a_problem_names_its_kind_and_tells_its_status_detail_and_values() {
+    let (status, told) = told(
+        Problem::rejected("name-too-long", "a name must be at most 200 characters")
+            .with("max", 200)
+            .with("actual", 240),
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        told,
+        json!({
+            "type": "name-too-long",
+            "status": 400,
+            "detail": "a name must be at most 200 characters",
+            "max": 200,
+            "actual": 240,
+        })
+    );
+}
+
+#[tokio::test]
+async fn a_value_cannot_pass_itself_off_as_the_kind() {
+    let (_, told) =
+        told(Problem::rejected("name-too-long", "too long").with("type", "other")).await;
+
+    assert_eq!(told["type"], "name-too-long");
+}
+
+#[tokio::test]
+async fn something_that_is_not_there_is_a_problem_not_found() {
+    let (status, told) = told(Problem::of(&a_missing_idea(), |_| unreachable!())).await;
+
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(told["type"], NOT_FOUND);
+    assert_eq!(told["detail"], "there is no idea with id idea_1");
+}
+
+#[tokio::test]
+async fn a_domain_refusal_is_named_by_the_feature() {
+    let (status, told) = told(Problem::of(
+        &ServiceError::Refused(AlreadyCaptured),
+        |refusal| Problem::refused("idea-already-captured", refusal),
+    ))
+    .await;
+
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(told["type"], "idea-already-captured");
+    assert_eq!(told["detail"], "an idea cannot be captured twice");
+}
+
+#[tokio::test]
+async fn a_stale_version_is_a_problem_outdated() {
+    let outdated: ServiceError<AlreadyCaptured> = ServiceError::Store(StoreError::Outdated {
+        aggregate: AggregateId::from("idea_1"),
+        kind: KIND,
+        expected: Version::of(1),
+    });
+
+    let (status, told) = told(Problem::of(&outdated, |_| unreachable!())).await;
+
+    assert_eq!(status, StatusCode::PRECONDITION_FAILED);
+    assert_eq!(told["type"], OUTDATED);
+}
+
+#[tokio::test]
+async fn a_problem_we_cannot_explain_stays_unexplained() {
+    let broken: ServiceError<AlreadyCaptured> = ServiceError::Unusable {
+        aggregate: AggregateId::from("idea_1"),
+        kind: KIND,
+    };
+
+    let (status, told) = told(Problem::of(&broken, |_| unreachable!())).await;
+
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(told["type"], UNEXPECTED);
+    assert_eq!(told["detail"], "something went wrong");
 }

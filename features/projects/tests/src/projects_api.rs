@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use axum::http::StatusCode;
-use axum::http::header::ETAG;
-use axum_test::TestServer;
+use axum::http::header::{CONTENT_TYPE, ETAG};
+use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
 use projects_contract::{
-    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
+    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
+    RenameProjectRequest, refused,
 };
+use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 
 use crate::wiring::{Wired, wired};
@@ -47,6 +49,16 @@ fn a_server_on(clock: Arc<FixedClock>) -> Serving {
     let server = TestServer::new(wired.routes.clone());
 
     Serving { server, wired }
+}
+
+fn refused_as(response: &TestResponse, status: StatusCode, kind: &str) -> Value {
+    response.assert_status(status);
+    assert_eq!(response.header(CONTENT_TYPE), "application/problem+json");
+    let told: Value = response.json();
+    assert_eq!(told["type"], kind, "{told}");
+    assert_eq!(told["status"], status.as_u16(), "{told}");
+
+    told
 }
 
 fn named(name: &str) -> CreateProjectRequest {
@@ -102,11 +114,34 @@ async fn starting_a_project_with_a_blank_name_answers_400() {
 
     let response = server.post("/projects").json(&named("   ")).await;
 
-    response.assert_status(StatusCode::BAD_REQUEST);
-    assert!(
-        response.text().contains("blank"),
-        "body was {}",
-        response.text()
+    let told = refused_as(&response, StatusCode::BAD_REQUEST, refused::NAME_BLANK);
+    assert_eq!(told["detail"], "project name must not be blank");
+}
+
+#[tokio::test]
+async fn a_name_too_long_is_refused_telling_how_long_it_may_be() {
+    let server = a_server();
+
+    let response = server
+        .post("/projects")
+        .json(&named(&"a".repeat(201)))
+        .await;
+
+    let told = refused_as(&response, StatusCode::BAD_REQUEST, refused::NAME_TOO_LONG);
+    assert_eq!(told["max"], 200);
+    assert_eq!(told["actual"], 201);
+}
+
+#[tokio::test]
+async fn a_name_with_a_control_character_is_refused_as_such() {
+    let server = a_server();
+
+    let response = server.post("/projects").json(&named("Tape\u{7}stry")).await;
+
+    refused_as(
+        &response,
+        StatusCode::BAD_REQUEST,
+        refused::NAME_CONTROL_CHARACTER,
     );
 }
 
@@ -164,7 +199,7 @@ async fn fetching_an_unknown_project_answers_404() {
 
     let response = server.get(&format!("/projects/{UNKNOWN_ID}")).await;
 
-    response.assert_status(StatusCode::NOT_FOUND);
+    refused_as(&response, StatusCode::NOT_FOUND, "not-found");
 }
 
 #[tokio::test]
@@ -173,7 +208,7 @@ async fn fetching_a_malformed_id_answers_400() {
 
     let response = server.get("/projects/weaveling").await;
 
-    response.assert_status(StatusCode::BAD_REQUEST);
+    refused_as(&response, StatusCode::BAD_REQUEST, refused::ID_INVALID);
 }
 
 #[tokio::test]
@@ -219,7 +254,7 @@ async fn renaming_to_a_blank_name_answers_400() {
         .json(&renamed(""))
         .await;
 
-    response.assert_status(StatusCode::BAD_REQUEST);
+    refused_as(&response, StatusCode::BAD_REQUEST, refused::NAME_BLANK);
 }
 
 #[tokio::test]
@@ -262,12 +297,27 @@ async fn renaming_from_a_stale_version_answers_412() {
         .await
         .assert_status(StatusCode::OK);
 
-    server
+    let response = server
         .patch(&format!("/projects/{}", created.id))
         .add_header("if-match", "\"1\"")
         .json(&renamed("Twice"))
-        .await
-        .assert_status(StatusCode::PRECONDITION_FAILED);
+        .await;
+
+    refused_as(&response, StatusCode::PRECONDITION_FAILED, "outdated");
+}
+
+#[tokio::test]
+async fn an_unreadable_version_asked_for_is_refused_as_unreadable() {
+    let server = a_server();
+    let created = a_project_named(&server, "Working Title").await;
+
+    let response = server
+        .patch(&format!("/projects/{}", created.id))
+        .add_header("if-match", "\"seven\"")
+        .json(&renamed("Twice"))
+        .await;
+
+    refused_as(&response, StatusCode::BAD_REQUEST, "unreadable");
 }
 
 #[tokio::test]
@@ -294,11 +344,12 @@ async fn a_deleted_project_refuses_to_be_renamed() {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
-    server
+    let response = server
         .patch(&format!("/projects/{}", created.id))
         .json(&renamed("Too late"))
-        .await
-        .assert_status(StatusCode::CONFLICT);
+        .await;
+
+    refused_as(&response, StatusCode::CONFLICT, refused::DELETED);
 }
 
 #[tokio::test]
@@ -394,16 +445,37 @@ async fn what_is_not_a_language_or_too_long_a_description_is_refused() {
     let server = a_server();
     let started = a_project_named(&server, "Working Title").await;
 
-    for refused in [
-        details(Some("deutsch"), ""),
-        details(None, &"a".repeat(4_097)),
-        quoted("de", "guillemets"),
+    for (asked, kind, told) in [
+        (
+            details(Some("deutsch"), ""),
+            refused::LANGUAGE_NOT_A_TAG,
+            json!({ "tag": "deutsch" }),
+        ),
+        (
+            details(None, &"a".repeat(4_097)),
+            refused::DESCRIPTION_TOO_LONG,
+            json!({ "max": 4_096, "actual": 4_097 }),
+        ),
+        (
+            details(None, "A crown\u{7} of straw."),
+            refused::DESCRIPTION_CONTROL_CHARACTER,
+            json!({}),
+        ),
+        (
+            quoted("de", "guillemets"),
+            refused::QUOTATION_UNKNOWN,
+            json!({ "name": "guillemets" }),
+        ),
     ] {
-        server
+        let response = server
             .put(&format!("/projects/{}/details", started.id))
-            .json(&refused)
-            .await
-            .assert_status(StatusCode::BAD_REQUEST);
+            .json(&asked)
+            .await;
+
+        let refusal = refused_as(&response, StatusCode::BAD_REQUEST, kind);
+        for (name, value) in told.as_object().unwrap() {
+            assert_eq!(&refusal[name], value, "{kind} tells {name}");
+        }
     }
 }
 

@@ -8,10 +8,14 @@ use axum::routing::{get, put};
 use clock::text::serialize;
 use eventsourcing::{Agent, Standing, Version};
 use projects_contract::{
-    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO, RenameProjectRequest,
+    ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
+    RenameProjectRequest, refused,
 };
-use projects_core::{Project, ProjectService, ProjectServiceError, ProjectSummary, RawDetails};
-use serving::{Unreadable, demanded, refusal, tag};
+use projects_core::{
+    InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName, InvalidQuotationMarks,
+    Project, ProjectError, ProjectService, ProjectServiceError, ProjectSummary, RawDetails,
+};
+use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
 pub fn router(projects: ProjectService) -> Router {
     Router::new()
@@ -161,38 +165,53 @@ impl From<Unreadable> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let refused = match self {
-            Self::Unreadable(reason) => {
-                return (StatusCode::BAD_REQUEST, reason.to_string()).into_response();
-            }
-            Self::Refused(refused) => refused,
-        };
+        match self {
+            Self::Unreadable(reason) => Problem::rejected(UNREADABLE, reason),
+            Self::Refused(refusal) => problem_of(refusal),
+        }
+        .into_response()
+    }
+}
 
-        let (status, message) = match refused {
-            ProjectServiceError::InvalidId(reason) => (StatusCode::BAD_REQUEST, reason.to_string()),
-            ProjectServiceError::InvalidName(reason) => {
-                (StatusCode::BAD_REQUEST, reason.to_string())
+fn problem_of(refusal: ProjectServiceError) -> Problem {
+    match refusal {
+        ProjectServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        ProjectServiceError::InvalidName(reason) => match reason {
+            InvalidProjectName::Blank => Problem::rejected(refused::NAME_BLANK, reason),
+            InvalidProjectName::ControlCharacter => {
+                Problem::rejected(refused::NAME_CONTROL_CHARACTER, reason)
             }
-            ProjectServiceError::InvalidLanguage(reason) => {
-                (StatusCode::BAD_REQUEST, reason.to_string())
+            InvalidProjectName::TooLong { max, actual } => {
+                Problem::rejected(refused::NAME_TOO_LONG, reason)
+                    .with("max", max)
+                    .with("actual", actual)
             }
-            ProjectServiceError::InvalidQuotation(reason) => {
-                (StatusCode::BAD_REQUEST, reason.to_string())
+        },
+        ProjectServiceError::InvalidLanguage(reason) => match &reason {
+            InvalidBookLanguage::NotATag(tag) => {
+                Problem::rejected(refused::LANGUAGE_NOT_A_TAG, &reason).with("tag", tag.as_str())
             }
-            ProjectServiceError::InvalidDescription(reason) => {
-                (StatusCode::BAD_REQUEST, reason.to_string())
+        },
+        ProjectServiceError::InvalidQuotation(reason) => match &reason {
+            InvalidQuotationMarks::Unknown(name) => {
+                Problem::rejected(refused::QUOTATION_UNKNOWN, &reason).with("name", name.as_str())
             }
-            ProjectServiceError::Events(events) => refusal(&events),
-            unserveable => {
-                tracing::error!(error = %unserveable, "a project request could not be served");
-
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    "something went wrong".to_owned(),
-                )
+        },
+        ProjectServiceError::InvalidDescription(reason) => match reason {
+            InvalidProjectDescription::ControlCharacter => {
+                Problem::rejected(refused::DESCRIPTION_CONTROL_CHARACTER, reason)
             }
-        };
-
-        (status, message).into_response()
+            InvalidProjectDescription::TooLong { max, actual } => {
+                Problem::rejected(refused::DESCRIPTION_TOO_LONG, reason)
+                    .with("max", max)
+                    .with("actual", actual)
+            }
+        },
+        ProjectServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
+            ProjectError::NotStartedYet => Problem::refused(refused::NOT_STARTED_YET, refusal),
+            ProjectError::AlreadyStarted => Problem::refused(refused::ALREADY_STARTED, refusal),
+            ProjectError::Deleted => Problem::refused(refused::DELETED, refusal),
+        }),
+        unserveable => Problem::unexpected(unserveable),
     }
 }

@@ -76,3 +76,31 @@ pub enum ProjectEventDTO {
     #[serde(rename = "DELETED")]
     Deleted,
 }
+
+pub mod refused {
+    pub const ID_INVALID: &str = "project-id-invalid";
+    pub const NAME_BLANK: &str = "project-name-blank";
+    pub const NAME_CONTROL_CHARACTER: &str = "project-name-control-character";
+    pub const NAME_TOO_LONG: &str = "project-name-too-long";
+    pub const LANGUAGE_NOT_A_TAG: &str = "book-language-not-a-tag";
+    pub const QUOTATION_UNKNOWN: &str = "quotation-marks-unknown";
+    pub const DESCRIPTION_CONTROL_CHARACTER: &str = "project-description-control-character";
+    pub const DESCRIPTION_TOO_LONG: &str = "project-description-too-long";
+    pub const NOT_STARTED_YET: &str = "project-not-started-yet";
+    pub const ALREADY_STARTED: &str = "project-already-started";
+    pub const DELETED: &str = "project-deleted";
+
+    pub const EVERY: [&str; 11] = [
+        ID_INVALID,
+        NAME_BLANK,
+        NAME_CONTROL_CHARACTER,
+        NAME_TOO_LONG,
+        LANGUAGE_NOT_A_TAG,
+        QUOTATION_UNKNOWN,
+        DESCRIPTION_CONTROL_CHARACTER,
+        DESCRIPTION_TOO_LONG,
+        NOT_STARTED_YET,
+        ALREADY_STARTED,
+        DELETED,
+    ];
+}

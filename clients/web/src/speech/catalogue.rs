@@ -12,8 +12,7 @@ thread_local! {
 }
 
 pub fn worded(language: Language, message: &str, args: Option<&FluentArgs>) -> String {
-    CATALOGUES.with(|catalogues| {
-        let catalogue = catalogues[language as usize].get_or_init(|| catalogue_of(language));
+    in_the_catalogue_of(language, |catalogue| {
         let Some(pattern) = catalogue
             .get_message(message)
             .and_then(|found| found.value())
@@ -29,6 +28,19 @@ pub fn worded(language: Language, message: &str, args: Option<&FluentArgs>) -> S
         }
 
         worded
+    })
+}
+
+pub fn knows(language: Language, message: &str) -> bool {
+    in_the_catalogue_of(language, |catalogue| catalogue.has_message(message))
+}
+
+fn in_the_catalogue_of<T>(
+    language: Language,
+    read: impl FnOnce(&FluentBundle<FluentResource>) -> T,
+) -> T {
+    CATALOGUES.with(|catalogues| {
+        read(catalogues[language as usize].get_or_init(|| catalogue_of(language)))
     })
 }
 
@@ -199,6 +211,22 @@ mod tests {
             rewriting(1, 3),
             "Die Anführungszeichen werden neu gesetzt: 1 von 3 Szenen."
         );
+    }
+
+    #[test]
+    fn every_refusal_the_server_names_is_worded() {
+        for kind in projects_contract::refused::EVERY {
+            assert!(
+                knows(Language::English, &format!("refused-{kind}")),
+                "{kind} is not worded"
+            );
+        }
+    }
+
+    #[test]
+    fn a_message_no_catalogue_has_is_not_known() {
+        assert!(knows(Language::German, "workspace-heading"));
+        assert!(!knows(Language::German, "nowhere-worded"));
     }
 
     #[test]

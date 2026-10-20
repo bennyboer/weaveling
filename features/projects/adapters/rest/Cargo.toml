@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 axum = { workspace = true }
-tracing = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }

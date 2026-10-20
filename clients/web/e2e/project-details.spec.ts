@@ -137,8 +137,8 @@ test("a title the server refuses is told inside the dialog, which stays", async 
   await projectDetails(page).getByLabel("Title").fill("a".repeat(201));
   await projectDetails(page).getByRole("button", { name: "Save" }).click();
 
-  await expect(projectDetails(page).getByRole("alert")).toContainText(
-    "at most 200 characters",
+  await expect(projectDetails(page).getByRole("alert")).toHaveText(
+    "A title can be at most 200 characters long; this one has 201.",
   );
   await expect(
     page.getByRole("alert"),
@@ -148,6 +148,33 @@ test("a title the server refuses is told inside the dialog, which stays", async 
 
   await projectDetails(page).getByLabel("Title").fill("A shorter title");
   await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("a refusal the client cannot word is told as the server put it", async ({
+  page,
+}) => {
+  await aNewProject(page, "Unworded");
+  await page.route("**/api/projects/*", (route) =>
+    route.request().method() === "PATCH"
+      ? route.fulfill({
+          status: 409,
+          contentType: "application/problem+json",
+          json: {
+            type: "project-in-a-mood",
+            status: 409,
+            detail: "the project is not in the mood",
+          },
+        })
+      : route.continue(),
+  );
+
+  await openTheProjectDetails(page);
+  await projectDetails(page).getByLabel("Title").fill("Another title");
+  await projectDetails(page).getByRole("button", { name: "Save" }).click();
+
+  await expect(projectDetails(page).getByRole("alert")).toHaveText(
+    "the project is not in the mood",
+  );
 });
 
 test("details changed elsewhere meanwhile are not overwritten", async ({

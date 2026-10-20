@@ -2,7 +2,7 @@ use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
-use crate::http::ApiError;
+use crate::http::{ApiError, Particular, Refusal};
 use crate::speech::{Speech, said};
 
 pub fn problem(failure: ApiError) -> impl IntoView {
@@ -31,7 +31,7 @@ fn told(failure: ApiError) -> impl Fn() -> String + Send + Sync + 'static {
     let speech = expect_context::<Speech>();
 
     move || match &failure {
-        ApiError::Rejected(detail) => detail.clone(),
+        ApiError::Rejected(refusal) => refused(refusal, speech),
         ApiError::NotFound(subject) => about("problem-not-found", subject, speech),
         ApiError::Outdated(subject) => about("problem-outdated", subject, speech),
         ApiError::Overtaken => speech.say("problem-overtaken"),
@@ -45,4 +45,24 @@ fn about(message: &str, subject: &'static str, speech: Speech) -> String {
     args.set("subject", subject);
 
     speech.say_with(message, &args)
+}
+
+fn refused(refusal: &Refusal, speech: Speech) -> String {
+    let message = refusal
+        .kind
+        .as_ref()
+        .map(|kind| format!("refused-{kind}"))
+        .filter(|message| speech.knows(message));
+    let Some(message) = message else {
+        return refusal.detail.clone();
+    };
+    let mut args = FluentArgs::new();
+    for (name, particular) in &refusal.particulars {
+        match particular {
+            Particular::Count(count) => args.set(name.clone(), *count),
+            Particular::Text(text) => args.set(name.clone(), text.clone()),
+        }
+    }
+
+    speech.say_with(&message, &args)
 }
