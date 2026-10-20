@@ -11,6 +11,7 @@ use crate::projects::model::ProjectId;
 use crate::route;
 use crate::scenes::model::SceneSummary;
 use crate::scenes::service as scene_service;
+use outline_contract::OutlineEventDTO;
 
 #[derive(Clone, Copy)]
 pub struct OutlineViewState {
@@ -313,14 +314,19 @@ impl OutlineViewState {
             following.set_value(Some(Following::start(
                 &format!("/api/outlines/live?outline={id}"),
                 move |told: Told| {
-                    let version = told.version;
-                    let behind = confirmed
-                        .try_with_untracked(|held| {
-                            held.as_ref().is_some_and(|held| held.version < version)
-                        })
-                        .unwrap_or(false);
-                    if behind {
-                        opening.dispatch(());
+                    let Some(Some(held)) = confirmed.try_get_untracked() else {
+                        return;
+                    };
+                    if told.version <= held.version {
+                        return;
+                    }
+                    let next = (told.version == held.version + 1)
+                        .then(|| serde_json::from_value::<OutlineEventDTO>(told.event).ok())
+                        .flatten()
+                        .and_then(|event| held.taken_in(event));
+                    match next {
+                        Some(next) => arrived(next),
+                        None => _ = opening.dispatch(()),
                     }
                 },
                 move || _ = opening.dispatch(()),

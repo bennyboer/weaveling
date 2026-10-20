@@ -11,6 +11,14 @@ async function anOutlineFollowedLive(page: Page, named: string) {
     { title: "Part Two", after: "Part One" },
   ]);
   let opened = 0;
+  let heard = 0;
+  page.on("websocket", (socket) => {
+    if (socket.url().includes("/api/outlines/live")) {
+      socket.on("framereceived", () => {
+        heard += 1;
+      });
+    }
+  });
   page.on("response", (response) => {
     if (
       response.request().method() === "POST" &&
@@ -27,17 +35,19 @@ async function anOutlineFollowedLive(page: Page, named: string) {
     })
     .toBeGreaterThanOrEqual(2);
 
-  return { ...book, reloads: () => opened };
+  return { ...book, reloads: () => opened, heard: () => heard };
 }
 
 async function anotherAuthor(
   page: Page,
-  method: "post" | "patch" | "delete",
+  method: "post" | "patch" | "put" | "delete",
   path: string,
   data?: object,
 ) {
   const done = await page.request[method](`${API}${path}`, { data });
   expect(done.ok(), await done.text()).toBe(true);
+
+  return done;
 }
 
 const titleOf = (page: Page, named: string) =>
@@ -84,14 +94,14 @@ test("a scene another author attaches is named in the outline", async ({
 test("a title I am typing is not overwritten by another author's rename", async ({
   page,
 }) => {
-  const { outline, ids, reloads } = await anOutlineFollowedLive(
+  const { outline, ids, heard } = await anOutlineFollowedLive(
     page,
     "OutlineLiveTyping",
   );
   await titleOf(page, "Part One").click();
   await page.keyboard.press("End");
   await page.keyboard.type(", drafted");
-  const before = reloads();
+  const before = heard();
 
   await anotherAuthor(
     page,
@@ -99,7 +109,7 @@ test("a title I am typing is not overwritten by another author's rename", async 
     `/outlines/${outline}/sections/${ids["Part One"]}`,
     { title: "The Beginning" },
   );
-  await expect.poll(() => reloads()).toBeGreaterThan(before);
+  await expect.poll(() => heard()).toBeGreaterThan(before);
 
   await expect(page.locator("input.title:focus")).toHaveValue(
     "Part One, drafted",
@@ -109,19 +119,19 @@ test("a title I am typing is not overwritten by another author's rename", async 
 test("a title I only sat in takes another author's rename without writing the old one back", async ({
   page,
 }) => {
-  const { outline, ids, reloads } = await anOutlineFollowedLive(
+  const { outline, ids, heard } = await anOutlineFollowedLive(
     page,
     "OutlineLiveSatIn",
   );
   await titleOf(page, "Part One").click();
-  const before = reloads();
+  const before = heard();
   await anotherAuthor(
     page,
     "patch",
     `/outlines/${outline}/sections/${ids["Part One"]}`,
     { title: "The Beginning" },
   );
-  await expect.poll(() => reloads()).toBeGreaterThan(before);
+  await expect.poll(() => heard()).toBeGreaterThan(before);
 
   await page.keyboard.press("Escape");
 
@@ -167,18 +177,18 @@ const renamedMeanwhile = (page: Page) =>
   page.getByRole("dialog", { name: "Renamed meanwhile" });
 
 async function bothRenamed(page: Page, named: string) {
-  const { outline, ids, reloads } = await anOutlineFollowedLive(page, named);
+  const { outline, ids, heard } = await anOutlineFollowedLive(page, named);
   await titleOf(page, "Part One").click();
   await page.keyboard.press("End");
   await page.keyboard.type(", drafted");
-  const before = reloads();
+  const before = heard();
   await anotherAuthor(
     page,
     "patch",
     `/outlines/${outline}/sections/${ids["Part One"]}`,
     { title: "The Beginning" },
   );
-  await expect.poll(() => reloads()).toBeGreaterThan(before);
+  await expect.poll(() => heard()).toBeGreaterThan(before);
   await page.keyboard.press("Escape");
 }
 
@@ -249,21 +259,21 @@ test("renaming, nesting with Tab and renaming on in the same field asks nothing"
 test("typing the very title someone else gave meanwhile asks nothing", async ({
   page,
 }) => {
-  const { outline, ids, reloads } = await anOutlineFollowedLive(
+  const { outline, ids, heard } = await anOutlineFollowedLive(
     page,
     "OutlineLiveSame",
   );
   await titleOf(page, "Part One").click();
   await page.keyboard.press("ControlOrMeta+A");
   await page.keyboard.type("The Beginning");
-  const before = reloads();
+  const before = heard();
   await anotherAuthor(
     page,
     "patch",
     `/outlines/${outline}/sections/${ids["Part One"]}`,
     { title: "The Beginning" },
   );
-  await expect.poll(() => reloads()).toBeGreaterThan(before);
+  await expect.poll(() => heard()).toBeGreaterThan(before);
 
   await page.keyboard.press("Escape");
 
@@ -355,3 +365,136 @@ test("asked which name stays, the question follows the language chosen meanwhile
   await expect(asked.getByRole("button", { name: "Meinen behalten" })).toBeVisible();
 });
 
+const shownShape = (page: Page) =>
+  page.evaluate(() =>
+    [...document.querySelectorAll(".branch")].map((branch) => {
+      let depth = 0;
+      for (let up = branch.parentElement; up; up = up.parentElement) {
+        if (up.classList.contains("twigs")) depth += 1;
+      }
+      const title = branch.querySelector<HTMLInputElement>(".title")!.value;
+
+      return `${depth} ${title}`;
+    }),
+  );
+
+async function savedShape(page: Page, outline: string) {
+  const found = await (await page.request.get(`${API}/outlines/${outline}`)).json();
+  const depth = (section: { parent: string | null }): number => {
+    let deep = 0;
+    let parent = section.parent;
+    while (parent) {
+      deep += 1;
+      parent = found.sections.find((held: { section: string }) => held.section === parent)?.parent ?? null;
+    }
+    return deep;
+  };
+
+  return found.sections.map(
+    (section: { title: string; parent: string | null }) =>
+      `${depth(section)} ${section.title}`,
+  );
+}
+
+test("a section another author adds is taken in, without opening the outline again", async ({
+  page,
+}) => {
+  const { outline, ids, reloads, heard } = await anOutlineFollowedLive(
+    page,
+    "OutlineLiveTakenIn",
+  );
+  const before = reloads();
+  const told = heard();
+
+  await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
+    title: "Part Three",
+    under: null,
+    after: ids["Part Two"],
+  });
+
+  await expect(titleOf(page, "Part Three")).toBeVisible();
+  await expect.poll(() => heard()).toBeGreaterThan(told);
+  await page.waitForTimeout(500);
+  expect(reloads(), "the section was taken in as it came").toBe(before);
+});
+
+test("many changes by another author, taken in one by one, leave the outline as the server holds it", async ({
+  page,
+}) => {
+  const { outline, ids, reloads, heard } = await anOutlineFollowedLive(
+    page,
+    "OutlineLiveMany",
+  );
+  const added = async (title: string, under: string | null, after: string | null) => {
+    const done = await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
+      title,
+      under,
+      after,
+    });
+    return (await done.json()).section as string;
+  };
+  const before = reloads();
+  const told = heard();
+
+  const chapter = await added("Chapter 1", ids["Part One"], null);
+  const second = await added("Chapter 2", ids["Part One"], chapter);
+  await added("Chapter 3", ids["Part One"], second);
+  await anotherAuthor(page, "post", `/outlines/${outline}/sections/${second}/promote`);
+  await anotherAuthor(page, "post", `/outlines/${outline}/sections/${ids["Part Two"]}/demote`);
+  await anotherAuthor(page, "put", `/outlines/${outline}/sections/${chapter}/place`, {
+    under: null,
+    after: null,
+  });
+  await anotherAuthor(page, "delete", `/outlines/${outline}/sections/${ids["Part One"]}`);
+  await anotherAuthor(page, "patch", `/outlines/${outline}/sections/${second}`, {
+    title: "The Second Chapter",
+  });
+
+  const saved = await savedShape(page, outline);
+  await expect.poll(() => shownShape(page)).toEqual(saved);
+  await expect.poll(() => heard()).toBeGreaterThanOrEqual(told + 8);
+  expect(reloads(), "every change followed on, so none was opened again").toBe(before);
+});
+
+
+test("a change missed on the way opens the outline again, and the outline comes out right", async ({
+  page,
+}) => {
+  let passed = 0;
+  let connected = false;
+  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
+    connected = true;
+    const server = socket.connectToServer();
+    server.onMessage((frame) => {
+      passed += 1;
+      if (passed !== 2) {
+        socket.send(frame);
+      }
+    });
+  });
+  await aNewProject(page, "OutlineLiveMissed");
+  const { outline, ids } = await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await openTheOutline(page);
+  await expect.poll(() => connected).toBe(true);
+  await page.waitForTimeout(300);
+
+  await anotherAuthor(page, "patch", `/outlines/${outline}/sections/${ids["Part One"]}`, {
+    title: "The Beginning",
+  });
+  await anotherAuthor(page, "patch", `/outlines/${outline}/sections/${ids["Part One"]}`, {
+    title: "The Very Beginning",
+  });
+  await anotherAuthor(page, "patch", `/outlines/${outline}/sections/${ids["Part Two"]}`, {
+    title: "The Middle",
+  });
+
+  await expect.poll(() => passed).toBeGreaterThanOrEqual(3);
+  await expect(titleOf(page, "The Middle")).toHaveValue("The Middle");
+  await expect(
+    titleOf(page, "The Very Beginning"),
+    "the rename that was missed is there too, so the outline was opened again",
+  ).toHaveValue("The Very Beginning");
+});
