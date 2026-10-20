@@ -6,6 +6,7 @@ use crate::dialog::modal;
 use crate::outline::model::Section;
 use crate::route;
 use crate::scenes::model::SceneId;
+use crate::speech::{said, say, say_about};
 use crate::writing::write_view_state::WriteViewState;
 
 pub fn placing(state: WriteViewState, project: String) -> impl IntoView {
@@ -26,19 +27,19 @@ fn section_chooser(
 ) -> impl IntoView {
     let named = untrack(|| state.labels.of_scene(&scene)).shown;
     let told = match named.trim() {
-        "" => "The scene goes at the end of the section you choose.".to_owned(),
-        named => format!("“{named}” goes at the end of the section you choose."),
+        "" => say("placing-told-unnamed"),
+        named => say_about("placing-told", "scene", named),
     };
 
     modal(
-        "Bring into the book",
+        Signal::derive(said("placing")),
         "placing",
         move || state.margin.return_to_writing(),
         (
             html::p().child(told),
             html::ul()
                 .class("sections")
-                .attr("aria-label", "Sections of the book")
+                .attr("aria-label", said("placing-sections"))
                 .child(
                     untrack(|| state.structure.sections())
                         .into_iter()
@@ -50,7 +51,7 @@ fn section_chooser(
             html::div().class("dialog-actions").child(
                 html::button()
                     .on(ev::click, move |_| state.margin.return_to_writing())
-                    .child("Cancel"),
+                    .child(said("cancel")),
             ),
         ),
     )
@@ -65,7 +66,7 @@ fn section_choice(
 ) -> impl IntoView {
     let navigate = use_navigate();
     let titled = match section.title.trim() {
-        "" => "Untitled section".to_owned(),
+        "" => say("heading-untitled"),
         title => title.to_owned(),
     };
     let to = section.id.clone();

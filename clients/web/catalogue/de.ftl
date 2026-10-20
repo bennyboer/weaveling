@@ -260,3 +260,78 @@ quiet-rearranged = Jemand anderes hat das Buch rund um „{ $section }“ umgest
 quiet-removed = Jemand anderes hat „{ $section }“ entfernt.
 quiet-overtaken = Jemand anderes hat das Buch inzwischen geändert, deshalb ging das nicht. Es zeigt das Buch, wie es jetzt ist.
 going-back = Zurück zu der Stelle, an der du aufgehört hast
+
+move-scene = Szene verschieben
+drag-to-move = Zum Verschieben ziehen
+scene-actions = Szenenaktionen
+menu-rename = Umbenennen
+menu-take-out = Aus dem Buch nehmen
+menu-bring-in = Ins Buch holen…
+menu-delete-scene = Szene löschen
+section-actions = Abschnittsaktionen
+menu-nest = Unter den vorigen Abschnitt einrücken
+menu-lift = Eine Ebene herausrücken
+menu-remove-section = Abschnitt entfernen
+add-here = Hier einfügen
+menu-new-scene = Neue Szene
+menu-new-section = Neuer Abschnitt
+menu-new-top-level-section = Neuer Abschnitt auf oberster Ebene
+menu-bring-back = Szene zurückholen…
+scene-title = Szenentitel
+menu-button-title = { $menu } ({ $keys })
+keys-tab = Tab
+keys-shift-tab = Umschalt+Tab
+keys-shift-f10 = Umschalt+F10
+cancel = Abbrechen
+asked-keep-writing = Weiterschreiben
+answer-delete = Löschen
+answer-remove = Entfernen
+answer-show-it = Zeigen
+answer-discard = Verwerfen
+answer-put-at-end = Ans Ende des Buchs stellen
+answer-take-out = Aus dem Buch nehmen
+answer-delete-for-good = Endgültig löschen
+asked-delete-scene = Diese Szene löschen?
+asked-delete-scene-told-unnamed = Diese Szene und alles, was darin steht, ist dann für immer weg. Löschen lässt sich nicht rückgängig machen.
+asked-delete-scene-told = „{ $scene }“ und alles, was darin steht, ist dann für immer weg. Löschen lässt sich nicht rückgängig machen.
+removed-meanwhile = Inzwischen entfernt
+removed-meanwhile-told-unnamed = Jemand anderes hat „{ $section }“ entfernt. Deine Szene steht jetzt außerhalb des Buchs, bei den Szenen, die nicht darin stehen.
+removed-meanwhile-told = Jemand anderes hat „{ $section }“ entfernt. Deine Szene „{ $scene }“ steht jetzt außerhalb des Buchs, bei den Szenen, die nicht darin stehen.
+place-gone = Ihr Platz ist weg
+place-gone-scene = Jemand anderes hat entfernt, wohin deine neue Szene kommen sollte. Sie beginnt mit „{ $begins }“.
+place-gone-section = Jemand anderes hat entfernt, wonach dein neuer Abschnitt „{ $section }“ kommen sollte.
+renamed-meanwhile-heading-told = Während du diese Überschrift bearbeitet hast, hat jemand anderes sie in „{ $theirs }“ umbenannt. Deine lautet „{ $mine }“.
+asked-remove-section = Diesen Abschnitt entfernen?
+asked-remove-section-told = Seine Szenen verlassen das Buch, werden aber nicht gelöscht: Sie warten bei den Szenen, die nicht im Buch stehen. Die Abschnitte darin rücken an seine Stelle.
+asked-remove-chosen = Das Gewählte entfernen?
+chosen-scenes =
+    { $scenes ->
+        [one] { $scenes } Szene ist gewählt.
+       *[other] { $scenes } Szenen sind gewählt.
+    }
+chosen-sections =
+    { $sections ->
+        [one] { $sections } Abschnitt ist gewählt.
+       *[other] { $sections } Abschnitte sind gewählt.
+    }
+chosen-both =
+    { $scenes ->
+        [one] { $scenes } Szene
+       *[other] { $scenes } Szenen
+    } und { $sections ->
+        [one] { $sections } Abschnitt
+       *[other] { $sections } Abschnitte
+    } sind gewählt.
+chosen-whole = Jeder Abschnitt geht mit den Abschnitten darin und all ihren Szenen.
+chosen-ways-book = Aus dem Buch genommen, warten die Szenen bei denen, die nicht darin stehen. Endgültig gelöscht, sind sie und alles, was darin steht, weg, und das lässt sich nicht rückgängig machen.
+chosen-ways-loose = Endgültig gelöscht, sind sie und alles, was darin steht, weg, und das lässt sich nicht rückgängig machen.
+placing = Ins Buch holen
+placing-told-unnamed = Die Szene kommt ans Ende des Abschnitts, den du wählst.
+placing-told = „{ $scene }“ kommt ans Ende des Abschnitts, den du wählst.
+placing-sections = Abschnitte des Buchs
+bring-back = Szene zurückholen
+looking = Wird gesucht…
+bring-back-none = Jede Szene steht schon im Buch.
+bring-back-told = Diese Szenen stehen nicht im Buch. Die gewählte kommt dorthin, wo du geklickt hast.
+bring-back-find = Szene suchen
+bring-back-no-match = Keine Szene passt.

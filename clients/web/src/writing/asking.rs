@@ -1,3 +1,4 @@
+use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
@@ -7,6 +8,7 @@ use leptos_router::hooks::use_navigate;
 use crate::dialog::modal;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
+use crate::speech::{said, say, say_about, say_with};
 use crate::writing::beginnings::Unplaced;
 use crate::writing::heading::KeptTitle;
 use crate::writing::side::Side;
@@ -62,7 +64,7 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
             let cancel = move || state.margin.return_to_writing();
 
             modal(
-                title,
+                say(title),
                 "",
                 cancel,
                 (
@@ -71,7 +73,7 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
                         untrack(|| question.with_value(way_back)).map(|way_back| {
                             html::button()
                                 .on(ev::click, move |_| cancel())
-                                .child(way_back)
+                                .child(said(way_back))
                         }),
                         choices
                             .into_iter()
@@ -86,7 +88,7 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
                                             })
                                         });
                                     })
-                                    .child(label)
+                                    .child(said(label))
                             })
                             .collect::<Vec<_>>(),
                     )),
@@ -98,9 +100,9 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
 
 fn way_back(question: &Asking) -> Option<&'static str> {
     match question {
-        Asking::RemovedMeanwhile { .. } => Some("Keep writing"),
+        Asking::RemovedMeanwhile { .. } => Some("asked-keep-writing"),
         Asking::PlaceGone(_) => None,
-        _ => Some("Cancel"),
+        _ => Some("cancel"),
     }
 }
 
@@ -113,23 +115,23 @@ fn loose_and_at(scene: &SceneId) -> String {
 
 fn offered(question: &Asking, state: WriteViewState) -> Vec<(&'static str, Answer)> {
     match question {
-        Asking::DeleteScene(_) => vec![("Delete", Answer::DeletedForGood)],
-        Asking::RemoveSection(_) => vec![("Remove", Answer::Confirmed)],
-        Asking::RemovedMeanwhile { .. } => vec![("Show it", Answer::ShownElsewhere)],
+        Asking::DeleteScene(_) => vec![("answer-delete", Answer::DeletedForGood)],
+        Asking::RemoveSection(_) => vec![("answer-remove", Answer::Confirmed)],
+        Asking::RemovedMeanwhile { .. } => vec![("answer-show-it", Answer::ShownElsewhere)],
         Asking::PlaceGone(_) => vec![
-            ("Discard", Answer::Discarded),
-            ("Put it at the end of the book", Answer::PutAtTheEnd),
+            ("answer-discard", Answer::Discarded),
+            ("answer-put-at-end", Answer::PutAtTheEnd),
         ],
         Asking::RenamedMeanwhile { .. } => vec![
-            ("Take theirs", Answer::TakenTheirs),
-            ("Keep mine", Answer::KeptMine),
+            ("renamed-meanwhile-theirs", Answer::TakenTheirs),
+            ("renamed-meanwhile-mine", Answer::KeptMine),
         ],
         Asking::RemoveChosen { .. } => match state.side {
             Side::Book => vec![
-                ("Take out of the book", Answer::TakenOut),
-                ("Delete for good", Answer::DeletedForGood),
+                ("answer-take-out", Answer::TakenOut),
+                ("answer-delete-for-good", Answer::DeletedForGood),
             ],
-            Side::Loose => vec![("Delete for good", Answer::DeletedForGood)],
+            Side::Loose => vec![("answer-delete-for-good", Answer::DeletedForGood)],
         },
     }
 }
@@ -138,92 +140,73 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
     match question {
         Asking::DeleteScene(scene) => {
             let shown = untrack(|| state.labels.of_scene(scene)).shown;
-            let named = if shown.trim().is_empty() {
-                "This scene".to_owned()
-            } else {
-                format!("“{shown}”")
+            let told = match shown.trim() {
+                "" => say("asked-delete-scene-told-unnamed"),
+                shown => say_about("asked-delete-scene-told", "scene", shown),
             };
 
-            (
-                "Delete this scene?",
-                format!("{named} and everything written in it will be gone for good. Deleting cannot be undone."),
-            )
+            ("asked-delete-scene", told)
         }
         Asking::RemovedMeanwhile { title, scene } => {
             let shown = untrack(|| state.labels.of_scene(scene)).shown;
-            let named = match shown.trim() {
-                "" => "Your scene".to_owned(),
-                shown => format!("Your scene “{shown}”"),
+            let mut args = FluentArgs::new();
+            args.set("section", title.trim().to_owned());
+            let told = match shown.trim() {
+                "" => say_with("removed-meanwhile-told-unnamed", &args),
+                shown => {
+                    args.set("scene", shown.to_owned());
+
+                    say_with("removed-meanwhile-told", &args)
+                }
             };
 
-            (
-                "Removed meanwhile",
-                format!(
-                    "Someone else removed “{}”. {named} is outside the book now, among the scenes not in it.",
-                    title.trim()
-                ),
-            )
+            ("removed-meanwhile", told)
         }
         Asking::PlaceGone(Unplaced::Scene { begins, .. }) => (
-            "Its place is gone",
-            format!(
-                "Someone else removed where your new scene was going. It begins “{}”.",
-                begins.trim()
-            ),
+            "place-gone",
+            say_about("place-gone-scene", "begins", begins.trim()),
         ),
         Asking::PlaceGone(Unplaced::Section { titled }) => (
-            "Its place is gone",
-            format!(
-                "Someone else removed what your new section “{}” was going after.",
-                titled.trim()
-            ),
+            "place-gone",
+            say_about("place-gone-section", "section", titled.trim()),
         ),
-        Asking::RenamedMeanwhile { mine, theirs, .. } => (
-            "Renamed meanwhile",
-            format!(
-                "While you were editing this heading, someone else renamed it to “{theirs}”. Yours is “{mine}”."
-            ),
-        ),
-        Asking::RemoveSection(_) => (
-            "Remove this section?",
-            "Its scenes leave the book but are not deleted: they wait among the scenes not in the book. Sections inside it move up to take its place.".to_owned(),
-        ),
-        Asking::RemoveChosen { scenes, sections } => {
-            let counted = match (scenes.len(), sections.len()) {
-                (scenes, 0) => counting(scenes, "scene"),
-                (0, sections) => counting(sections, "section"),
-                (scenes, sections) => format!(
-                    "{} and {}",
-                    counting(scenes, "scene"),
-                    counting(sections, "section")
-                ),
-            };
-            let whole = match sections.is_empty() {
-                true => "",
-                false => " Each section goes with the sections inside it and all their scenes.",
-            };
-            let ways = match state.side {
-                Side::Book => " Taken out of the book, the scenes wait among those not in it. Deleted for good, they and everything written in them are gone, and that cannot be undone.",
-                Side::Loose => " Deleted for good, they and everything written in them are gone, and that cannot be undone.",
-            };
-
-            let are = match scenes.len() + sections.len() {
-                1 => "is",
-                _ => "are",
-            };
+        Asking::RenamedMeanwhile { mine, theirs, .. } => {
+            let mut args = FluentArgs::new();
+            args.set("theirs", theirs.clone());
+            args.set("mine", mine.clone());
 
             (
-                "Remove what is chosen?",
-                format!("{counted} {are} chosen.{whole}{ways}"),
+                "renamed-meanwhile",
+                say_with("renamed-meanwhile-heading-told", &args),
             )
         }
-    }
-}
+        Asking::RemoveSection(_) => ("asked-remove-section", say("asked-remove-section-told")),
+        Asking::RemoveChosen { scenes, sections } => {
+            let mut args = FluentArgs::new();
+            args.set("scenes", scenes.len());
+            args.set("sections", sections.len());
+            let counted = match (scenes.is_empty(), sections.is_empty()) {
+                (false, true) => "chosen-scenes",
+                (true, false) => "chosen-sections",
+                _ => "chosen-both",
+            };
+            let ways = match state.side {
+                Side::Book => "chosen-ways-book",
+                Side::Loose => "chosen-ways-loose",
+            };
+            let told = [
+                Some(counted),
+                (!sections.is_empty()).then_some("chosen-whole"),
+                Some(ways),
+            ]
+            .into_iter()
+            .flatten()
+            .map(|sentence| say_with(sentence, &args))
+            .collect::<Vec<_>>()
+            .join(" ");
 
-fn counting(count: usize, thing: &str) -> String {
-    match count {
-        1 => format!("1 {thing}"),
-        _ => format!("{count} {thing}s"),
+            ("asked-remove-chosen", told)
+        }
     }
 }
 

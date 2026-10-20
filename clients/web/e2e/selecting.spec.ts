@@ -420,8 +420,8 @@ test("a chosen heading removes its section with the sections inside it and all t
   await page.keyboard.press("Shift+ArrowUp");
 
   await page.keyboard.press("Delete");
-  await expect(removing(page)).toContainText(
-    "2 scenes and 2 sections are chosen.",
+  await expect(removing(page).locator("p")).toHaveText(
+    "2 scenes and 2 sections are chosen. Each section goes with the sections inside it and all their scenes. Taken out of the book, the scenes wait among those not in it. Deleted for good, they and everything written in them are gone, and that cannot be undone.",
   );
   await removing(page)
     .getByRole("button", { name: "Take out of the book" })
@@ -431,6 +431,27 @@ test("a chosen heading removes its section with the sections inside it and all t
     .poll(() => theBook(page))
     .toEqual([["Part One", [scenes["Part One"]]]]);
   expect(await sceneExists(page, scenes["Inside Two"])).toBe(true);
+});
+
+test("headings chosen without a scene among them are asked about as sections alone", async ({
+  page,
+}) => {
+  await aNewProject(page, "HeadingsAlone");
+  await aBookShaped(page, [
+    { title: "Part One" },
+    { title: "Part Two", after: "Part One" },
+  ]);
+  await views(page).getByRole("link", { name: "Write", exact: true }).click();
+  await flow(page).getByRole("heading", { name: "Part One" }).click();
+  await flow(page)
+    .getByRole("heading", { name: "Part Two" })
+    .click({ modifiers: ["Shift"] });
+
+  await page.keyboard.press("Delete");
+
+  await expect(removing(page).locator("p")).toHaveText(
+    "2 sections are chosen. Each section goes with the sections inside it and all their scenes. Taken out of the book, the scenes wait among those not in it. Deleted for good, they and everything written in them are gone, and that cannot be undone.",
+  );
 });
 
 test("outside the book, chosen scenes can only be deleted for good", async ({
@@ -447,6 +468,9 @@ test("outside the book, chosen scenes can only be deleted for good", async ({
 
   await page.keyboard.press("Delete");
 
+  await expect(removing(page).locator("p")).toHaveText(
+    "1 scene is chosen. Deleted for good, they and everything written in them are gone, and that cannot be undone.",
+  );
   await expect(removing(page).getByRole("button")).toHaveText([
     "Cancel",
     "Delete for good",

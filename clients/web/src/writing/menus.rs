@@ -1,3 +1,4 @@
+use fluent_bundle::FluentArgs;
 use leptos::html::{Div, Input};
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
@@ -7,6 +8,7 @@ use web_sys::{Element, HtmlElement, KeyboardEvent};
 use crate::icons::{Icon, mark};
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
+use crate::speech::{said, say, say_with};
 use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
 use crate::writing::heading::level_of;
@@ -32,8 +34,8 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 .r#type("button")
                 .class("menu-button grip")
                 .attr("tabindex", "-1")
-                .attr("aria-label", "Move scene")
-                .attr("title", "Drag to move")
+                .attr("aria-label", said("move-scene"))
+                .attr("title", said("drag-to-move"))
                 .on(ev::pointerdown, move |event| {
                     event.prevent_default();
                     state.moving.pick_up(carried.clone());
@@ -48,7 +50,7 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
             }
         },
         margin_menu(
-            "Scene actions",
+            "scene-actions",
             Icon::More,
             (marked, Menu::Changing),
             state,
@@ -59,22 +61,22 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 let into_the_book = chosen.clone();
 
                 (
-                    item("Rename", false, move || {
+                    item("menu-rename", false, move || {
                         state.margin.start_renaming(rename.clone())
                     }),
                     match state.side {
-                        Side::Book => item("Take out of the book", false, move || {
+                        Side::Book => item("menu-take-out", false, move || {
                             state.margin.close();
                             state.loose.include(vec![take_out.clone()]);
                             state.structure.take_out(take_out.clone());
                         })
                         .into_any(),
-                        Side::Loose => item("Bring into the book…", false, move || {
+                        Side::Loose => item("menu-bring-in", false, move || {
                             state.margin.place(into_the_book.clone())
                         })
                         .into_any(),
                     },
-                    item("Delete scene", true, move || {
+                    item("menu-delete-scene", true, move || {
                         state.margin.ask(Asking::DeleteScene(delete.clone()))
                     }),
                 )
@@ -94,7 +96,7 @@ pub fn section_margin(
     html::div()
         .class(move || format!("heading-margin level-{}", level_of(depth.get())))
         .child((margin_menu(
-            "Section actions",
+            "section-actions",
             Icon::More,
             (marked, Menu::Changing),
             state,
@@ -105,18 +107,18 @@ pub fn section_margin(
 
                 (
                     state.structure.can_nest(&section).then(|| {
-                        keyed_item("Nest under the previous section", "Tab", move || {
+                        keyed_item("menu-nest", ("Tab", "keys-tab"), move || {
                             state.margin.close();
                             nest(nested.clone(), state);
                         })
                     }),
                     state.structure.can_lift(&section).then(|| {
-                        keyed_item("Lift out a level", "Shift+Tab", move || {
+                        keyed_item("menu-lift", ("Shift+Tab", "keys-shift-tab"), move || {
                             state.margin.close();
                             lift(lifted.clone(), state);
                         })
                     }),
-                    item("Remove section", false, move || {
+                    item("menu-remove-section", false, move || {
                         let holds_scenes =
                             untrack(|| !state.structure.scenes_of(&removed).is_empty());
 
@@ -152,7 +154,7 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
         .child((
             below_a_scene.then(|| html::hr().class("between-scenes")),
             html::div().class("reach").child(margin_menu(
-                "Add here",
+                "add-here",
                 Icon::Plus,
                 (marked, Menu::Adding),
                 state,
@@ -164,23 +166,23 @@ pub fn insertion(landing: Landing, state: WriteViewState) -> impl IntoView {
                         && untrack(|| state.structure.depth_of(&landing.section)) > 0;
 
                     (
-                        item("New scene", false, move || {
+                        item("menu-new-scene", false, move || {
                             state.margin.close();
                             begin_scene_at(&fresh, state);
                         }),
                         ends_its_section(&landing, state).then(|| {
-                            item("New section", false, move || {
+                            item("menu-new-section", false, move || {
                                 state.margin.close();
                                 new_section_after_scenes_of(&ending.section, state);
                             })
                         }),
                         nested_at_the_end.then(|| {
-                            item("New top-level section", false, move || {
+                            item("menu-new-top-level-section", false, move || {
                                 state.margin.close();
                                 new_section_at_the_end(state);
                             })
                         }),
-                        item("Bring back a scene…", false, move || {
+                        item("menu-bring-back", false, move || {
                             state.margin.bring_back_to(here.clone())
                         }),
                     )
@@ -197,12 +199,12 @@ pub fn book_edge(edge: Edge, state: WriteViewState) -> impl IntoView {
             Edge::End => "insertion book-end",
         })
         .child(html::div().class("reach").child(margin_menu(
-            "Add here",
+            "add-here",
             Icon::Plus,
             (Marked::Edge(edge), Menu::Adding),
             state,
             move || {
-                item("New section", false, move || {
+                item("menu-new-section", false, move || {
                     state.margin.close();
                     match edge {
                         Edge::Start => state.beginnings.new_section_at(None, None),
@@ -286,9 +288,17 @@ fn margin_menu(
             html::button()
                 .class("menu-button")
                 .class(("dotted", matches!(icon, Icon::More)))
-                .attr("aria-label", named)
+                .attr("aria-label", said(named))
                 .attr("aria-keyshortcuts", opened_by)
-                .attr("title", opened_by.map(|keys| format!("{named} ({keys})")))
+                .attr("title", move || {
+                    opened_by.map(|_| {
+                        let mut args = FluentArgs::new();
+                        args.set("menu", say(named));
+                        args.set("keys", say("keys-shift-f10"));
+
+                        say_with("menu-button-title", &args)
+                    })
+                })
                 .attr("aria-haspopup", "menu")
                 .attr("aria-expanded", move || open.get().to_string())
                 .attr("tabindex", "-1")
@@ -363,19 +373,22 @@ fn item(
         .role("menuitem")
         .class(("danger", danger))
         .on(ev::click, move |_| chosen())
-        .child(named)
+        .child(said(named))
 }
 
 fn keyed_item(
     named: &'static str,
-    keys: &'static str,
+    (keys, shown): (&'static str, &'static str),
     chosen: impl Fn() + Send + Sync + 'static,
 ) -> impl IntoView {
     html::button()
         .role("menuitem")
         .attr("aria-keyshortcuts", keys)
         .on(ev::click, move |_| chosen())
-        .child((named, html::kbd().attr("aria-hidden", "true").child(keys)))
+        .child((
+            said(named),
+            html::kbd().attr("aria-hidden", "true").child(said(shown)),
+        ))
 }
 
 fn scene_label(scene: SceneId, state: WriteViewState) -> impl IntoView {
@@ -415,7 +428,7 @@ fn renaming_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
 
     html::input()
         .class("scene-label renaming")
-        .attr("aria-label", "Scene title")
+        .attr("aria-label", said("scene-title"))
         .attr("placeholder", placeholder)
         .prop("value", state.labels.title_of(&scene))
         .node_ref(field)

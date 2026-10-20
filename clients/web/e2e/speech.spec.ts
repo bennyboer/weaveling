@@ -408,6 +408,116 @@ test("the writing view speaks the language chosen, at once", async ({
   await expect(page.getByRole("navigation", { name: "Wo du bist" })).toBeVisible();
 });
 
+test("the writing view's menus and questions speak the language chosen", async ({
+  page,
+}) => {
+  await aNewProject(page, "Rand");
+  const made = await aBookWithScenes(page, { "Part One": 2, "Part Two": 1 });
+  const [first, second] = made["Part One"];
+  await openTheWritingView(page);
+  await picker(page, "Language").selectOption("de");
+  const book = page.getByRole("article", { name: "Das Buch" });
+  const written = (id: string) => book.locator(`[data-scene="${id}"] .ProseMirror`);
+
+  await expect(
+    book.getByRole("button", { name: "Szenenaktionen" }).first(),
+  ).toHaveAttribute("title", "Szenenaktionen (Umschalt+F10)");
+  await expect(
+    book.getByRole("button", { name: "Szene verschieben" }).first(),
+  ).toHaveAttribute("title", "Zum Verschieben ziehen");
+  await written(first).click();
+  await page.keyboard.press("Shift+F10");
+  await expect(book.getByRole("menuitem")).toHaveText([
+    "Umbenennen",
+    "Aus dem Buch nehmen",
+    "Szene löschen",
+  ]);
+  await book.getByRole("menuitem", { name: "Szene löschen" }).click();
+  const deleting = page.getByRole("dialog", { name: "Diese Szene löschen?" });
+  await expect(deleting).toContainText(
+    "Diese Szene und alles, was darin steht, ist dann für immer weg. Löschen lässt sich nicht rückgängig machen.",
+  );
+  await expect(deleting.getByRole("button")).toHaveText(["Abbrechen", "Löschen"]);
+  await deleting.getByRole("button", { name: "Abbrechen" }).click();
+
+  await book.getByRole("heading", { name: "Part Two" }).click();
+  await page.keyboard.press("Shift+F10");
+  const nesting = book.getByRole("menuitem", {
+    name: "Unter den vorigen Abschnitt einrücken",
+    exact: true,
+  });
+  await expect(nesting).toHaveAttribute("aria-keyshortcuts", "Tab");
+  await expect(nesting.locator("kbd")).toHaveText("Tab");
+  await nesting.click();
+  await book.getByRole("heading", { name: "Part Two" }).click();
+  await page.keyboard.press("Shift+F10");
+  const lifting = book.getByRole("menuitem", { name: "Eine Ebene herausrücken", exact: true });
+  await expect(lifting).toHaveAttribute("aria-keyshortcuts", "Shift+Tab");
+  await expect(lifting.locator("kbd")).toHaveText("Umschalt+Tab");
+  await page.keyboard.press("Escape");
+
+  await written(first).click();
+  await page.keyboard.type("Eins.");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Delete");
+  const removing = page.getByRole("dialog", { name: "Das Gewählte entfernen?" });
+  await expect(removing).toContainText(
+    "2 Szenen sind gewählt. Aus dem Buch genommen, warten die Szenen bei denen, die nicht darin stehen.",
+  );
+  await expect(removing.getByRole("button")).toHaveText([
+    "Abbrechen",
+    "Aus dem Buch nehmen",
+    "Endgültig löschen",
+  ]);
+  await removing.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(written(second)).toHaveCount(1);
+});
+
+test("bringing a scene back and placing one speak the language chosen", async ({
+  page,
+}) => {
+  await aNewProject(page, "Zurück");
+  const made = await aBookWithScenes(page, { "Part One": 1 });
+  const [only] = made["Part One"];
+  await aLooseScene(page);
+  await openTheWritingView(page);
+  await picker(page, "Language").selectOption("de");
+  const book = page.getByRole("article", { name: "Das Buch" });
+
+  await book
+    .locator(`.insertion[data-after="${only}"]`)
+    .getByRole("button", { name: "Hier einfügen" })
+    .click();
+  await expect(book.getByRole("menuitem", { name: "Neue Szene" })).toBeVisible();
+  await book.getByRole("menuitem", { name: "Szene zurückholen…" }).click();
+  const bringing = page.getByRole("dialog", { name: "Szene zurückholen" });
+  await expect(bringing).toContainText(
+    "Diese Szenen stehen nicht im Buch. Die gewählte kommt dorthin, wo du geklickt hast.",
+  );
+  await expect(bringing.getByRole("searchbox", { name: "Szene suchen" })).toBeVisible();
+  await expect(
+    bringing.getByRole("list", { name: "Szenen, die nicht im Buch stehen" }),
+  ).toBeVisible();
+  await bringing.getByRole("searchbox", { name: "Szene suchen" }).fill("nirgends");
+  await expect(bringing).toContainText("Keine Szene passt.");
+  await bringing.getByRole("button", { name: "Abbrechen" }).click();
+
+  await page
+    .getByRole("navigation", { name: "Seiten des Werks" })
+    .getByRole("link", { name: "Nicht im Buch" })
+    .click();
+  await page.getByRole("button", { name: "Szenenaktionen" }).first().click();
+  await page.getByRole("menuitem", { name: "Ins Buch holen…" }).click();
+  const placing = page.getByRole("dialog", { name: "Ins Buch holen" });
+  await expect(placing).toContainText(
+    "Die Szene kommt ans Ende des Abschnitts, den du wählst.",
+  );
+  await expect(
+    placing.getByRole("list", { name: "Abschnitte des Buchs" }),
+  ).toBeVisible();
+});
+
 test.describe("a browser asking for a language the app does not speak", () => {
   test.use({ locale: "it-IT" });
 

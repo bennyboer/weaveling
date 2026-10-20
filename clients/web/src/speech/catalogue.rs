@@ -145,6 +145,20 @@ mod tests {
     }
 
     #[test]
+    fn no_language_words_a_message_twice() {
+        for language in Language::EVERY {
+            let mut seen = BTreeSet::new();
+
+            for (message, _) in messages_of(language) {
+                assert!(
+                    seen.insert(message.clone()),
+                    "{language:?} words {message} twice"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn every_language_words_every_message_english_does_asking_for_the_same() {
         let english: BTreeSet<_> = messages_of(Language::English).into_iter().collect();
 

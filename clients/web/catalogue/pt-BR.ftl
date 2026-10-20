@@ -260,3 +260,78 @@ quiet-rearranged = Outra pessoa reorganizou o livro em torno de “{ $section }�
 quiet-removed = Outra pessoa removeu “{ $section }”.
 quiet-overtaken = Outra pessoa alterou o livro enquanto isso, então não foi possível fazer. Ele mostra o livro como está agora.
 going-back = Voltar para onde você parou
+
+move-scene = Mover a cena
+drag-to-move = Arraste para mover
+scene-actions = Ações da cena
+menu-rename = Renomear
+menu-take-out = Tirar do livro
+menu-bring-in = Levar para o livro…
+menu-delete-scene = Excluir a cena
+section-actions = Ações da seção
+menu-nest = Aninhar sob a seção anterior
+menu-lift = Subir um nível
+menu-remove-section = Remover a seção
+add-here = Adicionar aqui
+menu-new-scene = Nova cena
+menu-new-section = Nova seção
+menu-new-top-level-section = Nova seção de primeiro nível
+menu-bring-back = Trazer de volta uma cena…
+scene-title = Título da cena
+menu-button-title = { $menu } ({ $keys })
+keys-tab = Tab
+keys-shift-tab = Shift+Tab
+keys-shift-f10 = Shift+F10
+cancel = Cancelar
+asked-keep-writing = Continuar escrevendo
+answer-delete = Excluir
+answer-remove = Remover
+answer-show-it = Mostrar
+answer-discard = Descartar
+answer-put-at-end = Colocar no fim do livro
+answer-take-out = Tirar do livro
+answer-delete-for-good = Excluir para sempre
+asked-delete-scene = Excluir esta cena?
+asked-delete-scene-told-unnamed = Esta cena e tudo o que está escrito nela serão apagados para sempre. A exclusão não pode ser desfeita.
+asked-delete-scene-told = “{ $scene }” e tudo o que está escrito nela serão apagados para sempre. A exclusão não pode ser desfeita.
+removed-meanwhile = Removida enquanto isso
+removed-meanwhile-told-unnamed = Outra pessoa removeu “{ $section }”. Sua cena agora está fora do livro, entre as cenas que não estão nele.
+removed-meanwhile-told = Outra pessoa removeu “{ $section }”. Sua cena “{ $scene }” agora está fora do livro, entre as cenas que não estão nele.
+place-gone = O lugar dela sumiu
+place-gone-scene = Outra pessoa removeu o lugar para onde ia sua nova cena. Ela começa com “{ $begins }”.
+place-gone-section = Outra pessoa removeu aquilo depois do qual sua nova seção “{ $section }” ia ficar.
+renamed-meanwhile-heading-told = Enquanto você editava este título, outra pessoa o renomeou para “{ $theirs }”. O seu é “{ $mine }”.
+asked-remove-section = Remover esta seção?
+asked-remove-section-told = As cenas dela saem do livro, mas não são excluídas: esperam entre as cenas que não estão no livro. As seções dentro dela sobem para ocupar seu lugar.
+asked-remove-chosen = Remover o que foi escolhido?
+chosen-scenes =
+    { $scenes ->
+        [one] { $scenes } cena escolhida.
+       *[other] { $scenes } cenas escolhidas.
+    }
+chosen-sections =
+    { $sections ->
+        [one] { $sections } seção escolhida.
+       *[other] { $sections } seções escolhidas.
+    }
+chosen-both =
+    { $scenes ->
+        [one] { $scenes } cena
+       *[other] { $scenes } cenas
+    } e { $sections ->
+        [one] { $sections } seção
+       *[other] { $sections } seções
+    } escolhidas.
+chosen-whole = Cada seção vai junto com as seções dentro dela e todas as suas cenas.
+chosen-ways-book = Tiradas do livro, as cenas esperam entre as que não estão nele. Excluídas para sempre, elas e tudo o que está escrito nelas somem, e isso não pode ser desfeito.
+chosen-ways-loose = Excluídas para sempre, elas e tudo o que está escrito nelas somem, e isso não pode ser desfeito.
+placing = Levar para o livro
+placing-told-unnamed = A cena vai para o fim da seção que você escolher.
+placing-told = “{ $scene }” vai para o fim da seção que você escolher.
+placing-sections = Seções do livro
+bring-back = Trazer de volta uma cena
+looking = Procurando…
+bring-back-none = Todas as cenas já estão no livro.
+bring-back-told = Estas cenas não estão no livro. A que você escolher entra onde você clicou.
+bring-back-find = Procurar uma cena
+bring-back-no-match = Nenhuma cena corresponde.

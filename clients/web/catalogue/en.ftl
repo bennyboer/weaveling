@@ -260,3 +260,78 @@ quiet-rearranged = Someone else rearranged the book around “{ $section }”.
 quiet-removed = Someone else removed “{ $section }”.
 quiet-overtaken = Someone else changed the book meanwhile, so that could not be done. It shows the book as it is now.
 going-back = Back to where you left off
+
+move-scene = Move scene
+drag-to-move = Drag to move
+scene-actions = Scene actions
+menu-rename = Rename
+menu-take-out = Take out of the book
+menu-bring-in = Bring into the book…
+menu-delete-scene = Delete scene
+section-actions = Section actions
+menu-nest = Nest under the previous section
+menu-lift = Lift out a level
+menu-remove-section = Remove section
+add-here = Add here
+menu-new-scene = New scene
+menu-new-section = New section
+menu-new-top-level-section = New top-level section
+menu-bring-back = Bring back a scene…
+scene-title = Scene title
+menu-button-title = { $menu } ({ $keys })
+keys-tab = Tab
+keys-shift-tab = Shift+Tab
+keys-shift-f10 = Shift+F10
+cancel = Cancel
+asked-keep-writing = Keep writing
+answer-delete = Delete
+answer-remove = Remove
+answer-show-it = Show it
+answer-discard = Discard
+answer-put-at-end = Put it at the end of the book
+answer-take-out = Take out of the book
+answer-delete-for-good = Delete for good
+asked-delete-scene = Delete this scene?
+asked-delete-scene-told-unnamed = This scene and everything written in it will be gone for good. Deleting cannot be undone.
+asked-delete-scene-told = “{ $scene }” and everything written in it will be gone for good. Deleting cannot be undone.
+removed-meanwhile = Removed meanwhile
+removed-meanwhile-told-unnamed = Someone else removed “{ $section }”. Your scene is outside the book now, among the scenes not in it.
+removed-meanwhile-told = Someone else removed “{ $section }”. Your scene “{ $scene }” is outside the book now, among the scenes not in it.
+place-gone = Its place is gone
+place-gone-scene = Someone else removed where your new scene was going. It begins “{ $begins }”.
+place-gone-section = Someone else removed what your new section “{ $section }” was going after.
+renamed-meanwhile-heading-told = While you were editing this heading, someone else renamed it to “{ $theirs }”. Yours is “{ $mine }”.
+asked-remove-section = Remove this section?
+asked-remove-section-told = Its scenes leave the book but are not deleted: they wait among the scenes not in the book. Sections inside it move up to take its place.
+asked-remove-chosen = Remove what is chosen?
+chosen-scenes =
+    { $scenes ->
+        [one] { $scenes } scene is chosen.
+       *[other] { $scenes } scenes are chosen.
+    }
+chosen-sections =
+    { $sections ->
+        [one] { $sections } section is chosen.
+       *[other] { $sections } sections are chosen.
+    }
+chosen-both =
+    { $scenes ->
+        [one] { $scenes } scene
+       *[other] { $scenes } scenes
+    } and { $sections ->
+        [one] { $sections } section
+       *[other] { $sections } sections
+    } are chosen.
+chosen-whole = Each section goes with the sections inside it and all their scenes.
+chosen-ways-book = Taken out of the book, the scenes wait among those not in it. Deleted for good, they and everything written in them are gone, and that cannot be undone.
+chosen-ways-loose = Deleted for good, they and everything written in them are gone, and that cannot be undone.
+placing = Bring into the book
+placing-told-unnamed = The scene goes at the end of the section you choose.
+placing-told = “{ $scene }” goes at the end of the section you choose.
+placing-sections = Sections of the book
+bring-back = Bring back a scene
+looking = Looking…
+bring-back-none = Every scene is in the book already.
+bring-back-told = These scenes are not in the book. The one you choose goes in where you clicked.
+bring-back-find = Find a scene
+bring-back-no-match = No scene matches.

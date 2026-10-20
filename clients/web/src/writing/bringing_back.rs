@@ -7,6 +7,7 @@ use crate::dialog::modal;
 use crate::outline::model::SectionId;
 use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scenes;
+use crate::speech::said;
 use crate::writing::write_view_state::WriteViewState;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,42 +67,39 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
     let first_landing = landing.clone();
 
     modal(
-        "Bring back a scene",
+        Signal::derive(said("bring-back")),
         "",
         move || state.margin.return_to_writing(),
         (
             move || match waiting.get() {
-                None => html::p().class("empty").child("Looking…").into_any(),
+                None => html::p().class("empty").child(said("looking")).into_any(),
                 Some(outside) if outside.is_empty() => html::p()
                     .class("empty")
-                    .child("Every scene is in the book already.")
+                    .child(said("bring-back-none"))
                     .into_any(),
                 Some(_) => {
                     let entering = first_landing.clone();
 
                     (
-                                html::p().child(
-                                    "These scenes are not in the book. The one you choose goes in where you clicked.",
-                                ),
-                                html::input()
-                                    .r#type("search")
-                                    .attr("aria-label", "Find a scene")
-                                    .attr("placeholder", "Find a scene")
-                                    .node_ref(search)
-                                    .on(ev::input, move |event| {
-                                        finding.set(event_target_value(&event));
-                                    })
-                                    .on(ev::keydown, move |event| {
-                                        if event.key() == "Enter"
-                                            && let Some(first) =
-                                                untrack(matching).into_iter().next()
-                                        {
-                                            event.prevent_default();
-                                            choose(first.id, entering.clone(), state);
-                                        }
-                                    }),
-                            )
-                                .into_any()
+                        html::p().child(said("bring-back-told")),
+                        html::input()
+                            .r#type("search")
+                            .attr("aria-label", said("bring-back-find"))
+                            .attr("placeholder", said("bring-back-find"))
+                            .node_ref(search)
+                            .on(ev::input, move |event| {
+                                finding.set(event_target_value(&event));
+                            })
+                            .on(ev::keydown, move |event| {
+                                if event.key() == "Enter"
+                                    && let Some(first) = untrack(matching).into_iter().next()
+                                {
+                                    event.prevent_default();
+                                    choose(first.id, entering.clone(), state);
+                                }
+                            }),
+                    )
+                        .into_any()
                 }
             },
             move || {
@@ -113,11 +111,11 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
                     false => ().into_any(),
                     true if found.is_empty() => html::p()
                         .class("empty")
-                        .child("No scene matches.")
+                        .child(said("bring-back-no-match"))
                         .into_any(),
                     true => html::ul()
                         .class("choices")
-                        .attr("aria-label", "Scenes not in the book")
+                        .attr("aria-label", said("outline-scenes-waiting"))
                         .child(
                             found
                                 .into_iter()
@@ -130,7 +128,7 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
             html::div().class("dialog-actions").child(
                 html::button()
                     .on(ev::click, move |_| state.margin.return_to_writing())
-                    .child("Cancel"),
+                    .child(said("cancel")),
             ),
         ),
     )

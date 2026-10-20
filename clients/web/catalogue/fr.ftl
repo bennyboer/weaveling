@@ -260,3 +260,78 @@ quiet-rearranged = Quelqu’un d’autre a réorganisé le livre autour de « {
 quiet-removed = Quelqu’un d’autre a supprimé « { $section } ».
 quiet-overtaken = Quelqu’un d’autre a modifié le livre entre-temps, cela n’a donc pas pu être fait. Le livre est affiché tel qu’il est maintenant.
 going-back = Revenir là où vous en étiez
+
+move-scene = Déplacer la scène
+drag-to-move = Faire glisser pour déplacer
+scene-actions = Actions de la scène
+menu-rename = Renommer
+menu-take-out = Retirer du livre
+menu-bring-in = Mettre dans le livre…
+menu-delete-scene = Supprimer la scène
+section-actions = Actions de la section
+menu-nest = Imbriquer sous la section précédente
+menu-lift = Remonter d’un niveau
+menu-remove-section = Supprimer la section
+add-here = Ajouter ici
+menu-new-scene = Nouvelle scène
+menu-new-section = Nouvelle section
+menu-new-top-level-section = Nouvelle section de premier niveau
+menu-bring-back = Ramener une scène…
+scene-title = Titre de la scène
+menu-button-title = { $menu } ({ $keys })
+keys-tab = Tab
+keys-shift-tab = Maj+Tab
+keys-shift-f10 = Maj+F10
+cancel = Annuler
+asked-keep-writing = Continuer d’écrire
+answer-delete = Supprimer
+answer-remove = Retirer
+answer-show-it = La montrer
+answer-discard = Abandonner
+answer-put-at-end = La mettre à la fin du livre
+answer-take-out = Retirer du livre
+answer-delete-for-good = Supprimer définitivement
+asked-delete-scene = Supprimer cette scène ?
+asked-delete-scene-told-unnamed = Cette scène et tout ce qui y est écrit disparaîtront pour de bon. La suppression est irréversible.
+asked-delete-scene-told = « { $scene } » et tout ce qui y est écrit disparaîtront pour de bon. La suppression est irréversible.
+removed-meanwhile = Supprimé entre-temps
+removed-meanwhile-told-unnamed = Quelqu’un d’autre a supprimé « { $section } ». Votre scène est maintenant hors du livre, parmi les scènes qui n’y sont pas.
+removed-meanwhile-told = Quelqu’un d’autre a supprimé « { $section } ». Votre scène « { $scene } » est maintenant hors du livre, parmi les scènes qui n’y sont pas.
+place-gone = Sa place a disparu
+place-gone-scene = Quelqu’un d’autre a supprimé l’endroit où allait votre nouvelle scène. Elle commence par « { $begins } ».
+place-gone-section = Quelqu’un d’autre a supprimé ce après quoi votre nouvelle section « { $section } » devait venir.
+renamed-meanwhile-heading-told = Pendant que vous modifiiez ce titre, quelqu’un d’autre l’a renommé en « { $theirs } ». Le vôtre est « { $mine } ».
+asked-remove-section = Supprimer cette section ?
+asked-remove-section-told = Ses scènes quittent le livre sans être supprimées : elles attendent parmi les scènes hors du livre. Les sections qu’elle contient remontent à sa place.
+asked-remove-chosen = Retirer ce qui est choisi ?
+chosen-scenes =
+    { $scenes ->
+        [one] { $scenes } scène est choisie.
+       *[other] { $scenes } scènes sont choisies.
+    }
+chosen-sections =
+    { $sections ->
+        [one] { $sections } section est choisie.
+       *[other] { $sections } sections sont choisies.
+    }
+chosen-both =
+    { $scenes ->
+        [one] { $scenes } scène
+       *[other] { $scenes } scènes
+    } et { $sections ->
+        [one] { $sections } section
+       *[other] { $sections } sections
+    } sont choisies.
+chosen-whole = Chaque section part avec les sections qu’elle contient et toutes leurs scènes.
+chosen-ways-book = Retirées du livre, les scènes attendent parmi celles qui n’y sont pas. Supprimées définitivement, elles et tout ce qui y est écrit disparaissent, et c’est irréversible.
+chosen-ways-loose = Supprimées définitivement, elles et tout ce qui y est écrit disparaissent, et c’est irréversible.
+placing = Mettre dans le livre
+placing-told-unnamed = La scène va à la fin de la section que vous choisissez.
+placing-told = « { $scene } » va à la fin de la section que vous choisissez.
+placing-sections = Sections du livre
+bring-back = Ramener une scène
+looking = Recherche…
+bring-back-none = Toutes les scènes sont déjà dans le livre.
+bring-back-told = Ces scènes ne sont pas dans le livre. Celle que vous choisissez entre là où vous avez cliqué.
+bring-back-find = Chercher une scène
+bring-back-no-match = Aucune scène ne correspond.
