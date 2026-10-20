@@ -37,7 +37,7 @@ pub fn contents(state: WriteViewState) -> impl IntoView {
         Inside {
             id: BOOK_RAIL,
             named: "Contents".into(),
-            called: "the contents",
+            called: "contents",
             head: (
                 html::p().class("tally").child("Contents"),
                 folding_everything(state),

@@ -13,7 +13,11 @@ pub enum Grows {
     Rightwards,
 }
 
-pub fn drawer_handle(width: DrawerWidth, grows: Grows, named: String) -> impl IntoView {
+pub fn drawer_handle(
+    width: DrawerWidth,
+    grows: Grows,
+    named: impl Fn() -> String + Send + Sync + 'static,
+) -> impl IntoView {
     let dragging = StoredValue::new(None::<(f64, f64)>);
     let towards = move |moved: f64| match grows {
         Grows::Rightwards => moved,

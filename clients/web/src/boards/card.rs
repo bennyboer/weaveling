@@ -1,3 +1,4 @@
+use fluent_bundle::FluentArgs;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
@@ -8,6 +9,7 @@ use crate::boards::carrying::{Carrying, EVERY_HANDLE, Held, nudge};
 use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Spot};
 use crate::ideas::model::{Idea, IdeaId};
+use crate::speech::say_with;
 
 pub fn card(href: String, idea: Idea, at: Placement, handles: Handles) -> impl IntoView {
     let shown = idea.shown_as().to_owned();
@@ -87,10 +89,12 @@ fn grip(idea: IdeaId, held: Held, at: Placement, shown: String, handles: Handles
     html::div()
         .class(format!("grip {}", held.side()))
         .attr("role", "separator")
-        .attr(
-            "aria-label",
-            format!("Resize {shown} from the {}", held.side()),
-        )
+        .attr("aria-label", {
+            let shown = shown.clone();
+            let side = held.side();
+
+            move || say_about_side(&shown, side)
+        })
         .on(ev::pointerdown, move |event| {
             grab(&event, idea.clone(), held, at, handles);
         })
@@ -209,4 +213,12 @@ fn name(href: String, shown: String) -> impl IntoView {
 
 fn opening_elsewhere(event: &ev::MouseEvent) -> bool {
     event.ctrl_key() || event.meta_key() || event.shift_key()
+}
+
+fn say_about_side(shown: &str, side: &str) -> String {
+    let mut args = FluentArgs::new();
+    args.set("idea", shown.to_owned());
+    args.set("side", side.to_owned());
+
+    say_with("board-resize", &args)
 }

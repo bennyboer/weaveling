@@ -137,3 +137,49 @@ refused-scene-id-invalid = Das ist keine gültige Szenen-ID.
 refused-scene-title-control-character = Der Titel einer Szene darf keine Steuerzeichen enthalten.
 refused-scene-title-too-long = Der Titel einer Szene darf höchstens { $max } Zeichen lang sein, dieser hat { $actual }.
 refused-quotation-never-restyled = Die Anführungszeichen dieses Buchs wurden nie neu gesetzt.
+
+untitled = Ohne Titel
+board = Pinnwand
+board-not-on-it = Nicht an der Pinnwand · { $count }
+board-waiting = Ideen, die nicht an der Pinnwand hängen
+board-every-idea-pinned = Jede Idee hängt an der Pinnwand.
+board-how-to-pin = Klick auf eine Idee, um sie dort anzupinnen, wo Platz ist.
+board-pin = { $idea } anpinnen
+board-actions = Aktionen für { $idea }
+board-rename = { $idea } umbenennen
+board-open = { $idea } öffnen
+board-unpin = { $idea } abnehmen
+board-capturing = Was ist die Idee?
+board-zoom = Zoom
+board-zoom-out = Verkleinern
+board-zoom-reset = Zoom zurücksetzen
+board-zoom-in = Vergrößern
+tray = Ablage
+inspector = Inspektor
+inspector-idea-name = Name der Idee
+inspector-appears-in = Kommt vor in
+inspector-appears-nowhere = Noch nicht im Buch — kein Abschnitt vermerkt sie, keine Szene greift auf sie zurück.
+board-resize =
+    { $side ->
+        [top] Größe von { $idea } oben ändern
+        [bottom] Größe von { $idea } unten ändern
+        [left] Größe von { $idea } links ändern
+        [right] Größe von { $idea } rechts ändern
+        [top-left] Größe von { $idea } oben links ändern
+        [top-right] Größe von { $idea } oben rechts ändern
+        [bottom-left] Größe von { $idea } unten links ändern
+        [bottom-right] Größe von { $idea } unten rechts ändern
+       *[other] Größe von { $idea } ändern
+    }
+drawer-close =
+    { $drawer ->
+        [tray] Ablage schließen
+        [contents] Inhaltsverzeichnis schließen
+       *[other] Schließen
+    }
+drawer-resize =
+    { $drawer ->
+        [tray] Breite der Ablage ändern
+        [contents] Breite des Inhaltsverzeichnisses ändern
+       *[other] Breite ändern
+    }

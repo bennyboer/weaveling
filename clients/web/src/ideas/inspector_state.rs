@@ -10,6 +10,7 @@ use crate::outline::service as outline_service;
 use crate::route;
 use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scene_service;
+use crate::speech::say;
 
 #[derive(Clone, Copy)]
 pub struct InspectorState {
@@ -150,7 +151,7 @@ impl InspectorState {
                     .find(|section| section.id == id)
                     .map(|section| section.title.clone())
                     .filter(|title| !title.is_empty())
-                    .unwrap_or_else(|| "Untitled".to_owned());
+                    .unwrap_or_else(|| say("untitled"));
 
                 (id, named)
             })

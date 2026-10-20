@@ -17,6 +17,7 @@ use crate::ideas::inspector_state::InspectorState;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::problem::problem_to_dismiss;
 use crate::route;
+use crate::speech::{said, say_about};
 use crate::tray::laid_out;
 
 const DOTS: i64 = 20;
@@ -58,7 +59,13 @@ pub fn BoardView(project: String) -> impl IntoView {
         laid_out(
             corkboard(project, handles).into_any(),
             kept(handles, inspector).into_any(),
-            move || format!("Not on the board \u{00b7} {}", state.unpinned().len()),
+            move || {
+                say_about(
+                    "board-not-on-it",
+                    "count",
+                    &state.unpinned().len().to_string(),
+                )
+            },
         ),
     ))
 }
@@ -68,12 +75,16 @@ fn kept(handles: Handles, inspector: InspectorState) -> impl IntoView {
 
     (
         docked(inspector),
-        html::p()
-            .class("tally")
-            .child(move || format!("Not on the board \u{00b7} {}", state.unpinned().len())),
+        html::p().class("tally").child(move || {
+            say_about(
+                "board-not-on-it",
+                "count",
+                &state.unpinned().len().to_string(),
+            )
+        }),
         html::ul()
             .class("waiting")
-            .attr("aria-label", "Ideas not on the board")
+            .attr("aria-label", said("board-waiting"))
             .child(move || {
                 state
                     .unpinned()
@@ -85,12 +96,10 @@ fn kept(handles: Handles, inspector: InspectorState) -> impl IntoView {
             (state.ready() && state.unpinned().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child("Every idea is on the board.")
+                    .child(said("board-every-idea-pinned"))
             })
         },
-        html::p()
-            .class("how")
-            .child("Click an idea to pin it where there is room."),
+        html::p().class("how").child(said("board-how-to-pin")),
     )
 }
 
@@ -117,7 +126,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
     html::section()
         .class("corkboard")
         .node_ref(board_ref)
-        .attr("aria-label", "Board")
+        .attr("aria-label", said("board"))
         .attr("style", move || viewport.get().grid(DOTS))
         .on(ev::pointerdown, move |event| {
             selected.set(None);
@@ -266,7 +275,11 @@ fn pinnable(idea: Idea, handles: Handles) -> impl IntoView {
     html::li().child(
         html::button()
             .r#type("button")
-            .attr("aria-label", format!("Pin {shown}"))
+            .attr("aria-label", {
+                let shown = shown.clone();
+
+                move || say_about("board-pin", "idea", &shown)
+            })
             .on(ev::click, move |_| {
                 handles
                     .state

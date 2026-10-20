@@ -137,3 +137,49 @@ refused-scene-id-invalid = Isso não é um ID de cena válido.
 refused-scene-title-control-character = O título de uma cena não pode conter caracteres de controle.
 refused-scene-title-too-long = O título de uma cena pode ter no máximo { $max } caracteres; este tem { $actual }.
 refused-quotation-never-restyled = As aspas deste livro nunca foram reescritas.
+
+untitled = Sem título
+board = Quadro
+board-not-on-it = Fora do quadro · { $count }
+board-waiting = Ideias fora do quadro
+board-every-idea-pinned = Todas as ideias estão no quadro.
+board-how-to-pin = Clique numa ideia para fixá-la onde houver espaço.
+board-pin = Fixar { $idea }
+board-actions = Ações para { $idea }
+board-rename = Renomear { $idea }
+board-open = Abrir { $idea }
+board-unpin = Tirar { $idea } do quadro
+board-capturing = Qual é a ideia?
+board-zoom = Zoom
+board-zoom-out = Diminuir o zoom
+board-zoom-reset = Redefinir o zoom
+board-zoom-in = Aumentar o zoom
+tray = Bandeja
+inspector = Inspetor
+inspector-idea-name = Nome da ideia
+inspector-appears-in = Aparece em
+inspector-appears-nowhere = Ainda não está no livro — nenhuma seção a anota, nenhuma cena se inspira nela.
+board-resize =
+    { $side ->
+        [top] Redimensionar { $idea } por cima
+        [bottom] Redimensionar { $idea } por baixo
+        [left] Redimensionar { $idea } pela esquerda
+        [right] Redimensionar { $idea } pela direita
+        [top-left] Redimensionar { $idea } pelo canto superior esquerdo
+        [top-right] Redimensionar { $idea } pelo canto superior direito
+        [bottom-left] Redimensionar { $idea } pelo canto inferior esquerdo
+        [bottom-right] Redimensionar { $idea } pelo canto inferior direito
+       *[other] Redimensionar { $idea }
+    }
+drawer-close =
+    { $drawer ->
+        [tray] Fechar a bandeja
+        [contents] Fechar o sumário
+       *[other] Fechar
+    }
+drawer-resize =
+    { $drawer ->
+        [tray] Redimensionar a bandeja
+        [contents] Redimensionar o sumário
+       *[other] Redimensionar
+    }

@@ -1,7 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
-import { aNewProject, API } from "./support/shell";
+import {
+  aNewProject,
+  anOpenProject,
+  API,
+  captureIdea,
+  openTheBoard,
+} from "./support/shell";
 import { flow } from "./support/writing";
 
 const spoken = (page: Page) =>
@@ -24,7 +30,7 @@ test.describe("a browser asking for German", () => {
   });
 
   test("inside a project the masthead speaks German too", async ({ page }) => {
-    await aNewProject(page, "Ansichten");
+    await aNewProject(page, "Ansichten", { boardNamed: "Pinnwand" });
 
     const views = page.getByRole("navigation", { name: "Ansichten" });
     await expect(views.getByRole("link")).toHaveText([
@@ -45,7 +51,7 @@ test.describe("a browser asking for German", () => {
   test("deleting a project asks in German, the name in German quotation marks", async ({
     page,
   }) => {
-    const title = await aNewProject(page, "Löschen");
+    const title = await aNewProject(page, "Löschen", { boardNamed: "Pinnwand" });
     await page.goto("/");
 
     await page
@@ -96,7 +102,7 @@ test.describe("a browser asking for German, about a project's details", () => {
   test("rewriting the quotation marks is asked and followed in German, one scene told as one", async ({
     page,
   }) => {
-    await aNewProject(page, "Zeichen");
+    await aNewProject(page, "Zeichen", { boardNamed: "Pinnwand" });
     await aBookWithScenes(page, { "Part One": 1 });
     let asked = 0;
     await page.route("**/api/scenes/quotation-restylings/**", async (route) => {
@@ -145,7 +151,7 @@ test.describe("a browser asking for German, about a project's details", () => {
   test("a title the server refuses is told in German, with its numbers", async ({
     page,
   }) => {
-    await aNewProject(page, "Zu lang");
+    await aNewProject(page, "Zu lang", { boardNamed: "Pinnwand" });
     await page.getByRole("button", { name: "Projektdetails" }).click();
     const details = page.getByRole("dialog", { name: "Projektdetails" });
 
@@ -184,7 +190,7 @@ test.describe("a browser asking for German, about a project's details", () => {
   test("an idea's title the server refuses is told in German, with its numbers", async ({
     page,
   }) => {
-    await aNewProject(page, "Ideen");
+    await aNewProject(page, "Ideen", { boardNamed: "Pinnwand" });
     await page
       .getByRole("navigation", { name: "Ansichten" })
       .getByRole("link", { name: "Ideen" })
@@ -226,6 +232,59 @@ test.describe("a browser asking for German, about a project's details", () => {
       "Dieses Projekt gibt es nicht mehr.",
     );
   });
+});
+
+test("the board speaks the language chosen, at once", async ({ page }) => {
+  await anOpenProject(page, "Pinnwand");
+  await captureIdea(page, "The loom remembers");
+  await openTheBoard(page);
+
+  await picker(page, "Language").selectOption("de");
+
+  const board = page.getByRole("region", { name: "Pinnwand" });
+  await expect(board).toBeVisible();
+  await expect(page.getByText("Nicht an der Pinnwand · 1").first()).toBeVisible();
+  await expect(
+    page.getByText("Klick auf eine Idee, um sie dort anzupinnen, wo Platz ist."),
+  ).toBeVisible();
+  await page
+    .getByRole("list", { name: "Ideen, die nicht an der Pinnwand hängen" })
+    .getByRole("button", { name: "The loom remembers anpinnen" })
+    .click();
+  await expect(page.getByText("Jede Idee hängt an der Pinnwand.")).toBeVisible();
+
+  await board.locator(".pinned").filter({ hasText: "The loom remembers" }).click();
+  const actions = board.getByRole("toolbar", {
+    name: "Aktionen für The loom remembers",
+  });
+  for (const named of ["umbenennen", "öffnen", "abnehmen"]) {
+    await expect(
+      actions.getByRole("button", { name: `The loom remembers ${named}` }),
+    ).toBeVisible();
+  }
+  await expect(
+    board.getByRole("separator", {
+      name: "Größe von The loom remembers oben links ändern",
+    }),
+  ).toHaveCount(1);
+  const zoom = board.getByRole("toolbar", { name: "Zoom" });
+  for (const named of ["Verkleinern", "Zoom zurücksetzen", "Vergrößern"]) {
+    await expect(zoom.getByRole("button", { name: named })).toBeVisible();
+  }
+  await expect(page.getByLabel("Name der Idee")).toHaveValue(
+    "The loom remembers",
+  );
+  await expect(page.getByRole("heading", { name: "Kommt vor in" })).toBeVisible();
+  await expect(
+    page.getByText(
+      "Noch nicht im Buch — kein Abschnitt vermerkt sie, keine Szene greift auf sie zurück.",
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("separator", { name: "Breite der Ablage ändern" }),
+  ).toHaveCount(1);
+  await page.getByRole("button", { name: "Ablage schließen" }).click();
+  await expect(page.getByRole("button", { name: "Ablage schließen" })).toHaveCount(0);
 });
 
 test.describe("a browser asking for a language the app does not speak", () => {

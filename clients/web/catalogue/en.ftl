@@ -137,3 +137,49 @@ refused-scene-id-invalid = That is not a valid scene ID.
 refused-scene-title-control-character = A scene's title cannot hold control characters.
 refused-scene-title-too-long = A scene's title can be at most { $max } characters long; this one has { $actual }.
 refused-quotation-never-restyled = The quotation marks of this book were never rewritten.
+
+untitled = Untitled
+board = Board
+board-not-on-it = Not on the board · { $count }
+board-waiting = Ideas not on the board
+board-every-idea-pinned = Every idea is on the board.
+board-how-to-pin = Click an idea to pin it where there is room.
+board-pin = Pin { $idea }
+board-actions = Actions for { $idea }
+board-rename = Rename { $idea }
+board-open = Open { $idea }
+board-unpin = Unpin { $idea }
+board-capturing = What is the idea?
+board-zoom = Zoom
+board-zoom-out = Zoom out
+board-zoom-reset = Reset the zoom
+board-zoom-in = Zoom in
+tray = Tray
+inspector = Inspector
+inspector-idea-name = Idea name
+inspector-appears-in = Appears in
+inspector-appears-nowhere = Not in the book yet — no section notes it, no scene draws on it.
+board-resize =
+    { $side ->
+        [top] Resize { $idea } from the top
+        [bottom] Resize { $idea } from the bottom
+        [left] Resize { $idea } from the left
+        [right] Resize { $idea } from the right
+        [top-left] Resize { $idea } from the top-left
+        [top-right] Resize { $idea } from the top-right
+        [bottom-left] Resize { $idea } from the bottom-left
+        [bottom-right] Resize { $idea } from the bottom-right
+       *[other] Resize { $idea }
+    }
+drawer-close =
+    { $drawer ->
+        [tray] Close the tray
+        [contents] Close the contents
+       *[other] Close
+    }
+drawer-resize =
+    { $drawer ->
+        [tray] Resize the tray
+        [contents] Resize the contents
+       *[other] Resize
+    }

@@ -137,3 +137,49 @@ refused-scene-id-invalid = Ce n’est pas un identifiant de scène valide.
 refused-scene-title-control-character = Le titre d’une scène ne peut pas contenir de caractères de contrôle.
 refused-scene-title-too-long = Le titre d’une scène peut compter au plus { $max } caractères ; celui-ci en a { $actual }.
 refused-quotation-never-restyled = Les guillemets de ce livre n’ont jamais été réécrits.
+
+untitled = Sans titre
+board = Tableau
+board-not-on-it = Hors du tableau · { $count }
+board-waiting = Idées hors du tableau
+board-every-idea-pinned = Toutes les idées sont sur le tableau.
+board-how-to-pin = Cliquez sur une idée pour l’épingler là où il y a de la place.
+board-pin = Épingler { $idea }
+board-actions = Actions pour { $idea }
+board-rename = Renommer { $idea }
+board-open = Ouvrir { $idea }
+board-unpin = Retirer { $idea } du tableau
+board-capturing = Quelle est l’idée ?
+board-zoom = Zoom
+board-zoom-out = Zoom arrière
+board-zoom-reset = Réinitialiser le zoom
+board-zoom-in = Zoom avant
+tray = Volet
+inspector = Inspecteur
+inspector-idea-name = Nom de l’idée
+inspector-appears-in = Apparaît dans
+inspector-appears-nowhere = Pas encore dans le livre — aucune section ne la note, aucune scène ne s’en inspire.
+board-resize =
+    { $side ->
+        [top] Redimensionner { $idea } par le haut
+        [bottom] Redimensionner { $idea } par le bas
+        [left] Redimensionner { $idea } par la gauche
+        [right] Redimensionner { $idea } par la droite
+        [top-left] Redimensionner { $idea } par le coin supérieur gauche
+        [top-right] Redimensionner { $idea } par le coin supérieur droit
+        [bottom-left] Redimensionner { $idea } par le coin inférieur gauche
+        [bottom-right] Redimensionner { $idea } par le coin inférieur droit
+       *[other] Redimensionner { $idea }
+    }
+drawer-close =
+    { $drawer ->
+        [tray] Fermer le volet
+        [contents] Fermer la table des matières
+       *[other] Fermer
+    }
+drawer-resize =
+    { $drawer ->
+        [tray] Redimensionner le volet
+        [contents] Redimensionner la table des matières
+       *[other] Redimensionner
+    }

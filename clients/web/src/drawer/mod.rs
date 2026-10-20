@@ -8,6 +8,7 @@ use crate::drawer::handle::{Grows, drawer_handle};
 use crate::drawer::width::DrawerWidth;
 use crate::icons::{Icon, mark};
 use crate::kept::{keep, recall};
+use crate::speech::say_about;
 
 const OPEN: &str = "open";
 const SHUT: &str = "shut";
@@ -133,7 +134,7 @@ where
                         Edge::Left => Grows::Rightwards,
                         Edge::Right => Grows::Leftwards,
                     },
-                    format!("Resize {called}"),
+                    move || say_about("drawer-resize", "drawer", called),
                 ),
                 html::div().class("inside").child((
                     html::div().class("head").child((
@@ -141,7 +142,9 @@ where
                         html::button()
                             .r#type("button")
                             .class("shut")
-                            .attr("aria-label", format!("Close {called}"))
+                            .attr("aria-label", move || {
+                                say_about("drawer-close", "drawer", called)
+                            })
                             .on(ev::click, move |_| drawer.close())
                             .child("\u{00d7}"),
                     )),

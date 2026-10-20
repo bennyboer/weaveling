@@ -41,7 +41,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
         Inside {
             id: INSPECTOR,
             named: named.into(),
-            called: "the tray",
+            called: "tray",
             head: html::p().class("tally").child(named),
             body: move || match inspector.inspected() {
                 None => html::p()

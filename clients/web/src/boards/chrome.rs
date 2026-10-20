@@ -8,6 +8,7 @@ use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Spot};
 use crate::boards::viewport::{NEARER, Viewport};
 use crate::ideas::model::Idea;
+use crate::speech::{said, say_about};
 
 const ROOM_ABOVE: i64 = 42;
 const BAR_GAP: i64 = 8;
@@ -30,7 +31,7 @@ pub fn actions(href: String, idea: Idea, at: Placement, handles: Handles) -> imp
         .class("pinned-actions")
         .class(("below", move || alongside().1))
         .attr("role", "toolbar")
-        .attr("aria-label", format!("Actions for {shown}"))
+        .attr("aria-label", about("board-actions", &shown))
         .attr("style", move || {
             let (corner, cramped, tall) = alongside();
             let top = match cramped {
@@ -42,23 +43,33 @@ pub fn actions(href: String, idea: Idea, at: Placement, handles: Handles) -> imp
         })
         .on(ev::pointerdown, |event| event.stop_propagation())
         .child((
-            deed(format!("Rename {shown}"), "\u{270e}", move || {
+            deed(about("board-rename", &shown), "\u{270e}", move || {
                 handles.naming.set(Some(Naming::Renaming {
                     idea: renamed.clone(),
                     at,
                     was: called.clone(),
                 }));
             }),
-            deed(format!("Open {shown}"), "\u{2197}", move || {
+            deed(about("board-open", &shown), "\u{2197}", move || {
                 opening(&href, Default::default());
             }),
-            deed(format!("Unpin {shown}"), "\u{00d7}", move || {
+            deed(about("board-unpin", &shown), "\u{00d7}", move || {
                 handles.state.unpin(unpinned.clone());
             }),
         ))
 }
 
-fn deed(what: String, glyph: &'static str, done: impl Fn() + 'static) -> impl IntoView {
+fn about(message: &'static str, shown: &str) -> impl Fn() -> String + Send + Sync + use<> {
+    let shown = shown.to_owned();
+
+    move || say_about(message, "idea", &shown)
+}
+
+fn deed(
+    what: impl Fn() -> String + Send + Sync + 'static,
+    glyph: &'static str,
+    done: impl Fn() + 'static,
+) -> impl IntoView {
     html::button()
         .r#type("button")
         .attr("aria-label", what)
@@ -141,25 +152,25 @@ pub fn zooming(viewport: RwSignal<Viewport>, board: NodeRef<html::Section>) -> i
     html::div()
         .class("zooming")
         .attr("role", "toolbar")
-        .attr("aria-label", "Zoom")
+        .attr("aria-label", said("board-zoom"))
         .on(ev::pointerdown, |event| event.stop_propagation())
         .on(ev::wheel, |event| event.stop_propagation())
         .child((
-            deed("Zoom out".to_owned(), "\u{2212}", move || {
+            deed(said("board-zoom-out"), "\u{2212}", move || {
                 let middle = middle_of(board);
                 viewport.update(|it| *it = it.zoomed(middle, 1.0 / NEARER));
             }),
             html::button()
                 .r#type("button")
                 .class("reading")
-                .attr("aria-label", "Reset the zoom")
+                .attr("aria-label", said("board-zoom-reset"))
                 .on(ev::click, move |event| {
                     event.stop_propagation();
                     let middle = middle_of(board);
                     viewport.update(|it| *it = it.unzoomed(middle));
                 })
                 .child(move || viewport.get().as_percent()),
-            deed("Zoom in".to_owned(), "+", move || {
+            deed(said("board-zoom-in"), "+", move || {
                 let middle = middle_of(board);
                 viewport.update(|it| *it = it.zoomed(middle, NEARER));
             }),

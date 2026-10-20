@@ -137,3 +137,49 @@ refused-scene-id-invalid = Eso no es un ID de escena válido.
 refused-scene-title-control-character = El título de una escena no puede contener caracteres de control.
 refused-scene-title-too-long = El título de una escena puede tener como máximo { $max } caracteres; este tiene { $actual }.
 refused-quotation-never-restyled = Las comillas de este libro nunca se reescribieron.
+
+untitled = Sin título
+board = Tablero
+board-not-on-it = Fuera del tablero · { $count }
+board-waiting = Ideas fuera del tablero
+board-every-idea-pinned = Todas las ideas están en el tablero.
+board-how-to-pin = Haz clic en una idea para fijarla donde haya sitio.
+board-pin = Fijar { $idea }
+board-actions = Acciones para { $idea }
+board-rename = Cambiar el nombre de { $idea }
+board-open = Abrir { $idea }
+board-unpin = Quitar { $idea } del tablero
+board-capturing = ¿Cuál es la idea?
+board-zoom = Zoom
+board-zoom-out = Alejar
+board-zoom-reset = Restablecer el zoom
+board-zoom-in = Acercar
+tray = Bandeja
+inspector = Inspector
+inspector-idea-name = Nombre de la idea
+inspector-appears-in = Aparece en
+inspector-appears-nowhere = Todavía no está en el libro: ninguna sección la anota, ninguna escena se inspira en ella.
+board-resize =
+    { $side ->
+        [top] Cambiar el tamaño de { $idea } desde arriba
+        [bottom] Cambiar el tamaño de { $idea } desde abajo
+        [left] Cambiar el tamaño de { $idea } desde la izquierda
+        [right] Cambiar el tamaño de { $idea } desde la derecha
+        [top-left] Cambiar el tamaño de { $idea } desde arriba a la izquierda
+        [top-right] Cambiar el tamaño de { $idea } desde arriba a la derecha
+        [bottom-left] Cambiar el tamaño de { $idea } desde abajo a la izquierda
+        [bottom-right] Cambiar el tamaño de { $idea } desde abajo a la derecha
+       *[other] Cambiar el tamaño de { $idea }
+    }
+drawer-close =
+    { $drawer ->
+        [tray] Cerrar la bandeja
+        [contents] Cerrar el índice
+       *[other] Cerrar
+    }
+drawer-resize =
+    { $drawer ->
+        [tray] Cambiar el ancho de la bandeja
+        [contents] Cambiar el ancho del índice
+       *[other] Cambiar el ancho
+    }

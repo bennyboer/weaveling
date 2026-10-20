@@ -5,6 +5,7 @@ use crate::boards::carrying::Carrying;
 use crate::boards::model::Placement;
 use crate::boards::viewport::Viewport;
 use crate::ideas::model::IdeaId;
+use crate::speech::{say, say_about};
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum Naming {
@@ -35,8 +36,8 @@ impl Naming {
 
     pub fn asked(&self) -> String {
         match self {
-            Self::Capturing { .. } => "What is the idea?".to_owned(),
-            Self::Renaming { was, .. } => format!("Rename {was}"),
+            Self::Capturing { .. } => say("board-capturing"),
+            Self::Renaming { was, .. } => say_about("board-rename", "idea", was),
         }
     }
 

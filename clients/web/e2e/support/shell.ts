@@ -11,7 +11,11 @@ export const views = (page: Page) =>
 const slugOf = (title: string) =>
   title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
-export async function aNewProject(page: Page, named: string): Promise<string> {
+export async function aNewProject(
+  page: Page,
+  named: string,
+  { boardNamed = "Board" } = {},
+): Promise<string> {
   const title = aName(named);
   const made = await page.request.post(`${API}/projects`, {
     data: { name: title, language: "en" },
@@ -26,7 +30,7 @@ export async function aNewProject(page: Page, named: string): Promise<string> {
     .toBe(true);
 
   await page.goto(`/projects/${slugOf(title)}-${id}/board`);
-  await onTheBoard(page);
+  await onTheBoard(page, boardNamed);
 
   return title;
 }
@@ -51,8 +55,8 @@ export async function captureIdea(page: Page, idea: string) {
   await catalogued(page, [idea]);
 }
 
-export async function onTheBoard(page: Page) {
-  await expect(page.getByRole("region", { name: "Board" })).toBeVisible();
+export async function onTheBoard(page: Page, named = "Board") {
+  await expect(page.getByRole("region", { name: named })).toBeVisible();
 }
 
 export async function openTheBoard(page: Page) {
