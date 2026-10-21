@@ -304,6 +304,10 @@ test("a rename on the board answered after a newer one was told leaves the newer
     }
   });
   await page.route(new RegExp(`/api/ideas/${loom}$`), async (route) => {
+    if (route.request().method() !== "PATCH") {
+      await route.continue();
+      return;
+    }
     const response = await route.fetch();
     await anotherAuthor(page, "patch", `/ideas/${loom}`, { title: "The heddle" });
     await expect.poll(() => heard).toBe(2);

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use eventpublishing::published_in;
+use eventpublishing::{PublishedEvent, published_in};
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use serde_json::{Value, json};
 
@@ -8,6 +8,7 @@ use crate::Broadcaster;
 pub struct BroadcastChangesListener {
     named: ListenerName,
     listens_to: Subscription,
+    about: Option<String>,
     broadcaster: Broadcaster,
 }
 
@@ -18,9 +19,27 @@ impl BroadcastChangesListener {
                 .expect("a broadcast's name is written at compile time"),
             listens_to: Subscription::parse(listens_to)
                 .expect("a broadcast's subscription is written at compile time"),
+            about: None,
             broadcaster,
         }
     }
+
+    pub fn under(named: &str, listens_to: &str, about: &str, broadcaster: Broadcaster) -> Self {
+        Self {
+            about: Some(about.to_owned()),
+            ..Self::new(named, listens_to, broadcaster)
+        }
+    }
+}
+
+pub fn frame_of(published: &PublishedEvent<Value>) -> String {
+    json!({
+        "of": published.aggregate.id,
+        "version": published.aggregate.version,
+        "at": published.occurred_at,
+        "event": published.event.body,
+    })
+    .to_string()
 }
 
 #[async_trait]
@@ -43,12 +62,8 @@ impl Listener for BroadcastChangesListener {
 
     async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
         if let Ok(published) = published_in::<Value>(message) {
-            let frame = json!({
-                "version": published.aggregate.version,
-                "event": published.event.body,
-            });
-            self.broadcaster
-                .tell(&published.aggregate.id, frame.to_string());
+            let about = self.about.as_deref().unwrap_or(&published.aggregate.id);
+            self.broadcaster.tell(about, frame_of(&published));
         }
 
         Ok(())
@@ -104,7 +119,9 @@ mod tests {
         assert_eq!(
             frame,
             json!({
+                "of": "outline_1",
                 "version": 7,
+                "at": "1970-01-01T00:16:40Z",
                 "event": { "name": "SECTION_RETITLED", "section": "section_1", "title": "Part One" },
             })
         );
@@ -129,6 +146,36 @@ mod tests {
             timeout(Duration::from_millis(100), hearing.next())
                 .await
                 .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn a_broadcast_under_one_name_tells_every_aggregate_s_change_there() {
+        let broadcaster = Broadcaster::new();
+        let mut everyone = broadcaster.hear("outlines");
+        let mut one = broadcaster.hear("outline_1");
+
+        BroadcastChangesListener::under(
+            "broadcast-outline-changes",
+            "outline.#",
+            "outlines",
+            broadcaster.clone(),
+        )
+        .handle(&retitled("outline_1", 7))
+        .await
+        .expect("passing on is not a failure");
+
+        let told = timeout(Duration::from_millis(100), everyone.next())
+            .await
+            .expect("the change is passed on at once")
+            .expect("the broadcaster still tells");
+        let frame: Value = serde_json::from_str(&told).expect("a frame is JSON");
+        assert_eq!(frame["of"], "outline_1");
+        assert!(
+            timeout(Duration::from_millis(100), one.next())
+                .await
+                .is_err(),
+            "told under the one name, not under the aggregate's own"
         );
     }
 

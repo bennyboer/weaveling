@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 
 use crate::http::ApiError;
-use crate::projects::model::{Project, ProjectDetails, ProjectId};
+use crate::live::{Following, Told};
+use crate::projects::model::{Project, ProjectDetails, ProjectId, taken_in};
 use crate::projects::service;
 
 type CreateAction = Action<(String, ProjectDetails), Result<Project, ApiError>>;
@@ -22,23 +23,40 @@ impl Workspace {
         let known = RwSignal::new(None::<Vec<Project>>);
         let problem = RwSignal::new(None);
 
-        let listing = Action::new_local(move |_: &()| async move {
-            match service::list().await {
-                Ok(mut listed) => known.update(|held| {
-                    for written in held.take().unwrap_or_default() {
-                        put(&mut listed, written);
+        let latest = StoredValue::new(0_u64);
+        let listing = Action::new_local(move |_: &()| {
+            let asked = latest.get_value() + 1;
+            latest.set_value(asked);
+
+            async move {
+                let answer = service::list().await;
+                if latest.try_get_value() != Some(asked) {
+                    return;
+                }
+                match answer {
+                    Ok(listed) => _ = known.try_set(Some(listed)),
+                    Err(failure) => {
+                        known.update(|held| {
+                            held.get_or_insert_with(Vec::new);
+                        });
+                        problem.set(Some(failure));
                     }
-                    *held = Some(listed);
-                }),
-                Err(failure) => {
-                    known.update(|held| {
-                        held.get_or_insert_with(Vec::new);
-                    });
-                    problem.set(Some(failure));
                 }
             }
         });
-        listing.dispatch(());
+        StoredValue::new_local(Following::start(
+            "/api/projects/live",
+            move |told: Told| {
+                let Some(held) = known.try_get_untracked() else {
+                    return;
+                };
+                match held.and_then(|held| taken_in(held, told)) {
+                    Some(next) => _ = known.try_set(Some(next)),
+                    None => _ = listing.dispatch(()),
+                }
+            },
+            move || _ = listing.dispatch(()),
+        ));
 
         Self {
             known,
@@ -142,7 +160,8 @@ fn keep(known: RwSignal<Option<Vec<Project>>>, change: impl FnOnce(&mut Vec<Proj
 
 fn put(held: &mut Vec<Project>, project: Project) {
     match held.iter_mut().find(|known| known.id == project.id) {
-        Some(known) => *known = project,
+        Some(known) if known.version < project.version => *known = project,
+        Some(_) => {}
         None => held.push(project),
     }
     held.sort_by(|one, other| other.id.cmp(&one.id));

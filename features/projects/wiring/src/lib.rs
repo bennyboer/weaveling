@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
 use eventsourcing::EventStore;
+use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use projects_catalog::InMemoryProjectCatalog;
+use projects_contract::EVERY_PROJECT;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectService};
 use projects_messaging::CatalogueProjectsListener;
 use wiring::{Context, EventSourced, Feature, Wired};
+
+pub const LIVE: &str = "broadcast-project-changes";
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<ProjectEvent>>,
@@ -28,8 +32,18 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
 
-    Wired::serving(projects_rest::router(service(ports, context)))
-        .listening(vec![Arc::new(projector)])
+    let broadcaster = Broadcaster::new();
+    let broadcast = BroadcastChangesListener::under(
+        LIVE,
+        EVERY_PROJECT,
+        projects_rest::FOLLOWED,
+        broadcaster.clone(),
+    );
+
+    Wired::serving(
+        projects_rest::router(service(ports, context)).merge(projects_rest::live(broadcaster)),
+    )
+    .listening(vec![Arc::new(broadcast), Arc::new(projector)])
 }
 
 pub struct ProjectFeature;

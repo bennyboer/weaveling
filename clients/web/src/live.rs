@@ -24,6 +24,8 @@ pub struct Told {
     pub of: Option<String>,
     pub version: u64,
     #[serde(default)]
+    pub at: Option<String>,
+    #[serde(default)]
     pub event: Value,
 }
 

@@ -70,15 +70,15 @@ async fn whoever_follows_a_project_is_told_each_change_to_its_ideas_by_the_idea_
 
     assert_eq!(
         told(&mut socket).await,
-        json!({ "of": idea.id, "version": 1, "event": { "name": "CAPTURED", "project": "project_1", "title": "The Loom" } })
+        json!({ "of": idea.id, "version": 1, "at": "1970-01-01T00:00:00Z", "event": { "name": "CAPTURED", "project": "project_1", "title": "The Loom" } })
     );
     assert_eq!(
         told(&mut socket).await,
-        json!({ "of": idea.id, "version": 2, "event": { "name": "RETITLED", "title": "The Weft" } })
+        json!({ "of": idea.id, "version": 2, "at": "1970-01-01T00:00:00Z", "event": { "name": "RETITLED", "title": "The Weft" } })
     );
     assert_eq!(
         told(&mut socket).await,
-        json!({ "of": idea.id, "version": 3, "event": { "name": "DISCARDED" } }),
+        json!({ "of": idea.id, "version": 3, "at": "1970-01-01T00:00:00Z", "event": { "name": "DISCARDED" } }),
         "a discarded idea still belongs to its project, so its followers hear it go"
     );
 }

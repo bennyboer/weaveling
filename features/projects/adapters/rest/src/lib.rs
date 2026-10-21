@@ -1,5 +1,6 @@
 use axum::Json;
 use axum::Router;
+use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
@@ -7,6 +8,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, put};
 use clock::text::serialize;
 use eventsourcing::{Agent, Standing, Version};
+use live::{Broadcaster, streaming};
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
     RenameProjectRequest, refused,
@@ -16,6 +18,18 @@ use projects_core::{
     Project, ProjectError, ProjectService, ProjectServiceError, ProjectSummary, RawDetails,
 };
 use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
+
+pub const FOLLOWED: &str = "projects";
+
+pub fn live(broadcaster: Broadcaster) -> Router {
+    Router::new()
+        .route("/projects/live", get(follow))
+        .with_state(broadcaster)
+}
+
+async fn follow(upgrade: WebSocketUpgrade, State(broadcaster): State<Broadcaster>) -> Response {
+    streaming(upgrade, broadcaster.hear(FOLLOWED))
+}
 
 pub fn router(projects: ProjectService) -> Router {
     Router::new()

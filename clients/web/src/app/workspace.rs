@@ -1,6 +1,6 @@
-use leptos::IntoView;
 use leptos::html;
 use leptos::prelude::*;
+use leptos::{IntoView, view};
 
 use crate::problem::problem;
 use crate::projects::confirm_delete::{ConfirmDelete, ConfirmDeleteProps};
@@ -21,18 +21,18 @@ pub fn WorkspacePage(workspace: Workspace, overlays: Overlays) -> impl IntoView 
             NewProject(NewProjectProps { workspace }),
             move || workspace.problem().map(problem),
             move || placeholder(workspace),
-            html::ul().class("projects").child(move || {
-                workspace
-                    .projects()
-                    .into_iter()
-                    .map(|project| {
-                        ProjectRow(ProjectRowProps {
-                            project,
-                            workspace,
-                            overlays,
-                        })
-                    })
-                    .collect_view()
+            html::ul().class("projects").child(view! {
+                <For
+                    each=move || workspace.projects()
+                    key=|project| (project.id.clone(), project.version)
+                    let:project
+                >
+                    {ProjectRow(ProjectRowProps {
+                        project,
+                        workspace,
+                        overlays,
+                    })}
+                </For>
             }),
             ConfirmDelete(ConfirmDeleteProps {
                 workspace,

@@ -173,6 +173,7 @@ test.describe("a browser asking for German, about a project's details", () => {
       data: { name: title, language: "de" },
     });
     const { id } = await made.json();
+    await page.routeWebSocket(/\/api\/projects\/live$/, () => {});
     await page.goto("/");
     const row = page.getByRole("listitem").filter({ hasText: title });
     await expect(row).toBeVisible();

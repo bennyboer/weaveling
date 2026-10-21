@@ -8,4 +8,7 @@ mod project_service;
 mod projects_api;
 
 #[cfg(test)]
+mod projects_live;
+
+#[cfg(test)]
 mod wiring;

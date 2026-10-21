@@ -170,6 +170,7 @@ mod tests {
             Told {
                 of: Some(of.to_owned()),
                 version,
+                at: None,
                 event,
             }
         }
@@ -304,6 +305,7 @@ mod tests {
                     Told {
                         of: None,
                         version: 2,
+                        at: None,
                         event: json!({ "name": "DISCARDED" }),
                     },
                 ),
