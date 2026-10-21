@@ -1,6 +1,6 @@
 import { test, expect, type BrowserContext, type Page } from "@playwright/test";
 
-import { cardNamed, corkboard, seenAt, zooming } from "./support/board";
+import { boardOnServer, cardNamed, corkboard, seenAt, zooming } from "./support/board";
 import { aBookWithScenes } from "./support/book";
 import { anOpenProject, captureIdea, openTheBoard } from "./support/shell";
 import { openTheWritingView, saveState, scene } from "./support/writing";
@@ -110,20 +110,23 @@ test("one finger on the bare board pans it", async ({ page, context }) => {
     .toEqual({ x: -60, y: -100 });
 });
 
-test("a card is moved with a thumb", async ({ page, context }) => {
-  test.fail(true, "M15: the browser cancels a finger's drag on a card after its first move");
+test("a card is moved with a thumb, and stays where it was put", async ({ page, context }) => {
   await aBoardWithACard(page, "PhoneMoving");
   const before = await seenAt(page, "The loom remembers");
   const from = middleOf((await cardNamed(page, "The loom remembers").boundingBox())!);
+  const placed = (await boardOnServer(page)).ideas[0].spot;
 
   await (await fingers(page, context)).drag(from, { x: from.x + 80, y: from.y + 120 });
 
   await expect
     .poll(async () => {
       const now = await seenAt(page, "The loom remembers");
-      return Math.abs(now.x - before.x) + Math.abs(now.y - before.y) > 100;
-    }, { message: "the card goes where the thumb takes it, not the board under it" })
-    .toBe(true);
+      return { x: now.x - before.x, y: now.y - before.y };
+    }, { message: "the card goes where the thumb takes it, its name included" })
+    .toEqual({ x: 80, y: 120 });
+  await expect
+    .poll(async () => (await boardOnServer(page)).ideas[0].spot)
+    .toEqual({ x: placed.x + 80, y: placed.y + 120 });
 });
 
 test("two fingers pinching apart zoom the board in", async ({ page, context }) => {

@@ -110,6 +110,7 @@ $grip: 7px;
         min-height: 0;
         overflow-x: hidden;
         overflow-y: auto;
+        touch-action: none;
         overflow-wrap: anywhere;
         overscroll-behavior: contain;
         scrollbar-width: thin;
