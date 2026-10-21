@@ -82,7 +82,7 @@ impl Structure {
         let following = Following::start(
             &format!("/api/outlines/live?outline={outline}"),
             move |told| self.heard_of(told),
-            move || self.reload(),
+            || {},
         );
         _ = self
             .following

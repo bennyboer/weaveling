@@ -329,7 +329,7 @@ impl OutlineViewState {
                         None => _ = opening.dispatch(()),
                     }
                 },
-                move || _ = opening.dispatch(()),
+                || {},
             )));
         });
 

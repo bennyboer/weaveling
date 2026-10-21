@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum_test::{TestServer, TestWebSocket};
 use boards_contract::{BoardDTO, OpenBoardRequest, PinIdeaRequest, SizeDTO, SpotDTO};
 use clock::FixedClock;
-use serde_json::Value;
+use serde_json::{Value, json};
 use time::OffsetDateTime;
 use tokio::time::timeout;
 
@@ -47,12 +47,19 @@ async fn an_idea_pinned(server: &TestServer, board: &str, idea: &str) {
         .assert_status_ok();
 }
 
-async fn following(server: &TestServer, board: &str) -> TestWebSocket {
+async fn connected(server: &TestServer, board: &str) -> TestWebSocket {
     server
         .get_websocket(&format!("/boards/live?board={board}"))
         .await
         .into_websocket()
         .await
+}
+
+async fn following(server: &TestServer, board: &str) -> TestWebSocket {
+    let mut socket = connected(server, board).await;
+    told(&mut socket).await;
+
+    socket
 }
 
 async fn told(socket: &mut TestWebSocket) -> Value {
@@ -95,5 +102,21 @@ async fn another_board_changing_is_not_told() {
     assert_eq!(
         frame["event"]["idea"], "idea_mine",
         "the first thing told is about the board being followed"
+    );
+}
+
+#[tokio::test]
+async fn whoever_follows_a_board_is_first_told_the_version_it_stands_at() {
+    let (wired, server) = served();
+    let board = an_open_board(&server, "project_1").await;
+    wired.settle().await;
+    let now: BoardDTO = server.get(&format!("/boards/{board}")).await.json();
+
+    let mut socket = connected(&server, &board).await;
+
+    assert_eq!(
+        told(&mut socket).await,
+        json!({ "version": now.version }),
+        "a follower holding this version has missed nothing, one holding less opens it again"
     );
 }

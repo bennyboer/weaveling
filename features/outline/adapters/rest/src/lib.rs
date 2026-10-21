@@ -7,7 +7,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use eventsourcing::{Agent, Standing, Version};
-use live::{Broadcaster, streaming};
+use live::{Broadcaster, streaming, streaming_from};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -59,18 +59,32 @@ async fn open(
     ))
 }
 
-pub fn live(broadcaster: Broadcaster) -> Router {
+#[derive(Clone)]
+struct Live {
+    broadcaster: Broadcaster,
+    outlines: OutlineService,
+}
+
+pub fn live(broadcaster: Broadcaster, outlines: OutlineService) -> Router {
     Router::new()
         .route("/outlines/live", get(follow))
-        .with_state(broadcaster)
+        .with_state(Live {
+            broadcaster,
+            outlines,
+        })
 }
 
 async fn follow(
     upgrade: WebSocketUpgrade,
-    State(broadcaster): State<Broadcaster>,
+    State(live): State<Live>,
     Query(followed): Query<Followed>,
 ) -> Response {
-    streaming(upgrade, broadcaster.hear(&followed.outline))
+    let hearing = live.broadcaster.hear(&followed.outline);
+
+    match live.outlines.get(&followed.outline).await {
+        Ok(standing) => streaming_from(upgrade, standing.version.count(), hearing),
+        Err(_) => streaming(upgrade, hearing),
+    }
 }
 
 #[derive(Deserialize)]

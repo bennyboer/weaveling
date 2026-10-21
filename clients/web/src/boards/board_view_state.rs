@@ -144,7 +144,7 @@ impl BoardViewState {
                         None => _ = opening.dispatch(()),
                     }
                 },
-                move || _ = opening.dispatch(()),
+                || {},
             )));
         });
 

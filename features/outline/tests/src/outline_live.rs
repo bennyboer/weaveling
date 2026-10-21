@@ -5,7 +5,7 @@ use axum::http::StatusCode;
 use axum_test::{TestServer, TestWebSocket};
 use clock::FixedClock;
 use outline_contract::{AddSectionRequest, OpenOutlineRequest, OutlineDTO};
-use serde_json::Value;
+use serde_json::{Value, json};
 use time::OffsetDateTime;
 use tokio::time::timeout;
 
@@ -44,12 +44,19 @@ async fn a_section_added(server: &TestServer, outline: &str, title: &str) {
         .assert_status(StatusCode::CREATED);
 }
 
-async fn following(server: &TestServer, outline: &str) -> TestWebSocket {
+async fn connected(server: &TestServer, outline: &str) -> TestWebSocket {
     server
         .get_websocket(&format!("/outlines/live?outline={outline}"))
         .await
         .into_websocket()
         .await
+}
+
+async fn following(server: &TestServer, outline: &str) -> TestWebSocket {
+    let mut socket = connected(server, outline).await;
+    told(&mut socket).await;
+
+    socket
 }
 
 async fn told(socket: &mut TestWebSocket) -> Value {
@@ -92,5 +99,21 @@ async fn another_book_changing_is_not_told() {
     assert_eq!(
         frame["event"]["title"], "My part",
         "the first thing told is about the book being followed"
+    );
+}
+
+#[tokio::test]
+async fn whoever_follows_an_outline_is_first_told_the_version_it_stands_at() {
+    let (wired, server) = served();
+    let outline = an_open_outline(&server, "project_1").await;
+    wired.settle().await;
+    let now: OutlineDTO = server.get(&format!("/outlines/{outline}")).await.json();
+
+    let mut socket = connected(&server, &outline).await;
+
+    assert_eq!(
+        told(&mut socket).await,
+        json!({ "version": now.version }),
+        "a follower holding this version has missed nothing, one holding less opens it again"
     );
 }

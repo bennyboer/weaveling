@@ -4,7 +4,11 @@ import { aBookShaped } from "./support/book";
 import { aNewProject, aSceneMade, API, openTheOutline } from "./support/shell";
 import { savedTitles, titled } from "./support/writing";
 
-async function anOutlineFollowedLive(page: Page, named: string) {
+async function anOutlineFollowedLive(
+  page: Page,
+  named: string,
+  { routed = false } = {},
+) {
   await aNewProject(page, named);
   const book = await aBookShaped(page, [
     { title: "Part One" },
@@ -28,12 +32,14 @@ async function anOutlineFollowedLive(page: Page, named: string) {
     }
   });
   await openTheOutline(page);
-  await expect
-    .poll(() => opened, {
-      message:
-        "the outline is loaded, and loaded again once it is followed live",
-    })
-    .toBeGreaterThanOrEqual(2);
+  if (routed) {
+    await expect.poll(() => opened).toBe(1);
+  } else {
+    await expect
+      .poll(() => heard, { message: "followed live, told first where it stands" })
+      .toBe(1);
+  }
+  expect(opened, "loaded once, and not again as it is followed").toBe(1);
 
   return { ...book, reloads: () => opened, heard: () => heard };
 }
@@ -288,6 +294,7 @@ test("a move made from an outline that is behind is refused gently, and the outl
   const { outline, ids } = await anOutlineFollowedLive(
     page,
     "OutlineOvertaken",
+    { routed: true },
   );
   await anotherAuthor(
     page,
@@ -497,4 +504,29 @@ test("a change missed on the way opens the outline again, and the outline comes 
     titleOf(page, "The Very Beginning"),
     "the rename that was missed is there too, so the outline was opened again",
   ).toHaveValue("The Very Beginning");
+});
+
+test("an outline is opened once, and a change made before it is followed is caught up as it connects", async ({
+  page,
+}) => {
+  let connect = () => {};
+  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
+    connect = () => void socket.connectToServer();
+  });
+  const { outline, reloads } = await anOutlineFollowedLive(page, "OutlineHello", {
+    routed: true,
+  });
+
+  await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
+    title: "Written meanwhile",
+    under: null,
+    after: null,
+  });
+  connect();
+
+  await expect(
+    titleOf(page, "Written meanwhile"),
+    "told where the outline stands, a newer version than held, it is opened again",
+  ).toBeVisible();
+  expect(reloads()).toBe(2);
 });

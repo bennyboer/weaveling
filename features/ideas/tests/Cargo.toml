@@ -5,7 +5,7 @@ edition.workspace = true
 
 [dev-dependencies]
 axum = { workspace = true }
-axum-test = { workspace = true }
+axum-test = { workspace = true, features = ["ws"] }
 serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync"] }

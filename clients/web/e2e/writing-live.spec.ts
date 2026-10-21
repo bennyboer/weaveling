@@ -16,7 +16,7 @@ import {
   shown,
 } from "./support/writing";
 
-async function followingLive(page: Page) {
+async function followingLive(page: Page, { routed = false } = {}) {
   let opened = 0;
   let told = 0;
   page.on("websocket", (socket) => {
@@ -35,22 +35,29 @@ async function followingLive(page: Page) {
     }
   });
   await openTheWritingView(page);
-  await expect
-    .poll(() => opened, {
-      message: "the book is loaded, and loaded again once it is followed live",
-    })
-    .toBeGreaterThanOrEqual(2);
+  if (routed) {
+    await expect.poll(() => opened).toBe(1);
+  } else {
+    await expect
+      .poll(() => told, { message: "followed live, told first where it stands" })
+      .toBe(1);
+  }
+  expect(opened, "loaded once, and not again as it is followed").toBe(1);
 
   return { reloads: () => opened, heard: () => told };
 }
 
-async function aBookFollowedLive(page: Page, named: string) {
+async function aBookFollowedLive(
+  page: Page,
+  named: string,
+  { routed = false } = {},
+) {
   await aNewProject(page, named);
   const book = await aBookShaped(page, [
     { title: "Part One" },
     { title: "Part Two", after: "Part One" },
   ]);
-  const { reloads, heard } = await followingLive(page);
+  const { reloads, heard } = await followingLive(page, { routed });
 
   return { ...book, reloads, heard };
 }
@@ -168,7 +175,9 @@ test("what changed while the connection was down shows once it is back", async (
     }
     socket.connectToServer();
   });
-  const { outline, ids } = await aBookFollowedLive(page, "LiveCaughtUp");
+  const { outline, ids } = await aBookFollowedLive(page, "LiveCaughtUp", {
+    routed: true,
+  });
 
   await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
     title: "Written meanwhile",
@@ -782,7 +791,9 @@ test("a change made from a view that is behind is refused gently, and the view c
   page,
 }) => {
   await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, () => {});
-  const { outline, ids } = await aBookFollowedLive(page, "LiveOvertaken");
+  const { outline, ids } = await aBookFollowedLive(page, "LiveOvertaken", {
+    routed: true,
+  });
   await anotherAuthor(
     page,
     "delete",

@@ -5,8 +5,9 @@ use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 
 use crate::http::ApiError;
-use crate::ideas::model::Idea;
+use crate::ideas::model::{Idea, taken_in};
 use crate::ideas::service;
+use crate::live::{Following, Told};
 use crate::problem::problem;
 use crate::route;
 use crate::speech::said;
@@ -16,18 +17,38 @@ pub fn Pool(project: String) -> impl IntoView {
     let whose = project;
     let project = route::project_id(&whose);
     let failed = RwSignal::new(None::<ApiError>);
-    let captured = RwSignal::new(Vec::<Idea>::new());
+    let held = RwSignal::new(None::<Vec<Idea>>);
     let title: NodeRef<Input> = NodeRef::new();
 
-    let listed = {
+    let opening = {
         let project = project.clone();
 
-        LocalResource::new(move || {
+        Action::new_local(move |()| {
             let project = project.clone();
 
-            async move { service::list(&project).await }
+            async move {
+                match service::list(&project).await {
+                    Ok(found) => _ = held.try_set(Some(found)),
+                    Err(failure) => _ = failed.try_set(Some(failure)),
+                }
+            }
         })
     };
+
+    let following = StoredValue::new_local(Some(Following::start(
+        &format!("/api/ideas/live?project={project}"),
+        move |told: Told| {
+            let Some(Some(known)) = held.try_get_untracked() else {
+                return;
+            };
+            match taken_in(known, told) {
+                Some(next) => _ = held.try_set(Some(next)),
+                None => _ = opening.dispatch(()),
+            }
+        },
+        move || _ = opening.dispatch(()),
+    )));
+    on_cleanup(move || _ = following.try_update_value(|kept| *kept = None));
 
     let capturing = {
         let project = project.clone();
@@ -40,7 +61,13 @@ pub fn Pool(project: String) -> impl IntoView {
                 match service::capture(&project, &saying).await {
                     Ok(idea) => {
                         failed.set(None);
-                        captured.update(|held| held.push(idea));
+                        held.update(|known| {
+                            if let Some(known) = known
+                                && known.iter().all(|already| already.id != idea.id)
+                            {
+                                known.push(idea);
+                            }
+                        });
                     }
                     Err(failure) => failed.set(Some(failure)),
                 }
@@ -54,20 +81,7 @@ pub fn Pool(project: String) -> impl IntoView {
         field.set_value("");
     };
 
-    let ideas = move || {
-        let mut shown = match listed.get() {
-            Some(found) => found.as_ref().cloned().unwrap_or_default(),
-            None => Vec::new(),
-        };
-
-        for idea in captured.get() {
-            if !shown.iter().any(|already| already.id == idea.id) {
-                shown.push(idea);
-            }
-        }
-
-        shown
-    };
+    let ideas = move || held.get().unwrap_or_default();
 
     html::section().class("pool").child((
         html::h2().child(said("ideas")),
@@ -90,7 +104,7 @@ pub fn Pool(project: String) -> impl IntoView {
             )),
         move || failed.get().map(problem),
         move || {
-            (ideas().is_empty()).then(|| html::p().class("empty").child(said(nothing_yet(listed))))
+            (ideas().is_empty()).then(|| html::p().class("empty").child(said(nothing_yet(held))))
         },
         html::ul()
             .class("ideas")
@@ -104,8 +118,8 @@ pub fn Pool(project: String) -> impl IntoView {
     ))
 }
 
-fn nothing_yet(listed: LocalResource<Result<Vec<Idea>, ApiError>>) -> &'static str {
-    if listed.get().is_none() {
+fn nothing_yet(held: RwSignal<Option<Vec<Idea>>>) -> &'static str {
+    if held.with(Option::is_none) {
         "loading"
     } else {
         "ideas-empty"

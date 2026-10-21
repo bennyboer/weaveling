@@ -11,4 +11,7 @@ mod idea_sweeping;
 mod ideas_api;
 
 #[cfg(test)]
+mod ideas_live;
+
+#[cfg(test)]
 mod wiring;

@@ -1,6 +1,8 @@
+mod broadcasting;
 mod publishing;
 mod sweeping;
 
+pub use broadcasting::{BroadcastIdeaChangesListener, LIVE};
 pub use publishing::{UnreadableIdeaEvent, event_in, idea_in, message_for};
 pub use sweeping::{AT_MOST, DiscardOnProjectDeletedListener};
 

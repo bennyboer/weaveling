@@ -3814,6 +3814,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-ideas-core",
  "weaveling-ids",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-projects-contract",
 ]
@@ -3827,6 +3828,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-ideas-core",
+ "weaveling-live",
  "weaveling-serving",
 ]
 
@@ -3874,6 +3876,7 @@ dependencies = [
  "weaveling-ideas-messaging",
  "weaveling-ideas-rest",
  "weaveling-ideas-store",
+ "weaveling-live",
  "weaveling-outbox",
  "weaveling-wiring",
 ]

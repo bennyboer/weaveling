@@ -3,7 +3,10 @@ use std::sync::Arc;
 use eventsourcing::EventStore;
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaCatalog, IdeaEvent, IdeaService};
-use ideas_messaging::{CatalogueIdeasListener, DiscardOnProjectDeletedListener};
+use ideas_messaging::{
+    BroadcastIdeaChangesListener, CatalogueIdeasListener, DiscardOnProjectDeletedListener,
+};
+use live::Broadcaster;
 use outbox::Outbox;
 use wiring::{Context, EventSourced, Feature, Wired};
 
@@ -35,7 +38,18 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
 
-    Wired::serving(ideas_rest::router(ideas)).listening(vec![Arc::new(projector), Arc::new(sweep)])
+    let broadcaster = Broadcaster::new();
+    let broadcast = BroadcastIdeaChangesListener::new(
+        ports.events.clone(),
+        broadcaster.clone(),
+        context.clock.clone(),
+    );
+
+    Wired::serving(ideas_rest::router(ideas).merge(ideas_rest::live(broadcaster))).listening(vec![
+        Arc::new(broadcast),
+        Arc::new(projector),
+        Arc::new(sweep),
+    ])
 }
 
 pub struct IdeaFeature;

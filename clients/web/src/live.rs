@@ -20,6 +20,8 @@ extern "C" {
 
 #[derive(Deserialize)]
 pub struct Told {
+    #[serde(default)]
+    pub of: Option<String>,
     pub version: u64,
     #[serde(default)]
     pub event: Value,

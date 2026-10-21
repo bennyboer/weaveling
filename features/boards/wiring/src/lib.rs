@@ -48,15 +48,16 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let broadcaster = Broadcaster::new();
     let broadcast = BroadcastChangesListener::new(LIVE, EVERY_BOARD, broadcaster.clone());
 
-    Wired::serving(boards_rest::router(boards).merge(boards_rest::live(broadcaster))).listening(
-        vec![
-            Arc::new(broadcast),
-            Arc::new(catalogue),
-            Arc::new(index),
-            Arc::new(unpin_discarded_ideas),
-            Arc::new(sweep),
-        ],
+    Wired::serving(
+        boards_rest::router(boards.clone()).merge(boards_rest::live(broadcaster, boards)),
     )
+    .listening(vec![
+        Arc::new(broadcast),
+        Arc::new(catalogue),
+        Arc::new(index),
+        Arc::new(unpin_discarded_ideas),
+        Arc::new(sweep),
+    ])
 }
 
 pub struct BoardFeature;

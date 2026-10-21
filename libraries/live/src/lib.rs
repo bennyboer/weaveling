@@ -4,4 +4,4 @@ mod socket;
 
 pub use broadcaster::{Broadcaster, Hearing};
 pub use broadcasting::BroadcastChangesListener;
-pub use socket::streaming;
+pub use socket::{streaming, streaming_from};

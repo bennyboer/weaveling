@@ -14,22 +14,36 @@ use boards_core::{
     Board, BoardError, BoardService, BoardServiceError, IdeaLink, PositionedIdea, Size, Spot,
 };
 use eventsourcing::{Agent, Standing, Version};
-use live::{Broadcaster, streaming};
+use live::{Broadcaster, streaming, streaming_from};
 use serde::Deserialize;
 use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
-pub fn live(broadcaster: Broadcaster) -> Router {
+#[derive(Clone)]
+struct Live {
+    broadcaster: Broadcaster,
+    boards: BoardService,
+}
+
+pub fn live(broadcaster: Broadcaster, boards: BoardService) -> Router {
     Router::new()
         .route("/boards/live", get(follow))
-        .with_state(broadcaster)
+        .with_state(Live {
+            broadcaster,
+            boards,
+        })
 }
 
 async fn follow(
     upgrade: WebSocketUpgrade,
-    State(broadcaster): State<Broadcaster>,
+    State(live): State<Live>,
     Query(followed): Query<Followed>,
 ) -> Response {
-    streaming(upgrade, broadcaster.hear(&followed.board))
+    let hearing = live.broadcaster.hear(&followed.board);
+
+    match live.boards.get(&followed.board).await {
+        Ok(standing) => streaming_from(upgrade, standing.version.count(), hearing),
+        Err(_) => streaming(upgrade, hearing),
+    }
 }
 
 #[derive(Deserialize)]

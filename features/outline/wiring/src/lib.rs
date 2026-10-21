@@ -51,16 +51,17 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let broadcaster = Broadcaster::new();
     let broadcast = BroadcastChangesListener::new(LIVE, EVERY_OUTLINE, broadcaster.clone());
 
-    Wired::serving(outline_rest::router(outlines).merge(outline_rest::live(broadcaster))).listening(
-        vec![
-            Arc::new(broadcast),
-            Arc::new(catalogue),
-            Arc::new(index),
-            Arc::new(detach_discarded_ideas),
-            Arc::new(detach_deleted_scenes),
-            Arc::new(sweep),
-        ],
+    Wired::serving(
+        outline_rest::router(outlines.clone()).merge(outline_rest::live(broadcaster, outlines)),
     )
+    .listening(vec![
+        Arc::new(broadcast),
+        Arc::new(catalogue),
+        Arc::new(index),
+        Arc::new(detach_discarded_ideas),
+        Arc::new(detach_deleted_scenes),
+        Arc::new(sweep),
+    ])
 }
 
 pub struct OutlineFeature;
