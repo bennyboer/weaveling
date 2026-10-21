@@ -68,7 +68,6 @@ fn changing_dialog(
     let stage = RwSignal::new(Stage::Editing);
     let restyled = RwSignal::new(Restyled::Waiting);
     let following = StoredValue::new_local(None::<Following>);
-    on_cleanup(move || _ = following.try_update_value(|held| *held = None));
     let project = StoredValue::new(project);
     let known = StoredValue::new(known);
 

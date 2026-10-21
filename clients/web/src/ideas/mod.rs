@@ -1,3 +1,4 @@
+pub mod followed;
 pub mod inspector;
 pub mod inspector_state;
 pub mod model;

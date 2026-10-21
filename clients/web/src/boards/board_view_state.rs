@@ -5,7 +5,8 @@ use crate::boards::model::{Board, Placement, PositionedIdea, Size, Spot};
 use crate::boards::service;
 use crate::boards::viewport::Viewport;
 use crate::http::ApiError;
-use crate::ideas::model::{Idea, IdeaId};
+use crate::ideas::followed;
+use crate::ideas::model::{Idea, IdeaId, hold};
 use crate::ideas::service as ideas;
 use crate::live::{Following, Told};
 use crate::projects::model::ProjectId;
@@ -90,21 +91,10 @@ impl BoardViewState {
             Err(failure) => problem.set(Some(failure)),
         };
 
-        let listing = {
-            let id = project.clone();
-
-            Action::new_local(move |()| {
-                let id = id.clone();
-
-                async move {
-                    match ideas::list(&id).await {
-                        Ok(found) => pool.set(Some(found)),
-                        Err(failure) => problem.set(Some(failure)),
-                    }
-                }
-            })
-        };
-        listing.dispatch(());
+        let listing = followed::asking(project, pool, move |failure| {
+            _ = problem.try_set(Some(failure));
+        });
+        StoredValue::new_local(followed::following(project, pool, listing));
 
         let opening = {
             let id = project.clone();
@@ -118,7 +108,6 @@ impl BoardViewState {
         opening.dispatch(());
 
         let following = StoredValue::new_local(None::<Following>);
-        on_cleanup(move || _ = following.try_update_value(|held| *held = None));
         Effect::new(move || {
             let Some(id) = confirmed.with(|held| held.as_ref().map(|held| held.id.clone())) else {
                 return;
@@ -191,7 +180,7 @@ impl BoardViewState {
                     let idea = caught.id.clone();
                     pool.update(|held| {
                         if let Some(held) = held {
-                            held.push(caught);
+                            hold(held, caught);
                         }
                     });
 
@@ -276,11 +265,8 @@ impl BoardViewState {
             async move {
                 match ideas::retitle(&idea, &title).await {
                     Ok(renamed) => pool.update(|held| {
-                        if let Some(held) = held
-                            && let Some(known) =
-                                held.iter_mut().find(|known| known.id == renamed.id)
-                        {
-                            *known = renamed;
+                        if let Some(held) = held {
+                            hold(held, renamed);
                         }
                     }),
                     Err(failure) => problem.set(Some(failure)),

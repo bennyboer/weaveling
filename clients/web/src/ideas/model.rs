@@ -39,6 +39,14 @@ impl Idea {
     }
 }
 
+pub fn hold(held: &mut Vec<Idea>, newer: Idea) {
+    match held.iter_mut().find(|known| known.id == newer.id) {
+        Some(known) if known.version < newer.version => *known = newer,
+        Some(_) => {}
+        None => held.push(newer),
+    }
+}
+
 pub fn taken_in(mut held: Vec<Idea>, told: Told) -> Option<Vec<Idea>> {
     let id = IdeaId::from(told.of?);
     let event = serde_json::from_value::<IdeaEventDTO>(told.event).ok()?;
@@ -97,6 +105,53 @@ mod tests {
     #[test]
     fn an_idea_without_a_title_is_shown_as_untitled() {
         assert_eq!(an_idea("").shown_as(), "Untitled");
+    }
+
+    mod hold_tests {
+        use super::*;
+
+        fn versioned(title: &str, version: u64) -> Idea {
+            Idea {
+                version,
+                ..an_idea(title)
+            }
+        }
+
+        #[test]
+        fn an_idea_not_held_is_added() {
+            let mut held = Vec::new();
+
+            hold(&mut held, versioned("The loom", 1));
+
+            assert_eq!(held, vec![versioned("The loom", 1)]);
+        }
+
+        #[test]
+        fn an_idea_already_held_is_not_held_twice() {
+            let mut held = vec![versioned("The loom", 1)];
+
+            hold(&mut held, versioned("The loom", 1));
+
+            assert_eq!(held, vec![versioned("The loom", 1)]);
+        }
+
+        #[test]
+        fn a_newer_version_replaces_the_one_held() {
+            let mut held = vec![versioned("The loom", 1)];
+
+            hold(&mut held, versioned("The weft", 2));
+
+            assert_eq!(held, vec![versioned("The weft", 2)]);
+        }
+
+        #[test]
+        fn an_older_version_leaves_the_newer_one_held() {
+            let mut held = vec![versioned("The heddle", 3)];
+
+            hold(&mut held, versioned("The weft", 2));
+
+            assert_eq!(held, vec![versioned("The heddle", 3)]);
+        }
     }
 
     mod taken_in_tests {

@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 
+use crate::ideas::followed;
 use crate::ideas::model::{Idea, IdeaId};
-use crate::ideas::service as ideas;
+use crate::live::Following;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
@@ -17,7 +18,8 @@ pub struct SceneIdeas {
     linked: RwSignal<HashMap<SceneId, Vec<IdeaId>>>,
     asked: StoredValue<HashSet<SceneId>>,
     ideas: RwSignal<Option<Vec<Idea>>>,
-    ideas_asked: StoredValue<bool>,
+    asking: Action<(), ()>,
+    following: StoredValue<Option<Following>, LocalStorage>,
     picking: RwSignal<bool>,
     problems: Problems,
     saving: Saving,
@@ -25,12 +27,16 @@ pub struct SceneIdeas {
 
 impl SceneIdeas {
     pub fn of(project: &ProjectId, problems: Problems, saving: Saving) -> Self {
+        let ideas = RwSignal::new(None);
+        let following = StoredValue::new_local(None::<Following>);
+
         Self {
             project: StoredValue::new(project.clone()),
             linked: RwSignal::new(HashMap::new()),
             asked: StoredValue::new(HashSet::new()),
-            ideas: RwSignal::new(None),
-            ideas_asked: StoredValue::new(false),
+            ideas,
+            asking: followed::asking(project, ideas, move |failure| problems.report(failure)),
+            following,
             picking: RwSignal::new(false),
             problems,
             saving,
@@ -106,16 +112,10 @@ impl SceneIdeas {
     }
 
     pub fn know_the_ideas(self) {
-        if !self.ideas_asked.get_value() {
-            self.ideas_asked.set_value(true);
+        if self.following.with_value(Option::is_none) {
             let project = self.project.get_value();
-
-            spawn_local(async move {
-                match ideas::list(&project).await {
-                    Ok(found) => self.ideas.set(Some(found)),
-                    Err(failure) => self.problems.report(failure),
-                }
-            });
+            self.following
+                .set_value(Some(followed::following(&project, self.ideas, self.asking)));
         }
     }
 

@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aBookShaped } from "./support/book";
 import { aNewProject, aSceneMade, API, openTheOutline } from "./support/shell";
-import { savedTitles, titled } from "./support/writing";
+import { projectOf, savedTitles, titled } from "./support/writing";
 
 async function anOutlineFollowedLive(
   page: Page,
@@ -529,4 +529,27 @@ test("an outline is opened once, and a change made before it is followed is caug
     "told where the outline stands, a newer version than held, it is opened again",
   ).toBeVisible();
   expect(reloads()).toBe(2);
+});
+
+test("an idea noted elsewhere that the list of ideas does not hold yet is asked for, and named", async ({
+  page,
+}) => {
+  await page.routeWebSocket(/\/api\/ideas\/live\?project=/, () => {});
+  const { outline, ids } = await anOutlineFollowedLive(page, "OutlineUnknownIdea");
+  const captured = await anotherAuthor(page, "post", "/ideas", {
+    project: projectOf(page),
+    title: "Winter comes early",
+  });
+  const winter = (await captured.json()).id as string;
+
+  await anotherAuthor(page, "post", `/outlines/${outline}/attachments`, {
+    attachment: { kind: "idea", id: winter },
+    section: ids["Part One"],
+    after: null,
+  });
+
+  await expect(
+    page.locator(".leaf .name"),
+    "the outline hears of the idea only through the note, so it asks for the ideas again",
+  ).toHaveText("Winter comes early");
 });

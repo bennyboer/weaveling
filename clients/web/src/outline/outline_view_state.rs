@@ -2,8 +2,8 @@ use leptos::prelude::*;
 use leptos_router::hooks::use_navigate;
 
 use crate::http::ApiError;
+use crate::ideas::followed;
 use crate::ideas::model::Idea;
-use crate::ideas::service as idea_service;
 use crate::live::{Following, Told};
 use crate::outline::model::{Attachment, Outline, OutlineChange, Section, SectionId};
 use crate::outline::service;
@@ -125,21 +125,10 @@ impl OutlineViewState {
         };
         listing_scenes.dispatch(());
 
-        let listing_ideas = {
-            let id = project.clone();
-
-            Action::new_local(move |()| {
-                let id = id.clone();
-
-                async move {
-                    match idea_service::list(&id).await {
-                        Ok(found) => ideas.set(Some(found)),
-                        Err(failure) => problem.set(Some(failure)),
-                    }
-                }
-            })
-        };
-        listing_ideas.dispatch(());
+        let listing_ideas = followed::asking(project, ideas, move |failure| {
+            _ = problem.try_set(Some(failure));
+        });
+        StoredValue::new_local(followed::following(project, ideas, listing_ideas));
 
         let adding = Action::new_local(
             move |(under, after, title): &(Option<SectionId>, Option<SectionId>, String)| {
@@ -303,7 +292,6 @@ impl OutlineViewState {
         };
 
         let following = StoredValue::new_local(None::<Following>);
-        on_cleanup(move || _ = following.try_update_value(|held| *held = None));
         Effect::new(move || {
             let Some(id) = confirmed.with(|held| held.as_ref().map(|held| held.id.clone())) else {
                 return;

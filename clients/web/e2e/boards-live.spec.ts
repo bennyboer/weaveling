@@ -100,18 +100,23 @@ test("a card another author unpins goes back beside the board", async ({
 test("an idea captured and pinned elsewhere shows on the board by its name", async ({
   page,
 }) => {
+  await page.routeWebSocket(/\/api\/ideas\/live\?project=/, () => {});
   const { board } = await aBoardFollowedLive(page, "BoardLiveUnknown");
   const winter = await anIdea(page, "Winter comes early");
   await catalogued(page, ["The loom remembers", "Winter comes early"]);
 
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(winter, 400, 200));
 
-  await expect(cardNamed(page, "Winter comes early")).toBeVisible();
+  await expect(
+    cardNamed(page, "Winter comes early"),
+    "the board hears of the idea only through the pin, so it asks for the ideas again",
+  ).toBeVisible();
 });
 
 test("an idea the list of ideas does not hold yet is asked for once per change, not in a loop", async ({
   page,
 }) => {
+  await page.routeWebSocket(/\/api\/ideas\/live\?project=/, () => {});
   const { board } = await aBoardFollowedLive(page, "BoardLiveLagging");
   const winter = await anIdea(page, "Winter comes early");
   let asked = 0;

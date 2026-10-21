@@ -62,7 +62,6 @@ impl Structure {
             saving,
         };
         let project = project.clone();
-        on_cleanup(move || _ = structure.following.try_update_value(|held| *held = None));
 
         spawn_local(async move {
             match service::open(&project).await {

@@ -5,9 +5,9 @@ use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 
 use crate::http::ApiError;
-use crate::ideas::model::{Idea, taken_in};
+use crate::ideas::followed;
+use crate::ideas::model::{Idea, hold};
 use crate::ideas::service;
-use crate::live::{Following, Told};
 use crate::problem::problem;
 use crate::route;
 use crate::speech::said;
@@ -20,35 +20,10 @@ pub fn Pool(project: String) -> impl IntoView {
     let held = RwSignal::new(None::<Vec<Idea>>);
     let title: NodeRef<Input> = NodeRef::new();
 
-    let opening = {
-        let project = project.clone();
-
-        Action::new_local(move |()| {
-            let project = project.clone();
-
-            async move {
-                match service::list(&project).await {
-                    Ok(found) => _ = held.try_set(Some(found)),
-                    Err(failure) => _ = failed.try_set(Some(failure)),
-                }
-            }
-        })
-    };
-
-    let following = StoredValue::new_local(Some(Following::start(
-        &format!("/api/ideas/live?project={project}"),
-        move |told: Told| {
-            let Some(Some(known)) = held.try_get_untracked() else {
-                return;
-            };
-            match taken_in(known, told) {
-                Some(next) => _ = held.try_set(Some(next)),
-                None => _ = opening.dispatch(()),
-            }
-        },
-        move || _ = opening.dispatch(()),
-    )));
-    on_cleanup(move || _ = following.try_update_value(|kept| *kept = None));
+    let asking = followed::asking(&project, held, move |failure| {
+        _ = failed.try_set(Some(failure));
+    });
+    StoredValue::new_local(followed::following(&project, held, asking));
 
     let capturing = {
         let project = project.clone();
@@ -62,10 +37,8 @@ pub fn Pool(project: String) -> impl IntoView {
                     Ok(idea) => {
                         failed.set(None);
                         held.update(|known| {
-                            if let Some(known) = known
-                                && known.iter().all(|already| already.id != idea.id)
-                            {
-                                known.push(idea);
+                            if let Some(known) = known {
+                                hold(known, idea);
                             }
                         });
                     }
