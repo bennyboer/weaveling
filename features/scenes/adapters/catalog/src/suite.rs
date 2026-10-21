@@ -192,6 +192,31 @@ pub async fn a_scene_named_before_it_was_remembered_is_listed_and_keeps_its_name
     );
 }
 
+pub async fn a_scene_s_summary_is_what_is_kept(catalog: &impl SceneCatalog) {
+    let id = a_scene(1_000);
+    let forgotten_one = a_scene(2_000);
+    remembered(catalog, id).await;
+    retitled(catalog, id, "The loom, again", 2).await;
+    retitled(catalog, id, "The loom", 1).await;
+    opened(catalog, id, "Once there was", 5).await;
+    opened(catalog, id, "Before that", 3).await;
+    remembered(catalog, forgotten_one).await;
+    forgotten(catalog, forgotten_one).await;
+
+    let kept = catalog.summary_of(id).await.expect("asking should succeed");
+    let gone = catalog
+        .summary_of(forgotten_one)
+        .await
+        .expect("asking should succeed");
+    let never = catalog
+        .summary_of(a_scene(3_000))
+        .await
+        .expect("asking should succeed");
+
+    assert_eq!(kept, Some(summary(id, "The loom, again", "Once there was")));
+    assert_eq!((gone, never), (None, None));
+}
+
 pub async fn a_forgotten_scene_is_not_listed(catalog: &impl SceneCatalog) {
     let [gone, kept] = [a_scene(1_000), a_scene(2_000)];
     remembered(catalog, gone).await;
@@ -406,6 +431,7 @@ macro_rules! conformance_tests {
             $workbench,
             a_scene_named_before_it_was_remembered_is_listed_and_keeps_its_name
         );
+        $crate::suite::conformance_case!($workbench, a_scene_s_summary_is_what_is_kept);
         $crate::suite::conformance_case!($workbench, a_forgotten_scene_is_not_listed);
         $crate::suite::conformance_case!(
             $workbench,

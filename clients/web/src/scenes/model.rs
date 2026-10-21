@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter};
 
+use scenes_contract::SceneSummaryDTO;
 use words::opening_of;
 
 use crate::ideas::model::IdeaId;
@@ -61,5 +62,15 @@ impl From<String> for SceneId {
 impl Display for SceneId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.0, f)
+    }
+}
+
+impl From<SceneSummaryDTO> for SceneSummary {
+    fn from(dto: SceneSummaryDTO) -> Self {
+        Self {
+            id: SceneId::from(dto.id),
+            title: dto.title,
+            opening: dto.opening,
+        }
     }
 }

@@ -36,6 +36,10 @@ const NOTE_OPENING: &str = "
 
 const GONE: &str = "INSERT INTO scene_catalog_gone (scene) VALUES ($1) ON CONFLICT DO NOTHING";
 
+const SUMMARY_OF: &str = "
+    SELECT scene, project, title, opening FROM scene_catalog WHERE scene = $1
+";
+
 const FORGET: &str = "DELETE FROM scene_catalog WHERE scene = $1";
 
 const IN_PROJECT_AFTER: &str = "
@@ -176,6 +180,17 @@ impl SceneCatalog for PostgresSceneCatalog {
         }
 
         transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError> {
+        sqlx::query(SUMMARY_OF)
+            .bind(id.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .as_ref()
+            .map(summary_from)
+            .transpose()
     }
 
     async fn in_project_after(

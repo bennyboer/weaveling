@@ -61,6 +61,15 @@ impl InMemorySceneCatalog {
     }
 }
 
+fn summarised(id: SceneId, kept: &Kept) -> SceneSummary {
+    SceneSummary {
+        id,
+        project: kept.project.clone(),
+        title: kept.title.clone(),
+        opening: kept.opening.clone(),
+    }
+}
+
 #[async_trait]
 impl SceneCatalog for InMemorySceneCatalog {
     async fn remember(&self, id: SceneId, project: &ProjectLink) -> Result<(), CatalogError> {
@@ -112,6 +121,10 @@ impl SceneCatalog for InMemorySceneCatalog {
         Ok(())
     }
 
+    async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError> {
+        Ok(self.read().kept.get(&id).map(|kept| summarised(id, kept)))
+    }
+
     async fn in_project_after(
         &self,
         project: &ProjectLink,
@@ -124,12 +137,7 @@ impl SceneCatalog for InMemorySceneCatalog {
             .iter()
             .filter(|(id, kept)| &kept.project == project && after.is_none_or(|last| **id > last))
             .take(at_most)
-            .map(|(id, kept)| SceneSummary {
-                id: *id,
-                project: kept.project.clone(),
-                title: kept.title.clone(),
-                opening: kept.opening.clone(),
-            })
+            .map(|(id, kept)| summarised(*id, kept))
             .collect())
     }
 }

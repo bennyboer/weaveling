@@ -18,11 +18,12 @@ use scenes_contract::{
 use scenes_core::{
     CatalogError, InvalidSceneTitle, ProjectLink, QuotationRestylingProgress,
     QuotationRestylingTaskError, QuotationRestylingTasks, Scene, SceneCatalog, SceneId,
-    SceneService, SceneServiceError, SceneSummary, StoreError,
+    SceneService, SceneServiceError, SceneSummary, SceneTitle, StoreError,
 };
 use serde::Deserialize;
 use serde_json::json;
 use serving::{NOT_FOUND, Problem};
+use time::OffsetDateTime;
 
 #[derive(Clone)]
 struct Scenes {
@@ -39,6 +40,101 @@ impl FromRef<Scenes> for SceneService {
 impl FromRef<Scenes> for Arc<dyn SceneCatalog> {
     fn from_ref(scenes: &Scenes) -> Self {
         scenes.catalog.clone()
+    }
+}
+
+pub fn live_scenes(broadcaster: Broadcaster) -> Router {
+    Router::new()
+        .route("/scenes/live", get(follow_scenes))
+        .with_state(broadcaster)
+}
+
+async fn follow_scenes(
+    upgrade: WebSocketUpgrade,
+    State(broadcaster): State<Broadcaster>,
+    Query(followed): Query<FollowedBook>,
+) -> Response {
+    streaming(upgrade, broadcaster.hear(&followed.project))
+}
+
+pub struct TellingScenes {
+    kept: Arc<dyn SceneCatalog>,
+    broadcaster: Broadcaster,
+    told: AtomicU64,
+}
+
+impl TellingScenes {
+    pub fn around(kept: Arc<dyn SceneCatalog>, broadcaster: Broadcaster) -> Self {
+        Self {
+            kept,
+            broadcaster,
+            told: AtomicU64::new(0),
+        }
+    }
+
+    async fn tell(&self, id: SceneId) {
+        let Ok(Some(summary)) = self.kept.summary_of(id).await else {
+            return;
+        };
+        let version = self.told.fetch_add(1, Ordering::AcqRel) + 1;
+        self.broadcaster.tell(
+            &summary.project.to_string(),
+            json!({ "of": id.to_string(), "version": version, "event": to_summary_dto(&summary) })
+                .to_string(),
+        );
+    }
+}
+
+#[async_trait]
+impl SceneCatalog for TellingScenes {
+    async fn remember(&self, id: SceneId, project: &ProjectLink) -> Result<(), CatalogError> {
+        self.kept.remember(id, project).await?;
+        self.tell(id).await;
+
+        Ok(())
+    }
+
+    async fn retitle(
+        &self,
+        id: SceneId,
+        project: &ProjectLink,
+        title: &SceneTitle,
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        self.kept.retitle(id, project, title, version).await?;
+        self.tell(id).await;
+
+        Ok(())
+    }
+
+    async fn note_opening(
+        &self,
+        id: SceneId,
+        project: &ProjectLink,
+        opening: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.kept.note_opening(id, project, opening, at).await?;
+        self.tell(id).await;
+
+        Ok(())
+    }
+
+    async fn forget(&self, id: SceneId) -> Result<(), CatalogError> {
+        self.kept.forget(id).await
+    }
+
+    async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError> {
+        self.kept.summary_of(id).await
+    }
+
+    async fn in_project_after(
+        &self,
+        project: &ProjectLink,
+        after: Option<SceneId>,
+        at_most: usize,
+    ) -> Result<Vec<SceneSummary>, CatalogError> {
+        self.kept.in_project_after(project, after, at_most).await
     }
 }
 

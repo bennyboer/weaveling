@@ -1,7 +1,7 @@
 use gloo_net::http::Request;
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
-    ScenePageDTO, SceneSummaryDTO,
+    ScenePageDTO,
 };
 
 use crate::http::{ApiError, checked, parsed, sent, sent_with};
@@ -64,7 +64,7 @@ pub async fn in_project(project: &ProjectId) -> Result<Vec<SceneSummary>, ApiErr
         };
         let response = sent(Request::get(&asked)).await?;
         let page: ScenePageDTO = parsed(response, SUBJECT).await?;
-        listed.extend(page.scenes.into_iter().map(as_summary));
+        listed.extend(page.scenes.into_iter().map(SceneSummary::from));
 
         match page.next {
             Some(next) => after = Some(next),
@@ -105,13 +105,5 @@ fn as_scene(dto: SceneDTO) -> Scene {
         title: dto.title,
         ideas: dto.ideas.into_iter().map(IdeaId::from).collect(),
         text: dto.text,
-    }
-}
-
-fn as_summary(dto: SceneSummaryDTO) -> SceneSummary {
-    SceneSummary {
-        id: SceneId::from(dto.id),
-        title: dto.title,
-        opening: dto.opening,
     }
 }

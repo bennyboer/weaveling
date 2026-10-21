@@ -27,3 +27,6 @@ mod scene_sweeping;
 
 #[cfg(test)]
 mod scene_unlinking;
+
+#[cfg(test)]
+mod scenes_live;

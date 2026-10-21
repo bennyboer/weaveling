@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -20,6 +20,8 @@ pub struct Label {
 pub struct Labels {
     titles: RwSignal<HashMap<SceneId, String>>,
     openings: RwSignal<HashMap<SceneId, String>>,
+    opened_here: StoredValue<HashSet<SceneId>>,
+    renaming: StoredValue<HashSet<SceneId>>,
     problems: Problems,
     saving: Saving,
 }
@@ -29,18 +31,23 @@ impl Labels {
         Self {
             titles: RwSignal::new(HashMap::new()),
             openings: RwSignal::new(HashMap::new()),
+            opened_here: StoredValue::new(HashSet::new()),
+            renaming: StoredValue::new(HashSet::new()),
             problems,
             saving,
         }
     }
 
     pub fn remember(self, listed: &[SceneSummary]) {
-        self.titles.set(
-            listed
-                .iter()
-                .map(|scene| (scene.id.clone(), scene.title.clone()))
-                .collect(),
-        );
+        self.titles.update(|titles| {
+            let renaming = self.renaming.get_value();
+            titles.retain(|scene, _| renaming.contains(scene));
+            for scene in listed {
+                if !renaming.contains(&scene.id) {
+                    titles.insert(scene.id.clone(), scene.title.clone());
+                }
+            }
+        });
         self.openings.update(|openings| {
             for scene in listed {
                 openings
@@ -50,7 +57,29 @@ impl Labels {
         });
     }
 
+    pub fn told(self, scene: &SceneSummary) {
+        if !self
+            .renaming
+            .with_value(|renaming| renaming.contains(&scene.id))
+        {
+            self.titles
+                .update(|titles| _ = titles.insert(scene.id.clone(), scene.title.clone()));
+        }
+        if !self.opened_here.with_value(|here| here.contains(&scene.id)) {
+            self.openings
+                .update(|openings| _ = openings.insert(scene.id.clone(), scene.opening.clone()));
+        }
+    }
+
+    pub fn let_go_of(self, scene: &SceneId) {
+        _ = self
+            .opened_here
+            .try_update_value(|here| _ = here.remove(scene));
+    }
+
     pub fn opening_is(self, scene: SceneId, text: String) {
+        self.opened_here
+            .update_value(|here| _ = here.insert(scene.clone()));
         let opening = opening_of(&text);
         let unchanged = self
             .openings
@@ -74,14 +103,19 @@ impl Labels {
         }
         self.titles
             .update(|titles| _ = titles.insert(scene.clone(), title.clone()));
+        self.renaming
+            .update_value(|renaming| _ = renaming.insert(scene.clone()));
         self.saving.write_begun();
 
         spawn_local(async move {
             if let Err(failure) = scenes::retitle(&scene, &title).await {
                 self.titles
-                    .update(|titles| _ = titles.insert(scene, before));
+                    .update(|titles| _ = titles.insert(scene.clone(), before));
                 self.problems.report(failure);
             }
+            _ = self
+                .renaming
+                .try_update_value(|renaming| _ = renaming.remove(&scene));
             self.saving.write_done();
         });
     }

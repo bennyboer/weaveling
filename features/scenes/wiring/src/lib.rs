@@ -29,7 +29,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.publisher.clone(),
         context.clock.clone(),
     );
-    let catalogue = CatalogueScenesListener::new(ports.catalog.clone());
+    let scenes_told = Broadcaster::new();
+    let catalogue = CatalogueScenesListener::new(Arc::new(scenes_rest::TellingScenes::around(
+        ports.catalog.clone(),
+        scenes_told.clone(),
+    )));
 
     let live = LiveScenes::new(scenes.clone());
     let restylings = Broadcaster::new();
@@ -49,6 +53,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     Wired::serving(
         scenes_rest::router(scenes, ports.catalog.clone())
             .merge(scenes_rest::quotation_restylings(tasks, restylings))
+            .merge(scenes_rest::live_scenes(scenes_told))
             .merge(scenes_sync::router(live.clone())),
     )
     .listening(vec![

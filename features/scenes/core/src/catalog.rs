@@ -42,6 +42,8 @@ pub trait SceneCatalog: Send + Sync {
 
     async fn forget(&self, id: SceneId) -> Result<(), CatalogError>;
 
+    async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError>;
+
     async fn in_project_after(
         &self,
         project: &ProjectLink,

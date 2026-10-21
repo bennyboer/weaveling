@@ -12,12 +12,12 @@ const sceneCarried = (frame: string | Buffer) => {
 };
 
 async function holdingBackTheTextOfOneScene(page: Page) {
-  const held = { scene: "" };
+  const held = { scenes: [] as string[] };
   await page.routeWebSocket(/\/api\/scenes\/sync$/, (socket) => {
     const server = socket.connectToServer();
     socket.onMessage((frame) => server.send(frame));
     server.onMessage((frame) => {
-      if (sceneCarried(frame) !== held.scene) {
+      if (!held.scenes.includes(sceneCarried(frame))) {
         socket.send(frame);
       }
     });
@@ -44,7 +44,7 @@ test("a scene written elsewhere, whose text is not here, counts as the server co
   await aNewProject(page, "CountedLive");
   const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
   const [later] = scenes["Part Two"];
-  held.scene = later;
+  held.scenes = [later];
   const asks = counted(page);
   await openTheWritingView(page);
   await wordCount(page).click();
@@ -79,7 +79,7 @@ test("a count told for the scene being written here does not stand over it", asy
   const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
   const [first] = scenes["Part One"];
   const [later] = scenes["Part Two"];
-  held.scene = later;
+  held.scenes = [later];
   await openTheWritingView(page);
   await scene(page, first).click();
   await page.keyboard.type("one two");
@@ -97,7 +97,7 @@ test("a count told for the scene being written here does not stand over it", asy
   ).toHaveText("7 words in the book");
 });
 
-test("counts asked for and answered after newer ones were told are let go", async ({
+test("counts answered after newer ones were told keep the newer ones and take in the rest", async ({
   page,
 }) => {
   const held = await holdingBackTheTextOfOneScene(page);
@@ -112,8 +112,8 @@ test("counts asked for and answered after newer ones were told are let go", asyn
     };
   });
   await aNewProject(page, "CountedOvertaken");
-  const [later] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
-  held.scene = later;
+  const [later, other] = (await aBookWithScenes(page, { "Part One": 2 }))["Part One"];
+  held.scenes = [later, other];
   let release = () => {};
   const asked = new Promise<void>((resolve) => {
     release = resolve;
@@ -122,7 +122,12 @@ test("counts asked for and answered after newer ones were told are let go", asyn
   await page.route(/\/api\/statistics\/word-counts\?project=/, async (route) => {
     answering = true;
     await asked;
-    await route.fulfill({ json: [{ scene: later, words: 1 }] });
+    await route.fulfill({
+      json: [
+        { scene: later, words: 1 },
+        { scene: other, words: 4 },
+      ],
+    });
   });
   await openTheWritingView(page);
   await wordCount(page).click();
@@ -136,6 +141,6 @@ test("counts asked for and answered after newer ones were told are let go", asyn
 
   await expect(
     wordCount(page),
-    "the answer was asked for before the counts were told",
-  ).toHaveText("5 words in the book");
+    "the other scene counts as answered, the told one as told, since the answer was asked for before",
+  ).toHaveText("9 words in the book");
 });
