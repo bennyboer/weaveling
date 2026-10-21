@@ -233,3 +233,32 @@ fn a_message_that_is_not_a_published_event_is_refused() {
         Err(UnreadableMessage::NotAPublishedEvent(..))
     ));
 }
+
+#[test]
+fn the_aggregate_a_message_is_about_is_read_as_its_own_kind_of_id() {
+    let message =
+        message_for(&recorded(a_capture(), 1, an_author()), body).expect("a capture is published");
+
+    assert_eq!(
+        aggregate_in::<String>(&message).expect("any text is an id of text"),
+        "idea_1"
+    );
+    assert!(matches!(
+        aggregate_in::<u32>(&message),
+        Err(UnreadableMessage::NotItsId(..))
+    ));
+}
+
+#[test]
+fn a_message_that_is_not_a_published_event_names_no_aggregate() {
+    let stray = Message::opening(
+        routing_for(KIND, CAPTURED),
+        json!({ "nothing": "useful" }),
+        at(1_000),
+    );
+
+    assert!(matches!(
+        aggregate_in::<String>(&stray),
+        Err(UnreadableMessage::NotAPublishedEvent(..))
+    ));
+}

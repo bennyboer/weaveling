@@ -1,8 +1,12 @@
+use std::error::Error as AnyError;
+use std::str::FromStr;
+
 use clock::text::serialize;
 use eventsourcing::{AggregateType, Event, EventName, Recorded};
 use messaging::{Message, RoutingKey};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+use serde_json::Value;
 use thiserror::Error;
 
 use crate::published::{PublishedAgent, PublishedAggregate, PublishedBody, PublishedEvent};
@@ -13,6 +17,8 @@ const SEPARATOR: &str = ".";
 pub enum UnreadableMessage {
     #[error("this message does not carry a published event")]
     NotAPublishedEvent(#[source] serde_json::Error),
+    #[error("this message names its aggregate by something that is not its id")]
+    NotItsId(#[source] Box<dyn AnyError + Send + Sync>),
 }
 
 pub fn routing_for(kind: AggregateType, name: EventName) -> RoutingKey {
@@ -58,4 +64,16 @@ pub fn published_in<B: DeserializeOwned>(
     message: &Message,
 ) -> Result<PublishedEvent<B>, UnreadableMessage> {
     serde_json::from_value(message.payload.clone()).map_err(UnreadableMessage::NotAPublishedEvent)
+}
+
+pub fn aggregate_in<Id>(message: &Message) -> Result<Id, UnreadableMessage>
+where
+    Id: FromStr,
+    Id::Err: AnyError + Send + Sync + 'static,
+{
+    published_in::<Value>(message)?
+        .aggregate
+        .id
+        .parse()
+        .map_err(|why| UnreadableMessage::NotItsId(Box::new(why)))
 }

@@ -1,3 +1,4 @@
+use eventpublishing::aggregate_in;
 use outline_contract::{ATTACHED, DETACHED, SECTION_REMOVED};
 use std::sync::Arc;
 
@@ -7,7 +8,6 @@ use messaging::{Failure, Handler, Message};
 use outline_core::{Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlineService};
 
 use crate::letting_go::let_go_of_what_is_gone;
-use crate::publishing::outline_in;
 
 pub struct IndexAttachmentsListener {
     events: EventSourcingService<Outline>,
@@ -53,6 +53,6 @@ impl Handler for IndexAttachmentsListener {
         "A change to the outline did not reach the record of what it holds.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.index(&outline_in(message)?).await
+        self.index(&aggregate_in::<OutlineId>(message)?).await
     }
 }

@@ -3,9 +3,10 @@ mod publishing;
 mod sweeping;
 
 pub use broadcasting::{BroadcastIdeaChangesListener, LIVE};
-pub use publishing::{UnreadableIdeaEvent, event_in, idea_in, message_for};
+pub use publishing::message_for;
 pub use sweeping::{AT_MOST, DiscardOnProjectDeletedListener};
 
+use eventpublishing::aggregate_in;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -54,6 +55,6 @@ impl Handler for CatalogueIdeasListener {
     const WHEN_REFUSED: &'static str = "A change to an idea did not reach the list of ideas.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.catalogue(&idea_in(message)?).await
+        self.catalogue(&aggregate_in::<IdeaId>(message)?).await
     }
 }

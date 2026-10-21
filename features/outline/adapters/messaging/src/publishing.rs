@@ -1,34 +1,8 @@
-use eventpublishing::{
-    PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
-};
+use eventpublishing::message_for as message_carrying;
 use eventsourcing::Recorded;
-use ids::InvalidId;
 use messaging::Message;
 use outline_contract::{AttachmentDTO, OutlineEventDTO};
-use outline_core::{Attachment, OutlineEvent, OutlineId};
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum UnreadableOutlineEvent {
-    #[error(transparent)]
-    NotAnOutlineEvent(#[from] UnreadableMessage),
-    #[error("this message names something that is not an outline")]
-    NotAnOutlineId(#[source] InvalidId),
-}
-
-pub fn event_in(
-    message: &Message,
-) -> Result<PublishedEvent<OutlineEventDTO>, UnreadableOutlineEvent> {
-    Ok(published_in(message)?)
-}
-
-pub fn outline_in(message: &Message) -> Result<OutlineId, UnreadableOutlineEvent> {
-    event_in(message)?
-        .aggregate
-        .id
-        .parse()
-        .map_err(UnreadableOutlineEvent::NotAnOutlineId)
-}
+use outline_core::{Attachment, OutlineEvent};
 
 pub fn message_for(happened: &Recorded<OutlineEvent>) -> Option<Message> {
     message_carrying(happened, body)
@@ -103,15 +77,16 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventpublishing::{everything_from, routing_for};
+    use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
     use messaging::{Handler, RoutingKey, Subscription};
     use outline_contract::{
         ATTACHED, DETACHED, EVERY_OUTLINE, SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED,
         SECTION_PROMOTED, SECTION_REMOVED, SECTION_RETITLED, STARTED,
     };
-    use outline_core::{Attachment, KIND, PlacedSection, ProjectLink, SectionId, SectionTitle};
-    use serde_json::json;
+    use outline_core::{
+        Attachment, KIND, OutlineId, PlacedSection, ProjectLink, SectionId, SectionTitle,
+    };
     use time::{Duration, OffsetDateTime};
 
     use super::*;
@@ -301,7 +276,7 @@ mod tests {
         let id = an_outline();
         let section = a_section();
 
-        let told = event_in(&published(&id, attaching_to(section)))
+        let told = published_in::<OutlineEventDTO>(&published(&id, attaching_to(section)))
             .expect("what we wrote must be readable");
 
         assert_eq!(
@@ -322,7 +297,8 @@ mod tests {
         let section = a_section();
         let promoted = OutlineEvent::SectionPromoted { section };
 
-        let told = event_in(&published(&id, promoted)).expect("what we wrote must be readable");
+        let told = published_in::<OutlineEventDTO>(&published(&id, promoted))
+            .expect("what we wrote must be readable");
 
         assert_eq!(
             told.event.body,
@@ -372,23 +348,10 @@ mod tests {
         let id = an_outline();
 
         assert_eq!(
-            outline_in(&published(&id, an_attachment())).expect("what we wrote must be readable"),
+            aggregate_in::<OutlineId>(&published(&id, an_attachment()))
+                .expect("what we wrote must be readable"),
             id
         );
-    }
-
-    #[test]
-    fn a_message_about_something_else_entirely_is_refused() {
-        let stray = Message::opening(
-            routing_for(KIND, an_attachment().name()),
-            json!({ "nothing": "useful" }),
-            at(1_000),
-        );
-
-        assert!(matches!(
-            event_in(&stray),
-            Err(UnreadableOutlineEvent::NotAnOutlineEvent(..))
-        ));
     }
 }
 

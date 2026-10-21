@@ -1,7 +1,8 @@
 mod publishing;
 
-pub use publishing::{UnreadableProjectEvent, event_in, message_for, project_in};
+pub use publishing::message_for;
 
+use eventpublishing::aggregate_in;
 use projects_contract::EVERY_PROJECT;
 use std::sync::Arc;
 
@@ -50,6 +51,6 @@ impl Handler for CatalogueProjectsListener {
     const WHEN_REFUSED: &'static str = "A change to a project did not reach your list of projects.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.catalogue(&project_in(message)?).await
+        self.catalogue(&aggregate_in::<ProjectId>(message)?).await
     }
 }

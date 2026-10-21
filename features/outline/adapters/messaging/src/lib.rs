@@ -9,7 +9,7 @@ mod sweeping;
 pub use attaching::IndexAttachmentsListener;
 pub use cataloguing::CatalogueOutlinesListener;
 pub use discarding::DetachOnDiscardListener;
-pub use publishing::{UnreadableOutlineEvent, event_in, message_for, outline_in};
+pub use publishing::message_for;
 pub use scene_deleting::DetachOnSceneDeletedListener;
 
 pub use sweeping::DiscardOutlinesOnProjectDeletedListener;

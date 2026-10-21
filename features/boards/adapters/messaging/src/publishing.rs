@@ -1,32 +1,8 @@
 use boards_contract::{BoardEventDTO, SizeDTO, SpotDTO};
-use boards_core::{BoardEvent, BoardId, Size, Spot};
-use eventpublishing::{
-    PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
-};
+use boards_core::{BoardEvent, Size, Spot};
+use eventpublishing::message_for as message_carrying;
 use eventsourcing::Recorded;
-use ids::InvalidId;
 use messaging::Message;
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum UnreadableBoardEvent {
-    #[error(transparent)]
-    NotABoardEvent(#[from] UnreadableMessage),
-    #[error("this message names something that is not a board")]
-    NotABoardId(#[source] InvalidId),
-}
-
-pub fn event_in(message: &Message) -> Result<PublishedEvent<BoardEventDTO>, UnreadableBoardEvent> {
-    Ok(published_in(message)?)
-}
-
-pub fn board_in(message: &Message) -> Result<BoardId, UnreadableBoardEvent> {
-    event_in(message)?
-        .aggregate
-        .id
-        .parse()
-        .map_err(UnreadableBoardEvent::NotABoardId)
-}
 
 pub fn message_for(happened: &Recorded<BoardEvent>) -> Option<Message> {
     message_carrying(happened, body)
@@ -77,11 +53,10 @@ mod tests {
     use boards_contract::{
         EVERY_BOARD, IDEA_MOVED, IDEA_PINNED, IDEA_RAISED, IDEA_RESIZED, IDEA_UNPINNED, STARTED,
     };
-    use boards_core::{IdeaLink, KIND, PositionedIdea, ProjectLink};
-    use eventpublishing::{everything_from, routing_for};
+    use boards_core::{BoardId, IdeaLink, KIND, PositionedIdea, ProjectLink};
+    use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
     use messaging::{Handler, RoutingKey, Subscription};
-    use serde_json::json;
     use time::{Duration, OffsetDateTime};
 
     use super::*;
@@ -226,7 +201,8 @@ mod tests {
     fn a_pin_carries_the_idea_and_where_it_landed() {
         let id = a_board();
 
-        let told = event_in(&published(&id, a_pin())).expect("what we wrote must be readable");
+        let told = published_in::<BoardEventDTO>(&published(&id, a_pin()))
+            .expect("what we wrote must be readable");
 
         assert_eq!(
             told.event.body,
@@ -249,7 +225,8 @@ mod tests {
             to: Size::of(400, 90),
         };
 
-        let told = event_in(&published(&id, stretched)).expect("what we wrote must be readable");
+        let told = published_in::<BoardEventDTO>(&published(&id, stretched))
+            .expect("what we wrote must be readable");
 
         assert_eq!(
             told.event.body,
@@ -302,22 +279,9 @@ mod tests {
         let id = a_board();
 
         assert_eq!(
-            board_in(&published(&id, a_pin())).expect("what we wrote must be readable"),
+            aggregate_in::<BoardId>(&published(&id, a_pin()))
+                .expect("what we wrote must be readable"),
             id
         );
-    }
-
-    #[test]
-    fn a_message_about_something_else_entirely_is_refused() {
-        let stray = Message::opening(
-            routing_for(KIND, a_pin().name()),
-            json!({ "nothing": "useful" }),
-            at(1_000),
-        );
-
-        assert!(matches!(
-            event_in(&stray),
-            Err(UnreadableBoardEvent::NotABoardEvent(..))
-        ));
     }
 }

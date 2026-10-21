@@ -4114,13 +4114,10 @@ name = "weaveling-projects-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "serde_json",
- "thiserror",
  "time",
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
- "weaveling-ids",
  "weaveling-messaging",
  "weaveling-projects-contract",
  "weaveling-projects-core",

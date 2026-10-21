@@ -1,34 +1,8 @@
-use eventpublishing::{
-    PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
-};
+use eventpublishing::message_for as message_carrying;
 use eventsourcing::Recorded;
-use ids::InvalidId;
 use messaging::Message;
 use projects_contract::ProjectEventDTO;
-use projects_core::{ProjectEvent, ProjectId};
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum UnreadableProjectEvent {
-    #[error(transparent)]
-    NotAProjectEvent(#[from] UnreadableMessage),
-    #[error("this message names something that is not a project")]
-    NotAProjectId(#[source] InvalidId),
-}
-
-pub fn event_in(
-    message: &Message,
-) -> Result<PublishedEvent<ProjectEventDTO>, UnreadableProjectEvent> {
-    Ok(published_in(message)?)
-}
-
-pub fn project_in(message: &Message) -> Result<ProjectId, UnreadableProjectEvent> {
-    event_in(message)?
-        .aggregate
-        .id
-        .parse()
-        .map_err(UnreadableProjectEvent::NotAProjectId)
-}
+use projects_core::ProjectEvent;
 
 pub fn message_for(happened: &Recorded<ProjectEvent>) -> Option<Message> {
     message_carrying(happened, body)
@@ -57,15 +31,14 @@ fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventpublishing::{everything_from, routing_for};
+    use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Recorded, Version};
-    use messaging::{RoutingKey, Subscription};
+    use messaging::Subscription;
     use projects_contract::{
         DELETED, DETAILS_CHANGED, EVERY_PROJECT, QUOTATION_CHANGED, RENAMED, STARTED,
     };
     use projects_core::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
-    use projects_core::{KIND, ProjectName};
-    use serde_json::json;
+    use projects_core::{KIND, ProjectId, ProjectName};
     use time::{Duration, OffsetDateTime};
 
     use super::*;
@@ -153,7 +126,8 @@ mod tests {
     fn what_a_project_event_says_comes_from_the_features_own_mapping() {
         let id = a_project();
 
-        let body = event_in(&published(&id, a_start())).expect("what we wrote must be readable");
+        let body = published_in::<ProjectEventDTO>(&published(&id, a_start()))
+            .expect("what we wrote must be readable");
 
         assert_eq!(
             body.event.body,
@@ -172,8 +146,9 @@ mod tests {
             description: ProjectDescription::new("A weaver's daughter.").expect("plain"),
         };
 
-        let body = event_in(&published(&id, ProjectEvent::DetailsChanged(details)))
-            .expect("what we wrote must be readable");
+        let body =
+            published_in::<ProjectEventDTO>(&published(&id, ProjectEvent::DetailsChanged(details)))
+                .expect("what we wrote must be readable");
 
         assert_eq!(
             body.event.body,
@@ -189,7 +164,7 @@ mod tests {
     fn a_changed_quotation_style_travels_by_its_name() {
         let id = a_project();
 
-        let body = event_in(&published(
+        let body = published_in::<ProjectEventDTO>(&published(
             &id,
             ProjectEvent::QuotationChanged(QuotationMarks::PointingOut),
         ))
@@ -240,22 +215,9 @@ mod tests {
         let id = a_project();
 
         assert_eq!(
-            project_in(&published(&id, a_start())).expect("what we wrote must be readable"),
+            aggregate_in::<ProjectId>(&published(&id, a_start()))
+                .expect("what we wrote must be readable"),
             id
         );
-    }
-
-    #[test]
-    fn a_message_about_something_else_entirely_is_refused() {
-        let stray = Message::opening(
-            RoutingKey::parse("project.started").expect("a plain key is fine"),
-            json!({ "nothing": "useful" }),
-            at(1_000),
-        );
-
-        assert!(matches!(
-            event_in(&stray),
-            Err(UnreadableProjectEvent::NotAProjectEvent(..))
-        ));
     }
 }

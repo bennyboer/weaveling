@@ -1,32 +1,8 @@
-use eventpublishing::{
-    PublishedEvent, UnreadableMessage, message_for as message_carrying, published_in,
-};
+use eventpublishing::message_for as message_carrying;
 use eventsourcing::Recorded;
 use ideas_contract::IdeaEventDTO;
-use ideas_core::{IdeaEvent, IdeaId};
-use ids::InvalidId;
+use ideas_core::IdeaEvent;
 use messaging::Message;
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum UnreadableIdeaEvent {
-    #[error(transparent)]
-    NotAIdeaEvent(#[from] UnreadableMessage),
-    #[error("this message names something that is not an idea")]
-    NotAIdeaId(#[source] InvalidId),
-}
-
-pub fn event_in(message: &Message) -> Result<PublishedEvent<IdeaEventDTO>, UnreadableIdeaEvent> {
-    Ok(published_in(message)?)
-}
-
-pub fn idea_in(message: &Message) -> Result<IdeaId, UnreadableIdeaEvent> {
-    event_in(message)?
-        .aggregate
-        .id
-        .parse()
-        .map_err(UnreadableIdeaEvent::NotAIdeaId)
-}
 
 pub fn message_for(happened: &Recorded<IdeaEvent>) -> Option<Message> {
     message_carrying(happened, body)
@@ -48,12 +24,11 @@ fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventpublishing::{everything_from, routing_for};
+    use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
     use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Recorded, Version};
     use ideas_contract::{CAPTURED, DISCARDED, EVERY_IDEA, RETITLED};
-    use ideas_core::{IdeaTitle, KIND, ProjectLink};
-    use messaging::{RoutingKey, Subscription};
-    use serde_json::json;
+    use ideas_core::{IdeaId, IdeaTitle, KIND, ProjectLink};
+    use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
 
     use super::*;
@@ -136,7 +111,8 @@ mod tests {
     fn what_an_idea_event_says_comes_from_the_features_own_mapping() {
         let id = an_idea();
 
-        let body = event_in(&published(&id, a_capture())).expect("what we wrote must be readable");
+        let body = published_in::<IdeaEventDTO>(&published(&id, a_capture()))
+            .expect("what we wrote must be readable");
 
         assert_eq!(
             body.event.body,
@@ -182,22 +158,9 @@ mod tests {
         let id = an_idea();
 
         assert_eq!(
-            idea_in(&published(&id, a_capture())).expect("what we wrote must be readable"),
+            aggregate_in::<IdeaId>(&published(&id, a_capture()))
+                .expect("what we wrote must be readable"),
             id
         );
-    }
-
-    #[test]
-    fn a_message_about_something_else_entirely_is_refused() {
-        let stray = Message::opening(
-            RoutingKey::parse("idea.captured").expect("a plain key is fine"),
-            json!({ "nothing": "useful" }),
-            at(1_000),
-        );
-
-        assert!(matches!(
-            event_in(&stray),
-            Err(UnreadableIdeaEvent::NotAIdeaEvent(..))
-        ));
     }
 }
