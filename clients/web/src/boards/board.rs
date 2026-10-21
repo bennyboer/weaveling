@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
@@ -113,6 +115,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
     } = handles;
     let board_ref = NodeRef::<html::Section>::new();
     let panning = RwSignal::new(false);
+    let touching = StoredValue::new(HashMap::<i32, Spot>::new());
 
     let chosen = move || {
         if carrying.with(|held| held.as_ref().is_some_and(Carrying::dragging)) {
@@ -128,18 +131,60 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
         .node_ref(board_ref)
         .attr("aria-label", said("board"))
         .attr("style", move || viewport.get().grid(DOTS))
+        .on(ev::capture(ev::pointerdown), move |event| {
+            let Some(at) = pointed_at(&event) else {
+                return;
+            };
+            touching.update_value(|fingers| _ = fingers.insert(event.pointer_id(), at));
+            if touching.with_value(|fingers| fingers.len() >= 2) {
+                event.stop_propagation();
+                carrying.set(None);
+            }
+        })
+        .on(ev::capture(ev::pointermove), move |event| {
+            let Some(now) = pointed_at(&event) else {
+                return;
+            };
+            let finger = event.pointer_id();
+            let (before, other, down) = touching.with_value(|fingers| {
+                let other = fingers
+                    .iter()
+                    .find(|(held, _)| **held != finger)
+                    .map(|(_, at)| *at);
+
+                (fingers.get(&finger).copied(), other, fingers.len())
+            });
+            let Some(before) = before else {
+                return;
+            };
+            touching.update_value(|fingers| _ = fingers.insert(finger, now));
+
+            match other {
+                Some(other) if down == 2 => {
+                    viewport.update(|it| *it = it.pinched((before, other), (now, other)))
+                }
+                None if panning.get_untracked() => viewport.update(|it| {
+                    *it = it.panned(Spot {
+                        x: now.x - before.x,
+                        y: now.y - before.y,
+                    })
+                }),
+                _ => {}
+            }
+        })
+        .on(ev::capture(ev::pointerup), move |event| {
+            let_go(&event, touching)
+        })
+        .on(ev::capture(ev::pointercancel), move |event| {
+            let_go(&event, touching)
+        })
         .on(ev::pointerdown, move |event| {
             selected.set(None);
             panning.set(true);
             grabbed(&event);
         })
-        .on(ev::pointermove, move |event| {
-            if panning.get_untracked() {
-                viewport.update(|it| *it = it.panned(dragged(&event)));
-            }
-        })
-        .on(ev::pointerup, move |_| panning.set(false))
-        .on(ev::pointercancel, move |_| panning.set(false))
+        .on(ev::pointerup, move |_| still_panning(touching, panning))
+        .on(ev::pointercancel, move |_| still_panning(touching, panning))
         .on(ev::wheel, move |event| {
             let Some((towards, by)) = zoom_asked(&event) else {
                 return;
@@ -229,19 +274,22 @@ fn around(middle: Spot, size: Size) -> Placement {
     }
 }
 
+fn still_panning(touching: StoredValue<HashMap<i32, Spot>>, panning: RwSignal<bool>) {
+    if touching.with_value(HashMap::is_empty) {
+        panning.set(false);
+    }
+}
+
+fn let_go(event: &ev::PointerEvent, touching: StoredValue<HashMap<i32, Spot>>) {
+    touching.update_value(|fingers| _ = fingers.remove(&event.pointer_id()));
+}
+
 fn grabbed(event: &ev::PointerEvent) {
     if let Some(board) = event
         .current_target()
         .and_then(|it| it.dyn_into::<HtmlElement>().ok())
     {
         let _ = board.set_pointer_capture(event.pointer_id());
-    }
-}
-
-fn dragged(event: &ev::PointerEvent) -> Spot {
-    Spot {
-        x: event.movement_x() as i64,
-        y: event.movement_y() as i64,
     }
 }
 

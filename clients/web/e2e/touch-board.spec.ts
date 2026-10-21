@@ -11,14 +11,14 @@ test.use({
   viewport: { width: 390, height: 844 },
 });
 
-type Point = { x: number; y: number };
+type Point = { x: number; y: number; id?: number };
 
 async function fingers(page: Page, context: BrowserContext) {
   const touch = await context.newCDPSession(page);
   const send = (type: string, points: Point[]) =>
     touch.send("Input.dispatchTouchEvent", {
       type,
-      touchPoints: points.map((point, id) => ({ ...point, id })),
+      touchPoints: points.map((point, nth) => ({ ...point, id: point.id ?? nth })),
     });
 
   return {
@@ -41,6 +41,15 @@ async function fingers(page: Page, context: BrowserContext) {
         await send("touchMove", apart(fromGap + ((toGap - fromGap) * step) / 10));
       }
       await send("touchEnd", []);
+    },
+    async press(points: Point[]) {
+      await send("touchStart", points);
+    },
+    async moveTo(points: Point[]) {
+      await send("touchMove", points);
+    },
+    async lift(points: Point[]) {
+      await send("touchEnd", points);
     },
     async doubleTap(at: Point) {
       for (let tap = 0; tap < 2; tap++) {
@@ -129,15 +138,35 @@ test("a card is moved with a thumb, and stays where it was put", async ({ page, 
     .toEqual({ x: placed.x + 80, y: placed.y + 120 });
 });
 
-test("two fingers pinching apart zoom the board in", async ({ page, context }) => {
-  test.fail(true, "M15: pinch-to-zoom is not wired; ctrl and the wheel are the only zoom");
+test("two fingers pinching apart zoom the board in, and together zoom it out", async ({
+  page,
+  context,
+}) => {
   await aBoardWithACard(page, "PhonePinch");
   const reading = zooming(page).getByRole("button", { name: "Reset the zoom" });
   await expect(reading).toHaveText("100%");
+  const hands = await fingers(page, context);
 
-  await (await fingers(page, context)).pinch(await bareSpot(page), 60, 180);
+  const middle = middleOf((await corkboard(page).boundingBox())!);
 
-  await expect(reading).not.toHaveText("100%");
+  await hands.pinch(middle, 60, 120);
+  await expect(reading).toHaveText("200%");
+  await hands.pinch(middle, 160, 40);
+
+  await expect(reading).toHaveText("50%");
+});
+
+test("what lies between the fingers stays between them as they pinch", async ({ page, context }) => {
+  await aBoardWithACard(page, "PhonePinchAround");
+  const card = (await cardNamed(page, "The loom remembers").boundingBox())!;
+  const between = middleOf(card);
+
+  await (await fingers(page, context)).pinch(between, 40, 80);
+
+  await expect(zooming(page).getByRole("button", { name: "Reset the zoom" })).toHaveText("200%");
+  const now = middleOf((await cardNamed(page, "The loom remembers").boundingBox())!);
+  expect(Math.abs(now.x - between.x), "the card's middle stays under the fingers' middle").toBeLessThan(3);
+  expect(Math.abs(now.y - between.y)).toBeLessThan(3);
 });
 
 test("a double tap on the bare board captures an idea there", async ({ page, context }) => {
@@ -157,3 +186,105 @@ test("a selected card's grips are big enough for a finger", async ({ page }) => 
   const grip = (await cardNamed(page, "The loom remembers").locator(".grip.right").boundingBox())!;
   expect(Math.min(grip.width, grip.height), "a fingertip is about 44px across").toBeGreaterThanOrEqual(44);
 });
+
+const steps = (from: Point[], to: Point[]) =>
+  Array.from({ length: 10 }, (_, nth) =>
+    from.map((start, finger) => ({
+      x: start.x + ((to[finger].x - start.x) * (nth + 1)) / 10,
+      y: start.y + ((to[finger].y - start.y) * (nth + 1)) / 10,
+    })),
+  );
+
+test("a pinch on the bare board keeps what lies between the fingers between them", async ({
+  page,
+  context,
+}) => {
+  await aBoardWithACard(page, "PhonePinchBare");
+  const board = (await corkboard(page).boundingBox())!;
+  const middle = { x: board.x + board.width / 2, y: board.y + board.height - 200 };
+  const card = middleOf((await cardNamed(page, "The loom remembers").boundingBox())!);
+
+  await (await fingers(page, context)).pinch(middle, 40, 80);
+
+  await expect(zooming(page).getByRole("button", { name: "Reset the zoom" })).toHaveText("200%");
+  const now = middleOf((await cardNamed(page, "The loom remembers").boundingBox())!);
+  expect(Math.abs(now.x - (middle.x + 2 * (card.x - middle.x))), "zoomed around the fingers, and not panned besides").toBeLessThan(3);
+  expect(Math.abs(now.y - (middle.y + 2 * (card.y - middle.y)))).toBeLessThan(3);
+});
+
+test("a pinch with a finger landing on a card neither selects nor moves it", async ({
+  page,
+  context,
+}) => {
+  await aBoardWithACard(page, "PhonePinchOverCard");
+  const card = middleOf((await cardNamed(page, "The loom remembers").boundingBox())!);
+  const board = (await corkboard(page).boundingBox())!;
+  const bare = { x: card.x, y: board.y + board.height - 120 };
+  const placed = (await boardOnServer(page)).ideas[0].spot;
+  const hands = await fingers(page, context);
+
+  await hands.press([bare]);
+  await hands.press([bare, card]);
+  for (const now of steps([bare, card], [{ x: bare.x, y: bare.y + 40 }, { x: card.x, y: card.y - 40 }])) {
+    await hands.moveTo(now);
+  }
+  await hands.lift([]);
+
+  await expect(zooming(page).getByRole("button", { name: "Reset the zoom" })).not.toHaveText("100%");
+  await expect(cardNamed(page, "The loom remembers")).not.toHaveClass(/selected/);
+  expect((await boardOnServer(page)).ideas[0].spot).toEqual(placed);
+});
+
+test("a card a finger began to carry stays put once a second finger turns it into a pinch", async ({
+  page,
+  context,
+}) => {
+  await aBoardWithACard(page, "PhonePinchAfterCarry");
+  const card = middleOf((await cardNamed(page, "The loom remembers").boundingBox())!);
+  const board = (await corkboard(page).boundingBox())!;
+  const bare = { x: card.x, y: board.y + board.height - 120 };
+  const placed = (await boardOnServer(page)).ideas[0].spot;
+  const hands = await fingers(page, context);
+  const carried = { x: card.x + 30, y: card.y };
+
+  await hands.press([card]);
+  for (const now of steps([card], [carried])) {
+    await hands.moveTo(now);
+  }
+  await hands.press([carried, bare]);
+  for (const now of steps([carried, bare], [{ x: carried.x, y: carried.y - 40 }, { x: bare.x, y: bare.y + 40 }])) {
+    await hands.moveTo(now);
+  }
+  await hands.lift([]);
+  await page.waitForTimeout(300);
+
+  expect(
+    (await boardOnServer(page)).ideas[0].spot,
+    "the second finger makes it a pinch, and a pinch moves no card",
+  ).toEqual(placed);
+});
+
+test("lifting one finger after a pinch pans the board with the other", async ({ page, context }) => {
+  await aBoardWithACard(page, "PhonePinchThenPan");
+  const board = (await corkboard(page).boundingBox())!;
+  const one = { x: board.x + 60, y: board.y + board.height - 120 };
+  const other = { x: board.x + 160, y: board.y + board.height - 120 };
+  const hands = await fingers(page, context);
+
+  await hands.press([one]);
+  await hands.press([one, other]);
+  for (const now of steps([one, other], [{ x: one.x - 20, y: one.y }, { x: other.x + 20, y: other.y }])) {
+    await hands.moveTo(now);
+  }
+  await hands.lift([{ x: other.x + 20, y: other.y, id: 1 }]);
+  const before = await seenAt(page, "The loom remembers");
+  for (const now of steps([{ x: one.x - 20, y: one.y }], [{ x: one.x - 20, y: one.y - 100 }])) {
+    await hands.moveTo(now);
+  }
+  await hands.lift([]);
+
+  await expect
+    .poll(async () => (await seenAt(page, "The loom remembers")).y - before.y)
+    .toBe(-100);
+});
+

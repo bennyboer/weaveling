@@ -72,6 +72,21 @@ impl Viewport {
         }
     }
 
+    pub fn pinched(&self, from: (Spot, Spot), to: (Spot, Spot)) -> Self {
+        let (was, now) = (middle(from), middle(to));
+        let moved = self.panned(Spot {
+            x: now.x - was.x,
+            y: now.y - was.y,
+        });
+        let (apart, apart_now) = (gap(from), gap(to));
+
+        if apart < 1.0 || apart_now < 1.0 {
+            return moved;
+        }
+
+        moved.zoomed(now, apart_now / apart)
+    }
+
     fn exactly(&self, at: Spot) -> Exact {
         Exact {
             x: (at.x as f64 - self.pan.x) / self.zoom,
@@ -103,6 +118,17 @@ impl Viewport {
     pub fn as_percent(&self) -> String {
         format!("{}%", (self.zoom * 100.0).round())
     }
+}
+
+fn middle((one, other): (Spot, Spot)) -> Spot {
+    Spot {
+        x: (one.x + other.x) / 2,
+        y: (one.y + other.y) / 2,
+    }
+}
+
+fn gap((one, other): (Spot, Spot)) -> f64 {
+    ((one.x - other.x) as f64).hypot((one.y - other.y) as f64)
 }
 
 #[cfg(test)]
@@ -223,5 +249,56 @@ mod tests {
     fn the_zoom_reads_as_a_percentage() {
         assert_eq!(Viewport::RESTING.as_percent(), "100%");
         assert_eq!(Viewport::RESTING.zoomed(at(0, 0), 0.5).as_percent(), "50%");
+    }
+
+    #[test]
+    fn fingers_spread_twice_as_far_apart_zoom_twice_as_close() {
+        let pinched =
+            Viewport::RESTING.pinched((at(100, 200), at(200, 200)), (at(50, 200), at(250, 200)));
+
+        assert_eq!(pinched.zoom, 2.0);
+    }
+
+    #[test]
+    fn what_lies_between_the_fingers_stays_between_them() {
+        let start = Viewport::RESTING.panned(at(30, -20));
+        let between = start.on_board(at(150, 200));
+
+        let pinched = start.pinched((at(100, 200), at(200, 200)), (at(80, 260), at(280, 260)));
+
+        assert_eq!(
+            pinched.on_screen(between),
+            at(180, 260),
+            "the spot under the fingers' middle follows the middle as they move and spread"
+        );
+    }
+
+    #[test]
+    fn fingers_moving_together_pan_without_zooming() {
+        let pinched =
+            Viewport::RESTING.pinched((at(100, 200), at(200, 200)), (at(130, 160), at(230, 160)));
+
+        assert_eq!(pinched.zoom, 1.0);
+        assert_eq!(pinched.on_screen(at(0, 0)), at(30, -40));
+    }
+
+    #[test]
+    fn a_pinch_stops_where_the_wheel_stops() {
+        let pinched =
+            Viewport::RESTING.pinched((at(100, 200), at(110, 200)), (at(0, 200), at(1_000, 200)));
+
+        assert_eq!(pinched.zoom, CLOSEST);
+    }
+
+    #[test]
+    fn fingers_on_one_spot_only_pan() {
+        let pinched =
+            Viewport::RESTING.pinched((at(100, 200), at(100, 200)), (at(120, 200), at(160, 200)));
+
+        assert_eq!(pinched.zoom, 1.0);
+        assert!(
+            pinched.on_screen(at(0, 0)).x.abs() < 1_000,
+            "no division by a gap of nothing"
+        );
     }
 }
