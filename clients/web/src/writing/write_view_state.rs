@@ -1,9 +1,12 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
+use statistics_contract::ProjectWordCountsDTO;
 
+use crate::live::{Following, Told};
 use crate::projects::model::ProjectId;
 use crate::scenes::prose::SyncConnection;
 use crate::scenes::service as scenes;
+use crate::statistics::model::SceneWordCount;
 use crate::statistics::service as statistics;
 use crate::writing::beginnings::Beginnings;
 use crate::writing::book_rail::BookRail;
@@ -109,12 +112,37 @@ impl WriteViewState {
                 Err(failure) => state.problems.report(failure),
             }
         });
-        spawn_local(async move {
-            match statistics::word_counts(&counting).await {
-                Ok(counted) => state.word_count.remember(counted),
-                Err(failure) => state.problems.report(failure),
+        let told_since = StoredValue::new(0_u64);
+        let asking = {
+            let project = counting.clone();
+
+            move || {
+                let project = project.clone();
+                let asked_at = told_since.get_value();
+
+                spawn_local(async move {
+                    match statistics::word_counts(&project).await {
+                        Ok(counted) if told_since.try_get_value() == Some(asked_at) => {
+                            state.word_count.told(counted)
+                        }
+                        Ok(_) => {}
+                        Err(failure) => state.problems.report(failure),
+                    }
+                });
             }
-        });
+        };
+        StoredValue::new_local(Following::start(
+            &format!("/api/statistics/word-counts/live?project={counting}"),
+            move |told: Told| {
+                if let Ok(found) = serde_json::from_value::<ProjectWordCountsDTO>(told.event) {
+                    _ = told_since.try_update_value(|since| *since += 1);
+                    state
+                        .word_count
+                        .told(found.counts.into_iter().map(SceneWordCount::from).collect());
+                }
+            },
+            asking,
+        ));
 
         state
     }

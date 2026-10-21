@@ -4434,8 +4434,12 @@ dependencies = [
 name = "weaveling-statistics-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "serde",
+ "serde_json",
+ "time",
+ "weaveling-live",
  "weaveling-serving",
  "weaveling-statistics-contract",
  "weaveling-statistics-core",
@@ -4449,6 +4453,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-scenes-contract",
  "weaveling-statistics-catalog",
@@ -4463,6 +4468,7 @@ name = "weaveling-statistics-wiring"
 version = "0.1.0"
 dependencies = [
  "sqlx",
+ "weaveling-live",
  "weaveling-outbox",
  "weaveling-statistics-catalog",
  "weaveling-statistics-core",

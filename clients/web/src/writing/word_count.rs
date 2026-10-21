@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
 
@@ -18,6 +18,7 @@ pub struct WordCount {
     structure: Structure,
     writing_in: WritingIn,
     words: RwSignal<HashMap<SceneId, usize>>,
+    counting_here: StoredValue<HashSet<SceneId>>,
     counted: RwSignal<Counted>,
 }
 
@@ -27,11 +28,14 @@ impl WordCount {
             structure,
             writing_in,
             words: RwSignal::new(HashMap::new()),
+            counting_here: StoredValue::new(HashSet::new()),
             counted: RwSignal::new(Counted::Section),
         }
     }
 
     pub fn scene_has(self, scene: SceneId, words: usize) {
+        self.counting_here
+            .update_value(|here| _ = here.insert(scene.clone()));
         let unchanged = self
             .words
             .with_untracked(|counted| counted.get(&scene) == Some(&words));
@@ -42,10 +46,23 @@ impl WordCount {
         }
     }
 
-    pub fn remember(self, counted: Vec<SceneWordCount>) {
+    pub fn let_go_of(self, scene: &SceneId) {
+        _ = self
+            .counting_here
+            .try_update_value(|here| _ = here.remove(scene));
+    }
+
+    pub fn told(self, counted: Vec<SceneWordCount>) {
+        let elsewhere = self.counting_here.with_value(|here| {
+            counted
+                .into_iter()
+                .filter(|count| !here.contains(&count.scene))
+                .collect::<Vec<_>>()
+        });
+
         self.words.update(|words| {
-            for count in counted {
-                words.entry(count.scene).or_insert(count.words);
+            for count in elsewhere {
+                words.insert(count.scene, count.words);
             }
         });
     }

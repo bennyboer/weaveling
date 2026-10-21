@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use live::Broadcaster;
 use outbox::Outbox;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::WordCountCatalog;
@@ -11,9 +12,16 @@ pub struct Ports {
 }
 
 pub fn wire(ports: &Ports) -> Wired {
-    Wired::serving(statistics_rest::router(ports.catalog.clone())).listening(vec![Arc::new(
-        ProjectWordCountsListener::new(ports.catalog.clone()),
-    )])
+    let broadcaster = Broadcaster::new();
+    let telling: Arc<dyn WordCountCatalog> = Arc::new(statistics_rest::TellingWordCounts::around(
+        ports.catalog.clone(),
+        broadcaster.clone(),
+    ));
+
+    Wired::serving(
+        statistics_rest::router(ports.catalog.clone()).merge(statistics_rest::live(broadcaster)),
+    )
+    .listening(vec![Arc::new(ProjectWordCountsListener::new(telling))])
 }
 
 pub struct StatisticsFeature;
