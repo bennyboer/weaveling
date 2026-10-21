@@ -1,13 +1,11 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use scenes_contract::SceneSummaryDTO;
 use statistics_contract::WordCountDTO;
 
 use crate::live::{Following, Told};
 use crate::projects::model::ProjectId;
-use crate::scenes::model::SceneSummary;
+use crate::scenes::followed as scenes_followed;
 use crate::scenes::prose::SyncConnection;
-use crate::scenes::service as scenes;
 use crate::statistics::model::SceneWordCount;
 use crate::statistics::service as statistics;
 use crate::writing::beginnings::Beginnings;
@@ -105,37 +103,19 @@ impl WriteViewState {
         let listing = project.clone();
         let counting = project.clone();
 
-        let scenes_told_meanwhile = StoredValue::new(Vec::<SceneSummary>::new());
-        let listing_scenes = move || {
-            let project = listing.clone();
-            scenes_told_meanwhile.set_value(Vec::new());
-
-            spawn_local(async move {
-                match scenes::in_project(&project).await {
-                    Ok(listed) => {
-                        state.labels.remember(&listed);
-                        state.loose.remember(&listed);
-                        for told in scenes_told_meanwhile.try_get_value().unwrap_or_default() {
-                            state.labels.told(&told);
-                            state.loose.include(vec![told.id]);
-                        }
-                    }
-                    Err(failure) => state.problems.report(failure),
-                }
-            });
-        };
-        StoredValue::new_local(Following::start(
-            &format!("/api/scenes/live?project={project}"),
-            move |told: Told| {
-                if let Ok(found) = serde_json::from_value::<SceneSummaryDTO>(told.event) {
-                    let summary = SceneSummary::from(found);
-                    _ = scenes_told_meanwhile.try_update_value(|told| told.push(summary.clone()));
-                    state.labels.told(&summary);
-                    state.loose.include(vec![summary.id]);
-                }
+        let (scenes_followed, _) = scenes_followed::follow(
+            &listing,
+            move |listed| {
+                state.labels.remember(listed);
+                state.loose.remember(listed);
             },
-            listing_scenes,
-        ));
+            move |summary| {
+                state.labels.told(summary);
+                state.loose.include(vec![summary.id.clone()]);
+            },
+            move |failure| state.problems.report(failure),
+        );
+        StoredValue::new_local(scenes_followed);
         let counts_told_meanwhile = StoredValue::new(Vec::<SceneWordCount>::new());
         let asking = {
             let project = counting.clone();

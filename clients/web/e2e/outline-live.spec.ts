@@ -149,6 +149,7 @@ test("a title I only sat in takes another author's rename without writing the ol
 test("a scene the listing does not know yet is asked for once, not over and over", async ({
   page,
 }) => {
+  await page.routeWebSocket(/\/api\/scenes\/live\?project=/, () => {});
   const { outline, ids } = await anOutlineFollowedLive(
     page,
     "OutlineLiveLagging",

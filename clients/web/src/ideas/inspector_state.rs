@@ -10,8 +10,8 @@ use crate::live::{Following, Told};
 use crate::outline::model::{Section, SectionId};
 use crate::outline::service as outline_service;
 use crate::route;
-use crate::scenes::model::{SceneId, SceneSummary};
-use crate::scenes::service as scene_service;
+use crate::scenes::followed as scenes_followed;
+use crate::scenes::model::{SceneId, SceneSummary, hold};
 use crate::speech::say;
 
 #[derive(Clone, Copy)]
@@ -72,10 +72,6 @@ impl InspectorState {
             async move {
                 match outline_service::open(&project).await {
                     Ok(found) => sections.set(found.sections),
-                    Err(failure) => return problem.set(Some(failure)),
-                }
-                match scene_service::in_project(&project).await {
-                    Ok(found) => scenes.set(found),
                     Err(failure) => problem.set(Some(failure)),
                 }
             }
@@ -101,6 +97,9 @@ impl InspectorState {
         });
 
         let following = StoredValue::new_local(None::<Following>);
+        let scenes_followed = StoredValue::new_local(None::<(Following, Box<dyn Fn()>)>);
+        let asking_scenes =
+            move || scenes_followed.with_value(|held| held.as_ref().map(|(_, ask)| ask()));
         let heard = move |told: Told| {
             let Ok(found) = serde_json::from_value::<IdeaPlacesDTO>(told.event) else {
                 return;
@@ -118,11 +117,21 @@ impl InspectorState {
             places.set(appearing);
             if unknown {
                 listing_places.dispatch(project.get_untracked());
+                asking_scenes();
             }
         };
 
         Effect::new(move || match inspected.get() {
             Some(asked) => {
+                if scenes_followed.with_value(Option::is_none) {
+                    let (followed, ask) = scenes_followed::follow(
+                        &route::project_id(&project.get_untracked()),
+                        move |listed| _ = scenes.try_set(listed.to_vec()),
+                        move |summary| scenes.update(|held| hold(held, summary.clone())),
+                        move |failure| _ = problem.try_set(Some(failure)),
+                    );
+                    scenes_followed.set_value(Some((followed, Box::new(ask))));
+                }
                 places.set(Vec::new());
                 opening_idea.dispatch(asked.clone());
                 following.set_value(Some(Following::start(

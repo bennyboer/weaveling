@@ -175,3 +175,20 @@ test("places asked for and answered after newer ones were told are let go", asyn
     "the answer was asked for before the places were told",
   ).toBeVisible();
 });
+
+test("a scene the inspector hears of only through the idea's places is asked for, and named", async ({
+  page,
+}) => {
+  await page.routeWebSocket(/\/api\/scenes\/live\?project=/, () => {});
+  await aNewProject(page, "AppearingUnknownScene");
+  const idea = await anIdea(page, "A girl in a wood");
+  await inspectedLive(page, idea);
+  await expect(page.getByText("Not in the book yet")).toBeVisible();
+
+  await linkFromAScene(page, idea, "The clearing");
+
+  await expect(
+    appearances(page).getByRole("link", { name: "The clearing" }),
+    "the scenes are asked for again, since the place named one the inspector did not know",
+  ).toBeVisible();
+});

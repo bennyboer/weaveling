@@ -65,6 +65,13 @@ impl Display for SceneId {
     }
 }
 
+pub fn hold(held: &mut Vec<SceneSummary>, summary: SceneSummary) {
+    match held.iter_mut().find(|known| known.id == summary.id) {
+        Some(known) => *known = summary,
+        None => held.push(summary),
+    }
+}
+
 impl From<SceneSummaryDTO> for SceneSummary {
     fn from(dto: SceneSummaryDTO) -> Self {
         Self {
@@ -72,5 +79,42 @@ impl From<SceneSummaryDTO> for SceneSummary {
             title: dto.title,
             opening: dto.opening,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn a_summary(id: &str, title: &str) -> SceneSummary {
+        SceneSummary {
+            id: SceneId::from(id.to_owned()),
+            title: title.to_owned(),
+            opening: String::new(),
+        }
+    }
+
+    #[test]
+    fn a_scene_not_held_is_added() {
+        let mut held = vec![a_summary("scene_1", "The arrival")];
+
+        hold(&mut held, a_summary("scene_2", "The loom"));
+
+        assert_eq!(
+            held,
+            vec![
+                a_summary("scene_1", "The arrival"),
+                a_summary("scene_2", "The loom")
+            ]
+        );
+    }
+
+    #[test]
+    fn a_scene_held_already_is_replaced_and_not_held_twice() {
+        let mut held = vec![a_summary("scene_1", "The arrival")];
+
+        hold(&mut held, a_summary("scene_1", "The departure"));
+
+        assert_eq!(held, vec![a_summary("scene_1", "The departure")]);
     }
 }

@@ -1,12 +1,20 @@
 import { test, expect, type Page } from "@playwright/test";
 
-import { aBookWithScenes } from "./support/book";
-import { aLooseScene, aNewProject } from "./support/shell";
+import { aBookShaped, aBookWithScenes } from "./support/book";
+import {
+  aLooseScene,
+  aNewProject,
+  API,
+  aSceneMade,
+  openTheOutline,
+  sceneCatalogued,
+} from "./support/shell";
 import {
   flow,
   label,
   menuItem,
   openTheWritingView,
+  projectOf,
   rail,
   saveState,
   scene,
@@ -290,3 +298,66 @@ test("scenes asked for again while my own rename is on its way do not undo it", 
   ).toHaveText("The loom");
   release();
 });
+
+test("a scene another author renames is renamed in the outline without asking again", async ({
+  page,
+}) => {
+  await aNewProject(page, "OutlineSceneLive");
+  const { outline, ids } = await aBookShaped(page, [{ title: "Part One" }]);
+  const arrival = await aSceneMade(page);
+  await titled(page, arrival, "The arrival");
+  const attached = await page.request.post(`${API}/outlines/${outline}/attachments`, {
+    data: { attachment: { kind: "scene", id: arrival }, section: ids["Part One"], after: null },
+  });
+  expect(attached.ok()).toBe(true);
+  await sceneCatalogued(page, arrival, "The arrival");
+  const asks = listed(page);
+  await openTheOutline(page);
+  await expect(page.locator(".leaf .name")).toHaveText("The arrival");
+  await expect.poll(asks, { message: "asked once, as it connects" }).toBe(1);
+
+  await titled(page, arrival, "The loom");
+
+  await expect(page.locator(".leaf .name")).toHaveText("The loom");
+  expect(asks()).toBe(1);
+});
+
+test("a scene another author makes waits in the outline's tally", async ({ page }) => {
+  await aNewProject(page, "OutlineTallyLive");
+  const asks = listed(page);
+  await openTheOutline(page);
+  await expect.poll(asks, { message: "followed, and asked once as it connects" }).toBe(1);
+  const waiting = page.getByRole("list", { name: "Scenes not in the book" });
+
+  await aLooseScene(page);
+
+  await expect(waiting.getByRole("listitem")).toHaveCount(1);
+});
+
+test("a scene another author renames is renamed in the inspector of an idea it draws on", async ({
+  page,
+}) => {
+  await aNewProject(page, "InspectorSceneLive");
+  const captured = await page.request.post(`${API}/ideas`, {
+    data: { project: projectOf(page), title: "A girl in a wood" },
+  });
+  const idea = (await captured.json()).id as string;
+  const clearing = await aSceneMade(page);
+  await titled(page, clearing, "The clearing");
+  const linked = await page.request.post(`${API}/scenes/${clearing}/ideas`, { data: { idea } });
+  expect(linked.ok()).toBe(true);
+  await sceneCatalogued(page, clearing, "The clearing");
+  const appearances = page.getByRole("list", { name: "Appears in" });
+  const segment = new URL(page.url()).pathname.split("/")[2];
+  await expect(async () => {
+    await page.goto(`/projects/${segment}/ideas/${idea}`);
+    await expect(appearances.getByRole("link", { name: "The clearing" })).toBeVisible({
+      timeout: 1_000,
+    });
+  }).toPass();
+
+  await titled(page, clearing, "The glade");
+
+  await expect(appearances.getByRole("link", { name: "The glade" })).toBeVisible();
+});
+

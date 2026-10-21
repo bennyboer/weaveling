@@ -9,7 +9,8 @@ use crate::outline::model::{Attachment, Outline, OutlineChange, Section, Section
 use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::route;
-use crate::scenes::model::SceneSummary;
+use crate::scenes::followed as scenes_followed;
+use crate::scenes::model::{SceneSummary, hold};
 use crate::scenes::service as scene_service;
 use outline_contract::OutlineEventDTO;
 
@@ -109,21 +110,19 @@ impl OutlineViewState {
             Err(failure) => failed(failure),
         };
 
-        let listing_scenes = {
-            let id = project.clone();
-
-            Action::new_local(move |()| {
-                let id = id.clone();
-
-                async move {
-                    match scene_service::in_project(&id).await {
-                        Ok(found) => scenes.set(Some(found)),
-                        Err(failure) => problem.set(Some(failure)),
+        let (scenes_followed, listing_scenes) = scenes_followed::follow(
+            project,
+            move |listed| _ = scenes.try_set(Some(listed.to_vec())),
+            move |summary| {
+                scenes.update(|held| {
+                    if let Some(held) = held {
+                        hold(held, summary.clone());
                     }
-                }
-            })
-        };
-        listing_scenes.dispatch(());
+                })
+            },
+            move |failure| _ = problem.try_set(Some(failure)),
+        );
+        StoredValue::new_local(scenes_followed);
 
         let listing_ideas = followed::asking(project, ideas, move |failure| {
             _ = problem.try_set(Some(failure));
@@ -272,7 +271,7 @@ impl OutlineViewState {
                         Err(failure) => return problem.set(Some(failure)),
                     };
 
-                    scenes.update(|held| held.get_or_insert_default().push(started.summarized()));
+                    scenes.update(|held| hold(held.get_or_insert_default(), started.summarized()));
                     let Some(open) = outline.get_untracked() else {
                         return;
                     };
@@ -353,7 +352,7 @@ impl OutlineViewState {
                 })
             });
             if unknown_scene {
-                listing_scenes.dispatch(());
+                listing_scenes();
             }
             if unknown_idea {
                 listing_ideas.dispatch(());
