@@ -115,7 +115,7 @@ async fn starting_a_project_with_a_blank_name_answers_400() {
     let response = server.post("/projects").json(&named("   ")).await;
 
     let told = refused_as(&response, StatusCode::BAD_REQUEST, refused::NAME_BLANK);
-    assert_eq!(told["detail"], "project name must not be blank");
+    assert_eq!(told["detail"], "must not be blank");
 }
 
 #[tokio::test]

@@ -1,8 +1,7 @@
 use eventsourcing::Codec;
 use projects_core::{
-    BookLanguage, InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName,
-    InvalidQuotationMarks, ProjectDescription, ProjectDetails, ProjectEvent, ProjectName,
-    QuotationMarks,
+    BookLanguage, InvalidBookLanguage, InvalidProjectName, InvalidQuotationMarks,
+    ProjectDescription, ProjectDetails, ProjectEvent, ProjectName, QuotationMarks,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -116,12 +115,6 @@ impl From<InvalidQuotationMarks> for UnreadableProjectEvent {
     }
 }
 
-impl From<InvalidProjectDescription> for UnreadableProjectEvent {
-    fn from(_: InvalidProjectDescription) -> Self {
-        Self::Description
-    }
-}
-
 fn details_of(
     language: Option<String>,
     quotation: Option<String>,
@@ -130,7 +123,8 @@ fn details_of(
     Ok(ProjectDetails {
         language: language.as_deref().map(BookLanguage::new).transpose()?,
         quotation: quotation.as_deref().map(QuotationMarks::new).transpose()?,
-        description: ProjectDescription::new(description)?,
+        description: ProjectDescription::new(description)
+            .map_err(|_| UnreadableProjectEvent::Description)?,
     })
 }
 

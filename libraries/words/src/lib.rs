@@ -1,3 +1,7 @@
+mod fitting;
+
+pub use fitting::{TextRules, Unfit};
+
 const OPENING: usize = 40;
 
 pub fn opening_of(text: &str) -> String {

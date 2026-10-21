@@ -357,6 +357,7 @@ fn problem_of(refusal: SceneServiceError) -> Problem {
     match refusal {
         SceneServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
         SceneServiceError::Untitled(reason) => match reason {
+            InvalidSceneTitle::Blank => Problem::unexpected(reason),
             InvalidSceneTitle::ControlCharacter => {
                 Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
             }

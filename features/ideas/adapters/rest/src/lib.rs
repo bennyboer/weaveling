@@ -126,6 +126,7 @@ fn problem_of(refusal: IdeaServiceError) -> Problem {
     match refusal {
         IdeaServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
         IdeaServiceError::InvalidTitle(reason) => match reason {
+            InvalidIdeaTitle::Blank => Problem::unexpected(reason),
             InvalidIdeaTitle::ControlCharacter => {
                 Problem::rejected(refused::TITLE_CONTROL_CHARACTER, reason)
             }

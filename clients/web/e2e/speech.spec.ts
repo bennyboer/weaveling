@@ -19,6 +19,22 @@ const spoken = (page: Page) =>
 const picker = (page: Page, named: string) =>
   page.getByRole("combobox", { name: named });
 
+
+async function aGermanProjectListed(page: Page, title: string) {
+  const made = await page.request.post(`${API}/projects`, {
+    data: { name: title, language: "de" },
+  });
+  const { id } = await made.json();
+  await expect
+    .poll(async () => {
+      const listed = await (await page.request.get(`${API}/projects`)).json();
+      return listed.some((project: { id: string }) => project.id === id);
+    }, { message: "the list of projects is a projection, and a page opened at once could miss it" })
+    .toBe(true);
+
+  return id as string;
+}
+
 test.describe("a browser asking for German", () => {
   test.use({ locale: "de-DE" });
 
@@ -169,10 +185,7 @@ test.describe("a browser asking for German, about a project's details", () => {
     page,
   }) => {
     const title = `Gelöscht ${crypto.randomUUID().slice(0, 8)}`;
-    const made = await page.request.post(`${API}/projects`, {
-      data: { name: title, language: "de" },
-    });
-    const { id } = await made.json();
+    const id = await aGermanProjectListed(page, title);
     await page.routeWebSocket(/\/api\/projects\/live$/, () => {});
     await page.goto("/");
     const row = page.getByRole("listitem").filter({ hasText: title });
@@ -213,9 +226,7 @@ test.describe("a browser asking for German, about a project's details", () => {
     page,
   }) => {
     const title = `Weg ${crypto.randomUUID().slice(0, 8)}`;
-    await page.request.post(`${API}/projects`, {
-      data: { name: title, language: "de" },
-    });
+    await aGermanProjectListed(page, title);
     await page.goto("/");
     const row = page.getByRole("listitem").filter({ hasText: title });
     await expect(row).toBeVisible();
@@ -576,7 +587,7 @@ test.describe("a browser asking for German, about what went wrong", () => {
 
   test("a project's stamp is told in German", async ({ page }) => {
     const title = `Datiert ${crypto.randomUUID().slice(0, 8)}`;
-    await page.request.post(`${API}/projects`, { data: { name: title, language: "de" } });
+    await aGermanProjectListed(page, title);
 
     await page.goto("/");
 

@@ -27,7 +27,7 @@ pub enum ProjectServiceError {
     #[error(transparent)]
     InvalidQuotation(#[from] InvalidQuotationMarks),
     #[error(transparent)]
-    InvalidDescription(#[from] InvalidProjectDescription),
+    InvalidDescription(InvalidProjectDescription),
     #[error(transparent)]
     Events(#[from] ServiceError<ProjectError>),
     #[error(transparent)]
@@ -172,7 +172,8 @@ impl RawDetails<'_> {
             quotation: chosen(self.quotation)
                 .map(QuotationMarks::new)
                 .transpose()?,
-            description: ProjectDescription::new(self.description)?,
+            description: ProjectDescription::new(self.description)
+                .map_err(ProjectServiceError::InvalidDescription)?,
         })
     }
 }

@@ -193,6 +193,7 @@ fn problem_of(refusal: ProjectServiceError) -> Problem {
             }
         },
         ProjectServiceError::InvalidDescription(reason) => match reason {
+            InvalidProjectDescription::Blank => Problem::unexpected(reason),
             InvalidProjectDescription::ControlCharacter => {
                 Problem::rejected(refused::DESCRIPTION_CONTROL_CHARACTER, reason)
             }

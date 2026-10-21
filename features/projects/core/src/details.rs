@@ -2,6 +2,7 @@ use std::fmt::{self, Display, Formatter};
 use std::iter::once;
 
 use thiserror::Error;
+use words::{TextRules, Unfit};
 
 pub use quotation::{InvalidQuotationMarks, QuotationMarks};
 
@@ -63,36 +64,17 @@ impl Display for BookLanguage {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct ProjectDescription(String);
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum InvalidProjectDescription {
-    #[error("a description must not contain control characters other than line breaks")]
-    ControlCharacter,
-    #[error("a description must be at most {max} characters, got {actual}")]
-    TooLong { max: usize, actual: usize },
-}
+pub type InvalidProjectDescription = Unfit;
 
 impl ProjectDescription {
-    pub const MAX_CHARS: usize = 4_096;
+    const RULES: TextRules = TextRules {
+        max_chars: 4_096,
+        may_be_blank: true,
+        may_break_lines: true,
+    };
 
     pub fn new(raw: &str) -> Result<Self, InvalidProjectDescription> {
-        let trimmed = raw.trim();
-
-        if trimmed
-            .chars()
-            .any(|sign| sign.is_control() && sign != '\n')
-        {
-            return Err(InvalidProjectDescription::ControlCharacter);
-        }
-
-        let actual = trimmed.chars().count();
-        if actual > Self::MAX_CHARS {
-            return Err(InvalidProjectDescription::TooLong {
-                max: Self::MAX_CHARS,
-                actual,
-            });
-        }
-
-        Ok(Self(trimmed.to_owned()))
+        Self::RULES.fitted(raw).map(Self)
     }
 }
 

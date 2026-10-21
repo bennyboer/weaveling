@@ -382,6 +382,7 @@ fn to_section_dto(placed: &PlacedSection) -> PlacedSectionDTO {
 
 fn untitled(reason: InvalidSectionTitle) -> Problem {
     match reason {
+        InvalidSectionTitle::Blank => Problem::unexpected(reason),
         InvalidSectionTitle::ControlCharacter => {
             Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
         }
