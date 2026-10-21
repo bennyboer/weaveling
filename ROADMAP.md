@@ -1043,6 +1043,13 @@ Sits beside M11 on purpose: *"the real store"* and *"no store at all"* are two a
 
 **Build:** the writing view and the workspace are a media query away — they are already a single column. **The board is not.** Pointer events already carry touch, but the resize grips are 7px where a finger needs about 44, `touch-action: none` on the corkboard means the browser will not help, and **pinch-to-zoom is not wired at all** — ctrl-and-wheel is the only zoom, and pinch is *the* gesture on a phone. That is a feature, not a stylesheet. *Seen 2026-10-16: on a phone the board is not really usable at all. The masthead, the writing view and its drawers were made to fit a phone along with M13c 8c, so the board is what is left.*
 
+In slices, in this order:
+
+1. **Measure first**, on a phone in the browser tests, what the done-when asks for. *Done 2026-10-21: `touch-board.spec.ts` emulates a phone, 390 by 844 with touch, and drives the screen with fingers over CDP, one or two at a time. Already working: an idea is captured in the pool, a scene is written, one finger on the bare board pans it, and a double tap on the bare board captures an idea there; pinning from the board means opening the drawer of ideas not on it first, which a phone folds away, and works. Not yet, each kept as a test expected to fail until its slice makes it pass: a card cannot be moved with a thumb, since the browser cancels the finger's pointer, `pointercancel`, right after its first move, while the bare board, which takes the pointer on `pointerdown` rather than once the drag begins, pans; the finger lands on the idea's name, a link that fills the card, so whether the link or the late capture is what lets the browser take the gesture is for slice 2 to find out. Two fingers pinching do nothing, as expected, and the grips are 7px against a fingertip's 44.*
+2. **A card moved with a thumb**, the cancelled drag above.
+3. **Pinch-to-zoom**, two pointers tracked on the corkboard, zooming around their midpoint within the limits ctrl and the wheel keep.
+4. **Targets a finger can hit**: the grips and handles at 44px on a coarse pointer, their marks as they are.
+
 **Done when:** an idea can be captured and a scene written on a phone; the board pans and pinch-zooms with two fingers; and a card can be moved with a thumb.
 
 ### Milestone 13a — Moving a project between machines
