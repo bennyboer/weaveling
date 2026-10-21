@@ -3545,10 +3545,13 @@ dependencies = [
 name = "weaveling-appearances-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "serde",
+ "serde_json",
  "weaveling-appearances-contract",
  "weaveling-appearances-core",
+ "weaveling-live",
  "weaveling-serving",
 ]
 
@@ -3566,6 +3569,7 @@ dependencies = [
  "weaveling-appearances-messaging",
  "weaveling-appearances-rest",
  "weaveling-ideas-contract",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-outline-contract",
  "weaveling-scenes-contract",
@@ -3580,6 +3584,7 @@ dependencies = [
  "weaveling-appearances-core",
  "weaveling-appearances-messaging",
  "weaveling-appearances-rest",
+ "weaveling-live",
  "weaveling-outbox",
  "weaveling-wiring",
 ]

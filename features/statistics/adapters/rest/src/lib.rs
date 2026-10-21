@@ -11,7 +11,7 @@ use live::{Broadcaster, streaming};
 use serde::Deserialize;
 use serde_json::json;
 use serving::Problem;
-use statistics_contract::{ProjectWordCountsDTO, WordCountDTO};
+use statistics_contract::WordCountDTO;
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
 use time::OffsetDateTime;
 
@@ -50,17 +50,15 @@ impl TellingWordCounts {
         }
     }
 
-    async fn tell(&self, project: &ProjectLink) {
-        let Ok(counts) = self.kept.in_project(project).await else {
-            return;
-        };
+    fn tell(&self, project: &ProjectLink, scene: &SceneLink, words: u64) {
         let version = self.told.fetch_add(1, Ordering::AcqRel) + 1;
-        let event = ProjectWordCountsDTO {
-            counts: counts.iter().map(to_dto).collect(),
+        let event = WordCountDTO {
+            scene: scene.to_string(),
+            words,
         };
         self.broadcaster.tell(
             &project.to_string(),
-            json!({ "version": version, "event": event }).to_string(),
+            json!({ "of": scene.to_string(), "version": version, "event": event }).to_string(),
         );
     }
 }
@@ -73,11 +71,13 @@ impl WordCountCatalog for TellingWordCounts {
         project: &ProjectLink,
         words: u64,
         counted_at: OffsetDateTime,
-    ) -> Result<(), CatalogError> {
-        self.kept.keep(scene, project, words, counted_at).await?;
-        self.tell(project).await;
+    ) -> Result<Option<u64>, CatalogError> {
+        let kept = self.kept.keep(scene, project, words, counted_at).await?;
+        if let Some(words) = kept {
+            self.tell(project, scene, words);
+        }
 
-        Ok(())
+        Ok(kept)
     }
 
     async fn forget_scene(&self, scene: &SceneLink) -> Result<(), CatalogError> {

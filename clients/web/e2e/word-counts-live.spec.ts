@@ -65,9 +65,15 @@ test("a count told for the scene being written here does not stand over it", asy
   page,
 }) => {
   const held = await holdingBackTheTextOfOneScene(page);
+  let told = 0;
   let tell: (counts: object[]) => void = () => {};
   await page.routeWebSocket(/\/api\/statistics\/word-counts\/live\?project=/, (socket) => {
-    tell = (counts) => socket.send(JSON.stringify({ version: 1_000_000, event: { counts } }));
+    tell = (counts) => {
+      for (const count of counts as { scene: string }[]) {
+        told += 1;
+        socket.send(JSON.stringify({ of: count.scene, version: 1_000_000 + told, event: count }));
+      }
+    };
   });
   await aNewProject(page, "CountedHere");
   const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
@@ -95,9 +101,15 @@ test("counts asked for and answered after newer ones were told are let go", asyn
   page,
 }) => {
   const held = await holdingBackTheTextOfOneScene(page);
+  let told = 0;
   let tell: (counts: object[]) => void = () => {};
   await page.routeWebSocket(/\/api\/statistics\/word-counts\/live\?project=/, (socket) => {
-    tell = (counts) => socket.send(JSON.stringify({ version: 1_000_000, event: { counts } }));
+    tell = (counts) => {
+      for (const count of counts as { scene: string }[]) {
+        told += 1;
+        socket.send(JSON.stringify({ of: count.scene, version: 1_000_000 + told, event: count }));
+      }
+    };
   });
   await aNewProject(page, "CountedOvertaken");
   const [later] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];

@@ -1,3 +1,5 @@
+use appearances_contract::PlaceDTO;
+
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
 
@@ -5,4 +7,13 @@ use crate::scenes::model::SceneId;
 pub enum Place {
     Scene(SceneId),
     Section(SectionId),
+}
+
+impl From<PlaceDTO> for Place {
+    fn from(dto: PlaceDTO) -> Self {
+        match dto {
+            PlaceDTO::Scene { id } => Self::Scene(SceneId::from(id)),
+            PlaceDTO::Section { id } => Self::Section(SectionId::from(id)),
+        }
+    }
 }

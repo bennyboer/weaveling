@@ -5,6 +5,7 @@ use appearances_core::AppearanceCatalog;
 use appearances_messaging::{
     ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
+use live::Broadcaster;
 use outbox::Outbox;
 use wiring::{Context, Feature, Wired};
 
@@ -13,12 +14,18 @@ pub struct Ports {
 }
 
 pub fn wire(ports: &Ports) -> Wired {
-    Wired::serving(appearances_rest::router(ports.catalog.clone())).listening(vec![
-        Arc::new(ProjectOutlineAppearancesListener::new(
-            ports.catalog.clone(),
-        )),
-        Arc::new(ProjectSceneAppearancesListener::new(ports.catalog.clone())),
-        Arc::new(ForgetDiscardedIdeaListener::new(ports.catalog.clone())),
+    let broadcaster = Broadcaster::new();
+    let telling: Arc<dyn AppearanceCatalog> = Arc::new(
+        appearances_rest::TellingAppearances::around(ports.catalog.clone(), broadcaster.clone()),
+    );
+
+    Wired::serving(
+        appearances_rest::router(ports.catalog.clone()).merge(appearances_rest::live(broadcaster)),
+    )
+    .listening(vec![
+        Arc::new(ProjectOutlineAppearancesListener::new(telling.clone())),
+        Arc::new(ProjectSceneAppearancesListener::new(telling.clone())),
+        Arc::new(ForgetDiscardedIdeaListener::new(telling)),
     ])
 }
 

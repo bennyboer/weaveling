@@ -104,13 +104,23 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
         Ok(())
     }
 
-    async fn forget_place(&self, place: &Place) -> Result<(), CatalogError> {
+    async fn forget_place(&self, place: &Place) -> Result<Vec<Subject>, CatalogError> {
         let mut appearances = self.write();
+        let mut appeared = Vec::new();
 
         appearances.gone_places.insert(place.clone());
-        appearances.seen.retain(|(_, held), _| held != place);
+        appearances.seen.retain(|(subject, held), seen| {
+            if held != place {
+                return true;
+            }
+            if seen.present {
+                appeared.push(subject.clone());
+            }
 
-        Ok(())
+            false
+        });
+
+        Ok(appeared)
     }
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {

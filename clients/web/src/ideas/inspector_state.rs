@@ -1,3 +1,4 @@
+use appearances_contract::IdeaPlacesDTO;
 use leptos::prelude::*;
 
 use crate::appearances::model::Place;
@@ -5,6 +6,7 @@ use crate::appearances::service as appearance_service;
 use crate::http::ApiError;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as idea_service;
+use crate::live::{Following, Told};
 use crate::outline::model::{Section, SectionId};
 use crate::outline::service as outline_service;
 use crate::route;
@@ -39,16 +41,28 @@ impl InspectorState {
                     Ok(found) => found,
                     Err(failure) => return problem.set(Some(failure)),
                 };
-                let appearing = match appearance_service::of(&asked).await {
-                    Ok(appearing) => appearing,
-                    Err(failure) => return problem.set(Some(failure)),
-                };
                 if inspected.get_untracked().as_ref() != Some(&asked) {
                     return;
                 }
                 problem.set(None);
-                places.set(appearing);
                 opened.set(Some(found));
+            }
+        });
+
+        let told_since = StoredValue::new(0_u64);
+        let asking_places = Action::new_local(move |asked: &IdeaId| {
+            let asked = asked.clone();
+            let asked_at = told_since.get_value();
+
+            async move {
+                let appearing = match appearance_service::of(&asked).await {
+                    Ok(appearing) => appearing,
+                    Err(failure) => return problem.set(Some(failure)),
+                };
+                let still_asked = inspected.get_untracked().as_ref() == Some(&asked);
+                if still_asked && told_since.get_value() == asked_at {
+                    places.set(appearing);
+                }
             }
         });
 
@@ -86,11 +100,41 @@ impl InspectorState {
             }
         });
 
+        let following = StoredValue::new_local(None::<Following>);
+        let heard = move |told: Told| {
+            let Ok(found) = serde_json::from_value::<IdeaPlacesDTO>(told.event) else {
+                return;
+            };
+            told_since.update_value(|since| *since += 1);
+            let appearing: Vec<Place> = found.places.into_iter().map(Place::from).collect();
+            let unknown = appearing.iter().any(|place| match place {
+                Place::Section(id) => {
+                    sections.with_untracked(|known| known.iter().all(|section| &section.id != id))
+                }
+                Place::Scene(id) => {
+                    scenes.with_untracked(|known| known.iter().all(|scene| &scene.id != id))
+                }
+            });
+            places.set(appearing);
+            if unknown {
+                listing_places.dispatch(project.get_untracked());
+            }
+        };
+
         Effect::new(move || match inspected.get() {
             Some(asked) => {
-                opening_idea.dispatch(asked);
+                places.set(Vec::new());
+                opening_idea.dispatch(asked.clone());
+                following.set_value(Some(Following::start(
+                    &format!("/api/appearances/live?idea={asked}"),
+                    heard,
+                    move || _ = asking_places.dispatch(asked.clone()),
+                )));
             }
-            None => opened.set(None),
+            None => {
+                opened.set(None);
+                following.set_value(None);
+            }
         });
 
         Effect::new(move || {

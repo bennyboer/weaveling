@@ -155,6 +155,33 @@ pub async fn forgetting_a_place_reaches_every_idea_in_it(catalog: &impl Appearan
     );
 }
 
+pub async fn forgetting_a_place_says_which_ideas_appeared_there(catalog: &impl AppearanceCatalog) {
+    remembered(catalog, "idea_2", &[a_section("section_gone")]).await;
+    remembered(catalog, "idea_1", &[a_section("section_gone")]).await;
+    remembered(catalog, "idea_3", &[a_section("section_gone")]).await;
+    catalog
+        .forget(&an_idea("idea_3"), &a_section("section_gone"), 2)
+        .await
+        .expect("forgetting should succeed");
+    remembered(catalog, "idea_4", &[a_section("section_kept")]).await;
+
+    let appeared = catalog
+        .forget_place(&a_section("section_gone"))
+        .await
+        .expect("forgetting should succeed");
+    let nobody = catalog
+        .forget_place(&a_section("section_empty"))
+        .await
+        .expect("forgetting should succeed");
+
+    assert_eq!(
+        appeared,
+        vec![an_idea("idea_1"), an_idea("idea_2")],
+        "an idea already taken out of the place did not appear there"
+    );
+    assert!(nobody.is_empty());
+}
+
 pub async fn a_section_and_a_scene_sharing_an_id_are_different_places(
     catalog: &impl AppearanceCatalog,
 ) {
@@ -300,6 +327,10 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!($workbench, a_forgotten_idea_comes_back_nowhere);
         $crate::suite::conformance_case!($workbench, forgetting_an_idea_leaves_every_other_idea);
         $crate::suite::conformance_case!($workbench, forgetting_a_place_reaches_every_idea_in_it);
+        $crate::suite::conformance_case!(
+            $workbench,
+            forgetting_a_place_says_which_ideas_appeared_there
+        );
         $crate::suite::conformance_case!(
             $workbench,
             a_section_and_a_scene_sharing_an_id_are_different_places

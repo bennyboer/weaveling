@@ -49,11 +49,11 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
         project: &ProjectLink,
         words: u64,
         counted_at: OffsetDateTime,
-    ) -> Result<(), CatalogError> {
+    ) -> Result<Option<u64>, CatalogError> {
         let mut counts = self.write();
 
         if counts.gone.contains(scene) {
-            return Ok(());
+            return Ok(None);
         }
 
         let now = Kept {
@@ -67,7 +67,7 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
             *held = now;
         }
 
-        Ok(())
+        Ok(Some(held.words))
     }
 
     async fn forget_scene(&self, scene: &SceneLink) -> Result<(), CatalogError> {

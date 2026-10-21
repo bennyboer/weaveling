@@ -115,3 +115,38 @@ test("the inspector shows where the selected idea appears", async ({
     ).toBeVisible({ timeout: 1_000 });
   }).toPass();
 });
+
+test("selecting another card does not show the last one's places while its own are on their way", async ({
+  page,
+}) => {
+  await aBoardWith(page, "AppearsSwitching", ["The loom remembers", "The shuttle"]);
+  const project = new URL(page.url()).pathname.split("/")[2].split("-").pop();
+  const ideas: { id: string; title: string }[] = await (
+    await page.request.get(`${API}/ideas?project=${project}`)
+  ).json();
+  const loom = ideas.find((idea) => idea.title === "The loom remembers")!.id;
+  const shuttle = ideas.find((idea) => idea.title === "The shuttle")!.id;
+  const made = await page.request.post(`${API}/scenes`, { data: { project } });
+  const { id: scene } = await made.json();
+  await page.request.patch(`${API}/scenes/${scene}`, { data: { title: "The clearing" } });
+  await page.request.post(`${API}/scenes/${scene}/ideas`, { data: { idea: loom } });
+  await expect(async () => {
+    await page.reload();
+    await select(page, "The loom remembers");
+    await expect(inspector(page).getByRole("link", { name: "The clearing" })).toBeVisible({
+      timeout: 1_000,
+    });
+  }).toPass();
+  await page.route(
+    (url) => url.pathname === "/api/appearances" && url.searchParams.get("idea") === shuttle,
+    () => {},
+  );
+
+  await select(page, "The shuttle");
+
+  await expect(nameField(page)).toHaveValue("The shuttle");
+  await expect(
+    inspector(page).getByRole("link", { name: "The clearing" }),
+    "the loom's places are not the shuttle's",
+  ).toHaveCount(0);
+});

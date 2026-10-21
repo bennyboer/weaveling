@@ -134,6 +134,32 @@ pub async fn a_count_arriving_after_its_scene_was_forgotten_does_not_bring_it_ba
     );
 }
 
+pub async fn keeping_says_what_is_kept(catalog: &impl WordCountCatalog) {
+    let keeping = |words: u64, seconds: i64| async move {
+        catalog
+            .keep(
+                &a_scene("scene_1"),
+                &a_project("project_1"),
+                words,
+                at(seconds),
+            )
+            .await
+            .expect("keeping should succeed")
+    };
+
+    let first = keeping(42, 1_000).await;
+    let newer = keeping(50, 2_000).await;
+    let late = keeping(7, 1_500).await;
+    forgotten(catalog, "scene_1").await;
+    let gone = keeping(60, 3_000).await;
+
+    assert_eq!(
+        [first, newer, late, gone],
+        [Some(42), Some(50), Some(50), None],
+        "a late count leaves the newer one kept, and a forgotten scene keeps none"
+    );
+}
+
 pub async fn forgetting_what_was_never_counted_is_harmless(catalog: &impl WordCountCatalog) {
     forgotten(catalog, "scene_1").await;
     forgotten(catalog, "scene_1").await;
@@ -170,6 +196,7 @@ macro_rules! conformance_tests {
             $workbench,
             a_count_arriving_after_its_scene_was_forgotten_does_not_bring_it_back
         );
+        $crate::suite::conformance_case!($workbench, keeping_says_what_is_kept);
         $crate::suite::conformance_case!($workbench, forgetting_what_was_never_counted_is_harmless);
     };
 }

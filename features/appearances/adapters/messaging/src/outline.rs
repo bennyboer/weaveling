@@ -52,7 +52,7 @@ impl Handler for ProjectOutlineAppearancesListener {
                     .await?
             }
             OutlineEventDTO::SectionRemoved { section } => {
-                self.catalog.forget_place(&a_section(section)).await?
+                self.catalog.forget_place(&a_section(section)).await?;
             }
             _ => {}
         }

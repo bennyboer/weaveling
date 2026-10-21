@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use statistics_contract::ProjectWordCountsDTO;
+use statistics_contract::WordCountDTO;
 
 use crate::live::{Following, Told};
 use crate::projects::model::ProjectId;
@@ -134,11 +134,9 @@ impl WriteViewState {
         StoredValue::new_local(Following::start(
             &format!("/api/statistics/word-counts/live?project={counting}"),
             move |told: Told| {
-                if let Ok(found) = serde_json::from_value::<ProjectWordCountsDTO>(told.event) {
+                if let Ok(found) = serde_json::from_value::<WordCountDTO>(told.event) {
                     _ = told_since.try_update_value(|since| *since += 1);
-                    state
-                        .word_count
-                        .told(found.counts.into_iter().map(SceneWordCount::from).collect());
+                    state.word_count.told(vec![SceneWordCount::from(found)]);
                 }
             },
             asking,

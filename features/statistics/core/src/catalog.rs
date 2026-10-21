@@ -21,7 +21,7 @@ pub trait WordCountCatalog: Send + Sync {
         project: &ProjectLink,
         words: u64,
         counted_at: OffsetDateTime,
-    ) -> Result<(), CatalogError>;
+    ) -> Result<Option<u64>, CatalogError>;
 
     async fn forget_scene(&self, scene: &SceneLink) -> Result<(), CatalogError>;
 

@@ -1,4 +1,6 @@
-use appearances_core::{AppearanceCatalog, CatalogError, Place, SceneLink, SectionLink, Subject};
+use appearances_core::{
+    AppearanceCatalog, CatalogError, IdeaLink, Place, SceneLink, SectionLink, Subject,
+};
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
@@ -37,7 +39,10 @@ const GONE_PLACE: &str = "
     ON CONFLICT DO NOTHING
 ";
 
-const FORGET_PLACE: &str = "DELETE FROM appearances WHERE place_type = ?1 AND place_id = ?2";
+const FORGET_PLACE: &str = "
+    DELETE FROM appearances WHERE place_type = ?1 AND place_id = ?2
+    RETURNING subject_type, subject_id, present
+";
 
 const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
 
@@ -98,6 +103,20 @@ fn place_type_and_id(place: &Place) -> (&'static str, &str) {
     }
 }
 
+fn appeared_from(row: &SqliteRow) -> Result<Option<Subject>, CatalogError> {
+    let subject_type: String = row.try_get("subject_type").map_err(unreachable)?;
+    let subject_id: String = row.try_get("subject_id").map_err(unreachable)?;
+    let present: bool = row.try_get("present").map_err(unreachable)?;
+
+    match subject_type.as_str() {
+        _ if !present => Ok(None),
+        IDEA => Ok(Some(Subject::Idea(IdeaLink::from(subject_id)))),
+        unknown => Err(CatalogError::Backend(
+            format!("an appearance of a type of subject nothing writes: {unknown}").into(),
+        )),
+    }
+}
+
 fn place_from(row: &SqliteRow) -> Result<Place, CatalogError> {
     let place_type: String = row.try_get("place_type").map_err(unreachable)?;
     let place_id: String = row.try_get("place_id").map_err(unreachable)?;
@@ -155,7 +174,7 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
         transaction.commit().await.map_err(unreachable)
     }
 
-    async fn forget_place(&self, place: &Place) -> Result<(), CatalogError> {
+    async fn forget_place(&self, place: &Place) -> Result<Vec<Subject>, CatalogError> {
         let (place_type, place_id) = place_type_and_id(place);
         let mut transaction = self
             .pool
@@ -163,16 +182,27 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
             .await
             .map_err(unreachable)?;
 
-        for gone in [GONE_PLACE, FORGET_PLACE] {
-            sqlx::query(gone)
-                .bind(place_type)
-                .bind(place_id)
-                .execute(&mut *transaction)
-                .await
-                .map_err(unreachable)?;
-        }
+        sqlx::query(GONE_PLACE)
+            .bind(place_type)
+            .bind(place_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        let forgotten = sqlx::query(FORGET_PLACE)
+            .bind(place_type)
+            .bind(place_id)
+            .fetch_all(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        transaction.commit().await.map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        let mut appeared = Vec::new();
+        for row in &forgotten {
+            appeared.extend(appeared_from(row)?);
+        }
+        appeared.sort();
+
+        Ok(appeared)
     }
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {

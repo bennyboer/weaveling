@@ -4,8 +4,6 @@ use gloo_net::http::Request;
 use crate::appearances::model::Place;
 use crate::http::{ApiError, parsed, sent};
 use crate::ideas::model::IdeaId;
-use crate::outline::model::SectionId;
-use crate::scenes::model::SceneId;
 
 const APPEARANCES: &str = "/api/appearances";
 const SUBJECT: &str = "appearances";
@@ -14,12 +12,5 @@ pub async fn of(idea: &IdeaId) -> Result<Vec<Place>, ApiError> {
     let response = sent(Request::get(&format!("{APPEARANCES}?idea={idea}"))).await?;
     let places: Vec<PlaceDTO> = parsed(response, SUBJECT).await?;
 
-    Ok(places.into_iter().map(as_place).collect())
-}
-
-fn as_place(dto: PlaceDTO) -> Place {
-    match dto {
-        PlaceDTO::Scene { id } => Place::Scene(SceneId::from(id)),
-        PlaceDTO::Section { id } => Place::Section(SectionId::from(id)),
-    }
+    Ok(places.into_iter().map(Place::from).collect())
 }

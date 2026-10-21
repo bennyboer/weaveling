@@ -29,7 +29,7 @@ pub trait AppearanceCatalog: Send + Sync {
 
     async fn forget_subject(&self, subject: &Subject) -> Result<(), CatalogError>;
 
-    async fn forget_place(&self, place: &Place) -> Result<(), CatalogError>;
+    async fn forget_place(&self, place: &Place) -> Result<Vec<Subject>, CatalogError>;
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError>;
 }

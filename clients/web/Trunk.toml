@@ -39,6 +39,10 @@ backend = "ws://127.0.0.1:3000/api/statistics/word-counts/live"
 ws = true
 
 [[proxy]]
+backend = "ws://127.0.0.1:3000/api/appearances/live"
+ws = true
+
+[[proxy]]
 backend = "ws://127.0.0.1:3000/api/service/refusals/live"
 ws = true
 

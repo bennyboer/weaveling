@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
-axum-test = { workspace = true }
+axum-test = { workspace = true, features = ["ws"] }
 serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 appearances-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-appearances-catalog" }
 appearances-contract = { version = "0.1.0", path = "../contract", package = "weaveling-appearances-contract" }
 appearances-core = { version = "0.1.0", path = "../core", package = "weaveling-appearances-core" }

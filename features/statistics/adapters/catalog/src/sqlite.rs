@@ -16,6 +16,8 @@ const KEEP: &str = "
 
 const GONE: &str = "INSERT INTO gone_scenes (scene) VALUES (?1) ON CONFLICT DO NOTHING";
 
+const COUNT_OF: &str = "SELECT words FROM word_counts WHERE scene = ?1";
+
 const FORGET: &str = "DELETE FROM word_counts WHERE scene = ?1";
 
 const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
@@ -62,7 +64,7 @@ impl WordCountCatalog for SqliteWordCountCatalog {
         project: &ProjectLink,
         words: u64,
         counted_at: OffsetDateTime,
-    ) -> Result<(), CatalogError> {
+    ) -> Result<Option<u64>, CatalogError> {
         sqlx::query(KEEP)
             .bind(scene.as_str())
             .bind(project.as_str())
@@ -71,8 +73,14 @@ impl WordCountCatalog for SqliteWordCountCatalog {
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
+        let kept: Option<i64> = sqlx::query_scalar(COUNT_OF)
+            .bind(scene.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
 
-        Ok(())
+        kept.map(|words| u64::try_from(words).map_err(|why| CatalogError::Backend(Box::new(why))))
+            .transpose()
     }
 
     async fn forget_scene(&self, scene: &SceneLink) -> Result<(), CatalogError> {
