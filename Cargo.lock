@@ -3548,7 +3548,6 @@ dependencies = [
  "async-trait",
  "axum",
  "serde",
- "serde_json",
  "weaveling-appearances-contract",
  "weaveling-appearances-core",
  "weaveling-live",
@@ -3646,7 +3645,6 @@ name = "weaveling-boards-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
- "serde",
  "weaveling-boards-contract",
  "weaveling-boards-core",
  "weaveling-eventsourcing",
@@ -3902,6 +3900,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-test",
+ "serde",
  "serde_json",
  "time",
  "tokio",
@@ -4009,7 +4008,6 @@ name = "weaveling-outline-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
- "serde",
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-live",
@@ -4130,7 +4128,6 @@ name = "weaveling-projects-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
- "serde",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-live",
@@ -4266,7 +4263,6 @@ dependencies = [
  "async-trait",
  "axum",
  "serde",
- "serde_json",
  "time",
  "weaveling-live",
  "weaveling-scenes-contract",
@@ -4443,7 +4439,6 @@ dependencies = [
  "async-trait",
  "axum",
  "serde",
- "serde_json",
  "time",
  "weaveling-live",
  "weaveling-serving",

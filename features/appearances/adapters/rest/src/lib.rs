@@ -1,17 +1,14 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use appearances_contract::{IdeaPlacesDTO, PlaceDTO};
 use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, Subject};
 use async_trait::async_trait;
-use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-use live::{Broadcaster, streaming};
+use live::{Broadcaster, Teller, followed_at};
 use serde::Deserialize;
-use serde_json::json;
 use serving::Problem;
 
 pub fn router(catalog: Arc<dyn AppearanceCatalog>) -> Router {
@@ -21,31 +18,21 @@ pub fn router(catalog: Arc<dyn AppearanceCatalog>) -> Router {
 }
 
 pub fn live(broadcaster: Broadcaster) -> Router {
-    Router::new()
-        .route("/appearances/live", get(follow))
-        .with_state(broadcaster)
-}
-
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(broadcaster): State<Broadcaster>,
-    Query(followed): Query<OfIdea>,
-) -> Response {
-    streaming(upgrade, broadcaster.hear(&followed.idea))
+    followed_at("/appearances/live", broadcaster, |asked| {
+        asked.get("idea").cloned()
+    })
 }
 
 pub struct TellingAppearances {
     kept: Arc<dyn AppearanceCatalog>,
-    broadcaster: Broadcaster,
-    told: AtomicU64,
+    teller: Teller,
 }
 
 impl TellingAppearances {
     pub fn around(kept: Arc<dyn AppearanceCatalog>, broadcaster: Broadcaster) -> Self {
         Self {
             kept,
-            broadcaster,
-            told: AtomicU64::new(0),
+            teller: Teller::new(broadcaster),
         }
     }
 
@@ -54,14 +41,10 @@ impl TellingAppearances {
             return;
         };
         let Subject::Idea(idea) = subject;
-        let version = self.told.fetch_add(1, Ordering::AcqRel) + 1;
         let event = IdeaPlacesDTO {
             places: places.iter().map(to_dto).collect(),
         };
-        self.broadcaster.tell(
-            idea.as_str(),
-            json!({ "of": idea.as_str(), "version": version, "event": event }).to_string(),
-        );
+        self.teller.tell(idea.as_str(), idea.as_str(), event);
     }
 }
 

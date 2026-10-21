@@ -1,14 +1,13 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, put};
 use clock::text::serialize;
 use eventsourcing::{Agent, Standing, Version};
-use live::{Broadcaster, streaming};
+use live::{Broadcaster, followed_at};
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
     RenameProjectRequest, refused,
@@ -17,31 +16,19 @@ use projects_core::{
     InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName, InvalidQuotationMarks,
     Project, ProjectError, ProjectService, ProjectServiceError, ProjectSummary, RawDetails,
 };
-use serde::Deserialize;
 use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
 pub const FOLLOWED: &str = "projects";
 
 pub fn live(broadcaster: Broadcaster) -> Router {
-    Router::new()
-        .route("/projects/live", get(follow))
-        .with_state(broadcaster)
-}
-
-#[derive(Deserialize)]
-struct Followed {
-    project: Option<String>,
-}
-
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(broadcaster): State<Broadcaster>,
-    Query(followed): Query<Followed>,
-) -> Response {
-    streaming(
-        upgrade,
-        broadcaster.hear(followed.project.as_deref().unwrap_or(FOLLOWED)),
-    )
+    followed_at("/projects/live", broadcaster, |asked| {
+        Some(
+            asked
+                .get("project")
+                .cloned()
+                .unwrap_or_else(|| FOLLOWED.to_owned()),
+        )
+    })
 }
 
 pub fn router(projects: ProjectService) -> Router {

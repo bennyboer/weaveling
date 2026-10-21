@@ -1,7 +1,6 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -14,41 +13,25 @@ use boards_core::{
     Board, BoardError, BoardService, BoardServiceError, IdeaLink, PositionedIdea, Size, Spot,
 };
 use eventsourcing::{Agent, Standing, Version};
-use live::{Broadcaster, streaming, streaming_from};
-use serde::Deserialize;
+use live::{Broadcaster, followed_from};
 use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
-#[derive(Clone)]
-struct Live {
-    broadcaster: Broadcaster,
-    boards: BoardService,
-}
-
 pub fn live(broadcaster: Broadcaster, boards: BoardService) -> Router {
-    Router::new()
-        .route("/boards/live", get(follow))
-        .with_state(Live {
-            broadcaster,
-            boards,
-        })
-}
-
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(live): State<Live>,
-    Query(followed): Query<Followed>,
-) -> Response {
-    let hearing = live.broadcaster.hear(&followed.board);
-
-    match live.boards.get(&followed.board).await {
-        Ok(standing) => streaming_from(upgrade, standing.version.count(), hearing),
-        Err(_) => streaming(upgrade, hearing),
-    }
-}
-
-#[derive(Deserialize)]
-struct Followed {
-    board: String,
+    followed_from(
+        "/boards/live",
+        broadcaster,
+        |asked| asked.get("board").cloned(),
+        move |board: String| {
+            let boards = boards.clone();
+            async move {
+                boards
+                    .get(&board)
+                    .await
+                    .ok()
+                    .map(|standing| standing.version.count())
+            }
+        },
+    )
 }
 
 pub fn router(boards: BoardService) -> Router {

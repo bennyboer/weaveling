@@ -1,16 +1,14 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 
 use axum::Json;
 use axum::Router;
-use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{FromRef, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
-use live::{Broadcaster, streaming};
+use live::{Broadcaster, Teller, followed_at};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO, SceneSummaryDTO, refused,
@@ -21,7 +19,6 @@ use scenes_core::{
     SceneService, SceneServiceError, SceneSummary, SceneTitle, StoreError,
 };
 use serde::Deserialize;
-use serde_json::json;
 use serving::{NOT_FOUND, Problem};
 use time::OffsetDateTime;
 
@@ -44,31 +41,21 @@ impl FromRef<Scenes> for Arc<dyn SceneCatalog> {
 }
 
 pub fn live_scenes(broadcaster: Broadcaster) -> Router {
-    Router::new()
-        .route("/scenes/live", get(follow_scenes))
-        .with_state(broadcaster)
-}
-
-async fn follow_scenes(
-    upgrade: WebSocketUpgrade,
-    State(broadcaster): State<Broadcaster>,
-    Query(followed): Query<FollowedBook>,
-) -> Response {
-    streaming(upgrade, broadcaster.hear(&followed.project))
+    followed_at("/scenes/live", broadcaster, |asked| {
+        asked.get("project").cloned()
+    })
 }
 
 pub struct TellingScenes {
     kept: Arc<dyn SceneCatalog>,
-    broadcaster: Broadcaster,
-    told: AtomicU64,
+    teller: Teller,
 }
 
 impl TellingScenes {
     pub fn around(kept: Arc<dyn SceneCatalog>, broadcaster: Broadcaster) -> Self {
         Self {
             kept,
-            broadcaster,
-            told: AtomicU64::new(0),
+            teller: Teller::new(broadcaster),
         }
     }
 
@@ -76,11 +63,10 @@ impl TellingScenes {
         let Ok(Some(summary)) = self.kept.summary_of(id).await else {
             return;
         };
-        let version = self.told.fetch_add(1, Ordering::AcqRel) + 1;
-        self.broadcaster.tell(
+        self.teller.tell(
             &summary.project.to_string(),
-            json!({ "of": id.to_string(), "version": version, "event": to_summary_dto(&summary) })
-                .to_string(),
+            &id.to_string(),
+            to_summary_dto(&summary),
         );
     }
 }
@@ -147,53 +133,30 @@ pub fn router(service: SceneService, catalog: Arc<dyn SceneCatalog>) -> Router {
         .with_state(Scenes { service, catalog })
 }
 
-#[derive(Clone)]
-struct Restylings {
-    tasks: Arc<dyn QuotationRestylingTasks>,
-    broadcaster: Broadcaster,
-}
-
-impl FromRef<Restylings> for Arc<dyn QuotationRestylingTasks> {
-    fn from_ref(restylings: &Restylings) -> Self {
-        restylings.tasks.clone()
-    }
-}
-
 pub fn quotation_restylings(
     tasks: Arc<dyn QuotationRestylingTasks>,
     broadcaster: Broadcaster,
 ) -> Router {
     Router::new()
-        .route("/scenes/quotation-restylings/live", get(follow_restyling))
         .route("/scenes/quotation-restylings/{project}", get(progress))
-        .with_state(Restylings { tasks, broadcaster })
-}
-
-async fn follow_restyling(
-    upgrade: WebSocketUpgrade,
-    State(restylings): State<Restylings>,
-    Query(followed): Query<FollowedBook>,
-) -> Response {
-    streaming(upgrade, restylings.broadcaster.hear(&followed.project))
-}
-
-#[derive(Deserialize)]
-struct FollowedBook {
-    project: String,
+        .with_state(tasks)
+        .merge(followed_at(
+            "/scenes/quotation-restylings/live",
+            broadcaster,
+            |asked| asked.get("project").cloned(),
+        ))
 }
 
 pub struct TellingRestylingTasks {
     kept: Arc<dyn QuotationRestylingTasks>,
-    broadcaster: Broadcaster,
-    told: AtomicU64,
+    teller: Teller,
 }
 
 impl TellingRestylingTasks {
     pub fn around(kept: Arc<dyn QuotationRestylingTasks>, broadcaster: Broadcaster) -> Self {
         Self {
             kept,
-            broadcaster,
-            told: AtomicU64::new(0),
+            teller: Teller::new(broadcaster),
         }
     }
 
@@ -201,9 +164,8 @@ impl TellingRestylingTasks {
         let Ok(Some(progress)) = self.kept.progress(project).await else {
             return;
         };
-        let version = self.told.fetch_add(1, Ordering::Relaxed) + 1;
-        let frame = json!({ "version": version, "event": as_dto(progress) });
-        self.broadcaster.tell(project.as_str(), frame.to_string());
+        self.teller
+            .tell(project.as_str(), project.as_str(), as_dto(progress));
     }
 }
 

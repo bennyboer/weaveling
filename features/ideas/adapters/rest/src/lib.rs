@@ -1,6 +1,5 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, Query, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
@@ -9,22 +8,14 @@ use axum::routing::get;
 use eventsourcing::{Agent, Standing, Version};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
 use ideas_core::{Idea, IdeaError, IdeaService, IdeaServiceError, IdeaSummary, InvalidIdeaTitle};
-use live::{Broadcaster, streaming};
+use live::{Broadcaster, followed_at};
 use serde::Deserialize;
 use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
 pub fn live(broadcaster: Broadcaster) -> Router {
-    Router::new()
-        .route("/ideas/live", get(follow))
-        .with_state(broadcaster)
-}
-
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(broadcaster): State<Broadcaster>,
-    Query(followed): Query<InProject>,
-) -> Response {
-    streaming(upgrade, broadcaster.hear(&followed.project))
+    followed_at("/ideas/live", broadcaster, |asked| {
+        asked.get("project").cloned()
+    })
 }
 
 pub fn router(ideas: IdeaService) -> Router {

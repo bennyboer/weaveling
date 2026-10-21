@@ -1,17 +1,15 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
 use axum::Json;
 use axum::Router;
-use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use clock::Clock;
 use clock::text::serialize;
-use live::{Broadcaster, streaming};
+use live::{Broadcaster, Teller, followed_at};
 use messaging::{
     DeadLetter, Deliveries, DeliveryError, InProcessDispatcher, ListenerName, Message,
     Notifications, Queued,
@@ -28,7 +26,6 @@ struct Refusals {
     deliveries: Arc<dyn Deliveries>,
     dispatcher: Arc<InProcessDispatcher>,
     clock: Arc<dyn Clock>,
-    broadcaster: Broadcaster,
 }
 
 pub fn router(
@@ -39,41 +36,35 @@ pub fn router(
 ) -> Router {
     Router::new()
         .route("/refusals", get(list))
-        .route("/refusals/live", get(follow))
         .route("/refusals/{id}/acknowledge", post(acknowledge))
         .route("/refusals/{id}/retry", post(retry))
         .with_state(Refusals {
             deliveries,
             dispatcher,
             clock,
-            broadcaster,
         })
-}
-
-async fn follow(upgrade: WebSocketUpgrade, State(refusals): State<Refusals>) -> Response {
-    streaming(upgrade, refusals.broadcaster.hear(REFUSALS))
+        .merge(followed_at("/refusals/live", broadcaster, |_| {
+            Some(REFUSALS.to_owned())
+        }))
 }
 
 pub struct TellingDeliveries {
     kept: Arc<dyn Deliveries>,
-    broadcaster: Broadcaster,
-    changes: AtomicU64,
+    teller: Teller,
 }
 
 impl TellingDeliveries {
     pub fn around(kept: Arc<dyn Deliveries>, broadcaster: Broadcaster) -> Self {
         Self {
             kept,
-            broadcaster,
-            changes: AtomicU64::new(0),
+            teller: Teller::new(broadcaster),
         }
     }
 
     fn told(&self, outcome: Result<(), DeliveryError>) -> Result<(), DeliveryError> {
         if outcome.is_ok() {
-            let version = self.changes.fetch_add(1, Ordering::Relaxed) + 1;
-            let frame = json!({ "version": version, "event": { "name": "REFUSALS_CHANGED" } });
-            self.broadcaster.tell(REFUSALS, frame.to_string());
+            self.teller
+                .tell(REFUSALS, REFUSALS, json!({ "name": "REFUSALS_CHANGED" }));
         }
 
         outcome

@@ -5,7 +5,6 @@ edition.workspace = true
 
 [dependencies]
 axum = { workspace = true, features = ["ws"] }
-serde = { workspace = true }
 
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }

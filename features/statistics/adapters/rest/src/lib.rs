@@ -1,15 +1,12 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
 use async_trait::async_trait;
-use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
-use live::{Broadcaster, streaming};
+use live::{Broadcaster, Teller, followed_at};
 use serde::Deserialize;
-use serde_json::json;
 use serving::Problem;
 use statistics_contract::WordCountDTO;
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
@@ -22,44 +19,31 @@ pub fn router(catalog: Arc<dyn WordCountCatalog>) -> Router {
 }
 
 pub fn live(broadcaster: Broadcaster) -> Router {
-    Router::new()
-        .route("/statistics/word-counts/live", get(follow))
-        .with_state(broadcaster)
-}
-
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(broadcaster): State<Broadcaster>,
-    Query(followed): Query<InProject>,
-) -> Response {
-    streaming(upgrade, broadcaster.hear(&followed.project))
+    followed_at("/statistics/word-counts/live", broadcaster, |asked| {
+        asked.get("project").cloned()
+    })
 }
 
 pub struct TellingWordCounts {
     kept: Arc<dyn WordCountCatalog>,
-    broadcaster: Broadcaster,
-    told: AtomicU64,
+    teller: Teller,
 }
 
 impl TellingWordCounts {
     pub fn around(kept: Arc<dyn WordCountCatalog>, broadcaster: Broadcaster) -> Self {
         Self {
             kept,
-            broadcaster,
-            told: AtomicU64::new(0),
+            teller: Teller::new(broadcaster),
         }
     }
 
     fn tell(&self, project: &ProjectLink, scene: &SceneLink, words: u64) {
-        let version = self.told.fetch_add(1, Ordering::AcqRel) + 1;
         let event = WordCountDTO {
             scene: scene.to_string(),
             words,
         };
-        self.broadcaster.tell(
-            &project.to_string(),
-            json!({ "of": scene.to_string(), "version": version, "event": event }).to_string(),
-        );
+        self.teller
+            .tell(&project.to_string(), &scene.to_string(), event);
     }
 }
 

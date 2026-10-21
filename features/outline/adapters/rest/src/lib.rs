@@ -1,13 +1,12 @@
 use axum::Json;
 use axum::Router;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use eventsourcing::{Agent, Standing, Version};
-use live::{Broadcaster, streaming, streaming_from};
+use live::{Broadcaster, followed_from};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -17,7 +16,6 @@ use outline_core::{
     Attachment, Changed, InvalidSectionTitle, Outline, OutlineError, OutlineService,
     OutlineServiceError, PlacedSection, SectionId, SectionTitle,
 };
-use serde::Deserialize;
 use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
 pub fn router(outlines: OutlineService) -> Router {
@@ -59,37 +57,22 @@ async fn open(
     ))
 }
 
-#[derive(Clone)]
-struct Live {
-    broadcaster: Broadcaster,
-    outlines: OutlineService,
-}
-
 pub fn live(broadcaster: Broadcaster, outlines: OutlineService) -> Router {
-    Router::new()
-        .route("/outlines/live", get(follow))
-        .with_state(Live {
-            broadcaster,
-            outlines,
-        })
-}
-
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(live): State<Live>,
-    Query(followed): Query<Followed>,
-) -> Response {
-    let hearing = live.broadcaster.hear(&followed.outline);
-
-    match live.outlines.get(&followed.outline).await {
-        Ok(standing) => streaming_from(upgrade, standing.version.count(), hearing),
-        Err(_) => streaming(upgrade, hearing),
-    }
-}
-
-#[derive(Deserialize)]
-struct Followed {
-    outline: String,
+    followed_from(
+        "/outlines/live",
+        broadcaster,
+        |asked| asked.get("outline").cloned(),
+        move |outline: String| {
+            let outlines = outlines.clone();
+            async move {
+                outlines
+                    .get(&outline)
+                    .await
+                    .ok()
+                    .map(|standing| standing.version.count())
+            }
+        },
+    )
 }
 
 async fn find(
