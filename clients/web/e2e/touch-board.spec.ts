@@ -178,13 +178,64 @@ test("a double tap on the bare board captures an idea there", async ({ page, con
 });
 
 test("a selected card's grips are big enough for a finger", async ({ page }) => {
-  test.fail(true, "M15: the grips are 7px, sized for a mouse");
   await aBoardWithACard(page, "PhoneGrips");
 
   await cardNamed(page, "The loom remembers").tap();
+  await expect(cardNamed(page, "The loom remembers")).toHaveClass(/selected/);
 
-  const grip = (await cardNamed(page, "The loom remembers").locator(".grip.right").boundingBox())!;
-  expect(Math.min(grip.width, grip.height), "a fingertip is about 44px across").toBeGreaterThanOrEqual(44);
+  const grips = cardNamed(page, "The loom remembers").locator(".grip");
+  await expect(grips).toHaveCount(8);
+  for (const grip of await grips.all()) {
+    const box = (await grip.boundingBox())!;
+    const side = (await grip.getAttribute("class"))!.replace("grip ", "");
+    const across = {
+      top: box.height,
+      bottom: box.height,
+      left: box.width,
+      right: box.width,
+    }[side] ?? Math.min(box.width, box.height);
+    expect(across, `the ${side} grip is about a fingertip across`).toBeGreaterThanOrEqual(44);
+    expect(Math.max(box.width, box.height), `the ${side} grip is there to be found`).toBeGreaterThan(30);
+  }
+});
+
+test("a thumb near the edge of a card not selected moves it rather than resizing it", async ({
+  page,
+  context,
+}) => {
+  await aBoardWithACard(page, "PhoneEdgeMoves");
+  const before = await seenAt(page, "The loom remembers");
+  const box = (await cardNamed(page, "The loom remembers").boundingBox())!;
+  const nearTheEdge = { x: box.x + box.width / 2, y: box.y + 6 };
+
+  await (await fingers(page, context)).drag(nearTheEdge, { x: nearTheEdge.x + 40, y: nearTheEdge.y + 60 });
+
+  await expect
+    .poll(async () => {
+      const now = await seenAt(page, "The loom remembers");
+      return { x: now.x - before.x, y: now.y - before.y, width: now.width, height: now.height };
+    })
+    .toEqual({ x: 40, y: 60, width: before.width, height: before.height });
+});
+
+test("a finger on a selected card's grip, just beside its edge, resizes it", async ({
+  page,
+  context,
+}) => {
+  await aBoardWithACard(page, "PhoneGripPulled");
+  await cardNamed(page, "The loom remembers").tap();
+  await expect(cardNamed(page, "The loom remembers")).toHaveClass(/selected/);
+  const before = await seenAt(page, "The loom remembers");
+  const box = (await cardNamed(page, "The loom remembers").boundingBox())!;
+  const besideTheEdge = { x: box.x + box.width + 15, y: box.y + box.height / 2 };
+
+  await (await fingers(page, context)).drag(besideTheEdge, { x: besideTheEdge.x + 42, y: besideTheEdge.y });
+
+  await expect
+    .poll(async () => (await seenAt(page, "The loom remembers")).width - before.width, {
+      message: "a fingertip lands beside the edge as often as on it",
+    })
+    .toBe(42);
 });
 
 const steps = (from: Point[], to: Point[]) =>

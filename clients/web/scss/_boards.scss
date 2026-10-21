@@ -1,4 +1,5 @@
 $grip: 7px;
+$fingertip: 44px;
 
 .board {
   display: flex;
@@ -202,6 +203,58 @@ $grip: 7px;
       .grip.top-right,
       .grip.bottom-left {
         cursor: nesw-resize;
+      }
+
+      @media (pointer: coarse) {
+        &:not(.selected) .grip {
+          display: none;
+        }
+
+        .grip.top,
+        .grip.bottom {
+          left: calc(#{$fingertip} / 2);
+          right: calc(#{$fingertip} / 2);
+          height: $fingertip;
+        }
+
+        .grip.left,
+        .grip.right {
+          top: calc(#{$fingertip} / 2);
+          bottom: calc(#{$fingertip} / 2);
+          width: $fingertip;
+        }
+
+        .grip.top-left,
+        .grip.top-right,
+        .grip.bottom-left,
+        .grip.bottom-right {
+          width: $fingertip;
+          height: $fingertip;
+        }
+
+        .grip.top,
+        .grip.top-left,
+        .grip.top-right {
+          top: calc(#{$fingertip} / -2);
+        }
+
+        .grip.bottom,
+        .grip.bottom-left,
+        .grip.bottom-right {
+          bottom: calc(#{$fingertip} / -2);
+        }
+
+        .grip.left,
+        .grip.top-left,
+        .grip.bottom-left {
+          left: calc(#{$fingertip} / -2);
+        }
+
+        .grip.right,
+        .grip.top-right,
+        .grip.bottom-right {
+          right: calc(#{$fingertip} / -2);
+        }
       }
     }
 
