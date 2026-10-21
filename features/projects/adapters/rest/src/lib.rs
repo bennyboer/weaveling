@@ -1,7 +1,7 @@
 use axum::Json;
 use axum::Router;
 use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -17,6 +17,7 @@ use projects_core::{
     InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName, InvalidQuotationMarks,
     Project, ProjectError, ProjectService, ProjectServiceError, ProjectSummary, RawDetails,
 };
+use serde::Deserialize;
 use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
 
 pub const FOLLOWED: &str = "projects";
@@ -27,8 +28,20 @@ pub fn live(broadcaster: Broadcaster) -> Router {
         .with_state(broadcaster)
 }
 
-async fn follow(upgrade: WebSocketUpgrade, State(broadcaster): State<Broadcaster>) -> Response {
-    streaming(upgrade, broadcaster.hear(FOLLOWED))
+#[derive(Deserialize)]
+struct Followed {
+    project: Option<String>,
+}
+
+async fn follow(
+    upgrade: WebSocketUpgrade,
+    State(broadcaster): State<Broadcaster>,
+    Query(followed): Query<Followed>,
+) -> Response {
+    streaming(
+        upgrade,
+        broadcaster.hear(followed.project.as_deref().unwrap_or(FOLLOWED)),
+    )
 }
 
 pub fn router(projects: ProjectService) -> Router {

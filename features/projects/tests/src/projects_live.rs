@@ -104,3 +104,34 @@ async fn a_project_s_frame_says_when_it_changed() {
     assert_eq!(frame["at"], "1970-01-01T00:00:00Z");
     assert_eq!(frame["event"]["project_name"], "The Loom");
 }
+
+#[tokio::test]
+async fn whoever_follows_one_project_is_told_its_changes_and_not_another_s() {
+    let (wired, server) = served();
+    let loom = started(&server, "The Loom").await;
+    let weft = started(&server, "The Weft").await;
+    wired.settle().await;
+    let mut socket = server
+        .get_websocket(&format!("/projects/live?project={}", loom.id))
+        .await
+        .into_websocket()
+        .await;
+
+    for (project, name) in [(&weft, "Theirs"), (&loom, "The Heddle")] {
+        server
+            .patch(&format!("/projects/{}", project.id))
+            .json(&RenameProjectRequest {
+                name: name.to_owned(),
+            })
+            .await
+            .assert_status_ok();
+    }
+    wired.settle().await;
+
+    let frame = told(&mut socket).await;
+    assert_eq!(
+        (frame["of"].clone(), frame["event"]["project_name"].clone()),
+        (json!(loom.id), json!("The Heddle")),
+        "the first thing told is about the project being followed"
+    );
+}

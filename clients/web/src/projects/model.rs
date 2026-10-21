@@ -36,6 +36,38 @@ pub struct DescribedProject {
     pub details: ProjectDetails,
 }
 
+impl DescribedProject {
+    pub fn taken_in(mut self, told: Told) -> Option<Self> {
+        if told.version <= self.version.0 {
+            return Some(self);
+        }
+        if told.version != self.version.0 + 1 {
+            return None;
+        }
+        match serde_json::from_value::<ProjectEventDTO>(told.event).ok()? {
+            ProjectEventDTO::Renamed { name } => self.name = name,
+            ProjectEventDTO::DetailsChanged {
+                language,
+                quotation,
+                description,
+            } => {
+                self.details = ProjectDetails {
+                    language,
+                    quotation: quotation.as_deref().and_then(QuotationMarks::named),
+                    description,
+                }
+            }
+            ProjectEventDTO::QuotationChanged { quotation } => {
+                self.details.quotation = QuotationMarks::named(&quotation)
+            }
+            ProjectEventDTO::Started { .. } | ProjectEventDTO::Deleted => return None,
+        }
+        self.version = Version::from(told.version);
+
+        Some(self)
+    }
+}
+
 impl ProjectDetails {
     pub fn quotation_marks(&self) -> QuotationMarks {
         self.quotation
@@ -188,7 +220,7 @@ mod tests {
         fn changed_details_and_marks_keep_the_name_and_say_when() {
             for event in [
                 json!({ "name": "DETAILS_CHANGED", "language": "de", "quotation": null, "description": "" }),
-                json!({ "name": "QUOTATION_CHANGED", "quotation": "german" }),
+                json!({ "name": "QUOTATION_CHANGED", "quotation": "pointing-in" }),
             ] {
                 let next = taken_in(
                     vec![a_project("project_1", 1, "Loom")],
@@ -301,6 +333,112 @@ mod tests {
                     None,
                     "{case}"
                 );
+            }
+        }
+    }
+
+    mod described_taken_in_tests {
+        use serde_json::json;
+
+        use super::*;
+
+        fn described(version: u64) -> DescribedProject {
+            DescribedProject {
+                version: Version::from(version),
+                name: "The Loom".to_owned(),
+                details: ProjectDetails {
+                    language: Some("en".to_owned()),
+                    quotation: None,
+                    description: "A weaver's book".to_owned(),
+                },
+            }
+        }
+
+        fn told(version: u64, event: serde_json::Value) -> Told {
+            Told {
+                of: Some("project_1".to_owned()),
+                version,
+                at: None,
+                event,
+            }
+        }
+
+        #[test]
+        fn a_rename_that_follows_on_renames_the_open_project() {
+            let next = described(1)
+                .taken_in(told(
+                    2,
+                    json!({ "name": "RENAMED", "project_name": "The Weft" }),
+                ))
+                .expect("a rename follows on");
+
+            assert_eq!(next.name, "The Weft");
+            assert_eq!(next.version, Version::from(2));
+            assert_eq!(next.details, described(1).details);
+        }
+
+        #[test]
+        fn changed_details_replace_the_details_and_keep_the_name() {
+            let next = described(1)
+                .taken_in(told(
+                    2,
+                    json!({ "name": "DETAILS_CHANGED", "language": "de", "quotation": "pointing-in", "description": "Ein Buch" }),
+                ))
+                .expect("a change of details follows on");
+
+            assert_eq!(
+                next.details,
+                ProjectDetails {
+                    language: Some("de".to_owned()),
+                    quotation: QuotationMarks::named("pointing-in"),
+                    description: "Ein Buch".to_owned(),
+                }
+            );
+            assert_eq!(next.name, "The Loom");
+            assert_eq!(next.version, Version::from(2));
+        }
+
+        #[test]
+        fn changed_marks_change_only_the_marks() {
+            let next = described(1)
+                .taken_in(told(
+                    2,
+                    json!({ "name": "QUOTATION_CHANGED", "quotation": "pointing-in" }),
+                ))
+                .expect("a change of marks follows on");
+
+            assert_eq!(next.details.quotation, QuotationMarks::named("pointing-in"));
+            assert_eq!(next.details.language.as_deref(), Some("en"));
+            assert_eq!(next.version, Version::from(2));
+        }
+
+        #[test]
+        fn a_change_already_held_changes_nothing() {
+            let next = described(3).taken_in(told(
+                3,
+                json!({ "name": "RENAMED", "project_name": "The Weft" }),
+            ));
+
+            assert_eq!(next, Some(described(3)));
+        }
+
+        #[test]
+        fn what_cannot_be_taken_in_asks_for_the_project_again() {
+            let cases = [
+                (
+                    "a change further on than the next",
+                    told(3, json!({ "name": "RENAMED", "project_name": "The Weft" })),
+                ),
+                ("the project deleted", told(2, json!({ "name": "DELETED" }))),
+                (
+                    "a start of a project already open",
+                    told(2, json!({ "name": "STARTED", "project_name": "The Weft" })),
+                ),
+                ("an event not known", told(2, json!({ "name": "ARCHIVED" }))),
+            ];
+
+            for (case, told) in cases {
+                assert_eq!(described(1).taken_in(told), None, "{case}");
             }
         }
     }

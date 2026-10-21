@@ -46,11 +46,15 @@ async function aBoardFollowedLive(page: Page, named: string) {
   const board = await theBoard(page);
   await page.reload();
   await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();
-  const followed = page.waitForEvent("websocket", (socket) =>
-    socket.url().includes(`/api/boards/live?board=${board}`),
-  );
+  const told = new Promise<void>((resolve) => {
+    page.on("websocket", (socket) => {
+      if (socket.url().includes(`/api/boards/live?board=${board}`)) {
+        socket.once("framereceived", () => resolve());
+      }
+    });
+  });
   await page.reload();
-  await followed;
+  await told;
 
   return { board, loom };
 }
@@ -189,6 +193,7 @@ test("a change missed on the way opens the board again, and the board comes out 
   });
   await page.reload();
   await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();
+  await expect.poll(() => passed, { message: "followed, told first where the board stands" }).toBe(1);
   await anotherAuthor(page, "post", `/boards/${board}/ideas`, pinning(loom, 400, 200));
   await expect(cardNamed(page, "The loom remembers")).toBeVisible();
   const before = await seenAt(page, "The loom remembers");

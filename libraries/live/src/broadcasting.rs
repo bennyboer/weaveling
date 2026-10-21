@@ -62,8 +62,11 @@ impl Listener for BroadcastChangesListener {
 
     async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
         if let Ok(published) = published_in::<Value>(message) {
-            let about = self.about.as_deref().unwrap_or(&published.aggregate.id);
-            self.broadcaster.tell(about, frame_of(&published));
+            let frame = frame_of(&published);
+            if let Some(about) = &self.about {
+                self.broadcaster.tell(about, frame.clone());
+            }
+            self.broadcaster.tell(&published.aggregate.id, frame);
         }
 
         Ok(())
@@ -150,7 +153,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_broadcast_under_one_name_tells_every_aggregate_s_change_there() {
+    async fn a_broadcast_under_one_name_tells_every_aggregate_s_change_there_and_under_its_own() {
         let broadcaster = Broadcaster::new();
         let mut everyone = broadcaster.hear("outlines");
         let mut one = broadcaster.hear("outline_1");
@@ -171,12 +174,11 @@ mod tests {
             .expect("the broadcaster still tells");
         let frame: Value = serde_json::from_str(&told).expect("a frame is JSON");
         assert_eq!(frame["of"], "outline_1");
-        assert!(
-            timeout(Duration::from_millis(100), one.next())
-                .await
-                .is_err(),
-            "told under the one name, not under the aggregate's own"
-        );
+        let its_own = timeout(Duration::from_millis(100), one.next())
+            .await
+            .expect("whoever follows the one aggregate is told too")
+            .expect("the broadcaster still tells");
+        assert_eq!(its_own, told);
     }
 
     #[test]

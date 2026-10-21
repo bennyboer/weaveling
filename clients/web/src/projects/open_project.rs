@@ -2,6 +2,7 @@ use leptos::prelude::*;
 use leptos::task::spawn_local;
 
 use crate::http::ApiError;
+use crate::live::{Following, Told};
 use crate::projects::model::{DescribedProject, ProjectId};
 use crate::projects::service;
 use quotation::QuotationMarks;
@@ -11,6 +12,8 @@ pub struct OpenProject {
     project: RwSignal<Option<ProjectId>>,
     described: RwSignal<Option<DescribedProject>>,
     refused: RwSignal<Option<ApiError>>,
+    following: StoredValue<Option<Following>, LocalStorage>,
+    latest: StoredValue<u64>,
 }
 
 impl OpenProject {
@@ -19,6 +22,8 @@ impl OpenProject {
             project: RwSignal::new(None),
             described: RwSignal::new(None),
             refused: RwSignal::new(None),
+            following: StoredValue::new_local(None),
+            latest: StoredValue::new(0),
         }
     }
 
@@ -32,25 +37,49 @@ impl OpenProject {
         self.project.set(Some(project.clone()));
         self.described.set(None);
         self.refused.set(None);
+        self.following.set_value(Some(Following::start(
+            &format!("/api/projects/live?project={project}"),
+            move |told| self.heard(told),
+            move || self.ask(),
+        )));
+    }
 
-        let project = project.clone();
+    fn ask(self) {
+        let Some(project) = self.project.get_untracked() else {
+            return;
+        };
+        let asked = self.latest.get_value() + 1;
+        self.latest.set_value(asked);
+
         spawn_local(async move {
             let found = service::details(&project).await;
             let still_open = self
                 .project
                 .with_untracked(|held| held.as_ref() == Some(&project));
 
-            if !still_open {
+            if !still_open || self.latest.get_value() != asked {
                 return;
             }
             match found {
                 Ok(described) => self.described.set(Some(described)),
                 Err(failure) => {
                     self.project.set(None);
+                    self.following.set_value(None);
                     self.refused.set(Some(failure));
                 }
             }
         });
+    }
+
+    fn heard(self, told: Told) {
+        let Some(held) = self.described.get_untracked() else {
+            return self.ask();
+        };
+        match held.clone().taken_in(told) {
+            Some(next) if next == held => {}
+            Some(next) => self.described.set(Some(next)),
+            None => self.ask(),
+        }
     }
 
     pub fn described(self) -> Option<DescribedProject> {
@@ -80,7 +109,14 @@ impl OpenProject {
     }
 
     pub fn keep(self, described: DescribedProject) {
-        self.described.set(Some(described));
+        let newer = self.described.with_untracked(|held| {
+            held.as_ref()
+                .is_none_or(|held| held.version < described.version)
+        });
+
+        if newer {
+            self.described.set(Some(described));
+        }
     }
 
     pub fn refused(self) -> Option<ApiError> {
