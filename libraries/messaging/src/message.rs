@@ -1,6 +1,8 @@
 use std::fmt::{self, Display, Formatter};
 
+use serde::de::DeserializeOwned;
 use serde_json::Value;
+use thiserror::Error;
 use time::OffsetDateTime;
 use uuid::{NoContext, Timestamp, Uuid};
 
@@ -64,7 +66,22 @@ impl Display for Conversation {
     }
 }
 
+#[derive(Debug, Error)]
+#[error("this {routing} message is not shaped as it should be: {because}")]
+pub struct Unshaped {
+    routing: RoutingKey,
+    #[source]
+    because: serde_json::Error,
+}
+
 impl Message {
+    pub fn payload_as<T: DeserializeOwned>(&self) -> Result<T, Unshaped> {
+        serde_json::from_value(self.payload.clone()).map_err(|because| Unshaped {
+            routing: self.routing.clone(),
+            because,
+        })
+    }
+
     pub fn opening(routing: RoutingKey, payload: Value, now: OffsetDateTime) -> Self {
         let id = MessageId::generate(now);
 
@@ -197,5 +214,36 @@ mod tests {
         assert_eq!(opening.routing, a_key("idea.captured"));
         assert_eq!(opening.payload, json!({ "idea": "idea_1" }));
         assert_eq!(opening.occurred_at, at(1_000));
+    }
+
+    #[derive(Debug, serde::Deserialize, PartialEq)]
+    struct Captured {
+        idea: String,
+    }
+
+    #[test]
+    fn a_message_is_read_in_the_shape_it_was_sent_in() {
+        assert_eq!(
+            an_opening_message()
+                .payload_as::<Captured>()
+                .expect("a capture carries its idea"),
+            Captured {
+                idea: "idea_1".to_owned()
+            }
+        );
+    }
+
+    #[test]
+    fn a_message_of_another_shape_says_which_message_it_was() {
+        let unshaped = an_opening_message()
+            .payload_as::<u32>()
+            .expect_err("a capture is no number");
+
+        assert!(
+            unshaped
+                .to_string()
+                .starts_with("this idea.captured message is not shaped as it should be"),
+            "{unshaped}"
+        );
     }
 }

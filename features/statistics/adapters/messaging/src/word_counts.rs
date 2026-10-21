@@ -2,20 +2,10 @@ use std::sync::Arc;
 
 use messaging::{Failure, Handler, Message};
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
-use serde_json::from_value;
-use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCountCatalog};
-use thiserror::Error;
+use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
 
 pub struct ProjectWordCountsListener {
     catalog: Arc<dyn WordCountCatalog>,
-}
-
-#[derive(Debug, Error)]
-enum NotKept {
-    #[error("this message is not shaped like a scene announcement: {0}")]
-    Unshaped(#[from] serde_json::Error),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
 }
 
 impl ProjectWordCountsListener {
@@ -23,12 +13,10 @@ impl ProjectWordCountsListener {
         Self { catalog }
     }
 
-    async fn keep(&self, message: &Message) -> Result<(), NotKept> {
-        let payload = message.payload.clone();
-
+    async fn keep(&self, message: &Message) -> Result<(), Failure> {
         match message.routing.to_string().as_str() {
             WORDS_COUNTED => {
-                let counted: WordsCountedDTO = from_value(payload)?;
+                let counted: WordsCountedDTO = message.payload_as()?;
                 self.catalog
                     .keep(
                         &SceneLink::from(counted.scene),
@@ -39,7 +27,7 @@ impl ProjectWordCountsListener {
                     .await?;
             }
             DELETED => {
-                let deleted: SceneDeletedDTO = from_value(payload)?;
+                let deleted: SceneDeletedDTO = message.payload_as()?;
                 self.catalog
                     .forget_scene(&SceneLink::from(deleted.scene))
                     .await?;
@@ -58,6 +46,6 @@ impl Handler for ProjectWordCountsListener {
     const WHEN_REFUSED: &'static str = "A scene's word count was not updated.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        Ok(self.keep(message).await?)
+        self.keep(message).await
     }
 }

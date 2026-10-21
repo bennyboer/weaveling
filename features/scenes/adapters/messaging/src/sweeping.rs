@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventpublishing::{UnreadableMessage, published_in};
-use messaging::{Failure, Handler, Message, Publisher, RoutingKey, Undelivered};
+use eventpublishing::published_in;
+use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
 use projects_contract::{DELETED, ProjectEventDTO};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use scenes_core::{SceneId, SceneService, SceneServiceError, StoreError};
-use thiserror::Error;
 
 pub const AT_MOST: usize = 100;
 
@@ -15,18 +14,6 @@ pub struct DeleteOnProjectDeletedListener {
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
     at_most: usize,
-}
-
-#[derive(Debug, Error)]
-enum NotSwept {
-    #[error(transparent)]
-    Unreadable(#[from] UnreadableMessage),
-    #[error("this message does not say which project to sweep: {0}")]
-    Unshaped(String),
-    #[error(transparent)]
-    Scenes(#[from] SceneServiceError),
-    #[error(transparent)]
-    Undelivered(#[from] Undelivered),
 }
 
 impl DeleteOnProjectDeletedListener {
@@ -44,7 +31,7 @@ impl DeleteOnProjectDeletedListener {
         self
     }
 
-    async fn sweep(&self, asked: &Message) -> Result<(), NotSwept> {
+    async fn sweep(&self, asked: &Message) -> Result<(), Failure> {
         let (project, after) = what_to_sweep(asked)?;
         let batch = self
             .scenes
@@ -87,10 +74,9 @@ impl DeleteOnProjectDeletedListener {
     }
 }
 
-fn what_to_sweep(asked: &Message) -> Result<(String, Option<String>), NotSwept> {
+fn what_to_sweep(asked: &Message) -> Result<(String, Option<String>), Failure> {
     if asked.routing.to_string() == MORE_TO_SWEEP {
-        let carried: MoreToSweepDTO = serde_json::from_value(asked.payload.clone())
-            .map_err(|why| NotSwept::Unshaped(why.to_string()))?;
+        let carried: MoreToSweepDTO = asked.payload_as()?;
 
         return Ok((carried.project, Some(carried.after)));
     }
@@ -111,6 +97,6 @@ impl Handler for DeleteOnProjectDeletedListener {
     const WHEN_REFUSED: &'static str = "The scenes of a deleted project were not cleared away.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        Ok(self.sweep(message).await?)
+        self.sweep(message).await
     }
 }

@@ -3,21 +3,12 @@ use std::sync::Arc;
 use messaging::{Failure, Handler, Message};
 use outline_core::{Attachment, OutlineCatalog, OutlineService};
 use scenes_contract::{DELETED, SceneDeletedDTO};
-use thiserror::Error;
 
-use crate::letting_go::{NotLetGo, let_go_everywhere};
+use crate::letting_go::let_go_everywhere;
 
 pub struct DetachOnSceneDeletedListener {
     outlines: OutlineService,
     catalog: Arc<dyn OutlineCatalog>,
-}
-
-#[derive(Debug, Error)]
-enum NotDetached {
-    #[error("this message is not shaped like a deleted scene: {0}")]
-    Unshaped(#[from] serde_json::Error),
-    #[error(transparent)]
-    NotLetGo(#[from] NotLetGo),
 }
 
 impl DetachOnSceneDeletedListener {
@@ -25,8 +16,8 @@ impl DetachOnSceneDeletedListener {
         Self { outlines, catalog }
     }
 
-    async fn work_through(&self, message: &Message) -> Result<(), NotDetached> {
-        let deleted: SceneDeletedDTO = serde_json::from_value(message.payload.clone())?;
+    async fn work_through(&self, message: &Message) -> Result<(), Failure> {
+        let deleted: SceneDeletedDTO = message.payload_as()?;
         let_go_everywhere(
             &self.outlines,
             self.catalog.as_ref(),
@@ -45,6 +36,6 @@ impl Handler for DetachOnSceneDeletedListener {
     const WHEN_REFUSED: &'static str = "A deleted scene could not be taken out of the outline.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        Ok(self.work_through(message).await?)
+        self.work_through(message).await
     }
 }

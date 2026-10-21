@@ -1,16 +1,15 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventpublishing::{UnreadableMessage, published_in};
-use messaging::{Failure, Handler, Message, Publisher, RoutingKey, Undelivered};
+use eventpublishing::published_in;
+use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
 use projects_contract::{ProjectEventDTO, QUOTATION_CHANGED};
-use quotation::{InvalidQuotationMarks, QuotationMarks};
+use quotation::QuotationMarks;
 use scenes_contract::{MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
 use scenes_core::{
-    ProjectLink, QuotationRestylingTaskError, QuotationRestylingTasks, SceneId, SceneRestyler,
-    SceneService, SceneServiceError, StoreError,
+    ProjectLink, QuotationRestylingTasks, SceneId, SceneRestyler, SceneService, SceneServiceError,
+    StoreError,
 };
-use thiserror::Error;
 
 use crate::AT_MOST;
 
@@ -21,22 +20,6 @@ pub struct RestyleOnQuotationChangedListener {
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
     at_most: usize,
-}
-
-#[derive(Debug, Error)]
-enum NotRestyled {
-    #[error(transparent)]
-    Unreadable(#[from] UnreadableMessage),
-    #[error("this message does not say which project to restyle: {0}")]
-    Unshaped(String),
-    #[error(transparent)]
-    Unstyled(#[from] InvalidQuotationMarks),
-    #[error(transparent)]
-    QuotationRestylingTasks(#[from] QuotationRestylingTaskError),
-    #[error(transparent)]
-    Scenes(#[from] SceneServiceError),
-    #[error(transparent)]
-    Undelivered(#[from] Undelivered),
 }
 
 struct QuotationRestylingTask {
@@ -69,7 +52,7 @@ impl RestyleOnQuotationChangedListener {
         self
     }
 
-    async fn restyle(&self, asked: &Message) -> Result<(), NotRestyled> {
+    async fn restyle(&self, asked: &Message) -> Result<(), Failure> {
         let task = what_to_restyle(asked)?;
         let project = ProjectLink::from(task.project.as_str());
         if !self.claimed(&project, &task).await? {
@@ -110,7 +93,7 @@ impl RestyleOnQuotationChangedListener {
         &self,
         project: &ProjectLink,
         task: &QuotationRestylingTask,
-    ) -> Result<bool, NotRestyled> {
+    ) -> Result<bool, Failure> {
         if task.after.is_some() {
             return Ok(self.tasks.claim(project, task.change).await?);
         }
@@ -152,10 +135,9 @@ impl RestyleOnQuotationChangedListener {
     }
 }
 
-fn what_to_restyle(asked: &Message) -> Result<QuotationRestylingTask, NotRestyled> {
+fn what_to_restyle(asked: &Message) -> Result<QuotationRestylingTask, Failure> {
     if asked.routing.to_string() == MORE_QUOTATION_MARKS_TO_RESTYLE {
-        let carried: MoreQuotationMarksToRestyleDTO = serde_json::from_value(asked.payload.clone())
-            .map_err(|why| NotRestyled::Unshaped(why.to_string()))?;
+        let carried: MoreQuotationMarksToRestyleDTO = asked.payload_as()?;
 
         return Ok(QuotationRestylingTask {
             project: carried.project,
@@ -167,9 +149,7 @@ fn what_to_restyle(asked: &Message) -> Result<QuotationRestylingTask, NotRestyle
 
     let changed = published_in::<ProjectEventDTO>(asked)?;
     let ProjectEventDTO::QuotationChanged { quotation } = changed.event.body else {
-        return Err(NotRestyled::Unshaped(
-            "a project event that names no quotation style".to_owned(),
-        ));
+        return Err("a project event that names no quotation style".into());
     };
 
     Ok(QuotationRestylingTask {
@@ -197,6 +177,6 @@ impl Handler for RestyleOnQuotationChangedListener {
         "The quotation marks of a book were not all changed to its new style.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        Ok(self.restyle(message).await?)
+        self.restyle(message).await
     }
 }

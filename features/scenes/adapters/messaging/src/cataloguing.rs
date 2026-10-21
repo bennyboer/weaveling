@@ -5,31 +5,10 @@ use scenes_contract::{
     CREATED, DELETED, OPENING_CHANGED, OpeningChangedDTO, RETITLED, SceneCreatedDTO,
     SceneDeletedDTO, SceneRetitledDTO,
 };
-use scenes_core::{
-    CatalogError, InvalidSceneTitle, ProjectLink, SceneCatalog, SceneId, SceneTitle,
-};
-use serde_json::from_value;
-use thiserror::Error;
+use scenes_core::{ProjectLink, SceneCatalog, SceneTitle};
 
 pub struct CatalogueScenesListener {
     catalog: Arc<dyn SceneCatalog>,
-}
-
-#[derive(Debug, Error)]
-enum NotCatalogued {
-    #[error("this message is not shaped like a scene announcement: {0}")]
-    Unshaped(#[from] serde_json::Error),
-    #[error("{0} is not a scene id")]
-    NotASceneId(String),
-    #[error(transparent)]
-    Untitled(#[from] InvalidSceneTitle),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-}
-
-fn scene_id(raw: &str) -> Result<SceneId, NotCatalogued> {
-    raw.parse()
-        .map_err(|_| NotCatalogued::NotASceneId(raw.to_owned()))
 }
 
 impl CatalogueScenesListener {
@@ -37,24 +16,19 @@ impl CatalogueScenesListener {
         Self { catalog }
     }
 
-    async fn catalogue(&self, message: &Message) -> Result<(), NotCatalogued> {
-        let payload = message.payload.clone();
-
+    async fn catalogue(&self, message: &Message) -> Result<(), Failure> {
         match message.routing.to_string().as_str() {
             CREATED => {
-                let created: SceneCreatedDTO = from_value(payload)?;
+                let created: SceneCreatedDTO = message.payload_as()?;
                 self.catalog
-                    .remember(
-                        scene_id(&created.scene)?,
-                        &ProjectLink::from(created.project),
-                    )
+                    .remember(created.scene.parse()?, &ProjectLink::from(created.project))
                     .await?;
             }
             RETITLED => {
-                let retitled: SceneRetitledDTO = from_value(payload)?;
+                let retitled: SceneRetitledDTO = message.payload_as()?;
                 self.catalog
                     .retitle(
-                        scene_id(&retitled.scene)?,
+                        retitled.scene.parse()?,
                         &ProjectLink::from(retitled.project),
                         &SceneTitle::new(&retitled.title)?,
                         retitled.version,
@@ -62,10 +36,10 @@ impl CatalogueScenesListener {
                     .await?;
             }
             OPENING_CHANGED => {
-                let opened: OpeningChangedDTO = from_value(payload)?;
+                let opened: OpeningChangedDTO = message.payload_as()?;
                 self.catalog
                     .note_opening(
-                        scene_id(&opened.scene)?,
+                        opened.scene.parse()?,
                         &ProjectLink::from(opened.project),
                         &opened.opening,
                         message.occurred_at,
@@ -73,8 +47,8 @@ impl CatalogueScenesListener {
                     .await?;
             }
             DELETED => {
-                let deleted: SceneDeletedDTO = from_value(payload)?;
-                self.catalog.forget(scene_id(&deleted.scene)?).await?;
+                let deleted: SceneDeletedDTO = message.payload_as()?;
+                self.catalog.forget(deleted.scene.parse()?).await?;
             }
             _ => {}
         }
@@ -90,6 +64,6 @@ impl Handler for CatalogueScenesListener {
     const WHEN_REFUSED: &'static str = "A scene's name in the outline was not updated.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        Ok(self.catalogue(message).await?)
+        self.catalogue(message).await
     }
 }

@@ -1,15 +1,12 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventpublishing::{UnreadableMessage, published_in};
+use eventpublishing::published_in;
 use eventsourcing::{Agent, ServiceError};
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
-use ideas_core::{
-    CatalogError, IdeaCatalog, IdeaError, IdeaId, IdeaService, IdeaServiceError, ProjectLink,
-};
-use messaging::{Failure, Handler, Message, Publisher, RoutingKey, Undelivered};
+use ideas_core::{IdeaCatalog, IdeaError, IdeaId, IdeaService, IdeaServiceError, ProjectLink};
+use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
 use projects_contract::{DELETED, ProjectEventDTO};
-use thiserror::Error;
 
 pub const AT_MOST: usize = 100;
 
@@ -19,22 +16,6 @@ pub struct DiscardOnProjectDeletedListener {
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
     at_most: usize,
-}
-
-#[derive(Debug, Error)]
-enum NotSwept {
-    #[error(transparent)]
-    Unreadable(#[from] UnreadableMessage),
-    #[error("this message does not say which project to sweep: {0}")]
-    Unshaped(String),
-    #[error("this message names something that is not an idea")]
-    NotAIdeaId(#[source] ids::InvalidId),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Ideas(#[from] IdeaServiceError),
-    #[error(transparent)]
-    Undelivered(#[from] Undelivered),
 }
 
 impl DiscardOnProjectDeletedListener {
@@ -58,7 +39,7 @@ impl DiscardOnProjectDeletedListener {
         self
     }
 
-    async fn sweep(&self, asked: &Message) -> Result<(), NotSwept> {
+    async fn sweep(&self, asked: &Message) -> Result<(), Failure> {
         let (project, after) = what_to_sweep(asked)?;
         let batch = self
             .catalog
@@ -105,14 +86,13 @@ impl DiscardOnProjectDeletedListener {
     }
 }
 
-fn what_to_sweep(asked: &Message) -> Result<(ProjectLink, Option<IdeaId>), NotSwept> {
+fn what_to_sweep(asked: &Message) -> Result<(ProjectLink, Option<IdeaId>), Failure> {
     if asked.routing.to_string() == MORE_TO_SWEEP {
-        let carried: MoreToSweepDTO = serde_json::from_value(asked.payload.clone())
-            .map_err(|why| NotSwept::Unshaped(why.to_string()))?;
+        let carried: MoreToSweepDTO = asked.payload_as()?;
 
         return Ok((
             ProjectLink::from(carried.project.as_str()),
-            Some(carried.after.parse().map_err(NotSwept::NotAIdeaId)?),
+            Some(carried.after.parse()?),
         ));
     }
 
@@ -139,6 +119,6 @@ impl Handler for DiscardOnProjectDeletedListener {
     const WHEN_REFUSED: &'static str = "The ideas of a deleted project were not cleared away.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        Ok(self.sweep(message).await?)
+        self.sweep(message).await
     }
 }

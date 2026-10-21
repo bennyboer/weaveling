@@ -1,23 +1,14 @@
 use eventsourcing::{Agent, ServiceError};
+use messaging::Failure;
 use outline_core::{
-    Attachment, CatalogError, OutlineCatalog, OutlineError, OutlineId, OutlineService,
-    OutlineServiceError,
+    Attachment, OutlineCatalog, OutlineError, OutlineId, OutlineService, OutlineServiceError,
 };
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum NotLetGo {
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Outlines(#[from] OutlineServiceError),
-}
 
 pub async fn let_go_everywhere(
     outlines: &OutlineService,
     catalog: &dyn OutlineCatalog,
     gone: &Attachment,
-) -> Result<(), NotLetGo> {
+) -> Result<(), Failure> {
     catalog.mark_gone(gone).await?;
 
     for outline in catalog.outlines_holding(gone).await? {
@@ -31,7 +22,7 @@ pub async fn let_go_of_what_is_gone(
     outlines: &OutlineService,
     catalog: &dyn OutlineCatalog,
     outline: OutlineId,
-) -> Result<(), NotLetGo> {
+) -> Result<(), Failure> {
     for gone in catalog.gone_but_held(outline).await? {
         let_go(outlines, outline, &gone).await?;
     }
@@ -43,7 +34,7 @@ async fn let_go(
     outlines: &OutlineService,
     outline: OutlineId,
     gone: &Attachment,
-) -> Result<(), NotLetGo> {
+) -> Result<(), Failure> {
     match outlines
         .detach(&outline.to_string(), gone.clone(), None, &Agent::System)
         .await

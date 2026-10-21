@@ -1,22 +1,12 @@
-use boards_core::{
-    BoardCatalog, BoardError, BoardId, BoardService, BoardServiceError, CatalogError, IdeaLink,
-};
+use boards_core::{BoardCatalog, BoardError, BoardId, BoardService, BoardServiceError, IdeaLink};
 use eventsourcing::{Agent, ServiceError};
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-pub enum NotLetGo {
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Boards(#[from] BoardServiceError),
-}
+use messaging::Failure;
 
 pub async fn let_go_everywhere(
     boards: &BoardService,
     catalog: &dyn BoardCatalog,
     gone: &IdeaLink,
-) -> Result<(), NotLetGo> {
+) -> Result<(), Failure> {
     catalog.mark_gone(gone).await?;
 
     for board in catalog.boards_holding(gone).await? {
@@ -30,7 +20,7 @@ pub async fn let_go_of_what_is_gone(
     boards: &BoardService,
     catalog: &dyn BoardCatalog,
     board: BoardId,
-) -> Result<(), NotLetGo> {
+) -> Result<(), Failure> {
     for gone in catalog.gone_but_held(board).await? {
         let_go(boards, board, &gone).await?;
     }
@@ -38,7 +28,7 @@ pub async fn let_go_of_what_is_gone(
     Ok(())
 }
 
-async fn let_go(boards: &BoardService, board: BoardId, gone: &IdeaLink) -> Result<(), NotLetGo> {
+async fn let_go(boards: &BoardService, board: BoardId, gone: &IdeaLink) -> Result<(), Failure> {
     match boards
         .unpin(&board.to_string(), gone.clone(), None, &Agent::System)
         .await

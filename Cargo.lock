@@ -3531,8 +3531,6 @@ name = "weaveling-appearances-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "serde_json",
- "thiserror",
  "weaveling-appearances-core",
  "weaveling-eventpublishing",
  "weaveling-ideas-contract",
@@ -3626,8 +3624,6 @@ name = "weaveling-boards-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "serde_json",
- "thiserror",
  "time",
  "weaveling-boards-contract",
  "weaveling-boards-core",
@@ -3810,7 +3806,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "serde_json",
- "thiserror",
  "time",
  "weaveling-clock",
  "weaveling-eventpublishing",
@@ -3914,6 +3909,7 @@ name = "weaveling-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
  "serde_json",
  "sqlx",
  "thiserror",
@@ -3990,8 +3986,6 @@ name = "weaveling-outline-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "serde_json",
- "thiserror",
  "time",
  "weaveling-clock",
  "weaveling-eventpublishing",
@@ -4244,7 +4238,6 @@ dependencies = [
  "async-trait",
  "serde",
  "serde_json",
- "thiserror",
  "time",
  "weaveling-clock",
  "weaveling-eventpublishing",
@@ -4425,8 +4418,6 @@ name = "weaveling-statistics-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
- "serde_json",
- "thiserror",
  "weaveling-messaging",
  "weaveling-scenes-contract",
  "weaveling-statistics-core",

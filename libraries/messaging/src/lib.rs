@@ -26,7 +26,7 @@ pub use listening::{
     Delivery, Failure, Handler, InvalidListenerName, Listener, ListenerName, NotHandled,
     Notifications, Publisher, Undelivered,
 };
-pub use message::{Conversation, Message, MessageId};
+pub use message::{Conversation, Message, MessageId, Unshaped};
 pub use routing::{InvalidRoutingKey, RoutingKey, Subscription};
 
 #[cfg(feature = "postgres")]
