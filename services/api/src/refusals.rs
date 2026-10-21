@@ -5,7 +5,6 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use clock::Clock;
 use clock::text::serialize;
@@ -132,8 +131,12 @@ impl Deliveries for TellingDeliveries {
     }
 }
 
-async fn list(State(refusals): State<Refusals>) -> Result<Json<Vec<RefusalDTO>>, Unserved> {
-    let dead = refusals.deliveries.dead_letters().await?;
+async fn list(State(refusals): State<Refusals>) -> Result<Json<Vec<RefusalDTO>>, Problem> {
+    let dead = refusals
+        .deliveries
+        .dead_letters()
+        .await
+        .map_err(Problem::unexpected)?;
 
     Ok(Json(
         dead.iter()
@@ -145,8 +148,12 @@ async fn list(State(refusals): State<Refusals>) -> Result<Json<Vec<RefusalDTO>>,
 async fn retry(
     State(refusals): State<Refusals>,
     Path(id): Path<i64>,
-) -> Result<StatusCode, Unserved> {
-    refusals.deliveries.retry(id, refusals.clock.now()).await?;
+) -> Result<StatusCode, Problem> {
+    refusals
+        .deliveries
+        .retry(id, refusals.clock.now())
+        .await
+        .map_err(Problem::unexpected)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -154,11 +161,12 @@ async fn retry(
 async fn acknowledge(
     State(refusals): State<Refusals>,
     Path(id): Path<i64>,
-) -> Result<StatusCode, Unserved> {
+) -> Result<StatusCode, Problem> {
     refusals
         .deliveries
         .acknowledge(id, refusals.clock.now())
-        .await?;
+        .await
+        .map_err(Problem::unexpected)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -174,19 +182,5 @@ fn to_dto(dead: &DeadLetter, dispatcher: &InProcessDispatcher) -> RefusalDTO {
         occurred_at: serialize(dead.message.occurred_at),
         given_up_at: serialize(dead.given_up_at),
         acknowledged_at: dead.acknowledged_at.map(serialize),
-    }
-}
-
-struct Unserved(DeliveryError);
-
-impl From<DeliveryError> for Unserved {
-    fn from(error: DeliveryError) -> Self {
-        Self(error)
-    }
-}
-
-impl IntoResponse for Unserved {
-    fn into_response(self) -> Response {
-        Problem::unexpected(self.0).into_response()
     }
 }

@@ -5,12 +5,12 @@ use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
-use eventsourcing::{Agent, Standing, Version};
+use eventsourcing::{Agent, Standing};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
 use ideas_core::{Idea, IdeaError, IdeaService, IdeaServiceError, IdeaSummary, InvalidIdeaTitle};
 use live::{Broadcaster, followed_at};
 use serde::Deserialize;
-use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
+use serving::{Problem, demanded, tag};
 
 pub fn live(broadcaster: Broadcaster) -> Router {
     followed_at("/ideas/live", broadcaster, |asked| {
@@ -33,8 +33,8 @@ struct InProject {
 async fn list(
     State(ideas): State<IdeaService>,
     Query(asked): Query<InProject>,
-) -> Result<Json<Vec<IdeaDTO>>, ApiError> {
-    let found = ideas.list(&asked.project).await?;
+) -> Result<Json<Vec<IdeaDTO>>, Problem> {
+    let found = ideas.list(&asked.project).await.map_err(problem_of)?;
 
     Ok(Json(found.iter().map(to_dto).collect()))
 }
@@ -51,12 +51,13 @@ fn to_dto(summary: &IdeaSummary) -> IdeaDTO {
 async fn capture(
     State(ideas): State<IdeaService>,
     Json(request): Json<CaptureIdeaRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let id = ideas
         .capture(&request.project, &request.title, &nobody_yet())
-        .await?
+        .await
+        .map_err(problem_of)?
         .to_string();
-    let captured = ideas.get(&id).await?;
+    let captured = ideas.get(&id).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::CREATED, &id, &captured))
 }
@@ -64,8 +65,8 @@ async fn capture(
 async fn find(
     State(ideas): State<IdeaService>,
     Path(id): Path<String>,
-) -> Result<Response, ApiError> {
-    let found = ideas.get(&id).await?;
+) -> Result<Response, Problem> {
+    let found = ideas.get(&id).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &id, &found))
 }
@@ -75,32 +76,34 @@ async fn retitle(
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<RetitleIdeaRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     ideas
-        .retitle(&id, &request.title, expected(&headers)?, &nobody_yet())
-        .await?;
+        .retitle(&id, &request.title, demanded(&headers)?, &nobody_yet())
+        .await
+        .map_err(problem_of)?;
 
-    Ok(to_response(StatusCode::OK, &id, &ideas.get(&id).await?))
+    Ok(to_response(
+        StatusCode::OK,
+        &id,
+        &ideas.get(&id).await.map_err(problem_of)?,
+    ))
 }
 
 async fn discard(
     State(ideas): State<IdeaService>,
     Path(id): Path<String>,
     headers: HeaderMap,
-) -> Result<StatusCode, ApiError> {
+) -> Result<StatusCode, Problem> {
     ideas
-        .discard(&id, expected(&headers)?, &nobody_yet())
-        .await?;
+        .discard(&id, demanded(&headers)?, &nobody_yet())
+        .await
+        .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 fn nobody_yet() -> Agent {
     Agent::Anonymous
-}
-
-fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
-    Ok(demanded(headers)?)
 }
 
 fn to_response(status: StatusCode, id: &str, standing: &Standing<Idea>) -> Response {
@@ -117,33 +120,6 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Idea>) -> Respo
         }),
     )
         .into_response()
-}
-
-enum ApiError {
-    Unreadable(Unreadable),
-    Refused(IdeaServiceError),
-}
-
-impl From<IdeaServiceError> for ApiError {
-    fn from(error: IdeaServiceError) -> Self {
-        Self::Refused(error)
-    }
-}
-
-impl From<Unreadable> for ApiError {
-    fn from(error: Unreadable) -> Self {
-        Self::Unreadable(error)
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Unreadable(reason) => Problem::rejected(UNREADABLE, reason),
-            Self::Refused(refusal) => problem_of(refusal),
-        }
-        .into_response()
-    }
 }
 
 fn problem_of(refusal: IdeaServiceError) -> Problem {

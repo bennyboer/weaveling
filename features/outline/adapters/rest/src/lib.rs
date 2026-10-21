@@ -16,7 +16,7 @@ use outline_core::{
     Attachment, Changed, InvalidSectionTitle, Outline, OutlineError, OutlineService,
     OutlineServiceError, PlacedSection, SectionId, SectionTitle,
 };
-use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
+use serving::{Problem, demanded, tag};
 
 pub fn router(outlines: OutlineService) -> Router {
     Router::new()
@@ -47,8 +47,11 @@ pub fn router(outlines: OutlineService) -> Router {
 async fn open(
     State(outlines): State<OutlineService>,
     Json(request): Json<OpenOutlineRequest>,
-) -> Result<Response, ApiError> {
-    let opened = outlines.open(&request.project, &nobody_yet()).await?;
+) -> Result<Response, Problem> {
+    let opened = outlines
+        .open(&request.project, &nobody_yet())
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_response(
         StatusCode::OK,
@@ -78,8 +81,8 @@ pub fn live(broadcaster: Broadcaster, outlines: OutlineService) -> Router {
 async fn find(
     State(outlines): State<OutlineService>,
     Path(outline): Path<String>,
-) -> Result<Response, ApiError> {
-    let found = outlines.get(&outline).await?;
+) -> Result<Response, Problem> {
+    let found = outlines.get(&outline).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &outline, &found))
 }
@@ -89,18 +92,19 @@ async fn add(
     Path(outline): Path<String>,
     headers: HeaderMap,
     Json(request): Json<AddSectionRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let added = outlines
         .add(
             &outline,
             named_section(request.under)?,
             named_section(request.after)?,
             titled(&request.title)?,
-            expected(&headers)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
-    let standing = outlines.get(&outline).await?;
+        .await
+        .map_err(problem_of)?;
+    let standing = outlines.get(&outline).await.map_err(problem_of)?;
     let unchanged = Changed {
         version: added.version,
         attachments_changed_in: Vec::new(),
@@ -122,20 +126,21 @@ async fn retitle(
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
     Json(request): Json<RetitleSectionRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let changed = outlines
         .retitle(
             &outline,
-            section.parse()?,
+            section.parse().map_err(invalid_id)?,
             titled(&request.title)?,
-            expected(&headers)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_change_response(
         &outline,
-        &outlines.get(&outline).await?,
+        &outlines.get(&outline).await.map_err(problem_of)?,
         &changed,
     ))
 }
@@ -145,21 +150,22 @@ async fn place(
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
     Json(request): Json<MoveSectionRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let changed = outlines
         .place(
             &outline,
-            section.parse()?,
+            section.parse().map_err(invalid_id)?,
             named_section(request.under)?,
             named_section(request.after)?,
-            expected(&headers)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_change_response(
         &outline,
-        &outlines.get(&outline).await?,
+        &outlines.get(&outline).await.map_err(problem_of)?,
         &changed,
     ))
 }
@@ -168,19 +174,20 @@ async fn promote(
     State(outlines): State<OutlineService>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let changed = outlines
         .promote(
             &outline,
-            section.parse()?,
-            expected(&headers)?,
+            section.parse().map_err(invalid_id)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_change_response(
         &outline,
-        &outlines.get(&outline).await?,
+        &outlines.get(&outline).await.map_err(problem_of)?,
         &changed,
     ))
 }
@@ -189,19 +196,20 @@ async fn demote(
     State(outlines): State<OutlineService>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let changed = outlines
         .demote(
             &outline,
-            section.parse()?,
-            expected(&headers)?,
+            section.parse().map_err(invalid_id)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_change_response(
         &outline,
-        &outlines.get(&outline).await?,
+        &outlines.get(&outline).await.map_err(problem_of)?,
         &changed,
     ))
 }
@@ -210,19 +218,20 @@ async fn remove(
     State(outlines): State<OutlineService>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let changed = outlines
         .remove(
             &outline,
-            section.parse()?,
-            expected(&headers)?,
+            section.parse().map_err(invalid_id)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_change_response(
         &outline,
-        &outlines.get(&outline).await?,
+        &outlines.get(&outline).await.map_err(problem_of)?,
         &changed,
     ))
 }
@@ -232,21 +241,22 @@ async fn attach(
     Path(outline): Path<String>,
     headers: HeaderMap,
     Json(request): Json<AttachRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let changed = outlines
         .attach(
             &outline,
             to_attachment(&request.attachment),
-            request.section.parse()?,
+            request.section.parse().map_err(invalid_id)?,
             request.after.as_ref().map(to_attachment),
-            expected(&headers)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_change_response(
         &outline,
-        &outlines.get(&outline).await?,
+        &outlines.get(&outline).await.map_err(problem_of)?,
         &changed,
     ))
 }
@@ -255,16 +265,22 @@ async fn detach(
     State(outlines): State<OutlineService>,
     Path((outline, kind, attached)): Path<(String, String, String)>,
     headers: HeaderMap,
-) -> Result<StatusCode, ApiError> {
+) -> Result<StatusCode, Problem> {
     let attachment = match kind.as_str() {
         "scenes" => Attachment::scene(&attached),
         "ideas" => Attachment::idea(&attached),
-        _ => return Err(ApiError::NoSuchKind),
+        _ => {
+            return Err(Problem::not_found(
+                refused::NO_SUCH_KIND,
+                "an outline holds scenes and ideas, and nothing else",
+            ));
+        }
     };
 
     outlines
-        .detach(&outline, attachment, expected(&headers)?, &nobody_yet())
-        .await?;
+        .detach(&outline, attachment, demanded(&headers)?, &nobody_yet())
+        .await
+        .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -273,19 +289,14 @@ fn nobody_yet() -> Agent {
     Agent::Anonymous
 }
 
-fn named_section(given: Option<String>) -> Result<Option<SectionId>, ApiError> {
-    match given {
-        None => Ok(None),
-        Some(given) => Ok(Some(given.parse()?)),
-    }
+fn named_section(given: Option<String>) -> Result<Option<SectionId>, Problem> {
+    given
+        .map(|given| given.parse().map_err(invalid_id))
+        .transpose()
 }
 
-fn titled(given: &str) -> Result<SectionTitle, ApiError> {
-    Ok(SectionTitle::new(given)?)
-}
-
-fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
-    Ok(demanded(headers)?)
+fn titled(given: &str) -> Result<SectionTitle, Problem> {
+    SectionTitle::new(given).map_err(untitled)
 }
 
 fn to_response(status: StatusCode, outline: &str, standing: &Standing<Outline>) -> Response {
@@ -369,59 +380,21 @@ fn to_section_dto(placed: &PlacedSection) -> PlacedSectionDTO {
     }
 }
 
-enum ApiError {
-    Unreadable(Unreadable),
-    Untitled(InvalidSectionTitle),
-    NoSuchKind,
-    Refused(OutlineServiceError),
-}
-
-impl From<OutlineServiceError> for ApiError {
-    fn from(error: OutlineServiceError) -> Self {
-        Self::Refused(error)
-    }
-}
-
-impl From<ids::InvalidId> for ApiError {
-    fn from(error: ids::InvalidId) -> Self {
-        Self::Refused(OutlineServiceError::InvalidId(error))
-    }
-}
-
-impl From<InvalidSectionTitle> for ApiError {
-    fn from(error: InvalidSectionTitle) -> Self {
-        Self::Untitled(error)
-    }
-}
-
-impl From<Unreadable> for ApiError {
-    fn from(error: Unreadable) -> Self {
-        Self::Unreadable(error)
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Unreadable(reason) => Problem::rejected(UNREADABLE, reason),
-            Self::Untitled(reason) => match reason {
-                InvalidSectionTitle::ControlCharacter => {
-                    Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
-                }
-                InvalidSectionTitle::TooLong { max, actual } => {
-                    Problem::unprocessable(refused::TITLE_TOO_LONG, reason)
-                        .with("max", max)
-                        .with("actual", actual)
-                }
-            },
-            Self::NoSuchKind => Problem::not_found(
-                refused::NO_SUCH_KIND,
-                "an outline holds scenes and ideas, and nothing else",
-            ),
-            Self::Refused(refusal) => problem_of(refusal),
+fn untitled(reason: InvalidSectionTitle) -> Problem {
+    match reason {
+        InvalidSectionTitle::ControlCharacter => {
+            Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
         }
-        .into_response()
+        InvalidSectionTitle::TooLong { max, actual } => {
+            Problem::unprocessable(refused::TITLE_TOO_LONG, reason)
+                .with("max", max)
+                .with("actual", actual)
+        }
     }
+}
+
+fn invalid_id(reason: ids::InvalidId) -> Problem {
+    problem_of(OutlineServiceError::InvalidId(reason))
 }
 
 fn problem_of(refusal: OutlineServiceError) -> Problem {

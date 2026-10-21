@@ -14,7 +14,7 @@ use boards_core::{
 };
 use eventsourcing::{Agent, Standing, Version};
 use live::{Broadcaster, followed_from};
-use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
+use serving::{Problem, demanded, tag};
 
 pub fn live(broadcaster: Broadcaster, boards: BoardService) -> Router {
     followed_from(
@@ -46,8 +46,11 @@ pub fn router(boards: BoardService) -> Router {
 async fn open(
     State(boards): State<BoardService>,
     Json(request): Json<OpenBoardRequest>,
-) -> Result<Response, ApiError> {
-    let opened = boards.open(&request.project, &nobody_yet()).await?;
+) -> Result<Response, Problem> {
+    let opened = boards
+        .open(&request.project, &nobody_yet())
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_response(
         StatusCode::OK,
@@ -59,8 +62,8 @@ async fn open(
 async fn find(
     State(boards): State<BoardService>,
     Path(board): Path<String>,
-) -> Result<Response, ApiError> {
-    let found = boards.get(&board).await?;
+) -> Result<Response, Problem> {
+    let found = boards.get(&board).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &board, &found))
 }
@@ -70,22 +73,23 @@ async fn pin(
     Path(board): Path<String>,
     headers: HeaderMap,
     Json(request): Json<PinIdeaRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     boards
         .pin(
             &board,
             IdeaLink::from(request.idea.as_str()),
             as_spot(request.spot),
             as_size(request.size),
-            expected(&headers)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_response(
         StatusCode::OK,
         &board,
-        &boards.get(&board).await?,
+        &boards.get(&board).await.map_err(problem_of)?,
     ))
 }
 
@@ -94,22 +98,23 @@ async fn reshape(
     Path((board, idea)): Path<(String, String)>,
     headers: HeaderMap,
     Json(request): Json<ReshapeIdeaRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     boards
         .reshape(
             &board,
             IdeaLink::from(idea.as_str()),
             request.spot.map(as_spot),
             request.size.map(as_size),
-            expected(&headers)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(to_response(
         StatusCode::OK,
         &board,
-        &boards.get(&board).await?,
+        &boards.get(&board).await.map_err(problem_of)?,
     ))
 }
 
@@ -117,15 +122,16 @@ async fn unpin(
     State(boards): State<BoardService>,
     Path((board, idea)): Path<(String, String)>,
     headers: HeaderMap,
-) -> Result<StatusCode, ApiError> {
+) -> Result<StatusCode, Problem> {
     boards
         .unpin(
             &board,
             IdeaLink::from(idea.as_str()),
-            expected(&headers)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -140,10 +146,6 @@ fn as_spot(at: SpotDTO) -> Spot {
 
 fn as_size(size: SizeDTO) -> Size {
     Size::of(size.width, size.height)
-}
-
-fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
-    Ok(demanded(headers)?)
 }
 
 fn to_response(status: StatusCode, board: &str, standing: &Standing<Board>) -> Response {
@@ -175,33 +177,6 @@ fn to_positioned_dto(held: &PositionedIdea) -> PositionedIdeaDTO {
             width: held.size.width,
             height: held.size.height,
         },
-    }
-}
-
-enum ApiError {
-    Unreadable(Unreadable),
-    Refused(BoardServiceError),
-}
-
-impl From<BoardServiceError> for ApiError {
-    fn from(error: BoardServiceError) -> Self {
-        Self::Refused(error)
-    }
-}
-
-impl From<Unreadable> for ApiError {
-    fn from(error: Unreadable) -> Self {
-        Self::Unreadable(error)
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Unreadable(reason) => Problem::rejected(UNREADABLE, reason),
-            Self::Refused(refusal) => problem_of(refusal),
-        }
-        .into_response()
     }
 }
 

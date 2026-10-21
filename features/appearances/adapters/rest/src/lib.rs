@@ -4,7 +4,6 @@ use appearances_contract::{IdeaPlacesDTO, PlaceDTO};
 use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, Subject};
 use async_trait::async_trait;
 use axum::extract::{Query, State};
-use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use live::{Broadcaster, Teller, followed_at};
@@ -103,10 +102,11 @@ struct OfIdea {
 async fn places_of(
     State(catalog): State<Arc<dyn AppearanceCatalog>>,
     Query(asked): Query<OfIdea>,
-) -> Result<Json<Vec<PlaceDTO>>, ApiError> {
+) -> Result<Json<Vec<PlaceDTO>>, Problem> {
     let places = catalog
         .places_of(&Subject::Idea(IdeaLink::from(asked.idea)))
-        .await?;
+        .await
+        .map_err(Problem::unexpected)?;
 
     Ok(Json(places.iter().map(to_dto).collect()))
 }
@@ -119,19 +119,5 @@ fn to_dto(place: &Place) -> PlaceDTO {
         Place::Section(section) => PlaceDTO::Section {
             id: section.to_string(),
         },
-    }
-}
-
-struct ApiError(CatalogError);
-
-impl From<CatalogError> for ApiError {
-    fn from(error: CatalogError) -> Self {
-        Self(error)
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        Problem::unexpected(self.0).into_response()
     }
 }

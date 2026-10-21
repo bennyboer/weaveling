@@ -6,7 +6,6 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{FromRef, Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post};
 use live::{Broadcaster, Teller, followed_at};
 use scenes_contract::{
@@ -228,11 +227,17 @@ fn as_dto(progress: QuotationRestylingProgress) -> QuotationRestylingDTO {
 async fn progress(
     State(tasks): State<Arc<dyn QuotationRestylingTasks>>,
     Path(project): Path<String>,
-) -> Result<Json<QuotationRestylingDTO>, ApiError> {
+) -> Result<Json<QuotationRestylingDTO>, Problem> {
     let progress = tasks
         .progress(&ProjectLink::from(project.as_str()))
-        .await?
-        .ok_or(ApiError::NeverRestyled(project))?;
+        .await
+        .map_err(Problem::unexpected)?
+        .ok_or_else(|| {
+            Problem::not_found(
+                refused::NEVER_RESTYLED,
+                format!("the quotation marks of project {project} were never restyled"),
+            )
+        })?;
 
     Ok(Json(as_dto(progress)))
 }
@@ -248,16 +253,17 @@ struct InProject {
 async fn list(
     State(catalog): State<Arc<dyn SceneCatalog>>,
     Query(asked): Query<InProject>,
-) -> Result<Json<ScenePageDTO>, ApiError> {
+) -> Result<Json<ScenePageDTO>, Problem> {
     let after = asked
         .after
         .as_deref()
         .map(str::parse::<SceneId>)
         .transpose()
-        .map_err(SceneServiceError::from)?;
+        .map_err(|reason| problem_of(SceneServiceError::from(reason)))?;
     let mut found = catalog
         .in_project_after(&ProjectLink::from(asked.project), after, PAGE + 1)
-        .await?;
+        .await
+        .map_err(Problem::unexpected)?;
     let more = found.len() > PAGE;
     found.truncate(PAGE);
 
@@ -281,8 +287,8 @@ fn to_summary_dto(summary: &SceneSummary) -> SceneSummaryDTO {
 async fn create(
     State(scenes): State<SceneService>,
     Json(request): Json<CreateSceneRequest>,
-) -> Result<(StatusCode, Json<SceneDTO>), ApiError> {
-    let created = scenes.create(&request.project).await?;
+) -> Result<(StatusCode, Json<SceneDTO>), Problem> {
+    let created = scenes.create(&request.project).await.map_err(problem_of)?;
 
     Ok((StatusCode::CREATED, Json(to_dto(&created))))
 }
@@ -290,8 +296,8 @@ async fn create(
 async fn find(
     State(scenes): State<SceneService>,
     Path(id): Path<String>,
-) -> Result<Json<SceneDTO>, ApiError> {
-    let found = scenes.open(&id).await?;
+) -> Result<Json<SceneDTO>, Problem> {
+    let found = scenes.open(&id).await.map_err(problem_of)?;
 
     Ok(Json(to_dto(&found)))
 }
@@ -300,8 +306,11 @@ async fn retitle(
     State(scenes): State<SceneService>,
     Path(id): Path<String>,
     Json(request): Json<RetitleSceneRequest>,
-) -> Result<Json<SceneDTO>, ApiError> {
-    let retitled = scenes.retitle(&id, &request.title).await?;
+) -> Result<Json<SceneDTO>, Problem> {
+    let retitled = scenes
+        .retitle(&id, &request.title)
+        .await
+        .map_err(problem_of)?;
 
     Ok(Json(to_dto(&retitled)))
 }
@@ -310,8 +319,8 @@ async fn link(
     State(scenes): State<SceneService>,
     Path(id): Path<String>,
     Json(request): Json<LinkIdeaRequest>,
-) -> Result<Json<SceneDTO>, ApiError> {
-    let linked = scenes.link(&id, &request.idea).await?;
+) -> Result<Json<SceneDTO>, Problem> {
+    let linked = scenes.link(&id, &request.idea).await.map_err(problem_of)?;
 
     Ok(Json(to_dto(&linked)))
 }
@@ -319,8 +328,8 @@ async fn link(
 async fn unlink(
     State(scenes): State<SceneService>,
     Path((id, idea)): Path<(String, String)>,
-) -> Result<Json<SceneDTO>, ApiError> {
-    let unlinked = scenes.unlink(&id, &idea).await?;
+) -> Result<Json<SceneDTO>, Problem> {
+    let unlinked = scenes.unlink(&id, &idea).await.map_err(problem_of)?;
 
     Ok(Json(to_dto(&unlinked)))
 }
@@ -328,8 +337,8 @@ async fn unlink(
 async fn remove(
     State(scenes): State<SceneService>,
     Path(id): Path<String>,
-) -> Result<StatusCode, ApiError> {
-    scenes.delete(&id).await?;
+) -> Result<StatusCode, Problem> {
+    scenes.delete(&id).await.map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -341,46 +350,6 @@ fn to_dto(scene: &Scene) -> SceneDTO {
         title: scene.title().to_string(),
         ideas: scene.ideas().iter().map(ToString::to_string).collect(),
         text: scene.text(),
-    }
-}
-
-enum ApiError {
-    Scenes(SceneServiceError),
-    Catalog(CatalogError),
-    Restylings(QuotationRestylingTaskError),
-    NeverRestyled(String),
-}
-
-impl From<SceneServiceError> for ApiError {
-    fn from(error: SceneServiceError) -> Self {
-        Self::Scenes(error)
-    }
-}
-
-impl From<QuotationRestylingTaskError> for ApiError {
-    fn from(error: QuotationRestylingTaskError) -> Self {
-        Self::Restylings(error)
-    }
-}
-
-impl From<CatalogError> for ApiError {
-    fn from(error: CatalogError) -> Self {
-        Self::Catalog(error)
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Scenes(refusal) => problem_of(refusal),
-            Self::Catalog(failure) => Problem::unexpected(failure),
-            Self::Restylings(failure) => Problem::unexpected(failure),
-            Self::NeverRestyled(project) => Problem::not_found(
-                refused::NEVER_RESTYLED,
-                format!("the quotation marks of project {project} were never restyled"),
-            ),
-        }
-        .into_response()
     }
 }
 

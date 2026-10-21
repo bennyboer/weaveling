@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::extract::{Query, State};
-use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum::{Json, Router};
 use live::{Broadcaster, Teller, followed_at};
@@ -81,10 +80,11 @@ struct InProject {
 async fn word_counts(
     State(catalog): State<Arc<dyn WordCountCatalog>>,
     Query(asked): Query<InProject>,
-) -> Result<Json<Vec<WordCountDTO>>, ApiError> {
+) -> Result<Json<Vec<WordCountDTO>>, Problem> {
     let counts = catalog
         .in_project(&ProjectLink::from(asked.project))
-        .await?;
+        .await
+        .map_err(Problem::unexpected)?;
 
     Ok(Json(counts.iter().map(to_dto).collect()))
 }
@@ -93,19 +93,5 @@ fn to_dto(count: &WordCount) -> WordCountDTO {
     WordCountDTO {
         scene: count.scene.to_string(),
         words: count.words,
-    }
-}
-
-struct ApiError(CatalogError);
-
-impl From<CatalogError> for ApiError {
-    fn from(error: CatalogError) -> Self {
-        Self(error)
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        Problem::unexpected(self.0).into_response()
     }
 }

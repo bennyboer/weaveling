@@ -7,6 +7,8 @@ use axum::response::{IntoResponse, Response};
 use eventsourcing::{ServiceError, StoreError};
 use serde_json::{Map, Value};
 
+use crate::conditional::Unreadable;
+
 pub const PROBLEM: &str = "application/problem+json";
 pub const NOT_FOUND: &str = "not-found";
 pub const OUTDATED: &str = "outdated";
@@ -74,6 +76,12 @@ impl Problem {
             detail: detail.to_string(),
             values: Map::new(),
         }
+    }
+}
+
+impl From<Unreadable> for Problem {
+    fn from(unreadable: Unreadable) -> Self {
+        Self::rejected(UNREADABLE, unreadable)
     }
 }
 

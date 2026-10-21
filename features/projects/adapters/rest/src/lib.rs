@@ -6,7 +6,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, put};
 use clock::text::serialize;
-use eventsourcing::{Agent, Standing, Version};
+use eventsourcing::{Agent, Standing};
 use live::{Broadcaster, followed_at};
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
@@ -16,7 +16,7 @@ use projects_core::{
     InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName, InvalidQuotationMarks,
     Project, ProjectError, ProjectService, ProjectServiceError, ProjectSummary, RawDetails,
 };
-use serving::{Problem, UNREADABLE, Unreadable, demanded, tag};
+use serving::{Problem, demanded, tag};
 
 pub const FOLLOWED: &str = "projects";
 
@@ -39,8 +39,8 @@ pub fn router(projects: ProjectService) -> Router {
         .with_state(projects)
 }
 
-async fn list(State(projects): State<ProjectService>) -> Result<Json<Vec<ProjectDTO>>, ApiError> {
-    let found = projects.list().await?;
+async fn list(State(projects): State<ProjectService>) -> Result<Json<Vec<ProjectDTO>>, Problem> {
+    let found = projects.list().await.map_err(problem_of)?;
 
     Ok(Json(found.iter().map(to_dto).collect()))
 }
@@ -58,7 +58,7 @@ fn to_dto(summary: &ProjectSummary) -> ProjectDTO {
 async fn create(
     State(projects): State<ProjectService>,
     Json(request): Json<CreateProjectRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     let id = projects
         .start(
             &request.name,
@@ -69,9 +69,10 @@ async fn create(
             },
             &nobody_yet(),
         )
-        .await?
+        .await
+        .map_err(problem_of)?
         .to_string();
-    let started = projects.get(&id).await?;
+    let started = projects.get(&id).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::CREATED, &id, &started))
 }
@@ -79,8 +80,8 @@ async fn create(
 async fn find(
     State(projects): State<ProjectService>,
     Path(id): Path<String>,
-) -> Result<Response, ApiError> {
-    let found = projects.get(&id).await?;
+) -> Result<Response, Problem> {
+    let found = projects.get(&id).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &id, &found))
 }
@@ -90,12 +91,17 @@ async fn rename(
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<RenameProjectRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     projects
-        .rename(&id, &request.name, expected(&headers)?, &nobody_yet())
-        .await?;
+        .rename(&id, &request.name, demanded(&headers)?, &nobody_yet())
+        .await
+        .map_err(problem_of)?;
 
-    Ok(to_response(StatusCode::OK, &id, &projects.get(&id).await?))
+    Ok(to_response(
+        StatusCode::OK,
+        &id,
+        &projects.get(&id).await.map_err(problem_of)?,
+    ))
 }
 
 async fn change_details(
@@ -103,7 +109,7 @@ async fn change_details(
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<ChangeDetailsRequest>,
-) -> Result<Response, ApiError> {
+) -> Result<Response, Problem> {
     projects
         .change_details(
             &id,
@@ -112,32 +118,34 @@ async fn change_details(
                 quotation: request.quotation.as_deref(),
                 description: &request.description,
             },
-            expected(&headers)?,
+            demanded(&headers)?,
             &nobody_yet(),
         )
-        .await?;
+        .await
+        .map_err(problem_of)?;
 
-    Ok(to_response(StatusCode::OK, &id, &projects.get(&id).await?))
+    Ok(to_response(
+        StatusCode::OK,
+        &id,
+        &projects.get(&id).await.map_err(problem_of)?,
+    ))
 }
 
 async fn remove(
     State(projects): State<ProjectService>,
     Path(id): Path<String>,
     headers: HeaderMap,
-) -> Result<StatusCode, ApiError> {
+) -> Result<StatusCode, Problem> {
     projects
-        .delete(&id, expected(&headers)?, &nobody_yet())
-        .await?;
+        .delete(&id, demanded(&headers)?, &nobody_yet())
+        .await
+        .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
 fn nobody_yet() -> Agent {
     Agent::Anonymous
-}
-
-fn expected(headers: &HeaderMap) -> Result<Option<Version>, ApiError> {
-    Ok(demanded(headers)?)
 }
 
 fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Response {
@@ -158,33 +166,6 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Re
         }),
     )
         .into_response()
-}
-
-enum ApiError {
-    Unreadable(Unreadable),
-    Refused(ProjectServiceError),
-}
-
-impl From<ProjectServiceError> for ApiError {
-    fn from(error: ProjectServiceError) -> Self {
-        Self::Refused(error)
-    }
-}
-
-impl From<Unreadable> for ApiError {
-    fn from(error: Unreadable) -> Self {
-        Self::Unreadable(error)
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Unreadable(reason) => Problem::rejected(UNREADABLE, reason),
-            Self::Refused(refusal) => problem_of(refusal),
-        }
-        .into_response()
-    }
 }
 
 fn problem_of(refusal: ProjectServiceError) -> Problem {
