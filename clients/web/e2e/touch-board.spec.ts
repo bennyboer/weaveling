@@ -1,4 +1,4 @@
-import { test, expect, type BrowserContext, type Page } from "@playwright/test";
+import { test, expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 import { boardOnServer, cardNamed, corkboard, seenAt, zooming } from "./support/board";
 import { aBookWithScenes } from "./support/book";
@@ -288,3 +288,75 @@ test("lifting one finger after a pinch pans the board with the other", async ({ 
     .toBe(-100);
 });
 
+
+async function dragReportingRunningTotals(target: Locator, by: Point) {
+  const from = middleOf((await target.boundingBox())!);
+
+  await target.evaluate(
+    (element, { from, by }) => {
+      const fire = (type: string, x: number, y: number, moved: Point) =>
+        element.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            composed: true,
+            pointerId: 42,
+            pointerType: "touch",
+            isPrimary: true,
+            buttons: 1,
+            clientX: x,
+            clientY: y,
+            movementX: moved.x,
+            movementY: moved.y,
+          }),
+        );
+      fire("pointerdown", from.x, from.y, { x: 0, y: 0 });
+      for (let step = 1; step <= 10; step++) {
+        const x = from.x + (by.x * step) / 10;
+        const y = from.y + (by.y * step) / 10;
+        fire("pointermove", x, y, { x: x - from.x, y: y - from.y });
+      }
+      fire("pointerup", from.x + by.x, from.y + by.y, { x: 0, y: 0 });
+    },
+    { from, by },
+  );
+}
+
+test("a card carried by a pointer that reports its movement as a running total lands where the pointer does", async ({
+  page,
+}) => {
+  await aBoardWithACard(page, "PhoneRunningTotals");
+  const before = await seenAt(page, "The loom remembers");
+  const placed = (await boardOnServer(page)).ideas[0].spot;
+
+  await dragReportingRunningTotals(cardNamed(page, "The loom remembers"), { x: 80, y: 120 });
+
+  await expect
+    .poll(async () => {
+      const now = await seenAt(page, "The loom remembers");
+      return { x: now.x - before.x, y: now.y - before.y };
+    }, { message: "where the pointer is, not the sum of what it said it moved" })
+    .toEqual({ x: 80, y: 120 });
+  await expect
+    .poll(async () => (await boardOnServer(page)).ideas[0].spot)
+    .toEqual({ x: placed.x + 80, y: placed.y + 120 });
+});
+
+test("a grip pulled by such a pointer stretches the card as far as the pointer went", async ({
+  page,
+}) => {
+  await aBoardWithACard(page, "PhoneRunningTotalsGrip");
+  await cardNamed(page, "The loom remembers").tap();
+  const before = await seenAt(page, "The loom remembers");
+
+  await dragReportingRunningTotals(
+    cardNamed(page, "The loom remembers").locator(".grip.right"),
+    { x: 42, y: 0 },
+  );
+
+  await expect
+    .poll(async () => (await seenAt(page, "The loom remembers")).width - before.width, {
+      message: "168 and 42 make 210, on the grid",
+    })
+    .toBe(42);
+});

@@ -42,6 +42,7 @@ pub struct Carrying {
     pub idea: IdeaId,
     pub held: Held,
     pub from: Placement,
+    pub grabbed_at: Spot,
     pub by: Spot,
 }
 
@@ -176,6 +177,7 @@ mod tests {
             idea: an_idea(),
             held,
             from: CARD,
+            grabbed_at: Spot { x: 0, y: 0 },
             by,
         }
     }

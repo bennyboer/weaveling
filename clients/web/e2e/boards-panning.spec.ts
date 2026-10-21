@@ -450,8 +450,8 @@ test("clicking a selected card never takes its action bar away", async ({
         new PointerEvent(type, { bubbles: true, pointerId: 4, ...extra }),
       );
 
-    fire("pointerdown");
-    fire("pointermove", { movementX: 2, movementY: 1 });
+    fire("pointerdown", { clientX: 100, clientY: 100 });
+    fire("pointermove", { clientX: 102, clientY: 101 });
   });
 
   await expect(

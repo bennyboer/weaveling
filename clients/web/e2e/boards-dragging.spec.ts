@@ -97,14 +97,14 @@ test("a cancelled drag puts the card back where it was", async ({ page }) => {
     const style = () =>
       document.querySelector(".pinned")!.getAttribute("style");
 
-    fire("pointerdown");
-    fire("pointermove", { movementX: 30, movementY: 20 });
+    fire("pointerdown", { clientX: 100, clientY: 100 });
+    fire("pointermove", { clientX: 130, clientY: 120 });
     await new Promise((it) => setTimeout(it, 50));
     const held = style();
 
     fire("pointercancel");
     await new Promise((it) => setTimeout(it, 50));
-    fire("pointermove", { movementX: 100, movementY: 100 });
+    fire("pointermove", { clientX: 230, clientY: 220 });
     await new Promise((it) => setTimeout(it, 50));
 
     return { held, afterwards: style() };

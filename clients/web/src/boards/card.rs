@@ -131,6 +131,7 @@ fn grab(event: &ev::PointerEvent, idea: IdeaId, held: Held, at: Placement, handl
         idea,
         held,
         from: at,
+        grabbed_at: on_screen(event),
         by: Spot { x: 0, y: 0 },
     }));
 }
@@ -141,16 +142,13 @@ fn carry(event: &ev::PointerEvent, handles: Handles) {
     };
     let already = carried.dragging();
 
-    let across = handles.viewport.with_untracked(|it| {
+    let now = on_screen(event);
+    carried.by = handles.viewport.with_untracked(|it| {
         it.across(Spot {
-            x: event.movement_x() as i64,
-            y: event.movement_y() as i64,
+            x: now.x - carried.grabbed_at.x,
+            y: now.y - carried.grabbed_at.y,
         })
     });
-    carried.by = Spot {
-        x: carried.by.x + across.x,
-        y: carried.by.y + across.y,
-    };
     let now = carried.dragging();
     handles.carrying.set(Some(carried));
 
@@ -163,6 +161,13 @@ fn carry(event: &ev::PointerEvent, handles: Handles) {
         .and_then(|it| it.dyn_into::<HtmlElement>().ok())
     {
         let _ = under.set_pointer_capture(event.pointer_id());
+    }
+}
+
+fn on_screen(event: &ev::PointerEvent) -> Spot {
+    Spot {
+        x: event.client_x() as i64,
+        y: event.client_y() as i64,
     }
 }
 
