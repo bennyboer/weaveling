@@ -405,3 +405,22 @@ moment =
         [11] Nov
        *[12] Dec
     } { $year }, { $hour }:{ $minute }
+
+sign-in-heading = Sign in
+sign-in-email = Email address
+sign-in-password = Password
+sign-in-confirm = Sign in
+sign-out = Sign out
+refused-email-malformed = That is not an email address such as name@example.com.
+refused-email-too-long = An email address can be at most { $max } characters long; this one has { $actual }.
+refused-account-name-blank = An account needs a name.
+refused-account-name-control-character = A name cannot hold control characters.
+refused-account-name-too-long = A name can be at most { $max } characters long; this one has { $actual }.
+refused-password-too-short = A password needs at least { $min } characters; this one has { $actual }.
+refused-password-too-long = A password can be at most { $max } characters long; this one has { $actual }.
+refused-verification-code-wrong = That is not the code we sent.
+refused-verification-code-expired = This code has run out. Ask for a new one.
+refused-verification-code-exhausted = This code was tried too often. Ask for a new one.
+refused-sign-in-refused = This email address and password do not sign in.
+refused-address-not-verified = This email address is not confirmed yet. Enter the code we sent to it.
+refused-not-signed-in = Please sign in first.

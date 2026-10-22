@@ -3,6 +3,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, view};
 use leptos_router::components::A;
 
+use crate::accounts::account_in_masthead;
 use crate::projects::open_project::OpenProject;
 use crate::projects::project_details::project_details;
 use crate::refusals::alarm::{AlarmState, alarm};
@@ -69,6 +70,7 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
         inside.map(whereabouts),
         theme::picker(),
         picker::picker(),
+        account_in_masthead(),
     ))
 }
 

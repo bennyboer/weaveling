@@ -1,0 +1,44 @@
+.signing-in {
+  width: min(24rem, 100% - 2rem);
+  margin: 4rem auto;
+
+  h1 {
+    margin-bottom: 2rem;
+  }
+
+  form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+
+    > span {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+  }
+
+  .problem {
+    margin: 0;
+  }
+}
+
+.masthead .signed-in {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+
+  .account {
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+  }
+}

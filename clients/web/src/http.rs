@@ -64,7 +64,7 @@ pub(crate) async fn checked(
     }
 
     match response.status() {
-        400 | 409 | 422 => Err(rejection(response).await),
+        400 | 401 | 403 | 409 | 422 => Err(rejection(response).await),
         404 => Err(ApiError::NotFound(subject)),
         412 => Err(ApiError::Outdated(subject)),
         _ => Err(ApiError::Unexpected),

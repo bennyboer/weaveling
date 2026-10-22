@@ -405,3 +405,22 @@ moment =
         [11] nov
        *[12] dic
     } { $year }, { $hour }:{ $minute }
+
+sign-in-heading = Iniciar sesión
+sign-in-email = Correo electrónico
+sign-in-password = Contraseña
+sign-in-confirm = Iniciar sesión
+sign-out = Cerrar sesión
+refused-email-malformed = Eso no es un correo electrónico como nombre@ejemplo.com.
+refused-email-too-long = Un correo electrónico puede tener como máximo { $max } caracteres; este tiene { $actual }.
+refused-account-name-blank = Una cuenta necesita un nombre.
+refused-account-name-control-character = Un nombre no puede contener caracteres de control.
+refused-account-name-too-long = Un nombre puede tener como máximo { $max } caracteres; este tiene { $actual }.
+refused-password-too-short = Una contraseña necesita al menos { $min } caracteres; esta tiene { $actual }.
+refused-password-too-long = Una contraseña puede tener como máximo { $max } caracteres; esta tiene { $actual }.
+refused-verification-code-wrong = Ese no es el código que enviamos.
+refused-verification-code-expired = Este código ha caducado. Pide uno nuevo.
+refused-verification-code-exhausted = Este código se intentó demasiadas veces. Pide uno nuevo.
+refused-sign-in-refused = Con este correo electrónico y esta contraseña no se puede iniciar sesión.
+refused-address-not-verified = Este correo electrónico aún no está confirmado. Introduce el código que te enviamos.
+refused-not-signed-in = Primero inicia sesión.

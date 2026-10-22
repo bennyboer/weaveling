@@ -405,3 +405,22 @@ moment =
         [11] Nov.
        *[12] Dez.
     } { $year }, { $hour }:{ $minute }
+
+sign-in-heading = Anmelden
+sign-in-email = E-Mail-Adresse
+sign-in-password = Passwort
+sign-in-confirm = Anmelden
+sign-out = Abmelden
+refused-email-malformed = Das ist keine E-Mail-Adresse wie name@example.com.
+refused-email-too-long = Eine E-Mail-Adresse darf höchstens { $max } Zeichen lang sein, diese hat { $actual }.
+refused-account-name-blank = Ein Konto braucht einen Namen.
+refused-account-name-control-character = Ein Name darf keine Steuerzeichen enthalten.
+refused-account-name-too-long = Ein Name darf höchstens { $max } Zeichen lang sein, dieser hat { $actual }.
+refused-password-too-short = Ein Passwort braucht mindestens { $min } Zeichen, dieses hat { $actual }.
+refused-password-too-long = Ein Passwort darf höchstens { $max } Zeichen lang sein, dieses hat { $actual }.
+refused-verification-code-wrong = Das ist nicht der Code, den wir geschickt haben.
+refused-verification-code-expired = Dieser Code ist abgelaufen. Fordere einen neuen an.
+refused-verification-code-exhausted = Dieser Code wurde zu oft versucht. Fordere einen neuen an.
+refused-sign-in-refused = Mit dieser E-Mail-Adresse und diesem Passwort kannst du dich nicht anmelden.
+refused-address-not-verified = Diese E-Mail-Adresse ist noch nicht bestätigt. Gib den Code ein, den wir dorthin geschickt haben.
+refused-not-signed-in = Bitte melde dich zuerst an.

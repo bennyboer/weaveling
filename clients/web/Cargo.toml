@@ -53,6 +53,7 @@ messaging-contract = { version = "0.1.0", path = "../../libraries/messaging-cont
 quotation = { version = "0.1.0", path = "../../libraries/quotation", package = "weaveling-quotation" }
 words = { version = "0.1.0", path = "../../libraries/words", package = "weaveling-words" }
 
+accounts-contract = { version = "0.1.0", path = "../../features/accounts/contract", package = "weaveling-accounts-contract" }
 appearances-contract = { version = "0.1.0", path = "../../features/appearances/contract", package = "weaveling-appearances-contract" }
 boards-contract = { version = "0.1.0", path = "../../features/boards/contract", package = "weaveling-boards-contract" }
 outline-contract = { version = "0.1.0", path = "../../features/outline/contract", package = "weaveling-outline-contract" }

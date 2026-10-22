@@ -231,6 +231,7 @@ mod tests {
     fn every_refusal_the_server_names_is_worded() {
         let every = projects_contract::refused::EVERY
             .into_iter()
+            .chain(accounts_contract::refused::EVERY)
             .chain(boards_contract::refused::EVERY)
             .chain(ideas_contract::refused::EVERY)
             .chain(outline_contract::refused::EVERY)

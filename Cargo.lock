@@ -3879,6 +3879,7 @@ dependencies = [
  "time",
  "unic-langid",
  "wasm-bindgen",
+ "weaveling-accounts-contract",
  "weaveling-appearances-contract",
  "weaveling-boards-contract",
  "weaveling-ideas-contract",
