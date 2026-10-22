@@ -45,6 +45,9 @@ export async function aServerWithAccounts(
     projectsAsked: 0,
   };
 
+  await page.route(at("/api/service/mode"), (route) =>
+    route.fulfill({ json: { accounts: true } }),
+  );
   await page.route(at("/api/sessions/current"), async (route) => {
     if (route.request().method() === "DELETE") {
       server.signedIn = false;
@@ -93,7 +96,9 @@ export async function aServerWithAccounts(
   });
   await page.route(at("/api/projects"), async (route) => {
     server.projectsAsked += 1;
-    return route.fallback();
+    return server.signedIn
+      ? route.fallback()
+      : refusing(route, 401, "not-signed-in");
   });
 
   return server;

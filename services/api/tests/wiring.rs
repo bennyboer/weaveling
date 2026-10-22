@@ -80,6 +80,20 @@ async fn signing_up(accounts: Accounts) -> StatusCode {
 }
 
 #[tokio::test]
+async fn the_service_says_whether_it_keeps_accounts() {
+    for (accounts, said) in [(Accounts::On, true), (Accounts::Off, false)] {
+        let server = TestServer::new(app(
+            Adapters::in_memory(accounts, Arc::new(SystemClock)).await
+        ));
+
+        let answered = server.get("/api/service/mode").await;
+
+        answered.assert_status_ok();
+        assert_eq!(answered.json::<Value>(), json!({ "accounts": said }));
+    }
+}
+
+#[tokio::test]
 async fn with_accounts_on_the_work_waits_behind_signing_in() {
     let server = TestServer::new(app(Adapters::in_memory(
         Accounts::On,

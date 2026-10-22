@@ -13,6 +13,7 @@ use leptos_router::components::{Route, Router, Routes};
 use leptos_router::path;
 
 use crate::accounts::sign_in::SignInPage;
+use crate::accounts::unreachable::UnreachablePage;
 use crate::accounts::{CurrentSession, Screen};
 use crate::app::board::BoardPage;
 use crate::app::idea::IdeaPage;
@@ -47,6 +48,7 @@ pub fn App() -> impl IntoView {
         <Router>
             {move || match screen.get() {
                 Screen::Blank => ().into_any(),
+                Screen::Unreachable => view! { <UnreachablePage /> }.into_any(),
                 Screen::SignIn => view! { <SignInPage /> }.into_any(),
                 Screen::Work => work(overlays).into_any(),
             }}

@@ -6,10 +6,11 @@ mod relays;
 
 use std::sync::Arc;
 
+use accounts_contract::ServiceModeDTO;
 use accounts_wiring::{AssembledAccounts, assembled_accounts};
 use appearances_wiring::AppearanceFeature;
 use axum::routing::get;
-use axum::{Extension, Router};
+use axum::{Extension, Json, Router};
 use boards_wiring::BoardFeature;
 use clock::Clock;
 use eventsourcing::Agent;
@@ -145,8 +146,10 @@ async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared
 }
 
 pub fn app(adapters: Adapters) -> Router {
+    let keeps_accounts = adapters.accounts.is_some();
     let service = Router::new()
         .route("/health", get(health))
+        .route("/mode", get(move || mode(keeps_accounts)))
         .merge(refusals::router(
             adapters.deliveries.clone(),
             adapters.dispatcher.clone(),
@@ -184,6 +187,10 @@ pub fn app(adapters: Adapters) -> Router {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+async fn mode(accounts: bool) -> Json<ServiceModeDTO> {
+    Json(ServiceModeDTO { accounts })
 }
 
 #[cfg(test)]

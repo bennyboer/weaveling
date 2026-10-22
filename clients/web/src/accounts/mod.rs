@@ -1,10 +1,12 @@
 mod service;
 pub mod sign_in;
+pub mod unreachable;
 
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use leptos::{IntoView, ev, html};
 
+use crate::http::when_no_longer_signed_in;
 use crate::speech::said;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,6 +18,7 @@ pub struct SignedInAccount {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SignInState {
     Unknown,
+    Unreachable,
     NoAccounts,
     SignedOut,
     SignedIn(SignedInAccount),
@@ -24,6 +27,7 @@ pub enum SignInState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Blank,
+    Unreachable,
     SignIn,
     Work,
 }
@@ -35,12 +39,25 @@ pub struct CurrentSession {
 
 impl CurrentSession {
     pub fn asked() -> Self {
-        let state = RwSignal::new(SignInState::Unknown);
-        spawn_local(async move {
-            state.set(service::current().await.unwrap_or(SignInState::NoAccounts));
-        });
+        let session = Self {
+            state: RwSignal::new(SignInState::Unknown),
+        };
+        when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
+        session.ask();
 
-        Self { state }
+        session
+    }
+
+    pub fn ask_again(self) {
+        self.state.set(SignInState::Unknown);
+        self.ask();
+    }
+
+    fn ask(self) {
+        spawn_local(async move {
+            self.state
+                .set(service::current().await.unwrap_or(SignInState::Unreachable));
+        });
     }
 
     pub fn screen(self) -> Memo<Screen> {
@@ -63,6 +80,7 @@ impl CurrentSession {
 fn screen_for(state: &SignInState) -> Screen {
     match state {
         SignInState::Unknown => Screen::Blank,
+        SignInState::Unreachable => Screen::Unreachable,
         SignInState::SignedOut => Screen::SignIn,
         SignInState::NoAccounts | SignInState::SignedIn(_) => Screen::Work,
     }
@@ -95,6 +113,15 @@ mod tests {
     #[test]
     fn nothing_is_shown_until_the_server_has_said_who_is_signed_in() {
         assert_eq!(screen_for(&SignInState::Unknown), Screen::Blank);
+    }
+
+    #[test]
+    fn a_server_that_cannot_be_reached_says_so() {
+        assert_eq!(
+            screen_for(&SignInState::Unreachable),
+            Screen::Unreachable,
+            "a server out of reach is not one without accounts"
+        );
     }
 
     #[test]

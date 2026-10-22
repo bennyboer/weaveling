@@ -438,3 +438,5 @@ code-again = Neuen Code schicken
 code-sent-again = Ein neuer Code ist unterwegs.
 code-confirmed = Deine Adresse ist bestätigt. Du kannst dich jetzt anmelden.
 code-enter = Code eingeben
+unreachable-heading = Der Server ist nicht erreichbar
+try-again = Noch einmal versuchen

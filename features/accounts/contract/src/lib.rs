@@ -32,6 +32,11 @@ pub struct SignedInDTO {
     pub stage: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ServiceModeDTO {
+    pub accounts: bool,
+}
+
 pub const SESSION_COOKIE: &str = "weaveling_session";
 
 pub mod stage {

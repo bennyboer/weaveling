@@ -1,11 +1,12 @@
 use accounts_contract::{
-    SendCodeRequest, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
+    SendCodeRequest, ServiceModeDTO, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
 };
 use gloo_net::http::Request;
 
 use crate::accounts::{SignInState, SignedInAccount};
 use crate::http::{ApiError, checked, parsed, sent, sent_with};
 
+const MODE: &str = "/api/service/mode";
 const ACCOUNTS: &str = "/api/accounts";
 const VERIFICATION: &str = "/api/accounts/verification";
 const NEW_CODE: &str = "/api/accounts/verification/code";
@@ -14,12 +15,15 @@ const CURRENT: &str = "/api/sessions/current";
 const SUBJECT: &str = "session";
 
 pub async fn current() -> Result<SignInState, ApiError> {
-    let response = sent(Request::get(CURRENT)).await?;
+    let mode: ServiceModeDTO = parsed(sent(Request::get(MODE)).await?, SUBJECT).await?;
+    if !mode.accounts {
+        return Ok(SignInState::NoAccounts);
+    }
 
+    let response = sent(Request::get(CURRENT)).await?;
     match response.status() {
         401 => Ok(SignInState::SignedOut),
-        404 => Ok(SignInState::NoAccounts),
-        _ => Ok(SignInState::SignedIn(as_who(
+        _ => Ok(SignInState::SignedIn(as_signed_in_account(
             parsed(response, SUBJECT).await?,
         ))),
     }
@@ -32,7 +36,7 @@ pub async fn sign_in(email: &str, password: &str) -> Result<SignedInAccount, Api
     };
     let response = sent_with(Request::post(SESSIONS), &payload).await?;
 
-    Ok(as_who(parsed(response, SUBJECT).await?))
+    Ok(as_signed_in_account(parsed(response, SUBJECT).await?))
 }
 
 pub async fn sign_up(email: &str, name: &str, password: &str) -> Result<(), ApiError> {
@@ -77,7 +81,7 @@ pub async fn sign_out() -> Result<(), ApiError> {
         .map(|_| ())
 }
 
-fn as_who(signed_in: SignedInDTO) -> SignedInAccount {
+fn as_signed_in_account(signed_in: SignedInDTO) -> SignedInAccount {
     SignedInAccount {
         name: signed_in.name,
         email: signed_in.email,

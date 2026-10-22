@@ -1,9 +1,32 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use accounts_contract::refused::NOT_SIGNED_IN;
 use gloo_net::http::{RequestBuilder, Response};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 const PROBLEM: &str = "application/problem+json";
+
+thread_local! {
+    static NO_LONGER_SIGNED_IN: RefCell<Option<Rc<dyn Fn()>>> = const { RefCell::new(None) };
+}
+
+pub(crate) fn when_no_longer_signed_in(told: impl Fn() + 'static) {
+    NO_LONGER_SIGNED_IN.with(|kept| *kept.borrow_mut() = Some(Rc::new(told)));
+}
+
+fn no_longer_signed_in() {
+    let told = NO_LONGER_SIGNED_IN.with(|kept| kept.borrow().clone());
+    if let Some(told) = told {
+        told();
+    }
+}
+
+fn refused_as(failed: &ApiError, kind: &str) -> bool {
+    matches!(failed, ApiError::Rejected(refusal) if refusal.kind.as_deref() == Some(kind))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApiError {
@@ -64,7 +87,14 @@ pub(crate) async fn checked(
     }
 
     match response.status() {
-        400 | 401 | 403 | 409 | 422 => Err(rejection(response).await),
+        401 => {
+            let failed = rejection(response).await;
+            if refused_as(&failed, NOT_SIGNED_IN) {
+                no_longer_signed_in();
+            }
+            Err(failed)
+        }
+        400 | 403 | 409 | 422 => Err(rejection(response).await),
         404 => Err(ApiError::NotFound(subject)),
         412 => Err(ApiError::Outdated(subject)),
         _ => Err(ApiError::Unexpected),

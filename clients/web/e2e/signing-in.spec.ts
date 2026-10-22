@@ -111,3 +111,70 @@ test("signing in can be done in the reader's own language", async ({
   await expect(page.getByLabel("Passwort")).toBeVisible();
   await context.close();
 });
+
+test("a server out of reach says so, and can be asked again", async ({
+  page,
+}) => {
+  let reachable = false;
+  await page.route(
+    (url) => url.pathname === "/api/service/mode",
+    (route) =>
+      reachable ? route.fulfill({ json: { accounts: false } }) : route.abort(),
+  );
+
+  await page.goto("/");
+
+  await expect(
+    page.getByRole("heading", { name: "The server is out of reach" }),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "Your projects" }),
+  ).toHaveCount(0);
+
+  reachable = true;
+  await page.getByRole("button", { name: "Try again" }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Your projects" }),
+  ).toBeVisible();
+});
+
+test("a session run out while working leads back to signing in", async ({
+  page,
+}) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  await expect(
+    page.getByRole("heading", { name: "Your projects" }),
+  ).toBeVisible();
+
+  await page.route(
+    (url) => url.pathname === "/api/projects",
+    (route) =>
+      route.request().method() === "POST"
+        ? route.fulfill({
+            status: 401,
+            contentType: "application/problem+json",
+            body: JSON.stringify({
+              type: "not-signed-in",
+              status: 401,
+              detail: "sign in first",
+            }),
+          })
+        : route.fallback(),
+  );
+  await page.getByPlaceholder("A working title…").fill("Outlived");
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "New project" })
+    .getByRole("button", { name: "Create project" })
+    .click();
+
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  await signIn(page, ADA.email, HER_PASSWORD);
+  await expect(
+    page.getByRole("heading", { name: "Your projects" }),
+  ).toBeVisible();
+});
