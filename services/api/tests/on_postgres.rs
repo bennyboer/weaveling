@@ -104,7 +104,7 @@ async fn a_server_keeps_an_address_signed_up_in_the_accounts_database() {
     assert_eq!(
         journey
             .backend
-            .read("accounts", "SELECT email FROM account_credentials")
+            .read("accounts", "SELECT email FROM account_email_addresses")
             .await,
         vec!["ada@example.com".to_owned()]
     );

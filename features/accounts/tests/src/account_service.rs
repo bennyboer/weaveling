@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use accounts_core::{
-    AccountEvent, AccountId, AccountService, AccountServiceError, Credentials, EmailAddress, KIND,
-    PendingVerification,
+    AccountEvent, AccountId, AccountService, AccountServiceError, EmailAddress, EmailAddresses,
+    KIND, Passwords, PendingVerification,
 };
 use async_trait::async_trait;
 use eventsourcing::{AggregateId, AggregateType, EventStore, Recorded, StoreError, Version};
@@ -19,11 +19,10 @@ async fn ada_signed_up(wired: &Wired) -> AccountId {
 
     wired
         .secrets
-        .registered(&EmailAddress::new(ADA).expect("a plain address"))
+        .holder(&EmailAddress::new(ADA).expect("a plain address"))
         .await
         .expect("reading should succeed")
-        .expect("the address should be registered")
-        .account
+        .expect("the address should be held")
 }
 
 async fn is_verified(wired: &Wired, id: &AccountId) -> bool {
@@ -63,17 +62,18 @@ async fn an_account_signs_itself_up() {
 #[tokio::test]
 async fn the_password_is_kept_only_as_a_hash_that_admits_it() {
     let wired = wired();
-    ada_signed_up(&wired).await;
 
-    let registered = wired
+    let id = ada_signed_up(&wired).await;
+
+    let kept = wired
         .secrets
-        .registered(&EmailAddress::new(ADA).expect("a plain address"))
+        .of(&id)
         .await
         .expect("reading should succeed")
-        .expect("registered");
+        .expect("a password should be kept");
 
-    assert!(registered.password.admits(HER_PASSWORD));
-    assert!(!registered.password.as_str().contains(HER_PASSWORD));
+    assert!(kept.admits(HER_PASSWORD));
+    assert!(!kept.as_str().contains(HER_PASSWORD));
 }
 
 #[tokio::test]
@@ -272,14 +272,23 @@ async fn signing_up_with_an_address_already_taken_makes_no_account_and_tells_its
         .await
         .expect("a taken address must look like any other sign-up, or it gives away who has one");
 
-    let registered = wired
-        .secrets
-        .registered(&EmailAddress::new(ADA).expect("a plain address"))
-        .await
-        .expect("reading should succeed")
-        .expect("registered");
-    assert_eq!(registered.account, id);
-    assert!(registered.password.admits(HER_PASSWORD));
+    assert_eq!(
+        wired
+            .secrets
+            .holder(&EmailAddress::new(ADA).expect("a plain address"))
+            .await
+            .expect("reading should succeed"),
+        Some(id)
+    );
+    assert!(
+        wired
+            .secrets
+            .of(&id)
+            .await
+            .expect("reading should succeed")
+            .is_some_and(|kept| kept.admits(HER_PASSWORD)),
+        "the owner's password is not replaced by the stranger's"
+    );
     assert_eq!(
         wired.told.waiting_to_be_published(),
         1,
@@ -318,7 +327,7 @@ async fn what_is_given_is_checked_before_anything_is_kept() {
     assert_eq!(
         wired
             .secrets
-            .registered(&EmailAddress::new(ADA).expect("a plain address"))
+            .holder(&EmailAddress::new(ADA).expect("a plain address"))
             .await
             .expect("reading should succeed"),
         None
@@ -397,6 +406,7 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
         Arc::new(Refusing),
         wired.secrets.clone(),
         wired.secrets.clone(),
+        wired.secrets.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );
@@ -406,7 +416,7 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
     assert_eq!(
         wired
             .secrets
-            .registered(&EmailAddress::new(ADA).expect("a plain address"))
+            .holder(&EmailAddress::new(ADA).expect("a plain address"))
             .await
             .expect("reading should succeed"),
         None,

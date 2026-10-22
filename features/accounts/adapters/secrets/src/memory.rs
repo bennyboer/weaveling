@@ -2,14 +2,15 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use accounts_core::{
-    AccountId, Attempt, Credentials, EmailAddress, PasswordHash, PendingVerification, Registered,
+    AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
     SecretsError, Verifications,
 };
 use async_trait::async_trait;
 
 #[derive(Default)]
 struct Kept {
-    registered: HashMap<EmailAddress, Registered>,
+    email_addresses: HashMap<EmailAddress, AccountId>,
+    passwords: HashMap<AccountId, PasswordHash>,
     pending: HashMap<AccountId, PendingVerification>,
 }
 
@@ -25,43 +26,41 @@ impl InMemorySecrets {
 }
 
 #[async_trait]
-impl Credentials for InMemorySecrets {
-    async fn register(
-        &self,
-        email: &EmailAddress,
-        account: &AccountId,
-        password: &PasswordHash,
-    ) -> Result<(), SecretsError> {
+impl EmailAddresses for InMemorySecrets {
+    async fn claim(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
         let mut kept = self.kept();
-        if kept.registered.contains_key(email) {
+        if kept.email_addresses.contains_key(email) {
             return Err(SecretsError::Taken);
         }
-        kept.registered.insert(
-            email.clone(),
-            Registered {
-                account: *account,
-                password: password.clone(),
-            },
-        );
+        kept.email_addresses.insert(email.clone(), *account);
 
         Ok(())
     }
 
-    async fn registered(&self, email: &EmailAddress) -> Result<Option<Registered>, SecretsError> {
-        Ok(self.kept().registered.get(email).cloned())
+    async fn holder(&self, email: &EmailAddress) -> Result<Option<AccountId>, SecretsError> {
+        Ok(self.kept().email_addresses.get(email).copied())
     }
 
     async fn release(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
         let mut kept = self.kept();
-        if kept
-            .registered
-            .get(email)
-            .is_some_and(|registered| registered.account == *account)
-        {
-            kept.registered.remove(email);
+        if kept.email_addresses.get(email) == Some(account) {
+            kept.email_addresses.remove(email);
         }
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Passwords for InMemorySecrets {
+    async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError> {
+        self.kept().passwords.insert(*account, password.clone());
+
+        Ok(())
+    }
+
+    async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError> {
+        Ok(self.kept().passwords.get(account).cloned())
     }
 }
 

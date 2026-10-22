@@ -1,13 +1,17 @@
 use accounts_core::{
-    AccountId, Attempt, Credentials, EmailAddress, PasswordHash, PendingVerification, Registered,
+    AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
     SecretsError, VerificationCode, Verifications,
 };
 use futures_util::future::join_all;
 use time::OffsetDateTime;
 
+pub trait Secrets: EmailAddresses + Passwords + Verifications {}
+
+impl<S: EmailAddresses + Passwords + Verifications> Secrets for S {}
+
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
-    type Store: Credentials + Verifications;
+    type Store: Secrets;
 
     async fn setup() -> Self;
 
@@ -36,92 +40,84 @@ fn pending(code: &str, until: i64) -> PendingVerification {
     }
 }
 
-pub async fn a_registered_address_names_its_account_and_password<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn a_claimed_address_names_its_holder<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
-        .register(
-            &an_address("ada@example.com"),
-            &account,
-            &a_hash("$argon2id$ada"),
-        )
+        .claim(&an_address("ada@example.com"), &account)
         .await
-        .expect("registering should succeed");
+        .expect("claiming should succeed");
 
     assert_eq!(
         secrets
-            .registered(&an_address("ada@example.com"))
+            .holder(&an_address("ada@example.com"))
             .await
             .expect("reading should succeed"),
-        Some(Registered {
-            account,
-            password: a_hash("$argon2id$ada"),
-        })
+        Some(account)
     );
 }
 
-pub async fn an_address_never_registered_names_nobody<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn an_address_never_claimed_names_nobody<S: Secrets>(secrets: &S) {
     assert_eq!(
         secrets
-            .registered(&an_address("nobody@example.com"))
+            .holder(&an_address("nobody@example.com"))
             .await
             .expect("reading should succeed"),
         None
     );
 }
 
-pub async fn an_address_belongs_to_one_account_only<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &S) {
     let first = AccountId::generate(at(1_000));
     secrets
-        .register(
-            &an_address("ada@example.com"),
-            &first,
-            &a_hash("$argon2id$first"),
-        )
+        .claim(&an_address("ada@example.com"), &first)
         .await
-        .expect("registering should succeed");
+        .expect("claiming should succeed");
 
     let second = secrets
-        .register(
+        .claim(
             &an_address("ada@example.com"),
             &AccountId::generate(at(2_000)),
-            &a_hash("$argon2id$second"),
         )
         .await;
 
     assert!(matches!(second, Err(SecretsError::Taken)), "{second:?}");
     assert_eq!(
         secrets
-            .registered(&an_address("ada@example.com"))
+            .holder(&an_address("ada@example.com"))
             .await
-            .expect("reading should succeed")
-            .map(|registered| registered.account),
+            .expect("reading should succeed"),
         Some(first),
         "two people racing for one address must not both get it, nor the second take it over"
     );
 }
 
-pub async fn a_released_address_can_be_registered_again<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn one_account_may_hold_two_addresses<S: Secrets>(secrets: &S) {
+    let account = AccountId::generate(at(1_000));
+    for address in ["ada@example.com", "ada@example.org"] {
+        secrets
+            .claim(&an_address(address), &account)
+            .await
+            .expect("claiming should succeed");
+    }
+
+    for address in ["ada@example.com", "ada@example.org"] {
+        assert_eq!(
+            secrets
+                .holder(&an_address(address))
+                .await
+                .expect("reading should succeed"),
+            Some(account),
+            "changing an address holds the new one before the old one is let go"
+        );
+    }
+}
+
+pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &S) {
     let first = AccountId::generate(at(1_000));
     secrets
-        .register(
-            &an_address("ada@example.com"),
-            &first,
-            &a_hash("$argon2id$first"),
-        )
+        .claim(&an_address("ada@example.com"), &first)
         .await
-        .expect("registering should succeed");
+        .expect("claiming should succeed");
 
     secrets
         .release(&an_address("ada@example.com"), &first)
@@ -129,36 +125,27 @@ where
         .expect("releasing should succeed");
     assert_eq!(
         secrets
-            .registered(&an_address("ada@example.com"))
+            .holder(&an_address("ada@example.com"))
             .await
             .expect("reading should succeed"),
         None
     );
 
-    let second = AccountId::generate(at(2_000));
     secrets
-        .register(
+        .claim(
             &an_address("ada@example.com"),
-            &second,
-            &a_hash("$argon2id$second"),
+            &AccountId::generate(at(2_000)),
         )
         .await
         .expect("a released address is free again");
 }
 
-pub async fn an_address_is_released_only_by_the_account_holding_it<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn an_address_is_released_only_by_the_account_holding_it<S: Secrets>(secrets: &S) {
     let holder = AccountId::generate(at(1_000));
     secrets
-        .register(
-            &an_address("ada@example.com"),
-            &holder,
-            &a_hash("$argon2id$ada"),
-        )
+        .claim(&an_address("ada@example.com"), &holder)
         .await
-        .expect("registering should succeed");
+        .expect("claiming should succeed");
 
     secrets
         .release(
@@ -170,19 +157,54 @@ where
 
     assert_eq!(
         secrets
-            .registered(&an_address("ada@example.com"))
+            .holder(&an_address("ada@example.com"))
             .await
-            .expect("reading should succeed")
-            .map(|registered| registered.account),
+            .expect("reading should succeed"),
         Some(holder),
         "a sign-up undoing itself must never free an address someone else holds"
     );
 }
 
-pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn a_kept_password_is_read_back_until_a_new_one_replaces_it<S: Secrets>(secrets: &S) {
+    let account = AccountId::generate(at(1_000));
+    secrets
+        .keep(&account, &a_hash("$argon2id$first"))
+        .await
+        .expect("keeping should succeed");
+    assert_eq!(
+        secrets.of(&account).await.expect("reading should succeed"),
+        Some(a_hash("$argon2id$first"))
+    );
+
+    secrets
+        .keep(&account, &a_hash("$argon2id$second"))
+        .await
+        .expect("keeping again should succeed");
+    assert_eq!(
+        secrets.of(&account).await.expect("reading should succeed"),
+        Some(a_hash("$argon2id$second")),
+        "only the latest password is kept, so a leaked table holds no old one"
+    );
+}
+
+pub async fn each_account_has_a_password_of_its_own_or_none<S: Secrets>(secrets: &S) {
+    let ada = AccountId::generate(at(1_000));
+    secrets
+        .keep(&ada, &a_hash("$argon2id$ada"))
+        .await
+        .expect("keeping should succeed");
+
+    assert_eq!(
+        secrets
+            .of(&AccountId::generate(at(2_000)))
+            .await
+            .expect("reading should succeed"),
+        None,
+        "an account may sign in without a password one day, by a key or elsewhere"
+    );
+}
+
+pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(&account, &pending("004217", 1_900))
@@ -215,10 +237,7 @@ where
     );
 }
 
-pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(&account, &pending("004217", 1_900))
@@ -241,10 +260,7 @@ where
     );
 }
 
-pub async fn attempts_made_at_once_are_counted_one_by_one<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(&account, &pending("004217", 1_900))
@@ -264,10 +280,7 @@ where
     );
 }
 
-pub async fn a_new_code_starts_its_attempts_afresh<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn a_new_code_starts_its_attempts_afresh<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(&account, &pending("004217", 1_900))
@@ -295,10 +308,7 @@ where
     );
 }
 
-pub async fn each_account_has_a_code_of_its_own<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn each_account_has_a_code_of_its_own<S: Secrets>(secrets: &S) {
     let ada = AccountId::generate(at(1_000));
     let bea = AccountId::generate(at(2_000));
     secrets
@@ -325,10 +335,7 @@ where
     );
 }
 
-pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S>(secrets: &S)
-where
-    S: Credentials + Verifications,
-{
+pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
 
     assert_eq!(
@@ -361,16 +368,22 @@ macro_rules! secrets_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
-        $crate::secrets_conformance_case!(
-            $workbench,
-            a_registered_address_names_its_account_and_password
-        );
-        $crate::secrets_conformance_case!($workbench, an_address_never_registered_names_nobody);
-        $crate::secrets_conformance_case!($workbench, an_address_belongs_to_one_account_only);
-        $crate::secrets_conformance_case!($workbench, a_released_address_can_be_registered_again);
+        $crate::secrets_conformance_case!($workbench, a_claimed_address_names_its_holder);
+        $crate::secrets_conformance_case!($workbench, an_address_never_claimed_names_nobody);
+        $crate::secrets_conformance_case!($workbench, an_address_is_held_by_one_account_only);
+        $crate::secrets_conformance_case!($workbench, one_account_may_hold_two_addresses);
+        $crate::secrets_conformance_case!($workbench, a_released_address_can_be_claimed_again);
         $crate::secrets_conformance_case!(
             $workbench,
             an_address_is_released_only_by_the_account_holding_it
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_kept_password_is_read_back_until_a_new_one_replaces_it
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            each_account_has_a_password_of_its_own_or_none
         );
         $crate::secrets_conformance_case!(
             $workbench,

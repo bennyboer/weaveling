@@ -52,6 +52,7 @@ pub fn wired() -> Wired {
         store.clone(),
         secrets.clone(),
         secrets.clone(),
+        secrets.clone(),
         mailbox.clone(),
         clock.clone(),
     );

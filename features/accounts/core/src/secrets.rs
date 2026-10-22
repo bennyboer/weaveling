@@ -17,12 +17,6 @@ pub enum SecretsError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Registered {
-    pub account: AccountId,
-    pub password: PasswordHash,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Attempt {
     Nothing,
     Exhausted,
@@ -30,17 +24,19 @@ pub enum Attempt {
 }
 
 #[async_trait]
-pub trait Credentials: Send + Sync {
-    async fn register(
-        &self,
-        email: &EmailAddress,
-        account: &AccountId,
-        password: &PasswordHash,
-    ) -> Result<(), SecretsError>;
+pub trait EmailAddresses: Send + Sync {
+    async fn claim(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError>;
 
-    async fn registered(&self, email: &EmailAddress) -> Result<Option<Registered>, SecretsError>;
+    async fn holder(&self, email: &EmailAddress) -> Result<Option<AccountId>, SecretsError>;
 
     async fn release(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError>;
+}
+
+#[async_trait]
+pub trait Passwords: Send + Sync {
+    async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError>;
+
+    async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError>;
 }
 
 #[async_trait]

@@ -1,6 +1,10 @@
-CREATE TABLE account_credentials (
-    email          TEXT PRIMARY KEY,
-    account        TEXT NOT NULL UNIQUE,
+CREATE TABLE account_email_addresses (
+    email    TEXT PRIMARY KEY,
+    account  TEXT NOT NULL
+);
+
+CREATE TABLE account_passwords (
+    account        TEXT PRIMARY KEY,
     password_hash  TEXT NOT NULL
 );
 

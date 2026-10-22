@@ -188,7 +188,7 @@ async fn a_server_on_sqlite_keeps_an_address_signed_up_in_the_accounts_file() {
     assert_eq!(
         journey
             .backend
-            .read("accounts", "SELECT email FROM account_credentials")
+            .read("accounts", "SELECT email FROM account_email_addresses")
             .await,
         vec!["ada@example.com".to_owned()]
     );

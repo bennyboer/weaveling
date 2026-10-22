@@ -1,6 +1,10 @@
-CREATE TABLE account_credentials (
-    email          TEXT COLLATE "C" PRIMARY KEY,
-    account        TEXT COLLATE "C" NOT NULL UNIQUE,
+CREATE TABLE account_email_addresses (
+    email    TEXT COLLATE "C" PRIMARY KEY,
+    account  TEXT COLLATE "C" NOT NULL
+);
+
+CREATE TABLE account_passwords (
+    account        TEXT COLLATE "C" PRIMARY KEY,
     password_hash  TEXT             NOT NULL
 );
 

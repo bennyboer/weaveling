@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountId, Attempt, Credentials, EmailAddress, PasswordHash, PendingVerification, Registered,
+    AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
     SecretsError, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
@@ -10,13 +10,24 @@ use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
 
-const REGISTER: &str = "
-    INSERT INTO account_credentials (email, account, password_hash)
-    VALUES ($1, $2, $3)
+const CLAIM: &str = "
+    INSERT INTO account_email_addresses (email, account)
+    VALUES ($1, $2)
     ON CONFLICT (email) DO NOTHING
 ";
 
-const REGISTERED: &str = "SELECT account, password_hash FROM account_credentials WHERE email = $1";
+const HOLDER: &str = "SELECT account FROM account_email_addresses WHERE email = $1";
+
+const RELEASE: &str = "DELETE FROM account_email_addresses WHERE email = $1 AND account = $2";
+
+const KEEP: &str = "
+    INSERT INTO account_passwords (account, password_hash)
+    VALUES ($1, $2)
+    ON CONFLICT (account) DO UPDATE
+    SET password_hash = EXCLUDED.password_hash
+";
+
+const PASSWORD_OF: &str = "SELECT password_hash FROM account_passwords WHERE account = $1";
 
 const ISSUE: &str = "
     INSERT INTO email_verifications (account, code, until, tried)
@@ -26,8 +37,6 @@ const ISSUE: &str = "
         until  = EXCLUDED.until,
         tried  = EXCLUDED.tried
 ";
-
-const RELEASE: &str = "DELETE FROM account_credentials WHERE email = $1 AND account = $2";
 
 const ATTEMPT: &str = "
     UPDATE email_verifications
@@ -58,16 +67,6 @@ fn unreachable(failure: impl Error + Send + Sync + 'static) -> SecretsError {
     SecretsError::Backend(Box::new(failure))
 }
 
-fn to_registered(row: &PgRow) -> Result<Registered, SecretsError> {
-    let account: String = row.try_get("account").map_err(unreachable)?;
-    let password: String = row.try_get("password_hash").map_err(unreachable)?;
-
-    Ok(Registered {
-        account: account.parse().map_err(unreachable)?,
-        password: PasswordHash::kept(password),
-    })
-}
-
 fn to_pending(row: &PgRow) -> Result<PendingVerification, SecretsError> {
     let code: String = row.try_get("code").map_err(unreachable)?;
     let until: OffsetDateTime = row.try_get("until").map_err(unreachable)?;
@@ -81,17 +80,11 @@ fn to_pending(row: &PgRow) -> Result<PendingVerification, SecretsError> {
 }
 
 #[async_trait]
-impl Credentials for PostgresSecrets {
-    async fn register(
-        &self,
-        email: &EmailAddress,
-        account: &AccountId,
-        password: &PasswordHash,
-    ) -> Result<(), SecretsError> {
-        let done = sqlx::query(REGISTER)
+impl EmailAddresses for PostgresSecrets {
+    async fn claim(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
+        let done = sqlx::query(CLAIM)
             .bind(email.as_str())
             .bind(account.to_string())
-            .bind(password.as_str())
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -102,14 +95,14 @@ impl Credentials for PostgresSecrets {
         }
     }
 
-    async fn registered(&self, email: &EmailAddress) -> Result<Option<Registered>, SecretsError> {
-        sqlx::query(REGISTERED)
+    async fn holder(&self, email: &EmailAddress) -> Result<Option<AccountId>, SecretsError> {
+        let held: Option<String> = sqlx::query_scalar(HOLDER)
             .bind(email.as_str())
             .fetch_optional(&self.pool)
             .await
-            .map_err(unreachable)?
-            .as_ref()
-            .map(to_registered)
+            .map_err(unreachable)?;
+
+        held.map(|account| account.parse().map_err(unreachable))
             .transpose()
     }
 
@@ -122,6 +115,30 @@ impl Credentials for PostgresSecrets {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Passwords for PostgresSecrets {
+    async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError> {
+        sqlx::query(KEEP)
+            .bind(account.to_string())
+            .bind(password.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError> {
+        let kept: Option<String> = sqlx::query_scalar(PASSWORD_OF)
+            .bind(account.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(kept.map(PasswordHash::kept))
     }
 }
 

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use accounts_core::{AccountEvent, AccountService, Credentials, Verifications};
+use accounts_core::{AccountEvent, AccountService, EmailAddresses, Passwords, Verifications};
 use accounts_secrets::InMemorySecrets;
 use eventsourcing::{EventStore, Recorded};
 use mailing::{LoggingMailer, Mailer};
@@ -10,7 +10,8 @@ use wiring::{Context, EventSourced, Feature, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<AccountEvent>>,
-    pub credentials: Arc<dyn Credentials>,
+    pub email_addresses: Arc<dyn EmailAddresses>,
+    pub passwords: Arc<dyn Passwords>,
     pub verifications: Arc<dyn Verifications>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
@@ -19,7 +20,8 @@ pub struct Ports {
 pub fn service(ports: &Ports, context: &Context) -> AccountService {
     AccountService::new(
         ports.events.clone(),
-        ports.credentials.clone(),
+        ports.email_addresses.clone(),
+        ports.passwords.clone(),
         ports.verifications.clone(),
         ports.mailer.clone(),
         context.clock.clone(),
@@ -47,7 +49,8 @@ impl Feature for AccountFeature {
 
         Ports {
             events,
-            credentials: secrets.clone(),
+            email_addresses: secrets.clone(),
+            passwords: secrets.clone(),
             verifications: secrets,
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -62,7 +65,8 @@ impl Feature for AccountFeature {
 
         Ok(Ports {
             events,
-            credentials: secrets.clone(),
+            email_addresses: secrets.clone(),
+            passwords: secrets.clone(),
             verifications: secrets,
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -86,7 +90,8 @@ impl Feature for AccountFeature {
 
         Ok(Ports {
             events,
-            credentials: secrets.clone(),
+            email_addresses: secrets.clone(),
+            passwords: secrets.clone(),
             verifications: secrets,
             mailer: Arc::new(LoggingMailer),
             outbox,

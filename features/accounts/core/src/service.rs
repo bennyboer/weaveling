@@ -11,7 +11,7 @@ use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
 use crate::name::{AccountName, InvalidAccountName};
 use crate::password::{InvalidPassword, Password};
-use crate::secrets::{Attempt, Credentials, SecretsError, Verifications};
+use crate::secrets::{Attempt, EmailAddresses, Passwords, SecretsError, Verifications};
 
 #[derive(Debug, Error)]
 pub enum AccountServiceError {
@@ -38,7 +38,8 @@ pub enum AccountServiceError {
 #[derive(Clone)]
 pub struct AccountService {
     events: Arc<EventSourcingService<Account>>,
-    credentials: Arc<dyn Credentials>,
+    email_addresses: Arc<dyn EmailAddresses>,
+    passwords: Arc<dyn Passwords>,
     verifications: Arc<dyn Verifications>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
@@ -47,14 +48,16 @@ pub struct AccountService {
 impl AccountService {
     pub fn new(
         store: Arc<dyn EventStore<AccountEvent>>,
-        credentials: Arc<dyn Credentials>,
+        email_addresses: Arc<dyn EmailAddresses>,
+        passwords: Arc<dyn Passwords>,
         verifications: Arc<dyn Verifications>,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
-            credentials,
+            email_addresses,
+            passwords,
             verifications,
             mailer,
             clock,
@@ -71,12 +74,9 @@ impl AccountService {
         let name = AccountName::new(name)?;
         let password = Password::new(password)?;
 
+        let hashed = password.hashed();
         let id = AccountId::generate(self.clock.now());
-        match self
-            .credentials
-            .register(&email, &id, &password.hashed())
-            .await
-        {
+        match self.email_addresses.claim(&email, &id).await {
             Err(SecretsError::Taken) => return self.tell_already_signed_up(&email).await,
             claimed => claimed?,
         }
@@ -90,31 +90,31 @@ impl AccountService {
             )
             .await
         {
-            self.credentials.release(&email, &id).await?;
+            self.email_addresses.release(&email, &id).await?;
             return Err(refused.into());
         }
+        self.passwords.keep(&id, &hashed).await?;
 
         self.send_code(&id, &email).await
     }
 
     pub async fn send_code_again(&self, email: &str) -> Result<(), AccountServiceError> {
         let email = EmailAddress::new(email)?;
-        let Some(registered) = self.credentials.registered(&email).await? else {
+        let Some(id) = self.email_addresses.holder(&email).await? else {
             return Ok(());
         };
-        if self.get(&registered.account).await?.state.is_verified() {
+        if self.get(&id).await?.state.is_verified() {
             return Ok(());
         }
 
-        self.send_code(&registered.account, &email).await
+        self.send_code(&id, &email).await
     }
 
     pub async fn verify(&self, email: &str, code: &str) -> Result<(), AccountServiceError> {
         let email = EmailAddress::new(email)?;
-        let Some(registered) = self.credentials.registered(&email).await? else {
+        let Some(id) = self.email_addresses.holder(&email).await? else {
             return Err(AccountServiceError::CodeWrong);
         };
-        let id = registered.account;
         let pending = match self
             .verifications
             .attempt(&id, PendingVerification::MAX_TRIES)
