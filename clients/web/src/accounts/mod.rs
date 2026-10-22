@@ -1,4 +1,5 @@
 mod account_menu;
+pub mod operator;
 mod service;
 pub mod sign_in;
 pub mod unreachable;
@@ -14,6 +15,7 @@ use crate::http::when_no_longer_signed_in;
 pub struct SignedInAccount {
     pub name: String,
     pub email: String,
+    pub operator: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +71,14 @@ impl CurrentSession {
         self.state.set(SignInState::SignedIn(account));
     }
 
+    fn became_operator(self) {
+        self.state.update(|state| {
+            if let SignInState::SignedIn(account) = state {
+                account.operator = true;
+            }
+        });
+    }
+
     fn sign_out(self) {
         spawn_local(async move {
             if service::sign_out().await.is_ok() {
@@ -117,6 +127,7 @@ mod tests {
             screen_for(&SignInState::SignedIn(SignedInAccount {
                 name: "Ada".to_owned(),
                 email: "ada@example.com".to_owned(),
+                operator: false,
             })),
             Screen::Work
         );

@@ -29,7 +29,7 @@ async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>) {
         .unwrap_or_else(|why| panic!("{why}"))
     {
         tracing::warn!(
-            "there is no operator yet: sign in and become one with the code {}",
+            "there is no operator yet: sign in, open /operator and enter the code {}",
             code.as_str()
         );
     }

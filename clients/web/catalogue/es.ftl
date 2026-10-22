@@ -455,3 +455,11 @@ refused-too-many-tries =
        *[other] Demasiados intentos. Espera { $minutes } minutos antes de volver a intentarlo.
     }
 refused-operator-code-wrong = Este no es el código que el servidor escribió en el registro.
+account-menu-operator = Operador
+operator-heading = Operador
+operator-you-are = Eres quien opera esta instancia de Weaveling. Aquí se listarán las cuentas.
+operator-become-heading = Convertirte en operador
+operator-become-hint = Introduce el código que el servidor escribió en su registro al arrancar.
+operator-code = Código
+operator-become-confirm = Convertirme en operador
+operator-no-accounts = Esta instancia de Weaveling no guarda cuentas, así que no tiene operador.

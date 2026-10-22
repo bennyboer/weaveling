@@ -8,6 +8,7 @@ export const ADA = {
 };
 export const HER_PASSWORD = "correct horse battery";
 export const THE_CODE = "123456";
+export const THE_OPERATOR_CODE = "346af3a2b90cbb3ab7cd3cb07ccc2a1f";
 
 export type Server = {
   password: string;
@@ -19,6 +20,7 @@ export type Server = {
   codesSent: number;
   codesTried: number;
   projectsAsked: number;
+  operator: boolean;
 };
 
 const refusing = (
@@ -49,6 +51,7 @@ export async function aServerWithAccounts(
     codesSent: 0,
     codesTried: 0,
     projectsAsked: 0,
+    operator: false,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -61,7 +64,7 @@ export async function aServerWithAccounts(
       return route.fulfill({ status: 204 });
     }
     return server.signedIn
-      ? route.fulfill({ json: ADA })
+      ? route.fulfill({ json: { ...ADA, operator: server.operator } })
       : refusing(route, 401, "not-signed-in");
   });
   await page.route(at("/api/sessions"), async (route) => {
@@ -73,7 +76,7 @@ export async function aServerWithAccounts(
       return refusing(route, 403, "address-not-verified");
     }
     server.signedIn = true;
-    return route.fulfill({ json: ADA });
+    return route.fulfill({ json: { ...ADA, operator: server.operator } });
   });
   await page.route(at("/api/accounts"), async (route) => {
     const { email, name, password } = route.request().postDataJSON();
@@ -118,6 +121,17 @@ export async function aServerWithAccounts(
     }
     server.password = password;
     server.verified = true;
+    return route.fulfill({ status: 204 });
+  });
+  await page.route(at("/api/operators"), async (route) => {
+    if (!server.signedIn) {
+      return refusing(route, 401, "not-signed-in");
+    }
+    const { code } = route.request().postDataJSON();
+    if (code.trim() !== THE_OPERATOR_CODE) {
+      return refusing(route, 422, "operator-code-wrong");
+    }
+    server.operator = true;
     return route.fulfill({ status: 204 });
   });
   await page.route(at("/api/projects"), async (route) => {

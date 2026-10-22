@@ -1,8 +1,10 @@
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::{IntoView, ev, html};
+use leptos::{IntoView, ev, html, view};
+use leptos_router::components::A;
 
 use crate::accounts::{CurrentSession, SignInState, SignedInAccount};
+use crate::route;
 use crate::speech::{Speech, said};
 
 pub fn account_in_masthead() -> impl IntoView {
@@ -59,6 +61,13 @@ fn account_menu(
                             .class("account-email")
                             .child(account.email.clone()),
                         html::hr(),
+                        account.operator.then(|| {
+                            view! {
+                                <A href=route::OPERATOR attr:role="menuitem">
+                                    {said("account-menu-operator")}
+                                </A>
+                            }
+                        }),
                         html::button()
                             .r#type("button")
                             .role("menuitem")

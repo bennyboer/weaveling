@@ -1,6 +1,6 @@
 use accounts_contract::{
-    NewPasswordRequest, PasswordResetRequest, SendCodeRequest, ServiceModeDTO, SignInRequest,
-    SignUpRequest, SignedInDTO, VerifyEmailRequest,
+    BecomeOperatorRequest, NewPasswordRequest, PasswordResetRequest, SendCodeRequest,
+    ServiceModeDTO, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
 };
 use gloo_net::http::Request;
 
@@ -15,6 +15,7 @@ const PASSWORD_RESET: &str = "/api/accounts/password-reset";
 const NEW_PASSWORD: &str = "/api/accounts/password";
 const SESSIONS: &str = "/api/sessions";
 const CURRENT: &str = "/api/sessions/current";
+const OPERATORS: &str = "/api/operators";
 const SUBJECT: &str = "session";
 
 pub async fn current() -> Result<SignInState, ApiError> {
@@ -106,6 +107,19 @@ pub async fn reset_password(email: &str, code: &str, password: &str) -> Result<(
     .map(|_| ())
 }
 
+pub async fn become_operator(code: &str) -> Result<(), ApiError> {
+    let payload = BecomeOperatorRequest {
+        code: code.to_owned(),
+    };
+
+    checked(
+        sent_with(Request::post(OPERATORS), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
+}
+
 pub async fn sign_out() -> Result<(), ApiError> {
     checked(sent(Request::delete(CURRENT)).await?, SUBJECT)
         .await
@@ -116,5 +130,6 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> SignedInAccount {
     SignedInAccount {
         name: signed_in.name,
         email: signed_in.email,
+        operator: signed_in.operator,
     }
 }

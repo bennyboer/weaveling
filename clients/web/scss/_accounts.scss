@@ -1,4 +1,5 @@
-.signing-in {
+.signing-in,
+.operating {
   width: min(24rem, 100% - 2rem);
   margin: 4rem auto;
 
@@ -148,11 +149,14 @@
       border-top: 1px solid var(--line);
     }
 
-    button {
+    button,
+    a {
       border: none;
       border-radius: 0.25rem;
       text-align: left;
       padding: 0.45rem 0.6rem;
+      color: inherit;
+      text-decoration: none;
 
       &:hover {
         background: color-mix(in srgb, var(--ink) 8%, transparent);

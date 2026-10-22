@@ -4,6 +4,7 @@ use crate::scenes::model::SceneId;
 use crate::speech::say;
 
 pub const WORKSPACE: &str = "/";
+pub const OPERATOR: &str = "/operator";
 
 const SLUG_CHARS: usize = 60;
 
