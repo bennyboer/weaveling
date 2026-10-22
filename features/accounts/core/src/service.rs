@@ -10,7 +10,7 @@ use crate::code::PendingVerification;
 use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
 use crate::name::{AccountName, InvalidAccountName};
-use crate::password::{InvalidPassword, Password};
+use crate::password::{InvalidPassword, Password, PasswordHash};
 use crate::secrets::{Attempt, EmailAddresses, Passwords, SecretsError, Verifications};
 
 #[derive(Debug, Error)]
@@ -27,6 +27,10 @@ pub enum AccountServiceError {
     CodeExpired,
     #[error("this code was tried too often; ask for a new one")]
     CodeExhausted,
+    #[error("this address and password do not sign in")]
+    SignInRefused,
+    #[error("this address is not verified yet")]
+    NotVerifiedYet,
     #[error(transparent)]
     Events(#[from] ServiceError<AccountError>),
     #[error(transparent)]
@@ -143,6 +147,49 @@ impl AccountService {
         self.verifications.close(&id).await?;
 
         Ok(())
+    }
+
+    pub async fn sign_in(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<AccountId, AccountServiceError> {
+        let email = EmailAddress::new(email)?;
+
+        let Some((id, account, kept)) = self.signing_in_as(&email).await? else {
+            let _same_work = PasswordHash::stand_in().admits(password);
+            return Err(AccountServiceError::SignInRefused);
+        };
+        if !kept.admits(password) {
+            return Err(AccountServiceError::SignInRefused);
+        }
+        if !account.is_verified() {
+            return Err(AccountServiceError::NotVerifiedYet);
+        }
+
+        Ok(id)
+    }
+
+    async fn signing_in_as(
+        &self,
+        email: &EmailAddress,
+    ) -> Result<Option<(AccountId, Account, PasswordHash)>, AccountServiceError> {
+        let Some(id) = self.email_addresses.holder(email).await? else {
+            return Ok(None);
+        };
+        let account = match self.get(&id).await {
+            Ok(standing) => standing.state,
+            Err(AccountServiceError::Events(ServiceError::NotFound { .. })) => return Ok(None),
+            Err(failed) => return Err(failed),
+        };
+        if account.email() != email {
+            return Ok(None);
+        }
+        let Some(kept) = self.passwords.of(&id).await? else {
+            return Ok(None);
+        };
+
+        Ok(Some((id, account, kept)))
     }
 
     pub async fn get(&self, id: &AccountId) -> Result<Standing<Account>, AccountServiceError> {

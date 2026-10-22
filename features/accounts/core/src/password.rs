@@ -1,9 +1,14 @@
+use std::sync::LazyLock;
+
 use argon2::password_hash::{PasswordHasher, PasswordVerifier, SaltString};
 use argon2::{Argon2, PasswordHash as Phc};
 use rand_core::OsRng;
 use thiserror::Error;
 
 pub struct Password(String);
+
+static STAND_IN: LazyLock<PasswordHash> =
+    LazyLock::new(|| Password("a stand-in for an address nobody has".to_owned()).hashed());
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum InvalidPassword {
@@ -51,6 +56,10 @@ impl Password {
 impl PasswordHash {
     pub fn kept(phc: String) -> Self {
         Self(phc)
+    }
+
+    pub fn stand_in() -> &'static Self {
+        &STAND_IN
     }
 
     pub fn as_str(&self) -> &str {
@@ -126,6 +135,15 @@ mod tests {
             "the same password hashed twice must not look the same in the table"
         );
         assert!(!first.as_str().contains(A_PASSWORD));
+    }
+
+    #[test]
+    fn the_stand_in_is_hashed_as_any_password_is() {
+        assert!(
+            PasswordHash::stand_in().as_str().starts_with("$argon2id$"),
+            "an address nobody has must cost the same work as a real one"
+        );
+        assert!(!PasswordHash::stand_in().admits(A_PASSWORD));
     }
 
     #[test]

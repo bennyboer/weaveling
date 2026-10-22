@@ -5,4 +5,7 @@ mod account_service;
 mod accounts_api;
 
 #[cfg(test)]
+mod signing_in;
+
+#[cfg(test)]
 mod wiring;
