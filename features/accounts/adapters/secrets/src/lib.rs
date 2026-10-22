@@ -6,10 +6,18 @@ pub mod postgres;
 #[cfg(all(test, feature = "postgres"))]
 mod postgres_tests;
 
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
+#[cfg(all(test, feature = "sqlite"))]
+mod sqlite_tests;
+
 pub use memory::InMemorySecrets;
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresSecrets;
+
+#[cfg(feature = "sqlite")]
+pub use sqlite::SqliteSecrets;
 
 #[cfg(test)]
 mod memory_tests {

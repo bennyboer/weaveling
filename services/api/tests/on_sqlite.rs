@@ -15,7 +15,7 @@ use test_harness::SqliteFixture;
 use weaveling_service_api::{Accounts, Adapters, Storage, Unprepared, app};
 use wiring::sqlite::{DataDirectory, Files};
 
-use journeys::{Backend, DATABASES, a_server_on, id_in};
+use journeys::{Backend, DATABASES, Journey, id_in};
 
 struct OnSqlite {
     fixture: SqliteFixture,
@@ -50,8 +50,7 @@ impl Files for FileEach {
 
 #[async_trait]
 impl Backend for OnSqlite {
-    // TODO accounts on SQLite: once they have an adapter, On, as on PostgreSQL; SQLite is not only local mode
-    const ACCOUNTS: Accounts = Accounts::Off;
+    const ACCOUNTS: Accounts = Accounts::On;
 
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
@@ -176,14 +175,29 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn local_mode_has_no_accounts_to_sign_up_to() {
-    let backend = OnSqlite::setup().await;
-    let server = a_server_on(&backend).await;
+async fn a_server_on_sqlite_keeps_an_address_signed_up_in_the_accounts_file() {
+    let journey = Journey::<OnSqlite>::unrelayed().await;
 
-    server
+    journey
+        .server
         .post("/api/accounts")
         .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
         .await
-        .assert_status(StatusCode::NOT_FOUND);
-    backend.cleanup().await;
+        .assert_status(StatusCode::ACCEPTED);
+
+    assert_eq!(
+        journey
+            .backend
+            .read("accounts", "SELECT email FROM account_credentials")
+            .await,
+        vec!["ada@example.com".to_owned()]
+    );
+    assert_eq!(
+        journey
+            .backend
+            .count("accounts", "SELECT count(*) FROM events")
+            .await,
+        1
+    );
+    journey.end().await;
 }

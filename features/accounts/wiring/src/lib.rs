@@ -78,6 +78,30 @@ impl Feature for AccountFeature {
         ]
     }
 
+    #[cfg(feature = "sqlite")]
+    fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
+        let EventSourced { events, outbox } =
+            EventSourced::on_sqlite(&pool, accounts_store::codec(), nothing_told, context);
+        let secrets = Arc::new(accounts_secrets::SqliteSecrets::new(pool));
+
+        Ok(Ports {
+            events,
+            credentials: secrets.clone(),
+            verifications: secrets,
+            mailer: Arc::new(LoggingMailer),
+            outbox,
+        })
+    }
+
+    #[cfg(feature = "sqlite")]
+    fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
+        vec![
+            eventsourcing::sqlite::migrations(),
+            outbox::sqlite::migrations(),
+            accounts_secrets::sqlite::migrations(),
+        ]
+    }
+
     fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {
         Some(ports.outbox.clone())
     }

@@ -62,6 +62,7 @@ sqlite = [
     "messaging/sqlite",
     "outbox/sqlite",
     "wiring/sqlite",
+    "accounts-wiring/sqlite",
     "appearances-wiring/sqlite",
     "boards-wiring/sqlite",
     "outline-wiring/sqlite",
