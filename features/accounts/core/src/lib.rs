@@ -19,7 +19,7 @@ pub use id::AccountId;
 pub use name::{AccountName, InvalidAccountName};
 pub use password::{InvalidPassword, Password, PasswordHash};
 pub use secrets::{
-    Attempt, EmailAddresses, Passwords, SecretStores, SecretsError, Sessions, Throttles,
+    Attempt, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions, Throttles,
     Verifications,
 };
 pub use service::{AccountService, AccountServiceError, SignedIn};

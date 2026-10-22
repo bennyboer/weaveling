@@ -112,3 +112,14 @@ pub trait Verifications: Send + Sync {
 
     async fn close(&self, account: &AccountId, purpose: CodePurpose) -> Result<(), SecretsError>;
 }
+
+#[async_trait]
+pub trait Operators: Send + Sync {
+    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError>;
+
+    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError>;
+
+    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError>;
+
+    async fn any_appointed(&self) -> Result<bool, SecretsError>;
+}

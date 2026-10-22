@@ -32,3 +32,12 @@ CREATE TABLE account_throttles (
     last     TIMESTAMPTZ      NOT NULL,
     PRIMARY KEY (guarded, email)
 );
+
+CREATE TABLE account_operator_code (
+    single   BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (single),
+    digest   TEXT COLLATE "C" NOT NULL
+);
+
+CREATE TABLE account_operators (
+    account  TEXT COLLATE "C" PRIMARY KEY
+);

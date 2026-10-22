@@ -1,9 +1,9 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, PasswordHash,
-    Passwords, PendingVerification, SecretsError, Session, Sessions, Stage, Throttles, TokenDigest,
-    Tries, VerificationCode, Verifications,
+    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, Operators,
+    PasswordHash, Passwords, PendingVerification, SecretsError, Session, Sessions, Stage,
+    Throttles, TokenDigest, Tries, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use clock::text;
@@ -11,6 +11,23 @@ use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
+
+const KEEP_CODE: &str = "
+    INSERT INTO account_operator_code (digest)
+    VALUES (?1)
+    ON CONFLICT (single) DO UPDATE
+    SET digest = EXCLUDED.digest
+";
+
+const TAKE_CODE: &str = "DELETE FROM account_operator_code WHERE digest = ?1";
+
+const APPOINT: &str = "
+    INSERT INTO account_operators (account)
+    VALUES (?1)
+    ON CONFLICT (account) DO NOTHING
+";
+
+const ANY_APPOINTED: &str = "SELECT EXISTS (SELECT 1 FROM account_operators)";
 
 const CLAIM: &str = "
     INSERT INTO account_email_addresses (email, account)
@@ -364,5 +381,45 @@ impl Verifications for SqliteSecrets {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Operators for SqliteSecrets {
+    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+        sqlx::query(KEEP_CODE)
+            .bind(digest.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+        let done = sqlx::query(TAKE_CODE)
+            .bind(digest.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(done.rows_affected() == 1)
+    }
+
+    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
+        sqlx::query(APPOINT)
+            .bind(account.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn any_appointed(&self) -> Result<bool, SecretsError> {
+        sqlx::query_scalar(ANY_APPOINTED)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)
     }
 }

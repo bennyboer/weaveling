@@ -1,14 +1,20 @@
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, PasswordHash,
-    Passwords, PendingVerification, SecretsError, Session, SessionToken, Sessions, Stage,
-    Throttles, Tries, VerificationCode, Verifications,
+    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, Operators,
+    PasswordHash, Passwords, PendingVerification, SecretsError, Session, SessionToken, Sessions,
+    Stage, Throttles, TokenDigest, Tries, VerificationCode, Verifications,
 };
 use futures_util::future::join_all;
 use time::OffsetDateTime;
 
-pub trait Secrets: EmailAddresses + Passwords + Sessions + Throttles + Verifications {}
+pub trait Secrets:
+    EmailAddresses + Operators + Passwords + Sessions + Throttles + Verifications
+{
+}
 
-impl<S: EmailAddresses + Passwords + Sessions + Throttles + Verifications> Secrets for S {}
+impl<S: EmailAddresses + Operators + Passwords + Sessions + Throttles + Verifications> Secrets
+    for S
+{
+}
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -626,6 +632,121 @@ pub async fn tries_counted_at_once_are_each_counted<S: Secrets>(secrets: &S) {
     );
 }
 
+fn a_digest(of: &str) -> TokenDigest {
+    TokenDigest::kept(of.to_owned())
+}
+
+pub async fn a_kept_code_is_taken_once<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_code(&a_digest("first"))
+        .await
+        .expect("keeping should succeed");
+
+    assert!(
+        secrets
+            .take_code(&a_digest("first"))
+            .await
+            .expect("taking should succeed")
+    );
+    assert!(
+        !secrets
+            .take_code(&a_digest("first"))
+            .await
+            .expect("taking should succeed"),
+        "a code makes one operator, used once"
+    );
+}
+
+pub async fn only_the_latest_code_kept_can_be_taken<S: Secrets>(secrets: &S) {
+    for digest in ["first", "second"] {
+        secrets
+            .keep_code(&a_digest(digest))
+            .await
+            .expect("keeping should succeed");
+    }
+
+    assert!(
+        !secrets
+            .take_code(&a_digest("first"))
+            .await
+            .expect("taking should succeed"),
+        "a code logged at an earlier start is good no longer"
+    );
+    assert!(
+        secrets
+            .take_code(&a_digest("second"))
+            .await
+            .expect("taking should succeed")
+    );
+}
+
+pub async fn no_code_kept_takes_nothing<S: Secrets>(secrets: &S) {
+    assert!(
+        !secrets
+            .take_code(&a_digest("first"))
+            .await
+            .expect("taking should succeed")
+    );
+}
+
+pub async fn a_code_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_code(&a_digest("first"))
+        .await
+        .expect("keeping should succeed");
+
+    let digest = a_digest("first");
+    let taken = join_all((0..20).map(|_| secrets.take_code(&digest))).await;
+
+    assert_eq!(
+        taken
+            .iter()
+            .filter(|taken| matches!(taken, Ok(true)))
+            .count(),
+        1,
+        "two sent together must not both find the code before either takes it"
+    );
+}
+
+pub async fn nobody_is_an_operator_until_appointed<S: Secrets>(secrets: &S) {
+    assert!(
+        !secrets
+            .any_appointed()
+            .await
+            .expect("reading should succeed")
+    );
+
+    secrets
+        .appoint(&AccountId::generate(at(1_000)))
+        .await
+        .expect("appointing should succeed");
+
+    assert!(
+        secrets
+            .any_appointed()
+            .await
+            .expect("reading should succeed")
+    );
+}
+
+pub async fn appointing_twice_is_appointing_once<S: Secrets>(secrets: &S) {
+    let account = AccountId::generate(at(1_000));
+
+    for _ in 0..2 {
+        secrets
+            .appoint(&account)
+            .await
+            .expect("appointing again should succeed too");
+    }
+
+    assert!(
+        secrets
+            .any_appointed()
+            .await
+            .expect("reading should succeed")
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -643,6 +764,12 @@ macro_rules! secrets_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::secrets_conformance_case!($workbench, a_kept_code_is_taken_once);
+        $crate::secrets_conformance_case!($workbench, only_the_latest_code_kept_can_be_taken);
+        $crate::secrets_conformance_case!($workbench, no_code_kept_takes_nothing);
+        $crate::secrets_conformance_case!($workbench, a_code_taken_by_many_at_once_goes_to_one);
+        $crate::secrets_conformance_case!($workbench, nobody_is_an_operator_until_appointed);
+        $crate::secrets_conformance_case!($workbench, appointing_twice_is_appointing_once);
         $crate::secrets_conformance_case!($workbench, a_claimed_address_names_its_holder);
         $crate::secrets_conformance_case!($workbench, an_address_never_claimed_names_nobody);
         $crate::secrets_conformance_case!($workbench, an_address_is_held_by_one_account_only);

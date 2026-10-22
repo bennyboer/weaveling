@@ -1,10 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, PasswordHash,
-    Passwords, PendingVerification, SecretsError, Session, Sessions, Throttles, TokenDigest, Tries,
-    Verifications,
+    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, Operators,
+    PasswordHash, Passwords, PendingVerification, SecretsError, Session, Sessions, Throttles,
+    TokenDigest, Tries, Verifications,
 };
 use async_trait::async_trait;
 use time::OffsetDateTime;
@@ -16,6 +16,8 @@ struct Kept {
     pending: HashMap<(AccountId, CodePurpose), PendingVerification>,
     sessions: HashMap<TokenDigest, Session>,
     tries: HashMap<(Guarded, EmailAddress), Tries>,
+    operator_code: Option<TokenDigest>,
+    operators: HashSet<AccountId>,
 }
 
 #[derive(Default)]
@@ -156,5 +158,34 @@ impl Verifications for InMemorySecrets {
         self.kept().pending.remove(&(*account, purpose));
 
         Ok(())
+    }
+}
+
+#[async_trait]
+impl Operators for InMemorySecrets {
+    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+        self.kept().operator_code = Some(digest.clone());
+
+        Ok(())
+    }
+
+    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        if kept.operator_code.as_ref() != Some(digest) {
+            return Ok(false);
+        }
+        kept.operator_code = None;
+
+        Ok(true)
+    }
+
+    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
+        self.kept().operators.insert(*account);
+
+        Ok(())
+    }
+
+    async fn any_appointed(&self) -> Result<bool, SecretsError> {
+        Ok(!self.kept().operators.is_empty())
     }
 }
