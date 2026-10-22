@@ -1,71 +1,11 @@
-import { test, expect, type Page, type Route } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
-const ADA = {
-  account: "account_1",
-  name: "Ada Lovelace",
-  email: "ada@example.com",
-  stage: "signed-in",
-};
-const HER_PASSWORD = "correct horse battery";
-
-type Server = { signedIn: boolean; signedOut: number; projectsAsked: number };
-
-const refusing = (route: Route, status: number, type: string) =>
-  route.fulfill({
-    status,
-    contentType: "application/problem+json",
-    body: JSON.stringify({ type, status, detail: type }),
-  });
-
-async function aServerWithAccounts(
-  page: Page,
-  { verified = true } = {},
-): Promise<Server> {
-  const server: Server = { signedIn: false, signedOut: 0, projectsAsked: 0 };
-
-  await page.route(
-    (url) => url.pathname === "/api/sessions/current",
-    async (route) => {
-      if (route.request().method() === "DELETE") {
-        server.signedIn = false;
-        server.signedOut += 1;
-        return route.fulfill({ status: 204 });
-      }
-      return server.signedIn
-        ? route.fulfill({ json: ADA })
-        : refusing(route, 401, "not-signed-in");
-    },
-  );
-  await page.route(
-    (url) => url.pathname === "/api/sessions",
-    async (route) => {
-      const { email, password } = route.request().postDataJSON();
-      if (email !== ADA.email || password !== HER_PASSWORD) {
-        return refusing(route, 401, "sign-in-refused");
-      }
-      if (!verified) {
-        return refusing(route, 403, "address-not-verified");
-      }
-      server.signedIn = true;
-      return route.fulfill({ json: ADA });
-    },
-  );
-  await page.route(
-    (url) => url.pathname === "/api/projects",
-    async (route) => {
-      server.projectsAsked += 1;
-      return route.fallback();
-    },
-  );
-
-  return server;
-}
-
-async function signIn(page: Page, email: string, password: string) {
-  await page.getByLabel("Email address").fill(email);
-  await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-}
+import {
+  ADA,
+  HER_PASSWORD,
+  aServerWithAccounts,
+  signIn,
+} from "./support/accounts";
 
 const masthead = (page: Page) => page.getByRole("banner");
 

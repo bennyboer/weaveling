@@ -26,6 +26,37 @@
   .problem {
     margin: 0;
   }
+
+  .hint,
+  .sent-to {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .sent-to {
+    margin-bottom: 1.5rem;
+    font-size: 1rem;
+  }
+
+  .notice {
+    margin: 0 0 1.5rem;
+    padding: 0.5rem 0.75rem;
+    border-left: 3px solid var(--accent);
+  }
+
+  .turning {
+    display: block;
+    margin-top: 1rem;
+    padding: 0;
+    border: none;
+    color: var(--muted);
+    text-decoration: underline;
+
+    &:hover {
+      color: var(--ink);
+    }
+  }
 }
 
 .masthead .signed-in {
