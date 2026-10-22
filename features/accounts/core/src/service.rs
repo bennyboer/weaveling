@@ -11,9 +11,10 @@ use crate::code::{CodePurpose, PendingVerification};
 use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
 use crate::name::{AccountName, InvalidAccountName};
+use crate::operator::OperatorCode;
 use crate::password::{InvalidPassword, Password, PasswordHash};
 use crate::secrets::{
-    Attempt, EmailAddresses, Passwords, SecretStores, SecretsError, Sessions, Throttles,
+    Attempt, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions, Throttles,
     Verifications,
 };
 use crate::session::{Session, SessionToken, Stage};
@@ -37,6 +38,8 @@ pub enum AccountServiceError {
     SignInRefused,
     #[error("this address is not verified yet")]
     NotVerifiedYet,
+    #[error("this is not the code that makes an operator")]
+    OperatorCodeWrong,
     #[error("too many tries; wait {wait} before trying again")]
     Throttled { wait: Duration },
     #[error(transparent)]
@@ -61,6 +64,7 @@ pub struct AccountService {
     verifications: Arc<dyn Verifications>,
     sessions: Arc<dyn Sessions>,
     throttles: Arc<dyn Throttles>,
+    operators: Arc<dyn Operators>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
 }
@@ -78,6 +82,7 @@ impl AccountService {
             verifications,
             sessions,
             throttles,
+            operators,
         } = secrets;
 
         Self {
@@ -87,6 +92,7 @@ impl AccountService {
             verifications,
             sessions,
             throttles,
+            operators,
             mailer,
             clock,
         }
@@ -302,6 +308,45 @@ impl AccountService {
 
     pub async fn end_session(&self, token: &SessionToken) -> Result<(), AccountServiceError> {
         Ok(self.sessions.end(&token.digest()).await?)
+    }
+
+    pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountServiceError> {
+        if self.operators.any_appointed().await? {
+            return Ok(None);
+        }
+        let code = OperatorCode::drawn();
+        self.operators.keep_code(&code.digest()).await?;
+
+        Ok(Some(code))
+    }
+
+    pub async fn become_operator(
+        &self,
+        id: &AccountId,
+        code: &str,
+    ) -> Result<(), AccountServiceError> {
+        if !self.get(id).await?.state.is_verified() {
+            return Err(AccountServiceError::NotVerifiedYet);
+        }
+        if !self
+            .operators
+            .take_code(&OperatorCode::presented(code).digest())
+            .await?
+        {
+            return Err(AccountServiceError::OperatorCodeWrong);
+        }
+
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(id),
+                AccountCommand::BecomeOperator,
+                &id.acting(),
+            )
+            .await?;
+        self.operators.appoint(id).await?;
+
+        Ok(())
     }
 
     async fn signing_in_as(

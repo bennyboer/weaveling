@@ -5,6 +5,9 @@ mod account_service;
 mod accounts_api;
 
 #[cfg(test)]
+mod becoming_operator;
+
+#[cfg(test)]
 mod gate_api;
 
 #[cfg(test)]

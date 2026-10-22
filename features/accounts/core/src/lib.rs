@@ -3,6 +3,7 @@ mod code;
 mod email;
 mod id;
 mod name;
+mod operator;
 mod password;
 mod secrets;
 mod service;
@@ -17,6 +18,7 @@ pub use code::{CodePurpose, PendingVerification, VerificationCode};
 pub use email::{EmailAddress, InvalidEmailAddress};
 pub use id::AccountId;
 pub use name::{AccountName, InvalidAccountName};
+pub use operator::OperatorCode;
 pub use password::{InvalidPassword, Password, PasswordHash};
 pub use secrets::{
     Attempt, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions, Throttles,

@@ -25,7 +25,7 @@ pub struct Session {
     pub until: OffsetDateTime,
 }
 
-fn hex(bytes: &[u8]) -> String {
+pub(crate) fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
@@ -48,7 +48,7 @@ impl SessionToken {
     }
 
     pub fn digest(&self) -> TokenDigest {
-        TokenDigest(hex(&Sha256::digest(self.0.as_bytes())))
+        TokenDigest::of(&self.0)
     }
 }
 
@@ -59,6 +59,10 @@ impl Debug for SessionToken {
 }
 
 impl TokenDigest {
+    pub(crate) fn of(raw: &str) -> Self {
+        Self(hex(&Sha256::digest(raw.as_bytes())))
+    }
+
     pub fn kept(digest: String) -> Self {
         Self(digest)
     }

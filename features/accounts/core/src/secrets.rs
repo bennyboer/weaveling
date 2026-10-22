@@ -27,19 +27,21 @@ pub struct SecretStores {
     pub verifications: Arc<dyn Verifications>,
     pub sessions: Arc<dyn Sessions>,
     pub throttles: Arc<dyn Throttles>,
+    pub operators: Arc<dyn Operators>,
 }
 
 impl SecretStores {
     pub fn kept_by<S>(secrets: Arc<S>) -> Self
     where
-        S: EmailAddresses + Passwords + Verifications + Sessions + Throttles + 'static,
+        S: EmailAddresses + Passwords + Verifications + Sessions + Throttles + Operators + 'static,
     {
         Self {
             email_addresses: secrets.clone(),
             passwords: secrets.clone(),
             verifications: secrets.clone(),
             sessions: secrets.clone(),
-            throttles: secrets,
+            throttles: secrets.clone(),
+            operators: secrets,
         }
     }
 }
