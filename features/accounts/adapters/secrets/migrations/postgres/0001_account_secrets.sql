@@ -8,11 +8,13 @@ CREATE TABLE account_passwords (
     password_hash  TEXT             NOT NULL
 );
 
-CREATE TABLE email_verifications (
-    account  TEXT COLLATE "C" PRIMARY KEY,
+CREATE TABLE account_codes (
+    account  TEXT COLLATE "C" NOT NULL,
+    purpose  TEXT             NOT NULL,
     code     TEXT             NOT NULL,
     until    TIMESTAMPTZ      NOT NULL,
-    tried    INTEGER          NOT NULL
+    tried    INTEGER          NOT NULL,
+    PRIMARY KEY (account, purpose)
 );
 
 CREATE TABLE account_sessions (

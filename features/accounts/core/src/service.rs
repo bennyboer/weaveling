@@ -6,7 +6,7 @@ use mailing::{Mail, Mailer, Unsent};
 use thiserror::Error;
 
 use crate::account::{Account, AccountCommand, AccountError, AccountEvent};
-use crate::code::PendingVerification;
+use crate::code::{CodePurpose, PendingVerification};
 use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
 use crate::name::{AccountName, InvalidAccountName};
@@ -131,7 +131,11 @@ impl AccountService {
         };
         let pending = match self
             .verifications
-            .attempt(&id, PendingVerification::MAX_TRIES)
+            .attempt(
+                &id,
+                CodePurpose::ConfirmAddress,
+                PendingVerification::MAX_TRIES,
+            )
             .await?
         {
             Attempt::Nothing => return Err(AccountServiceError::CodeWrong),
@@ -154,7 +158,9 @@ impl AccountService {
                 &id.acting(),
             )
             .await?;
-        self.verifications.close(&id).await?;
+        self.verifications
+            .close(&id, CodePurpose::ConfirmAddress)
+            .await?;
 
         Ok(())
     }
@@ -255,7 +261,9 @@ impl AccountService {
         email: &EmailAddress,
     ) -> Result<(), AccountServiceError> {
         let pending = PendingVerification::issued(self.clock.now());
-        self.verifications.issue(id, &pending).await?;
+        self.verifications
+            .issue(id, CodePurpose::ConfirmAddress, &pending)
+            .await?;
 
         Ok(self
             .mailer

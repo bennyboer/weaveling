@@ -3,7 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use thiserror::Error;
 
-use crate::code::PendingVerification;
+use crate::code::{CodePurpose, PendingVerification};
 use crate::email::EmailAddress;
 use crate::id::AccountId;
 use crate::password::PasswordHash;
@@ -54,10 +54,16 @@ pub trait Verifications: Send + Sync {
     async fn issue(
         &self,
         account: &AccountId,
+        purpose: CodePurpose,
         pending: &PendingVerification,
     ) -> Result<(), SecretsError>;
 
-    async fn attempt(&self, account: &AccountId, within: u32) -> Result<Attempt, SecretsError>;
+    async fn attempt(
+        &self,
+        account: &AccountId,
+        purpose: CodePurpose,
+        within: u32,
+    ) -> Result<Attempt, SecretsError>;
 
-    async fn close(&self, account: &AccountId) -> Result<(), SecretsError>;
+    async fn close(&self, account: &AccountId, purpose: CodePurpose) -> Result<(), SecretsError>;
 }

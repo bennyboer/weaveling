@@ -12,7 +12,7 @@ mod session;
 mod account_tests;
 
 pub use account::{Account, AccountCommand, AccountError, AccountEvent, KIND};
-pub use code::{PendingVerification, VerificationCode};
+pub use code::{CodePurpose, PendingVerification, VerificationCode};
 pub use email::{EmailAddress, InvalidEmailAddress};
 pub use id::AccountId;
 pub use name::{AccountName, InvalidAccountName};

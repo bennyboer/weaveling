@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use accounts_core::{
-    AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
-    SecretsError, Session, Sessions, TokenDigest, Verifications,
+    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, PasswordHash, Passwords,
+    PendingVerification, SecretsError, Session, Sessions, TokenDigest, Verifications,
 };
 use async_trait::async_trait;
 
@@ -11,7 +11,7 @@ use async_trait::async_trait;
 struct Kept {
     email_addresses: HashMap<EmailAddress, AccountId>,
     passwords: HashMap<AccountId, PasswordHash>,
-    pending: HashMap<AccountId, PendingVerification>,
+    pending: HashMap<(AccountId, CodePurpose), PendingVerification>,
     sessions: HashMap<TokenDigest, Session>,
 }
 
@@ -89,15 +89,23 @@ impl Verifications for InMemorySecrets {
     async fn issue(
         &self,
         account: &AccountId,
+        purpose: CodePurpose,
         pending: &PendingVerification,
     ) -> Result<(), SecretsError> {
-        self.kept().pending.insert(*account, pending.clone());
+        self.kept()
+            .pending
+            .insert((*account, purpose), pending.clone());
 
         Ok(())
     }
 
-    async fn attempt(&self, account: &AccountId, within: u32) -> Result<Attempt, SecretsError> {
-        Ok(match self.kept().pending.get_mut(account) {
+    async fn attempt(
+        &self,
+        account: &AccountId,
+        purpose: CodePurpose,
+        within: u32,
+    ) -> Result<Attempt, SecretsError> {
+        Ok(match self.kept().pending.get_mut(&(*account, purpose)) {
             None => Attempt::Nothing,
             Some(pending) if pending.tried >= within => Attempt::Exhausted,
             Some(pending) => {
@@ -107,8 +115,8 @@ impl Verifications for InMemorySecrets {
         })
     }
 
-    async fn close(&self, account: &AccountId) -> Result<(), SecretsError> {
-        self.kept().pending.remove(account);
+    async fn close(&self, account: &AccountId, purpose: CodePurpose) -> Result<(), SecretsError> {
+        self.kept().pending.remove(&(*account, purpose));
 
         Ok(())
     }

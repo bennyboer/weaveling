@@ -1,6 +1,7 @@
 use accounts_core::{
-    AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
-    SecretsError, Session, SessionToken, Sessions, Stage, VerificationCode, Verifications,
+    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, PasswordHash, Passwords,
+    PendingVerification, SecretsError, Session, SessionToken, Sessions, Stage, VerificationCode,
+    Verifications,
 };
 use futures_util::future::join_all;
 use time::OffsetDateTime;
@@ -207,14 +208,18 @@ pub async fn each_account_has_a_password_of_its_own_or_none<S: Secrets>(secrets:
 pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
-        .issue(&account, &pending("004217", 1_900))
+        .issue(
+            &account,
+            CodePurpose::ConfirmAddress,
+            &pending("004217", 1_900),
+        )
         .await
         .expect("issuing should succeed");
 
     for tried in 1..=2 {
         assert_eq!(
             secrets
-                .attempt(&account, 5)
+                .attempt(&account, CodePurpose::ConfirmAddress, 5)
                 .await
                 .expect("attempting should succeed"),
             Attempt::Counted(PendingVerification {
@@ -225,12 +230,12 @@ pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Sec
     }
 
     secrets
-        .close(&account)
+        .close(&account, CodePurpose::ConfirmAddress)
         .await
         .expect("closing should succeed");
     assert_eq!(
         secrets
-            .attempt(&account, 5)
+            .attempt(&account, CodePurpose::ConfirmAddress, 5)
             .await
             .expect("attempting should succeed"),
         Attempt::Nothing
@@ -240,20 +245,26 @@ pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Sec
 pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
-        .issue(&account, &pending("004217", 1_900))
+        .issue(
+            &account,
+            CodePurpose::ConfirmAddress,
+            &pending("004217", 1_900),
+        )
         .await
         .expect("issuing should succeed");
 
     for _ in 0..3 {
         assert!(matches!(
-            secrets.attempt(&account, 3).await,
+            secrets
+                .attempt(&account, CodePurpose::ConfirmAddress, 3)
+                .await,
             Ok(Attempt::Counted(_))
         ));
     }
 
     assert_eq!(
         secrets
-            .attempt(&account, 3)
+            .attempt(&account, CodePurpose::ConfirmAddress, 3)
             .await
             .expect("attempting should succeed"),
         Attempt::Exhausted
@@ -263,11 +274,16 @@ pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S: Secrets>
 pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
-        .issue(&account, &pending("004217", 1_900))
+        .issue(
+            &account,
+            CodePurpose::ConfirmAddress,
+            &pending("004217", 1_900),
+        )
         .await
         .expect("issuing should succeed");
 
-    let attempts = join_all((0..20).map(|_| secrets.attempt(&account, 5))).await;
+    let attempts =
+        join_all((0..20).map(|_| secrets.attempt(&account, CodePurpose::ConfirmAddress, 5))).await;
 
     let counted = attempts
         .iter()
@@ -283,21 +299,31 @@ pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &
 pub async fn a_new_code_starts_its_attempts_afresh<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
-        .issue(&account, &pending("004217", 1_900))
+        .issue(
+            &account,
+            CodePurpose::ConfirmAddress,
+            &pending("004217", 1_900),
+        )
         .await
         .expect("issuing should succeed");
     for _ in 0..2 {
-        let _counted = secrets.attempt(&account, 2).await;
+        let _counted = secrets
+            .attempt(&account, CodePurpose::ConfirmAddress, 2)
+            .await;
     }
 
     secrets
-        .issue(&account, &pending("731905", 2_900))
+        .issue(
+            &account,
+            CodePurpose::ConfirmAddress,
+            &pending("731905", 2_900),
+        )
         .await
         .expect("issuing again should succeed");
 
     assert_eq!(
         secrets
-            .attempt(&account, 2)
+            .attempt(&account, CodePurpose::ConfirmAddress, 2)
             .await
             .expect("attempting should succeed"),
         Attempt::Counted(PendingVerification {
@@ -312,20 +338,23 @@ pub async fn each_account_has_a_code_of_its_own<S: Secrets>(secrets: &S) {
     let ada = AccountId::generate(at(1_000));
     let bea = AccountId::generate(at(2_000));
     secrets
-        .issue(&ada, &pending("111111", 1_900))
+        .issue(&ada, CodePurpose::ConfirmAddress, &pending("111111", 1_900))
         .await
         .expect("issuing should succeed");
     secrets
-        .issue(&bea, &pending("222222", 2_900))
+        .issue(&bea, CodePurpose::ConfirmAddress, &pending("222222", 2_900))
         .await
         .expect("issuing should succeed");
 
-    let _counted = secrets.attempt(&ada, 5).await;
-    secrets.close(&ada).await.expect("closing should succeed");
+    let _counted = secrets.attempt(&ada, CodePurpose::ConfirmAddress, 5).await;
+    secrets
+        .close(&ada, CodePurpose::ConfirmAddress)
+        .await
+        .expect("closing should succeed");
 
     assert_eq!(
         secrets
-            .attempt(&bea, 5)
+            .attempt(&bea, CodePurpose::ConfirmAddress, 5)
             .await
             .expect("attempting should succeed"),
         Attempt::Counted(PendingVerification {
@@ -340,13 +369,13 @@ pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S: Secre
 
     assert_eq!(
         secrets
-            .attempt(&account, 5)
+            .attempt(&account, CodePurpose::ConfirmAddress, 5)
             .await
             .expect("attempting should succeed"),
         Attempt::Nothing
     );
     secrets
-        .close(&account)
+        .close(&account, CodePurpose::ConfirmAddress)
         .await
         .expect("closing nothing is fine");
 }
@@ -453,6 +482,50 @@ pub async fn ending_one_session_leaves_the_others_open<S: Secrets>(secrets: &S) 
     );
 }
 
+pub async fn a_code_for_one_purpose_is_no_code_for_another<S: Secrets>(secrets: &S) {
+    let account = AccountId::generate(at(1_000));
+    secrets
+        .issue(
+            &account,
+            CodePurpose::ConfirmAddress,
+            &pending("111111", 1_900),
+        )
+        .await
+        .expect("issuing should succeed");
+    secrets
+        .issue(
+            &account,
+            CodePurpose::ResetPassword,
+            &pending("222222", 2_900),
+        )
+        .await
+        .expect("issuing should succeed");
+
+    secrets
+        .close(&account, CodePurpose::ConfirmAddress)
+        .await
+        .expect("closing should succeed");
+
+    assert_eq!(
+        secrets
+            .attempt(&account, CodePurpose::ConfirmAddress, 5)
+            .await
+            .expect("attempting should succeed"),
+        Attempt::Nothing
+    );
+    assert_eq!(
+        secrets
+            .attempt(&account, CodePurpose::ResetPassword, 5)
+            .await
+            .expect("attempting should succeed"),
+        Attempt::Counted(PendingVerification {
+            tried: 1,
+            ..pending("222222", 2_900)
+        }),
+        "a code sent to reset a password must not confirm an address, nor fall with it"
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -509,5 +582,9 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!($workbench, a_token_nobody_was_given_finds_nothing);
         $crate::secrets_conformance_case!($workbench, each_stage_is_kept_as_it_was);
         $crate::secrets_conformance_case!($workbench, ending_one_session_leaves_the_others_open);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_code_for_one_purpose_is_no_code_for_another
+        );
     };
 }

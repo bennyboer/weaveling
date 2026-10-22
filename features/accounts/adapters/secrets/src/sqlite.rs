@@ -1,8 +1,9 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
-    SecretsError, Session, Sessions, Stage, TokenDigest, VerificationCode, Verifications,
+    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, PasswordHash, Passwords,
+    PendingVerification, SecretsError, Session, Sessions, Stage, TokenDigest, VerificationCode,
+    Verifications,
 };
 use async_trait::async_trait;
 use clock::text;
@@ -30,22 +31,22 @@ const KEEP: &str = "
 const PASSWORD_OF: &str = "SELECT password_hash FROM account_passwords WHERE account = ?1";
 
 const ISSUE: &str = "
-    INSERT INTO email_verifications (account, code, until, tried)
-    VALUES (?1, ?2, ?3, ?4)
-    ON CONFLICT (account) DO UPDATE
+    INSERT INTO account_codes (account, purpose, code, until, tried)
+    VALUES (?1, ?2, ?3, ?4, ?5)
+    ON CONFLICT (account, purpose) DO UPDATE
     SET code  = excluded.code,
         until = excluded.until,
         tried = excluded.tried
 ";
 
 const ATTEMPT: &str = "
-    UPDATE email_verifications
+    UPDATE account_codes
     SET tried = tried + 1
-    WHERE account = ?1 AND tried < ?2
+    WHERE account = ?1 AND purpose = ?2 AND tried < ?3
     RETURNING code, until, tried
 ";
 
-const ISSUED: &str = "SELECT count(*) FROM email_verifications WHERE account = ?1";
+const ISSUED: &str = "SELECT count(*) FROM account_codes WHERE account = ?1 AND purpose = ?2";
 
 const OPEN: &str = "
     INSERT INTO account_sessions (digest, account, stage, until)
@@ -59,7 +60,7 @@ const END_SESSION: &str = "DELETE FROM account_sessions WHERE digest = ?1";
 const SIGNED_IN: &str = "signed-in";
 const SECOND_FACTOR_OWED: &str = "second-factor-owed";
 
-const CLOSE: &str = "DELETE FROM email_verifications WHERE account = ?1";
+const CLOSE: &str = "DELETE FROM account_codes WHERE account = ?1 AND purpose = ?2";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/sqlite")
@@ -228,10 +229,12 @@ impl Verifications for SqliteSecrets {
     async fn issue(
         &self,
         account: &AccountId,
+        purpose: CodePurpose,
         pending: &PendingVerification,
     ) -> Result<(), SecretsError> {
         sqlx::query(ISSUE)
             .bind(account.to_string())
+            .bind(purpose.as_str())
             .bind(pending.code.as_str())
             .bind(text::written(pending.until))
             .bind(i64::from(pending.tried))
@@ -242,9 +245,15 @@ impl Verifications for SqliteSecrets {
         Ok(())
     }
 
-    async fn attempt(&self, account: &AccountId, within: u32) -> Result<Attempt, SecretsError> {
+    async fn attempt(
+        &self,
+        account: &AccountId,
+        purpose: CodePurpose,
+        within: u32,
+    ) -> Result<Attempt, SecretsError> {
         let counted = sqlx::query(ATTEMPT)
             .bind(account.to_string())
+            .bind(purpose.as_str())
             .bind(i64::from(within))
             .fetch_optional(&self.pool)
             .await
@@ -255,6 +264,7 @@ impl Verifications for SqliteSecrets {
 
         let issued: i64 = sqlx::query_scalar(ISSUED)
             .bind(account.to_string())
+            .bind(purpose.as_str())
             .fetch_one(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -265,9 +275,10 @@ impl Verifications for SqliteSecrets {
         })
     }
 
-    async fn close(&self, account: &AccountId) -> Result<(), SecretsError> {
+    async fn close(&self, account: &AccountId, purpose: CodePurpose) -> Result<(), SecretsError> {
         sqlx::query(CLOSE)
             .bind(account.to_string())
+            .bind(purpose.as_str())
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;

@@ -1,6 +1,21 @@
 use rand_core::{OsRng, RngCore};
 use time::{Duration, OffsetDateTime};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CodePurpose {
+    ConfirmAddress,
+    ResetPassword,
+}
+
+impl CodePurpose {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ConfirmAddress => "confirm-address",
+            Self::ResetPassword => "reset-password",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerificationCode(String);
 
