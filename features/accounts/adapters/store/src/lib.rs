@@ -17,6 +17,8 @@ enum StoredAccountEvent {
         verified: bool,
         #[serde(with = "time::serde::rfc3339")]
         signed_up_at: OffsetDateTime,
+        #[serde(default, with = "time::serde::rfc3339::option")]
+        sessions_since: Option<OffsetDateTime>,
     },
 }
 
@@ -48,11 +50,13 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 name,
                 verified,
                 signed_up_at,
+                sessions_since,
             } => Self::Snapshotted {
                 email: email.to_string(),
                 name: name.to_string(),
                 verified: *verified,
                 signed_up_at: *signed_up_at,
+                sessions_since: *sessions_since,
             },
         }
     }
@@ -87,6 +91,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 name,
                 verified,
                 signed_up_at,
+                sessions_since,
             } => {
                 let (email, name) = readable(&email, &name)?;
                 Self::Snapshotted {
@@ -94,6 +99,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     name,
                     verified,
                     signed_up_at,
+                    sessions_since,
                 }
             }
         })
@@ -136,6 +142,7 @@ mod tests {
                 name,
                 verified: true,
                 signed_up_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
+                sessions_since: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -162,6 +169,7 @@ mod tests {
             name,
             verified: false,
             signed_up_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
+            sessions_since: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
         });
 
         assert_eq!(

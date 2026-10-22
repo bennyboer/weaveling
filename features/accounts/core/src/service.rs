@@ -271,6 +271,10 @@ impl AccountService {
             return Ok(None);
         }
         let account = self.get(&session.account).await?.state;
+        if !account.counts_session_begun(session.begun) {
+            self.sessions.end(&digest).await?;
+            return Ok(None);
+        }
 
         Ok(Some(SignedIn { session, account }))
     }

@@ -21,5 +21,6 @@ CREATE TABLE account_sessions (
     digest   TEXT PRIMARY KEY,
     account  TEXT NOT NULL,
     stage    TEXT NOT NULL,
+    begun    TEXT NOT NULL,
     until    TEXT NOT NULL
 );

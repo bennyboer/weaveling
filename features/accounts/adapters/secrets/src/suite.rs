@@ -384,6 +384,7 @@ fn a_session(stage: Stage) -> Session {
     Session {
         account: AccountId::generate(at(1_000)),
         stage,
+        begun: at(1_699_000_000),
         until: at(1_700_000_000),
     }
 }

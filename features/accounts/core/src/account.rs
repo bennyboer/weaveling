@@ -32,6 +32,7 @@ pub enum AccountEvent {
         name: AccountName,
         verified: bool,
         signed_up_at: OffsetDateTime,
+        sessions_since: Option<OffsetDateTime>,
     },
 }
 
@@ -41,6 +42,7 @@ pub struct Account {
     name: AccountName,
     verified: bool,
     signed_up_at: OffsetDateTime,
+    sessions_since: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -66,6 +68,10 @@ impl Account {
 
     pub fn signed_up_at(&self) -> OffsetDateTime {
         self.signed_up_at
+    }
+
+    pub fn counts_session_begun(&self, begun: OffsetDateTime) -> bool {
+        self.sessions_since.is_none_or(|since| begun >= since)
     }
 }
 
@@ -111,17 +117,20 @@ impl Aggregate for Account {
                 name: name.clone(),
                 verified: false,
                 signed_up_at: metadata.occurred_at,
+                sessions_since: None,
             }),
             AccountEvent::Snapshotted {
                 email,
                 name,
                 verified,
                 signed_up_at,
+                sessions_since,
             } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
                 verified: *verified,
                 signed_up_at: *signed_up_at,
+                sessions_since: *sessions_since,
             }),
             AccountEvent::EmailVerified | AccountEvent::PasswordReset => None,
         }
@@ -144,21 +153,23 @@ impl Aggregate for Account {
         }
     }
 
-    fn apply(&mut self, event: &AccountEvent, _metadata: &EventMetadata) {
+    fn apply(&mut self, event: &AccountEvent, metadata: &EventMetadata) {
         match event {
             AccountEvent::SignedUp { .. } => {}
             AccountEvent::EmailVerified => self.verified = true,
-            AccountEvent::PasswordReset => {}
+            AccountEvent::PasswordReset => self.sessions_since = Some(metadata.occurred_at),
             AccountEvent::Snapshotted {
                 email,
                 name,
                 verified,
                 signed_up_at,
+                sessions_since,
             } => {
                 self.email = email.clone();
                 self.name = name.clone();
                 self.verified = *verified;
                 self.signed_up_at = *signed_up_at;
+                self.sessions_since = *sessions_since;
             }
         }
     }
@@ -169,6 +180,7 @@ impl Aggregate for Account {
             name: self.name.clone(),
             verified: self.verified,
             signed_up_at: self.signed_up_at,
+            sessions_since: self.sessions_since,
         }
     }
 }

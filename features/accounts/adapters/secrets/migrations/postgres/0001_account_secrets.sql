@@ -21,5 +21,6 @@ CREATE TABLE account_sessions (
     digest   TEXT COLLATE "C" PRIMARY KEY,
     account  TEXT COLLATE "C" NOT NULL,
     stage    TEXT             NOT NULL,
+    begun    TIMESTAMPTZ      NOT NULL,
     until    TIMESTAMPTZ      NOT NULL
 );

@@ -3,12 +3,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use accounts_core::{
     AccountId, AccountService, AccountServiceError, EmailAddress, EmailAddresses, PasswordHash,
-    Passwords, PendingVerification, SecretsError,
+    Passwords, PendingVerification, SecretsError, SessionToken, Sessions,
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
 
-use crate::wiring::{ADA, HER_PASSWORD, Wired, wired};
+use time::Duration;
+
+use crate::wiring::{ADA, HER_PASSWORD, Wired, at, wired};
 
 const HER_NEW_PASSWORD: &str = "a better horse, a better battery";
 const RESETTING: &str = "Setting a new Weaveling password";
@@ -310,4 +312,116 @@ async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
 
     assert!(accounts.sign_in(ADA, HER_NEW_PASSWORD).await.is_ok());
     assert!(accounts.sign_in(ADA, HER_PASSWORD).await.is_err());
+}
+
+async fn a_session(accounts: &AccountService) -> SessionToken {
+    accounts
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("signing in should succeed")
+        .0
+}
+
+async fn still_signed_in(accounts: &AccountService, token: &SessionToken) -> bool {
+    accounts
+        .signed_in(token)
+        .await
+        .expect("asking should succeed")
+        .is_some()
+}
+
+#[tokio::test]
+async fn a_reset_ends_every_session_begun_before_it_on_every_device() {
+    let wired = wired();
+    ada_signed_up(&wired, true).await;
+    let phone = a_session(&wired.accounts).await;
+    let laptop = a_session(&wired.accounts).await;
+
+    wired.clock.set(at(1_700_000_000) + Duration::minutes(1));
+    let code = a_reset_asked_for(&wired).await;
+    wired
+        .accounts
+        .reset_password(ADA, &code, HER_NEW_PASSWORD)
+        .await
+        .expect("the code sent should reset");
+
+    assert!(
+        !still_signed_in(&wired.accounts, &phone).await,
+        "whoever reset a password because another knew it must have them put out"
+    );
+    assert!(!still_signed_in(&wired.accounts, &laptop).await);
+    assert_eq!(
+        wired
+            .secrets
+            .find(&laptop.digest())
+            .await
+            .expect("finding should succeed"),
+        None,
+        "a session found to have ended is ended, not kept"
+    );
+}
+
+#[tokio::test]
+async fn signing_in_the_moment_after_a_reset_counts() {
+    let wired = wired();
+    ada_signed_up(&wired, true).await;
+    let code = a_reset_asked_for(&wired).await;
+    wired
+        .accounts
+        .reset_password(ADA, &code, HER_NEW_PASSWORD)
+        .await
+        .expect("the code sent should reset");
+
+    let fresh = wired
+        .accounts
+        .begin_session(ADA, HER_NEW_PASSWORD)
+        .await
+        .expect("the new password should sign in")
+        .0;
+
+    assert!(still_signed_in(&wired.accounts, &fresh).await);
+}
+
+#[tokio::test]
+async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
+    let wired = wired();
+    let passwords = Arc::new(FailingOnce {
+        kept: wired.secrets.clone(),
+        armed: AtomicBool::new(false),
+    });
+    let accounts = AccountService::new(
+        wired.store.clone(),
+        wired.secrets.clone(),
+        passwords.clone(),
+        wired.secrets.clone(),
+        wired.secrets.clone(),
+        wired.mailbox.clone(),
+        wired.clock.clone(),
+    );
+    accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    accounts
+        .verify(ADA, &wired.last_code_sent_to(ADA))
+        .await
+        .expect("the code sent should verify");
+    let theirs = a_session(&accounts).await;
+
+    wired.clock.set(at(1_700_000_000) + Duration::minutes(1));
+    accounts
+        .ask_to_reset_password(ADA)
+        .await
+        .expect("asking should succeed");
+    let code = reset_codes_sent_to(&wired, ADA)
+        .pop()
+        .expect("a reset code should have been sent");
+    passwords.armed.store(true, Ordering::SeqCst);
+    let _broken_off = accounts.reset_password(ADA, &code, HER_NEW_PASSWORD).await;
+
+    assert!(
+        !still_signed_in(&accounts, &theirs).await,
+        "the reset is told before its new password is kept, so whoever knew the old one is out \
+         even when keeping the new one fails"
+    );
 }

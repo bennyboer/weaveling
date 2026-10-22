@@ -49,11 +49,11 @@ const ATTEMPT: &str = "
 const ISSUED: &str = "SELECT count(*) FROM account_codes WHERE account = $1 AND purpose = $2";
 
 const OPEN: &str = "
-    INSERT INTO account_sessions (digest, account, stage, until)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO account_sessions (digest, account, stage, begun, until)
+    VALUES ($1, $2, $3, $4, $5)
 ";
 
-const FIND: &str = "SELECT account, stage, until FROM account_sessions WHERE digest = $1";
+const FIND: &str = "SELECT account, stage, begun, until FROM account_sessions WHERE digest = $1";
 
 const END_SESSION: &str = "DELETE FROM account_sessions WHERE digest = $1";
 
@@ -90,6 +90,7 @@ fn written(stage: Stage) -> &'static str {
 fn to_session(row: &PgRow) -> Result<Session, SecretsError> {
     let account: String = row.try_get("account").map_err(unreachable)?;
     let stage: String = row.try_get("stage").map_err(unreachable)?;
+    let begun: OffsetDateTime = row.try_get("begun").map_err(unreachable)?;
     let until: OffsetDateTime = row.try_get("until").map_err(unreachable)?;
 
     Ok(Session {
@@ -103,6 +104,7 @@ fn to_session(row: &PgRow) -> Result<Session, SecretsError> {
                 ));
             }
         },
+        begun,
         until,
     })
 }
@@ -189,6 +191,7 @@ impl Sessions for PostgresSecrets {
             .bind(digest.as_str())
             .bind(session.account.to_string())
             .bind(written(session.stage))
+            .bind(session.begun)
             .bind(session.until)
             .execute(&self.pool)
             .await

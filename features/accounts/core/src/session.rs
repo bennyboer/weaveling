@@ -21,6 +21,7 @@ pub enum Stage {
 pub struct Session {
     pub account: AccountId,
     pub stage: Stage,
+    pub begun: OffsetDateTime,
     pub until: OffsetDateTime,
 }
 
@@ -74,6 +75,7 @@ impl Session {
         Self {
             account,
             stage,
+            begun: now,
             until: now + Self::LASTS,
         }
     }

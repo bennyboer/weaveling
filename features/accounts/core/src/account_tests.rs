@@ -131,9 +131,25 @@ fn no_password_is_reset_before_signing_up() {
 }
 
 #[test]
+fn a_reset_ends_every_session_begun_before_it() {
+    let mut account = a_signed_up_account();
+    assert!(account.counts_session_begun(at(1_500)));
+
+    account.apply(&AccountEvent::PasswordReset, &stamped(2, at(2_000)));
+
+    assert!(!account.counts_session_begun(at(1_999)));
+    assert!(
+        account.counts_session_begun(at(2_000)),
+        "signing in the moment the password was reset is signing in with the new one"
+    );
+    assert!(account.counts_session_begun(at(2_001)));
+}
+
+#[test]
 fn a_snapshot_holds_everything_the_account_is() {
     let mut account = a_signed_up_account();
     account.apply(&AccountEvent::EmailVerified, &stamped(2, at(2_000)));
+    account.apply(&AccountEvent::PasswordReset, &stamped(3, at(2_500)));
 
     let restored = Account::from_first(&account.snapshot(), &stamped(3, at(3_000)))
         .expect("a snapshot gives birth");
