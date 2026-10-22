@@ -3649,6 +3649,7 @@ dependencies = [
 name = "weaveling-accounts-wiring"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "sqlx",
  "weaveling-accounts-core",
  "weaveling-accounts-rest",
@@ -4527,6 +4528,7 @@ dependencies = [
  "tower-http",
  "tracing",
  "tracing-subscriber",
+ "weaveling-accounts-rest",
  "weaveling-accounts-wiring",
  "weaveling-appearances-wiring",
  "weaveling-boards-wiring",

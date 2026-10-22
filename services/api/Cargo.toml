@@ -32,6 +32,7 @@ outbox = { version = "0.1.0", path = "../../libraries/outbox", package = "weavel
 ### FEATURES ###
 ################
 
+accounts-rest = { version = "0.1.0", path = "../../features/accounts/adapters/rest", package = "weaveling-accounts-rest" }
 accounts-wiring = { version = "0.1.0", path = "../../features/accounts/wiring", package = "weaveling-accounts-wiring" }
 appearances-wiring = { version = "0.1.0", path = "../../features/appearances/wiring", package = "weaveling-appearances-wiring" }
 boards-wiring = { version = "0.1.0", path = "../../features/boards/wiring", package = "weaveling-boards-wiring" }

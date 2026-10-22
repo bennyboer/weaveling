@@ -5,6 +5,9 @@ mod account_service;
 mod accounts_api;
 
 #[cfg(test)]
+mod gate_api;
+
+#[cfg(test)]
 mod sessions_api;
 
 #[cfg(test)]

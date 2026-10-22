@@ -24,8 +24,6 @@ pub const DATABASES: [&str; 9] = [
 
 #[async_trait]
 pub trait Backend: Sized + Send + Sync {
-    const ACCOUNTS: Accounts;
-
     async fn setup() -> Self;
 
     fn storage(&self) -> Storage;
@@ -44,19 +42,27 @@ pub struct Journey<B: Backend> {
 }
 
 pub async fn a_server_on<B: Backend>(backend: &B) -> TestServer {
-    TestServer::new(app(adapters_on(backend).await))
+    TestServer::new(app(adapters_on(backend, Accounts::Off).await))
 }
 
-async fn adapters_on<B: Backend>(backend: &B) -> Adapters {
-    Adapters::assembled(backend.storage(), B::ACCOUNTS, Arc::new(SystemClock))
+async fn adapters_on<B: Backend>(backend: &B, accounts: Accounts) -> Adapters {
+    Adapters::assembled(backend.storage(), accounts, Arc::new(SystemClock))
         .await
         .expect("every feature's schema should lay down")
 }
 
 impl<B: Backend> Journey<B> {
     pub async fn unrelayed() -> Self {
+        Self::unrelayed_with(Accounts::Off).await
+    }
+
+    pub async fn with_accounts() -> Self {
+        Self::unrelayed_with(Accounts::On).await
+    }
+
+    async fn unrelayed_with(accounts: Accounts) -> Self {
         let backend = B::setup().await;
-        let server = a_server_on(&backend).await;
+        let server = TestServer::new(app(adapters_on(&backend, accounts).await));
 
         Self {
             backend,
@@ -67,7 +73,7 @@ impl<B: Backend> Journey<B> {
 
     pub async fn relayed() -> Self {
         let backend = B::setup().await;
-        let adapters = adapters_on(&backend).await;
+        let adapters = adapters_on(&backend, Accounts::Off).await;
         let relays = Relays::started(
             adapters.outboxes(),
             adapters.consuming(),

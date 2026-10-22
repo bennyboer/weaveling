@@ -8,9 +8,10 @@ use accounts_core::{
 };
 use axum::Json;
 use axum::Router;
-use axum::extract::State;
+use axum::extract::{Request, State};
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, StatusCode};
+use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use serving::Problem;
@@ -23,6 +24,31 @@ pub fn router(accounts: AccountService) -> Router {
         .route("/sessions", post(begin_session))
         .route("/sessions/current", get(current).delete(end_session))
         .with_state(accounts)
+}
+
+pub fn admitting_only_the_signed_in(accounts: AccountService, routes: Router) -> Router {
+    routes.layer(from_fn_with_state(accounts, admit))
+}
+
+async fn admit(
+    State(accounts): State<AccountService>,
+    mut request: Request,
+    next: Next,
+) -> Response {
+    let Some(token) = presented(request.headers()) else {
+        return not_signed_in().into_response();
+    };
+
+    match accounts.signed_in(&token).await {
+        Ok(Some(signed_in)) if signed_in.session.may_act() => {
+            request
+                .extensions_mut()
+                .insert(signed_in.session.account.acting());
+            next.run(request).await
+        }
+        Ok(_) => not_signed_in().into_response(),
+        Err(failed) => problem_of(failed).into_response(),
+    }
 }
 
 async fn sign_up(

@@ -6,7 +6,7 @@ mod relays;
 
 use std::sync::Arc;
 
-use accounts_wiring::AccountFeature;
+use accounts_wiring::{AssembledAccounts, assembled_accounts};
 use appearances_wiring::AppearanceFeature;
 use axum::routing::get;
 use axum::{Extension, Router};
@@ -41,6 +41,7 @@ pub struct Adapters {
     deliveries: Arc<dyn Deliveries>,
     refusals: Broadcaster,
     features: Vec<Assembled>,
+    accounts: Option<AssembledAccounts>,
     flakiness: Option<Flakiness>,
 }
 
@@ -61,7 +62,7 @@ impl Adapters {
             publisher: dispatcher.clone(),
         };
 
-        let mut features = vec![
+        let features = vec![
             assemble::<ProjectFeature>(&storage, &context).await?,
             assemble::<SceneFeature>(&storage, &context).await?,
             assemble::<IdeaFeature>(&storage, &context).await?,
@@ -70,9 +71,10 @@ impl Adapters {
             assemble::<AppearanceFeature>(&storage, &context).await?,
             assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
-        if accounts == Accounts::On {
-            features.push(assemble::<AccountFeature>(&storage, &context).await?);
-        }
+        let accounts = match accounts {
+            Accounts::On => Some(assembled_accounts(&storage, &context).await?),
+            Accounts::Off => None,
+        };
 
         Ok(Self {
             clock,
@@ -80,6 +82,7 @@ impl Adapters {
             deliveries,
             refusals,
             features,
+            accounts,
             flakiness: None,
         })
     }
@@ -116,6 +119,7 @@ impl Adapters {
         self.features
             .iter()
             .filter_map(|feature| feature.outbox.clone())
+            .chain(self.accounts.iter().map(|accounts| accounts.outbox.clone()))
             .collect()
     }
 }
@@ -149,10 +153,11 @@ pub fn app(adapters: Adapters) -> Router {
             adapters.clock.clone(),
             adapters.refusals.clone(),
         ));
-    let mut api = Router::new().nest("/service", service);
+    let open_routes = Router::new().nest("/service", service);
 
+    let mut guarded_routes = Router::new();
     for feature in adapters.features {
-        api = api.merge(feature.routes);
+        guarded_routes = guarded_routes.merge(feature.routes);
 
         for listener in feature.listeners {
             adapters.dispatcher.listen(match adapters.flakiness {
@@ -162,8 +167,18 @@ pub fn app(adapters: Adapters) -> Router {
         }
     }
 
+    let api = match adapters.accounts {
+        Some(accounts) => {
+            let guarded_routes =
+                accounts_rest::admitting_only_the_signed_in(accounts.service, guarded_routes);
+
+            open_routes.merge(accounts.routes).merge(guarded_routes)
+        }
+        None => open_routes.merge(guarded_routes.layer(Extension(Agent::Local))),
+    };
+
     Router::new()
-        .nest("/api", api.layer(Extension(Agent::Local)))
+        .nest("/api", api)
         .layer(TraceLayer::new_for_http())
 }
 

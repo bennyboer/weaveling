@@ -9,7 +9,7 @@ pub mod postgres;
 pub mod sqlite;
 
 pub use event_sourced::EventSourced;
-pub use feature::{Assembled, Feature, Storage, assemble};
+pub use feature::{Assembled, Feature, Storage, assemble, ports};
 pub use unprepared::Unprepared;
 
 #[cfg(feature = "postgres")]

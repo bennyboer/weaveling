@@ -67,7 +67,22 @@ pub async fn assemble<F: Feature>(
     storage: &Storage,
     context: &Context,
 ) -> Result<Assembled, Unprepared> {
-    let ports = match storage {
+    let ports = ports::<F>(storage, context).await?;
+    let wired = F::wire(&ports, context);
+
+    Ok(Assembled {
+        outbox: F::outbox(&ports),
+        routes: wired.routes,
+        listeners: wired.listeners,
+        settling: wired.settling,
+    })
+}
+
+pub async fn ports<F: Feature>(
+    storage: &Storage,
+    context: &Context,
+) -> Result<F::Ports, Unprepared> {
+    Ok(match storage {
         Storage::InMemory => F::in_memory(context),
         #[cfg(feature = "postgres")]
         Storage::Postgres(databases) => {
@@ -87,13 +102,5 @@ pub async fn assemble<F: Feature>(
 
             F::on_sqlite(pool, context)?
         }
-    };
-    let wired = F::wire(&ports, context);
-
-    Ok(Assembled {
-        outbox: F::outbox(&ports),
-        routes: wired.routes,
-        listeners: wired.listeners,
-        settling: wired.settling,
     })
 }

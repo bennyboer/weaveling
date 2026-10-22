@@ -50,8 +50,6 @@ impl Files for FileEach {
 
 #[async_trait]
 impl Backend for OnSqlite {
-    const ACCOUNTS: Accounts = Accounts::On;
-
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
         let mut pools = HashMap::new();
@@ -176,7 +174,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_server_on_sqlite_keeps_an_address_signed_up_in_the_accounts_file() {
-    let journey = Journey::<OnSqlite>::unrelayed().await;
+    let journey = Journey::<OnSqlite>::with_accounts().await;
 
     journey
         .server

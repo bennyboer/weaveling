@@ -80,6 +80,41 @@ async fn signing_up(accounts: Accounts) -> StatusCode {
 }
 
 #[tokio::test]
+async fn with_accounts_on_the_work_waits_behind_signing_in() {
+    let server = TestServer::new(app(Adapters::in_memory(
+        Accounts::On,
+        Arc::new(SystemClock),
+    )
+    .await));
+
+    let refused = server.get("/api/projects").await;
+    refused.assert_status(StatusCode::UNAUTHORIZED);
+    assert_eq!(refused.json::<Value>()["type"], "not-signed-in");
+    server
+        .get("/api/service/health")
+        .await
+        .assert_status(StatusCode::OK);
+    server
+        .get("/api/sessions/current")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn with_accounts_off_the_work_is_done_by_the_one_local_person() {
+    let server = TestServer::new(app(Adapters::in_memory(
+        Accounts::Off,
+        Arc::new(SystemClock),
+    )
+    .await));
+
+    server
+        .get("/api/projects")
+        .await
+        .assert_status(StatusCode::OK);
+}
+
+#[tokio::test]
 async fn sign_ups_are_taken_only_where_accounts_are_on() {
     assert_eq!(signing_up(Accounts::On).await, StatusCode::ACCEPTED);
     assert_eq!(
