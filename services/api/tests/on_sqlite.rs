@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::SystemClock;
 use serde_json::{Value, json};
@@ -14,7 +15,7 @@ use test_harness::SqliteFixture;
 use weaveling_service_api::{Adapters, Storage, Unprepared, app};
 use wiring::sqlite::{DataDirectory, Files};
 
-use journeys::{Backend, DATABASES, id_in};
+use journeys::{Backend, DATABASES, a_server_on, id_in};
 
 struct OnSqlite {
     fixture: SqliteFixture,
@@ -161,4 +162,17 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
     drop(second);
     files.close_everything().await;
     fixture.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn local_mode_has_no_accounts_to_sign_up_to() {
+    let backend = OnSqlite::setup().await;
+    let server = a_server_on(&backend).await;
+
+    server
+        .post("/api/accounts")
+        .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    backend.cleanup().await;
 }

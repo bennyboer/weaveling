@@ -6,12 +6,14 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use axum::http::StatusCode;
+use serde_json::json;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use weaveling_service_api::{Storage, Unprepared};
 use wiring::Databases;
 
-use journeys::{Backend, DATABASES};
+use journeys::{Backend, DATABASES, Journey};
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -85,3 +87,31 @@ impl Backend for OnPostgres {
 }
 
 journeys!(OnPostgres);
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_keeps_an_address_signed_up_in_the_accounts_database() {
+    let journey = Journey::<OnPostgres>::unrelayed().await;
+
+    journey
+        .server
+        .post("/api/accounts")
+        .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+
+    assert_eq!(
+        journey
+            .backend
+            .read("accounts", "SELECT email FROM account_credentials")
+            .await,
+        vec!["ada@example.com".to_owned()]
+    );
+    assert_eq!(
+        journey
+            .backend
+            .count("accounts", "SELECT count(*) FROM events")
+            .await,
+        1
+    );
+    journey.end().await;
+}

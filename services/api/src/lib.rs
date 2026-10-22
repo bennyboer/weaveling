@@ -5,6 +5,7 @@ mod relays;
 
 use std::sync::Arc;
 
+use accounts_wiring::AccountFeature;
 use appearances_wiring::AppearanceFeature;
 use axum::routing::get;
 use axum::{Extension, Router};
@@ -54,7 +55,7 @@ impl Adapters {
             publisher: dispatcher.clone(),
         };
 
-        let features = vec![
+        let mut features = vec![
             assemble::<ProjectFeature>(&storage, &context).await?,
             assemble::<SceneFeature>(&storage, &context).await?,
             assemble::<IdeaFeature>(&storage, &context).await?,
@@ -63,6 +64,9 @@ impl Adapters {
             assemble::<AppearanceFeature>(&storage, &context).await?,
             assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
+        if keeps_accounts(&storage) {
+            features.push(assemble::<AccountFeature>(&storage, &context).await?);
+        }
 
         Ok(Self {
             clock,
@@ -107,6 +111,14 @@ impl Adapters {
             .iter()
             .filter_map(|feature| feature.outbox.clone())
             .collect()
+    }
+}
+
+fn keeps_accounts(storage: &Storage) -> bool {
+    match storage {
+        #[cfg(feature = "sqlite")]
+        Storage::Sqlite(_) => false,
+        _ => true,
     }
 }
 

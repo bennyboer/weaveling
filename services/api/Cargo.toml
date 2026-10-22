@@ -32,6 +32,7 @@ outbox = { version = "0.1.0", path = "../../libraries/outbox", package = "weavel
 ### FEATURES ###
 ################
 
+accounts-wiring = { version = "0.1.0", path = "../../features/accounts/wiring", package = "weaveling-accounts-wiring" }
 appearances-wiring = { version = "0.1.0", path = "../../features/appearances/wiring", package = "weaveling-appearances-wiring" }
 boards-wiring = { version = "0.1.0", path = "../../features/boards/wiring", package = "weaveling-boards-wiring" }
 outline-wiring = { version = "0.1.0", path = "../../features/outline/wiring", package = "weaveling-outline-wiring" }
@@ -47,6 +48,7 @@ postgres = [
     "dep:sqlx",
     "outbox/postgres",
     "wiring/postgres",
+    "accounts-wiring/postgres",
     "appearances-wiring/postgres",
     "boards-wiring/postgres",
     "outline-wiring/postgres",

@@ -1,0 +1,162 @@
+use std::error::Error;
+
+use accounts_core::{
+    AccountId, Credentials, EmailAddress, PasswordHash, PendingVerification, Registered,
+    SecretsError, VerificationCode, Verifications,
+};
+use async_trait::async_trait;
+use sqlx::migrate::Migrator;
+use sqlx::postgres::PgRow;
+use sqlx::{PgPool, Row};
+use time::OffsetDateTime;
+
+const REGISTER: &str = "
+    INSERT INTO account_credentials (email, account, password_hash)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (email) DO NOTHING
+";
+
+const REGISTERED: &str = "SELECT account, password_hash FROM account_credentials WHERE email = $1";
+
+const ISSUE: &str = "
+    INSERT INTO email_verifications (account, code, until, failed)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT (account) DO UPDATE
+    SET code   = EXCLUDED.code,
+        until  = EXCLUDED.until,
+        failed = EXCLUDED.failed
+";
+
+const PENDING: &str = "SELECT code, until, failed FROM email_verifications WHERE account = $1";
+
+const FAILED: &str = "UPDATE email_verifications SET failed = failed + 1 WHERE account = $1";
+
+const CLOSE: &str = "DELETE FROM email_verifications WHERE account = $1";
+
+pub fn migrations() -> Migrator {
+    sqlx::migrate!("./migrations/postgres")
+}
+
+pub struct PostgresSecrets {
+    pool: PgPool,
+}
+
+impl PostgresSecrets {
+    pub fn new(pool: PgPool) -> Self {
+        Self { pool }
+    }
+}
+
+fn unreachable(failure: impl Error + Send + Sync + 'static) -> SecretsError {
+    SecretsError::Backend(Box::new(failure))
+}
+
+fn to_registered(row: &PgRow) -> Result<Registered, SecretsError> {
+    let account: String = row.try_get("account").map_err(unreachable)?;
+    let password: String = row.try_get("password_hash").map_err(unreachable)?;
+
+    Ok(Registered {
+        account: account.parse().map_err(unreachable)?,
+        password: PasswordHash::kept(password),
+    })
+}
+
+fn to_pending(row: &PgRow) -> Result<PendingVerification, SecretsError> {
+    let code: String = row.try_get("code").map_err(unreachable)?;
+    let until: OffsetDateTime = row.try_get("until").map_err(unreachable)?;
+    let failed: i32 = row.try_get("failed").map_err(unreachable)?;
+
+    Ok(PendingVerification {
+        code: VerificationCode::kept(code),
+        until,
+        failed: u32::try_from(failed).map_err(unreachable)?,
+    })
+}
+
+#[async_trait]
+impl Credentials for PostgresSecrets {
+    async fn register(
+        &self,
+        email: &EmailAddress,
+        account: &AccountId,
+        password: &PasswordHash,
+    ) -> Result<(), SecretsError> {
+        let done = sqlx::query(REGISTER)
+            .bind(email.as_str())
+            .bind(account.to_string())
+            .bind(password.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        match done.rows_affected() {
+            0 => Err(SecretsError::Taken),
+            _ => Ok(()),
+        }
+    }
+
+    async fn registered(&self, email: &EmailAddress) -> Result<Option<Registered>, SecretsError> {
+        sqlx::query(REGISTERED)
+            .bind(email.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .as_ref()
+            .map(to_registered)
+            .transpose()
+    }
+}
+
+#[async_trait]
+impl Verifications for PostgresSecrets {
+    async fn issue(
+        &self,
+        account: &AccountId,
+        pending: &PendingVerification,
+    ) -> Result<(), SecretsError> {
+        sqlx::query(ISSUE)
+            .bind(account.to_string())
+            .bind(pending.code.as_str())
+            .bind(pending.until)
+            .bind(i32::try_from(pending.failed).map_err(unreachable)?)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn pending(
+        &self,
+        account: &AccountId,
+    ) -> Result<Option<PendingVerification>, SecretsError> {
+        sqlx::query(PENDING)
+            .bind(account.to_string())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .as_ref()
+            .map(to_pending)
+            .transpose()
+    }
+
+    async fn failed(&self, account: &AccountId) -> Result<(), SecretsError> {
+        sqlx::query(FAILED)
+            .bind(account.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn close(&self, account: &AccountId) -> Result<(), SecretsError> {
+        sqlx::query(CLOSE)
+            .bind(account.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+}

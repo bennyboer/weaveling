@@ -68,6 +68,17 @@ async fn the_projects_feature_is_mounted_under_api() {
 }
 
 #[tokio::test]
+async fn a_server_in_memory_takes_sign_ups() {
+    let (status, _body) = post_json(
+        "/api/accounts",
+        r#"{ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }"#,
+    )
+    .await;
+
+    assert_eq!(status, StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
 async fn feature_routes_are_not_reachable_outside_the_api_prefix() {
     let (status, _) = get("/projects").await;
 

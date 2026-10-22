@@ -1,0 +1,12 @@
+[package]
+name = "weaveling-accounts-rest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+
+serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
+
+accounts-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-accounts-contract" }
+accounts-core = { version = "0.1.0", path = "../../core", package = "weaveling-accounts-core" }

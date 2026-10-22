@@ -10,8 +10,9 @@ use outbox::Cadence;
 use serde_json::{Value, json};
 use weaveling_service_api::{Adapters, Relays, Storage, app};
 
-pub const DATABASES: [&str; 8] = [
+pub const DATABASES: [&str; 9] = [
     "messaging",
+    "accounts",
     "projects",
     "ideas",
     "boards",

@@ -1,0 +1,23 @@
+[package]
+name = "weaveling-accounts-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+async-trait = { workspace = true }
+axum = { workspace = true }
+axum-test = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "weaveling-mailing" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
+
+accounts-contract = { version = "0.1.0", path = "../contract", package = "weaveling-accounts-contract" }
+accounts-core = { version = "0.1.0", path = "../core", package = "weaveling-accounts-core" }
+accounts-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-accounts-rest" }
+accounts-secrets = { version = "0.1.0", path = "../adapters/secrets", package = "weaveling-accounts-secrets" }
