@@ -94,7 +94,7 @@ pub(crate) async fn checked(
             }
             Err(failed)
         }
-        400 | 403 | 409 | 422 => Err(rejection(response).await),
+        400 | 403 | 409 | 422 | 429 => Err(rejection(response).await),
         404 => Err(ApiError::NotFound(subject)),
         412 => Err(ApiError::Outdated(subject)),
         _ => Err(ApiError::Unexpected),

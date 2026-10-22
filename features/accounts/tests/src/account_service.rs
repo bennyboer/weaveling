@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use accounts_core::{
     AccountEvent, AccountId, AccountService, AccountServiceError, EmailAddress, EmailAddresses,
-    KIND, Passwords, PendingVerification,
+    KIND, Passwords, PendingVerification, SecretStores,
 };
 use async_trait::async_trait;
 use eventsourcing::{AggregateId, AggregateType, EventStore, Recorded, StoreError, Version};
@@ -404,10 +404,7 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
     let wired = wired();
     let accounts = AccountService::new(
         Arc::new(Refusing),
-        wired.secrets.clone(),
-        wired.secrets.clone(),
-        wired.secrets.clone(),
-        wired.secrets.clone(),
+        SecretStores::kept_by(wired.secrets.clone()),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

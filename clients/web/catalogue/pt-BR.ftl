@@ -449,3 +449,8 @@ reset-password = Senha nova
 reset-confirm = Salvar a senha nova
 reset-done = Sua senha nova está salva. Você já pode entrar com ela.
 back-to-sign-in = Voltar para entrar
+refused-too-many-tries =
+    { $minutes ->
+        [one] Tentativas demais. Espere um minuto antes de tentar de novo.
+       *[other] Tentativas demais. Espere { $minutes } minutos antes de tentar de novo.
+    }

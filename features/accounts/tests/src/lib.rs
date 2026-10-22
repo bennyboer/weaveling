@@ -17,4 +17,7 @@ mod sessions_api;
 mod signing_in;
 
 #[cfg(test)]
+mod throttling;
+
+#[cfg(test)]
 mod wiring;

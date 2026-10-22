@@ -449,3 +449,8 @@ reset-password = Neues Passwort
 reset-confirm = Neues Passwort festlegen
 reset-done = Dein neues Passwort ist gesetzt. Du kannst dich jetzt damit anmelden.
 back-to-sign-in = Zurück zur Anmeldung
+refused-too-many-tries =
+    { $minutes ->
+        [one] Zu viele Versuche. Bitte warte eine Minute, bevor du es noch einmal versuchst.
+       *[other] Zu viele Versuche. Bitte warte { $minutes } Minuten, bevor du es noch einmal versuchst.
+    }

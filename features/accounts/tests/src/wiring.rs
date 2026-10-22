@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use accounts_core::{AccountEvent, AccountService};
+use accounts_core::{AccountEvent, AccountService, SecretStores};
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
 use clock::FixedClock;
@@ -50,10 +50,7 @@ pub fn wired() -> Wired {
     let mailbox = Arc::new(FakeMailbox::default());
     let accounts = AccountService::new(
         store.clone(),
-        secrets.clone(),
-        secrets.clone(),
-        secrets.clone(),
-        secrets.clone(),
+        SecretStores::kept_by(secrets.clone()),
         mailbox.clone(),
         clock.clone(),
     );

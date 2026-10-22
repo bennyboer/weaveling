@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 axum = { workspace = true }
+time = { workspace = true }
 
 serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
 

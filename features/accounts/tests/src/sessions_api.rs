@@ -1,7 +1,7 @@
 use accounts_contract::{SESSION_COOKIE, SignInRequest, SignedInDTO, refused, stage};
 use accounts_core::{SessionToken, Sessions};
 use axum::http::StatusCode;
-use axum::http::header::{COOKIE, SET_COOKIE};
+use axum::http::header::{COOKIE, RETRY_AFTER, SET_COOKIE};
 use axum_test::{TestResponse, TestServer};
 use serde_json::Value;
 use time::Duration;
@@ -265,4 +265,55 @@ async fn a_session_is_over_after_thirty_days_and_ended_once_found_so() {
         None,
         "a session found over is ended, not kept waiting for a sweep"
     );
+}
+
+#[tokio::test]
+async fn too_many_wrong_passwords_are_answered_with_how_long_to_wait() {
+    let (_wired, server) = served_with_ada_verified().await;
+    for _ in 0..5 {
+        refused_as(
+            &server
+                .post("/sessions")
+                .json(&signing_in(ADA, "not her password at all"))
+                .await,
+            StatusCode::UNAUTHORIZED,
+            refused::SIGN_IN_REFUSED,
+        );
+    }
+
+    let response = server
+        .post("/sessions")
+        .json(&signing_in(ADA, HER_PASSWORD))
+        .await;
+
+    refused_as(&response, StatusCode::TOO_MANY_REQUESTS, refused::THROTTLED);
+    assert_eq!(response.header(RETRY_AFTER), "60");
+    assert_eq!(response.json::<Value>()["minutes"], 1);
+    assert!(response.maybe_header(SET_COOKIE).is_none());
+}
+
+#[tokio::test]
+async fn a_wait_part_way_through_a_second_is_rounded_up() {
+    let (wired, server) = served_with_ada_verified().await;
+    for _ in 0..5 {
+        server
+            .post("/sessions")
+            .json(&signing_in(ADA, "not her password at all"))
+            .await;
+    }
+
+    wired
+        .clock
+        .set(at(1_700_000_000) + Duration::milliseconds(500));
+    let response = server
+        .post("/sessions")
+        .json(&signing_in(ADA, HER_PASSWORD))
+        .await;
+
+    assert_eq!(
+        response.header(RETRY_AFTER),
+        "60",
+        "59.5 seconds told as 59 would have the client knock too early"
+    );
+    assert_eq!(response.json::<Value>()["minutes"], 1);
 }

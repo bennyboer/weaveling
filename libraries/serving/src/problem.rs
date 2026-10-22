@@ -1,8 +1,9 @@
 use std::fmt::Display;
 
 use axum::Json;
+use axum::http::HeaderValue;
 use axum::http::StatusCode;
-use axum::http::header::CONTENT_TYPE;
+use axum::http::header::{CONTENT_TYPE, RETRY_AFTER};
 use axum::response::{IntoResponse, Response};
 use eventsourcing::{ServiceError, StoreError};
 use serde_json::{Map, Value};
@@ -21,6 +22,7 @@ pub struct Problem {
     kind: &'static str,
     detail: String,
     values: Map<String, Value>,
+    retry_after: Option<u64>,
 }
 
 impl Problem {
@@ -46,6 +48,13 @@ impl Problem {
 
     pub fn forbidden(kind: &'static str, detail: impl Display) -> Self {
         Self::new(StatusCode::FORBIDDEN, kind, detail)
+    }
+
+    pub fn throttled(kind: &'static str, detail: impl Display, retry_after_seconds: u64) -> Self {
+        Self {
+            retry_after: Some(retry_after_seconds),
+            ..Self::new(StatusCode::TOO_MANY_REQUESTS, kind, detail)
+        }
     }
 
     pub fn unexpected(error: impl Display) -> Self {
@@ -83,6 +92,7 @@ impl Problem {
             kind,
             detail: detail.to_string(),
             values: Map::new(),
+            retry_after: None,
         }
     }
 }
@@ -100,6 +110,13 @@ impl IntoResponse for Problem {
         told.insert("status".to_owned(), self.status.as_u16().into());
         told.insert("detail".to_owned(), self.detail.into());
 
-        (self.status, [(CONTENT_TYPE, PROBLEM)], Json(told)).into_response()
+        let mut response = (self.status, [(CONTENT_TYPE, PROBLEM)], Json(told)).into_response();
+        if let Some(seconds) = self.retry_after {
+            response
+                .headers_mut()
+                .insert(RETRY_AFTER, HeaderValue::from(seconds));
+        }
+
+        response
     }
 }

@@ -1,5 +1,5 @@
 use axum::body::to_bytes;
-use axum::http::header::{CONTENT_TYPE, IF_MATCH};
+use axum::http::header::{CONTENT_TYPE, IF_MATCH, RETRY_AFTER};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
 use eventsourcing::{AggregateId, AggregateType, ServiceError, StoreError, Version};
@@ -122,6 +122,21 @@ async fn nobody_known_is_unauthorized_and_somebody_not_allowed_forbidden() {
 
     assert_eq!(unknown, StatusCode::UNAUTHORIZED);
     assert_eq!(unallowed, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn a_throttled_problem_says_how_long_to_wait() {
+    let response = Problem::throttled("too-many-tries", "wait a minute", 61).into_response();
+
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response.headers()[RETRY_AFTER], "61");
+}
+
+#[tokio::test]
+async fn a_problem_unthrottled_says_nothing_of_waiting() {
+    let response = Problem::forbidden("address-not-verified", "verify first").into_response();
+
+    assert!(response.headers().get(RETRY_AFTER).is_none());
 }
 
 #[tokio::test]

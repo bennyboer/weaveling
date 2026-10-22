@@ -1,8 +1,6 @@
 use std::sync::Arc;
 
-use accounts_core::{
-    AccountEvent, AccountService, EmailAddresses, Passwords, Sessions, Verifications,
-};
+use accounts_core::{AccountEvent, AccountService, SecretStores};
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
 use eventsourcing::{EventStore, Recorded};
@@ -13,10 +11,7 @@ use wiring::{Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<AccountEvent>>,
-    pub email_addresses: Arc<dyn EmailAddresses>,
-    pub passwords: Arc<dyn Passwords>,
-    pub verifications: Arc<dyn Verifications>,
-    pub sessions: Arc<dyn Sessions>,
+    pub secrets: SecretStores,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -24,10 +19,7 @@ pub struct Ports {
 pub fn service(ports: &Ports, context: &Context) -> AccountService {
     AccountService::new(
         ports.events.clone(),
-        ports.email_addresses.clone(),
-        ports.passwords.clone(),
-        ports.verifications.clone(),
-        ports.sessions.clone(),
+        ports.secrets.clone(),
         ports.mailer.clone(),
         context.clock.clone(),
     )
@@ -78,10 +70,7 @@ impl Feature for AccountFeature {
 
         Ports {
             events,
-            email_addresses: secrets.clone(),
-            passwords: secrets.clone(),
-            verifications: secrets.clone(),
-            sessions: secrets,
+            secrets: SecretStores::kept_by(secrets),
             mailer: Arc::new(LoggingMailer),
             outbox,
         }
@@ -95,10 +84,7 @@ impl Feature for AccountFeature {
 
         Ok(Ports {
             events,
-            email_addresses: secrets.clone(),
-            passwords: secrets.clone(),
-            verifications: secrets.clone(),
-            sessions: secrets,
+            secrets: SecretStores::kept_by(secrets),
             mailer: Arc::new(LoggingMailer),
             outbox,
         })
@@ -121,10 +107,7 @@ impl Feature for AccountFeature {
 
         Ok(Ports {
             events,
-            email_addresses: secrets.clone(),
-            passwords: secrets.clone(),
-            verifications: secrets.clone(),
-            sessions: secrets,
+            secrets: SecretStores::kept_by(secrets),
             mailer: Arc::new(LoggingMailer),
             outbox,
         })

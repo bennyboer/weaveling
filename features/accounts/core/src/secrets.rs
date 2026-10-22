@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use thiserror::Error;
@@ -17,6 +18,30 @@ pub enum SecretsError {
     Taken,
     #[error(transparent)]
     Backend(Box<dyn Error + Send + Sync>),
+}
+
+#[derive(Clone)]
+pub struct SecretStores {
+    pub email_addresses: Arc<dyn EmailAddresses>,
+    pub passwords: Arc<dyn Passwords>,
+    pub verifications: Arc<dyn Verifications>,
+    pub sessions: Arc<dyn Sessions>,
+    pub throttles: Arc<dyn Throttles>,
+}
+
+impl SecretStores {
+    pub fn kept_by<S>(secrets: Arc<S>) -> Self
+    where
+        S: EmailAddresses + Passwords + Verifications + Sessions + Throttles + 'static,
+    {
+        Self {
+            email_addresses: secrets.clone(),
+            passwords: secrets.clone(),
+            verifications: secrets.clone(),
+            sessions: secrets.clone(),
+            throttles: secrets,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

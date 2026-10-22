@@ -70,8 +70,9 @@ pub mod refused {
     pub const SIGN_IN_REFUSED: &str = "sign-in-refused";
     pub const NOT_VERIFIED: &str = "address-not-verified";
     pub const NOT_SIGNED_IN: &str = "not-signed-in";
+    pub const THROTTLED: &str = "too-many-tries";
 
-    pub const EVERY: [&str; 13] = [
+    pub const EVERY: [&str; 14] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -85,5 +86,6 @@ pub mod refused {
         SIGN_IN_REFUSED,
         NOT_VERIFIED,
         NOT_SIGNED_IN,
+        THROTTLED,
     ];
 }

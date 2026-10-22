@@ -449,3 +449,8 @@ reset-password = Contraseña nueva
 reset-confirm = Guardar la contraseña nueva
 reset-done = Tu contraseña nueva está guardada. Ya puedes iniciar sesión con ella.
 back-to-sign-in = Volver a iniciar sesión
+refused-too-many-tries =
+    { $minutes ->
+        [one] Demasiados intentos. Espera un minuto antes de volver a intentarlo.
+       *[other] Demasiados intentos. Espera { $minutes } minutos antes de volver a intentarlo.
+    }

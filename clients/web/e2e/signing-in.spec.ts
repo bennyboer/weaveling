@@ -184,3 +184,33 @@ test("a session run out while working leads back to signing in", async ({
     page.getByRole("heading", { name: "Your projects" }),
   ).toBeVisible();
 });
+
+for (const [minutes, said] of [
+  [1, "Too many tries. Please wait a minute before trying again."],
+  [3, "Too many tries. Please wait 3 minutes before trying again."],
+] as const) {
+  test(`too many tries say to wait ${minutes} minute(s)`, async ({ page }) => {
+    await aServerWithAccounts(page);
+    await page.route(
+      (url) => url.pathname === "/api/sessions",
+      (route) =>
+        route.fulfill({
+          status: 429,
+          headers: { "Retry-After": String(minutes * 60) },
+          contentType: "application/problem+json",
+          body: JSON.stringify({
+            type: "too-many-tries",
+            status: 429,
+            detail: "too many tries",
+            minutes,
+          }),
+        }),
+    );
+    await page.goto("/");
+
+    await signIn(page, ADA.email, HER_PASSWORD);
+
+    await expect(page.getByRole("alert")).toHaveText(said);
+    await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  });
+}

@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use accounts_core::{
     AccountId, AccountService, AccountServiceError, EmailAddress, EmailAddresses, PasswordHash,
-    Passwords, PendingVerification, SecretsError, SessionToken, Sessions,
+    Passwords, PendingVerification, SecretStores, SecretsError, SessionToken, Sessions,
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
@@ -273,10 +273,10 @@ async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
     });
     let accounts = AccountService::new(
         wired.store.clone(),
-        wired.secrets.clone(),
-        passwords.clone(),
-        wired.secrets.clone(),
-        wired.secrets.clone(),
+        SecretStores {
+            passwords: passwords.clone(),
+            ..SecretStores::kept_by(wired.secrets.clone())
+        },
         wired.mailbox.clone(),
         wired.clock.clone(),
     );
@@ -391,10 +391,10 @@ async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
     });
     let accounts = AccountService::new(
         wired.store.clone(),
-        wired.secrets.clone(),
-        passwords.clone(),
-        wired.secrets.clone(),
-        wired.secrets.clone(),
+        SecretStores {
+            passwords: passwords.clone(),
+            ..SecretStores::kept_by(wired.secrets.clone())
+        },
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

@@ -449,3 +449,8 @@ reset-password = Nouveau mot de passe
 reset-confirm = Enregistrer le nouveau mot de passe
 reset-done = Votre nouveau mot de passe est enregistré. Vous pouvez maintenant vous connecter avec.
 back-to-sign-in = Retour à la connexion
+refused-too-many-tries =
+    { $minutes ->
+        [one] Trop de tentatives. Veuillez patienter une minute avant de réessayer.
+       *[other] Trop de tentatives. Veuillez patienter { $minutes } minutes avant de réessayer.
+    }

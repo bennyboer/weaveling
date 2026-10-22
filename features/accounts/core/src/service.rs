@@ -4,6 +4,7 @@ use clock::Clock;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
 use mailing::{Mail, Mailer, Unsent};
 use thiserror::Error;
+use time::Duration;
 
 use crate::account::{Account, AccountCommand, AccountError, AccountEvent};
 use crate::code::{CodePurpose, PendingVerification};
@@ -11,8 +12,12 @@ use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
 use crate::name::{AccountName, InvalidAccountName};
 use crate::password::{InvalidPassword, Password, PasswordHash};
-use crate::secrets::{Attempt, EmailAddresses, Passwords, SecretsError, Sessions, Verifications};
+use crate::secrets::{
+    Attempt, EmailAddresses, Passwords, SecretStores, SecretsError, Sessions, Throttles,
+    Verifications,
+};
 use crate::session::{Session, SessionToken, Stage};
+use crate::throttle::Guarded;
 
 #[derive(Debug, Error)]
 pub enum AccountServiceError {
@@ -32,6 +37,8 @@ pub enum AccountServiceError {
     SignInRefused,
     #[error("this address is not verified yet")]
     NotVerifiedYet,
+    #[error("too many tries; wait {wait} before trying again")]
+    Throttled { wait: Duration },
     #[error(transparent)]
     Events(#[from] ServiceError<AccountError>),
     #[error(transparent)]
@@ -53,6 +60,7 @@ pub struct AccountService {
     passwords: Arc<dyn Passwords>,
     verifications: Arc<dyn Verifications>,
     sessions: Arc<dyn Sessions>,
+    throttles: Arc<dyn Throttles>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
 }
@@ -60,19 +68,25 @@ pub struct AccountService {
 impl AccountService {
     pub fn new(
         store: Arc<dyn EventStore<AccountEvent>>,
-        email_addresses: Arc<dyn EmailAddresses>,
-        passwords: Arc<dyn Passwords>,
-        verifications: Arc<dyn Verifications>,
-        sessions: Arc<dyn Sessions>,
+        secrets: SecretStores,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
+        let SecretStores {
+            email_addresses,
+            passwords,
+            verifications,
+            sessions,
+            throttles,
+        } = secrets;
+
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             email_addresses,
             passwords,
             verifications,
             sessions,
+            throttles,
             mailer,
             clock,
         }
@@ -229,14 +243,18 @@ impl AccountService {
         password: &str,
     ) -> Result<(AccountId, Account), AccountServiceError> {
         let email = EmailAddress::new(email)?;
+        self.not_throttled(Guarded::SigningIn, &email).await?;
 
         let Some((id, account, kept)) = self.signing_in_as(&email).await? else {
             let _same_work = PasswordHash::stand_in().admits(password);
+            self.count_try(Guarded::SigningIn, &email).await?;
             return Err(AccountServiceError::SignInRefused);
         };
         if !kept.admits(password) {
+            self.count_try(Guarded::SigningIn, &email).await?;
             return Err(AccountServiceError::SignInRefused);
         }
+        self.throttles.clear(Guarded::SigningIn, &email).await?;
         if !account.is_verified() {
             return Err(AccountServiceError::NotVerifiedYet);
         }
@@ -295,6 +313,37 @@ impl AccountService {
         };
 
         Ok(Some((id, account, kept)))
+    }
+
+    async fn not_throttled(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+    ) -> Result<(), AccountServiceError> {
+        let now = self.clock.now();
+        let Some(tries) = self.throttles.tries(guarded, email).await? else {
+            return Ok(());
+        };
+        if tries.is_forgotten(now) {
+            return Ok(self.throttles.clear(guarded, email).await?);
+        }
+
+        match tries.wait_before_next(guarded, now) {
+            Some(wait) => Err(AccountServiceError::Throttled { wait }),
+            None => Ok(()),
+        }
+    }
+
+    async fn count_try(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+    ) -> Result<(), AccountServiceError> {
+        self.throttles
+            .count(guarded, email, self.clock.now())
+            .await?;
+
+        Ok(())
     }
 
     async fn whose(
