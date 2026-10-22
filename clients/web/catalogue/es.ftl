@@ -454,3 +454,4 @@ refused-too-many-tries =
         [one] Demasiados intentos. Espera un minuto antes de volver a intentarlo.
        *[other] Demasiados intentos. Espera { $minutes } minutos antes de volver a intentarlo.
     }
+refused-operator-code-wrong = Este no es el código que el servidor escribió en el registro.

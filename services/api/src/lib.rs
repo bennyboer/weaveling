@@ -8,6 +8,7 @@ mod relays;
 use std::sync::Arc;
 
 use accounts_contract::ServiceModeDTO;
+use accounts_core::{AccountServiceError, OperatorCode};
 use accounts_wiring::{AssembledAccounts, assembled_accounts};
 use appearances_wiring::AppearanceFeature;
 use axum::routing::get;
@@ -98,6 +99,13 @@ impl Adapters {
             .expect("nothing kept in memory needs preparing")
     }
 
+    pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountServiceError> {
+        match &self.accounts {
+            Some(accounts) => accounts.service.draw_operator_code().await,
+            None => Ok(None),
+        }
+    }
+
     pub fn refusing_on_purpose(self, flakiness: Flakiness) -> Self {
         Self {
             flakiness: Some(flakiness),
@@ -176,10 +184,14 @@ pub fn app(adapters: Adapters) -> Router {
 
     let api = match adapters.accounts {
         Some(accounts) => {
-            let guarded_routes =
-                accounts_rest::admitting_only_the_signed_in(accounts.service, guarded_routes);
+            let guarded_routes = accounts_rest::admitting_only_the_signed_in(
+                accounts.service,
+                guarded_routes.merge(accounts.guarded_routes),
+            );
 
-            open_routes.merge(accounts.routes).merge(guarded_routes)
+            open_routes
+                .merge(accounts.open_routes)
+                .merge(guarded_routes)
         }
         None => open_routes.merge(guarded_routes.layer(Extension(Agent::Local))),
     };

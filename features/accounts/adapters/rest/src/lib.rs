@@ -1,12 +1,11 @@
 use accounts_contract::{
-    NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE, SendCodeRequest, SignInRequest,
-    SignUpRequest, SignedInDTO, VerifyEmailRequest, refused, stage,
+    BecomeOperatorRequest, NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE,
+    SendCodeRequest, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest, refused, stage,
 };
 use accounts_core::{
-    AccountService, AccountServiceError, InvalidAccountName, InvalidEmailAddress, InvalidPassword,
-    Session, SessionToken, SignedIn, Stage,
+    AccountId, AccountService, AccountServiceError, InvalidAccountName, InvalidEmailAddress,
+    InvalidPassword, Session, SessionToken, SignedIn, Stage,
 };
-use axum::Json;
 use axum::Router;
 use axum::extract::{Request, State};
 use axum::http::header::{COOKIE, SET_COOKIE};
@@ -14,6 +13,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::middleware::{Next, from_fn_with_state};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
+use axum::{Extension, Json};
 use serving::Problem;
 use time::Duration;
 
@@ -26,6 +26,12 @@ pub fn router(accounts: AccountService) -> Router {
         .route("/accounts/password", post(reset_password))
         .route("/sessions", post(begin_session))
         .route("/sessions/current", get(current).delete(end_session))
+        .with_state(accounts)
+}
+
+pub fn guarded_router(accounts: AccountService) -> Router {
+    Router::new()
+        .route("/operators", post(become_operator))
         .with_state(accounts)
 }
 
@@ -44,9 +50,9 @@ async fn admit(
 
     match accounts.signed_in(&token).await {
         Ok(Some(signed_in)) if signed_in.session.may_act() => {
-            request
-                .extensions_mut()
-                .insert(signed_in.session.account.acting());
+            let account = signed_in.session.account;
+            request.extensions_mut().insert(account.acting());
+            request.extensions_mut().insert(account);
             next.run(request).await
         }
         Ok(_) => not_signed_in().into_response(),
@@ -126,6 +132,19 @@ async fn begin_session(
     Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
 }
 
+async fn become_operator(
+    State(accounts): State<AccountService>,
+    Extension(account): Extension<AccountId>,
+    Json(request): Json<BecomeOperatorRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .become_operator(&account, &request.code)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn current(
     State(accounts): State<AccountService>,
     headers: HeaderMap,
@@ -163,6 +182,7 @@ fn to_dto(signed_in: &SignedIn) -> SignedInDTO {
             Stage::SecondFactorOwed => stage::SECOND_FACTOR_OWED,
         }
         .to_owned(),
+        operator: signed_in.account.is_operator(),
     }
 }
 
@@ -237,6 +257,9 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
             Problem::unauthorized(refused::SIGN_IN_REFUSED, refusal)
         }
         AccountServiceError::NotVerifiedYet => Problem::forbidden(refused::NOT_VERIFIED, refusal),
+        AccountServiceError::OperatorCodeWrong => {
+            Problem::unprocessable(refused::OPERATOR_CODE_WRONG, refusal)
+        }
         AccountServiceError::Throttled { wait } => {
             let seconds = whole_seconds_rounded_up(wait);
             Problem::throttled(refused::THROTTLED, refusal, seconds)

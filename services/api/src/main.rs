@@ -23,6 +23,16 @@ async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>) {
         tracing::warn!("{WEAVELING_FLAKY} is set: listeners refuse messages on purpose");
         adapters = adapters.refusing_on_purpose(flakiness);
     }
+    if let Some(code) = adapters
+        .draw_operator_code()
+        .await
+        .unwrap_or_else(|why| panic!("{why}"))
+    {
+        tracing::warn!(
+            "there is no operator yet: sign in and become one with the code {}",
+            code.as_str()
+        );
+    }
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let settling = adapters.settling();

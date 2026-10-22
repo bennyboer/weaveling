@@ -11,6 +11,9 @@ mod becoming_operator;
 mod gate_api;
 
 #[cfg(test)]
+mod operators_api;
+
+#[cfg(test)]
 mod password_reset;
 
 #[cfg(test)]

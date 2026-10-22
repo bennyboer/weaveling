@@ -37,11 +37,17 @@ pub struct SignInRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct BecomeOperatorRequest {
+    pub code: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SignedInDTO {
     pub account: String,
     pub name: String,
     pub email: String,
     pub stage: String,
+    pub operator: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -71,8 +77,9 @@ pub mod refused {
     pub const NOT_VERIFIED: &str = "address-not-verified";
     pub const NOT_SIGNED_IN: &str = "not-signed-in";
     pub const THROTTLED: &str = "too-many-tries";
+    pub const OPERATOR_CODE_WRONG: &str = "operator-code-wrong";
 
-    pub const EVERY: [&str; 14] = [
+    pub const EVERY: [&str; 15] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -87,5 +94,6 @@ pub mod refused {
         NOT_VERIFIED,
         NOT_SIGNED_IN,
         THROTTLED,
+        OPERATOR_CODE_WRONG,
     ];
 }

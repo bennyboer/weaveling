@@ -30,7 +30,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 }
 
 pub struct AssembledAccounts {
-    pub routes: Router,
+    pub open_routes: Router,
+    pub guarded_routes: Router,
     pub service: AccountService,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -47,7 +48,8 @@ pub async fn assembled_accounts(
     let service = service(&ports, context);
 
     Ok(AssembledAccounts {
-        routes: accounts_rest::router(service.clone()),
+        open_routes: accounts_rest::router(service.clone()),
+        guarded_routes: accounts_rest::guarded_router(service.clone()),
         service,
         outbox: ports.outbox.clone(),
     })

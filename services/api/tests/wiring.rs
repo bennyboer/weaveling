@@ -116,6 +116,44 @@ async fn with_accounts_on_the_work_waits_behind_signing_in() {
 }
 
 #[tokio::test]
+async fn with_accounts_on_becoming_the_operator_waits_behind_signing_in_too() {
+    let server = TestServer::new(app(Adapters::in_memory(
+        Accounts::On,
+        Arc::new(SystemClock),
+    )
+    .await));
+
+    let refused = server
+        .post("/api/operators")
+        .json(&json!({ "code": "a guess" }))
+        .await;
+
+    refused.assert_status(StatusCode::UNAUTHORIZED);
+    assert_eq!(refused.json::<Value>()["type"], "not-signed-in");
+}
+
+#[tokio::test]
+async fn a_code_is_drawn_at_start_only_where_accounts_are_on() {
+    let on = Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await;
+    let off = Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await;
+
+    assert!(
+        on.draw_operator_code()
+            .await
+            .expect("drawing should succeed")
+            .is_some(),
+        "a server with accounts and nobody appointed needs a way to an operator"
+    );
+    assert!(
+        off.draw_operator_code()
+            .await
+            .expect("there is nothing to draw")
+            .is_none(),
+        "in local mode there is nobody to make an operator"
+    );
+}
+
+#[tokio::test]
 async fn with_accounts_off_the_work_is_done_by_the_one_local_person() {
     let server = TestServer::new(app(Adapters::in_memory(
         Accounts::Off,

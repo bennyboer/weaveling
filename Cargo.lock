@@ -4533,6 +4533,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "weaveling-accounts-contract",
+ "weaveling-accounts-core",
  "weaveling-accounts-rest",
  "weaveling-accounts-wiring",
  "weaveling-appearances-wiring",
