@@ -6,6 +6,7 @@ import {
   aServerWithAccounts,
   signIn,
 } from "./support/accounts";
+import { withAccounts } from "./support/signed-in";
 
 const masthead = (page: Page) => page.getByRole("banner");
 
@@ -13,6 +14,7 @@ const accountButton = (page: Page) =>
   masthead(page).getByRole("button", { name: /^Account: / });
 
 test("without accounts, the work opens as it always did", async ({ page }) => {
+  test.skip(withAccounts, "the server these tests run against keeps accounts");
   await page.goto("/");
 
   await expect(
