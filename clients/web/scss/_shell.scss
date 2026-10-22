@@ -154,6 +154,10 @@
     }
   }
 
+  .theme-turning {
+    display: none;
+  }
+
   .speaking {
     position: relative;
     display: flex;
@@ -253,6 +257,28 @@
       border-top: 1px solid var(--line);
       border-left: none;
       scrollbar-width: none;
+    }
+  }
+}
+
+@media (width <= 30rem) {
+  .masthead {
+    .theming {
+      display: none;
+    }
+
+    .theme-turning {
+      display: grid;
+      place-items: center;
+      align-self: center;
+      width: 2rem;
+      height: 2rem;
+      margin-left: auto;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: transparent;
+      color: var(--accent);
     }
   }
 }

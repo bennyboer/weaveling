@@ -736,7 +736,7 @@ test("the masthead shows the language spoken by its short name, taking less room
   page,
 }) => {
   await aNewProject(page, "Short");
-  await page.setViewportSize({ width: 390, height: 700 });
+  await page.setViewportSize({ width: 700, height: 700 });
 
   await picker(page, "Language").selectOption("es");
 

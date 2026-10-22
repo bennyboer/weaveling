@@ -10,6 +10,7 @@ theme = Tema
 theme-light = Claro
 theme-system = Según el sistema
 theme-dark = Oscuro
+theme-chosen = Tema: { $theme }
 
 language = Idioma
 language-machine-translated = { $language } (traducción automática)

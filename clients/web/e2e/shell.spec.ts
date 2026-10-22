@@ -211,7 +211,7 @@ for (const width of [375, 700, 900, 1100]) {
         views: [...document.querySelectorAll(".views .view")].every((view) =>
           inside(`.views a[href="${view.getAttribute("href")}"]`),
         ),
-        theming: inside(".theming"),
+        theming: inside(".theming") || inside(".theme-turning"),
         speaking: inside(".speaking"),
       };
     });
@@ -221,7 +221,7 @@ for (const width of [375, 700, 900, 1100]) {
     expect(seen.name, "the name keeps room to be read").toBeGreaterThan(90);
     expect(seen.details).toBe(true);
     expect(seen.views, "every view can be reached").toBe(true);
-    expect(seen.theming).toBe(true);
+    expect(seen.theming, "the theme can be chosen").toBe(true);
     expect(seen.speaking, "the language can be chosen").toBe(true);
     await expect(page.getByRole("heading", { level: 1 })).toHaveAttribute(
       "title",

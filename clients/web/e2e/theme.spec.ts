@@ -130,3 +130,40 @@ for (const [chosen, system] of [
     ).toBe(chosen.toLowerCase());
   });
 }
+
+test("on a phone, the theme is one button that turns through all three", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await page.goto("/");
+  const turning = page.getByRole("button", { name: /^Theme: / });
+
+  await expect(turning).toHaveAccessibleName("Theme: Follow the system");
+  await expect(
+    theming(page),
+    "the masthead is drawn by now, so hidden means hidden, not yet missing",
+  ).toBeHidden();
+
+  await turning.click();
+  await expect(turning).toHaveAccessibleName("Theme: Dark");
+  expect(await marked(page)).toBe("dark");
+
+  await turning.click();
+  await expect(turning).toHaveAccessibleName("Theme: Light");
+  expect(await marked(page)).toBe("light");
+
+  await turning.click();
+  await expect(turning).toHaveAccessibleName("Theme: Follow the system");
+  expect(await marked(page)).toBeNull();
+  expect(await kept(page)).toBe("system");
+});
+
+test("on a wide window, the three themes stand side by side", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1100, height: 700 });
+  await page.goto("/");
+
+  await expect(theming(page)).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Theme: / })).toBeHidden();
+});
