@@ -128,10 +128,10 @@ fn problem_of(refusal: IdeaServiceError) -> Problem {
         IdeaServiceError::InvalidTitle(reason) => match reason {
             InvalidIdeaTitle::Blank => Problem::unexpected(reason),
             InvalidIdeaTitle::ControlCharacter => {
-                Problem::rejected(refused::TITLE_CONTROL_CHARACTER, reason)
+                Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
             }
             InvalidIdeaTitle::TooLong { max, actual } => {
-                Problem::rejected(refused::TITLE_TOO_LONG, reason)
+                Problem::unprocessable(refused::TITLE_TOO_LONG, reason)
                     .with("max", max)
                     .with("actual", actual)
             }

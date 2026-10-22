@@ -178,7 +178,7 @@ async fn a_title_the_domain_refuses_is_a_bad_request() {
                 title: "a".repeat(IdeaTitle::MAX_CHARS + 1),
             })
             .await,
-        StatusCode::BAD_REQUEST,
+        StatusCode::UNPROCESSABLE_ENTITY,
         refused::TITLE_TOO_LONG,
     );
     assert_eq!(told["max"], IdeaTitle::MAX_CHARS);
@@ -529,7 +529,7 @@ async fn an_idea_title_with_a_control_character_is_refused_as_such() {
 
     refused_as(
         response,
-        StatusCode::BAD_REQUEST,
+        StatusCode::UNPROCESSABLE_ENTITY,
         refused::TITLE_CONTROL_CHARACTER,
     );
 }
