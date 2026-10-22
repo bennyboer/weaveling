@@ -3603,6 +3603,7 @@ name = "weaveling-accounts-secrets"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "futures-util",
  "sqlx",
  "time",
  "tokio",

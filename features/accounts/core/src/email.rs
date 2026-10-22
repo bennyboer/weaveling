@@ -69,6 +69,15 @@ mod tests {
     }
 
     #[test]
+    fn an_address_may_carry_a_tag_after_a_plus() {
+        assert_eq!(
+            EmailAddress::new("test+test@gmail.com").map(|address| address.to_string()),
+            Ok("test+test@gmail.com".to_owned()),
+            "a tagged address is the person's own choice, kept apart from the untagged one"
+        );
+    }
+
+    #[test]
     fn an_address_needs_someone_at_a_domain_with_a_dot() {
         for malformed in [
             "ada",

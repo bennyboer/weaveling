@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use accounts_core::{
-    AccountId, Credentials, EmailAddress, PasswordHash, PendingVerification, Registered,
+    AccountId, Attempt, Credentials, EmailAddress, PasswordHash, PendingVerification, Registered,
     SecretsError, Verifications,
 };
 use async_trait::async_trait;
@@ -50,6 +50,19 @@ impl Credentials for InMemorySecrets {
     async fn registered(&self, email: &EmailAddress) -> Result<Option<Registered>, SecretsError> {
         Ok(self.kept().registered.get(email).cloned())
     }
+
+    async fn release(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        if kept
+            .registered
+            .get(email)
+            .is_some_and(|registered| registered.account == *account)
+        {
+            kept.registered.remove(email);
+        }
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -64,19 +77,15 @@ impl Verifications for InMemorySecrets {
         Ok(())
     }
 
-    async fn pending(
-        &self,
-        account: &AccountId,
-    ) -> Result<Option<PendingVerification>, SecretsError> {
-        Ok(self.kept().pending.get(account).cloned())
-    }
-
-    async fn failed(&self, account: &AccountId) -> Result<(), SecretsError> {
-        if let Some(pending) = self.kept().pending.get_mut(account) {
-            pending.failed += 1;
-        }
-
-        Ok(())
+    async fn attempt(&self, account: &AccountId, within: u32) -> Result<Attempt, SecretsError> {
+        Ok(match self.kept().pending.get_mut(account) {
+            None => Attempt::Nothing,
+            Some(pending) if pending.tried >= within => Attempt::Exhausted,
+            Some(pending) => {
+                pending.tried += 1;
+                Attempt::Counted(pending.clone())
+            }
+        })
     }
 
     async fn close(&self, account: &AccountId) -> Result<(), SecretsError> {

@@ -22,6 +22,13 @@ pub struct Registered {
     pub password: PasswordHash,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Attempt {
+    Nothing,
+    Exhausted,
+    Counted(PendingVerification),
+}
+
 #[async_trait]
 pub trait Credentials: Send + Sync {
     async fn register(
@@ -32,6 +39,8 @@ pub trait Credentials: Send + Sync {
     ) -> Result<(), SecretsError>;
 
     async fn registered(&self, email: &EmailAddress) -> Result<Option<Registered>, SecretsError>;
+
+    async fn release(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError>;
 }
 
 #[async_trait]
@@ -42,12 +51,7 @@ pub trait Verifications: Send + Sync {
         pending: &PendingVerification,
     ) -> Result<(), SecretsError>;
 
-    async fn pending(
-        &self,
-        account: &AccountId,
-    ) -> Result<Option<PendingVerification>, SecretsError>;
-
-    async fn failed(&self, account: &AccountId) -> Result<(), SecretsError>;
+    async fn attempt(&self, account: &AccountId, within: u32) -> Result<Attempt, SecretsError>;
 
     async fn close(&self, account: &AccountId) -> Result<(), SecretsError>;
 }

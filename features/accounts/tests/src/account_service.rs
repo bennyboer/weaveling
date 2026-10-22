@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
 use accounts_core::{
-    AccountId, AccountService, AccountServiceError, Credentials, EmailAddress, KIND, PasswordHash,
-    PendingVerification, Registered, SecretsError,
+    AccountEvent, AccountId, AccountService, AccountServiceError, Credentials, EmailAddress, KIND,
+    PendingVerification,
 };
 use async_trait::async_trait;
-use eventsourcing::{AggregateId, EventStore, Version};
-use mailing::FakeMailbox;
+use eventsourcing::{AggregateId, AggregateType, EventStore, Recorded, StoreError, Version};
 use time::Duration;
 
 use crate::wiring::{ADA, HER_PASSWORD, Wired, at, wired};
@@ -159,7 +158,7 @@ async fn one_guess_short_of_the_limit_the_right_code_still_counts() {
     let wired = wired();
     let id = ada_signed_up(&wired).await;
 
-    let right = guessed_wrong(&wired, PendingVerification::MAX_FAILED - 1).await;
+    let right = guessed_wrong(&wired, PendingVerification::MAX_TRIES - 1).await;
 
     wired
         .accounts
@@ -174,7 +173,7 @@ async fn after_too_many_wrong_codes_not_even_the_right_one_counts() {
     let wired = wired();
     let id = ada_signed_up(&wired).await;
 
-    let right = guessed_wrong(&wired, PendingVerification::MAX_FAILED).await;
+    let right = guessed_wrong(&wired, PendingVerification::MAX_TRIES).await;
 
     assert!(matches!(
         wired.accounts.verify(ADA, &right).await,
@@ -284,7 +283,7 @@ async fn signing_up_with_an_address_already_taken_makes_no_account_and_tells_its
     assert_eq!(
         wired.told.waiting_to_be_published(),
         1,
-        "a second account would keep the owner's address in events of its own"
+        "a second account, even one racing for the address, would keep the owner's address in events of its own"
     );
     assert_eq!(wired.codes_sent_to(ADA).len(), 1, "no second code");
     assert_eq!(
@@ -327,45 +326,91 @@ async fn what_is_given_is_checked_before_anything_is_kept() {
     assert!(wired.mailbox.sent_to(ADA).is_empty());
 }
 
-struct RacedFor;
+struct Refusing;
 
 #[async_trait]
-impl Credentials for RacedFor {
-    async fn register(
+impl EventStore<AccountEvent> for Refusing {
+    async fn append(
         &self,
-        _email: &EmailAddress,
-        _account: &AccountId,
-        _password: &PasswordHash,
-    ) -> Result<(), SecretsError> {
-        Err(SecretsError::Taken)
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        _expected: Version,
+        _events: &[Recorded<AccountEvent>],
+    ) -> Result<(), StoreError> {
+        Err(StoreError::backend(
+            aggregate,
+            kind,
+            "the database went away",
+        ))
     }
 
-    async fn registered(&self, _email: &EmailAddress) -> Result<Option<Registered>, SecretsError> {
+    async fn read_from(
+        &self,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+        _from: Version,
+    ) -> Result<Vec<Recorded<AccountEvent>>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn read_through(
+        &self,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+        _from: Version,
+        _through: Version,
+    ) -> Result<Vec<Recorded<AccountEvent>>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    async fn latest_snapshot(
+        &self,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+    ) -> Result<Option<Recorded<AccountEvent>>, StoreError> {
         Ok(None)
+    }
+
+    async fn snapshot_at_or_before(
+        &self,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+        _version: Version,
+    ) -> Result<Option<Recorded<AccountEvent>>, StoreError> {
+        Ok(None)
+    }
+
+    async fn prune_through(
+        &self,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+        _through: Version,
+    ) -> Result<(), StoreError> {
+        Ok(())
     }
 }
 
 #[tokio::test]
-async fn losing_a_race_for_an_address_is_told_like_any_taken_address() {
+async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
     let wired = wired();
-    let mailbox = Arc::new(FakeMailbox::default());
     let accounts = AccountService::new(
-        wired.store.clone(),
-        Arc::new(RacedFor),
+        Arc::new(Refusing),
         wired.secrets.clone(),
-        mailbox.clone(),
+        wired.secrets.clone(),
+        wired.mailbox.clone(),
         wired.clock.clone(),
     );
 
-    accounts
-        .sign_up(ADA, "Ada", HER_PASSWORD)
-        .await
-        .expect("an address taken a moment ago is no failure of the server");
+    assert!(accounts.sign_up(ADA, "Ada", HER_PASSWORD).await.is_err());
 
-    let sent = mailbox.sent_to(ADA);
-    assert_eq!(sent.len(), 1);
     assert_eq!(
-        sent[0].subject, "Signing up to Weaveling",
-        "the loser gets no code for an address that is not theirs, only the owner a warning"
+        wired
+            .secrets
+            .registered(&EmailAddress::new(ADA).expect("a plain address"))
+            .await
+            .expect("reading should succeed"),
+        None,
+        "an address claimed for an account that never came to be would be blocked for good"
     );
+    assert!(wired.mailbox.sent_to(ADA).is_empty());
 }

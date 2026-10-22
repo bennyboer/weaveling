@@ -8,5 +8,5 @@ CREATE TABLE email_verifications (
     account  TEXT COLLATE "C" PRIMARY KEY,
     code     TEXT             NOT NULL,
     until    TIMESTAMPTZ      NOT NULL,
-    failed   INTEGER          NOT NULL
+    tried    INTEGER          NOT NULL
 );

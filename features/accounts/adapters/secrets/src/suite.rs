@@ -1,7 +1,8 @@
 use accounts_core::{
-    AccountId, Credentials, EmailAddress, PasswordHash, PendingVerification, Registered,
+    AccountId, Attempt, Credentials, EmailAddress, PasswordHash, PendingVerification, Registered,
     SecretsError, VerificationCode, Verifications,
 };
+use futures_util::future::join_all;
 use time::OffsetDateTime;
 
 #[async_trait::async_trait]
@@ -31,7 +32,7 @@ fn pending(code: &str, until: i64) -> PendingVerification {
     PendingVerification {
         code: VerificationCode::kept(code.to_owned()),
         until: at(until),
-        failed: 0,
+        tried: 0,
     }
 }
 
@@ -108,7 +109,77 @@ where
     );
 }
 
-pub async fn an_issued_code_is_pending_until_closed<S>(secrets: &S)
+pub async fn a_released_address_can_be_registered_again<S>(secrets: &S)
+where
+    S: Credentials + Verifications,
+{
+    let first = AccountId::generate(at(1_000));
+    secrets
+        .register(
+            &an_address("ada@example.com"),
+            &first,
+            &a_hash("$argon2id$first"),
+        )
+        .await
+        .expect("registering should succeed");
+
+    secrets
+        .release(&an_address("ada@example.com"), &first)
+        .await
+        .expect("releasing should succeed");
+    assert_eq!(
+        secrets
+            .registered(&an_address("ada@example.com"))
+            .await
+            .expect("reading should succeed"),
+        None
+    );
+
+    let second = AccountId::generate(at(2_000));
+    secrets
+        .register(
+            &an_address("ada@example.com"),
+            &second,
+            &a_hash("$argon2id$second"),
+        )
+        .await
+        .expect("a released address is free again");
+}
+
+pub async fn an_address_is_released_only_by_the_account_holding_it<S>(secrets: &S)
+where
+    S: Credentials + Verifications,
+{
+    let holder = AccountId::generate(at(1_000));
+    secrets
+        .register(
+            &an_address("ada@example.com"),
+            &holder,
+            &a_hash("$argon2id$ada"),
+        )
+        .await
+        .expect("registering should succeed");
+
+    secrets
+        .release(
+            &an_address("ada@example.com"),
+            &AccountId::generate(at(2_000)),
+        )
+        .await
+        .expect("releasing what is not held is harmless");
+
+    assert_eq!(
+        secrets
+            .registered(&an_address("ada@example.com"))
+            .await
+            .expect("reading should succeed")
+            .map(|registered| registered.account),
+        Some(holder),
+        "a sign-up undoing itself must never free an address someone else holds"
+    );
+}
+
+pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S>(secrets: &S)
 where
     S: Credentials + Verifications,
 {
@@ -118,29 +189,33 @@ where
         .await
         .expect("issuing should succeed");
 
-    assert_eq!(
-        secrets
-            .pending(&account)
-            .await
-            .expect("reading should succeed"),
-        Some(pending("004217", 1_900))
-    );
+    for tried in 1..=2 {
+        assert_eq!(
+            secrets
+                .attempt(&account, 5)
+                .await
+                .expect("attempting should succeed"),
+            Attempt::Counted(PendingVerification {
+                tried,
+                ..pending("004217", 1_900)
+            })
+        );
+    }
 
     secrets
         .close(&account)
         .await
         .expect("closing should succeed");
-
     assert_eq!(
         secrets
-            .pending(&account)
+            .attempt(&account, 5)
             .await
-            .expect("reading should succeed"),
-        None
+            .expect("attempting should succeed"),
+        Attempt::Nothing
     );
 }
 
-pub async fn each_failure_is_counted_until_a_new_code_starts_afresh<S>(secrets: &S)
+pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S>(secrets: &S)
 where
     S: Credentials + Verifications,
 {
@@ -150,31 +225,72 @@ where
         .await
         .expect("issuing should succeed");
 
-    for _ in 0..2 {
-        secrets
-            .failed(&account)
-            .await
-            .expect("counting should succeed");
+    for _ in 0..3 {
+        assert!(matches!(
+            secrets.attempt(&account, 3).await,
+            Ok(Attempt::Counted(_))
+        ));
     }
+
     assert_eq!(
         secrets
-            .pending(&account)
+            .attempt(&account, 3)
             .await
-            .expect("reading should succeed")
-            .map(|pending| pending.failed),
-        Some(2)
+            .expect("attempting should succeed"),
+        Attempt::Exhausted
     );
+}
+
+pub async fn attempts_made_at_once_are_counted_one_by_one<S>(secrets: &S)
+where
+    S: Credentials + Verifications,
+{
+    let account = AccountId::generate(at(1_000));
+    secrets
+        .issue(&account, &pending("004217", 1_900))
+        .await
+        .expect("issuing should succeed");
+
+    let attempts = join_all((0..20).map(|_| secrets.attempt(&account, 5))).await;
+
+    let counted = attempts
+        .iter()
+        .filter(|attempt| matches!(attempt, Ok(Attempt::Counted(_))))
+        .count();
+    assert_eq!(
+        counted, 5,
+        "guesses sent together must not all read the count before any of them raises it, \
+         or the limit holds only for a guesser patient enough to wait"
+    );
+}
+
+pub async fn a_new_code_starts_its_attempts_afresh<S>(secrets: &S)
+where
+    S: Credentials + Verifications,
+{
+    let account = AccountId::generate(at(1_000));
+    secrets
+        .issue(&account, &pending("004217", 1_900))
+        .await
+        .expect("issuing should succeed");
+    for _ in 0..2 {
+        let _counted = secrets.attempt(&account, 2).await;
+    }
 
     secrets
         .issue(&account, &pending("731905", 2_900))
         .await
         .expect("issuing again should succeed");
+
     assert_eq!(
         secrets
-            .pending(&account)
+            .attempt(&account, 2)
             .await
-            .expect("reading should succeed"),
-        Some(pending("731905", 2_900)),
+            .expect("attempting should succeed"),
+        Attempt::Counted(PendingVerification {
+            tried: 1,
+            ..pending("731905", 2_900)
+        }),
         "a new code replaces the old one, and the guesses at the old one no longer count"
     );
 }
@@ -194,37 +310,38 @@ where
         .await
         .expect("issuing should succeed");
 
-    secrets.failed(&ada).await.expect("counting should succeed");
+    let _counted = secrets.attempt(&ada, 5).await;
     secrets.close(&ada).await.expect("closing should succeed");
 
     assert_eq!(
-        secrets.pending(&bea).await.expect("reading should succeed"),
-        Some(pending("222222", 2_900))
+        secrets
+            .attempt(&bea, 5)
+            .await
+            .expect("attempting should succeed"),
+        Attempt::Counted(PendingVerification {
+            tried: 1,
+            ..pending("222222", 2_900)
+        })
     );
 }
 
-pub async fn failing_or_closing_where_nothing_is_pending_is_harmless<S>(secrets: &S)
+pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S>(secrets: &S)
 where
     S: Credentials + Verifications,
 {
     let account = AccountId::generate(at(1_000));
 
-    secrets
-        .failed(&account)
-        .await
-        .expect("counting nothing is fine");
+    assert_eq!(
+        secrets
+            .attempt(&account, 5)
+            .await
+            .expect("attempting should succeed"),
+        Attempt::Nothing
+    );
     secrets
         .close(&account)
         .await
         .expect("closing nothing is fine");
-
-    assert_eq!(
-        secrets
-            .pending(&account)
-            .await
-            .expect("reading should succeed"),
-        None
-    );
 }
 
 #[macro_export]
@@ -250,15 +367,25 @@ macro_rules! conformance_tests {
         );
         $crate::secrets_conformance_case!($workbench, an_address_never_registered_names_nobody);
         $crate::secrets_conformance_case!($workbench, an_address_belongs_to_one_account_only);
-        $crate::secrets_conformance_case!($workbench, an_issued_code_is_pending_until_closed);
+        $crate::secrets_conformance_case!($workbench, a_released_address_can_be_registered_again);
         $crate::secrets_conformance_case!(
             $workbench,
-            each_failure_is_counted_until_a_new_code_starts_afresh
+            an_address_is_released_only_by_the_account_holding_it
         );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            each_attempt_at_an_issued_code_is_counted_until_it_is_closed
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            attempts_beyond_the_limit_are_not_counted_but_exhausted
+        );
+        $crate::secrets_conformance_case!($workbench, attempts_made_at_once_are_counted_one_by_one);
+        $crate::secrets_conformance_case!($workbench, a_new_code_starts_its_attempts_afresh);
         $crate::secrets_conformance_case!($workbench, each_account_has_a_code_of_its_own);
         $crate::secrets_conformance_case!(
             $workbench,
-            failing_or_closing_where_nothing_is_pending_is_harmless
+            attempting_or_closing_where_nothing_was_issued_is_harmless
         );
     };
 }

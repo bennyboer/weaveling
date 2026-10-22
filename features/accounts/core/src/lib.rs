@@ -16,5 +16,5 @@ pub use email::{EmailAddress, InvalidEmailAddress};
 pub use id::AccountId;
 pub use name::{AccountName, InvalidAccountName};
 pub use password::{InvalidPassword, Password, PasswordHash};
-pub use secrets::{Credentials, Registered, SecretsError, Verifications};
+pub use secrets::{Attempt, Credentials, Registered, SecretsError, Verifications};
 pub use service::{AccountService, AccountServiceError};

@@ -11,7 +11,7 @@ use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
 use crate::name::{AccountName, InvalidAccountName};
 use crate::password::{InvalidPassword, Password};
-use crate::secrets::{Credentials, SecretsError, Verifications};
+use crate::secrets::{Attempt, Credentials, SecretsError, Verifications};
 
 #[derive(Debug, Error)]
 pub enum AccountServiceError {
@@ -71,26 +71,27 @@ impl AccountService {
         let name = AccountName::new(name)?;
         let password = Password::new(password)?;
 
-        if self.credentials.registered(&email).await?.is_some() {
-            return self.tell_already_signed_up(&email).await;
-        }
-
         let id = AccountId::generate(self.clock.now());
-        let _landed = self
-            .events
-            .begin(
-                &AggregateId::from(&id),
-                AccountCommand::SignUp(email.clone(), name),
-                &id.acting(),
-            )
-            .await?;
         match self
             .credentials
             .register(&email, &id, &password.hashed())
             .await
         {
             Err(SecretsError::Taken) => return self.tell_already_signed_up(&email).await,
-            registered => registered?,
+            claimed => claimed?,
+        }
+
+        if let Err(refused) = self
+            .events
+            .begin(
+                &AggregateId::from(&id),
+                AccountCommand::SignUp(email.clone(), name),
+                &id.acting(),
+            )
+            .await
+        {
+            self.credentials.release(&email, &id).await?;
+            return Err(refused.into());
         }
 
         self.send_code(&id, &email).await
@@ -114,18 +115,20 @@ impl AccountService {
             return Err(AccountServiceError::CodeWrong);
         };
         let id = registered.account;
-        let Some(pending) = self.verifications.pending(&id).await? else {
-            return Err(AccountServiceError::CodeWrong);
+        let pending = match self
+            .verifications
+            .attempt(&id, PendingVerification::MAX_TRIES)
+            .await?
+        {
+            Attempt::Nothing => return Err(AccountServiceError::CodeWrong),
+            Attempt::Exhausted => return Err(AccountServiceError::CodeExhausted),
+            Attempt::Counted(pending) => pending,
         };
 
-        if pending.failed >= PendingVerification::MAX_FAILED {
-            return Err(AccountServiceError::CodeExhausted);
-        }
         if self.clock.now() > pending.until {
             return Err(AccountServiceError::CodeExpired);
         }
         if !pending.code.is(code) {
-            self.verifications.failed(&id).await?;
             return Err(AccountServiceError::CodeWrong);
         }
 
