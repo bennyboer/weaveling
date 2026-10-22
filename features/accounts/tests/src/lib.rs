@@ -8,6 +8,9 @@ mod accounts_api;
 mod gate_api;
 
 #[cfg(test)]
+mod password_reset;
+
+#[cfg(test)]
 mod sessions_api;
 
 #[cfg(test)]

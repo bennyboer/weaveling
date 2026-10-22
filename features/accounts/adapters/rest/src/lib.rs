@@ -1,6 +1,6 @@
 use accounts_contract::{
-    SESSION_COOKIE, SendCodeRequest, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
-    refused, stage,
+    NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE, SendCodeRequest, SignInRequest,
+    SignUpRequest, SignedInDTO, VerifyEmailRequest, refused, stage,
 };
 use accounts_core::{
     AccountService, AccountServiceError, InvalidAccountName, InvalidEmailAddress, InvalidPassword,
@@ -21,6 +21,8 @@ pub fn router(accounts: AccountService) -> Router {
         .route("/accounts", post(sign_up))
         .route("/accounts/verification", post(verify))
         .route("/accounts/verification/code", post(send_code_again))
+        .route("/accounts/password-reset", post(ask_to_reset_password))
+        .route("/accounts/password", post(reset_password))
         .route("/sessions", post(begin_session))
         .route("/sessions/current", get(current).delete(end_session))
         .with_state(accounts)
@@ -85,6 +87,30 @@ async fn send_code_again(
         .map_err(problem_of)?;
 
     Ok(StatusCode::ACCEPTED)
+}
+
+async fn ask_to_reset_password(
+    State(accounts): State<AccountService>,
+    Json(request): Json<PasswordResetRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .ask_to_reset_password(&request.email)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::ACCEPTED)
+}
+
+async fn reset_password(
+    State(accounts): State<AccountService>,
+    Json(request): Json<NewPasswordRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .reset_password(&request.email, &request.code, &request.password)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn begin_session(

@@ -19,6 +19,18 @@ pub struct SendCodeRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PasswordResetRequest {
+    pub email: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct NewPasswordRequest {
+    pub email: String,
+    pub code: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SignInRequest {
     pub email: String,
     pub password: String,

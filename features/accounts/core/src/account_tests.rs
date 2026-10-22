@@ -100,6 +100,37 @@ fn verifying_happens_once_and_then_changes_nothing() {
 }
 
 #[test]
+fn a_password_reset_is_told_without_the_password() {
+    let mut account = a_signed_up_account();
+    account.apply(&AccountEvent::EmailVerified, &stamped(2, at(2_000)));
+
+    assert_eq!(
+        account.decide(AccountCommand::ResetPassword, &herself()),
+        Ok(vec![AccountEvent::PasswordReset])
+    );
+}
+
+#[test]
+fn a_reset_by_a_code_sent_to_the_address_confirms_it_too() {
+    assert_eq!(
+        a_signed_up_account().decide(AccountCommand::ResetPassword, &herself()),
+        Ok(vec![
+            AccountEvent::EmailVerified,
+            AccountEvent::PasswordReset
+        ]),
+        "the code reached the address, which is all confirming it asks"
+    );
+}
+
+#[test]
+fn no_password_is_reset_before_signing_up() {
+    assert_eq!(
+        Account::begin(AccountCommand::ResetPassword, &herself()),
+        Err(AccountError::NotSignedUpYet)
+    );
+}
+
+#[test]
 fn a_snapshot_holds_everything_the_account_is() {
     let mut account = a_signed_up_account();
     account.apply(&AccountEvent::EmailVerified, &stamped(2, at(2_000)));
@@ -111,9 +142,8 @@ fn a_snapshot_holds_everything_the_account_is() {
 }
 
 #[test]
-fn verifying_alone_cannot_begin_an_account() {
-    assert_eq!(
-        Account::from_first(&AccountEvent::EmailVerified, &stamped(1, at(1_000))),
-        None
-    );
+fn verifying_or_a_reset_alone_cannot_begin_an_account() {
+    for event in [AccountEvent::EmailVerified, AccountEvent::PasswordReset] {
+        assert_eq!(Account::from_first(&event, &stamped(1, at(1_000))), None);
+    }
 }

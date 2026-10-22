@@ -9,12 +9,14 @@ pub const KIND: AggregateType = AggregateType::of("account");
 
 const SIGNED_UP: EventName = EventName::of("SIGNED_UP");
 const EMAIL_VERIFIED: EventName = EventName::of("EMAIL_VERIFIED");
+const PASSWORD_RESET: EventName = EventName::of("PASSWORD_RESET");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountCommand {
     SignUp(EmailAddress, AccountName),
     Verify,
+    ResetPassword,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +26,7 @@ pub enum AccountEvent {
         name: AccountName,
     },
     EmailVerified,
+    PasswordReset,
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
@@ -71,6 +74,7 @@ impl Event for AccountEvent {
         match self {
             Self::SignedUp { .. } => SIGNED_UP,
             Self::EmailVerified => EMAIL_VERIFIED,
+            Self::PasswordReset => PASSWORD_RESET,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -94,7 +98,9 @@ impl Aggregate for Account {
     fn begin(command: AccountCommand, _agent: &Agent) -> Result<Vec<AccountEvent>, AccountError> {
         match command {
             AccountCommand::SignUp(email, name) => Ok(vec![AccountEvent::SignedUp { email, name }]),
-            AccountCommand::Verify => Err(AccountError::NotSignedUpYet),
+            AccountCommand::Verify | AccountCommand::ResetPassword => {
+                Err(AccountError::NotSignedUpYet)
+            }
         }
     }
 
@@ -117,7 +123,7 @@ impl Aggregate for Account {
                 verified: *verified,
                 signed_up_at: *signed_up_at,
             }),
-            AccountEvent::EmailVerified => None,
+            AccountEvent::EmailVerified | AccountEvent::PasswordReset => None,
         }
     }
 
@@ -130,6 +136,11 @@ impl Aggregate for Account {
             AccountCommand::SignUp(..) => Err(AccountError::AlreadySignedUp),
             AccountCommand::Verify if self.verified => Ok(vec![]),
             AccountCommand::Verify => Ok(vec![AccountEvent::EmailVerified]),
+            AccountCommand::ResetPassword if self.verified => Ok(vec![AccountEvent::PasswordReset]),
+            AccountCommand::ResetPassword => Ok(vec![
+                AccountEvent::EmailVerified,
+                AccountEvent::PasswordReset,
+            ]),
         }
     }
 
@@ -137,6 +148,7 @@ impl Aggregate for Account {
         match event {
             AccountEvent::SignedUp { .. } => {}
             AccountEvent::EmailVerified => self.verified = true,
+            AccountEvent::PasswordReset => {}
             AccountEvent::Snapshotted {
                 email,
                 name,

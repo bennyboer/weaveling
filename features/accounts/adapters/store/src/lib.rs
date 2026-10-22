@@ -10,6 +10,7 @@ enum StoredAccountEvent {
         name: String,
     },
     EmailVerified,
+    PasswordReset,
     Snapshotted {
         email: String,
         name: String,
@@ -41,6 +42,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 name: name.to_string(),
             },
             AccountEvent::EmailVerified => Self::EmailVerified,
+            AccountEvent::PasswordReset => Self::PasswordReset,
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -79,6 +81,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 Self::SignedUp { email, name }
             }
             StoredAccountEvent::EmailVerified => Self::EmailVerified,
+            StoredAccountEvent::PasswordReset => Self::PasswordReset,
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
@@ -127,6 +130,7 @@ mod tests {
                 name: name.clone(),
             },
             AccountEvent::EmailVerified,
+            AccountEvent::PasswordReset,
             AccountEvent::Snapshotted {
                 email,
                 name,
