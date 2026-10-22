@@ -9,10 +9,10 @@ use clock::SystemClock;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use weaveling_service_api::{Adapters, Relays, app};
+use weaveling_service_api::{Accounts, Adapters, Relays, app};
 
 async fn new_app() -> Router {
-    app(Adapters::in_memory(Arc::new(SystemClock)).await)
+    app(Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await)
 }
 
 async fn get(path: &str) -> (StatusCode, String) {
@@ -67,15 +67,26 @@ async fn the_projects_feature_is_mounted_under_api() {
     assert_eq!(body, "[]");
 }
 
-#[tokio::test]
-async fn a_server_in_memory_takes_sign_ups() {
-    let (status, _body) = post_json(
-        "/api/accounts",
-        r#"{ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }"#,
-    )
-    .await;
+async fn signing_up(accounts: Accounts) -> StatusCode {
+    let server = TestServer::new(app(
+        Adapters::in_memory(accounts, Arc::new(SystemClock)).await
+    ));
 
-    assert_eq!(status, StatusCode::ACCEPTED);
+    server
+        .post("/api/accounts")
+        .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
+        .await
+        .status_code()
+}
+
+#[tokio::test]
+async fn sign_ups_are_taken_only_where_accounts_are_on() {
+    assert_eq!(signing_up(Accounts::On).await, StatusCode::ACCEPTED);
+    assert_eq!(
+        signing_up(Accounts::Off).await,
+        StatusCode::NOT_FOUND,
+        "whether there are accounts is said by the setting, not by where the work is kept"
+    );
 }
 
 #[tokio::test]
@@ -183,7 +194,7 @@ async fn every_feature_answers_without_shadowing_the_others() {
 
 #[tokio::test]
 async fn the_live_scenes_are_settled_before_the_service_stops() {
-    let adapters = Adapters::in_memory(Arc::new(SystemClock)).await;
+    let adapters = Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await;
 
     assert_eq!(
         adapters.settling().len(),
@@ -205,7 +216,7 @@ async fn the_socket_for_many_scenes_is_mounted_under_api() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn in_memory_a_captured_idea_travels_all_the_way_to_its_catalog() {
-    let adapters = Adapters::in_memory(Arc::new(SystemClock)).await;
+    let adapters = Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await;
     let relays = Relays::started(
         adapters.outboxes(),
         adapters.consuming(),

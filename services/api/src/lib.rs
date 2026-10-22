@@ -1,3 +1,4 @@
+mod accounts;
 mod backend;
 mod flaky;
 mod refusals;
@@ -25,6 +26,7 @@ use wiring::{Assembled, Context, assemble};
 use crate::flaky::FlakyListener;
 use crate::refusals::TellingDeliveries;
 
+pub use accounts::{Accounts, UnreadableAccounts, WEAVELING_ACCOUNTS};
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
 pub use relays::Relays;
@@ -43,7 +45,11 @@ pub struct Adapters {
 }
 
 impl Adapters {
-    pub async fn assembled(storage: Storage, clock: Arc<dyn Clock>) -> Result<Self, Unprepared> {
+    pub async fn assembled(
+        storage: Storage,
+        accounts: Accounts,
+        clock: Arc<dyn Clock>,
+    ) -> Result<Self, Unprepared> {
         let refusals = Broadcaster::new();
         let deliveries: Arc<dyn Deliveries> = Arc::new(TellingDeliveries::around(
             deliveries(&storage).await?,
@@ -64,7 +70,7 @@ impl Adapters {
             assemble::<AppearanceFeature>(&storage, &context).await?,
             assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
-        if keeps_accounts(&storage) {
+        if accounts == Accounts::On {
             features.push(assemble::<AccountFeature>(&storage, &context).await?);
         }
 
@@ -78,8 +84,8 @@ impl Adapters {
         })
     }
 
-    pub async fn in_memory(clock: Arc<dyn Clock>) -> Self {
-        Self::assembled(Storage::InMemory, clock)
+    pub async fn in_memory(accounts: Accounts, clock: Arc<dyn Clock>) -> Self {
+        Self::assembled(Storage::InMemory, accounts, clock)
             .await
             .expect("nothing kept in memory needs preparing")
     }
@@ -111,14 +117,6 @@ impl Adapters {
             .iter()
             .filter_map(|feature| feature.outbox.clone())
             .collect()
-    }
-}
-
-fn keeps_accounts(storage: &Storage) -> bool {
-    match storage {
-        #[cfg(feature = "sqlite")]
-        Storage::Sqlite(_) => false,
-        _ => true,
     }
 }
 

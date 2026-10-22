@@ -8,7 +8,7 @@ use axum_test::TestServer;
 use clock::SystemClock;
 use outbox::Cadence;
 use serde_json::{Value, json};
-use weaveling_service_api::{Adapters, Relays, Storage, app};
+use weaveling_service_api::{Accounts, Adapters, Relays, Storage, app};
 
 pub const DATABASES: [&str; 9] = [
     "messaging",
@@ -24,6 +24,8 @@ pub const DATABASES: [&str; 9] = [
 
 #[async_trait]
 pub trait Backend: Sized + Send + Sync {
+    const ACCOUNTS: Accounts;
+
     async fn setup() -> Self;
 
     fn storage(&self) -> Storage;
@@ -46,7 +48,7 @@ pub async fn a_server_on<B: Backend>(backend: &B) -> TestServer {
 }
 
 async fn adapters_on<B: Backend>(backend: &B) -> Adapters {
-    Adapters::assembled(backend.storage(), Arc::new(SystemClock))
+    Adapters::assembled(backend.storage(), B::ACCOUNTS, Arc::new(SystemClock))
         .await
         .expect("every feature's schema should lay down")
 }

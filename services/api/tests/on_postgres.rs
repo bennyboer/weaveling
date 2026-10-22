@@ -10,7 +10,7 @@ use axum::http::StatusCode;
 use serde_json::json;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
-use weaveling_service_api::{Storage, Unprepared};
+use weaveling_service_api::{Accounts, Storage, Unprepared};
 use wiring::Databases;
 
 use journeys::{Backend, DATABASES, Journey};
@@ -48,6 +48,8 @@ impl Databases for SchemaEach {
 
 #[async_trait]
 impl Backend for OnPostgres {
+    const ACCOUNTS: Accounts = Accounts::On;
+
     async fn setup() -> Self {
         let fixture = PostgresFixture::setup().await;
         let mut pools = HashMap::new();

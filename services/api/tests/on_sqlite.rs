@@ -12,7 +12,7 @@ use clock::SystemClock;
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
-use weaveling_service_api::{Adapters, Storage, Unprepared, app};
+use weaveling_service_api::{Accounts, Adapters, Storage, Unprepared, app};
 use wiring::sqlite::{DataDirectory, Files};
 
 use journeys::{Backend, DATABASES, a_server_on, id_in};
@@ -50,6 +50,9 @@ impl Files for FileEach {
 
 #[async_trait]
 impl Backend for OnSqlite {
+    // TODO accounts on SQLite: once they have an adapter, On, as on PostgreSQL; SQLite is not only local mode
+    const ACCOUNTS: Accounts = Accounts::Off;
+
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
         let mut pools = HashMap::new();
@@ -132,9 +135,13 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
     let local = || Storage::Sqlite(files.clone());
 
     let id = {
-        let first = TestServer::new(app(Adapters::assembled(local(), Arc::new(SystemClock))
-            .await
-            .expect("the first start should lay every file down")));
+        let first = TestServer::new(app(Adapters::assembled(
+            local(),
+            Accounts::Off,
+            Arc::new(SystemClock),
+        )
+        .await
+        .expect("the first start should lay every file down")));
 
         id_in(
             &first
@@ -147,9 +154,13 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
     };
     files.close_everything().await;
 
-    let second = TestServer::new(app(Adapters::assembled(local(), Arc::new(SystemClock))
-        .await
-        .expect("a second start should find every file already laid down")));
+    let second = TestServer::new(app(Adapters::assembled(
+        local(),
+        Accounts::Off,
+        Arc::new(SystemClock),
+    )
+    .await
+    .expect("a second start should find every file already laid down")));
     let found = second.get(&format!("/api/projects/{id}")).await;
 
     found.assert_status_ok();
