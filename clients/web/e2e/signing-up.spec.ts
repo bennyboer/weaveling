@@ -18,8 +18,9 @@ async function signUp(page: Page, password = HER_PASSWORD) {
 
 async function enterCode(page: Page, code: string) {
   await page.getByLabel("Code").fill(code);
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
 }
+
+const boxes = (page: Page) => page.locator(".code-box");
 
 test("signing up asks for the code sent to the address", async ({ page }) => {
   const server = await aServerWithAccounts(page);
@@ -124,4 +125,96 @@ test("going between signing in and up keeps the address typed", async ({
     .click();
 
   await expect(page.getByLabel("Email address")).toHaveValue(ADA.email);
+});
+
+test("the code confirms itself once all six digits are in", async ({
+  page,
+}) => {
+  const server = await aServerWithAccounts(page);
+  await page.goto("/");
+  await signUp(page);
+
+  await page.getByLabel("Code").pressSequentially(THE_CODE);
+
+  await expect(page.getByRole("status")).toHaveText(
+    "Your address is confirmed. You can sign in now.",
+  );
+  expect(server.codesTried).toBe(1);
+});
+
+test("a code pasted with a space in it still counts", async ({ page }) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signUp(page);
+
+  await enterCode(page, "123 456");
+
+  await expect(page.getByRole("status")).toHaveText(
+    "Your address is confirmed. You can sign in now.",
+  );
+});
+
+test("a wrong code is sent once, and the boxes empty for the next", async ({
+  page,
+}) => {
+  const server = await aServerWithAccounts(page);
+  await page.goto("/");
+  await signUp(page);
+
+  await enterCode(page, "000000");
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "That is not the code we sent.",
+  );
+  await expect(page.getByLabel("Code")).toHaveValue("");
+  await page.waitForTimeout(300);
+  expect(
+    server.codesTried,
+    "each try counts against five, so a code must not be sent again unasked",
+  ).toBe(1);
+});
+
+test("each box shows its digit, and the next to fill stands out", async ({
+  page,
+}) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signUp(page);
+
+  await page.getByLabel("Code").pressSequentially("12");
+
+  await expect(boxes(page)).toHaveCount(6);
+  await expect(boxes(page).nth(0)).toHaveText("1");
+  await expect(boxes(page).nth(1)).toHaveText("2");
+  await expect(boxes(page).nth(2)).toHaveText("");
+  await expect(boxes(page).nth(2)).toHaveClass(/next/);
+  await expect(boxes(page).nth(1)).not.toHaveClass(/next/);
+});
+
+test("the code field offers what the phone read from the mail", async ({
+  page,
+}) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signUp(page);
+
+  await expect(page.getByLabel("Code")).toHaveAttribute(
+    "autocomplete",
+    "one-time-code",
+  );
+  await expect(page.getByLabel("Code")).toHaveAttribute("inputmode", "numeric");
+});
+
+test("a new code asked for starts with empty boxes", async ({ page }) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signUp(page);
+  await page.getByLabel("Code").pressSequentially("123");
+
+  await page.getByRole("button", { name: "Send a new code" }).click();
+
+  await expect(page.getByRole("status")).toHaveText(
+    "A new code is on its way.",
+  );
+  await expect(page.getByLabel("Code")).toHaveValue("");
 });

@@ -154,17 +154,20 @@ fn code_form(page: Page) -> impl IntoView {
     let verify = move || {
         let (email, typed) = (page.email.get_untracked(), code.get_untracked());
         asked(asking, refused, async move {
-            service::verify(&email, &typed)
-                .await
-                .map(|()| page.turn_to(Form::SignIn, Some("code-confirmed")))
+            let verified = service::verify(&email, &typed).await;
+            if verified.is_err() {
+                code.set(String::new());
+            }
+            verified.map(|()| page.turn_to(Form::SignIn, Some("code-confirmed")))
         });
     };
     let send_again = move || {
         let email = page.email.get_untracked();
         asked(asking, refused, async move {
-            service::send_code_again(&email)
-                .await
-                .map(|()| page.notice.set(Some("code-sent-again")))
+            service::send_code_again(&email).await.map(|()| {
+                code.set(String::new());
+                page.notice.set(Some("code-sent-again"));
+            })
         });
     };
     let sent_to = move || {
@@ -173,6 +176,12 @@ fn code_form(page: Page) -> impl IntoView {
         speech.say_with("code-sent", &args)
     };
 
+    Effect::new(move |_| {
+        if is_whole(&code.get()) {
+            verify();
+        }
+    });
+
     (
         html::h1().child(said("code-heading")),
         html::p().class("sent-to").child(sent_to),
@@ -180,16 +189,7 @@ fn code_form(page: Page) -> impl IntoView {
         form(
             verify,
             (
-                html::label().class("field").child((
-                    html::span().child(said("code-field")),
-                    html::input()
-                        .r#type("text")
-                        .attr("inputmode", "numeric")
-                        .attr("autocomplete", "one-time-code")
-                        .required(true)
-                        .prop("value", move || code.get())
-                        .on(ev::input, move |event| code.set(event_target_value(&event))),
-                )),
+                code_boxes(code),
                 move || refused.get().map(problem),
                 submitting(said("code-confirm"), asking),
             ),
@@ -199,6 +199,50 @@ fn code_form(page: Page) -> impl IntoView {
             page.turn_to(Form::SignIn, None)
         }),
     )
+}
+
+const CODE_LENGTH: usize = 6;
+
+fn code_boxes(code: RwSignal<String>) -> impl IntoView {
+    let focused = RwSignal::new(false);
+
+    html::label().class("field").child((
+        html::span().child(said("code-field")),
+        html::div().class("code-boxes").child((
+            html::input()
+                .r#type("text")
+                .attr("inputmode", "numeric")
+                .attr("autocomplete", "one-time-code")
+                .required(true)
+                .prop("value", move || code.get())
+                .on(ev::input, move |event| {
+                    code.set(digits_of(&event_target_value(&event)))
+                })
+                .on(ev::focus, move |_| focused.set(true))
+                .on(ev::blur, move |_| focused.set(false)),
+            (0..CODE_LENGTH)
+                .map(|place| {
+                    html::span()
+                        .class("code-box")
+                        .class(("next", move || focused.get() && code.get().len() == place))
+                        .attr("aria-hidden", "true")
+                        .child(move || code.get().chars().nth(place).map(String::from))
+                })
+                .collect_view(),
+        )),
+    ))
+}
+
+fn digits_of(typed: &str) -> String {
+    typed
+        .chars()
+        .filter(char::is_ascii_digit)
+        .take(CODE_LENGTH)
+        .collect()
+}
+
+fn is_whole(code: &str) -> bool {
+    code.len() == CODE_LENGTH
 }
 
 fn asked(
@@ -279,4 +323,26 @@ fn field(
                 value.set(event_target_value(&event))
             }),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_digits_count_in_a_code_however_it_was_pasted() {
+        assert_eq!(digits_of("123 456"), "123456");
+        assert_eq!(digits_of("12ab34"), "1234");
+        assert_eq!(
+            digits_of("1234567"),
+            "123456",
+            "a code is six digits, and a seventh is a slip of the finger"
+        );
+    }
+
+    #[test]
+    fn a_code_is_whole_at_six_digits_and_not_before() {
+        assert!(!is_whole("12345"));
+        assert!(is_whole("123456"));
+    }
 }

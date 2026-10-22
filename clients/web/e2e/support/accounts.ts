@@ -15,6 +15,7 @@ export type Server = {
   signedOut: number;
   signedUp: { email: string; name: string } | null;
   codesSent: number;
+  codesTried: number;
   projectsAsked: number;
 };
 
@@ -42,6 +43,7 @@ export async function aServerWithAccounts(
     signedOut: 0,
     signedUp: null,
     codesSent: 0,
+    codesTried: 0,
     projectsAsked: 0,
   };
 
@@ -84,6 +86,7 @@ export async function aServerWithAccounts(
   });
   await page.route(at("/api/accounts/verification"), async (route) => {
     const { code } = route.request().postDataJSON();
+    server.codesTried += 1;
     if (code !== THE_CODE) {
       return refusing(route, 422, "verification-code-wrong");
     }
