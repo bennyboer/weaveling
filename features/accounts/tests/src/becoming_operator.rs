@@ -1,4 +1,12 @@
-use accounts_core::{AccountId, AccountServiceError, EmailAddress, EmailAddresses, Operators};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use accounts_core::{
+    AccountId, AccountService, AccountServiceError, EmailAddress, EmailAddresses, Operators,
+    SecretStores, SecretsError, TokenDigest,
+};
+use accounts_secrets::InMemorySecrets;
+use async_trait::async_trait;
 
 use crate::wiring::{HER_PASSWORD, Wired, wired};
 
@@ -162,4 +170,74 @@ async fn an_unverified_address_is_refused_and_leaves_the_code_for_after_it_is_ve
         .await
         .expect("the code is still good, being refused for the address and not for itself");
     assert!(is_operator(&wired, &ada).await);
+}
+
+struct FailingToAppointOnce {
+    kept: Arc<InMemorySecrets>,
+    armed: AtomicBool,
+}
+
+#[async_trait]
+impl Operators for FailingToAppointOnce {
+    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+        self.kept.keep_code(digest).await
+    }
+
+    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+        self.kept.take_code(digest).await
+    }
+
+    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
+        if self.armed.swap(false, Ordering::SeqCst) {
+            return Err(SecretsError::Backend("the server went down".into()));
+        }
+
+        self.kept.appoint(account).await
+    }
+
+    async fn any_appointed(&self) -> Result<bool, SecretsError> {
+        self.kept.any_appointed().await
+    }
+}
+
+#[tokio::test]
+async fn an_operator_broken_off_before_being_appointed_is_appointed_by_the_next_code() {
+    let wired = wired();
+    let ada = signed_up(&wired, "ada@example.com", true).await;
+    let accounts = AccountService::new(
+        wired.store.clone(),
+        SecretStores {
+            operators: Arc::new(FailingToAppointOnce {
+                kept: wired.secrets.clone(),
+                armed: AtomicBool::new(true),
+            }),
+            ..SecretStores::kept_by(wired.secrets.clone())
+        },
+        wired.mailbox.clone(),
+        wired.clock.clone(),
+    );
+    let code = drawn(&wired).await;
+    assert!(accounts.become_operator(&ada, &code).await.is_err());
+    assert!(
+        is_operator(&wired, &ada).await,
+        "the event was recorded before the server went down"
+    );
+
+    let next = accounts
+        .draw_operator_code()
+        .await
+        .expect("drawing should succeed")
+        .expect("nobody appointed, so the next start draws a code again");
+    accounts
+        .become_operator(&ada, next.as_str())
+        .await
+        .expect("the next code makes her what she already is, and appoints her");
+
+    assert!(
+        accounts
+            .draw_operator_code()
+            .await
+            .expect("drawing should succeed")
+            .is_none()
+    );
 }
