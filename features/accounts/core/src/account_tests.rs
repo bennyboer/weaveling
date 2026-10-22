@@ -150,16 +150,83 @@ fn a_snapshot_holds_everything_the_account_is() {
     let mut account = a_signed_up_account();
     account.apply(&AccountEvent::EmailVerified, &stamped(2, at(2_000)));
     account.apply(&AccountEvent::PasswordReset, &stamped(3, at(2_500)));
+    account.apply(&AccountEvent::BecameOperator, &stamped(4, at(2_700)));
 
-    let restored = Account::from_first(&account.snapshot(), &stamped(3, at(3_000)))
+    let restored = Account::from_first(&account.snapshot(), &stamped(4, at(3_000)))
         .expect("a snapshot gives birth");
 
     assert_eq!(restored, account);
 }
 
 #[test]
+fn a_snapshot_applied_to_an_account_makes_it_what_the_snapshot_says() {
+    let mut further = a_signed_up_account();
+    further.apply(&AccountEvent::EmailVerified, &stamped(2, at(2_000)));
+    further.apply(&AccountEvent::PasswordReset, &stamped(3, at(2_500)));
+    further.apply(&AccountEvent::BecameOperator, &stamped(4, at(2_700)));
+
+    let mut behind = a_signed_up_account();
+    behind.apply(&further.snapshot(), &stamped(5, at(3_000)));
+
+    assert_eq!(behind, further);
+}
+
+#[test]
 fn verifying_or_a_reset_alone_cannot_begin_an_account() {
-    for event in [AccountEvent::EmailVerified, AccountEvent::PasswordReset] {
+    for event in [
+        AccountEvent::EmailVerified,
+        AccountEvent::PasswordReset,
+        AccountEvent::BecameOperator,
+    ] {
         assert_eq!(Account::from_first(&event, &stamped(1, at(1_000))), None);
     }
+}
+
+fn a_verified_account() -> Account {
+    let mut account = a_signed_up_account();
+    account.apply(&AccountEvent::EmailVerified, &stamped(2, at(2_000)));
+
+    account
+}
+
+#[test]
+fn an_account_is_no_operator_until_it_becomes_one() {
+    let mut account = a_verified_account();
+    assert!(!account.is_operator());
+
+    let became = account
+        .decide(AccountCommand::BecomeOperator, &herself())
+        .expect("a verified account may become an operator");
+    assert_eq!(became, vec![AccountEvent::BecameOperator]);
+    account.apply(&AccountEvent::BecameOperator, &stamped(3, at(3_000)));
+
+    assert!(account.is_operator());
+}
+
+#[test]
+fn becoming_an_operator_twice_changes_nothing() {
+    let mut account = a_verified_account();
+    account.apply(&AccountEvent::BecameOperator, &stamped(3, at(3_000)));
+
+    assert_eq!(
+        account.decide(AccountCommand::BecomeOperator, &herself()),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn an_address_not_yet_verified_cannot_become_an_operator() {
+    assert_eq!(
+        a_signed_up_account().decide(AccountCommand::BecomeOperator, &herself()),
+        Err(AccountError::NotVerifiedYet),
+        "an operator's address must be shown to be theirs, or it could be anyone's"
+    );
+}
+
+#[test]
+fn nobody_becomes_an_operator_before_signing_up() {
+    assert_eq!(
+        Account::begin(AccountCommand::BecomeOperator, &herself()),
+        Err(AccountError::NotSignedUpYet)
+    );
 }

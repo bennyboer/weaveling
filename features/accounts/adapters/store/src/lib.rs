@@ -11,6 +11,7 @@ enum StoredAccountEvent {
     },
     EmailVerified,
     PasswordReset,
+    BecameOperator,
     Snapshotted {
         email: String,
         name: String,
@@ -19,6 +20,7 @@ enum StoredAccountEvent {
         signed_up_at: OffsetDateTime,
         #[serde(default, with = "time::serde::rfc3339::option")]
         sessions_since: Option<OffsetDateTime>,
+        operator: bool,
     },
 }
 
@@ -45,18 +47,21 @@ impl From<&AccountEvent> for StoredAccountEvent {
             },
             AccountEvent::EmailVerified => Self::EmailVerified,
             AccountEvent::PasswordReset => Self::PasswordReset,
+            AccountEvent::BecameOperator => Self::BecameOperator,
             AccountEvent::Snapshotted {
                 email,
                 name,
                 verified,
                 signed_up_at,
                 sessions_since,
+                operator,
             } => Self::Snapshotted {
                 email: email.to_string(),
                 name: name.to_string(),
                 verified: *verified,
                 signed_up_at: *signed_up_at,
                 sessions_since: *sessions_since,
+                operator: *operator,
             },
         }
     }
@@ -86,12 +91,14 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             }
             StoredAccountEvent::EmailVerified => Self::EmailVerified,
             StoredAccountEvent::PasswordReset => Self::PasswordReset,
+            StoredAccountEvent::BecameOperator => Self::BecameOperator,
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
                 verified,
                 signed_up_at,
                 sessions_since,
+                operator,
             } => {
                 let (email, name) = readable(&email, &name)?;
                 Self::Snapshotted {
@@ -100,6 +107,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     verified,
                     signed_up_at,
                     sessions_since,
+                    operator,
                 }
             }
         })
@@ -137,12 +145,14 @@ mod tests {
             },
             AccountEvent::EmailVerified,
             AccountEvent::PasswordReset,
+            AccountEvent::BecameOperator,
             AccountEvent::Snapshotted {
                 email,
                 name,
                 verified: true,
                 signed_up_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                 sessions_since: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
+                operator: true,
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -170,6 +180,7 @@ mod tests {
             verified: false,
             signed_up_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
             sessions_since: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
+            operator: false,
         });
 
         assert_eq!(

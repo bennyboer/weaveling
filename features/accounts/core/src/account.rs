@@ -10,6 +10,7 @@ pub const KIND: AggregateType = AggregateType::of("account");
 const SIGNED_UP: EventName = EventName::of("SIGNED_UP");
 const EMAIL_VERIFIED: EventName = EventName::of("EMAIL_VERIFIED");
 const PASSWORD_RESET: EventName = EventName::of("PASSWORD_RESET");
+const BECAME_OPERATOR: EventName = EventName::of("BECAME_OPERATOR");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +18,7 @@ pub enum AccountCommand {
     SignUp(EmailAddress, AccountName),
     Verify,
     ResetPassword,
+    BecomeOperator,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,12 +29,14 @@ pub enum AccountEvent {
     },
     EmailVerified,
     PasswordReset,
+    BecameOperator,
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
         verified: bool,
         signed_up_at: OffsetDateTime,
         sessions_since: Option<OffsetDateTime>,
+        operator: bool,
     },
 }
 
@@ -43,6 +47,7 @@ pub struct Account {
     verified: bool,
     signed_up_at: OffsetDateTime,
     sessions_since: Option<OffsetDateTime>,
+    operator: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -51,6 +56,8 @@ pub enum AccountError {
     NotSignedUpYet,
     #[error("an account cannot be signed up twice")]
     AlreadySignedUp,
+    #[error("an account must have its address verified before it can become an operator")]
+    NotVerifiedYet,
 }
 
 impl Account {
@@ -64,6 +71,10 @@ impl Account {
 
     pub fn is_verified(&self) -> bool {
         self.verified
+    }
+
+    pub fn is_operator(&self) -> bool {
+        self.operator
     }
 
     pub fn signed_up_at(&self) -> OffsetDateTime {
@@ -81,6 +92,7 @@ impl Event for AccountEvent {
             Self::SignedUp { .. } => SIGNED_UP,
             Self::EmailVerified => EMAIL_VERIFIED,
             Self::PasswordReset => PASSWORD_RESET,
+            Self::BecameOperator => BECAME_OPERATOR,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -104,9 +116,9 @@ impl Aggregate for Account {
     fn begin(command: AccountCommand, _agent: &Agent) -> Result<Vec<AccountEvent>, AccountError> {
         match command {
             AccountCommand::SignUp(email, name) => Ok(vec![AccountEvent::SignedUp { email, name }]),
-            AccountCommand::Verify | AccountCommand::ResetPassword => {
-                Err(AccountError::NotSignedUpYet)
-            }
+            AccountCommand::Verify
+            | AccountCommand::ResetPassword
+            | AccountCommand::BecomeOperator => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -118,6 +130,7 @@ impl Aggregate for Account {
                 verified: false,
                 signed_up_at: metadata.occurred_at,
                 sessions_since: None,
+                operator: false,
             }),
             AccountEvent::Snapshotted {
                 email,
@@ -125,14 +138,18 @@ impl Aggregate for Account {
                 verified,
                 signed_up_at,
                 sessions_since,
+                operator,
             } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
                 verified: *verified,
                 signed_up_at: *signed_up_at,
                 sessions_since: *sessions_since,
+                operator: *operator,
             }),
-            AccountEvent::EmailVerified | AccountEvent::PasswordReset => None,
+            AccountEvent::EmailVerified
+            | AccountEvent::PasswordReset
+            | AccountEvent::BecameOperator => None,
         }
     }
 
@@ -150,6 +167,9 @@ impl Aggregate for Account {
                 AccountEvent::EmailVerified,
                 AccountEvent::PasswordReset,
             ]),
+            AccountCommand::BecomeOperator if !self.verified => Err(AccountError::NotVerifiedYet),
+            AccountCommand::BecomeOperator if self.operator => Ok(vec![]),
+            AccountCommand::BecomeOperator => Ok(vec![AccountEvent::BecameOperator]),
         }
     }
 
@@ -158,18 +178,21 @@ impl Aggregate for Account {
             AccountEvent::SignedUp { .. } => {}
             AccountEvent::EmailVerified => self.verified = true,
             AccountEvent::PasswordReset => self.sessions_since = Some(metadata.occurred_at),
+            AccountEvent::BecameOperator => self.operator = true,
             AccountEvent::Snapshotted {
                 email,
                 name,
                 verified,
                 signed_up_at,
                 sessions_since,
+                operator,
             } => {
                 self.email = email.clone();
                 self.name = name.clone();
                 self.verified = *verified;
                 self.signed_up_at = *signed_up_at;
                 self.sessions_since = *sessions_since;
+                self.operator = *operator;
             }
         }
     }
@@ -181,6 +204,7 @@ impl Aggregate for Account {
             verified: self.verified,
             signed_up_at: self.signed_up_at,
             sessions_since: self.sessions_since,
+            operator: self.operator,
         }
     }
 }
