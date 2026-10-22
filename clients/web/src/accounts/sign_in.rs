@@ -15,6 +15,8 @@ enum Form {
     SignIn,
     SignUp,
     EnterCode,
+    AskReset,
+    Reset,
 }
 
 #[derive(Clone, Copy)]
@@ -47,6 +49,8 @@ pub fn SignInPage() -> impl IntoView {
                 Form::SignIn => sign_in_form(page).into_any(),
                 Form::SignUp => sign_up_form(page).into_any(),
                 Form::EnterCode => code_form(page).into_any(),
+                Form::AskReset => ask_reset_form(page).into_any(),
+                Form::Reset => reset_form(page).into_any(),
             }),
     )
 }
@@ -94,6 +98,9 @@ fn sign_in_form(page: Page) -> impl IntoView {
                 submitting(said("sign-in-confirm"), asking),
             ),
         ),
+        turning(said("reset-instead"), move || {
+            page.turn_to(Form::AskReset, None)
+        }),
         turning(said("sign-up-instead"), move || {
             page.turn_to(Form::SignUp, None)
         }),
@@ -146,7 +153,6 @@ fn sign_up_form(page: Page) -> impl IntoView {
 }
 
 fn code_form(page: Page) -> impl IntoView {
-    let speech = expect_context::<Speech>();
     let code = RwSignal::new(String::new());
     let refused = RwSignal::new(None::<ApiError>);
     let asking = RwSignal::new(false);
@@ -170,11 +176,6 @@ fn code_form(page: Page) -> impl IntoView {
             })
         });
     };
-    let sent_to = move || {
-        let mut args = FluentArgs::new();
-        args.set("email", page.email.get());
-        speech.say_with("code-sent", &args)
-    };
 
     Effect::new(move |_| {
         if is_whole(&code.get()) {
@@ -184,7 +185,7 @@ fn code_form(page: Page) -> impl IntoView {
 
     (
         html::h1().child(said("code-heading")),
-        html::p().class("sent-to").child(sent_to),
+        sent_to(page),
         notice(page),
         form(
             verify,
@@ -195,10 +196,109 @@ fn code_form(page: Page) -> impl IntoView {
             ),
         ),
         turning(said("code-again"), send_again),
-        turning(said("sign-in-instead"), move || {
+        turning(said("back-to-sign-in"), move || {
             page.turn_to(Form::SignIn, None)
         }),
     )
+}
+
+fn ask_reset_form(page: Page) -> impl IntoView {
+    let refused = RwSignal::new(None::<ApiError>);
+    let asking = RwSignal::new(false);
+
+    let ask = move || {
+        let email = page.email.get_untracked();
+        asked(asking, refused, async move {
+            service::ask_to_reset_password(&email)
+                .await
+                .map(|()| page.turn_to(Form::Reset, None))
+        });
+    };
+
+    (
+        html::h1().child(said("reset-heading")),
+        form(
+            ask,
+            (
+                field(said("sign-in-email"), "email", "username", page.email),
+                move || refused.get().map(problem),
+                submitting(said("reset-ask"), asking),
+            ),
+        ),
+        turning(said("back-to-sign-in"), move || {
+            page.turn_to(Form::SignIn, None)
+        }),
+    )
+}
+
+fn reset_form(page: Page) -> impl IntoView {
+    let code = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
+    let refused = RwSignal::new(None::<ApiError>);
+    let asking = RwSignal::new(false);
+
+    let reset = move || {
+        let (email, typed, chosen) = (
+            page.email.get_untracked(),
+            code.get_untracked(),
+            password.get_untracked(),
+        );
+        asked(asking, refused, async move {
+            let reset = service::reset_password(&email, &typed, &chosen).await;
+            if refused_the_code(&reset) {
+                code.set(String::new());
+            }
+            reset.map(|()| page.turn_to(Form::SignIn, Some("reset-done")))
+        });
+    };
+    let send_again = move || {
+        let email = page.email.get_untracked();
+        asked(asking, refused, async move {
+            service::ask_to_reset_password(&email).await.map(|()| {
+                code.set(String::new());
+                page.notice.set(Some("code-sent-again"));
+            })
+        });
+    };
+
+    (
+        html::h1().child(said("reset-heading")),
+        sent_to(page),
+        notice(page),
+        form(
+            reset,
+            (
+                code_boxes(code),
+                field(said("reset-password"), "password", "new-password", password),
+                html::small()
+                    .class("hint")
+                    .child(said("sign-up-password-hint")),
+                move || refused.get().map(problem),
+                submitting(said("reset-confirm"), asking),
+            ),
+        ),
+        turning(said("code-again"), send_again),
+        turning(said("back-to-sign-in"), move || {
+            page.turn_to(Form::SignIn, None)
+        }),
+    )
+}
+
+fn refused_the_code(answer: &Result<(), ApiError>) -> bool {
+    matches!(answer, Err(ApiError::Rejected(refusal))
+    if refusal.kind.as_deref().is_some_and(|kind| {
+        [refused::CODE_WRONG, refused::CODE_EXPIRED, refused::CODE_EXHAUSTED].contains(&kind)
+    }))
+}
+
+fn sent_to(page: Page) -> impl IntoView {
+    let speech = expect_context::<Speech>();
+
+    html::p().class("sent-to").child(move || {
+        let mut args = FluentArgs::new();
+        args.set("email", page.email.get());
+        speech.say_with("code-sent", &args)
+    })
 }
 
 const CODE_LENGTH: usize = 6;

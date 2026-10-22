@@ -1,5 +1,6 @@
 use accounts_contract::{
-    SendCodeRequest, ServiceModeDTO, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
+    NewPasswordRequest, PasswordResetRequest, SendCodeRequest, ServiceModeDTO, SignInRequest,
+    SignUpRequest, SignedInDTO, VerifyEmailRequest,
 };
 use gloo_net::http::Request;
 
@@ -10,6 +11,8 @@ const MODE: &str = "/api/service/mode";
 const ACCOUNTS: &str = "/api/accounts";
 const VERIFICATION: &str = "/api/accounts/verification";
 const NEW_CODE: &str = "/api/accounts/verification/code";
+const PASSWORD_RESET: &str = "/api/accounts/password-reset";
+const NEW_PASSWORD: &str = "/api/accounts/password";
 const SESSIONS: &str = "/api/sessions";
 const CURRENT: &str = "/api/sessions/current";
 const SUBJECT: &str = "session";
@@ -73,6 +76,34 @@ pub async fn send_code_again(email: &str) -> Result<(), ApiError> {
     checked(sent_with(Request::post(NEW_CODE), &payload).await?, SUBJECT)
         .await
         .map(|_| ())
+}
+
+pub async fn ask_to_reset_password(email: &str) -> Result<(), ApiError> {
+    let payload = PasswordResetRequest {
+        email: email.to_owned(),
+    };
+
+    checked(
+        sent_with(Request::post(PASSWORD_RESET), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn reset_password(email: &str, code: &str, password: &str) -> Result<(), ApiError> {
+    let payload = NewPasswordRequest {
+        email: email.to_owned(),
+        code: code.to_owned(),
+        password: password.to_owned(),
+    };
+
+    checked(
+        sent_with(Request::post(NEW_PASSWORD), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn sign_out() -> Result<(), ApiError> {

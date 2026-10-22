@@ -10,6 +10,8 @@ export const HER_PASSWORD = "correct horse battery";
 export const THE_CODE = "123456";
 
 export type Server = {
+  password: string;
+  resetsAsked: number;
   verified: boolean;
   signedIn: boolean;
   signedOut: number;
@@ -38,6 +40,8 @@ export async function aServerWithAccounts(
   { verified = true } = {},
 ): Promise<Server> {
   const server: Server = {
+    password: HER_PASSWORD,
+    resetsAsked: 0,
     verified,
     signedIn: false,
     signedOut: 0,
@@ -62,7 +66,7 @@ export async function aServerWithAccounts(
   });
   await page.route(at("/api/sessions"), async (route) => {
     const { email, password } = route.request().postDataJSON();
-    if (email !== ADA.email || password !== HER_PASSWORD) {
+    if (email !== ADA.email || password !== server.password) {
       return refusing(route, 401, "sign-in-refused");
     }
     if (!server.verified) {
@@ -96,6 +100,25 @@ export async function aServerWithAccounts(
   await page.route(at("/api/accounts/verification/code"), async (route) => {
     server.codesSent += 1;
     return route.fulfill({ status: 202 });
+  });
+  await page.route(at("/api/accounts/password-reset"), async (route) => {
+    server.resetsAsked += 1;
+    return route.fulfill({ status: 202 });
+  });
+  await page.route(at("/api/accounts/password"), async (route) => {
+    const { code, password } = route.request().postDataJSON();
+    if (password.length < 12) {
+      return refusing(route, 422, "password-too-short", {
+        min: 12,
+        actual: password.length,
+      });
+    }
+    if (code !== THE_CODE) {
+      return refusing(route, 422, "verification-code-wrong");
+    }
+    server.password = password;
+    server.verified = true;
+    return route.fulfill({ status: 204 });
   });
   await page.route(at("/api/projects"), async (route) => {
     server.projectsAsked += 1;
