@@ -1,3 +1,4 @@
+use axum::Extension;
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
@@ -46,10 +47,11 @@ pub fn router(outlines: OutlineService) -> Router {
 
 async fn open(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Json(request): Json<OpenOutlineRequest>,
 ) -> Result<Response, Problem> {
     let opened = outlines
-        .open(&request.project, &nobody_yet())
+        .open(&request.project, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -89,6 +91,7 @@ async fn find(
 
 async fn add(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path(outline): Path<String>,
     headers: HeaderMap,
     Json(request): Json<AddSectionRequest>,
@@ -100,7 +103,7 @@ async fn add(
             named_section(request.after)?,
             titled(&request.title)?,
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -123,6 +126,7 @@ async fn add(
 
 async fn retitle(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
     Json(request): Json<RetitleSectionRequest>,
@@ -133,7 +137,7 @@ async fn retitle(
             section.parse().map_err(invalid_id)?,
             titled(&request.title)?,
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -147,6 +151,7 @@ async fn retitle(
 
 async fn place(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
     Json(request): Json<MoveSectionRequest>,
@@ -158,7 +163,7 @@ async fn place(
             named_section(request.under)?,
             named_section(request.after)?,
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -172,6 +177,7 @@ async fn place(
 
 async fn promote(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, Problem> {
@@ -180,7 +186,7 @@ async fn promote(
             &outline,
             section.parse().map_err(invalid_id)?,
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -194,6 +200,7 @@ async fn promote(
 
 async fn demote(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, Problem> {
@@ -202,7 +209,7 @@ async fn demote(
             &outline,
             section.parse().map_err(invalid_id)?,
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -216,6 +223,7 @@ async fn demote(
 
 async fn remove(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Response, Problem> {
@@ -224,7 +232,7 @@ async fn remove(
             &outline,
             section.parse().map_err(invalid_id)?,
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -238,6 +246,7 @@ async fn remove(
 
 async fn attach(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path(outline): Path<String>,
     headers: HeaderMap,
     Json(request): Json<AttachRequest>,
@@ -249,7 +258,7 @@ async fn attach(
             request.section.parse().map_err(invalid_id)?,
             request.after.as_ref().map(to_attachment),
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -263,6 +272,7 @@ async fn attach(
 
 async fn detach(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path((outline, kind, attached)): Path<(String, String, String)>,
     headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
@@ -278,15 +288,11 @@ async fn detach(
     };
 
     outlines
-        .detach(&outline, attachment, demanded(&headers)?, &nobody_yet())
+        .detach(&outline, attachment, demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-fn nobody_yet() -> Agent {
-    Agent::Anonymous
 }
 
 fn named_section(given: Option<String>) -> Result<Option<SectionId>, Problem> {

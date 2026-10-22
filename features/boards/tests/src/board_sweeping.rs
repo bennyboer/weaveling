@@ -3,7 +3,7 @@ use std::sync::Arc;
 use boards_core::BoardCatalog;
 use boards_messaging::DiscardBoardsOnProjectDeletedListener;
 use clock::FixedClock;
-use eventsourcing::{Agent, AgentId};
+use eventsourcing::{AccountId, Agent};
 use messaging::{Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use serde_json::json;
@@ -16,7 +16,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_workbench() -> (Wired, DiscardBoardsOnProjectDeletedListener) {
@@ -32,7 +32,7 @@ fn deleted(project: &str) -> Message {
         json!({
             "event": { "version": 0, "name": "DELETED" },
             "aggregate": { "id": project, "kind": "project", "version": 3 },
-            "agent": { "kind": "anonymous", "id": null },
+            "agent": { "kind": "local", "id": null },
             "occurred_at": "1970-01-01T00:16:40Z",
         }),
         at(1_000),

@@ -1,11 +1,11 @@
-use eventsourcing::{Agent, AgentId, Aggregate, AggregateId, Event, EventMetadata, Version};
+use eventsourcing::{AccountId, Agent, Aggregate, AggregateId, Event, EventMetadata, Version};
 use time::OffsetDateTime;
 
 use crate::idea::*;
 use crate::title::IdeaTitle;
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_title(saying: &str) -> IdeaTitle {

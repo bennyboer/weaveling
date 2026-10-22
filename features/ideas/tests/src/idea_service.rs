@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::wiring::{Wired, wired};
 use clock::FixedClock;
-use eventsourcing::{Agent, AgentId, AggregateId, EventStore, ServiceError, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Version};
 use time::{Duration, OffsetDateTime};
 
 use ideas_core::{IdeaError, IdeaId, IdeaService, IdeaServiceError, IdeaTitle, KIND, ProjectLink};
@@ -18,7 +18,7 @@ fn a_workbench() -> (IdeaService, Arc<FixedClock>) {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 async fn a_captured_idea(service: &IdeaService) -> IdeaId {

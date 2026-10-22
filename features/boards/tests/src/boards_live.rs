@@ -1,10 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use axum::Extension;
 use axum::http::StatusCode;
 use axum_test::{TestServer, TestWebSocket};
 use boards_contract::{BoardDTO, OpenBoardRequest, PinIdeaRequest, SizeDTO, SpotDTO};
 use clock::FixedClock;
+use eventsourcing::Agent;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 use tokio::time::timeout;
@@ -15,7 +17,7 @@ fn served() -> (Wired, TestServer) {
     let wired = wired(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
     let server = TestServer::builder()
         .http_transport()
-        .build(wired.routes.clone());
+        .build(wired.routes.clone().layer(Extension(Agent::Local)));
 
     (wired, server)
 }

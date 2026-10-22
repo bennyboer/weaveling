@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
+use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::{CONTENT_TYPE, ETAG};
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
+use eventsourcing::Agent;
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
     RenameProjectRequest, refused,
@@ -46,7 +48,7 @@ fn a_server() -> Serving {
 
 fn a_server_on(clock: Arc<FixedClock>) -> Serving {
     let wired = wired(clock);
-    let server = TestServer::new(wired.routes.clone());
+    let server = TestServer::new(wired.routes.clone().layer(Extension(Agent::Local)));
 
     Serving { server, wired }
 }

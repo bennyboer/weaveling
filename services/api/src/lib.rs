@@ -6,10 +6,11 @@ mod relays;
 use std::sync::Arc;
 
 use appearances_wiring::AppearanceFeature;
-use axum::Router;
 use axum::routing::get;
+use axum::{Extension, Router};
 use boards_wiring::BoardFeature;
 use clock::Clock;
+use eventsourcing::Agent;
 use ideas_wiring::IdeaFeature;
 use live::Broadcaster;
 use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
@@ -152,7 +153,7 @@ pub fn app(adapters: Adapters) -> Router {
     }
 
     Router::new()
-        .nest("/api", api)
+        .nest("/api", api.layer(Extension(Agent::Local)))
         .layer(TraceLayer::new_for_http())
 }
 

@@ -1,3 +1,4 @@
+use axum::Extension;
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
@@ -45,10 +46,11 @@ pub fn router(boards: BoardService) -> Router {
 
 async fn open(
     State(boards): State<BoardService>,
+    Extension(acting): Extension<Agent>,
     Json(request): Json<OpenBoardRequest>,
 ) -> Result<Response, Problem> {
     let opened = boards
-        .open(&request.project, &nobody_yet())
+        .open(&request.project, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -70,6 +72,7 @@ async fn find(
 
 async fn pin(
     State(boards): State<BoardService>,
+    Extension(acting): Extension<Agent>,
     Path(board): Path<String>,
     headers: HeaderMap,
     Json(request): Json<PinIdeaRequest>,
@@ -81,7 +84,7 @@ async fn pin(
             as_spot(request.spot),
             as_size(request.size),
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -95,6 +98,7 @@ async fn pin(
 
 async fn reshape(
     State(boards): State<BoardService>,
+    Extension(acting): Extension<Agent>,
     Path((board, idea)): Path<(String, String)>,
     headers: HeaderMap,
     Json(request): Json<ReshapeIdeaRequest>,
@@ -106,7 +110,7 @@ async fn reshape(
             request.spot.map(as_spot),
             request.size.map(as_size),
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -120,6 +124,7 @@ async fn reshape(
 
 async fn unpin(
     State(boards): State<BoardService>,
+    Extension(acting): Extension<Agent>,
     Path((board, idea)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
@@ -128,16 +133,12 @@ async fn unpin(
             &board,
             IdeaLink::from(idea.as_str()),
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-fn nobody_yet() -> Agent {
-    Agent::Anonymous
 }
 
 fn as_spot(at: SpotDTO) -> Spot {

@@ -89,7 +89,7 @@ mod tests {
             json!({
                 "event": { "version": 0, "name": "SECTION_RETITLED", "section": "section_1", "title": "Part One" },
                 "aggregate": { "id": outline, "kind": "outline", "version": version },
-                "agent": { "kind": "anonymous", "id": null },
+                "agent": { "kind": "local", "id": null },
                 "occurred_at": "1970-01-01T00:16:40Z",
             }),
             OffsetDateTime::UNIX_EPOCH,

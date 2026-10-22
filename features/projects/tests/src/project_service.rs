@@ -12,7 +12,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn nobody() -> Agent {
-    Agent::Anonymous
+    Agent::Local
 }
 
 fn a_service() -> Wired {

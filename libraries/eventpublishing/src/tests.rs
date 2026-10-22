@@ -1,5 +1,6 @@
 use eventsourcing::{
-    Agent, AgentId, AggregateId, AggregateType, Event, EventMetadata, EventName, Recorded, Version,
+    AccountId, Agent, AggregateId, AggregateType, Event, EventMetadata, EventName, Recorded,
+    Version,
 };
 use messaging::Message;
 use serde::{Deserialize, Serialize};
@@ -65,7 +66,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn recorded(event: Happened, version: u64, agent: Agent) -> Recorded<Happened> {
@@ -115,7 +116,7 @@ fn what_is_published_says_who_did_it() {
     assert_eq!(
         read(&published).agent,
         PublishedAgent {
-            kind: "user".to_owned(),
+            kind: "account".to_owned(),
             id: Some("author-7".to_owned()),
         },
         "a subscriber that cannot say who did it can never show a history"
@@ -123,11 +124,11 @@ fn what_is_published_says_who_did_it() {
 }
 
 #[test]
-fn an_anonymous_agent_still_says_so() {
-    let published = message_for(&recorded(a_capture(), 1, Agent::Anonymous), body)
+fn a_local_agent_still_says_so() {
+    let published = message_for(&recorded(a_capture(), 1, Agent::Local), body)
         .expect("a capture should be published");
 
-    assert_eq!(read(&published).agent.kind, "anonymous");
+    assert_eq!(read(&published).agent.kind, "local");
     assert_eq!(read(&published).agent.id, None);
 }
 

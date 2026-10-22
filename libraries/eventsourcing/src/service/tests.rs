@@ -4,7 +4,7 @@ use clock::FixedClock;
 use time::OffsetDateTime;
 
 use super::*;
-use crate::agent::AgentId;
+use crate::agent::AccountId;
 use crate::memory::InMemoryEventStore;
 use crate::patch::Patcher;
 use crate::testing::sample::{Sample, SampleCommand, SampleError, SampleEvent};
@@ -30,7 +30,7 @@ fn a_creation() -> SampleCommand {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn happenings(landed: &Appended<SampleEvent>) -> Vec<SampleEvent> {

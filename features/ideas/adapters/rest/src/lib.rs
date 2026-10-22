@@ -1,3 +1,4 @@
+use axum::Extension;
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, Query, State};
@@ -50,10 +51,11 @@ fn to_dto(summary: &IdeaSummary) -> IdeaDTO {
 
 async fn capture(
     State(ideas): State<IdeaService>,
+    Extension(acting): Extension<Agent>,
     Json(request): Json<CaptureIdeaRequest>,
 ) -> Result<Response, Problem> {
     let id = ideas
-        .capture(&request.project, &request.title, &nobody_yet())
+        .capture(&request.project, &request.title, &acting)
         .await
         .map_err(problem_of)?
         .to_string();
@@ -73,12 +75,13 @@ async fn find(
 
 async fn retitle(
     State(ideas): State<IdeaService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<RetitleIdeaRequest>,
 ) -> Result<Response, Problem> {
     ideas
-        .retitle(&id, &request.title, demanded(&headers)?, &nobody_yet())
+        .retitle(&id, &request.title, demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -91,19 +94,16 @@ async fn retitle(
 
 async fn discard(
     State(ideas): State<IdeaService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     ideas
-        .discard(&id, demanded(&headers)?, &nobody_yet())
+        .discard(&id, demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-fn nobody_yet() -> Agent {
-    Agent::Anonymous
 }
 
 fn to_response(status: StatusCode, id: &str, standing: &Standing<Idea>) -> Response {

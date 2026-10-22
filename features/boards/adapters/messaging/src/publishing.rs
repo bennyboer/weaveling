@@ -55,7 +55,7 @@ mod tests {
     };
     use boards_core::{BoardId, IdeaLink, KIND, PositionedIdea, ProjectLink};
     use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
-    use eventsourcing::{Agent, AgentId, AggregateId, Event, EventMetadata, Version};
+    use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Version};
     use messaging::{Handler, RoutingKey, Subscription};
     use time::{Duration, OffsetDateTime};
 
@@ -75,7 +75,7 @@ mod tests {
                 aggregate: AggregateId::from(id),
                 kind: KIND,
                 version: Version::of(1),
-                agent: Agent::User(AgentId::from("author-7")),
+                agent: Agent::Account(AccountId::from("author-7")),
                 occurred_at: at(1_000),
                 is_snapshot: event.is_snapshot(),
             },

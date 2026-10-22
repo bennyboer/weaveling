@@ -22,7 +22,7 @@ mod stored_agent;
 #[cfg(test)]
 mod testing;
 
-pub use agent::{Agent, AgentId};
+pub use agent::{AccountId, Agent};
 pub use aggregate::{Aggregate, AggregateId, AggregateType};
 pub use codec::Codec;
 pub use event::{Event, EventName, Recorded};

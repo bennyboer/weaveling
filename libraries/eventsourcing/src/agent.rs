@@ -1,34 +1,34 @@
 use std::fmt::{self, Display, Formatter};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct AgentId(String);
+pub struct AccountId(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Agent {
-    Anonymous,
+    Local,
     System,
-    User(AgentId),
+    Account(AccountId),
 }
 
-impl AgentId {
+impl AccountId {
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-impl From<String> for AgentId {
+impl From<String> for AccountId {
     fn from(given: String) -> Self {
         Self(given)
     }
 }
 
-impl From<&str> for AgentId {
+impl From<&str> for AccountId {
     fn from(given: &str) -> Self {
         Self(given.to_owned())
     }
 }
 
-impl Display for AgentId {
+impl Display for AccountId {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(&self.0, f)
     }
@@ -37,9 +37,9 @@ impl Display for AgentId {
 impl Display for Agent {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Anonymous => f.write_str("anonymous"),
+            Self::Local => f.write_str("local"),
             Self::System => f.write_str("system"),
-            Self::User(id) => write!(f, "user {id}"),
+            Self::Account(id) => write!(f, "account {id}"),
         }
     }
 }
@@ -49,27 +49,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_user_agent_carries_who_it_is() {
-        let acting = Agent::User(AgentId::from("author-7"));
+    fn an_account_agent_carries_who_it_is() {
+        let acting = Agent::Account(AccountId::from("author-7"));
 
-        assert_eq!(acting, Agent::User(AgentId::from("author-7")));
-        assert_ne!(acting, Agent::User(AgentId::from("author-8")));
+        assert_eq!(acting, Agent::Account(AccountId::from("author-7")));
+        assert_ne!(acting, Agent::Account(AccountId::from("author-8")));
     }
 
     #[test]
     fn the_placeless_agents_need_no_id() {
         assert_eq!(Agent::System, Agent::System);
-        assert_eq!(Agent::Anonymous, Agent::Anonymous);
-        assert_ne!(Agent::System, Agent::Anonymous);
+        assert_eq!(Agent::Local, Agent::Local);
+        assert_ne!(Agent::System, Agent::Local);
     }
 
     #[test]
     fn an_agent_reads_well_in_an_audit_line() {
-        assert_eq!(Agent::Anonymous.to_string(), "anonymous");
+        assert_eq!(Agent::Local.to_string(), "local");
         assert_eq!(Agent::System.to_string(), "system");
         assert_eq!(
-            Agent::User(AgentId::from("author-7")).to_string(),
-            "user author-7"
+            Agent::Account(AccountId::from("author-7")).to_string(),
+            "account author-7"
         );
     }
 }

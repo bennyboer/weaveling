@@ -3,7 +3,7 @@ use std::sync::Arc;
 use boards_core::{BoardCatalog, BoardEvent, BoardId, KIND, ProjectLink};
 use boards_messaging::message_for;
 use clock::FixedClock;
-use eventsourcing::{Agent, AgentId, AggregateId, EventMetadata, EventStore, Recorded, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventMetadata, EventStore, Recorded, Version};
 use messaging::Message;
 use time::{Duration, OffsetDateTime};
 
@@ -14,7 +14,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_workbench() -> Wired {

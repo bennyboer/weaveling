@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum_test::{TestResponse, TestServer};
@@ -40,7 +41,10 @@ fn a_server() -> TestServer {
 fn a_server_and_its_outlines() -> (TestServer, OutlineService) {
     let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
 
-    (TestServer::new(wired.routes), wired.outlines)
+    (
+        TestServer::new(wired.routes.layer(Extension(Agent::Local))),
+        wired.outlines,
+    )
 }
 
 async fn an_open_outline(server: &TestServer) -> OutlineDTO {
@@ -771,7 +775,7 @@ async fn an_outline_discarded_with_its_project_refuses_what_comes_after() {
     let (server, outlines) = a_server_and_its_outlines();
     let outline = an_open_outline(&server).await;
     outlines
-        .discard(&outline.id, None, &Agent::Anonymous)
+        .discard(&outline.id, None, &Agent::Local)
         .await
         .expect("discarding should succeed");
 

@@ -6,7 +6,7 @@ use boards_core::{
 };
 use clock::FixedClock;
 use eventsourcing::{
-    Agent, AgentId, AggregateId, EventMetadata, EventStore, Recorded, ServiceError, StoreError,
+    AccountId, Agent, AggregateId, EventMetadata, EventStore, Recorded, ServiceError, StoreError,
     Version,
 };
 use messaging::RoutingKey;
@@ -28,7 +28,7 @@ fn a_key(of: &str) -> RoutingKey {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_workbench() -> (Wired, Arc<FixedClock>) {

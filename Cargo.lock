@@ -4359,6 +4359,7 @@ dependencies = [
  "weaveling-appearances-wiring",
  "weaveling-boards-wiring",
  "weaveling-clock",
+ "weaveling-eventsourcing",
  "weaveling-ideas-wiring",
  "weaveling-live",
  "weaveling-messaging",

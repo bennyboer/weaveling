@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clock::FixedClock;
-use eventsourcing::{Agent, AgentId, AggregateId, EventStore, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use ideas_contract::DISCARDED as IDEA_DISCARDED;
 use messaging::{Message, RoutingKey};
 use outline_contract::{
@@ -21,7 +21,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_workbench() -> Wired {

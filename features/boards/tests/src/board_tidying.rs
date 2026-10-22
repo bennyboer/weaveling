@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use eventsourcing::{Agent, AgentId, AggregateId, EventStore, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
 use boards_core::{BoardCatalog, BoardEvent, BoardId, IdeaLink, KIND, Size, Spot};
@@ -17,7 +17,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_workbench() -> Wired {
@@ -34,7 +34,7 @@ fn discarded(idea: &str) -> Message {
         json!({
             "event": { "version": 0, "name": "DISCARDED" },
             "aggregate": { "id": idea, "kind": "idea", "version": 4 },
-            "agent": { "kind": "anonymous", "id": null },
+            "agent": { "kind": "local", "id": null },
             "occurred_at": "1970-01-01T00:16:40Z",
         }),
         at(1_000),

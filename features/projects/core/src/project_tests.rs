@@ -1,4 +1,4 @@
-use eventsourcing::{Agent, AgentId, Aggregate, AggregateId, Event, EventMetadata, Version};
+use eventsourcing::{AccountId, Agent, Aggregate, AggregateId, Event, EventMetadata, Version};
 use time::{Duration, OffsetDateTime};
 
 use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
@@ -6,7 +6,7 @@ use crate::name::ProjectName;
 use crate::project::*;
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_name(saying: &str) -> ProjectName {

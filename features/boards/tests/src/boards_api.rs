@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum_test::{TestResponse, TestServer};
@@ -38,7 +39,10 @@ fn a_server() -> TestServer {
 fn a_server_and_its_boards() -> (TestServer, BoardService) {
     let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
 
-    (TestServer::new(wired.routes), wired.boards)
+    (
+        TestServer::new(wired.routes.layer(Extension(Agent::Local))),
+        wired.boards,
+    )
 }
 
 fn opening(project: &str) -> OpenBoardRequest {
@@ -447,7 +451,7 @@ async fn a_board_discarded_with_its_project_refuses_what_comes_after() {
     let (server, boards) = a_server_and_its_boards();
     let opened = an_open_board(&server).await;
     boards
-        .discard(&opened.id, None, &Agent::Anonymous)
+        .discard(&opened.id, None, &Agent::Local)
         .await
         .expect("discarding should succeed");
 

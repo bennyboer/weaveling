@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use clock::FixedClock;
 use eventsourcing::{
-    Agent, AgentId, Aggregate, AggregateId, EventMetadata, EventStore, Recorded, Standing, Version,
+    AccountId, Agent, Aggregate, AggregateId, EventMetadata, EventStore, Recorded, Standing,
+    Version,
 };
 use messaging::Message;
 use outline_core::{
@@ -22,7 +23,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_workbench() -> Wired {

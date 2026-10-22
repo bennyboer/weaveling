@@ -15,7 +15,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn an_author() -> Agent {
-    Agent::Anonymous
+    Agent::Local
 }
 
 fn a_workbench() -> Wired {

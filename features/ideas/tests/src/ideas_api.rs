@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
+use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
-use ideas_core::IdeaTitle;
+use ideas_core::{IdeaTitle, KIND};
 
 use crate::wiring::{Wired, wired};
 use serde_json::Value;
@@ -52,8 +54,12 @@ impl Serving {
 }
 
 fn a_server() -> Serving {
+    a_server_acting_as(Agent::Local)
+}
+
+fn a_server_acting_as(acting: Agent) -> Serving {
     let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
-    let server = TestServer::new(wired.routes.clone());
+    let server = TestServer::new(wired.routes.clone().layer(Extension(acting)));
 
     Serving { server, wired }
 }
@@ -85,6 +91,41 @@ async fn a_captured_idea_comes_back_with_a_prefixed_id() {
     );
     assert_eq!(captured.title, "The Loom");
     assert_eq!(captured.project, "project_1");
+}
+
+#[tokio::test]
+async fn an_idea_is_captured_by_whoever_the_request_says_acts() {
+    let acting = Agent::Account(AccountId::from("account_7"));
+    let server = a_server_acting_as(acting.clone());
+
+    let captured = an_idea(&server, "The Loom").await;
+
+    let recorded = server
+        .wired
+        .store
+        .read_from(
+            &AggregateId::from(captured.id.as_str()),
+            KIND,
+            Version::ZERO,
+        )
+        .await
+        .expect("reading should succeed");
+    assert_eq!(
+        recorded[0].metadata.agent, acting,
+        "a change has to say who made it, or a shared book cannot tell its authors apart"
+    );
+}
+
+#[tokio::test]
+async fn a_request_nobody_is_said_to_act_in_is_not_served() {
+    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+    let server = TestServer::new(wired.routes.clone());
+
+    server
+        .post("/ideas")
+        .json(&a_capture("The Loom"))
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
 }
 
 #[tokio::test]

@@ -42,16 +42,16 @@ impl PublishedAggregate {
 impl PublishedAgent {
     pub fn of(agent: &Agent) -> Self {
         match agent {
-            Agent::Anonymous => Self {
-                kind: "anonymous".to_owned(),
+            Agent::Local => Self {
+                kind: "local".to_owned(),
                 id: None,
             },
             Agent::System => Self {
                 kind: "system".to_owned(),
                 id: None,
             },
-            Agent::User(id) => Self {
-                kind: "user".to_owned(),
+            Agent::Account(id) => Self {
+                kind: "account".to_owned(),
                 id: Some(id.to_string()),
             },
         }

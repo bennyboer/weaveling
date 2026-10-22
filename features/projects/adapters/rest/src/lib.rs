@@ -1,3 +1,4 @@
+use axum::Extension;
 use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
@@ -57,6 +58,7 @@ fn to_dto(summary: &ProjectSummary) -> ProjectDTO {
 
 async fn create(
     State(projects): State<ProjectService>,
+    Extension(acting): Extension<Agent>,
     Json(request): Json<CreateProjectRequest>,
 ) -> Result<Response, Problem> {
     let id = projects
@@ -67,7 +69,7 @@ async fn create(
                 quotation: request.quotation.as_deref(),
                 description: &request.description,
             },
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?
@@ -88,12 +90,13 @@ async fn find(
 
 async fn rename(
     State(projects): State<ProjectService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<RenameProjectRequest>,
 ) -> Result<Response, Problem> {
     projects
-        .rename(&id, &request.name, demanded(&headers)?, &nobody_yet())
+        .rename(&id, &request.name, demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -106,6 +109,7 @@ async fn rename(
 
 async fn change_details(
     State(projects): State<ProjectService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<ChangeDetailsRequest>,
@@ -119,7 +123,7 @@ async fn change_details(
                 description: &request.description,
             },
             demanded(&headers)?,
-            &nobody_yet(),
+            &acting,
         )
         .await
         .map_err(problem_of)?;
@@ -133,19 +137,16 @@ async fn change_details(
 
 async fn remove(
     State(projects): State<ProjectService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     projects
-        .delete(&id, demanded(&headers)?, &nobody_yet())
+        .delete(&id, demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-fn nobody_yet() -> Agent {
-    Agent::Anonymous
 }
 
 fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Response {

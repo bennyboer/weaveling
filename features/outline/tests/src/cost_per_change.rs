@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use axum::Extension;
 use axum_test::TestServer;
 use clock::{Clock, SystemClock};
 use eventsourcing::{Agent, AggregateId, EventStore};
@@ -67,7 +68,7 @@ impl Bench {
             .cloned()
             .expect("the outline indexes its attachments");
         let opened = outlines
-            .open("project_bench", &Agent::Anonymous)
+            .open("project_bench", &Agent::Local)
             .await
             .expect("an outline opens");
         let section = outlines
@@ -77,14 +78,14 @@ impl Bench {
                 None,
                 SectionTitle::new("Part One").expect("a plain title"),
                 None,
-                &Agent::Anonymous,
+                &Agent::Local,
             )
             .await
             .expect("a section is added")
             .section;
 
         Self {
-            server: TestServer::new(wired.routes),
+            server: TestServer::new(wired.routes.layer(Extension(Agent::Local))),
             outlines,
             events: ports.events.clone(),
             catalog: ports.catalog.clone(),
@@ -107,7 +108,7 @@ impl Bench {
                     Some(self.section.parse().expect("a section id")),
                     SectionTitle::new("Chapter").expect("a plain title"),
                     None,
-                    &Agent::Anonymous,
+                    &Agent::Local,
                 )
                 .await
                 .expect("a chapter is added")
@@ -127,7 +128,7 @@ impl Bench {
             self.section.parse().expect("a section id"),
             None,
             None,
-            &Agent::Anonymous,
+            &Agent::Local,
         ))
         .await;
         attached.expect("attaching should succeed");

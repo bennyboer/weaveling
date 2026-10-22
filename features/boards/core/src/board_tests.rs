@@ -1,4 +1,4 @@
-use eventsourcing::{Agent, AgentId, Aggregate, AggregateId, Event, EventMetadata, Version};
+use eventsourcing::{AccountId, Agent, Aggregate, AggregateId, Event, EventMetadata, Version};
 use time::{Duration, OffsetDateTime};
 
 use crate::board::{
@@ -12,7 +12,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 fn an_author() -> Agent {
-    Agent::User(AgentId::from("author-7"))
+    Agent::Account(AccountId::from("author-7"))
 }
 
 fn a_metadata(version: u64) -> EventMetadata {

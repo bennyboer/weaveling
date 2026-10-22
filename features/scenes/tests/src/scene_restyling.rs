@@ -199,7 +199,7 @@ fn restyled(project: &str, quotation: &str, change: u64) -> Message {
         json!({
             "event": { "version": 0, "name": "QUOTATION_CHANGED", "quotation": quotation },
             "aggregate": { "id": project, "kind": "project", "version": change },
-            "agent": { "kind": "user", "id": "author-7" },
+            "agent": { "kind": "account", "id": "author-7" },
             "occurred_at": "1970-01-01T00:16:40Z",
         }),
         at(1_000),
@@ -464,7 +464,7 @@ async fn a_project_event_that_changes_no_style_is_refused() {
         json!({
             "event": { "version": 0, "name": "RENAMED", "project_name": "Another title" },
             "aggregate": { "id": A_PROJECT, "kind": "project", "version": 3 },
-            "agent": { "kind": "user", "id": "author-7" },
+            "agent": { "kind": "account", "id": "author-7" },
             "occurred_at": "1970-01-01T00:16:40Z",
         }),
         at(1_000),
