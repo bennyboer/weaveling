@@ -40,6 +40,14 @@ impl Problem {
         Self::new(StatusCode::UNPROCESSABLE_ENTITY, kind, detail)
     }
 
+    pub fn unauthorized(kind: &'static str, detail: impl Display) -> Self {
+        Self::new(StatusCode::UNAUTHORIZED, kind, detail)
+    }
+
+    pub fn forbidden(kind: &'static str, detail: impl Display) -> Self {
+        Self::new(StatusCode::FORBIDDEN, kind, detail)
+    }
+
     pub fn unexpected(error: impl Display) -> Self {
         tracing::error!(error = %error, "a request could not be served");
 

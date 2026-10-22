@@ -53,6 +53,7 @@ pub fn wired() -> Wired {
         secrets.clone(),
         secrets.clone(),
         secrets.clone(),
+        secrets.clone(),
         mailbox.clone(),
         clock.clone(),
     );

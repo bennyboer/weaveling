@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use accounts_core::{AccountEvent, AccountService, EmailAddresses, Passwords, Verifications};
+use accounts_core::{
+    AccountEvent, AccountService, EmailAddresses, Passwords, Sessions, Verifications,
+};
 use accounts_secrets::InMemorySecrets;
 use eventsourcing::{EventStore, Recorded};
 use mailing::{LoggingMailer, Mailer};
@@ -13,6 +15,7 @@ pub struct Ports {
     pub email_addresses: Arc<dyn EmailAddresses>,
     pub passwords: Arc<dyn Passwords>,
     pub verifications: Arc<dyn Verifications>,
+    pub sessions: Arc<dyn Sessions>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -23,6 +26,7 @@ pub fn service(ports: &Ports, context: &Context) -> AccountService {
         ports.email_addresses.clone(),
         ports.passwords.clone(),
         ports.verifications.clone(),
+        ports.sessions.clone(),
         ports.mailer.clone(),
         context.clock.clone(),
     )
@@ -51,7 +55,8 @@ impl Feature for AccountFeature {
             events,
             email_addresses: secrets.clone(),
             passwords: secrets.clone(),
-            verifications: secrets,
+            verifications: secrets.clone(),
+            sessions: secrets,
             mailer: Arc::new(LoggingMailer),
             outbox,
         }
@@ -67,7 +72,8 @@ impl Feature for AccountFeature {
             events,
             email_addresses: secrets.clone(),
             passwords: secrets.clone(),
-            verifications: secrets,
+            verifications: secrets.clone(),
+            sessions: secrets,
             mailer: Arc::new(LoggingMailer),
             outbox,
         })
@@ -92,7 +98,8 @@ impl Feature for AccountFeature {
             events,
             email_addresses: secrets.clone(),
             passwords: secrets.clone(),
-            verifications: secrets,
+            verifications: secrets.clone(),
+            sessions: secrets,
             mailer: Arc::new(LoggingMailer),
             outbox,
         })

@@ -11,7 +11,8 @@ use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
 use crate::name::{AccountName, InvalidAccountName};
 use crate::password::{InvalidPassword, Password, PasswordHash};
-use crate::secrets::{Attempt, EmailAddresses, Passwords, SecretsError, Verifications};
+use crate::secrets::{Attempt, EmailAddresses, Passwords, SecretsError, Sessions, Verifications};
+use crate::session::{Session, SessionToken, Stage};
 
 #[derive(Debug, Error)]
 pub enum AccountServiceError {
@@ -39,12 +40,19 @@ pub enum AccountServiceError {
     Unsent(#[from] Unsent),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignedIn {
+    pub session: Session,
+    pub account: Account,
+}
+
 #[derive(Clone)]
 pub struct AccountService {
     events: Arc<EventSourcingService<Account>>,
     email_addresses: Arc<dyn EmailAddresses>,
     passwords: Arc<dyn Passwords>,
     verifications: Arc<dyn Verifications>,
+    sessions: Arc<dyn Sessions>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
 }
@@ -55,6 +63,7 @@ impl AccountService {
         email_addresses: Arc<dyn EmailAddresses>,
         passwords: Arc<dyn Passwords>,
         verifications: Arc<dyn Verifications>,
+        sessions: Arc<dyn Sessions>,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -63,6 +72,7 @@ impl AccountService {
             email_addresses,
             passwords,
             verifications,
+            sessions,
             mailer,
             clock,
         }
@@ -154,6 +164,14 @@ impl AccountService {
         email: &str,
         password: &str,
     ) -> Result<AccountId, AccountServiceError> {
+        Ok(self.signed_in_as(email, password).await?.0)
+    }
+
+    async fn signed_in_as(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<(AccountId, Account), AccountServiceError> {
         let email = EmailAddress::new(email)?;
 
         let Some((id, account, kept)) = self.signing_in_as(&email).await? else {
@@ -167,7 +185,42 @@ impl AccountService {
             return Err(AccountServiceError::NotVerifiedYet);
         }
 
-        Ok(id)
+        Ok((id, account))
+    }
+
+    pub async fn begin_session(
+        &self,
+        email: &str,
+        password: &str,
+    ) -> Result<(SessionToken, SignedIn), AccountServiceError> {
+        let (id, account) = self.signed_in_as(email, password).await?;
+        let token = SessionToken::drawn();
+        // TODO second factors: a session owes one, Stage::SecondFactorOwed, where the account has one
+        let session = Session::begun(id, Stage::SignedIn, self.clock.now());
+        self.sessions.open(&token.digest(), &session).await?;
+
+        Ok((token, SignedIn { session, account }))
+    }
+
+    pub async fn signed_in(
+        &self,
+        token: &SessionToken,
+    ) -> Result<Option<SignedIn>, AccountServiceError> {
+        let digest = token.digest();
+        let Some(session) = self.sessions.find(&digest).await? else {
+            return Ok(None);
+        };
+        if session.is_over(self.clock.now()) {
+            self.sessions.end(&digest).await?;
+            return Ok(None);
+        }
+        let account = self.get(&session.account).await?.state;
+
+        Ok(Some(SignedIn { session, account }))
+    }
+
+    pub async fn end_session(&self, token: &SessionToken) -> Result<(), AccountServiceError> {
+        Ok(self.sessions.end(&token.digest()).await?)
     }
 
     async fn signing_in_as(

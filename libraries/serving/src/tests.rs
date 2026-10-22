@@ -116,6 +116,15 @@ async fn a_problem_names_its_kind_and_tells_its_status_detail_and_values() {
 }
 
 #[tokio::test]
+async fn nobody_known_is_unauthorized_and_somebody_not_allowed_forbidden() {
+    let (unknown, _) = told(Problem::unauthorized("not-signed-in", "sign in first")).await;
+    let (unallowed, _) = told(Problem::forbidden("address-not-verified", "verify first")).await;
+
+    assert_eq!(unknown, StatusCode::UNAUTHORIZED);
+    assert_eq!(unallowed, StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
 async fn a_value_cannot_pass_itself_off_as_the_kind() {
     let (_, told) =
         told(Problem::rejected("name-too-long", "too long").with("type", "other")).await;

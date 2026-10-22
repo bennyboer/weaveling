@@ -407,6 +407,7 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
         wired.secrets.clone(),
         wired.secrets.clone(),
         wired.secrets.clone(),
+        wired.secrets.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

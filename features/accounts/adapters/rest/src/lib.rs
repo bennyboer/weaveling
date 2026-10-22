@@ -1,12 +1,18 @@
-use accounts_contract::{SendCodeRequest, SignUpRequest, VerifyEmailRequest, refused};
+use accounts_contract::{
+    SESSION_COOKIE, SendCodeRequest, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
+    refused, stage,
+};
 use accounts_core::{
     AccountService, AccountServiceError, InvalidAccountName, InvalidEmailAddress, InvalidPassword,
+    Session, SessionToken, SignedIn, Stage,
 };
 use axum::Json;
 use axum::Router;
 use axum::extract::State;
-use axum::http::StatusCode;
-use axum::routing::post;
+use axum::http::header::{COOKIE, SET_COOKIE};
+use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
+use axum::routing::{get, post};
 use serving::Problem;
 
 pub fn router(accounts: AccountService) -> Router {
@@ -14,6 +20,8 @@ pub fn router(accounts: AccountService) -> Router {
         .route("/accounts", post(sign_up))
         .route("/accounts/verification", post(verify))
         .route("/accounts/verification/code", post(send_code_again))
+        .route("/sessions", post(begin_session))
+        .route("/sessions/current", get(current).delete(end_session))
         .with_state(accounts)
 }
 
@@ -51,6 +59,85 @@ async fn send_code_again(
         .map_err(problem_of)?;
 
     Ok(StatusCode::ACCEPTED)
+}
+
+async fn begin_session(
+    State(accounts): State<AccountService>,
+    Json(request): Json<SignInRequest>,
+) -> Result<Response, Problem> {
+    let (token, signed_in) = accounts
+        .begin_session(&request.email, &request.password)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
+}
+
+async fn current(
+    State(accounts): State<AccountService>,
+    headers: HeaderMap,
+) -> Result<Json<SignedInDTO>, Problem> {
+    let Some(token) = presented(&headers) else {
+        return Err(not_signed_in());
+    };
+
+    accounts
+        .signed_in(&token)
+        .await
+        .map_err(problem_of)?
+        .map(|signed_in| Json(to_dto(&signed_in)))
+        .ok_or_else(not_signed_in)
+}
+
+async fn end_session(
+    State(accounts): State<AccountService>,
+    headers: HeaderMap,
+) -> Result<Response, Problem> {
+    if let Some(token) = presented(&headers) {
+        accounts.end_session(&token).await.map_err(problem_of)?;
+    }
+
+    Ok(([(SET_COOKIE, letting_go())], StatusCode::NO_CONTENT).into_response())
+}
+
+fn to_dto(signed_in: &SignedIn) -> SignedInDTO {
+    SignedInDTO {
+        account: signed_in.session.account.to_string(),
+        name: signed_in.account.name().to_string(),
+        email: signed_in.account.email().to_string(),
+        stage: match signed_in.session.stage {
+            Stage::SignedIn => stage::SIGNED_IN,
+            Stage::SecondFactorOwed => stage::SECOND_FACTOR_OWED,
+        }
+        .to_owned(),
+    }
+}
+
+fn holding(token: &SessionToken) -> String {
+    format!(
+        "{SESSION_COOKIE}={}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={}",
+        token.as_str(),
+        Session::LASTS.whole_seconds()
+    )
+}
+
+fn letting_go() -> String {
+    format!("{SESSION_COOKIE}=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0")
+}
+
+fn presented(headers: &HeaderMap) -> Option<SessionToken> {
+    headers
+        .get_all(COOKIE)
+        .iter()
+        .filter_map(|sent| sent.to_str().ok())
+        .flat_map(|sent| sent.split(';'))
+        .filter_map(|pair| pair.trim().split_once('='))
+        .find(|(name, _)| *name == SESSION_COOKIE)
+        .map(|(_, token)| SessionToken::presented(token))
+}
+
+fn not_signed_in() -> Problem {
+    Problem::unauthorized(refused::NOT_SIGNED_IN, "sign in first")
 }
 
 fn problem_of(refusal: AccountServiceError) -> Problem {
@@ -93,6 +180,10 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
         AccountServiceError::CodeExhausted => {
             Problem::unprocessable(refused::CODE_EXHAUSTED, refusal)
         }
+        AccountServiceError::SignInRefused => {
+            Problem::unauthorized(refused::SIGN_IN_REFUSED, refusal)
+        }
+        AccountServiceError::NotVerifiedYet => Problem::forbidden(refused::NOT_VERIFIED, refusal),
         unserveable => Problem::unexpected(unserveable),
     }
 }
