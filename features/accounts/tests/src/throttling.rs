@@ -1,4 +1,4 @@
-use accounts_core::{AccountId, AccountServiceError, EmailAddress, Guarded, Throttles};
+use accounts_core::{AccountServiceError, EmailAddress, Guarded, Throttles};
 use time::Duration;
 
 use crate::wiring::{ADA, HER_PASSWORD, Wired, at, wired};
@@ -29,8 +29,8 @@ async fn wrong_times(wired: &Wired, email: &str, times: usize) {
     }
 }
 
-fn waits(signed_in: Result<AccountId, AccountServiceError>) -> Option<Duration> {
-    match signed_in {
+fn waits<T>(tried: Result<T, AccountServiceError>) -> Option<Duration> {
+    match tried {
         Err(AccountServiceError::Throttled { wait }) => Some(wait),
         _ => None,
     }
@@ -167,4 +167,121 @@ async fn tries_a_day_old_are_forgotten() {
         Some(1),
         "a password mistyped yesterday is no reason to wait today"
     );
+}
+
+fn mails_to(wired: &Wired, email: &str) -> usize {
+    wired.mailbox.sent_to(email).len()
+}
+
+#[tokio::test]
+async fn signing_up_and_two_codes_again_are_free_and_the_next_must_wait_a_minute() {
+    let wired = wired();
+    ada_signed_up(&wired, false).await;
+    for _ in 0..2 {
+        wired
+            .accounts
+            .send_code_again(ADA)
+            .await
+            .expect("the free sends go out");
+    }
+
+    assert_eq!(
+        waits(wired.accounts.send_code_again(ADA).await),
+        Some(Duration::minutes(1)),
+        "signing up mails a code too, so it counts as one"
+    );
+    assert_eq!(mails_to(&wired, ADA), 3);
+}
+
+#[tokio::test]
+async fn asking_to_reset_counts_with_the_codes_sent_again() {
+    let wired = wired();
+    ada_signed_up(&wired, true).await;
+    wired
+        .accounts
+        .send_code_again(ADA)
+        .await
+        .expect("a free send");
+    wired
+        .accounts
+        .ask_to_reset_password(ADA)
+        .await
+        .expect("a free send");
+
+    assert!(waits(wired.accounts.ask_to_reset_password(ADA).await).is_some());
+}
+
+#[tokio::test]
+async fn signing_up_again_and_again_with_one_address_must_wait_too() {
+    let wired = wired();
+    ada_signed_up(&wired, false).await;
+    for _ in 0..2 {
+        wired
+            .accounts
+            .sign_up(ADA, "Ada", HER_PASSWORD)
+            .await
+            .expect("a taken address is answered like any other");
+    }
+
+    assert!(
+        waits(wired.accounts.sign_up(ADA, "Ada", HER_PASSWORD).await).is_some(),
+        "or anyone could fill a stranger's inbox by signing up with it"
+    );
+    assert_eq!(mails_to(&wired, ADA), 3);
+}
+
+#[tokio::test]
+async fn an_address_nobody_has_waits_to_be_sent_to_alike() {
+    let wired = wired();
+    for _ in 0..3 {
+        wired
+            .accounts
+            .ask_to_reset_password("nobody@example.com")
+            .await
+            .expect("asking is accepted whoever asks");
+    }
+
+    assert_eq!(
+        waits(wired.accounts.send_code_again("nobody@example.com").await),
+        Some(Duration::minutes(1)),
+        "waiting only where an account stands would tell whose address it is"
+    );
+}
+
+#[tokio::test]
+async fn a_send_refused_for_waiting_is_not_counted() {
+    let wired = wired();
+    ada_signed_up(&wired, false).await;
+    for _ in 0..2 {
+        wired
+            .accounts
+            .send_code_again(ADA)
+            .await
+            .expect("the free sends go out");
+    }
+    for _ in 0..3 {
+        assert!(waits(wired.accounts.send_code_again(ADA).await).is_some());
+    }
+
+    wired.clock.set(after(1));
+
+    wired
+        .accounts
+        .send_code_again(ADA)
+        .await
+        .expect("the wait is over");
+    assert_eq!(mails_to(&wired, ADA), 4);
+}
+
+#[tokio::test]
+async fn a_sign_up_refused_for_what_it_asks_is_not_counted() {
+    let wired = wired();
+    for _ in 0..3 {
+        assert!(matches!(
+            wired.accounts.sign_up(ADA, "Ada", "short").await,
+            Err(AccountServiceError::InvalidPassword(_))
+        ));
+    }
+
+    ada_signed_up(&wired, false).await;
 }

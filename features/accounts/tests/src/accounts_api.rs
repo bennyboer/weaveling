@@ -3,7 +3,7 @@ use accounts_contract::{
     refused,
 };
 use axum::http::StatusCode;
-use axum::http::header::CONTENT_TYPE;
+use axum::http::header::{CONTENT_TYPE, RETRY_AFTER};
 use axum_test::{TestResponse, TestServer};
 use serde_json::Value;
 use time::Duration;
@@ -300,4 +300,25 @@ async fn asking_to_reset_is_accepted_whoever_asks() {
         })
         .await
         .assert_status(StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
+async fn too_many_codes_asked_for_are_answered_with_how_long_to_wait() {
+    let (_wired, server) = served();
+    let asking = PasswordResetRequest {
+        email: ADA.to_owned(),
+    };
+    for _ in 0..3 {
+        server
+            .post("/accounts/password-reset")
+            .json(&asking)
+            .await
+            .assert_status(StatusCode::ACCEPTED);
+    }
+
+    let response = server.post("/accounts/password-reset").json(&asking).await;
+
+    response.assert_status(StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response.header(RETRY_AFTER), "60");
+    assert_eq!(response.json::<Value>()["type"], refused::THROTTLED);
 }

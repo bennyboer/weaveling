@@ -101,6 +101,7 @@ impl AccountService {
         let email = EmailAddress::new(email)?;
         let name = AccountName::new(name)?;
         let password = Password::new(password)?;
+        self.counted_mail_to(&email).await?;
 
         let hashed = password.hashed();
         let id = AccountId::generate(self.clock.now());
@@ -129,6 +130,7 @@ impl AccountService {
 
     pub async fn send_code_again(&self, email: &str) -> Result<(), AccountServiceError> {
         let email = EmailAddress::new(email)?;
+        self.counted_mail_to(&email).await?;
         let Some(id) = self.email_addresses.holder(&email).await? else {
             return Ok(());
         };
@@ -165,6 +167,7 @@ impl AccountService {
 
     pub async fn ask_to_reset_password(&self, email: &str) -> Result<(), AccountServiceError> {
         let email = EmailAddress::new(email)?;
+        self.counted_mail_to(&email).await?;
         let Some((id, _account)) = self.whose(&email).await? else {
             return Ok(());
         };
@@ -332,6 +335,11 @@ impl AccountService {
             Some(wait) => Err(AccountServiceError::Throttled { wait }),
             None => Ok(()),
         }
+    }
+
+    async fn counted_mail_to(&self, email: &EmailAddress) -> Result<(), AccountServiceError> {
+        self.not_throttled(Guarded::SendingCodes, email).await?;
+        self.count_try(Guarded::SendingCodes, email).await
     }
 
     async fn count_try(
