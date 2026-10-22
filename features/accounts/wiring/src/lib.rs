@@ -46,8 +46,12 @@ pub struct AssembledAccounts {
 pub async fn assembled_accounts(
     storage: &Storage,
     context: &Context,
+    mailer: Arc<dyn Mailer>,
 ) -> Result<AssembledAccounts, Unprepared> {
-    let ports = wiring::ports::<AccountFeature>(storage, context).await?;
+    let ports = Ports {
+        mailer,
+        ..wiring::ports::<AccountFeature>(storage, context).await?
+    };
     let service = service(&ports, context);
 
     Ok(AssembledAccounts {

@@ -6,6 +6,7 @@ use async_trait::async_trait;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::SystemClock;
+use mailing::LoggingMailer;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use weaveling_service_api::{Accounts, Adapters, Relays, Storage, app};
@@ -46,9 +47,14 @@ pub async fn a_server_on<B: Backend>(backend: &B) -> TestServer {
 }
 
 async fn adapters_on<B: Backend>(backend: &B, accounts: Accounts) -> Adapters {
-    Adapters::assembled(backend.storage(), accounts, Arc::new(SystemClock))
-        .await
-        .expect("every feature's schema should lay down")
+    Adapters::assembled(
+        backend.storage(),
+        accounts,
+        Arc::new(LoggingMailer),
+        Arc::new(SystemClock),
+    )
+    .await
+    .expect("every feature's schema should lay down")
 }
 
 impl<B: Backend> Journey<B> {

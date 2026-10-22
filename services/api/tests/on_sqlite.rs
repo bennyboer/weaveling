@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use axum::http::StatusCode;
 use axum_test::TestServer;
 use clock::SystemClock;
+use mailing::LoggingMailer;
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
@@ -135,6 +136,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
         let first = TestServer::new(app(Adapters::assembled(
             local(),
             Accounts::Off,
+            Arc::new(LoggingMailer),
             Arc::new(SystemClock),
         )
         .await
@@ -154,6 +156,7 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
     let second = TestServer::new(app(Adapters::assembled(
         local(),
         Accounts::Off,
+        Arc::new(LoggingMailer),
         Arc::new(SystemClock),
     )
     .await

@@ -4072,6 +4072,8 @@ name = "weaveling-mailing"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "tracing",
@@ -4538,6 +4540,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ideas-wiring",
  "weaveling-live",
+ "weaveling-mailing",
  "weaveling-messaging",
  "weaveling-messaging-contract",
  "weaveling-outbox",

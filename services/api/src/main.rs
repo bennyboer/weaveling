@@ -4,7 +4,7 @@ use clock::SystemClock;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 use weaveling_service_api::{
-    Accounts, Adapters, Backend, Flakiness, Relays, Settling, WEAVELING_FLAKY, app,
+    Accounts, Adapters, Backend, Flakiness, Mailing, Relays, Settling, WEAVELING_FLAKY, app,
 };
 
 const LOG_LEVEL_UNLESS_TOLD: &str = "info";
@@ -12,11 +12,13 @@ const LOG_LEVEL_UNLESS_TOLD: &str = "info";
 async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>) {
     let backend = Backend::from_environment().unwrap_or_else(|why| panic!("{why}"));
     let accounts = Accounts::from_environment().unwrap_or_else(|why| panic!("{why}"));
-    tracing::info!("keeping the work {backend}, {accounts}");
+    let mailing = Mailing::from_environment();
+    tracing::info!("keeping the work {backend}, {accounts}, {mailing}");
     let storage = backend.storage().unwrap_or_else(|why| panic!("{why}"));
-    let mut adapters = Adapters::assembled(storage, accounts, Arc::new(SystemClock))
-        .await
-        .unwrap_or_else(|why| panic!("{why}"));
+    let mut adapters =
+        Adapters::assembled(storage, accounts, mailing.mailer(), Arc::new(SystemClock))
+            .await
+            .unwrap_or_else(|why| panic!("{why}"));
     if let Some(flakiness) = Flakiness::from_environment().unwrap_or_else(|why| panic!("{why}")) {
         tracing::warn!("{WEAVELING_FLAKY} is set: listeners refuse messages on purpose");
         adapters = adapters.refusing_on_purpose(flakiness);

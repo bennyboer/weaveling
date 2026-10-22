@@ -1,3 +1,4 @@
+use std::fs;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ use clock::SystemClock;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use weaveling_service_api::{Accounts, Adapters, Relays, app};
+use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, Storage, app};
 
 async fn new_app() -> Router {
     app(Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await)
@@ -307,4 +308,43 @@ async fn in_memory_a_captured_idea_travels_all_the_way_to_its_catalog() {
     );
 
     relays.stop().await;
+}
+
+#[tokio::test]
+async fn a_server_with_a_mail_drop_leaves_each_code_there() {
+    let drop = std::env::temp_dir().join(format!("weaveling-app-mail-drop-{}", std::process::id()));
+    let _gone = fs::remove_dir_all(&drop);
+    let mailing = Mailing::Dropped { into: drop.clone() };
+    let server = TestServer::new(app(Adapters::assembled(
+        Storage::InMemory,
+        Accounts::On,
+        mailing.mailer(),
+        Arc::new(SystemClock),
+    )
+    .await
+    .expect("nothing kept in memory needs preparing")));
+
+    server
+        .post("/api/accounts")
+        .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+
+    let dropped: Vec<Value> = fs::read_dir(&drop)
+        .expect("the drop should have been made")
+        .map(|entry| {
+            serde_json::from_slice(&fs::read(entry.expect("an entry").path()).expect("readable"))
+                .expect("a mail as JSON")
+        })
+        .collect();
+    assert_eq!(dropped.len(), 1);
+    assert_eq!(dropped[0]["to"], "ada@example.com");
+    assert!(
+        dropped[0]["body"].as_str().is_some_and(|body| body
+            .split_whitespace()
+            .any(|word| word.len() == 6 && word.bytes().all(|digit| digit.is_ascii_digit()))),
+        "{}",
+        dropped[0]
+    );
+    let _gone = fs::remove_dir_all(&drop);
 }

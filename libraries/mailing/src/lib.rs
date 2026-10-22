@@ -1,9 +1,14 @@
+mod dropping;
+
 use std::sync::Mutex;
 
 use async_trait::async_trait;
+use serde::Serialize;
 use thiserror::Error;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+pub use dropping::DroppingMailer;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Mail {
     pub to: String,
     pub subject: String,

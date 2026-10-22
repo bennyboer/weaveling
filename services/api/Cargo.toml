@@ -23,6 +23,7 @@ eventsourcing = { version = "0.1.0", path = "../../libraries/eventsourcing", pac
 wiring = { version = "0.1.0", path = "../../libraries/wiring", package = "weaveling-wiring" }
 messaging = { version = "0.1.0", path = "../../libraries/messaging", package = "weaveling-messaging" }
 serving = { version = "0.1.0", path = "../../libraries/serving", package = "weaveling-serving" }
+mailing = { version = "0.1.0", path = "../../libraries/mailing", package = "weaveling-mailing" }
 live = { version = "0.1.0", path = "../../libraries/live", package = "weaveling-live" }
 serde_json = { workspace = true }
 messaging-contract = { version = "0.1.0", path = "../../libraries/messaging-contract", package = "weaveling-messaging-contract" }

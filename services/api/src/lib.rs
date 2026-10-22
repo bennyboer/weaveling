@@ -1,6 +1,7 @@
 mod accounts;
 mod backend;
 mod flaky;
+mod mail;
 mod refusals;
 mod relays;
 
@@ -16,6 +17,7 @@ use clock::Clock;
 use eventsourcing::Agent;
 use ideas_wiring::IdeaFeature;
 use live::Broadcaster;
+use mailing::{LoggingMailer, Mailer};
 use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use outline_wiring::OutlineFeature;
 use projects_wiring::ProjectFeature;
@@ -30,6 +32,7 @@ use crate::refusals::TellingDeliveries;
 pub use accounts::{Accounts, UnreadableAccounts, WEAVELING_ACCOUNTS};
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
+pub use mail::{Mailing, WEAVELING_MAIL_DROP};
 pub use relays::Relays;
 pub use wiring::{Settling, Storage, Unprepared};
 
@@ -50,6 +53,7 @@ impl Adapters {
     pub async fn assembled(
         storage: Storage,
         accounts: Accounts,
+        mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Result<Self, Unprepared> {
         let refusals = Broadcaster::new();
@@ -73,7 +77,7 @@ impl Adapters {
             assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
         let accounts = match accounts {
-            Accounts::On => Some(assembled_accounts(&storage, &context).await?),
+            Accounts::On => Some(assembled_accounts(&storage, &context, mailer).await?),
             Accounts::Off => None,
         };
 
@@ -89,7 +93,7 @@ impl Adapters {
     }
 
     pub async fn in_memory(accounts: Accounts, clock: Arc<dyn Clock>) -> Self {
-        Self::assembled(Storage::InMemory, accounts, clock)
+        Self::assembled(Storage::InMemory, accounts, Arc::new(LoggingMailer), clock)
             .await
             .expect("nothing kept in memory needs preparing")
     }
