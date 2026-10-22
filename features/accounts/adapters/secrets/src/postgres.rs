@@ -1,9 +1,9 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, PasswordHash, Passwords,
-    PendingVerification, SecretsError, Session, Sessions, Stage, TokenDigest, VerificationCode,
-    Verifications,
+    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, PasswordHash,
+    Passwords, PendingVerification, SecretsError, Session, Sessions, Stage, Throttles, TokenDigest,
+    Tries, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
@@ -47,6 +47,19 @@ const ATTEMPT: &str = "
 ";
 
 const ISSUED: &str = "SELECT count(*) FROM account_codes WHERE account = $1 AND purpose = $2";
+
+const TRIES: &str = "SELECT counted, last FROM account_throttles WHERE guarded = $1 AND email = $2";
+
+const COUNT: &str = "
+    INSERT INTO account_throttles (guarded, email, counted, last)
+    VALUES ($1, $2, 1, $3)
+    ON CONFLICT (guarded, email) DO UPDATE
+    SET counted = account_throttles.counted + 1,
+        last    = EXCLUDED.last
+    RETURNING counted, last
+";
+
+const CLEAR: &str = "DELETE FROM account_throttles WHERE guarded = $1 AND email = $2";
 
 const OPEN: &str = "
     INSERT INTO account_sessions (digest, account, stage, begun, until)
@@ -106,6 +119,16 @@ fn to_session(row: &PgRow) -> Result<Session, SecretsError> {
         },
         begun,
         until,
+    })
+}
+
+fn to_tries(row: &PgRow) -> Result<Tries, SecretsError> {
+    let counted: i32 = row.try_get("counted").map_err(unreachable)?;
+    let last: OffsetDateTime = row.try_get("last").map_err(unreachable)?;
+
+    Ok(Tries {
+        counted: u32::try_from(counted).map_err(unreachable)?,
+        last,
     })
 }
 
@@ -181,6 +204,53 @@ impl Passwords for PostgresSecrets {
             .map_err(unreachable)?;
 
         Ok(kept.map(PasswordHash::kept))
+    }
+}
+
+#[async_trait]
+impl Throttles for PostgresSecrets {
+    async fn tries(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+    ) -> Result<Option<Tries>, SecretsError> {
+        sqlx::query(TRIES)
+            .bind(guarded.as_str())
+            .bind(email.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .as_ref()
+            .map(to_tries)
+            .transpose()
+    }
+
+    async fn count(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+        at: OffsetDateTime,
+    ) -> Result<Tries, SecretsError> {
+        let counted = sqlx::query(COUNT)
+            .bind(guarded.as_str())
+            .bind(email.as_str())
+            .bind(at)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        to_tries(&counted)
+    }
+
+    async fn clear(&self, guarded: Guarded, email: &EmailAddress) -> Result<(), SecretsError> {
+        sqlx::query(CLEAR)
+            .bind(guarded.as_str())
+            .bind(email.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 }
 

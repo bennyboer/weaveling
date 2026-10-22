@@ -24,3 +24,11 @@ CREATE TABLE account_sessions (
     begun    TIMESTAMPTZ      NOT NULL,
     until    TIMESTAMPTZ      NOT NULL
 );
+
+CREATE TABLE account_throttles (
+    guarded  TEXT             NOT NULL,
+    email    TEXT COLLATE "C" NOT NULL,
+    counted  INTEGER          NOT NULL,
+    last     TIMESTAMPTZ      NOT NULL,
+    PRIMARY KEY (guarded, email)
+);

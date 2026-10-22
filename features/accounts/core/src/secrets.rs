@@ -2,12 +2,14 @@ use std::error::Error;
 
 use async_trait::async_trait;
 use thiserror::Error;
+use time::OffsetDateTime;
 
 use crate::code::{CodePurpose, PendingVerification};
 use crate::email::EmailAddress;
 use crate::id::AccountId;
 use crate::password::PasswordHash;
 use crate::session::{Session, TokenDigest};
+use crate::throttle::{Guarded, Tries};
 
 #[derive(Debug, Error)]
 pub enum SecretsError {
@@ -38,6 +40,24 @@ pub trait Passwords: Send + Sync {
     async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError>;
 
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError>;
+}
+
+#[async_trait]
+pub trait Throttles: Send + Sync {
+    async fn tries(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+    ) -> Result<Option<Tries>, SecretsError>;
+
+    async fn count(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+        at: OffsetDateTime,
+    ) -> Result<Tries, SecretsError>;
+
+    async fn clear(&self, guarded: Guarded, email: &EmailAddress) -> Result<(), SecretsError>;
 }
 
 #[async_trait]

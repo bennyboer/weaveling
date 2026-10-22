@@ -2,10 +2,12 @@ use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, PasswordHash, Passwords,
-    PendingVerification, SecretsError, Session, Sessions, TokenDigest, Verifications,
+    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, PasswordHash,
+    Passwords, PendingVerification, SecretsError, Session, Sessions, Throttles, TokenDigest, Tries,
+    Verifications,
 };
 use async_trait::async_trait;
+use time::OffsetDateTime;
 
 #[derive(Default)]
 struct Kept {
@@ -13,6 +15,7 @@ struct Kept {
     passwords: HashMap<AccountId, PasswordHash>,
     pending: HashMap<(AccountId, CodePurpose), PendingVerification>,
     sessions: HashMap<TokenDigest, Session>,
+    tries: HashMap<(Guarded, EmailAddress), Tries>,
 }
 
 #[derive(Default)]
@@ -62,6 +65,40 @@ impl Passwords for InMemorySecrets {
 
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError> {
         Ok(self.kept().passwords.get(account).cloned())
+    }
+}
+
+#[async_trait]
+impl Throttles for InMemorySecrets {
+    async fn tries(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+    ) -> Result<Option<Tries>, SecretsError> {
+        Ok(self.kept().tries.get(&(guarded, email.clone())).copied())
+    }
+
+    async fn count(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+        at: OffsetDateTime,
+    ) -> Result<Tries, SecretsError> {
+        let mut kept = self.kept();
+        let tries = kept.tries.entry((guarded, email.clone())).or_insert(Tries {
+            counted: 0,
+            last: at,
+        });
+        tries.counted += 1;
+        tries.last = at;
+
+        Ok(*tries)
+    }
+
+    async fn clear(&self, guarded: Guarded, email: &EmailAddress) -> Result<(), SecretsError> {
+        self.kept().tries.remove(&(guarded, email.clone()));
+
+        Ok(())
     }
 }
 

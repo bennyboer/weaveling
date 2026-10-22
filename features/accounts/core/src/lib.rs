@@ -7,6 +7,7 @@ mod password;
 mod secrets;
 mod service;
 mod session;
+mod throttle;
 
 #[cfg(test)]
 mod account_tests;
@@ -17,6 +18,9 @@ pub use email::{EmailAddress, InvalidEmailAddress};
 pub use id::AccountId;
 pub use name::{AccountName, InvalidAccountName};
 pub use password::{InvalidPassword, Password, PasswordHash};
-pub use secrets::{Attempt, EmailAddresses, Passwords, SecretsError, Sessions, Verifications};
+pub use secrets::{
+    Attempt, EmailAddresses, Passwords, SecretsError, Sessions, Throttles, Verifications,
+};
 pub use service::{AccountService, AccountServiceError, SignedIn};
 pub use session::{Session, SessionToken, Stage, TokenDigest};
+pub use throttle::{Guarded, Tries};
