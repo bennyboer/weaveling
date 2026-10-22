@@ -1,13 +1,13 @@
 use accounts_core::{
     AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
-    SecretsError, VerificationCode, Verifications,
+    SecretsError, Session, SessionToken, Sessions, Stage, VerificationCode, Verifications,
 };
 use futures_util::future::join_all;
 use time::OffsetDateTime;
 
-pub trait Secrets: EmailAddresses + Passwords + Verifications {}
+pub trait Secrets: EmailAddresses + Passwords + Sessions + Verifications {}
 
-impl<S: EmailAddresses + Passwords + Verifications> Secrets for S {}
+impl<S: EmailAddresses + Passwords + Sessions + Verifications> Secrets for S {}
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -351,6 +351,108 @@ pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S: Secre
         .expect("closing nothing is fine");
 }
 
+fn a_session(stage: Stage) -> Session {
+    Session {
+        account: AccountId::generate(at(1_000)),
+        stage,
+        until: at(1_700_000_000),
+    }
+}
+
+pub async fn an_opened_session_is_found_by_its_tokens_digest_until_it_ends<S: Secrets>(
+    secrets: &S,
+) {
+    let token = SessionToken::drawn();
+    let session = a_session(Stage::SignedIn);
+    secrets
+        .open(&token.digest(), &session)
+        .await
+        .expect("opening should succeed");
+
+    assert_eq!(
+        secrets
+            .find(&SessionToken::presented(token.as_str()).digest())
+            .await
+            .expect("finding should succeed"),
+        Some(session)
+    );
+
+    secrets
+        .end(&token.digest())
+        .await
+        .expect("closing should succeed");
+    assert_eq!(
+        secrets
+            .find(&token.digest())
+            .await
+            .expect("finding should succeed"),
+        None
+    );
+}
+
+pub async fn a_token_nobody_was_given_finds_nothing<S: Secrets>(secrets: &S) {
+    secrets
+        .open(&SessionToken::drawn().digest(), &a_session(Stage::SignedIn))
+        .await
+        .expect("opening should succeed");
+
+    assert_eq!(
+        secrets
+            .find(&SessionToken::drawn().digest())
+            .await
+            .expect("finding should succeed"),
+        None
+    );
+}
+
+pub async fn each_stage_is_kept_as_it_was<S: Secrets>(secrets: &S) {
+    for stage in [Stage::SignedIn, Stage::SecondFactorOwed] {
+        let token = SessionToken::drawn();
+        secrets
+            .open(&token.digest(), &a_session(stage))
+            .await
+            .expect("opening should succeed");
+
+        assert_eq!(
+            secrets
+                .find(&token.digest())
+                .await
+                .expect("finding should succeed")
+                .map(|session| session.stage),
+            Some(stage),
+            "a session owing its second factor must never come back signed in"
+        );
+    }
+}
+
+pub async fn ending_one_session_leaves_the_others_open<S: Secrets>(secrets: &S) {
+    let phone = SessionToken::drawn();
+    let laptop = SessionToken::drawn();
+    for token in [&phone, &laptop] {
+        secrets
+            .open(&token.digest(), &a_session(Stage::SignedIn))
+            .await
+            .expect("opening should succeed");
+    }
+
+    secrets
+        .end(&phone.digest())
+        .await
+        .expect("closing should succeed");
+    secrets
+        .end(&SessionToken::drawn().digest())
+        .await
+        .expect("ending a session never opened is harmless");
+
+    assert!(
+        secrets
+            .find(&laptop.digest())
+            .await
+            .expect("finding should succeed")
+            .is_some()
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -400,5 +502,12 @@ macro_rules! conformance_tests {
             $workbench,
             attempting_or_closing_where_nothing_was_issued_is_harmless
         );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            an_opened_session_is_found_by_its_tokens_digest_until_it_ends
+        );
+        $crate::secrets_conformance_case!($workbench, a_token_nobody_was_given_finds_nothing);
+        $crate::secrets_conformance_case!($workbench, each_stage_is_kept_as_it_was);
+        $crate::secrets_conformance_case!($workbench, ending_one_session_leaves_the_others_open);
     };
 }

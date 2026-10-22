@@ -7,6 +7,7 @@ use crate::code::PendingVerification;
 use crate::email::EmailAddress;
 use crate::id::AccountId;
 use crate::password::PasswordHash;
+use crate::session::{Session, TokenDigest};
 
 #[derive(Debug, Error)]
 pub enum SecretsError {
@@ -37,6 +38,15 @@ pub trait Passwords: Send + Sync {
     async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError>;
 
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError>;
+}
+
+#[async_trait]
+pub trait Sessions: Send + Sync {
+    async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError>;
+
+    async fn find(&self, digest: &TokenDigest) -> Result<Option<Session>, SecretsError>;
+
+    async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError>;
 }
 
 #[async_trait]

@@ -3579,6 +3579,7 @@ dependencies = [
  "argon2",
  "async-trait",
  "rand_core 0.6.4",
+ "sha2 0.10.9",
  "thiserror",
  "time",
  "weaveling-clock",

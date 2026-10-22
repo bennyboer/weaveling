@@ -2,7 +2,7 @@ use std::error::Error;
 
 use accounts_core::{
     AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
-    SecretsError, VerificationCode, Verifications,
+    SecretsError, Session, Sessions, Stage, TokenDigest, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use clock::text;
@@ -47,6 +47,18 @@ const ATTEMPT: &str = "
 
 const ISSUED: &str = "SELECT count(*) FROM email_verifications WHERE account = ?1";
 
+const OPEN: &str = "
+    INSERT INTO account_sessions (digest, account, stage, until)
+    VALUES (?1, ?2, ?3, ?4)
+";
+
+const FIND: &str = "SELECT account, stage, until FROM account_sessions WHERE digest = ?1";
+
+const END_SESSION: &str = "DELETE FROM account_sessions WHERE digest = ?1";
+
+const SIGNED_IN: &str = "signed-in";
+const SECOND_FACTOR_OWED: &str = "second-factor-owed";
+
 const CLOSE: &str = "DELETE FROM email_verifications WHERE account = ?1";
 
 pub fn migrations() -> Migrator {
@@ -65,6 +77,36 @@ impl SqliteSecrets {
 
 fn unreachable(failure: impl Error + Send + Sync + 'static) -> SecretsError {
     SecretsError::Backend(Box::new(failure))
+}
+
+fn written(stage: Stage) -> &'static str {
+    match stage {
+        Stage::SignedIn => SIGNED_IN,
+        Stage::SecondFactorOwed => SECOND_FACTOR_OWED,
+    }
+}
+
+fn to_session(row: &SqliteRow) -> Result<Session, SecretsError> {
+    let account: String = row.try_get("account").map_err(unreachable)?;
+    let stage: String = row.try_get("stage").map_err(unreachable)?;
+    let until: String = row.try_get("until").map_err(unreachable)?;
+    let until = text::read(&until).ok_or_else(|| {
+        SecretsError::Backend(format!("until holds {until:?}, which is no time").into())
+    })?;
+
+    Ok(Session {
+        account: account.parse().map_err(unreachable)?,
+        stage: match stage.as_str() {
+            SIGNED_IN => Stage::SignedIn,
+            SECOND_FACTOR_OWED => Stage::SecondFactorOwed,
+            _ => {
+                return Err(SecretsError::Backend(
+                    format!("stage holds {stage:?}, which is no stage").into(),
+                ));
+            }
+        },
+        until,
+    })
 }
 
 fn to_pending(row: &SqliteRow) -> Result<PendingVerification, SecretsError> {
@@ -141,6 +183,43 @@ impl Passwords for SqliteSecrets {
             .map_err(unreachable)?;
 
         Ok(kept.map(PasswordHash::kept))
+    }
+}
+
+#[async_trait]
+impl Sessions for SqliteSecrets {
+    async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
+        sqlx::query(OPEN)
+            .bind(digest.as_str())
+            .bind(session.account.to_string())
+            .bind(written(session.stage))
+            .bind(text::written(session.until))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn find(&self, digest: &TokenDigest) -> Result<Option<Session>, SecretsError> {
+        sqlx::query(FIND)
+            .bind(digest.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .as_ref()
+            .map(to_session)
+            .transpose()
+    }
+
+    async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+        sqlx::query(END_SESSION)
+            .bind(digest.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 }
 

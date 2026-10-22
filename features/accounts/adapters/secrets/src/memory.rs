@@ -3,7 +3,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use accounts_core::{
     AccountId, Attempt, EmailAddress, EmailAddresses, PasswordHash, Passwords, PendingVerification,
-    SecretsError, Verifications,
+    SecretsError, Session, Sessions, TokenDigest, Verifications,
 };
 use async_trait::async_trait;
 
@@ -12,6 +12,7 @@ struct Kept {
     email_addresses: HashMap<EmailAddress, AccountId>,
     passwords: HashMap<AccountId, PasswordHash>,
     pending: HashMap<AccountId, PendingVerification>,
+    sessions: HashMap<TokenDigest, Session>,
 }
 
 #[derive(Default)]
@@ -61,6 +62,25 @@ impl Passwords for InMemorySecrets {
 
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError> {
         Ok(self.kept().passwords.get(account).cloned())
+    }
+}
+
+#[async_trait]
+impl Sessions for InMemorySecrets {
+    async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
+        self.kept().sessions.insert(digest.clone(), session.clone());
+
+        Ok(())
+    }
+
+    async fn find(&self, digest: &TokenDigest) -> Result<Option<Session>, SecretsError> {
+        Ok(self.kept().sessions.get(digest).cloned())
+    }
+
+    async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+        self.kept().sessions.remove(digest);
+
+        Ok(())
     }
 }
 

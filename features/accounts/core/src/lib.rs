@@ -6,6 +6,7 @@ mod name;
 mod password;
 mod secrets;
 mod service;
+mod session;
 
 #[cfg(test)]
 mod account_tests;
@@ -16,5 +17,6 @@ pub use email::{EmailAddress, InvalidEmailAddress};
 pub use id::AccountId;
 pub use name::{AccountName, InvalidAccountName};
 pub use password::{InvalidPassword, Password, PasswordHash};
-pub use secrets::{Attempt, EmailAddresses, Passwords, SecretsError, Verifications};
+pub use secrets::{Attempt, EmailAddresses, Passwords, SecretsError, Sessions, Verifications};
 pub use service::{AccountService, AccountServiceError};
+pub use session::{Session, SessionToken, Stage, TokenDigest};

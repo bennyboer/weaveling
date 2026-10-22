@@ -14,3 +14,10 @@ CREATE TABLE email_verifications (
     until    TIMESTAMPTZ      NOT NULL,
     tried    INTEGER          NOT NULL
 );
+
+CREATE TABLE account_sessions (
+    digest   TEXT COLLATE "C" PRIMARY KEY,
+    account  TEXT COLLATE "C" NOT NULL,
+    stage    TEXT             NOT NULL,
+    until    TIMESTAMPTZ      NOT NULL
+);
