@@ -440,3 +440,4 @@ code-confirmed = Votre adresse est confirmée. Vous pouvez maintenant vous conne
 code-enter = Saisir le code
 unreachable-heading = Le serveur est injoignable
 try-again = Réessayer
+account-menu = Compte : { $name }

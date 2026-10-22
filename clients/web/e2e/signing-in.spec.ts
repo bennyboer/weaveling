@@ -9,6 +9,9 @@ import {
 
 const masthead = (page: Page) => page.getByRole("banner");
 
+const accountButton = (page: Page) =>
+  masthead(page).getByRole("button", { name: /^Account: / });
+
 test("without accounts, the work opens as it always did", async ({ page }) => {
   await page.goto("/");
 
@@ -16,9 +19,7 @@ test("without accounts, the work opens as it always did", async ({ page }) => {
     page.getByRole("heading", { name: "Your projects" }),
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
-  await expect(
-    masthead(page).getByRole("button", { name: "Sign out" }),
-  ).toHaveCount(0);
+  await expect(accountButton(page)).toHaveCount(0);
 });
 
 test("on a server, signing in comes before any of the work is asked for", async ({
@@ -44,7 +45,9 @@ test("signing in opens the work and names who signed in", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Your projects" }),
   ).toBeVisible();
-  await expect(masthead(page)).toContainText("Ada Lovelace");
+  await expect(
+    masthead(page).getByRole("button", { name: "Account: Ada Lovelace" }),
+  ).toHaveText("A");
 });
 
 test("signing in keeps the address that was asked for", async ({ page }) => {
@@ -90,9 +93,10 @@ test("signing out ends the session and asks to sign in again", async ({
   const server = await aServerWithAccounts(page);
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
-  await expect(masthead(page)).toContainText("Ada Lovelace");
+  await expect(accountButton(page)).toBeVisible();
 
-  await masthead(page).getByRole("button", { name: "Sign out" }).click();
+  await accountButton(page).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
 
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   expect(server.signedOut).toBe(1);

@@ -1,13 +1,14 @@
+mod account_menu;
 mod service;
 pub mod sign_in;
 pub mod unreachable;
 
+pub use account_menu::account_in_masthead;
+
 use leptos::prelude::*;
 use leptos::task::spawn_local;
-use leptos::{IntoView, ev, html};
 
 use crate::http::when_no_longer_signed_in;
-use crate::speech::said;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedInAccount {
@@ -83,26 +84,6 @@ fn screen_for(state: &SignInState) -> Screen {
         SignInState::Unreachable => Screen::Unreachable,
         SignInState::SignedOut => Screen::SignIn,
         SignInState::NoAccounts | SignInState::SignedIn(_) => Screen::Work,
-    }
-}
-
-pub fn account_in_masthead() -> impl IntoView {
-    let session = expect_context::<CurrentSession>();
-
-    move || match session.state.get() {
-        SignInState::SignedIn(account) => Some(
-            html::div().class("signed-in").child((
-                html::span()
-                    .class("account")
-                    .attr("title", account.email)
-                    .child(account.name),
-                html::button()
-                    .r#type("button")
-                    .on(ev::click, move |_| session.sign_out())
-                    .child(said("sign-out")),
-            )),
-        ),
-        _ => None,
     }
 }
 

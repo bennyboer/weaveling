@@ -440,3 +440,4 @@ code-confirmed = Seu e-mail está confirmado. Você já pode entrar.
 code-enter = Digitar o código
 unreachable-heading = Não foi possível acessar o servidor
 try-again = Tentar de novo
+account-menu = Conta: { $name }
