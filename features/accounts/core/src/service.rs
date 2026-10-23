@@ -10,6 +10,7 @@ use crate::account::{Account, AccountCommand, AccountError, AccountEvent};
 use crate::code::{CodePurpose, PendingVerification};
 use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
+use crate::lock::{InvalidLockReason, LockKind, LockReason};
 use crate::name::{AccountName, InvalidAccountName};
 use crate::operator::OperatorCode;
 use crate::password::{InvalidPassword, Password, PasswordHash};
@@ -28,6 +29,8 @@ pub enum AccountServiceError {
     InvalidName(#[from] InvalidAccountName),
     #[error(transparent)]
     InvalidPassword(#[from] InvalidPassword),
+    #[error("{0}")]
+    InvalidLockReason(InvalidLockReason),
     #[error("this is not the code that was sent")]
     CodeWrong,
     #[error("this code has run out; ask for a new one")]
@@ -38,6 +41,10 @@ pub enum AccountServiceError {
     SignInRefused,
     #[error("this address is not verified yet")]
     NotVerifiedYet,
+    #[error("this account is locked")]
+    Locked,
+    #[error("only an operator may do this")]
+    NotAnOperator,
     #[error("this is not the code that makes an operator")]
     OperatorCodeWrong,
     #[error("too many tries; wait {wait} before trying again")]
@@ -264,6 +271,9 @@ impl AccountService {
             return Err(AccountServiceError::SignInRefused);
         }
         self.throttles.clear(Guarded::SigningIn, &email).await?;
+        if account.is_locked() {
+            return Err(AccountServiceError::Locked);
+        }
         if !account.is_verified() {
             return Err(AccountServiceError::NotVerifiedYet);
         }
@@ -298,7 +308,7 @@ impl AccountService {
             return Ok(None);
         }
         let account = self.get(&session.account).await?.state;
-        if !account.counts_session_begun(session.begun) {
+        if account.is_locked() || !account.counts_session_begun(session.begun) {
             self.sessions.end(&digest).await?;
             return Ok(None);
         }
@@ -347,6 +357,54 @@ impl AccountService {
         self.operators.appoint(id).await?;
 
         Ok(())
+    }
+
+    pub async fn lock(
+        &self,
+        by: &AccountId,
+        account: &AccountId,
+        reason: &str,
+    ) -> Result<(), AccountServiceError> {
+        let reason = LockReason::new(reason).map_err(AccountServiceError::InvalidLockReason)?;
+        self.operating(by).await?;
+
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(account),
+                AccountCommand::Lock(LockKind::Operator, reason),
+                &by.acting(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn unlock(
+        &self,
+        by: &AccountId,
+        account: &AccountId,
+    ) -> Result<(), AccountServiceError> {
+        self.operating(by).await?;
+
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(account),
+                AccountCommand::Unlock(LockKind::Operator),
+                &by.acting(),
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    async fn operating(&self, by: &AccountId) -> Result<(), AccountServiceError> {
+        if self.get(by).await?.state.is_operator() {
+            Ok(())
+        } else {
+            Err(AccountServiceError::NotAnOperator)
+        }
     }
 
     async fn signing_in_as(
