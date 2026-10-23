@@ -179,7 +179,9 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
     for event in [
         InvitationEvent::Accepted,
         InvitationEvent::Withdrawn,
-        InvitationEvent::Declined,
+        InvitationEvent::Declined {
+            reason: DeclineReason::AddressHasAccount,
+        },
     ] {
         assert_eq!(Invitation::from_first(&event, &stamped(1, at(1_000))), None);
     }
@@ -202,9 +204,19 @@ fn a_snapshot_holds_everything_the_invitation_is() {
 fn declined_at(seconds: i64) -> Invitation {
     let mut invitation = issued_at(seconds);
     let declined = invitation
-        .decide(InvitationCommand::Decline, &Agent::System)
+        .decide(
+            InvitationCommand::Decline {
+                reason: DeclineReason::AddressHasAccount,
+            },
+            &Agent::System,
+        )
         .expect("an open invitation is declined");
-    assert_eq!(declined, vec![InvitationEvent::Declined]);
+    assert_eq!(
+        declined,
+        vec![InvitationEvent::Declined {
+            reason: DeclineReason::AddressHasAccount,
+        }]
+    );
     invitation.apply(&declined[0], &stamped(2, at(seconds + 10)));
 
     invitation
@@ -214,9 +226,17 @@ fn declined_at(seconds: i64) -> Invitation {
 fn an_invitation_to_an_address_with_an_account_is_declined_and_closed() {
     let invitation = declined_at(1_000);
 
-    assert_eq!(invitation.outcome(), Outcome::Declined);
     assert_eq!(
-        invitation.decide(InvitationCommand::Decline, &Agent::System),
+        invitation.outcome(),
+        Outcome::Declined(DeclineReason::AddressHasAccount)
+    );
+    assert_eq!(
+        invitation.decide(
+            InvitationCommand::Decline {
+                reason: DeclineReason::AddressHasAccount,
+            },
+            &Agent::System
+        ),
         Ok(vec![]),
         "declining twice changes nothing"
     );
@@ -239,15 +259,30 @@ fn an_invitation_withdrawn_or_taken_up_is_not_declined() {
     accepted.apply(&InvitationEvent::Accepted, &stamped(2, at(1_010)));
 
     assert_eq!(
-        withdrawn.decide(InvitationCommand::Decline, &Agent::System),
+        withdrawn.decide(
+            InvitationCommand::Decline {
+                reason: DeclineReason::AddressHasAccount,
+            },
+            &Agent::System
+        ),
         Err(InvitationError::Withdrawn)
     );
     assert_eq!(
-        accepted.decide(InvitationCommand::Decline, &Agent::System),
+        accepted.decide(
+            InvitationCommand::Decline {
+                reason: DeclineReason::AddressHasAccount,
+            },
+            &Agent::System
+        ),
         Err(InvitationError::AlreadyAccepted)
     );
     assert_eq!(
-        Invitation::begin(InvitationCommand::Decline, &Agent::System),
+        Invitation::begin(
+            InvitationCommand::Decline {
+                reason: DeclineReason::AddressHasAccount,
+            },
+            &Agent::System
+        ),
         Err(InvitationError::NotIssuedYet)
     );
 }

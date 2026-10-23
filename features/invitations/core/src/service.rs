@@ -10,7 +10,9 @@ use throttling::{Rule, Throttles, ThrottlesError};
 use time::{Duration, OffsetDateTime};
 
 use crate::id::InvitationId;
-use crate::invitation::{Invitation, InvitationCommand, InvitationError, InvitationEvent};
+use crate::invitation::{
+    DeclineReason, Invitation, InvitationCommand, InvitationError, InvitationEvent,
+};
 use crate::token::InvitationToken;
 
 const INVITING: &str = "inviting";
@@ -129,13 +131,14 @@ impl InvitationService {
     pub async fn decline(
         &self,
         invitation: &InvitationId,
+        reason: DeclineReason,
         by: &Agent,
     ) -> Result<(), InvitationServiceError> {
         let _landed = self
             .events
             .execute(
                 &AggregateId::from(invitation),
-                InvitationCommand::Decline,
+                InvitationCommand::Decline { reason },
                 by,
             )
             .await?;

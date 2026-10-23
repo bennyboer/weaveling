@@ -4,6 +4,7 @@ use eventsourcing::{Agent, Aggregate, AggregateType, Event, EventMetadata, Event
 use thiserror::Error;
 use time::OffsetDateTime;
 
+use crate::decline::DeclineReason;
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 use email::EmailAddress;
@@ -37,6 +38,7 @@ pub enum AccountCommand {
     Unlock(LockKind),
     DeclineInvitation {
         invitation: String,
+        reason: DeclineReason,
     },
 }
 
@@ -64,6 +66,7 @@ pub enum AccountEvent {
     },
     InvitationDeclined {
         invitation: String,
+        reason: DeclineReason,
     },
     Snapshotted {
         email: EmailAddress,
@@ -265,8 +268,11 @@ impl Aggregate for Account {
             AccountCommand::Lock(kind, reason) => Ok(vec![AccountEvent::Locked { kind, reason }]),
             AccountCommand::Unlock(kind) if !self.locks.contains_key(&kind) => Ok(vec![]),
             AccountCommand::Unlock(kind) => Ok(vec![AccountEvent::Unlocked { kind }]),
-            AccountCommand::DeclineInvitation { invitation } => {
-                Ok(vec![AccountEvent::InvitationDeclined { invitation }])
+            AccountCommand::DeclineInvitation { invitation, reason } => {
+                Ok(vec![AccountEvent::InvitationDeclined {
+                    invitation,
+                    reason,
+                }])
             }
         }
     }

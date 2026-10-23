@@ -1,7 +1,7 @@
 use clock::text;
 use eventsourcing::Recorded;
-use invitations_contract::InvitationEventDTO;
-use invitations_core::InvitationEvent;
+use invitations_contract::{InvitationEventDTO, decline_reason};
+use invitations_core::{DeclineReason, InvitationEvent};
 use messaging::Message;
 
 pub fn message_for(happened: &Recorded<InvitationEvent>) -> Option<Message> {
@@ -17,9 +17,17 @@ fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
         },
         InvitationEvent::Accepted => InvitationEventDTO::Accepted,
         InvitationEvent::Withdrawn => InvitationEventDTO::Withdrawn,
-        InvitationEvent::Declined => InvitationEventDTO::Declined,
+        InvitationEvent::Declined { reason } => InvitationEventDTO::Declined {
+            reason: declined_for(*reason).to_owned(),
+        },
         InvitationEvent::Snapshotted { .. } => return None,
     })
+}
+
+fn declined_for(reason: DeclineReason) -> &'static str {
+    match reason {
+        DeclineReason::AddressHasAccount => decline_reason::ADDRESS_HAS_ACCOUNT,
+    }
 }
 
 #[cfg(test)]
@@ -68,7 +76,12 @@ mod tests {
             (an_issue(), ISSUED),
             (InvitationEvent::Accepted, ACCEPTED),
             (InvitationEvent::Withdrawn, WITHDRAWN),
-            (InvitationEvent::Declined, DECLINED),
+            (
+                InvitationEvent::Declined {
+                    reason: DeclineReason::AddressHasAccount,
+                },
+                DECLINED,
+            ),
         ]
     }
 
@@ -109,7 +122,9 @@ mod tests {
         for event in [
             InvitationEvent::Accepted,
             InvitationEvent::Withdrawn,
-            InvitationEvent::Declined,
+            InvitationEvent::Declined {
+                reason: DeclineReason::AddressHasAccount,
+            },
         ] {
             let told = message_for(&recorded(&id, event))
                 .expect("published")
@@ -117,6 +132,23 @@ mod tests {
                 .to_string();
             assert!(!told.contains("ada@example.com"), "{told}");
         }
+    }
+
+    #[test]
+    fn a_decline_tells_why() {
+        let id = InvitationId::generate(at(1_000));
+
+        assert_eq!(
+            eventsourcing_body(&recorded(
+                &id,
+                InvitationEvent::Declined {
+                    reason: DeclineReason::AddressHasAccount,
+                },
+            )),
+            InvitationEventDTO::Declined {
+                reason: "address-has-account".to_owned()
+            }
+        );
     }
 
     fn eventsourcing_body(happened: &Recorded<InvitationEvent>) -> InvitationEventDTO {

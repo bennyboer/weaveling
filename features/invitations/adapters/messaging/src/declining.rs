@@ -1,7 +1,9 @@
-use accounts_contract::{AccountEventDTO, INVITATION_DECLINED};
+use accounts_contract::{AccountEventDTO, INVITATION_DECLINED, decline_reason};
 use async_trait::async_trait;
 use eventsourcing::{Agent, ServiceError};
-use invitations_core::{InvitationError, InvitationId, InvitationService, InvitationServiceError};
+use invitations_core::{
+    DeclineReason, InvitationError, InvitationId, InvitationService, InvitationServiceError,
+};
 use messaging::{Failure, Handler, Message};
 
 pub struct DeclineInvitationListener {
@@ -22,12 +24,20 @@ impl Handler for DeclineInvitationListener {
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<AccountEventDTO>(message)?;
-        let AccountEventDTO::InvitationDeclined { invitation } = told.event.body else {
+        let AccountEventDTO::InvitationDeclined { invitation, reason } = told.event.body else {
             return Err("a declined invitation names no invitation".into());
         };
         let invitation: InvitationId = invitation.parse()?;
+        let reason = match reason.as_str() {
+            decline_reason::ADDRESS_HAS_ACCOUNT => DeclineReason::AddressHasAccount,
+            _ => return Err(format!("{reason} is no reason for declining").into()),
+        };
 
-        match self.invitations.decline(&invitation, &Agent::System).await {
+        match self
+            .invitations
+            .decline(&invitation, reason, &Agent::System)
+            .await
+        {
             Err(InvitationServiceError::Events(ServiceError::Refused(
                 InvitationError::AlreadyAccepted | InvitationError::Withdrawn,
             ))) => Ok(()),

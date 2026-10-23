@@ -5,6 +5,7 @@ use crate::account::*;
 use email::EmailAddress;
 use std::collections::BTreeMap;
 
+use crate::decline::DeclineReason;
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 
@@ -462,6 +463,7 @@ fn an_account_declines_an_invitation_to_its_address_and_stays_as_it_was() {
     let account = a_signed_up_account();
     let declining = AccountCommand::DeclineInvitation {
         invitation: "invitation_1".to_owned(),
+        reason: DeclineReason::AddressHasAccount,
     };
 
     let declined = account
@@ -473,7 +475,8 @@ fn an_account_declines_an_invitation_to_its_address_and_stays_as_it_was() {
     assert_eq!(
         declined,
         vec![AccountEvent::InvitationDeclined {
-            invitation: "invitation_1".to_owned()
+            invitation: "invitation_1".to_owned(),
+            reason: DeclineReason::AddressHasAccount,
         }]
     );
     assert_eq!(after, account);

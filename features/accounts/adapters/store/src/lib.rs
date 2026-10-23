@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use accounts_core::{AccountEvent, AccountName, EmailAddress, Lock, LockKind, LockReason};
+use accounts_core::{
+    AccountEvent, AccountName, DeclineReason, EmailAddress, Lock, LockKind, LockReason,
+};
 use eventsourcing::Codec;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -29,6 +31,7 @@ enum StoredAccountEvent {
     },
     InvitationDeclined {
         invitation: String,
+        reason: StoredDeclineReason,
     },
     Snapshotted {
         email: String,
@@ -41,6 +44,28 @@ enum StoredAccountEvent {
         operator: bool,
         locks: Vec<StoredLock>,
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum StoredDeclineReason {
+    AddressHasAccount,
+}
+
+impl From<DeclineReason> for StoredDeclineReason {
+    fn from(reason: DeclineReason) -> Self {
+        match reason {
+            DeclineReason::AddressHasAccount => Self::AddressHasAccount,
+        }
+    }
+}
+
+impl From<StoredDeclineReason> for DeclineReason {
+    fn from(reason: StoredDeclineReason) -> Self {
+        match reason {
+            StoredDeclineReason::AddressHasAccount => Self::AddressHasAccount,
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -114,8 +139,9 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::Unlocked { kind } => Self::Unlocked {
                 kind: (*kind).into(),
             },
-            AccountEvent::InvitationDeclined { invitation } => Self::InvitationDeclined {
+            AccountEvent::InvitationDeclined { invitation, reason } => Self::InvitationDeclined {
                 invitation: invitation.clone(),
+                reason: (*reason).into(),
             },
             AccountEvent::Snapshotted {
                 email,
@@ -192,8 +218,11 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 reason: readable_reason(&reason)?,
             },
             StoredAccountEvent::Unlocked { kind } => Self::Unlocked { kind: kind.into() },
-            StoredAccountEvent::InvitationDeclined { invitation } => {
-                Self::InvitationDeclined { invitation }
+            StoredAccountEvent::InvitationDeclined { invitation, reason } => {
+                Self::InvitationDeclined {
+                    invitation,
+                    reason: reason.into(),
+                }
             }
             StoredAccountEvent::Snapshotted {
                 email,
@@ -284,6 +313,7 @@ mod tests {
             },
             AccountEvent::InvitationDeclined {
                 invitation: "invitation_1".to_owned(),
+                reason: DeclineReason::AddressHasAccount,
             },
             AccountEvent::Snapshotted {
                 email,
@@ -319,6 +349,19 @@ mod tests {
         ] {
             assert!((codec().event)(refused.clone()).is_none(), "{refused}");
         }
+    }
+
+    #[test]
+    fn a_reason_for_declining_is_stored_by_a_name_a_human_can_read() {
+        let written = (codec().body)(&AccountEvent::InvitationDeclined {
+            invitation: "invitation_1".to_owned(),
+            reason: DeclineReason::AddressHasAccount,
+        });
+
+        assert_eq!(
+            written["InvitationDeclined"]["reason"],
+            json!("address-has-account")
+        );
     }
 
     #[test]

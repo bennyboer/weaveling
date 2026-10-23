@@ -1,5 +1,5 @@
-use accounts_contract::{AccountEventDTO, lock_kind};
-use accounts_core::{AccountEvent, LockKind};
+use accounts_contract::{AccountEventDTO, decline_reason, lock_kind};
+use accounts_core::{AccountEvent, DeclineReason, LockKind};
 use eventsourcing::Recorded;
 use messaging::Message;
 
@@ -25,11 +25,20 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         AccountEvent::Unlocked { kind } => AccountEventDTO::Unlocked {
             kind: named(*kind).to_owned(),
         },
-        AccountEvent::InvitationDeclined { invitation } => AccountEventDTO::InvitationDeclined {
-            invitation: invitation.clone(),
-        },
+        AccountEvent::InvitationDeclined { invitation, reason } => {
+            AccountEventDTO::InvitationDeclined {
+                invitation: invitation.clone(),
+                reason: declined_for(*reason).to_owned(),
+            }
+        }
         AccountEvent::Snapshotted { .. } => return None,
     })
+}
+
+fn declined_for(reason: DeclineReason) -> &'static str {
+    match reason {
+        DeclineReason::AddressHasAccount => decline_reason::ADDRESS_HAS_ACCOUNT,
+    }
 }
 
 fn named(kind: LockKind) -> &'static str {
@@ -124,6 +133,7 @@ mod tests {
             (
                 AccountEvent::InvitationDeclined {
                     invitation: "invitation_1".to_owned(),
+                    reason: DeclineReason::AddressHasAccount,
                 },
                 INVITATION_DECLINED,
             ),
@@ -234,11 +244,12 @@ mod tests {
     }
 
     #[test]
-    fn a_declined_invitation_says_which_invitation_it_was() {
+    fn a_declined_invitation_says_which_invitation_it_was_and_why() {
         let told = eventpublishing::published_in::<AccountEventDTO>(&published(
             &an_account(),
             AccountEvent::InvitationDeclined {
                 invitation: "invitation_1".to_owned(),
+                reason: DeclineReason::AddressHasAccount,
             },
         ))
         .expect("what we wrote must be readable");
@@ -246,9 +257,10 @@ mod tests {
         assert_eq!(
             told.event.body,
             AccountEventDTO::InvitationDeclined {
-                invitation: "invitation_1".to_owned()
+                invitation: "invitation_1".to_owned(),
+                reason: "address-has-account".to_owned(),
             },
-            "invitations hear from it whom to tell the operator about, and nothing personal"
+            "invitations hear from it whom to tell the operator about and why, and nothing personal"
         );
     }
 

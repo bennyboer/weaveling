@@ -1,5 +1,5 @@
 use accounts_core::{
-    AccountEvent, EmailAddress, EmailAddresses, InvitationTicket, InvitationTickets,
+    AccountEvent, DeclineReason, EmailAddress, EmailAddresses, InvitationTicket, InvitationTickets,
     InvitationToken, KIND, TokenDigest,
 };
 use accounts_messaging::KeepInvitationTicketsListener;
@@ -176,7 +176,8 @@ async fn an_issue_to_an_address_with_an_account_already_is_declined_by_that_acco
     assert_eq!(
         declined,
         vec![AccountEvent::InvitationDeclined {
-            invitation: "invitation_ada".to_owned()
+            invitation: "invitation_ada".to_owned(),
+            reason: DeclineReason::AddressHasAccount,
         }],
         "the operator is told once, however often the issue is told"
     );

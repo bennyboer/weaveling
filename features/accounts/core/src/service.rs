@@ -9,6 +9,7 @@ use time::Duration;
 use crate::account::{Account, AccountCommand, AccountError, AccountEvent};
 use crate::catalog::{AccountCatalog, AccountSummary, CatalogError};
 use crate::code::{CodePurpose, PendingVerification};
+use crate::decline::DeclineReason;
 use crate::id::AccountId;
 use crate::lock::{InvalidLockReason, LockKind, LockReason};
 use crate::name::{AccountName, InvalidAccountName};
@@ -240,6 +241,7 @@ impl AccountService {
                 &AggregateId::from(&id),
                 AccountCommand::DeclineInvitation {
                     invitation: ticket.invitation.clone(),
+                    reason: DeclineReason::AddressHasAccount,
                 },
                 &Agent::System,
             )

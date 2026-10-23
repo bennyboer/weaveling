@@ -1,6 +1,6 @@
 use email::EmailAddress;
 use eventsourcing::Codec;
-use invitations_core::{InvitationEvent, InvitationTokenDigest, Outcome};
+use invitations_core::{DeclineReason, InvitationEvent, InvitationTokenDigest, Outcome};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -14,7 +14,9 @@ enum StoredInvitationEvent {
     },
     Accepted,
     Withdrawn,
-    Declined,
+    Declined {
+        reason: StoredDeclineReason,
+    },
     Snapshotted {
         to: String,
         #[serde(with = "time::serde::rfc3339")]
@@ -31,7 +33,29 @@ enum StoredOutcome {
     Open,
     Accepted,
     Withdrawn,
-    Declined,
+    Declined(StoredDeclineReason),
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum StoredDeclineReason {
+    AddressHasAccount,
+}
+
+impl From<DeclineReason> for StoredDeclineReason {
+    fn from(reason: DeclineReason) -> Self {
+        match reason {
+            DeclineReason::AddressHasAccount => Self::AddressHasAccount,
+        }
+    }
+}
+
+impl From<StoredDeclineReason> for DeclineReason {
+    fn from(reason: StoredDeclineReason) -> Self {
+        match reason {
+            StoredDeclineReason::AddressHasAccount => Self::AddressHasAccount,
+        }
+    }
 }
 
 pub fn codec() -> Codec<InvitationEvent> {
@@ -54,7 +78,7 @@ impl From<Outcome> for StoredOutcome {
             Outcome::Open => Self::Open,
             Outcome::Accepted => Self::Accepted,
             Outcome::Withdrawn => Self::Withdrawn,
-            Outcome::Declined => Self::Declined,
+            Outcome::Declined(reason) => Self::Declined(reason.into()),
         }
     }
 }
@@ -65,7 +89,7 @@ impl From<StoredOutcome> for Outcome {
             StoredOutcome::Open => Self::Open,
             StoredOutcome::Accepted => Self::Accepted,
             StoredOutcome::Withdrawn => Self::Withdrawn,
-            StoredOutcome::Declined => Self::Declined,
+            StoredOutcome::Declined(reason) => Self::Declined(reason.into()),
         }
     }
 }
@@ -80,7 +104,9 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
             },
             InvitationEvent::Accepted => Self::Accepted,
             InvitationEvent::Withdrawn => Self::Withdrawn,
-            InvitationEvent::Declined => Self::Declined,
+            InvitationEvent::Declined { reason } => Self::Declined {
+                reason: (*reason).into(),
+            },
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,
@@ -115,7 +141,9 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
             },
             StoredInvitationEvent::Accepted => Self::Accepted,
             StoredInvitationEvent::Withdrawn => Self::Withdrawn,
-            StoredInvitationEvent::Declined => Self::Declined,
+            StoredInvitationEvent::Declined { reason } => Self::Declined {
+                reason: reason.into(),
+            },
             StoredInvitationEvent::Snapshotted {
                 to,
                 issued_at,
@@ -154,7 +182,7 @@ mod tests {
             Outcome::Open,
             Outcome::Accepted,
             Outcome::Withdrawn,
-            Outcome::Declined,
+            Outcome::Declined(DeclineReason::AddressHasAccount),
         ] {
             for event in [
                 InvitationEvent::Issued {
@@ -164,7 +192,9 @@ mod tests {
                 },
                 InvitationEvent::Accepted,
                 InvitationEvent::Withdrawn,
-                InvitationEvent::Declined,
+                InvitationEvent::Declined {
+                    reason: DeclineReason::AddressHasAccount,
+                },
                 InvitationEvent::Snapshotted {
                     to: ada(),
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),

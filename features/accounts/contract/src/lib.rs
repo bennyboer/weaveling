@@ -126,12 +126,16 @@ pub enum AccountEventDTO {
     #[serde(rename = "UNLOCKED")]
     Unlocked { kind: String },
     #[serde(rename = "INVITATION_DECLINED")]
-    InvitationDeclined { invitation: String },
+    InvitationDeclined { invitation: String, reason: String },
 }
 
 pub mod sign_up {
     pub const OPEN: &str = "open";
     pub const BY_INVITATION: &str = "invitation";
+}
+
+pub mod decline_reason {
+    pub const ADDRESS_HAS_ACCOUNT: &str = "address-has-account";
 }
 
 pub mod lock_kind {

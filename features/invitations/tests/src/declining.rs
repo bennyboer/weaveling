@@ -1,6 +1,6 @@
 use accounts_contract::{INVITATION_DECLINED, SIGNED_UP_BY_INVITATION};
 use eventsourcing::{Agent, AggregateId, EventStore, Version};
-use invitations_core::{InvitationEvent, InvitationId, KIND};
+use invitations_core::{DeclineReason, InvitationEvent, InvitationId, KIND};
 use invitations_messaging::DeclineInvitationListener;
 use messaging::{Handler, Listener, Message, RoutingKey};
 use serde_json::{Value, json};
@@ -12,7 +12,7 @@ const ADA: &str = "ada@example.com";
 
 fn declined(invitation: &InvitationId) -> Message {
     told(
-        json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": invitation.to_string() }),
+        json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": invitation.to_string(), "reason": "address-has-account" }),
     )
 }
 
@@ -67,7 +67,12 @@ async fn an_invitation_declined_by_an_account_is_declined_once() {
 
     assert!(matches!(
         happened(&wired, &id).await.as_slice(),
-        [InvitationEvent::Issued { .. }, InvitationEvent::Declined]
+        [
+            InvitationEvent::Issued { .. },
+            InvitationEvent::Declined {
+                reason: DeclineReason::AddressHasAccount
+            }
+        ]
     ));
 }
 
@@ -119,12 +124,21 @@ async fn only_a_declined_invitation_is_heard() {
 }
 
 #[tokio::test]
-async fn a_decline_naming_no_invitation_is_refused() {
+async fn a_decline_naming_no_invitation_or_no_reason_is_refused() {
     let wired = wiring::wired();
+    let open = invited(&wired).await;
     let listener = listener(&wired);
 
     for unreadable in [
-        told(json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": "not-an-id" })),
+        told(
+            json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": "not-an-id", "reason": "address-has-account" }),
+        ),
+        told(
+            json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": open.to_string(), "reason": "had a bad day" }),
+        ),
+        told(
+            json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": open.to_string() }),
+        ),
         told(json!({ "version": 0, "name": "SIGNED_UP" })),
         declined(&InvitationId::generate(wiring::at(1_000))),
     ] {
@@ -133,4 +147,9 @@ async fn a_decline_naming_no_invitation_is_refused() {
             "a message the listener cannot act on belongs in dead letters"
         );
     }
+    assert_eq!(
+        happened(&wired, &open).await.len(),
+        1,
+        "a reason nobody declared declines nothing"
+    );
 }

@@ -4,7 +4,7 @@ A way in for someone who was asked, on a server where not everyone may sign up.
 
 An operator invites an address to the instance; the address gets a link, and whoever follows it may sign up with that address and no other. Later an owner will invite into a project for a role, the same way.
 
-**`Invitation` is an aggregate:** `Issued` to an address, then `Accepted` once, or `Withdrawn`, or `Declined` when accounts find the address has an account already. It stands open seven days from being issued; *expired* is not something that happens to it but something read from the time, so nothing has to run at midnight for a link to stop working. One taken up is not withdrawn, since the account it made stays and is locked or deleted as any other.
+**`Invitation` is an aggregate:** `Issued` to an address, then `Accepted` once, or `Withdrawn`, or `Declined` for a reason, so far only that the address has an account already; the outcome keeps the reason, so the list can say why, and a decline asked for by whoever was invited, should it come, is told apart. It stands open seven days from being issued; *expired* is not something that happens to it but something read from the time, so nothing has to run at midnight for a link to stop working. One taken up is not withdrawn, since the account it made stays and is locked or deleted as any other.
 
 **The link carries a token, and only its digest is kept,** in the `Issued` event, as a session's is: 256 random bits in the link, their SHA-256 in the store. Whoever reads the store cannot follow a link from it. `invitation.issued` carries the address, the digest and the time it holds until, so accounts can keep a pass for it without asking invitations.
 

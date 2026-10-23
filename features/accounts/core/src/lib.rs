@@ -1,6 +1,7 @@
 mod account;
 mod catalog;
 mod code;
+mod decline;
 mod id;
 mod lock;
 mod name;
@@ -19,6 +20,7 @@ mod account_tests;
 pub use account::{Account, AccountCommand, AccountError, AccountEvent, KIND};
 pub use catalog::{AccountCatalog, AccountSummary, CatalogError};
 pub use code::{CodePurpose, PendingVerification, VerificationCode};
+pub use decline::DeclineReason;
 pub use email::{EmailAddress, InvalidEmailAddress};
 pub use id::AccountId;
 pub use lock::{InvalidLockReason, Lock, LockKind, LockReason};

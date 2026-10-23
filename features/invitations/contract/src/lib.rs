@@ -30,7 +30,11 @@ pub enum InvitationEventDTO {
     #[serde(rename = "WITHDRAWN")]
     Withdrawn,
     #[serde(rename = "DECLINED")]
-    Declined,
+    Declined { reason: String },
+}
+
+pub mod decline_reason {
+    pub const ADDRESS_HAS_ACCOUNT: &str = "address-has-account";
 }
 
 pub mod refused {

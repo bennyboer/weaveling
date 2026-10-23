@@ -8,7 +8,7 @@ mod invitation_tests;
 
 pub use id::InvitationId;
 pub use invitation::{
-    Invitation, InvitationCommand, InvitationError, InvitationEvent, KIND, Outcome,
+    DeclineReason, Invitation, InvitationCommand, InvitationError, InvitationEvent, KIND, Outcome,
 };
 pub use service::{InvitationService, InvitationServiceError};
 pub use token::{InvitationToken, InvitationTokenDigest};
