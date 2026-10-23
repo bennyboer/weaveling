@@ -90,6 +90,14 @@ mod tests {
     }
 
     #[test]
+    fn a_token_is_known_by_the_sha_256_of_it_as_accounts_reckon_it() {
+        assert_eq!(
+            InvitationToken::presented("abc").digest().as_str(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+    }
+
+    #[test]
     fn a_token_is_never_written_out_by_debug() {
         let token = InvitationToken::drawn();
 

@@ -31,4 +31,4 @@ pub use secrets::{
 pub use service::{AccountService, AccountServiceError, SignedIn};
 pub use session::{Session, SessionToken, Stage, TokenDigest};
 pub use throttle::Guarded;
-pub use ticket::InvitationTicket;
+pub use ticket::{InvitationTicket, InvitationToken};

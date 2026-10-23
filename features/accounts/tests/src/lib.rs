@@ -38,6 +38,9 @@ mod sessions_api;
 mod signing_in;
 
 #[cfg(test)]
+mod signing_up_by_invitation;
+
+#[cfg(test)]
 mod throttling;
 
 #[cfg(test)]

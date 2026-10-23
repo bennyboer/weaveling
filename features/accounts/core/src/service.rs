@@ -15,11 +15,12 @@ use crate::name::{AccountName, InvalidAccountName};
 use crate::operator::OperatorCode;
 use crate::password::{InvalidPassword, Password, PasswordHash};
 use crate::secrets::{
-    Attempt, Dismissal, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions,
-    Verifications,
+    Attempt, Dismissal, EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores,
+    SecretsError, Sessions, Verifications,
 };
 use crate::session::{Session, SessionToken, Stage};
 use crate::throttle::Guarded;
+use crate::ticket::InvitationToken;
 use email::{EmailAddress, InvalidEmailAddress};
 use throttling::{Throttles, ThrottlesError};
 
@@ -51,6 +52,12 @@ pub enum AccountServiceError {
     LastOperator,
     #[error("this is not the code that makes an operator")]
     OperatorCodeWrong,
+    #[error("this invitation's link lets nobody sign up, or not any more")]
+    InvitationInvalid,
+    #[error("this invitation has run out; ask for a new one")]
+    InvitationExpired,
+    #[error("this address already has an account; sign in instead")]
+    EmailAddressHasAccount,
     #[error("too many tries; wait {wait} before trying again")]
     Throttled { wait: Duration },
     #[error(transparent)]
@@ -80,6 +87,7 @@ pub struct AccountService {
     sessions: Arc<dyn Sessions>,
     throttles: Arc<dyn Throttles>,
     operators: Arc<dyn Operators>,
+    invitation_tickets: Arc<dyn InvitationTickets>,
     catalog: Arc<dyn AccountCatalog>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
@@ -100,7 +108,7 @@ impl AccountService {
             sessions,
             throttles,
             operators,
-            invitation_tickets: _,
+            invitation_tickets,
         } = secrets;
 
         Self {
@@ -111,6 +119,7 @@ impl AccountService {
             sessions,
             throttles,
             operators,
+            invitation_tickets,
             catalog,
             mailer,
             clock,
@@ -151,6 +160,51 @@ impl AccountService {
 
         self.mail_code(&id, &email, CodePurpose::ConfirmAddress)
             .await
+    }
+
+    pub async fn sign_up_by_invitation(
+        &self,
+        token: &str,
+        name: &str,
+        password: &str,
+    ) -> Result<(), AccountServiceError> {
+        let name = AccountName::new(name)?;
+        let hashed = Password::new(password)?.hashed();
+        let Some(ticket) = self
+            .invitation_tickets
+            .take_ticket(&InvitationToken::presented(token).digest())
+            .await?
+        else {
+            return Err(AccountServiceError::InvitationInvalid);
+        };
+        if self.clock.now() > ticket.until {
+            return Err(AccountServiceError::InvitationExpired);
+        }
+
+        let id = AccountId::generate(self.clock.now());
+        match self.email_addresses.claim(&ticket.to, &id).await {
+            Err(SecretsError::Taken) => return Err(AccountServiceError::EmailAddressHasAccount),
+            claimed => claimed?,
+        }
+        if let Err(refused) = self
+            .events
+            .begin(
+                &AggregateId::from(&id),
+                AccountCommand::SignUpByInvitation {
+                    email: ticket.to.clone(),
+                    name,
+                    invitation: ticket.invitation,
+                },
+                &id.acting(),
+            )
+            .await
+        {
+            self.email_addresses.release(&ticket.to, &id).await?;
+            return Err(refused.into());
+        }
+        self.passwords.keep(&id, &hashed).await?;
+
+        Ok(())
     }
 
     pub async fn send_code_again(&self, email: &str) -> Result<(), AccountServiceError> {
