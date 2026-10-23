@@ -1,14 +1,20 @@
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, Operators,
-    PasswordHash, Passwords, PendingVerification, SecretsError, Session, SessionToken, Sessions,
-    Stage, TokenDigest, VerificationCode, Verifications,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
+    InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification, SecretsError,
+    Session, SessionToken, Sessions, Stage, TokenDigest, VerificationCode, Verifications,
 };
 use futures_util::future;
 use time::OffsetDateTime;
 
-pub trait Secrets: EmailAddresses + Operators + Passwords + Sessions + Verifications {}
+pub trait Secrets:
+    EmailAddresses + InvitationTickets + Operators + Passwords + Sessions + Verifications
+{
+}
 
-impl<S: EmailAddresses + Operators + Passwords + Sessions + Verifications> Secrets for S {}
+impl<S: EmailAddresses + InvitationTickets + Operators + Passwords + Sessions + Verifications>
+    Secrets for S
+{
+}
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -747,6 +753,161 @@ pub async fn operators_dismissed_all_at_once_leave_one<S: Secrets>(secrets: &S) 
     );
 }
 
+fn a_ticket(invitation: &str, to: &str) -> InvitationTicket {
+    InvitationTicket {
+        invitation: invitation.to_owned(),
+        to: an_address(to),
+        until: at(5_000),
+    }
+}
+
+pub async fn a_kept_ticket_is_taken_once_and_whole<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        Some(a_ticket("invitation_ada", "ada@example.com"))
+    );
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        None,
+        "a ticket lets one account in"
+    );
+}
+
+pub async fn a_digest_nobody_was_given_takes_no_ticket<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("someone else's"))
+            .await
+            .expect("taking should succeed"),
+        None
+    );
+}
+
+pub async fn a_ticket_kept_again_is_kept_once_as_it_first_was<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("a message told twice keeps its ticket once");
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_other", "eve@example.com"),
+        )
+        .await
+        .expect("a digest already kept is not taken over");
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        Some(a_ticket("invitation_ada", "ada@example.com"))
+    );
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        None
+    );
+}
+
+pub async fn a_forgotten_invitation_leaves_no_ticket_and_the_others_kept<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+    secrets
+        .keep_ticket(
+            &a_digest("bob's"),
+            &a_ticket("invitation_bob", "bob@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+
+    secrets
+        .forget_ticket("invitation_ada")
+        .await
+        .expect("forgetting should succeed");
+    secrets
+        .forget_ticket("invitation_never")
+        .await
+        .expect("forgetting what was never kept is harmless");
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        None
+    );
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("bob's"))
+            .await
+            .expect("taking should succeed"),
+        Some(a_ticket("invitation_bob", "bob@example.com"))
+    );
+}
+
+pub async fn a_ticket_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+
+    let digest = a_digest("ada's");
+    let taken = future::join_all((0..8).map(|_| secrets.take_ticket(&digest))).await;
+
+    assert_eq!(
+        taken
+            .into_iter()
+            .map(|taken| taken.expect("taking should succeed"))
+            .filter(Option::is_some)
+            .count(),
+        1
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -764,6 +925,17 @@ macro_rules! secrets_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::secrets_conformance_case!($workbench, a_kept_ticket_is_taken_once_and_whole);
+        $crate::secrets_conformance_case!($workbench, a_digest_nobody_was_given_takes_no_ticket);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_ticket_kept_again_is_kept_once_as_it_first_was
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_forgotten_invitation_leaves_no_ticket_and_the_others_kept
+        );
+        $crate::secrets_conformance_case!($workbench, a_ticket_taken_by_many_at_once_goes_to_one);
         $crate::secrets_conformance_case!($workbench, a_kept_code_is_taken_once);
         $crate::secrets_conformance_case!($workbench, only_the_latest_code_kept_can_be_taken);
         $crate::secrets_conformance_case!($workbench, no_code_kept_takes_nothing);

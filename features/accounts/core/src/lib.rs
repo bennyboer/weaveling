@@ -10,6 +10,7 @@ mod secrets;
 mod service;
 mod session;
 mod throttle;
+mod ticket;
 
 #[cfg(test)]
 mod account_tests;
@@ -24,9 +25,10 @@ pub use name::{AccountName, InvalidAccountName};
 pub use operator::OperatorCode;
 pub use password::{InvalidPassword, Password, PasswordHash};
 pub use secrets::{
-    Attempt, Dismissal, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions,
-    Verifications,
+    Attempt, Dismissal, EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores,
+    SecretsError, Sessions, Verifications,
 };
 pub use service::{AccountService, AccountServiceError, SignedIn};
 pub use session::{Session, SessionToken, Stage, TokenDigest};
 pub use throttle::Guarded;
+pub use ticket::InvitationTicket;

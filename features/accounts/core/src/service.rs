@@ -100,6 +100,7 @@ impl AccountService {
             sessions,
             throttles,
             operators,
+            invitation_tickets: _,
         } = secrets;
 
         Self {

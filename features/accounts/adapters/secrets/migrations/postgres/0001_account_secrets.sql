@@ -33,3 +33,10 @@ CREATE TABLE account_operator_code (
 CREATE TABLE account_operators (
     account  TEXT COLLATE "C" PRIMARY KEY
 );
+
+CREATE TABLE account_invitation_tickets (
+    digest      TEXT COLLATE "C" PRIMARY KEY,
+    invitation  TEXT COLLATE "C" NOT NULL UNIQUE,
+    email       TEXT COLLATE "C" NOT NULL,
+    until       TIMESTAMPTZ      NOT NULL
+);

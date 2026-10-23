@@ -1,9 +1,9 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, Operators,
-    PasswordHash, Passwords, PendingVerification, SecretsError, Session, Sessions, Stage,
-    TokenDigest, VerificationCode, Verifications,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
+    InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification, SecretsError,
+    Session, Sessions, Stage, TokenDigest, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
@@ -83,6 +83,20 @@ const SECOND_FACTOR_OWED: &str = "second-factor-owed";
 
 const CLOSE: &str = "DELETE FROM account_codes WHERE account = $1 AND purpose = $2";
 
+const KEEP_TICKET: &str = "
+    INSERT INTO account_invitation_tickets (digest, invitation, email, until)
+    VALUES ($1, $2, $3, $4)
+    ON CONFLICT DO NOTHING
+";
+
+const TAKE_TICKET: &str = "
+    DELETE FROM account_invitation_tickets
+    WHERE digest = $1
+    RETURNING invitation, email, until
+";
+
+const FORGET_TICKET: &str = "DELETE FROM account_invitation_tickets WHERE invitation = $1";
+
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/postgres")
 }
@@ -127,6 +141,16 @@ fn to_session(row: &PgRow) -> Result<Session, SecretsError> {
         },
         begun,
         until,
+    })
+}
+
+fn to_ticket(row: &PgRow) -> Result<InvitationTicket, SecretsError> {
+    let email: String = row.try_get("email").map_err(unreachable)?;
+
+    Ok(InvitationTicket {
+        invitation: row.try_get("invitation").map_err(unreachable)?,
+        to: EmailAddress::new(&email).map_err(unreachable)?,
+        until: row.try_get("until").map_err(unreachable)?,
     })
 }
 
@@ -366,5 +390,49 @@ impl Operators for PostgresSecrets {
             .fetch_one(&self.pool)
             .await
             .map_err(unreachable)
+    }
+}
+
+#[async_trait]
+impl InvitationTickets for PostgresSecrets {
+    async fn keep_ticket(
+        &self,
+        digest: &TokenDigest,
+        ticket: &InvitationTicket,
+    ) -> Result<(), SecretsError> {
+        sqlx::query(KEEP_TICKET)
+            .bind(digest.as_str())
+            .bind(&ticket.invitation)
+            .bind(ticket.to.as_str())
+            .bind(ticket.until)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn take_ticket(
+        &self,
+        digest: &TokenDigest,
+    ) -> Result<Option<InvitationTicket>, SecretsError> {
+        sqlx::query(TAKE_TICKET)
+            .bind(digest.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .as_ref()
+            .map(to_ticket)
+            .transpose()
+    }
+
+    async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+        sqlx::query(FORGET_TICKET)
+            .bind(invitation)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
     }
 }

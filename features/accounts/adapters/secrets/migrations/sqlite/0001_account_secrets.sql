@@ -33,3 +33,10 @@ CREATE TABLE account_operator_code (
 CREATE TABLE account_operators (
     account  TEXT PRIMARY KEY
 );
+
+CREATE TABLE account_invitation_tickets (
+    digest      TEXT PRIMARY KEY,
+    invitation  TEXT NOT NULL UNIQUE,
+    email       TEXT NOT NULL,
+    until       TEXT NOT NULL
+);

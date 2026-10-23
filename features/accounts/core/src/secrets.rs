@@ -8,6 +8,7 @@ use crate::code::{CodePurpose, PendingVerification};
 use crate::id::AccountId;
 use crate::password::PasswordHash;
 use crate::session::{Session, TokenDigest};
+use crate::ticket::InvitationTicket;
 use email::EmailAddress;
 use throttling::Throttles;
 
@@ -27,12 +28,19 @@ pub struct SecretStores {
     pub sessions: Arc<dyn Sessions>,
     pub throttles: Arc<dyn Throttles>,
     pub operators: Arc<dyn Operators>,
+    pub invitation_tickets: Arc<dyn InvitationTickets>,
 }
 
 impl SecretStores {
     pub fn kept_by<S>(secrets: Arc<S>, throttles: Arc<dyn Throttles>) -> Self
     where
-        S: EmailAddresses + Passwords + Verifications + Sessions + Operators + 'static,
+        S: EmailAddresses
+            + Passwords
+            + Verifications
+            + Sessions
+            + Operators
+            + InvitationTickets
+            + 'static,
     {
         Self {
             email_addresses: secrets.clone(),
@@ -40,7 +48,8 @@ impl SecretStores {
             verifications: secrets.clone(),
             sessions: secrets.clone(),
             throttles,
-            operators: secrets,
+            operators: secrets.clone(),
+            invitation_tickets: secrets,
         }
     }
 }
@@ -107,6 +116,22 @@ pub trait Operators: Send + Sync {
     async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError>;
 
     async fn any_appointed(&self) -> Result<bool, SecretsError>;
+}
+
+#[async_trait]
+pub trait InvitationTickets: Send + Sync {
+    async fn keep_ticket(
+        &self,
+        digest: &TokenDigest,
+        ticket: &InvitationTicket,
+    ) -> Result<(), SecretsError>;
+
+    async fn take_ticket(
+        &self,
+        digest: &TokenDigest,
+    ) -> Result<Option<InvitationTicket>, SecretsError>;
+
+    async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -2,9 +2,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, Operators,
-    PasswordHash, Passwords, PendingVerification, SecretsError, Session, Sessions, TokenDigest,
-    Verifications,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
+    InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification, SecretsError,
+    Session, Sessions, TokenDigest, Verifications,
 };
 use async_trait::async_trait;
 
@@ -16,6 +16,7 @@ struct Kept {
     sessions: HashMap<TokenDigest, Session>,
     operator_code: Option<TokenDigest>,
     operators: HashSet<AccountId>,
+    invitation_tickets: HashMap<TokenDigest, InvitationTicket>,
 }
 
 #[derive(Default)]
@@ -164,5 +165,36 @@ impl Operators for InMemorySecrets {
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {
         Ok(!self.kept().operators.is_empty())
+    }
+}
+
+#[async_trait]
+impl InvitationTickets for InMemorySecrets {
+    async fn keep_ticket(
+        &self,
+        digest: &TokenDigest,
+        ticket: &InvitationTicket,
+    ) -> Result<(), SecretsError> {
+        self.kept()
+            .invitation_tickets
+            .entry(digest.clone())
+            .or_insert_with(|| ticket.clone());
+
+        Ok(())
+    }
+
+    async fn take_ticket(
+        &self,
+        digest: &TokenDigest,
+    ) -> Result<Option<InvitationTicket>, SecretsError> {
+        Ok(self.kept().invitation_tickets.remove(digest))
+    }
+
+    async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+        self.kept()
+            .invitation_tickets
+            .retain(|_, ticket| ticket.invitation != invitation);
+
+        Ok(())
     }
 }
