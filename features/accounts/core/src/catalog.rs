@@ -7,10 +7,10 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::account::Account;
-use crate::email::EmailAddress;
 use crate::id::AccountId;
 use crate::lock::{Lock, LockKind};
 use crate::name::AccountName;
+use email::EmailAddress;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountSummary {

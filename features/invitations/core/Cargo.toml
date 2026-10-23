@@ -1,0 +1,12 @@
+[package]
+name = "weaveling-invitations-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+time = { workspace = true }
+
+email = { version = "0.1.0", path = "../../../libraries/email", package = "weaveling-email" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }

@@ -3599,6 +3599,7 @@ dependencies = [
  "thiserror",
  "time",
  "weaveling-clock",
+ "weaveling-email",
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-mailing",
@@ -3942,6 +3943,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-email"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "weaveling-eventpublishing"
 version = "0.1.0"
 dependencies = [
@@ -4091,6 +4099,17 @@ dependencies = [
  "thiserror",
  "time",
  "uuid",
+]
+
+[[package]]
+name = "weaveling-invitations-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "time",
+ "weaveling-email",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
 ]
 
 [[package]]

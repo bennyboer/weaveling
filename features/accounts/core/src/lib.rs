@@ -1,7 +1,6 @@
 mod account;
 mod catalog;
 mod code;
-mod email;
 mod id;
 mod lock;
 mod name;

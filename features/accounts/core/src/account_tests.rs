@@ -2,7 +2,7 @@ use eventsourcing::{Agent, Aggregate, AggregateId, EventMetadata, Version};
 use time::{Duration, OffsetDateTime};
 
 use crate::account::*;
-use crate::email::EmailAddress;
+use email::EmailAddress;
 use std::collections::BTreeMap;
 
 use crate::lock::{Lock, LockKind, LockReason};

@@ -15,4 +15,5 @@ clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weave
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "weaveling-mailing" }
+email = { version = "0.1.0", path = "../../../libraries/email", package = "weaveling-email" }
 words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }

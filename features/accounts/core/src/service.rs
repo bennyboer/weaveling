@@ -9,7 +9,6 @@ use time::Duration;
 use crate::account::{Account, AccountCommand, AccountError, AccountEvent};
 use crate::catalog::{AccountCatalog, AccountSummary, CatalogError};
 use crate::code::{CodePurpose, PendingVerification};
-use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
 use crate::lock::{InvalidLockReason, LockKind, LockReason};
 use crate::name::{AccountName, InvalidAccountName};
@@ -21,6 +20,7 @@ use crate::secrets::{
 };
 use crate::session::{Session, SessionToken, Stage};
 use crate::throttle::Guarded;
+use email::{EmailAddress, InvalidEmailAddress};
 
 #[derive(Debug, Error)]
 pub enum AccountServiceError {

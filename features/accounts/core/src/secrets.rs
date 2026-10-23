@@ -6,11 +6,11 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::code::{CodePurpose, PendingVerification};
-use crate::email::EmailAddress;
 use crate::id::AccountId;
 use crate::password::PasswordHash;
 use crate::session::{Session, TokenDigest};
 use crate::throttle::{Guarded, Tries};
+use email::EmailAddress;
 
 #[derive(Debug, Error)]
 pub enum SecretsError {

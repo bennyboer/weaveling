@@ -4,9 +4,9 @@ use eventsourcing::{Agent, Aggregate, AggregateType, Event, EventMetadata, Event
 use thiserror::Error;
 use time::OffsetDateTime;
 
-use crate::email::EmailAddress;
 use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
+use email::EmailAddress;
 
 pub const KIND: AggregateType = AggregateType::of("account");
 
