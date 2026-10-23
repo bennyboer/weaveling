@@ -1,4 +1,6 @@
-use accounts_core::{AccountEvent, AccountName, EmailAddress};
+use std::collections::BTreeMap;
+
+use accounts_core::{AccountEvent, AccountName, EmailAddress, Lock, LockKind, LockReason};
 use eventsourcing::Codec;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -12,6 +14,13 @@ enum StoredAccountEvent {
     EmailVerified,
     PasswordReset,
     BecameOperator,
+    Locked {
+        kind: StoredLockKind,
+        reason: String,
+    },
+    Unlocked {
+        kind: StoredLockKind,
+    },
     Snapshotted {
         email: String,
         name: String,
@@ -21,7 +30,38 @@ enum StoredAccountEvent {
         #[serde(default, with = "time::serde::rfc3339::option")]
         sessions_since: Option<OffsetDateTime>,
         operator: bool,
+        locks: Vec<StoredLock>,
     },
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum StoredLockKind {
+    Operator,
+}
+
+impl From<LockKind> for StoredLockKind {
+    fn from(kind: LockKind) -> Self {
+        match kind {
+            LockKind::Operator => Self::Operator,
+        }
+    }
+}
+
+impl From<StoredLockKind> for LockKind {
+    fn from(kind: StoredLockKind) -> Self {
+        match kind {
+            StoredLockKind::Operator => Self::Operator,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct StoredLock {
+    kind: StoredLockKind,
+    reason: String,
+    #[serde(with = "time::serde::rfc3339")]
+    since: OffsetDateTime,
 }
 
 pub fn codec() -> Codec<AccountEvent> {
@@ -48,6 +88,13 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::EmailVerified => Self::EmailVerified,
             AccountEvent::PasswordReset => Self::PasswordReset,
             AccountEvent::BecameOperator => Self::BecameOperator,
+            AccountEvent::Locked { kind, reason } => Self::Locked {
+                kind: (*kind).into(),
+                reason: reason.to_string(),
+            },
+            AccountEvent::Unlocked { kind } => Self::Unlocked {
+                kind: (*kind).into(),
+            },
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -55,6 +102,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 signed_up_at,
                 sessions_since,
                 operator,
+                locks,
             } => Self::Snapshotted {
                 email: email.to_string(),
                 name: name.to_string(),
@@ -62,6 +110,14 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 signed_up_at: *signed_up_at,
                 sessions_since: *sessions_since,
                 operator: *operator,
+                locks: locks
+                    .iter()
+                    .map(|(kind, lock)| StoredLock {
+                        kind: (*kind).into(),
+                        reason: lock.reason.to_string(),
+                        since: lock.since,
+                    })
+                    .collect(),
             },
         }
     }
@@ -80,6 +136,10 @@ fn readable(
     ))
 }
 
+fn readable_reason(reason: &str) -> Result<LockReason, UnreadableAccountEvent> {
+    LockReason::new(reason).map_err(|_| UnreadableAccountEvent)
+}
+
 impl TryFrom<StoredAccountEvent> for AccountEvent {
     type Error = UnreadableAccountEvent;
 
@@ -92,6 +152,11 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             StoredAccountEvent::EmailVerified => Self::EmailVerified,
             StoredAccountEvent::PasswordReset => Self::PasswordReset,
             StoredAccountEvent::BecameOperator => Self::BecameOperator,
+            StoredAccountEvent::Locked { kind, reason } => Self::Locked {
+                kind: kind.into(),
+                reason: readable_reason(&reason)?,
+            },
+            StoredAccountEvent::Unlocked { kind } => Self::Unlocked { kind: kind.into() },
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
@@ -99,8 +164,27 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 signed_up_at,
                 sessions_since,
                 operator,
+                locks,
             } => {
                 let (email, name) = readable(&email, &name)?;
+                let locks = locks
+                    .into_iter()
+                    .map(
+                        |StoredLock {
+                             kind,
+                             reason,
+                             since,
+                         }| {
+                            Ok((
+                                kind.into(),
+                                Lock {
+                                    reason: readable_reason(&reason)?,
+                                    since,
+                                },
+                            ))
+                        },
+                    )
+                    .collect::<Result<BTreeMap<_, _>, _>>()?;
                 Self::Snapshotted {
                     email,
                     name,
@@ -108,6 +192,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     signed_up_at,
                     sessions_since,
                     operator,
+                    locks,
                 }
             }
         })
@@ -146,6 +231,13 @@ mod tests {
             AccountEvent::EmailVerified,
             AccountEvent::PasswordReset,
             AccountEvent::BecameOperator,
+            AccountEvent::Locked {
+                kind: LockKind::Operator,
+                reason: LockReason::new("Sent spam.").expect("a plain reason"),
+            },
+            AccountEvent::Unlocked {
+                kind: LockKind::Operator,
+            },
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -153,6 +245,13 @@ mod tests {
                 signed_up_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                 sessions_since: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
                 operator: true,
+                locks: BTreeMap::from([(
+                    LockKind::Operator,
+                    Lock {
+                        reason: LockReason::new("Sent spam.").expect("a plain reason"),
+                        since: OffsetDateTime::UNIX_EPOCH + Duration::seconds(3_000),
+                    },
+                )]),
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);
@@ -164,6 +263,8 @@ mod tests {
         for refused in [
             json!({ "SignedUp": { "email": "ada", "name": "Ada" } }),
             json!({ "SignedUp": { "email": "ada@example.com", "name": "  " } }),
+            json!({ "Locked": { "kind": "operator", "reason": " " } }),
+            json!({ "Snapshotted": { "email": "ada@example.com", "name": "Ada", "verified": true, "signed_up_at": "1970-01-01T00:16:40Z", "operator": false, "locks": [{ "kind": "operator", "reason": " ", "since": "1970-01-01T00:16:40Z" }] } }),
             json!({ "Snapshotted": { "email": "ada", "name": "Ada", "verified": true, "signed_up_at": "1970-01-01T00:16:40Z" } }),
             json!({ "Snapshotted": { "email": "ada@example.com", "name": " ", "verified": true, "signed_up_at": "1970-01-01T00:16:40Z" } }),
         ] {
@@ -181,6 +282,7 @@ mod tests {
             signed_up_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
             sessions_since: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000)),
             operator: false,
+            locks: BTreeMap::new(),
         });
 
         assert_eq!(

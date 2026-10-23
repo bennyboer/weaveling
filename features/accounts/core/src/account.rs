@@ -1,8 +1,11 @@
+use std::collections::BTreeMap;
+
 use eventsourcing::{Agent, Aggregate, AggregateType, Event, EventMetadata, EventName, Version};
 use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::email::EmailAddress;
+use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 
 pub const KIND: AggregateType = AggregateType::of("account");
@@ -11,6 +14,8 @@ const SIGNED_UP: EventName = EventName::of("SIGNED_UP");
 const EMAIL_VERIFIED: EventName = EventName::of("EMAIL_VERIFIED");
 const PASSWORD_RESET: EventName = EventName::of("PASSWORD_RESET");
 const BECAME_OPERATOR: EventName = EventName::of("BECAME_OPERATOR");
+const LOCKED: EventName = EventName::of("LOCKED");
+const UNLOCKED: EventName = EventName::of("UNLOCKED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +24,8 @@ pub enum AccountCommand {
     Verify,
     ResetPassword,
     BecomeOperator,
+    Lock(LockKind, LockReason),
+    Unlock(LockKind),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +37,13 @@ pub enum AccountEvent {
     EmailVerified,
     PasswordReset,
     BecameOperator,
+    Locked {
+        kind: LockKind,
+        reason: LockReason,
+    },
+    Unlocked {
+        kind: LockKind,
+    },
     Snapshotted {
         email: EmailAddress,
         name: AccountName,
@@ -37,6 +51,7 @@ pub enum AccountEvent {
         signed_up_at: OffsetDateTime,
         sessions_since: Option<OffsetDateTime>,
         operator: bool,
+        locks: BTreeMap<LockKind, Lock>,
     },
 }
 
@@ -48,6 +63,7 @@ pub struct Account {
     signed_up_at: OffsetDateTime,
     sessions_since: Option<OffsetDateTime>,
     operator: bool,
+    locks: BTreeMap<LockKind, Lock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -58,6 +74,8 @@ pub enum AccountError {
     AlreadySignedUp,
     #[error("an account must have its address verified before it can become an operator")]
     NotVerifiedYet,
+    #[error("an operator cannot be locked; the role is to be taken away first")]
+    OperatorCannotBeLocked,
 }
 
 impl Account {
@@ -77,6 +95,14 @@ impl Account {
         self.operator
     }
 
+    pub fn locks(&self) -> &BTreeMap<LockKind, Lock> {
+        &self.locks
+    }
+
+    pub fn is_locked(&self) -> bool {
+        !self.locks.is_empty()
+    }
+
     pub fn signed_up_at(&self) -> OffsetDateTime {
         self.signed_up_at
     }
@@ -93,6 +119,8 @@ impl Event for AccountEvent {
             Self::EmailVerified => EMAIL_VERIFIED,
             Self::PasswordReset => PASSWORD_RESET,
             Self::BecameOperator => BECAME_OPERATOR,
+            Self::Locked { .. } => LOCKED,
+            Self::Unlocked { .. } => UNLOCKED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -118,7 +146,9 @@ impl Aggregate for Account {
             AccountCommand::SignUp(email, name) => Ok(vec![AccountEvent::SignedUp { email, name }]),
             AccountCommand::Verify
             | AccountCommand::ResetPassword
-            | AccountCommand::BecomeOperator => Err(AccountError::NotSignedUpYet),
+            | AccountCommand::BecomeOperator
+            | AccountCommand::Lock(..)
+            | AccountCommand::Unlock(_) => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -131,6 +161,7 @@ impl Aggregate for Account {
                 signed_up_at: metadata.occurred_at,
                 sessions_since: None,
                 operator: false,
+                locks: BTreeMap::new(),
             }),
             AccountEvent::Snapshotted {
                 email,
@@ -139,6 +170,7 @@ impl Aggregate for Account {
                 signed_up_at,
                 sessions_since,
                 operator,
+                locks,
             } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
@@ -146,10 +178,13 @@ impl Aggregate for Account {
                 signed_up_at: *signed_up_at,
                 sessions_since: *sessions_since,
                 operator: *operator,
+                locks: locks.clone(),
             }),
             AccountEvent::EmailVerified
             | AccountEvent::PasswordReset
-            | AccountEvent::BecameOperator => None,
+            | AccountEvent::BecameOperator
+            | AccountEvent::Locked { .. }
+            | AccountEvent::Unlocked { .. } => None,
         }
     }
 
@@ -170,6 +205,11 @@ impl Aggregate for Account {
             AccountCommand::BecomeOperator if !self.verified => Err(AccountError::NotVerifiedYet),
             AccountCommand::BecomeOperator if self.operator => Ok(vec![]),
             AccountCommand::BecomeOperator => Ok(vec![AccountEvent::BecameOperator]),
+            AccountCommand::Lock(..) if self.operator => Err(AccountError::OperatorCannotBeLocked),
+            AccountCommand::Lock(kind, _) if self.locks.contains_key(&kind) => Ok(vec![]),
+            AccountCommand::Lock(kind, reason) => Ok(vec![AccountEvent::Locked { kind, reason }]),
+            AccountCommand::Unlock(kind) if !self.locks.contains_key(&kind) => Ok(vec![]),
+            AccountCommand::Unlock(kind) => Ok(vec![AccountEvent::Unlocked { kind }]),
         }
     }
 
@@ -179,6 +219,19 @@ impl Aggregate for Account {
             AccountEvent::EmailVerified => self.verified = true,
             AccountEvent::PasswordReset => self.sessions_since = Some(metadata.occurred_at),
             AccountEvent::BecameOperator => self.operator = true,
+            AccountEvent::Locked { kind, reason } => {
+                self.locks.insert(
+                    *kind,
+                    Lock {
+                        reason: reason.clone(),
+                        since: metadata.occurred_at,
+                    },
+                );
+                self.sessions_since = Some(metadata.occurred_at);
+            }
+            AccountEvent::Unlocked { kind } => {
+                self.locks.remove(kind);
+            }
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -186,6 +239,7 @@ impl Aggregate for Account {
                 signed_up_at,
                 sessions_since,
                 operator,
+                locks,
             } => {
                 self.email = email.clone();
                 self.name = name.clone();
@@ -193,6 +247,7 @@ impl Aggregate for Account {
                 self.signed_up_at = *signed_up_at;
                 self.sessions_since = *sessions_since;
                 self.operator = *operator;
+                self.locks = locks.clone();
             }
         }
     }
@@ -205,6 +260,7 @@ impl Aggregate for Account {
             signed_up_at: self.signed_up_at,
             sessions_since: self.sessions_since,
             operator: self.operator,
+            locks: self.locks.clone(),
         }
     }
 }

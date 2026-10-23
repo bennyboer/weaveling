@@ -3,6 +3,9 @@ use time::{Duration, OffsetDateTime};
 
 use crate::account::*;
 use crate::email::EmailAddress;
+use std::collections::BTreeMap;
+
+use crate::lock::{Lock, LockKind, LockReason};
 use crate::name::AccountName;
 
 fn at(seconds: i64) -> OffsetDateTime {
@@ -151,8 +154,9 @@ fn a_snapshot_holds_everything_the_account_is() {
     account.apply(&AccountEvent::EmailVerified, &stamped(2, at(2_000)));
     account.apply(&AccountEvent::PasswordReset, &stamped(3, at(2_500)));
     account.apply(&AccountEvent::BecameOperator, &stamped(4, at(2_700)));
+    account.apply(&a_lock(), &stamped(5, at(2_800)));
 
-    let restored = Account::from_first(&account.snapshot(), &stamped(4, at(3_000)))
+    let restored = Account::from_first(&account.snapshot(), &stamped(5, at(3_000)))
         .expect("a snapshot gives birth");
 
     assert_eq!(restored, account);
@@ -164,9 +168,10 @@ fn a_snapshot_applied_to_an_account_makes_it_what_the_snapshot_says() {
     further.apply(&AccountEvent::EmailVerified, &stamped(2, at(2_000)));
     further.apply(&AccountEvent::PasswordReset, &stamped(3, at(2_500)));
     further.apply(&AccountEvent::BecameOperator, &stamped(4, at(2_700)));
+    further.apply(&a_lock(), &stamped(5, at(2_800)));
 
     let mut behind = a_signed_up_account();
-    behind.apply(&further.snapshot(), &stamped(5, at(3_000)));
+    behind.apply(&further.snapshot(), &stamped(6, at(3_000)));
 
     assert_eq!(behind, further);
 }
@@ -177,6 +182,8 @@ fn verifying_or_a_reset_alone_cannot_begin_an_account() {
         AccountEvent::EmailVerified,
         AccountEvent::PasswordReset,
         AccountEvent::BecameOperator,
+        a_lock(),
+        an_unlock(),
     ] {
         assert_eq!(Account::from_first(&event, &stamped(1, at(1_000))), None);
     }
@@ -229,4 +236,122 @@ fn nobody_becomes_an_operator_before_signing_up() {
         Account::begin(AccountCommand::BecomeOperator, &herself()),
         Err(AccountError::NotSignedUpYet)
     );
+}
+
+fn spam() -> LockReason {
+    LockReason::new("Sent spam.").expect("a plain reason")
+}
+
+fn a_lock() -> AccountEvent {
+    AccountEvent::Locked {
+        kind: LockKind::Operator,
+        reason: spam(),
+    }
+}
+
+fn an_unlock() -> AccountEvent {
+    AccountEvent::Unlocked {
+        kind: LockKind::Operator,
+    }
+}
+
+#[test]
+fn an_account_is_locked_for_a_reason_from_the_moment_it_is() {
+    let mut account = a_verified_account();
+    assert!(!account.is_locked());
+
+    let locked = account
+        .decide(AccountCommand::Lock(LockKind::Operator, spam()), &herself())
+        .expect("an account may be locked");
+    assert_eq!(locked, vec![a_lock()]);
+    account.apply(&a_lock(), &stamped(3, at(3_000)));
+
+    assert!(account.is_locked());
+    assert_eq!(
+        account.locks(),
+        &BTreeMap::from([(
+            LockKind::Operator,
+            Lock {
+                reason: spam(),
+                since: at(3_000),
+            }
+        )])
+    );
+}
+
+#[test]
+fn a_lock_ends_every_session_begun_before_it() {
+    let mut account = a_verified_account();
+
+    account.apply(&a_lock(), &stamped(3, at(3_000)));
+
+    assert!(!account.counts_session_begun(at(2_999)));
+}
+
+#[test]
+fn locking_twice_changes_nothing_not_even_the_reason() {
+    let mut account = a_verified_account();
+    account.apply(&a_lock(), &stamped(3, at(3_000)));
+
+    assert_eq!(
+        account.decide(
+            AccountCommand::Lock(
+                LockKind::Operator,
+                LockReason::new("Another reason.").expect("a plain reason")
+            ),
+            &herself()
+        ),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn an_operator_cannot_be_locked() {
+    let mut account = a_verified_account();
+    account.apply(&AccountEvent::BecameOperator, &stamped(3, at(3_000)));
+
+    assert_eq!(
+        account.decide(AccountCommand::Lock(LockKind::Operator, spam()), &herself()),
+        Err(AccountError::OperatorCannotBeLocked),
+        "the role is taken away first, so two operators cannot lock each other out"
+    );
+}
+
+#[test]
+fn unlocking_lifts_the_lock_but_brings_back_no_session() {
+    let mut account = a_verified_account();
+    account.apply(&a_lock(), &stamped(3, at(3_000)));
+
+    let unlocked = account
+        .decide(AccountCommand::Unlock(LockKind::Operator), &herself())
+        .expect("a locked account may be unlocked");
+    assert_eq!(unlocked, vec![an_unlock()]);
+    account.apply(&an_unlock(), &stamped(4, at(4_000)));
+
+    assert!(!account.is_locked());
+    assert!(
+        !account.counts_session_begun(at(2_999)),
+        "a session ended by the lock stays ended"
+    );
+}
+
+#[test]
+fn unlocking_an_account_not_locked_changes_nothing() {
+    assert_eq!(
+        a_verified_account().decide(AccountCommand::Unlock(LockKind::Operator), &herself()),
+        Ok(vec![])
+    );
+}
+
+#[test]
+fn nobody_is_locked_or_unlocked_before_signing_up() {
+    for command in [
+        AccountCommand::Lock(LockKind::Operator, spam()),
+        AccountCommand::Unlock(LockKind::Operator),
+    ] {
+        assert_eq!(
+            Account::begin(command, &herself()),
+            Err(AccountError::NotSignedUpYet)
+        );
+    }
 }
