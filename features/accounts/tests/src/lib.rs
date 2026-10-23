@@ -1,4 +1,7 @@
 #[cfg(test)]
+mod account_cataloguing;
+
+#[cfg(test)]
 mod account_service;
 
 #[cfg(test)]

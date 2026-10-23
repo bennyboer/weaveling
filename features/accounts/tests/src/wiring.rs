@@ -1,14 +1,17 @@
 use std::sync::Arc;
 
+use accounts_catalog::InMemoryAccountCatalog;
 use accounts_core::{AccountEvent, AccountService, SecretStores};
 use accounts_secrets::InMemorySecrets;
+use accounts_wiring::Ports;
 use axum::Router;
 use clock::FixedClock;
 use eventsourcing::InMemoryEventStore;
 use mailing::FakeMailbox;
-use messaging::FakePublisher;
-use outbox::InMemoryOutbox;
+use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
+use outbox::{InMemoryOutbox, Outbox};
 use time::{Duration, OffsetDateTime};
+use wiring::Context;
 
 pub const ADA: &str = "ada@example.com";
 pub const HER_PASSWORD: &str = "correct horse battery";
@@ -25,39 +28,68 @@ pub struct Wired {
     pub told: Arc<InMemoryOutbox>,
     pub mailbox: Arc<FakeMailbox>,
     pub clock: Arc<FixedClock>,
+    pub catalog: Arc<InMemoryAccountCatalog>,
+    pub consuming: DeliveryConsumer,
 }
 
 pub fn wired() -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
-    let told = Arc::new(InMemoryOutbox::new(
-        Arc::new(FakePublisher::default()),
-        clock.clone(),
-    ));
+    let deliveries = Arc::new(InMemoryDeliveries::new());
+    let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
+    let told = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
     let store = Arc::new(InMemoryEventStore::enqueuing_to(
         told.clone(),
         accounts_messaging::message_for,
     ));
     let secrets = Arc::new(InMemorySecrets::default());
     let mailbox = Arc::new(FakeMailbox::default());
-    let accounts = AccountService::new(
-        store.clone(),
-        SecretStores::kept_by(secrets.clone()),
-        mailbox.clone(),
-        clock.clone(),
-    );
+    let catalog = Arc::new(InMemoryAccountCatalog::new());
+    let ports = Ports {
+        events: store.clone(),
+        secrets: SecretStores::kept_by(secrets.clone()),
+        catalog: catalog.clone(),
+        mailer: mailbox.clone(),
+        outbox: told.clone(),
+    };
+    let context = Context {
+        clock: clock.clone(),
+        publisher: dispatcher.clone(),
+    };
+    let wired = accounts_wiring::wire(&ports, &context);
+    for listener in &wired.listeners {
+        dispatcher.listen(listener.clone());
+    }
 
     Wired {
-        routes: accounts_rest::router(accounts.clone()),
-        accounts,
+        accounts: accounts_wiring::service(&ports, &context),
+        routes: wired.routes,
         store,
         secrets,
         told,
         mailbox,
+        consuming: DeliveryConsumer::new(dispatcher, deliveries, clock.clone()),
         clock,
+        catalog,
     }
 }
 
 impl Wired {
+    pub async fn settle(&self) {
+        loop {
+            let published = self
+                .told
+                .deliver(128)
+                .await
+                .expect("delivering should succeed")
+                .published;
+            let taken = self.consuming.drain(128).await;
+
+            if published == 0 && taken == 0 {
+                break;
+            }
+        }
+    }
+
     pub fn codes_sent_to(&self, address: &str) -> Vec<String> {
         self.mailbox
             .sent_to(address)

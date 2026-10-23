@@ -3609,10 +3609,12 @@ dependencies = [
 name = "weaveling-accounts-messaging"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "serde_json",
  "time",
  "weaveling-accounts-contract",
  "weaveling-accounts-core",
+ "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-messaging",
@@ -3664,16 +3666,19 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-accounts-catalog",
  "weaveling-accounts-contract",
  "weaveling-accounts-core",
  "weaveling-accounts-messaging",
  "weaveling-accounts-rest",
  "weaveling-accounts-secrets",
+ "weaveling-accounts-wiring",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-mailing",
  "weaveling-messaging",
  "weaveling-outbox",
+ "weaveling-wiring",
 ]
 
 [[package]]
@@ -3682,6 +3687,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "sqlx",
+ "weaveling-accounts-catalog",
  "weaveling-accounts-core",
  "weaveling-accounts-messaging",
  "weaveling-accounts-rest",

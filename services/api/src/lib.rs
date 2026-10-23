@@ -172,16 +172,21 @@ pub fn app(adapters: Adapters) -> Router {
         ));
     let open_routes = Router::new().nest("/service", service);
 
+    let accounts_listeners = adapters
+        .accounts
+        .iter()
+        .flat_map(|accounts| accounts.listeners.clone());
     let mut guarded_routes = Router::new();
+    let mut listeners = Vec::new();
     for feature in adapters.features {
         guarded_routes = guarded_routes.merge(feature.routes);
-
-        for listener in feature.listeners {
-            adapters.dispatcher.listen(match adapters.flakiness {
-                Some(flakiness) => FlakyListener::wrapping(listener, flakiness),
-                None => listener,
-            });
-        }
+        listeners.extend(feature.listeners);
+    }
+    for listener in listeners.into_iter().chain(accounts_listeners) {
+        adapters.dispatcher.listen(match adapters.flakiness {
+            Some(flakiness) => FlakyListener::wrapping(listener, flakiness),
+            None => listener,
+        });
     }
 
     let api = match adapters.accounts {

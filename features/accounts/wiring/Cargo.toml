@@ -14,6 +14,7 @@ mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "w
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 
+accounts-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-accounts-catalog" }
 accounts-core = { version = "0.1.0", path = "../core", package = "weaveling-accounts-core" }
 accounts-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-accounts-messaging" }
 accounts-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-accounts-rest" }
@@ -21,5 +22,5 @@ accounts-secrets = { version = "0.1.0", path = "../adapters/secrets", package = 
 accounts-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-accounts-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "accounts-secrets/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "accounts-secrets/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "accounts-secrets/postgres", "accounts-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "accounts-secrets/sqlite", "accounts-catalog/sqlite"]

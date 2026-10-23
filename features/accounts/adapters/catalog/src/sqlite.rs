@@ -35,8 +35,13 @@ const LISTED_AFTER: &str = "
     LIMIT ?2
 ";
 
+const LEDGER: &str = "_sqlx_migrations_account_summaries";
+
 pub fn migrations() -> Migrator {
-    sqlx::migrate!("./migrations/sqlite")
+    let mut laying = sqlx::migrate!("./migrations/sqlite");
+    laying.dangerous_set_table_name(LEDGER);
+
+    laying
 }
 
 pub struct SqliteAccountCatalog {
@@ -109,5 +114,20 @@ impl AccountCatalog for SqliteAccountCatalog {
             .map_err(unreachable)?;
 
         found.iter().map(to_summary).collect()
+    }
+}
+
+#[cfg(test)]
+mod ledger_tests {
+    use super::*;
+
+    #[test]
+    fn the_catalog_keeps_a_ledger_of_its_own_beside_the_secrets_one() {
+        assert_eq!(migrations().table_name, LEDGER);
+        assert_ne!(
+            migrations().table_name,
+            Migrator::DEFAULT.table_name,
+            "the secrets already lay down a 0001 in the accounts database under the default ledger"
+        );
     }
 }
