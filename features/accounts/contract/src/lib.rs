@@ -42,6 +42,35 @@ pub struct BecomeOperatorRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct LockRequest {
+    pub reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct LockDTO {
+    pub kind: String,
+    pub reason: String,
+    pub since: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AccountSummaryDTO {
+    pub id: String,
+    pub name: String,
+    pub email: String,
+    pub verified: bool,
+    pub operator: bool,
+    pub signed_up_at: String,
+    pub locks: Vec<LockDTO>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct AccountPageDTO {
+    pub accounts: Vec<AccountSummaryDTO>,
+    pub next: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct SignedInDTO {
     pub account: String,
     pub name: String,
@@ -107,8 +136,16 @@ pub mod refused {
     pub const NOT_SIGNED_IN: &str = "not-signed-in";
     pub const THROTTLED: &str = "too-many-tries";
     pub const OPERATOR_CODE_WRONG: &str = "operator-code-wrong";
+    pub const ACCOUNT_LOCKED: &str = "account-locked";
+    pub const NOT_AN_OPERATOR: &str = "not-an-operator";
+    pub const OPERATOR_CANNOT_BE_LOCKED: &str = "operator-cannot-be-locked";
+    pub const LOCK_REASON_BLANK: &str = "lock-reason-blank";
+    pub const LOCK_REASON_CONTROL_CHARACTER: &str = "lock-reason-control-character";
+    pub const LOCK_REASON_TOO_LONG: &str = "lock-reason-too-long";
+    pub const ACCOUNT_ID_INVALID: &str = "account-id-invalid";
+    pub const ACCOUNT_NOT_FOUND: &str = "account-not-found";
 
-    pub const EVERY: [&str; 15] = [
+    pub const EVERY: [&str; 23] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -124,5 +161,13 @@ pub mod refused {
         NOT_SIGNED_IN,
         THROTTLED,
         OPERATOR_CODE_WRONG,
+        ACCOUNT_LOCKED,
+        NOT_AN_OPERATOR,
+        OPERATOR_CANNOT_BE_LOCKED,
+        LOCK_REASON_BLANK,
+        LOCK_REASON_CONTROL_CHARACTER,
+        LOCK_REASON_TOO_LONG,
+        ACCOUNT_ID_INVALID,
+        ACCOUNT_NOT_FOUND,
     ];
 }

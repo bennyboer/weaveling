@@ -3625,9 +3625,12 @@ name = "weaveling-accounts-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
  "time",
  "weaveling-accounts-contract",
  "weaveling-accounts-core",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
  "weaveling-serving",
 ]
 

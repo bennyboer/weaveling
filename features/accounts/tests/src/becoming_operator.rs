@@ -214,6 +214,7 @@ async fn an_operator_broken_off_before_being_appointed_is_appointed_by_the_next_
             }),
             ..SecretStores::kept_by(wired.secrets.clone())
         },
+        wired.catalog.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

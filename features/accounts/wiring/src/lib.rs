@@ -23,6 +23,7 @@ pub fn service(ports: &Ports, context: &Context) -> AccountService {
     AccountService::new(
         ports.events.clone(),
         ports.secrets.clone(),
+        ports.catalog.clone(),
         ports.mailer.clone(),
         context.clock.clone(),
     )

@@ -383,3 +383,94 @@ async fn a_server_with_a_mail_drop_leaves_each_code_there() {
     );
     let _gone = fs::remove_dir_all(&drop);
 }
+
+fn code_dropped_for(drop: &std::path::Path, address: &str) -> String {
+    fs::read_dir(drop)
+        .expect("the drop should have been made")
+        .map(|entry| {
+            serde_json::from_slice::<Value>(
+                &fs::read(entry.expect("an entry").path()).expect("readable"),
+            )
+            .expect("a mail as JSON")
+        })
+        .filter(|mail| mail["to"] == address)
+        .find_map(|mail| {
+            mail["body"].as_str().and_then(|body| {
+                body.split_whitespace()
+                    .find(|word| {
+                        word.len() == 6 && word.bytes().all(|digit| digit.is_ascii_digit())
+                    })
+                    .map(str::to_owned)
+            })
+        })
+        .expect("a code should have been dropped")
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
+    let drop = std::env::temp_dir().join(format!(
+        "weaveling-instance-mail-drop-{}",
+        std::process::id()
+    ));
+    let _gone = fs::remove_dir_all(&drop);
+    let adapters = Adapters::assembled(
+        Storage::InMemory,
+        Accounts::On,
+        Mailing::Dropped { into: drop.clone() }.mailer(),
+        Arc::new(SystemClock),
+    )
+    .await
+    .expect("nothing kept in memory needs preparing");
+    let operator_code = adapters
+        .draw_operator_code()
+        .await
+        .expect("drawing should succeed")
+        .expect("with nobody appointed a code is drawn");
+    let relays = Relays::started(
+        adapters.outboxes(),
+        adapters.consuming(),
+        Cadence {
+            deliver_every: Duration::from_millis(10),
+            ..Cadence::default()
+        },
+    );
+    let mut server = TestServer::new(weaveling_service_api::app(adapters));
+    server.save_cookies();
+    server
+        .post("/api/accounts")
+        .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+    server
+        .post("/api/accounts/verification")
+        .json(&json!({ "email": "ada@example.com", "code": code_dropped_for(&drop, "ada@example.com") }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .post("/api/sessions")
+        .json(&json!({ "email": "ada@example.com", "password": "correct horse battery" }))
+        .await
+        .assert_status_ok();
+    server
+        .post("/api/operators")
+        .json(&json!({ "code": operator_code.as_str() }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    let mut listed = Value::Null;
+    for _ in 0..1_000 {
+        listed = server.get("/api/instance/accounts").await.json();
+        if listed["accounts"][0]["operator"] == true {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(listed["accounts"][0]["email"], "ada@example.com");
+    assert_eq!(
+        listed["accounts"][0]["operator"], true,
+        "the list only hears of an account through the outbox, its relay and the accounts' own listener"
+    );
+
+    relays.stop().await;
+    let _gone = fs::remove_dir_all(&drop);
+}

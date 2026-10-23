@@ -14,6 +14,9 @@ mod becoming_operator;
 mod gate_api;
 
 #[cfg(test)]
+mod instance_api;
+
+#[cfg(test)]
 mod locking;
 
 #[cfg(test)]

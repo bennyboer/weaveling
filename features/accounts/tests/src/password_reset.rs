@@ -278,6 +278,7 @@ async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
             passwords: passwords.clone(),
             ..SecretStores::kept_by(wired.secrets.clone())
         },
+        wired.catalog.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );
@@ -398,6 +399,7 @@ async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
             passwords: passwords.clone(),
             ..SecretStores::kept_by(wired.secrets.clone())
         },
+        wired.catalog.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),
     );

@@ -1,13 +1,15 @@
 use accounts_contract::{
-    BecomeOperatorRequest, NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE,
-    SendCodeRequest, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest, refused, stage,
+    AccountPageDTO, AccountSummaryDTO, BecomeOperatorRequest, LockDTO, LockRequest,
+    NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE, SendCodeRequest, SignInRequest,
+    SignUpRequest, SignedInDTO, VerifyEmailRequest, lock_kind, refused, stage,
 };
 use accounts_core::{
-    AccountId, AccountService, AccountServiceError, InvalidAccountName, InvalidEmailAddress,
-    InvalidPassword, Session, SessionToken, SignedIn, Stage,
+    AccountError, AccountId, AccountService, AccountServiceError, AccountSummary,
+    InvalidAccountName, InvalidEmailAddress, InvalidLockReason, InvalidPassword, LockKind, Session,
+    SessionToken, SignedIn, Stage,
 };
 use axum::Router;
-use axum::extract::{Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::middleware;
@@ -15,6 +17,9 @@ use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum::routing;
 use axum::{Extension, Json};
+use clock::text;
+use eventsourcing::ServiceError;
+use serde::Deserialize;
 use serving::Problem;
 use time::Duration;
 
@@ -42,6 +47,11 @@ pub fn router(accounts: AccountService) -> Router {
 pub fn guarded_router(accounts: AccountService) -> Router {
     Router::new()
         .route("/operators", routing::post(become_operator))
+        .route("/instance/accounts", routing::get(list_accounts))
+        .route(
+            "/instance/accounts/{account}/lock",
+            routing::put(lock).delete(unlock),
+        )
         .with_state(accounts)
 }
 
@@ -153,6 +163,90 @@ async fn become_operator(
         .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub const PAGE: usize = 100;
+
+#[derive(Deserialize)]
+struct Paging {
+    after: Option<String>,
+}
+
+async fn list_accounts(
+    State(accounts): State<AccountService>,
+    Extension(by): Extension<AccountId>,
+    Query(paging): Query<Paging>,
+) -> Result<Json<AccountPageDTO>, Problem> {
+    let after = paging.after.as_deref().map(account_named).transpose()?;
+    let mut found = accounts
+        .list(&by, after.as_ref(), PAGE + 1)
+        .await
+        .map_err(problem_of)?;
+    let more = found.len() > PAGE;
+    found.truncate(PAGE);
+
+    Ok(Json(AccountPageDTO {
+        next: more
+            .then(|| found.last().map(|last| last.id.to_string()))
+            .flatten(),
+        accounts: found.iter().map(to_summary_dto).collect(),
+    }))
+}
+
+async fn lock(
+    State(accounts): State<AccountService>,
+    Extension(by): Extension<AccountId>,
+    Path(account): Path<String>,
+    Json(request): Json<LockRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .lock(&by, &account_named(&account)?, &request.reason)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn unlock(
+    State(accounts): State<AccountService>,
+    Extension(by): Extension<AccountId>,
+    Path(account): Path<String>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .unlock(&by, &account_named(&account)?)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn account_named(given: &str) -> Result<AccountId, Problem> {
+    given
+        .parse()
+        .map_err(|_| Problem::rejected(refused::ACCOUNT_ID_INVALID, "this is no account's id"))
+}
+
+fn to_summary_dto(summary: &AccountSummary) -> AccountSummaryDTO {
+    AccountSummaryDTO {
+        id: summary.id.to_string(),
+        name: summary.name.to_string(),
+        email: summary.email.to_string(),
+        verified: summary.verified,
+        operator: summary.operator,
+        signed_up_at: text::serialize(summary.signed_up_at),
+        locks: summary
+            .locks
+            .iter()
+            .map(|(kind, lock)| LockDTO {
+                kind: match kind {
+                    LockKind::Operator => lock_kind::OPERATOR,
+                }
+                .to_owned(),
+                reason: lock.reason.to_string(),
+                since: text::serialize(lock.since),
+            })
+            .collect(),
+    }
 }
 
 async fn current(
@@ -267,6 +361,25 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
             Problem::unauthorized(refused::SIGN_IN_REFUSED, refusal)
         }
         AccountServiceError::NotVerifiedYet => Problem::forbidden(refused::NOT_VERIFIED, refusal),
+        AccountServiceError::Locked => Problem::forbidden(refused::ACCOUNT_LOCKED, refusal),
+        AccountServiceError::NotAnOperator => Problem::forbidden(refused::NOT_AN_OPERATOR, refusal),
+        AccountServiceError::InvalidLockReason(reason) => match reason {
+            InvalidLockReason::Blank => Problem::unprocessable(refused::LOCK_REASON_BLANK, reason),
+            InvalidLockReason::ControlCharacter => {
+                Problem::unprocessable(refused::LOCK_REASON_CONTROL_CHARACTER, reason)
+            }
+            InvalidLockReason::TooLong { max, actual } => {
+                Problem::unprocessable(refused::LOCK_REASON_TOO_LONG, reason)
+                    .with("max", max)
+                    .with("actual", actual)
+            }
+        },
+        AccountServiceError::Events(ServiceError::Refused(
+            AccountError::OperatorCannotBeLocked,
+        )) => Problem::refused(refused::OPERATOR_CANNOT_BE_LOCKED, refusal),
+        AccountServiceError::Events(ServiceError::NotFound { .. }) => {
+            Problem::not_found(refused::ACCOUNT_NOT_FOUND, "there is no such account")
+        }
         AccountServiceError::OperatorCodeWrong => {
             Problem::unprocessable(refused::OPERATOR_CODE_WRONG, refusal)
         }

@@ -7,6 +7,7 @@ use thiserror::Error;
 use time::Duration;
 
 use crate::account::{Account, AccountCommand, AccountError, AccountEvent};
+use crate::catalog::{AccountCatalog, AccountSummary, CatalogError};
 use crate::code::{CodePurpose, PendingVerification};
 use crate::email::{EmailAddress, InvalidEmailAddress};
 use crate::id::AccountId;
@@ -54,6 +55,8 @@ pub enum AccountServiceError {
     #[error(transparent)]
     Secrets(#[from] SecretsError),
     #[error(transparent)]
+    Catalog(#[from] CatalogError),
+    #[error(transparent)]
     Unsent(#[from] Unsent),
 }
 
@@ -72,6 +75,7 @@ pub struct AccountService {
     sessions: Arc<dyn Sessions>,
     throttles: Arc<dyn Throttles>,
     operators: Arc<dyn Operators>,
+    catalog: Arc<dyn AccountCatalog>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
 }
@@ -80,6 +84,7 @@ impl AccountService {
     pub fn new(
         store: Arc<dyn EventStore<AccountEvent>>,
         secrets: SecretStores,
+        catalog: Arc<dyn AccountCatalog>,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -100,6 +105,7 @@ impl AccountService {
             sessions,
             throttles,
             operators,
+            catalog,
             mailer,
             clock,
         }
@@ -397,6 +403,17 @@ impl AccountService {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn list(
+        &self,
+        by: &AccountId,
+        after: Option<&AccountId>,
+        at_most: usize,
+    ) -> Result<Vec<AccountSummary>, AccountServiceError> {
+        self.operating(by).await?;
+
+        Ok(self.catalog.listed_after(after, at_most).await?)
     }
 
     async fn operating(&self, by: &AccountId) -> Result<(), AccountServiceError> {
