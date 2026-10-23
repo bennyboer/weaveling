@@ -16,11 +16,12 @@ use crate::operator::OperatorCode;
 use crate::password::{InvalidPassword, Password, PasswordHash};
 use crate::secrets::{
     Attempt, Dismissal, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions,
-    Throttles, Verifications,
+    Verifications,
 };
 use crate::session::{Session, SessionToken, Stage};
 use crate::throttle::Guarded;
 use email::{EmailAddress, InvalidEmailAddress};
+use throttling::{Throttles, ThrottlesError};
 
 #[derive(Debug, Error)]
 pub enum AccountServiceError {
@@ -58,6 +59,8 @@ pub enum AccountServiceError {
     Secrets(#[from] SecretsError),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    Throttles(#[from] ThrottlesError),
     #[error(transparent)]
     Unsent(#[from] Unsent),
 }
@@ -278,7 +281,9 @@ impl AccountService {
             self.count_try(Guarded::SigningIn, &email).await?;
             return Err(AccountServiceError::SignInRefused);
         }
-        self.throttles.clear(Guarded::SigningIn, &email).await?;
+        self.throttles
+            .clear(Guarded::SigningIn.as_str(), email.as_str())
+            .await?;
         if account.is_locked() {
             return Err(AccountServiceError::Locked);
         }
@@ -488,14 +493,21 @@ impl AccountService {
         email: &EmailAddress,
     ) -> Result<(), AccountServiceError> {
         let now = self.clock.now();
-        let Some(tries) = self.throttles.tries(guarded, email).await? else {
+        let Some(tries) = self
+            .throttles
+            .tries(guarded.as_str(), email.as_str())
+            .await?
+        else {
             return Ok(());
         };
         if tries.is_forgotten(now) {
-            return Ok(self.throttles.clear(guarded, email).await?);
+            return Ok(self
+                .throttles
+                .clear(guarded.as_str(), email.as_str())
+                .await?);
         }
 
-        match tries.wait_before_next(guarded, now) {
+        match tries.wait_before_next(guarded.rule(), now) {
             Some(wait) => Err(AccountServiceError::Throttled { wait }),
             None => Ok(()),
         }
@@ -512,7 +524,7 @@ impl AccountService {
         email: &EmailAddress,
     ) -> Result<(), AccountServiceError> {
         self.throttles
-            .count(guarded, email, self.clock.now())
+            .count(guarded.as_str(), email.as_str(), self.clock.now())
             .await?;
 
         Ok(())

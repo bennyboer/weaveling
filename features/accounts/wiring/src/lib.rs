@@ -9,6 +9,7 @@ use eventsourcing::EventStore;
 use mailing::{LoggingMailer, Mailer};
 use messaging::Listener;
 use outbox::Outbox;
+use throttling::InMemoryThrottles;
 use wiring::{Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 pub struct Ports {
@@ -84,7 +85,7 @@ impl Feature for AccountFeature {
 
         Ports {
             events,
-            secrets: SecretStores::kept_by(secrets),
+            secrets: SecretStores::kept_by(secrets, Arc::new(InMemoryThrottles::default())),
             catalog: Arc::new(InMemoryAccountCatalog::new()),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -100,10 +101,11 @@ impl Feature for AccountFeature {
             context,
         );
         let secrets = Arc::new(accounts_secrets::PostgresSecrets::new(pool.clone()));
+        let throttles = Arc::new(throttling::PostgresThrottles::new(pool.clone()));
 
         Ok(Ports {
             events,
-            secrets: SecretStores::kept_by(secrets),
+            secrets: SecretStores::kept_by(secrets, throttles),
             catalog: Arc::new(accounts_catalog::PostgresAccountCatalog::new(pool)),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -117,6 +119,7 @@ impl Feature for AccountFeature {
             outbox::postgres::migrations(),
             accounts_secrets::postgres::migrations(),
             accounts_catalog::postgres::migrations(),
+            throttling::postgres::migrations(),
         ]
     }
 
@@ -129,10 +132,11 @@ impl Feature for AccountFeature {
             context,
         );
         let secrets = Arc::new(accounts_secrets::SqliteSecrets::new(pool.clone()));
+        let throttles = Arc::new(throttling::SqliteThrottles::new(pool.clone()));
 
         Ok(Ports {
             events,
-            secrets: SecretStores::kept_by(secrets),
+            secrets: SecretStores::kept_by(secrets, throttles),
             catalog: Arc::new(accounts_catalog::SqliteAccountCatalog::new(pool)),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -146,6 +150,7 @@ impl Feature for AccountFeature {
             outbox::sqlite::migrations(),
             accounts_secrets::sqlite::migrations(),
             accounts_catalog::sqlite::migrations(),
+            throttling::sqlite::migrations(),
         ]
     }
 

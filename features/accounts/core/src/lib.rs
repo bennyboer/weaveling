@@ -25,8 +25,8 @@ pub use operator::OperatorCode;
 pub use password::{InvalidPassword, Password, PasswordHash};
 pub use secrets::{
     Attempt, Dismissal, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions,
-    Throttles, Verifications,
+    Verifications,
 };
 pub use service::{AccountService, AccountServiceError, SignedIn};
 pub use session::{Session, SessionToken, Stage, TokenDigest};
-pub use throttle::{Guarded, Tries};
+pub use throttle::Guarded;

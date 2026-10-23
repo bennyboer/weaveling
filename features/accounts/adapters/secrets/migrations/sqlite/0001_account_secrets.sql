@@ -25,14 +25,6 @@ CREATE TABLE account_sessions (
     until    TEXT NOT NULL
 );
 
-CREATE TABLE account_throttles (
-    guarded  TEXT    NOT NULL,
-    email    TEXT    NOT NULL,
-    counted  INTEGER NOT NULL,
-    last     TEXT    NOT NULL,
-    PRIMARY KEY (guarded, email)
-);
-
 CREATE TABLE account_operator_code (
     single   BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (single),
     digest   TEXT NOT NULL

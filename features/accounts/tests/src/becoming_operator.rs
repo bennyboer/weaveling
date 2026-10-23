@@ -216,7 +216,7 @@ async fn an_operator_broken_off_before_being_appointed_is_appointed_by_the_next_
                 kept: wired.secrets.clone(),
                 armed: AtomicBool::new(true),
             }),
-            ..SecretStores::kept_by(wired.secrets.clone())
+            ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())
         },
         wired.catalog.clone(),
         wired.mailbox.clone(),

@@ -1,4 +1,5 @@
-use accounts_core::{AccountServiceError, EmailAddress, Guarded, Throttles};
+use accounts_core::{AccountServiceError, Guarded};
+use throttling::Throttles;
 use time::Duration;
 
 use crate::wiring;
@@ -70,11 +71,8 @@ async fn once_the_wait_is_over_the_right_password_signs_in_and_the_count_starts_
 
     assert_eq!(
         wired
-            .secrets
-            .tries(
-                Guarded::SigningIn,
-                &EmailAddress::new(ADA).expect("a plain address")
-            )
+            .throttles
+            .tries(Guarded::SigningIn.as_str(), ADA)
             .await
             .expect("reading should succeed"),
         None
@@ -159,11 +157,8 @@ async fn tries_a_day_old_are_forgotten() {
 
     assert_eq!(
         wired
-            .secrets
-            .tries(
-                Guarded::SigningIn,
-                &EmailAddress::new(ADA).expect("a plain address")
-            )
+            .throttles
+            .tries(Guarded::SigningIn.as_str(), ADA)
             .await
             .expect("reading should succeed")
             .map(|tries| tries.counted),

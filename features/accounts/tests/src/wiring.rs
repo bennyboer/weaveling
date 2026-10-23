@@ -10,6 +10,7 @@ use eventsourcing::InMemoryEventStore;
 use mailing::FakeMailbox;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
+use throttling::InMemoryThrottles;
 use time::{Duration, OffsetDateTime};
 use wiring::Context;
 
@@ -25,6 +26,7 @@ pub struct Wired {
     pub routes: Router,
     pub store: Arc<InMemoryEventStore<AccountEvent>>,
     pub secrets: Arc<InMemorySecrets>,
+    pub throttles: Arc<InMemoryThrottles>,
     pub told: Arc<InMemoryOutbox>,
     pub mailbox: Arc<FakeMailbox>,
     pub clock: Arc<FixedClock>,
@@ -42,11 +44,12 @@ pub fn wired() -> Wired {
         accounts_messaging::message_for,
     ));
     let secrets = Arc::new(InMemorySecrets::default());
+    let throttles = Arc::new(InMemoryThrottles::default());
     let mailbox = Arc::new(FakeMailbox::default());
     let catalog = Arc::new(InMemoryAccountCatalog::new());
     let ports = Ports {
         events: store.clone(),
-        secrets: SecretStores::kept_by(secrets.clone()),
+        secrets: SecretStores::kept_by(secrets.clone(), throttles.clone()),
         catalog: catalog.clone(),
         mailer: mailbox.clone(),
         outbox: told.clone(),
@@ -65,6 +68,7 @@ pub fn wired() -> Wired {
         routes: wired.routes,
         store,
         secrets,
+        throttles,
         told,
         mailbox,
         consuming: DeliveryConsumer::new(dispatcher, deliveries, clock.clone()),

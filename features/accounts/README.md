@@ -4,7 +4,7 @@ Who someone is on a Weaveling server: signing up, signing in, and the operator w
 
 Only a server with `WEAVELING_ACCOUNTS=on` has accounts. Local mode has none, and everything is done by the one person at the keyboard, `Agent::Local`; nothing in this feature runs there.
 
-**`Account` is an aggregate**, event-sourced as every feature is: `SignedUp`, `EmailVerified`, `PasswordReset`, `BecameOperator`, `StoppedBeingOperator`, `Locked`, `Unlocked`. Its events say *that* a password was set or reset, never the password; **the secrets are kept beside the events**, latest only, so an old log holds no old hash. Beside them stand the address an account holds, its password's Argon2id hash, the pending codes, the sessions (by the digest of their token), the throttles and who is appointed an operator, each behind a port of its own in `SecretStores`.
+**`Account` is an aggregate**, event-sourced as every feature is: `SignedUp`, `EmailVerified`, `PasswordReset`, `BecameOperator`, `StoppedBeingOperator`, `Locked`, `Unlocked`. Its events say *that* a password was set or reset, never the password; **the secrets are kept beside the events**, latest only, so an old log holds no old hash. Beside them stand the address an account holds, its password's Argon2id hash, the pending codes, the sessions (by the digest of their token), the tries counted by [`throttling`](../../libraries/throttling) and who is appointed an operator, each behind a port of its own in `SecretStores`.
 
 **Sessions end by comparison, not by sweeping.** An account records when its sessions last stopped counting, `sessions_since`, set by a new password or a lock; a session begun before that is over wherever it is kept. A locked account is admitted with no session at all.
 

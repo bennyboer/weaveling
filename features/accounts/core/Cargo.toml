@@ -16,4 +16,5 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "weaveling-mailing" }
 email = { version = "0.1.0", path = "../../../libraries/email", package = "weaveling-email" }
+throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }
 words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }

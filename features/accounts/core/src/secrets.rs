@@ -3,14 +3,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use thiserror::Error;
-use time::OffsetDateTime;
 
 use crate::code::{CodePurpose, PendingVerification};
 use crate::id::AccountId;
 use crate::password::PasswordHash;
 use crate::session::{Session, TokenDigest};
-use crate::throttle::{Guarded, Tries};
 use email::EmailAddress;
+use throttling::Throttles;
 
 #[derive(Debug, Error)]
 pub enum SecretsError {
@@ -31,16 +30,16 @@ pub struct SecretStores {
 }
 
 impl SecretStores {
-    pub fn kept_by<S>(secrets: Arc<S>) -> Self
+    pub fn kept_by<S>(secrets: Arc<S>, throttles: Arc<dyn Throttles>) -> Self
     where
-        S: EmailAddresses + Passwords + Verifications + Sessions + Throttles + Operators + 'static,
+        S: EmailAddresses + Passwords + Verifications + Sessions + Operators + 'static,
     {
         Self {
             email_addresses: secrets.clone(),
             passwords: secrets.clone(),
             verifications: secrets.clone(),
             sessions: secrets.clone(),
-            throttles: secrets.clone(),
+            throttles,
             operators: secrets,
         }
     }
@@ -67,24 +66,6 @@ pub trait Passwords: Send + Sync {
     async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError>;
 
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError>;
-}
-
-#[async_trait]
-pub trait Throttles: Send + Sync {
-    async fn tries(
-        &self,
-        guarded: Guarded,
-        email: &EmailAddress,
-    ) -> Result<Option<Tries>, SecretsError>;
-
-    async fn count(
-        &self,
-        guarded: Guarded,
-        email: &EmailAddress,
-        at: OffsetDateTime,
-    ) -> Result<Tries, SecretsError>;
-
-    async fn clear(&self, guarded: Guarded, email: &EmailAddress) -> Result<(), SecretsError>;
 }
 
 #[async_trait]

@@ -407,7 +407,7 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
     let wired = wiring::wired();
     let accounts = AccountService::new(
         Arc::new(Refusing),
-        SecretStores::kept_by(wired.secrets.clone()),
+        SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone()),
         wired.catalog.clone(),
         wired.mailbox.clone(),
         wired.clock.clone(),

@@ -3603,6 +3603,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-mailing",
+ "weaveling-throttling",
  "weaveling-words",
 ]
 
@@ -3682,6 +3683,7 @@ dependencies = [
  "weaveling-mailing",
  "weaveling-messaging",
  "weaveling-outbox",
+ "weaveling-throttling",
  "weaveling-wiring",
 ]
 
@@ -3701,6 +3703,7 @@ dependencies = [
  "weaveling-mailing",
  "weaveling-messaging",
  "weaveling-outbox",
+ "weaveling-throttling",
  "weaveling-wiring",
 ]
 
