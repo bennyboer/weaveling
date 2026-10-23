@@ -4105,11 +4105,26 @@ dependencies = [
 name = "weaveling-invitations-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "rand_core 0.6.4",
+ "sha2 0.10.9",
  "thiserror",
  "time",
  "weaveling-email",
  "weaveling-eventsourcing",
  "weaveling-ids",
+]
+
+[[package]]
+name = "weaveling-invitations-links"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "time",
+ "tokio",
+ "weaveling-invitations-core",
+ "weaveling-test-harness",
 ]
 
 [[package]]
