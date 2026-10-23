@@ -19,7 +19,11 @@ pub const EVERY_INVITATION: &str = "invitation.#";
 #[serde(tag = "name")]
 pub enum InvitationEventDTO {
     #[serde(rename = "ISSUED")]
-    Issued,
+    Issued {
+        to: String,
+        digest: String,
+        until: String,
+    },
     #[serde(rename = "ACCEPTED")]
     Accepted,
     #[serde(rename = "WITHDRAWN")]

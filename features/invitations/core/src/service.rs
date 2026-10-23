@@ -11,7 +11,7 @@ use time::Duration;
 
 use crate::id::InvitationId;
 use crate::invitation::{Invitation, InvitationCommand, InvitationError, InvitationEvent};
-use crate::link::{InvitationLinks, InvitationToken, LinksError};
+use crate::token::InvitationToken;
 
 const INVITING: &str = "inviting";
 const INVITING_RULE: Rule = Rule { free: 3 };
@@ -27,8 +27,6 @@ pub enum InvitationServiceError {
     #[error(transparent)]
     Events(#[from] ServiceError<InvitationError>),
     #[error(transparent)]
-    Links(#[from] LinksError),
-    #[error(transparent)]
     Throttles(#[from] ThrottlesError),
     #[error(transparent)]
     Unsent(#[from] Unsent),
@@ -37,7 +35,6 @@ pub enum InvitationServiceError {
 #[derive(Clone)]
 pub struct InvitationService {
     events: Arc<EventSourcingService<Invitation>>,
-    links: Arc<dyn InvitationLinks>,
     throttles: Arc<dyn Throttles>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
@@ -46,14 +43,12 @@ pub struct InvitationService {
 impl InvitationService {
     pub fn new(
         store: Arc<dyn EventStore<InvitationEvent>>,
-        links: Arc<dyn InvitationLinks>,
         throttles: Arc<dyn Throttles>,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
-            links,
             throttles,
             mailer,
             clock,
@@ -79,11 +74,14 @@ impl InvitationService {
             .events
             .begin(
                 &AggregateId::from(&id),
-                InvitationCommand::Issue { to: to.clone() },
+                InvitationCommand::Issue {
+                    to: to.clone(),
+                    digest: token.digest(),
+                    until: self.clock.now() + Invitation::LASTS,
+                },
                 &by.agent,
             )
             .await?;
-        self.links.keep(&token.digest(), &id).await?;
         self.mailer
             .send(invitation_mail(&to, origin, &token))
             .await?;
@@ -106,7 +104,6 @@ impl InvitationService {
                 &by.agent,
             )
             .await?;
-        self.links.forget(invitation).await?;
 
         Ok(())
     }

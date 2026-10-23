@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use eventsourcing::EventStore;
-use invitations_core::{InvitationEvent, InvitationLinks, InvitationService};
-use invitations_links::InMemoryInvitationLinks;
+use invitations_core::{InvitationEvent, InvitationService};
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
 use throttling::{InMemoryThrottles, Throttles};
@@ -10,7 +9,6 @@ use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wir
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
-    pub links: Arc<dyn InvitationLinks>,
     pub throttles: Arc<dyn Throttles>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
@@ -19,7 +17,6 @@ pub struct Ports {
 pub fn service(ports: &Ports, context: &Context) -> InvitationService {
     InvitationService::new(
         ports.events.clone(),
-        ports.links.clone(),
         ports.throttles.clone(),
         ports.mailer.clone(),
         context.clock.clone(),
@@ -58,7 +55,6 @@ impl Feature for InvitationFeature {
 
         Ports {
             events,
-            links: Arc::new(InMemoryInvitationLinks::default()),
             throttles: Arc::new(InMemoryThrottles::default()),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -76,9 +72,6 @@ impl Feature for InvitationFeature {
 
         Ok(Ports {
             events,
-            links: Arc::new(invitations_links::PostgresInvitationLinks::new(
-                pool.clone(),
-            )),
             throttles: Arc::new(throttling::PostgresThrottles::new(pool)),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -90,7 +83,6 @@ impl Feature for InvitationFeature {
         vec![
             eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
-            invitations_links::postgres::migrations(),
             throttling::postgres::migrations(),
         ]
     }
@@ -106,7 +98,6 @@ impl Feature for InvitationFeature {
 
         Ok(Ports {
             events,
-            links: Arc::new(invitations_links::SqliteInvitationLinks::new(pool.clone())),
             throttles: Arc::new(throttling::SqliteThrottles::new(pool)),
             mailer: Arc::new(LoggingMailer),
             outbox,
@@ -118,7 +109,6 @@ impl Feature for InvitationFeature {
         vec![
             eventsourcing::sqlite::migrations(),
             outbox::sqlite::migrations(),
-            invitations_links::sqlite::migrations(),
             throttling::sqlite::migrations(),
         ]
     }

@@ -3,6 +3,8 @@ use eventsourcing::{Agent, Aggregate, AggregateType, Event, EventMetadata, Event
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
+use crate::token::InvitationTokenDigest;
+
 pub const KIND: AggregateType = AggregateType::of("invitation");
 
 const ISSUED: EventName = EventName::of("ISSUED");
@@ -12,8 +14,14 @@ const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvitationCommand {
-    Issue { to: EmailAddress },
-    Accept { at: OffsetDateTime },
+    Issue {
+        to: EmailAddress,
+        digest: InvitationTokenDigest,
+        until: OffsetDateTime,
+    },
+    Accept {
+        at: OffsetDateTime,
+    },
     Withdraw,
 }
 
@@ -21,12 +29,15 @@ pub enum InvitationCommand {
 pub enum InvitationEvent {
     Issued {
         to: EmailAddress,
+        digest: InvitationTokenDigest,
+        until: OffsetDateTime,
     },
     Accepted,
     Withdrawn,
     Snapshotted {
         to: EmailAddress,
         issued_at: OffsetDateTime,
+        until: OffsetDateTime,
         outcome: Outcome,
     },
 }
@@ -42,6 +53,7 @@ pub enum Outcome {
 pub struct Invitation {
     to: EmailAddress,
     issued_at: OffsetDateTime,
+    until: OffsetDateTime,
     outcome: Outcome,
 }
 
@@ -71,7 +83,7 @@ impl Invitation {
     }
 
     pub fn until(&self) -> OffsetDateTime {
-        self.issued_at + Self::LASTS
+        self.until
     }
 
     pub fn outcome(&self) -> Outcome {
@@ -114,7 +126,9 @@ impl Aggregate for Invitation {
         _agent: &Agent,
     ) -> Result<Vec<InvitationEvent>, InvitationError> {
         match command {
-            InvitationCommand::Issue { to } => Ok(vec![InvitationEvent::Issued { to }]),
+            InvitationCommand::Issue { to, digest, until } => {
+                Ok(vec![InvitationEvent::Issued { to, digest, until }])
+            }
             InvitationCommand::Accept { .. } | InvitationCommand::Withdraw => {
                 Err(InvitationError::NotIssuedYet)
             }
@@ -123,18 +137,21 @@ impl Aggregate for Invitation {
 
     fn from_first(event: &InvitationEvent, metadata: &EventMetadata) -> Option<Self> {
         match event {
-            InvitationEvent::Issued { to } => Some(Self {
+            InvitationEvent::Issued { to, until, .. } => Some(Self {
                 to: to.clone(),
                 issued_at: metadata.occurred_at,
+                until: *until,
                 outcome: Outcome::Open,
             }),
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,
+                until,
                 outcome,
             } => Some(Self {
                 to: to.clone(),
                 issued_at: *issued_at,
+                until: *until,
                 outcome: *outcome,
             }),
             InvitationEvent::Accepted | InvitationEvent::Withdrawn => None,
@@ -171,10 +188,12 @@ impl Aggregate for Invitation {
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,
+                until,
                 outcome,
             } => {
                 self.to = to.clone();
                 self.issued_at = *issued_at;
+                self.until = *until;
                 self.outcome = *outcome;
             }
         }
@@ -184,6 +203,7 @@ impl Aggregate for Invitation {
         InvitationEvent::Snapshotted {
             to: self.to.clone(),
             issued_at: self.issued_at,
+            until: self.until,
             outcome: self.outcome,
         }
     }

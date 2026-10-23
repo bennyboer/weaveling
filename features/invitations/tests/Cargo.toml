@@ -19,5 +19,4 @@ throttling = { version = "0.1.0", path = "../../../libraries/throttling", packag
 
 invitations-contract = { version = "0.1.0", path = "../contract", package = "weaveling-invitations-contract" }
 invitations-core = { version = "0.1.0", path = "../core", package = "weaveling-invitations-core" }
-invitations-links = { version = "0.1.0", path = "../adapters/links", package = "weaveling-invitations-links" }
 invitations-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-invitations-rest" }

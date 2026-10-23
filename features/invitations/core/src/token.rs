@@ -1,39 +1,12 @@
-use std::error::Error;
 use std::fmt::{self, Debug, Formatter};
 
-use async_trait::async_trait;
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
-use thiserror::Error;
-
-use crate::id::InvitationId;
 
 pub struct InvitationToken(String);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InvitationTokenDigest(String);
-
-#[derive(Debug, Error)]
-pub enum LinksError {
-    #[error("the links of the invitations could not be reached")]
-    Backend(#[source] Box<dyn Error + Send + Sync>),
-}
-
-#[async_trait]
-pub trait InvitationLinks: Send + Sync {
-    async fn keep(
-        &self,
-        digest: &InvitationTokenDigest,
-        invitation: &InvitationId,
-    ) -> Result<(), LinksError>;
-
-    async fn invitation_of(
-        &self,
-        digest: &InvitationTokenDigest,
-    ) -> Result<Option<InvitationId>, LinksError>;
-
-    async fn forget(&self, invitation: &InvitationId) -> Result<(), LinksError>;
-}
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()

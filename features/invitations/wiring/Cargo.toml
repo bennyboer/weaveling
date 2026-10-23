@@ -13,14 +13,13 @@ outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "wea
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
 invitations-core = { version = "0.1.0", path = "../core", package = "weaveling-invitations-core" }
-invitations-links = { version = "0.1.0", path = "../adapters/links", package = "weaveling-invitations-links" }
 invitations-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-invitations-rest" }
 invitations-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-invitations-messaging" }
 invitations-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-invitations-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "invitations-links/postgres", "throttling/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "invitations-links/sqlite", "throttling/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "throttling/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "throttling/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

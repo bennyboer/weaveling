@@ -1,6 +1,6 @@
 use email::EmailAddress;
 use eventsourcing::Codec;
-use invitations_core::{InvitationEvent, Outcome};
+use invitations_core::{InvitationEvent, InvitationTokenDigest, Outcome};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -8,6 +8,9 @@ use time::OffsetDateTime;
 enum StoredInvitationEvent {
     Issued {
         to: String,
+        digest: String,
+        #[serde(with = "time::serde::rfc3339")]
+        until: OffsetDateTime,
     },
     Accepted,
     Withdrawn,
@@ -15,6 +18,8 @@ enum StoredInvitationEvent {
         to: String,
         #[serde(with = "time::serde::rfc3339")]
         issued_at: OffsetDateTime,
+        #[serde(with = "time::serde::rfc3339")]
+        until: OffsetDateTime,
         outcome: StoredOutcome,
     },
 }
@@ -64,16 +69,22 @@ impl From<StoredOutcome> for Outcome {
 impl From<&InvitationEvent> for StoredInvitationEvent {
     fn from(event: &InvitationEvent) -> Self {
         match event {
-            InvitationEvent::Issued { to } => Self::Issued { to: to.to_string() },
+            InvitationEvent::Issued { to, digest, until } => Self::Issued {
+                to: to.to_string(),
+                digest: digest.as_str().to_owned(),
+                until: *until,
+            },
             InvitationEvent::Accepted => Self::Accepted,
             InvitationEvent::Withdrawn => Self::Withdrawn,
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,
+                until,
                 outcome,
             } => Self::Snapshotted {
                 to: to.to_string(),
                 issued_at: *issued_at,
+                until: *until,
                 outcome: (*outcome).into(),
             },
         }
@@ -92,16 +103,22 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
 
     fn try_from(stored: StoredInvitationEvent) -> Result<Self, Self::Error> {
         Ok(match stored {
-            StoredInvitationEvent::Issued { to } => Self::Issued { to: readable(&to)? },
+            StoredInvitationEvent::Issued { to, digest, until } => Self::Issued {
+                to: readable(&to)?,
+                digest: InvitationTokenDigest::kept(digest),
+                until,
+            },
             StoredInvitationEvent::Accepted => Self::Accepted,
             StoredInvitationEvent::Withdrawn => Self::Withdrawn,
             StoredInvitationEvent::Snapshotted {
                 to,
                 issued_at,
+                until,
                 outcome,
             } => Self::Snapshotted {
                 to: readable(&to)?,
                 issued_at,
+                until,
                 outcome: outcome.into(),
             },
         })
@@ -129,12 +146,17 @@ mod tests {
     fn every_event_survives_the_journey_through_the_column() {
         for outcome in [Outcome::Open, Outcome::Accepted, Outcome::Withdrawn] {
             for event in [
-                InvitationEvent::Issued { to: ada() },
+                InvitationEvent::Issued {
+                    to: ada(),
+                    digest: InvitationTokenDigest::kept("ab12".to_owned()),
+                    until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
+                },
                 InvitationEvent::Accepted,
                 InvitationEvent::Withdrawn,
                 InvitationEvent::Snapshotted {
                     to: ada(),
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
+                    until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                     outcome,
                 },
             ] {
@@ -146,8 +168,8 @@ mod tests {
     #[test]
     fn a_stored_address_the_domain_would_refuse_reads_as_nothing() {
         for refused in [
-            json!({ "Issued": { "to": "ada" } }),
-            json!({ "Snapshotted": { "to": "ada", "issued_at": "1970-01-01T00:16:40Z", "outcome": "open" } }),
+            json!({ "Issued": { "to": "ada", "digest": "ab12", "until": "1970-01-01T00:33:20Z" } }),
+            json!({ "Snapshotted": { "to": "ada", "issued_at": "1970-01-01T00:16:40Z", "until": "1970-01-01T00:33:20Z", "outcome": "open" } }),
         ] {
             assert!((codec().event)(refused.clone()).is_none(), "{refused}");
         }

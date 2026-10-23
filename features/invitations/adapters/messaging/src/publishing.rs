@@ -1,3 +1,4 @@
+use clock::text;
 use eventsourcing::Recorded;
 use invitations_contract::InvitationEventDTO;
 use invitations_core::InvitationEvent;
@@ -9,7 +10,11 @@ pub fn message_for(happened: &Recorded<InvitationEvent>) -> Option<Message> {
 
 fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
     Some(match event {
-        InvitationEvent::Issued { .. } => InvitationEventDTO::Issued,
+        InvitationEvent::Issued { to, digest, until } => InvitationEventDTO::Issued {
+            to: to.to_string(),
+            digest: digest.as_str().to_owned(),
+            until: text::serialize(*until),
+        },
         InvitationEvent::Accepted => InvitationEventDTO::Accepted,
         InvitationEvent::Withdrawn => InvitationEventDTO::Withdrawn,
         InvitationEvent::Snapshotted { .. } => return None,
@@ -21,7 +26,7 @@ mod tests {
     use email::EmailAddress;
     use eventsourcing::{Agent, AggregateId, Event, EventMetadata, Version};
     use invitations_contract::{ACCEPTED, EVERY_INVITATION, ISSUED, WITHDRAWN};
-    use invitations_core::{InvitationId, KIND, Outcome};
+    use invitations_core::{InvitationId, InvitationTokenDigest, KIND, Outcome};
     use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
 
@@ -49,9 +54,17 @@ mod tests {
         }
     }
 
+    fn an_issue() -> InvitationEvent {
+        InvitationEvent::Issued {
+            to: ada(),
+            digest: InvitationTokenDigest::kept("ab12".to_owned()),
+            until: at(1_000) + Duration::days(7),
+        }
+    }
+
     fn everything_worth_publishing() -> Vec<(InvitationEvent, &'static str)> {
         vec![
-            (InvitationEvent::Issued { to: ada() }, ISSUED),
+            (an_issue(), ISSUED),
             (InvitationEvent::Accepted, ACCEPTED),
             (InvitationEvent::Withdrawn, WITHDRAWN),
         ]
@@ -78,20 +91,35 @@ mod tests {
     }
 
     #[test]
-    fn the_address_invited_never_travels_with_a_message() {
+    fn an_issue_tells_to_whom_by_what_digest_and_until_when_and_nothing_else_tells_the_address() {
         let id = InvitationId::generate(at(1_000));
 
-        for (event, _) in everything_worth_publishing() {
+        let issued = eventsourcing_body(&recorded(&id, an_issue()));
+        assert_eq!(
+            issued,
+            InvitationEventDTO::Issued {
+                to: "ada@example.com".to_owned(),
+                digest: "ab12".to_owned(),
+                until: "1970-01-08T00:16:40Z".to_owned(),
+            },
+            "accounts keep their passes from it, the token's digest being harmless and the address judged so"
+        );
+        for event in [InvitationEvent::Accepted, InvitationEvent::Withdrawn] {
             let told = message_for(&recorded(&id, event))
                 .expect("published")
                 .payload
                 .to_string();
-
-            assert!(
-                !told.contains("ada@example.com"),
-                "messages are kept and refused ones shown, so the address must not be in {told}"
-            );
+            assert!(!told.contains("ada@example.com"), "{told}");
         }
+    }
+
+    fn eventsourcing_body(happened: &Recorded<InvitationEvent>) -> InvitationEventDTO {
+        eventpublishing::published_in::<InvitationEventDTO>(
+            &message_for(happened).expect("published"),
+        )
+        .expect("readable")
+        .event
+        .body
     }
 
     #[test]
@@ -120,6 +148,7 @@ mod tests {
                 InvitationEvent::Snapshotted {
                     to: ada(),
                     issued_at: at(1_000),
+                    until: at(1_000) + Duration::days(7),
                     outcome: Outcome::Open,
                 }
             ))

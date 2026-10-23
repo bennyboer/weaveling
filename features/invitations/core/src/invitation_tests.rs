@@ -3,6 +3,7 @@ use eventsourcing::{Agent, Aggregate, AggregateId, EventMetadata, Version};
 use time::{Duration, OffsetDateTime};
 
 use crate::invitation::*;
+use crate::token::InvitationTokenDigest;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -27,12 +28,17 @@ fn ada() -> EmailAddress {
     EmailAddress::new("ada@example.com").expect("a plain address")
 }
 
+fn an_issue(seconds: i64) -> InvitationEvent {
+    InvitationEvent::Issued {
+        to: ada(),
+        digest: InvitationTokenDigest::kept("ab12".to_owned()),
+        until: at(seconds) + Invitation::LASTS,
+    }
+}
+
 fn issued_at(seconds: i64) -> Invitation {
-    Invitation::from_first(
-        &InvitationEvent::Issued { to: ada() },
-        &stamped(1, at(seconds)),
-    )
-    .expect("issuing gives birth")
+    Invitation::from_first(&an_issue(seconds), &stamped(1, at(seconds)))
+        .expect("issuing gives birth")
 }
 
 fn accepting(seconds: i64) -> InvitationCommand {
@@ -42,8 +48,15 @@ fn accepting(seconds: i64) -> InvitationCommand {
 #[test]
 fn an_invitation_is_issued_to_an_address_and_stands_open_for_seven_days() {
     assert_eq!(
-        Invitation::begin(InvitationCommand::Issue { to: ada() }, &an_operator()),
-        Ok(vec![InvitationEvent::Issued { to: ada() }])
+        Invitation::begin(
+            InvitationCommand::Issue {
+                to: ada(),
+                digest: InvitationTokenDigest::kept("ab12".to_owned()),
+                until: at(1_000) + Invitation::LASTS,
+            },
+            &an_operator()
+        ),
+        Ok(vec![an_issue(1_000)])
     );
 
     let invitation = issued_at(1_000);
@@ -51,6 +64,20 @@ fn an_invitation_is_issued_to_an_address_and_stands_open_for_seven_days() {
     assert_eq!(invitation.to(), &ada());
     assert_eq!(invitation.outcome(), Outcome::Open);
     assert_eq!(invitation.until(), at(1_000) + Duration::days(7));
+}
+
+#[test]
+fn an_invitation_holds_until_its_issue_says_however_late_it_was_told() {
+    let issue = InvitationEvent::Issued {
+        to: ada(),
+        digest: InvitationTokenDigest::kept("ab12".to_owned()),
+        until: at(5_000),
+    };
+
+    let invitation =
+        Invitation::from_first(&issue, &stamped(1, at(1_000))).expect("issuing gives birth");
+
+    assert_eq!(invitation.until(), at(5_000));
 }
 
 #[test]
@@ -139,7 +166,14 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
         );
     }
     assert_eq!(
-        issued_at(1_000).decide(InvitationCommand::Issue { to: ada() }, &an_operator()),
+        issued_at(1_000).decide(
+            InvitationCommand::Issue {
+                to: ada(),
+                digest: InvitationTokenDigest::kept("cd34".to_owned()),
+                until: at(2_000),
+            },
+            &an_operator()
+        ),
         Err(InvitationError::AlreadyIssued)
     );
     for event in [InvitationEvent::Accepted, InvitationEvent::Withdrawn] {

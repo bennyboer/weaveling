@@ -1,7 +1,5 @@
 use eventsourcing::{AggregateId, EventStore, ServiceError, Version};
-use invitations_core::{
-    InvitationEvent, InvitationId, InvitationLinks, InvitationServiceError, KIND,
-};
+use invitations_core::{InvitationEvent, InvitationId, InvitationServiceError, KIND};
 use time::Duration;
 
 use crate::wiring;
@@ -37,19 +35,17 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
         "{}",
         links[0]
     );
-    assert_eq!(
-        wired
-            .links
-            .invitation_of(&wired.token_mailed_to(ADA).digest())
-            .await
-            .expect("reading should succeed"),
-        Some(id),
-        "the link's token names the invitation, by its digest alone"
+    let token = wired.token_mailed_to(ADA);
+    assert!(
+        matches!(
+            told(&wired, &id).await.as_slice(),
+            [InvitationEvent::Issued { to, digest, until }]
+                if to.as_str() == ADA
+                    && *digest == token.digest()
+                    && *until == at(1_700_000_000) + Duration::days(7)
+        ),
+        "the invitation keeps its link's token by its digest alone, and holds for seven days"
     );
-    assert!(matches!(
-        told(&wired, &id).await.as_slice(),
-        [InvitationEvent::Issued { to }] if to.as_str() == ADA
-    ));
 }
 
 #[tokio::test]
@@ -138,14 +134,13 @@ async fn an_address_invited_three_times_must_wait_before_the_fourth_while_anothe
 }
 
 #[tokio::test]
-async fn an_operator_withdraws_an_invitation_and_its_link_leads_nowhere_any_more() {
+async fn an_operator_withdraws_an_invitation() {
     let wired = wiring::wired();
     let id = wired
         .invitations
         .issue(&an_operator(), ADA, ORIGIN)
         .await
         .expect("an operator may invite");
-    let token = wired.token_mailed_to(ADA);
 
     wired
         .invitations
@@ -153,14 +148,6 @@ async fn an_operator_withdraws_an_invitation_and_its_link_leads_nowhere_any_more
         .await
         .expect("an operator may withdraw");
 
-    assert_eq!(
-        wired
-            .links
-            .invitation_of(&token.digest())
-            .await
-            .expect("reading should succeed"),
-        None
-    );
     assert_eq!(
         told(&wired, &id).await.last(),
         Some(&InvitationEvent::Withdrawn)

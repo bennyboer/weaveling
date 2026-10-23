@@ -4124,7 +4124,6 @@ dependencies = [
 name = "weaveling-invitations-core"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "rand_core 0.6.4",
  "sha2 0.10.9",
  "thiserror",
@@ -4139,22 +4138,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "weaveling-invitations-links"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "sqlx",
- "time",
- "tokio",
- "weaveling-invitations-core",
- "weaveling-test-harness",
-]
-
-[[package]]
 name = "weaveling-invitations-messaging"
 version = "0.1.0"
 dependencies = [
  "time",
+ "weaveling-clock",
  "weaveling-email",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
@@ -4203,7 +4191,6 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-invitations-contract",
  "weaveling-invitations-core",
- "weaveling-invitations-links",
  "weaveling-invitations-rest",
  "weaveling-mailing",
  "weaveling-throttling",
@@ -4217,7 +4204,6 @@ dependencies = [
  "tokio",
  "weaveling-eventsourcing",
  "weaveling-invitations-core",
- "weaveling-invitations-links",
  "weaveling-invitations-messaging",
  "weaveling-invitations-rest",
  "weaveling-invitations-store",

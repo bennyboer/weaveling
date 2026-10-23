@@ -3,8 +3,9 @@ use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::{ORIGIN, RETRY_AFTER};
 use axum_test::{TestResponse, TestServer};
+use eventsourcing::{AggregateId, EventStore, Version};
 use invitations_contract::{InviteRequest, InvitedDTO, refused};
-use invitations_core::{InvitationId, InvitationLinks};
+use invitations_core::{InvitationEvent, InvitationId, KIND};
 use serde_json::Value;
 
 use crate::wiring;
@@ -50,15 +51,16 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
     assert!(
         wired.links_mailed_to(ADA)[0].starts_with("https://weaveling.example.com/?invitation=")
     );
-    assert_eq!(
-        wired
-            .links
-            .invitation_of(&wired.token_mailed_to(ADA).digest())
-            .await
-            .expect("reading should succeed")
-            .map(|id| id.to_string()),
-        Some(invited.id)
-    );
+    let id: InvitationId = invited.id.parse().expect("the id told is an invitation's");
+    let issued = wired
+        .store
+        .read_from(&AggregateId::from(&id), KIND, Version::of(1))
+        .await
+        .expect("reading should succeed");
+    assert!(matches!(
+        &issued[0].event,
+        InvitationEvent::Issued { digest, .. } if *digest == wired.token_mailed_to(ADA).digest()
+    ));
 }
 
 #[tokio::test]
