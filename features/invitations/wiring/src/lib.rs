@@ -23,6 +23,7 @@ pub fn service(ports: &Ports, context: &Context) -> InvitationService {
     InvitationService::new(
         ports.events.clone(),
         ports.throttles.clone(),
+        ports.catalog.clone(),
         ports.mailer.clone(),
         context.clock.clone(),
     )

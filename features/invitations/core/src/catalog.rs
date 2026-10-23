@@ -6,7 +6,7 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::id::InvitationId;
-use crate::invitation::{Invitation, Outcome};
+use crate::invitation::{DeclineReason, Invitation, Outcome};
 use email::EmailAddress;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -17,6 +17,19 @@ pub struct InvitationSummary {
     pub issued_at: OffsetDateTime,
     pub until: OffsetDateTime,
     pub outcome: Outcome,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Open,
+    Expired,
+    Declined(DeclineReason),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedInvitation {
+    pub summary: InvitationSummary,
+    pub status: Status,
 }
 
 #[derive(Debug, Error)]
@@ -48,6 +61,15 @@ impl InvitationSummary {
         }
     }
 
+    pub fn status(&self, now: OffsetDateTime) -> Option<Status> {
+        match self.outcome {
+            Outcome::Declined(reason) => Some(Status::Declined(reason)),
+            Outcome::Open if now > self.until => Some(Status::Expired),
+            Outcome::Open => Some(Status::Open),
+            Outcome::Accepted | Outcome::Withdrawn => None,
+        }
+    }
+
     pub fn stays_listed(&self) -> bool {
         matches!(self.outcome, Outcome::Open | Outcome::Declined(_))
     }
@@ -59,7 +81,7 @@ mod tests {
     use time::Duration;
 
     use super::*;
-    use crate::invitation::{DeclineReason, InvitationEvent, KIND};
+    use crate::invitation::{InvitationEvent, KIND};
     use crate::token::InvitationTokenDigest;
 
     fn at(seconds: i64) -> OffsetDateTime {
@@ -134,5 +156,43 @@ mod tests {
         assert!(summary(Outcome::Declined(DeclineReason::AddressHasAccount)).stays_listed());
         assert!(!summary(Outcome::Accepted).stays_listed());
         assert!(!summary(Outcome::Withdrawn).stays_listed());
+    }
+
+    #[test]
+    fn an_open_invitation_is_listed_open_to_its_last_moment_and_expired_after() {
+        let summary = InvitationSummary {
+            id: InvitationId::generate(at(1_000)),
+            version: Version::of(1),
+            to: ada(),
+            issued_at: at(1_000),
+            until: at(5_000),
+            outcome: Outcome::Open,
+        };
+
+        assert_eq!(summary.status(at(5_000)), Some(Status::Open));
+        assert_eq!(summary.status(at(5_001)), Some(Status::Expired));
+    }
+
+    #[test]
+    fn a_declined_invitation_is_listed_declined_whenever_and_the_settled_not_at_all() {
+        let summary = |outcome| InvitationSummary {
+            id: InvitationId::generate(at(1_000)),
+            version: Version::of(1),
+            to: ada(),
+            issued_at: at(1_000),
+            until: at(5_000),
+            outcome,
+        };
+        let declined = Outcome::Declined(DeclineReason::AddressHasAccount);
+
+        for now in [at(2_000), at(9_000)] {
+            assert_eq!(
+                summary(declined).status(now),
+                Some(Status::Declined(DeclineReason::AddressHasAccount)),
+                "why it was declined tells more than that it ran out"
+            );
+            assert_eq!(summary(Outcome::Accepted).status(now), None);
+            assert_eq!(summary(Outcome::Withdrawn).status(now), None);
+        }
     }
 }

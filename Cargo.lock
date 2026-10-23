@@ -4176,7 +4176,9 @@ name = "weaveling-invitations-rest"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "serde",
  "weaveling-acting",
+ "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
  "weaveling-invitations-contract",

@@ -9,6 +9,7 @@ use thiserror::Error;
 use throttling::{Rule, Throttles, ThrottlesError};
 use time::{Duration, OffsetDateTime};
 
+use crate::catalog::{CatalogError, InvitationCatalog, ListedInvitation};
 use crate::id::InvitationId;
 use crate::invitation::{
     DeclineReason, Invitation, InvitationCommand, InvitationError, InvitationEvent,
@@ -31,6 +32,8 @@ pub enum InvitationServiceError {
     #[error(transparent)]
     Throttles(#[from] ThrottlesError),
     #[error(transparent)]
+    Catalog(#[from] CatalogError),
+    #[error(transparent)]
     Unsent(#[from] Unsent),
 }
 
@@ -38,6 +41,7 @@ pub enum InvitationServiceError {
 pub struct InvitationService {
     events: Arc<EventSourcingService<Invitation>>,
     throttles: Arc<dyn Throttles>,
+    catalog: Arc<dyn InvitationCatalog>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
 }
@@ -46,12 +50,14 @@ impl InvitationService {
     pub fn new(
         store: Arc<dyn EventStore<InvitationEvent>>,
         throttles: Arc<dyn Throttles>,
+        catalog: Arc<dyn InvitationCatalog>,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             throttles,
+            catalog,
             mailer,
             clock,
         }
@@ -108,6 +114,28 @@ impl InvitationService {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn list(
+        &self,
+        by: &Acting,
+        after: Option<&InvitationId>,
+        at_most: usize,
+    ) -> Result<Vec<ListedInvitation>, InvitationServiceError> {
+        operating(by)?;
+        let now = self.clock.now();
+
+        Ok(self
+            .catalog
+            .listed_after(after, at_most)
+            .await?
+            .into_iter()
+            .filter_map(|summary| {
+                summary
+                    .status(now)
+                    .map(|status| ListedInvitation { summary, status })
+            })
+            .collect())
     }
 
     pub async fn accept(

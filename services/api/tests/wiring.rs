@@ -643,6 +643,97 @@ async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
     signed_in.end().await;
 }
 
+async fn listed_once(server: &TestServer, settled: impl Fn(&Value) -> bool) -> Value {
+    let mut listed = Value::Null;
+    for _ in 0..1_000 {
+        listed = server.get("/api/invitations").await.json();
+        if settled(&listed) {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    listed
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
+    let signed_in = an_operator_signed_in_on_a_server("listed").await;
+    signed_in
+        .server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({ "email": "grace@example.com" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let open = listed_once(&signed_in.server, |listed| {
+        listed["invitations"]
+            .as_array()
+            .is_some_and(|all| !all.is_empty())
+    })
+    .await;
+    assert_eq!(open["invitations"][0]["email"], "grace@example.com");
+    assert_eq!(open["invitations"][0]["status"], "open");
+
+    let token = fs::read_dir(&signed_in.drop)
+        .expect("the drop should have been made")
+        .map(|entry| fs::read_to_string(entry.expect("an entry").path()).expect("readable"))
+        .find(|mail| mail.contains("grace@example.com"))
+        .and_then(|mail| {
+            mail.split_once("?invitation=").map(|(_, rest)| {
+                rest.chars()
+                    .take_while(char::is_ascii_hexdigit)
+                    .collect::<String>()
+            })
+        })
+        .expect("the link should have been mailed");
+    signed_in
+        .server
+        .post("/api/accounts/by-invitation")
+        .json(&json!({ "token": token, "name": "Grace", "password": "another long password" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let taken_up = listed_once(&signed_in.server, |listed| {
+        listed["invitations"].as_array().is_some_and(Vec::is_empty)
+    })
+    .await;
+    assert_eq!(
+        taken_up["invitations"],
+        json!([]),
+        "accounts tell invitations it was taken up, and the list hears it from the invitation"
+    );
+
+    signed_in.end().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_invitation_to_an_address_that_has_an_account_is_listed_as_declined_and_why() {
+    let signed_in = an_operator_signed_in_on_a_server("declined").await;
+
+    signed_in
+        .server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({ "email": "ada@example.com" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let declined = listed_once(&signed_in.server, |listed| {
+        listed["invitations"][0]["status"] == "declined"
+    })
+    .await;
+    assert_eq!(declined["invitations"][0]["email"], "ada@example.com");
+    assert_eq!(declined["invitations"][0]["status"], "declined");
+    assert_eq!(
+        declined["invitations"][0]["declined_for"], "address-has-account",
+        "the operator's own address has an account, so accounts decline and invitations hear why"
+    );
+
+    signed_in.end().await;
+}
+
 #[tokio::test]
 async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_signing_in() {
     for (accounts, status) in [

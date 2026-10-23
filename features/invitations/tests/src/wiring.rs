@@ -3,6 +3,7 @@ use std::sync::Arc;
 use acting::Acting;
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore};
+use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_core::{InvitationEvent, InvitationService, InvitationToken};
 use mailing::FakeMailbox;
 use throttling::InMemoryThrottles;
@@ -17,6 +18,7 @@ pub fn at(seconds: i64) -> OffsetDateTime {
 pub struct Wired {
     pub invitations: InvitationService,
     pub store: Arc<InMemoryEventStore<InvitationEvent>>,
+    pub catalog: Arc<InMemoryInvitationCatalog>,
     pub mailbox: Arc<FakeMailbox>,
     pub clock: Arc<FixedClock>,
 }
@@ -25,15 +27,18 @@ pub fn wired() -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
     let store = Arc::new(InMemoryEventStore::new());
     let mailbox = Arc::new(FakeMailbox::default());
+    let catalog = Arc::new(InMemoryInvitationCatalog::new());
 
     Wired {
         invitations: InvitationService::new(
             store.clone(),
             Arc::new(InMemoryThrottles::default()),
+            catalog.clone(),
             mailbox.clone(),
             clock.clone(),
         ),
         store,
+        catalog,
         mailbox,
         clock,
     }

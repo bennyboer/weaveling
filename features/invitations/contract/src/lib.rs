@@ -10,6 +10,29 @@ pub struct InvitedDTO {
     pub id: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct InvitationSummaryDTO {
+    pub id: String,
+    pub email: String,
+    pub issued_at: String,
+    pub until: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub declined_for: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct InvitationPageDTO {
+    pub invitations: Vec<InvitationSummaryDTO>,
+    pub next: Option<String>,
+}
+
+pub mod status {
+    pub const OPEN: &str = "open";
+    pub const EXPIRED: &str = "expired";
+    pub const DECLINED: &str = "declined";
+}
+
 pub const ISSUED: &str = "invitation.issued";
 pub const ACCEPTED: &str = "invitation.accepted";
 pub const WITHDRAWN: &str = "invitation.withdrawn";

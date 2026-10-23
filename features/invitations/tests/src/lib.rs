@@ -14,4 +14,7 @@ mod invitations_api;
 mod issuing;
 
 #[cfg(test)]
+mod listing_api;
+
+#[cfg(test)]
 mod wiring;
