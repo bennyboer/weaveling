@@ -3,8 +3,8 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::accounts::listed::ListedAccount;
-use crate::accounts::lock_dialog;
 use crate::accounts::roster::Roster;
+use crate::accounts::{CurrentSession, SignInState, lock_dialog, role_dialog};
 use crate::moment;
 use crate::problem;
 use crate::speech;
@@ -20,6 +20,11 @@ fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
 
 pub fn accounts_listing() -> impl IntoView {
     let roster = Roster::asked();
+    let session = expect_context::<CurrentSession>();
+    let own_email = move || match session.state.get_untracked() {
+        SignInState::SignedIn(account) => Some(account.email),
+        _ => None,
+    };
 
     (
         html::h2().child(speech::said("instance-accounts-heading")),
@@ -52,6 +57,24 @@ pub fn accounts_listing() -> impl IntoView {
                 )
             })
         },
+        move || {
+            roster.changing_role.get().map(|account| {
+                let id = account.id.clone();
+                let yourself = own_email().as_deref() == Some(account.email.as_str());
+                role_dialog::role_dialog(
+                    account,
+                    yourself,
+                    move || {
+                        if yourself {
+                            session.ask_again();
+                        } else {
+                            roster.turn_role(&id);
+                        }
+                    },
+                    move || roster.changing_role.set(None),
+                )
+            })
+        },
     )
 }
 
@@ -60,6 +83,19 @@ fn listed(roster: Roster, account: ListedAccount) -> impl IntoView {
         "instance-account-signed-up",
         &[("when", moment::human_time(account.signed_up_at))],
     );
+    let role = (account.operator || (account.verified && account.lock.is_none())).then(|| {
+        let chosen = account.clone();
+        html::button()
+            .r#type("button")
+            .on(ev::click, move |_| {
+                roster.changing_role.set(Some(chosen.clone()))
+            })
+            .child(speech::said(if account.operator {
+                "instance-account-dismiss"
+            } else {
+                "instance-account-appoint"
+            }))
+    });
     let action = (!account.operator).then(|| {
         let id = account.id.clone();
         if account.lock.is_some() {
@@ -106,6 +142,6 @@ fn listed(roster: Roster, account: ListedAccount) -> impl IntoView {
                 ))
             }),
         )),
-        action,
+        html::div().class("actions").child((role, action)),
     ))
 }

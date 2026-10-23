@@ -3,6 +3,7 @@ pub mod instance;
 mod listed;
 mod listing;
 mod lock_dialog;
+mod role_dialog;
 mod roster;
 mod service;
 pub mod sign_in;

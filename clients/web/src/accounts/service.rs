@@ -160,6 +160,22 @@ pub async fn unlock_account(id: &str) -> Result<(), ApiError> {
         .map(|_| ())
 }
 
+pub async fn appoint_operator(id: &str) -> Result<(), ApiError> {
+    http::checked(http::sent(Request::put(&role(id))).await?, ACCOUNT)
+        .await
+        .map(|_| ())
+}
+
+pub async fn dismiss_operator(id: &str) -> Result<(), ApiError> {
+    http::checked(http::sent(Request::delete(&role(id))).await?, ACCOUNT)
+        .await
+        .map(|_| ())
+}
+
+fn role(id: &str) -> String {
+    format!("{INSTANCE_ACCOUNTS}/{id}/operator")
+}
+
 fn locked(id: &str) -> String {
     format!("{INSTANCE_ACCOUNTS}/{id}/lock")
 }

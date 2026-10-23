@@ -179,7 +179,7 @@ export async function aServerWithAccounts(
         name: ADA.name,
         email: ADA.email,
         verified: true,
-        operator: true,
+        operator: server.operator,
         signed_up_at: "2026-10-21T08:00:00Z",
         locks: [],
       },
@@ -218,6 +218,39 @@ export async function aServerWithAccounts(
           since: new Date().toISOString(),
         },
       ];
+      return route.fulfill({ status: 204 });
+    },
+  );
+  await page.route(
+    (url) => /^\/api\/instance\/accounts\/[^/]+\/operator$/.test(url.pathname),
+    async (route) => {
+      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const yourself = id === ADA.account;
+      const account = server.listed.find((listed) => listed.id === id);
+      if (!yourself && !account) {
+        return refusing(route, 404, "account-not-found");
+      }
+      const operators =
+        server.listed.filter((listed) => listed.operator).length +
+        (server.operator ? 1 : 0);
+      if (route.request().method() === "DELETE") {
+        if (operators === 1) {
+          return refusing(route, 409, "last-operator");
+        }
+        if (yourself) {
+          server.operator = false;
+        } else {
+          account!.operator = false;
+        }
+        return route.fulfill({ status: 204 });
+      }
+      if (!account!.verified) {
+        return refusing(route, 409, "operator-address-not-verified");
+      }
+      if (account!.locks.length > 0) {
+        return refusing(route, 409, "locked-cannot-become-operator");
+      }
+      account!.operator = true;
       return route.fulfill({ status: 204 });
     },
   );

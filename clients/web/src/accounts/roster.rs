@@ -12,6 +12,7 @@ pub(super) struct Roster {
     pub(super) loading: RwSignal<bool>,
     pub(super) refused: RwSignal<Option<ApiError>>,
     pub(super) locking: RwSignal<Option<ListedAccount>>,
+    pub(super) changing_role: RwSignal<Option<ListedAccount>>,
 }
 
 impl Roster {
@@ -22,6 +23,7 @@ impl Roster {
             loading: RwSignal::new(false),
             refused: RwSignal::new(None),
             locking: RwSignal::new(None),
+            changing_role: RwSignal::new(None),
         };
         roster.load(None);
 
@@ -49,6 +51,14 @@ impl Roster {
         self.accounts.update(|listed| {
             if let Some(account) = listed.iter_mut().find(|account| account.id == id) {
                 account.lock = lock;
+            }
+        });
+    }
+
+    pub(super) fn turn_role(self, id: &str) {
+        self.accounts.update(|listed| {
+            if let Some(account) = listed.iter_mut().find(|account| account.id == id) {
+                account.operator = !account.operator;
             }
         });
     }
