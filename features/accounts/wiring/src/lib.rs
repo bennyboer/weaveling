@@ -42,9 +42,7 @@ fn listeners(ports: &Ports, context: &Context) -> Vec<Arc<dyn Listener>> {
             ports.catalog.clone(),
             context.clock.clone(),
         )),
-        Arc::new(KeepInvitationTicketsListener::new(
-            ports.secrets.invitation_tickets.clone(),
-        )),
+        Arc::new(KeepInvitationTicketsListener::new(service(ports, context))),
     ]
 }
 

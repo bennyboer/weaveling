@@ -764,6 +764,16 @@ fn a_ticket(invitation: &str, to: &str) -> InvitationTicket {
 }
 
 pub async fn a_kept_ticket_is_taken_once_and_whole<S: Secrets>(secrets: &S) {
+    assert!(
+        secrets
+            .keep_ticket(
+                &a_digest("ada's"),
+                &a_ticket("invitation_ada", "ada@example.com"),
+            )
+            .await
+            .expect("keeping should succeed"),
+        "a ticket never kept before is news"
+    );
     secrets
         .keep_ticket(
             &a_digest("ada's"),
@@ -816,20 +826,25 @@ pub async fn a_ticket_kept_again_is_kept_once_as_it_first_was<S: Secrets>(secret
         .await
         .expect("keeping should succeed");
 
-    secrets
-        .keep_ticket(
-            &a_digest("ada's"),
-            &a_ticket("invitation_ada", "ada@example.com"),
-        )
-        .await
-        .expect("a message told twice keeps its ticket once");
-    secrets
-        .keep_ticket(
-            &a_digest("ada's"),
-            &a_ticket("invitation_other", "eve@example.com"),
-        )
-        .await
-        .expect("a digest already kept is not taken over");
+    assert!(
+        !secrets
+            .keep_ticket(
+                &a_digest("ada's"),
+                &a_ticket("invitation_ada", "ada@example.com"),
+            )
+            .await
+            .expect("a message told twice keeps its ticket once"),
+        "what was kept already is no news"
+    );
+    assert!(
+        !secrets
+            .keep_ticket(
+                &a_digest("ada's"),
+                &a_ticket("invitation_other", "eve@example.com"),
+            )
+            .await
+            .expect("a digest already kept is not taken over")
+    );
 
     assert_eq!(
         secrets
@@ -910,6 +925,41 @@ pub async fn a_ticket_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S)
     );
 }
 
+pub async fn an_invitation_kept_again_by_another_digest_keeps_its_first<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+
+    assert!(
+        !secrets
+            .keep_ticket(
+                &a_digest("another"),
+                &a_ticket("invitation_ada", "ada@example.com"),
+            )
+            .await
+            .expect("keeping should succeed"),
+        "an invitation has one link"
+    );
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("another"))
+            .await
+            .expect("taking should succeed"),
+        None
+    );
+    assert!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed")
+            .is_some()
+    );
+}
+
 pub async fn a_ticket_taken_is_not_kept_again<S: Secrets>(secrets: &S) {
     let ticket = a_ticket("invitation_ada", "ada@example.com");
     secrets
@@ -921,10 +971,12 @@ pub async fn a_ticket_taken_is_not_kept_again<S: Secrets>(secrets: &S) {
         .await
         .expect("taking should succeed");
 
-    secrets
-        .keep_ticket(&a_digest("ada's"), &ticket)
-        .await
-        .expect("an issue told again keeps nothing");
+    assert!(
+        !secrets
+            .keep_ticket(&a_digest("ada's"), &ticket)
+            .await
+            .expect("an issue told again keeps nothing")
+    );
 
     assert_eq!(
         secrets
@@ -947,10 +999,12 @@ pub async fn a_ticket_forgotten_is_not_kept_again<S: Secrets>(secrets: &S) {
         .await
         .expect("forgetting should succeed");
 
-    secrets
-        .keep_ticket(&a_digest("ada's"), &ticket)
-        .await
-        .expect("an issue told again keeps nothing");
+    assert!(
+        !secrets
+            .keep_ticket(&a_digest("ada's"), &ticket)
+            .await
+            .expect("an issue told again keeps nothing")
+    );
 
     assert_eq!(
         secrets
@@ -968,13 +1022,15 @@ pub async fn an_invitation_forgotten_before_its_ticket_came_keeps_none<S: Secret
         .await
         .expect("forgetting should succeed");
 
-    secrets
-        .keep_ticket(
-            &a_digest("ada's"),
-            &a_ticket("invitation_ada", "ada@example.com"),
-        )
-        .await
-        .expect("an issue told after its withdrawal keeps nothing");
+    assert!(
+        !secrets
+            .keep_ticket(
+                &a_digest("ada's"),
+                &a_ticket("invitation_ada", "ada@example.com"),
+            )
+            .await
+            .expect("an issue told after its withdrawal keeps nothing")
+    );
 
     assert_eq!(
         secrets
@@ -1174,6 +1230,10 @@ macro_rules! conformance_tests {
             a_forgotten_invitation_leaves_no_ticket_and_the_others_kept
         );
         $crate::secrets_conformance_case!($workbench, a_ticket_taken_by_many_at_once_goes_to_one);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            an_invitation_kept_again_by_another_digest_keeps_its_first
+        );
         $crate::secrets_conformance_case!($workbench, a_ticket_taken_is_not_kept_again);
         $crate::secrets_conformance_case!($workbench, a_ticket_forgotten_is_not_kept_again);
         $crate::secrets_conformance_case!(

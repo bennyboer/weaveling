@@ -12,6 +12,7 @@ pub const KIND: AggregateType = AggregateType::of("account");
 
 const SIGNED_UP: EventName = EventName::of("SIGNED_UP");
 const SIGNED_UP_BY_INVITATION: EventName = EventName::of("SIGNED_UP_BY_INVITATION");
+const INVITATION_DECLINED: EventName = EventName::of("INVITATION_DECLINED");
 const EMAIL_VERIFIED: EventName = EventName::of("EMAIL_VERIFIED");
 const PASSWORD_RESET: EventName = EventName::of("PASSWORD_RESET");
 const BECAME_OPERATOR: EventName = EventName::of("BECAME_OPERATOR");
@@ -34,6 +35,9 @@ pub enum AccountCommand {
     StopBeingOperator,
     Lock(LockKind, LockReason),
     Unlock(LockKind),
+    DeclineInvitation {
+        invitation: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,6 +61,9 @@ pub enum AccountEvent {
     },
     Unlocked {
         kind: LockKind,
+    },
+    InvitationDeclined {
+        invitation: String,
     },
     Snapshotted {
         email: EmailAddress,
@@ -139,6 +146,7 @@ impl Event for AccountEvent {
             Self::StoppedBeingOperator => STOPPED_BEING_OPERATOR,
             Self::Locked { .. } => LOCKED,
             Self::Unlocked { .. } => UNLOCKED,
+            Self::InvitationDeclined { .. } => INVITATION_DECLINED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -176,7 +184,8 @@ impl Aggregate for Account {
             | AccountCommand::BecomeOperator
             | AccountCommand::StopBeingOperator
             | AccountCommand::Lock(..)
-            | AccountCommand::Unlock(_) => Err(AccountError::NotSignedUpYet),
+            | AccountCommand::Unlock(_)
+            | AccountCommand::DeclineInvitation { .. } => Err(AccountError::NotSignedUpYet),
         }
     }
 
@@ -222,7 +231,8 @@ impl Aggregate for Account {
             | AccountEvent::BecameOperator
             | AccountEvent::StoppedBeingOperator
             | AccountEvent::Locked { .. }
-            | AccountEvent::Unlocked { .. } => None,
+            | AccountEvent::Unlocked { .. }
+            | AccountEvent::InvitationDeclined { .. } => None,
         }
     }
 
@@ -255,6 +265,9 @@ impl Aggregate for Account {
             AccountCommand::Lock(kind, reason) => Ok(vec![AccountEvent::Locked { kind, reason }]),
             AccountCommand::Unlock(kind) if !self.locks.contains_key(&kind) => Ok(vec![]),
             AccountCommand::Unlock(kind) => Ok(vec![AccountEvent::Unlocked { kind }]),
+            AccountCommand::DeclineInvitation { invitation } => {
+                Ok(vec![AccountEvent::InvitationDeclined { invitation }])
+            }
         }
     }
 
@@ -278,6 +291,7 @@ impl Aggregate for Account {
             AccountEvent::Unlocked { kind } => {
                 self.locks.remove(kind);
             }
+            AccountEvent::InvitationDeclined { .. } => {}
             AccountEvent::Snapshotted {
                 email,
                 name,

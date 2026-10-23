@@ -456,3 +456,33 @@ fn nobody_stops_being_an_operator_before_signing_up() {
         Err(AccountError::NotSignedUpYet)
     );
 }
+
+#[test]
+fn an_account_declines_an_invitation_to_its_address_and_stays_as_it_was() {
+    let account = a_signed_up_account();
+    let declining = AccountCommand::DeclineInvitation {
+        invitation: "invitation_1".to_owned(),
+    };
+
+    let declined = account
+        .decide(declining.clone(), &Agent::System)
+        .expect("an account declines what it does not need");
+    let mut after = account.clone();
+    after.apply(&declined[0], &stamped(2, at(2_000)));
+
+    assert_eq!(
+        declined,
+        vec![AccountEvent::InvitationDeclined {
+            invitation: "invitation_1".to_owned()
+        }]
+    );
+    assert_eq!(after, account);
+    assert_eq!(
+        Account::begin(declining, &Agent::System),
+        Err(AccountError::NotSignedUpYet)
+    );
+    assert_eq!(
+        Account::from_first(&declined[0], &stamped(1, at(1_000))),
+        None
+    );
+}

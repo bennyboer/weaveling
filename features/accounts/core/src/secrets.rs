@@ -139,7 +139,7 @@ pub trait InvitationTickets: Send + Sync {
         &self,
         digest: &TokenDigest,
         ticket: &InvitationTicket,
-    ) -> Result<(), SecretsError>;
+    ) -> Result<bool, SecretsError>;
 
     async fn take_ticket(
         &self,

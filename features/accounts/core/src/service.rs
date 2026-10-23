@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
+use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
 use mailing::{Mail, Mailer, Unsent};
 use thiserror::Error;
 use time::Duration;
@@ -18,10 +18,10 @@ use crate::secrets::{
     Attempt, Dismissal, EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores,
     SecretsError, Sessions, Verifications,
 };
-use crate::session::{Session, SessionToken, Stage};
+use crate::session::{Session, SessionToken, Stage, TokenDigest};
 use crate::signing_up::SigningUp;
 use crate::throttle::Guarded;
-use crate::ticket::InvitationToken;
+use crate::ticket::{InvitationTicket, InvitationToken};
 use email::{EmailAddress, InvalidEmailAddress};
 use throttling::{Throttles, ThrottlesError};
 
@@ -217,6 +217,42 @@ impl AccountService {
         self.passwords.keep(&id, &hashed).await?;
 
         Ok(())
+    }
+
+    pub async fn keep_invitation_ticket(
+        &self,
+        digest: &TokenDigest,
+        ticket: &InvitationTicket,
+    ) -> Result<(), AccountServiceError> {
+        if !self.invitation_tickets.keep_ticket(digest, ticket).await? {
+            return Ok(());
+        }
+        let Some((id, _)) = self.whose(&ticket.to).await? else {
+            return Ok(());
+        };
+
+        self.invitation_tickets
+            .forget_ticket(&ticket.invitation)
+            .await?;
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(&id),
+                AccountCommand::DeclineInvitation {
+                    invitation: ticket.invitation.clone(),
+                },
+                &Agent::System,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn forget_invitation_ticket(
+        &self,
+        invitation: &str,
+    ) -> Result<(), AccountServiceError> {
+        Ok(self.invitation_tickets.forget_ticket(invitation).await?)
     }
 
     pub async fn send_code_again(&self, email: &str) -> Result<(), AccountServiceError> {

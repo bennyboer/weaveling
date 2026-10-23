@@ -1,18 +1,16 @@
-use std::sync::Arc;
-
-use accounts_core::{EmailAddress, InvitationTicket, InvitationTickets, TokenDigest};
+use accounts_core::{AccountService, EmailAddress, InvitationTicket, TokenDigest};
 use async_trait::async_trait;
 use clock::text;
 use invitations_contract::{ISSUED, InvitationEventDTO, WITHDRAWN};
 use messaging::{Failure, Handler, Message};
 
 pub struct KeepInvitationTicketsListener {
-    tickets: Arc<dyn InvitationTickets>,
+    accounts: AccountService,
 }
 
 impl KeepInvitationTicketsListener {
-    pub fn new(tickets: Arc<dyn InvitationTickets>) -> Self {
-        Self { tickets }
+    pub fn new(accounts: AccountService) -> Self {
+        Self { accounts }
     }
 }
 
@@ -35,11 +33,13 @@ impl Handler for KeepInvitationTicketsListener {
                 };
 
                 Ok(self
-                    .tickets
-                    .keep_ticket(&TokenDigest::kept(digest), &ticket)
+                    .accounts
+                    .keep_invitation_ticket(&TokenDigest::kept(digest), &ticket)
                     .await?)
             }
-            InvitationEventDTO::Withdrawn => Ok(self.tickets.forget_ticket(&invitation).await?),
+            InvitationEventDTO::Withdrawn => {
+                Ok(self.accounts.forget_invitation_ticket(&invitation).await?)
+            }
             InvitationEventDTO::Accepted => Ok(()),
         }
     }

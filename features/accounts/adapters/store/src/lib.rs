@@ -27,6 +27,9 @@ enum StoredAccountEvent {
     Unlocked {
         kind: StoredLockKind,
     },
+    InvitationDeclined {
+        invitation: String,
+    },
     Snapshotted {
         email: String,
         name: String,
@@ -111,6 +114,9 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::Unlocked { kind } => Self::Unlocked {
                 kind: (*kind).into(),
             },
+            AccountEvent::InvitationDeclined { invitation } => Self::InvitationDeclined {
+                invitation: invitation.clone(),
+            },
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -186,6 +192,9 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 reason: readable_reason(&reason)?,
             },
             StoredAccountEvent::Unlocked { kind } => Self::Unlocked { kind: kind.into() },
+            StoredAccountEvent::InvitationDeclined { invitation } => {
+                Self::InvitationDeclined { invitation }
+            }
             StoredAccountEvent::Snapshotted {
                 email,
                 name,
@@ -272,6 +281,9 @@ mod tests {
             },
             AccountEvent::Unlocked {
                 kind: LockKind::Operator,
+            },
+            AccountEvent::InvitationDeclined {
+                invitation: "invitation_1".to_owned(),
             },
             AccountEvent::Snapshotted {
                 email,

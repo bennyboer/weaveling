@@ -203,19 +203,21 @@ impl InvitationTickets for InMemorySecrets {
         &self,
         digest: &TokenDigest,
         ticket: &InvitationTicket,
-    ) -> Result<(), SecretsError> {
+    ) -> Result<bool, SecretsError> {
         let mut kept = self.kept();
         let digest_held = kept
             .invitation_tickets
             .values()
             .any(|(held, _)| held == digest);
-        if !digest_held {
+        let fresh = !digest_held
+            && !kept.invitation_tickets.contains_key(&ticket.invitation)
+            && !kept.ended_invitations.contains(&ticket.invitation);
+        if fresh {
             kept.invitation_tickets
-                .entry(ticket.invitation.clone())
-                .or_insert_with(|| (digest.clone(), ticket.clone()));
+                .insert(ticket.invitation.clone(), (digest.clone(), ticket.clone()));
         }
 
-        Ok(())
+        Ok(fresh)
     }
 
     async fn take_ticket(

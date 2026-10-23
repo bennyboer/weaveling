@@ -25,6 +25,9 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         AccountEvent::Unlocked { kind } => AccountEventDTO::Unlocked {
             kind: named(*kind).to_owned(),
         },
+        AccountEvent::InvitationDeclined { invitation } => AccountEventDTO::InvitationDeclined {
+            invitation: invitation.clone(),
+        },
         AccountEvent::Snapshotted { .. } => return None,
     })
 }
@@ -40,8 +43,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use accounts_contract::{
-        BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, LOCKED, PASSWORD_RESET, SIGNED_UP,
-        SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, UNLOCKED,
+        BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, INVITATION_DECLINED, LOCKED,
+        PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, UNLOCKED,
     };
     use accounts_core::{AccountId, AccountName, EmailAddress, KIND, LockReason};
     use eventpublishing::{aggregate_in, published_in};
@@ -117,6 +120,12 @@ mod tests {
                     kind: LockKind::Operator,
                 },
                 UNLOCKED,
+            ),
+            (
+                AccountEvent::InvitationDeclined {
+                    invitation: "invitation_1".to_owned(),
+                },
+                INVITATION_DECLINED,
             ),
         ]
     }
@@ -221,6 +230,25 @@ mod tests {
                 invitation: "invitation_1".to_owned()
             },
             "invitations hear from it that the invitation was accepted"
+        );
+    }
+
+    #[test]
+    fn a_declined_invitation_says_which_invitation_it_was() {
+        let told = eventpublishing::published_in::<AccountEventDTO>(&published(
+            &an_account(),
+            AccountEvent::InvitationDeclined {
+                invitation: "invitation_1".to_owned(),
+            },
+        ))
+        .expect("what we wrote must be readable");
+
+        assert_eq!(
+            told.event.body,
+            AccountEventDTO::InvitationDeclined {
+                invitation: "invitation_1".to_owned()
+            },
+            "invitations hear from it whom to tell the operator about, and nothing personal"
         );
     }
 

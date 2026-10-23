@@ -438,8 +438,8 @@ impl InvitationTickets for PostgresSecrets {
         &self,
         digest: &TokenDigest,
         ticket: &InvitationTicket,
-    ) -> Result<(), SecretsError> {
-        sqlx::query(KEEP_TICKET)
+    ) -> Result<bool, SecretsError> {
+        let done = sqlx::query(KEEP_TICKET)
             .bind(digest.as_str())
             .bind(&ticket.invitation)
             .bind(ticket.to.as_str())
@@ -448,7 +448,7 @@ impl InvitationTickets for PostgresSecrets {
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        Ok(done.rows_affected() == 1)
     }
 
     async fn take_ticket(

@@ -1,12 +1,16 @@
-use accounts_core::{EmailAddress, InvitationTicket, InvitationTickets, TokenDigest};
+use accounts_core::{
+    AccountEvent, EmailAddress, EmailAddresses, InvitationTicket, InvitationTickets,
+    InvitationToken, KIND, TokenDigest,
+};
 use accounts_messaging::KeepInvitationTicketsListener;
+use eventsourcing::{AggregateId, EventStore, Version};
 use invitations_contract::{ACCEPTED, ISSUED, WITHDRAWN};
 use messaging::{Handler, Listener, Message, Publisher, RoutingKey};
 use serde_json::{Value, json};
 use time::Duration;
 
 use crate::wiring;
-use crate::wiring::{ADA, Wired};
+use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 fn told(routing: &str, invitation: &str, event: Value) -> Message {
     Message::opening(
@@ -106,7 +110,7 @@ async fn an_issue_told_again_after_its_withdrawal_leaves_no_ticket() {
 
 #[tokio::test]
 async fn an_accepted_invitation_is_not_heard() {
-    let tickets = KeepInvitationTicketsListener::new(wiring::wired().secrets.clone());
+    let tickets = KeepInvitationTicketsListener::new(wiring::wired().accounts.clone());
 
     for heard in [ISSUED, WITHDRAWN] {
         assert!(tickets.hears(&RoutingKey::parse(heard).expect("a declared key is fine")));
@@ -120,7 +124,7 @@ async fn an_accepted_invitation_is_not_heard() {
 #[tokio::test]
 async fn an_issue_to_no_address_or_until_no_time_is_refused() {
     let wired = wiring::wired();
-    let tickets = KeepInvitationTicketsListener::new(wired.secrets.clone());
+    let tickets = KeepInvitationTicketsListener::new(wired.accounts.clone());
     let mut no_time = issued("invitation_ada", ADA, "ab12");
     no_time.payload["event"]["until"] = json!("next week");
 
@@ -135,4 +139,76 @@ async fn an_issue_to_no_address_or_until_no_time_is_refused() {
         );
     }
     assert_eq!(ticket_for(&wired, "ab12").await, None);
+}
+
+#[tokio::test]
+async fn an_issue_to_an_address_with_an_account_already_is_declined_by_that_account() {
+    let wired = wiring::wired();
+    wired
+        .accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    let holder = wired
+        .secrets
+        .holder(&EmailAddress::new(ADA).expect("a plain address"))
+        .await
+        .expect("reading should succeed")
+        .expect("the address is held");
+
+    tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
+    tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
+
+    assert_eq!(
+        ticket_for(&wired, "ab12").await,
+        None,
+        "nobody signs up twice with one address"
+    );
+    let declined: Vec<AccountEvent> = wired
+        .store
+        .read_from(&AggregateId::from(&holder), KIND, Version::of(1))
+        .await
+        .expect("reading should succeed")
+        .into_iter()
+        .map(|recorded| recorded.event)
+        .filter(|event| matches!(event, AccountEvent::InvitationDeclined { .. }))
+        .collect();
+    assert_eq!(
+        declined,
+        vec![AccountEvent::InvitationDeclined {
+            invitation: "invitation_ada".to_owned()
+        }],
+        "the operator is told once, however often the issue is told"
+    );
+}
+
+#[tokio::test]
+async fn an_issue_told_again_after_its_ticket_signed_the_address_up_declines_nothing() {
+    let wired = wiring::wired();
+    let digest = InvitationToken::presented("a token").digest();
+    tell(&wired, issued("invitation_ada", ADA, digest.as_str())).await;
+    wired
+        .accounts
+        .sign_up_by_invitation("a token", "Ada", HER_PASSWORD)
+        .await
+        .expect("the ticket signs the address up");
+
+    tell(&wired, issued("invitation_ada", ADA, digest.as_str())).await;
+
+    let holder = wired
+        .secrets
+        .holder(&EmailAddress::new(ADA).expect("a plain address"))
+        .await
+        .expect("reading should succeed")
+        .expect("the address is held");
+    assert!(
+        !wired
+            .store
+            .read_from(&AggregateId::from(&holder), KIND, Version::of(1))
+            .await
+            .expect("reading should succeed")
+            .iter()
+            .any(|recorded| matches!(recorded.event, AccountEvent::InvitationDeclined { .. })),
+        "an invitation taken up is not declined by the account it made"
+    );
 }
