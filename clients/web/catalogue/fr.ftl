@@ -485,3 +485,6 @@ instance-lock-hint = { $name } est déconnecté aussitôt et ne peut plus se con
 instance-lock-reason = Raison
 instance-lock-cancel = Annuler
 instance-lock-confirm = Verrouiller
+refused-last-operator = Le dernier opérateur garde le rôle, sinon personne ne pourrait gérer cette instance de Weaveling.
+refused-operator-address-not-verified = Seul un compte dont l’adresse est confirmée peut devenir opérateur.
+refused-locked-cannot-become-operator = Un compte verrouillé ne peut pas devenir opérateur.

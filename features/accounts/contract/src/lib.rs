@@ -147,8 +147,11 @@ pub mod refused {
     pub const LOCK_REASON_TOO_LONG: &str = "lock-reason-too-long";
     pub const ACCOUNT_ID_INVALID: &str = "account-id-invalid";
     pub const ACCOUNT_NOT_FOUND: &str = "account-not-found";
+    pub const LAST_OPERATOR: &str = "last-operator";
+    pub const OPERATOR_ADDRESS_NOT_VERIFIED: &str = "operator-address-not-verified";
+    pub const LOCKED_CANNOT_BECOME_OPERATOR: &str = "locked-cannot-become-operator";
 
-    pub const EVERY: [&str; 23] = [
+    pub const EVERY: [&str; 26] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -172,5 +175,8 @@ pub mod refused {
         LOCK_REASON_TOO_LONG,
         ACCOUNT_ID_INVALID,
         ACCOUNT_NOT_FOUND,
+        LAST_OPERATOR,
+        OPERATOR_ADDRESS_NOT_VERIFIED,
+        LOCKED_CANNOT_BECOME_OPERATOR,
     ];
 }

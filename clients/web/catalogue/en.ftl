@@ -485,3 +485,6 @@ instance-lock-hint = { $name } is signed out at once and cannot sign in again un
 instance-lock-reason = Reason
 instance-lock-cancel = Cancel
 instance-lock-confirm = Lock
+refused-last-operator = The last operator keeps the role, or nobody could manage this Weaveling instance.
+refused-operator-address-not-verified = Only an account whose address is confirmed can become an operator.
+refused-locked-cannot-become-operator = A locked account cannot become an operator.

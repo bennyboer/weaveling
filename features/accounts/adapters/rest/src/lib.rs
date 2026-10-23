@@ -52,6 +52,10 @@ pub fn guarded_router(accounts: AccountService) -> Router {
             "/instance/accounts/{account}/lock",
             routing::put(lock).delete(unlock),
         )
+        .route(
+            "/instance/accounts/{account}/operator",
+            routing::put(appoint_operator).delete(dismiss_operator),
+        )
         .with_state(accounts)
 }
 
@@ -220,6 +224,32 @@ async fn unlock(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn appoint_operator(
+    State(accounts): State<AccountService>,
+    Extension(by): Extension<AccountId>,
+    Path(account): Path<String>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .appoint_operator(&by, &account_named(&account)?)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn dismiss_operator(
+    State(accounts): State<AccountService>,
+    Extension(by): Extension<AccountId>,
+    Path(account): Path<String>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .dismiss_operator(&by, &account_named(&account)?)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 fn account_named(given: &str) -> Result<AccountId, Problem> {
     given
         .parse()
@@ -363,6 +393,13 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
         AccountServiceError::NotVerifiedYet => Problem::forbidden(refused::NOT_VERIFIED, refusal),
         AccountServiceError::Locked => Problem::forbidden(refused::ACCOUNT_LOCKED, refusal),
         AccountServiceError::NotAnOperator => Problem::forbidden(refused::NOT_AN_OPERATOR, refusal),
+        AccountServiceError::LastOperator => Problem::refused(refused::LAST_OPERATOR, refusal),
+        AccountServiceError::Events(ServiceError::Refused(AccountError::NotVerifiedYet)) => {
+            Problem::refused(refused::OPERATOR_ADDRESS_NOT_VERIFIED, refusal)
+        }
+        AccountServiceError::Events(ServiceError::Refused(
+            AccountError::LockedCannotBecomeOperator,
+        )) => Problem::refused(refused::LOCKED_CANNOT_BECOME_OPERATOR, refusal),
         AccountServiceError::InvalidLockReason(reason) => match reason {
             InvalidLockReason::Blank => Problem::unprocessable(refused::LOCK_REASON_BLANK, reason),
             InvalidLockReason::ControlCharacter => {

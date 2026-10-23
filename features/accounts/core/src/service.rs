@@ -16,8 +16,8 @@ use crate::name::{AccountName, InvalidAccountName};
 use crate::operator::OperatorCode;
 use crate::password::{InvalidPassword, Password, PasswordHash};
 use crate::secrets::{
-    Attempt, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions, Throttles,
-    Verifications,
+    Attempt, Dismissal, EmailAddresses, Operators, Passwords, SecretStores, SecretsError, Sessions,
+    Throttles, Verifications,
 };
 use crate::session::{Session, SessionToken, Stage};
 use crate::throttle::Guarded;
@@ -46,6 +46,8 @@ pub enum AccountServiceError {
     Locked,
     #[error("only an operator may do this")]
     NotAnOperator,
+    #[error("the last operator keeps the role")]
+    LastOperator,
     #[error("this is not the code that makes an operator")]
     OperatorCodeWrong,
     #[error("too many tries; wait {wait} before trying again")]
@@ -414,6 +416,48 @@ impl AccountService {
         self.operating(by).await?;
 
         Ok(self.catalog.listed_after(after, at_most).await?)
+    }
+
+    pub async fn appoint_operator(
+        &self,
+        by: &AccountId,
+        account: &AccountId,
+    ) -> Result<(), AccountServiceError> {
+        self.operating(by).await?;
+
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(account),
+                AccountCommand::BecomeOperator,
+                &by.acting(),
+            )
+            .await?;
+        self.operators.appoint(account).await?;
+
+        Ok(())
+    }
+
+    pub async fn dismiss_operator(
+        &self,
+        by: &AccountId,
+        account: &AccountId,
+    ) -> Result<(), AccountServiceError> {
+        self.operating(by).await?;
+        if self.operators.dismiss(account).await? == Dismissal::LastOne {
+            return Err(AccountServiceError::LastOperator);
+        }
+
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(account),
+                AccountCommand::StopBeingOperator,
+                &by.acting(),
+            )
+            .await?;
+
+        Ok(())
     }
 
     async fn operating(&self, by: &AccountId) -> Result<(), AccountServiceError> {

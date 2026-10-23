@@ -348,3 +348,133 @@ async fn a_long_list_comes_a_page_at_a_time() {
     assert_eq!(second.accounts.len(), 2);
     assert_eq!(second.next, None);
 }
+
+impl Instance {
+    async fn appoint(&self, cookie: &str, account: &str) -> TestResponse {
+        self.server
+            .put(&format!("/instance/accounts/{account}/operator"))
+            .add_header(COOKIE, cookie)
+            .await
+    }
+
+    async fn dismiss(&self, cookie: &str, account: &str) -> TestResponse {
+        self.server
+            .delete(&format!("/instance/accounts/{account}/operator"))
+            .add_header(COOKIE, cookie)
+            .await
+    }
+
+    async fn is_listed_as_operator(&self, account: &str) -> bool {
+        let page: AccountPageDTO = self.listed(&self.grace_signed_in).await.json();
+
+        page.accounts
+            .iter()
+            .find(|listed| listed.id == account)
+            .expect("the account is listed")
+            .operator
+    }
+
+    async fn grace(&self) -> String {
+        let page: AccountPageDTO = self.listed(&self.grace_signed_in).await.json();
+
+        page.accounts
+            .iter()
+            .find(|listed| listed.email == GRACE)
+            .expect("grace is listed")
+            .id
+            .clone()
+    }
+}
+
+#[tokio::test]
+async fn the_operator_makes_another_operator_and_takes_the_role_away_again() {
+    let instance = an_instance_with_ada_and_grace_its_operator().await;
+    let ada = instance.ada.to_string();
+
+    instance
+        .appoint(&instance.grace_signed_in, &ada)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    assert!(instance.is_listed_as_operator(&ada).await);
+
+    instance
+        .dismiss(&instance.grace_signed_in, &ada)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    assert!(!instance.is_listed_as_operator(&ada).await);
+}
+
+#[tokio::test]
+async fn the_last_operator_keeps_the_role() {
+    let instance = an_instance_with_ada_and_grace_its_operator().await;
+    let grace = instance.grace().await;
+
+    refused_as(
+        &instance.dismiss(&instance.grace_signed_in, &grace).await,
+        StatusCode::CONFLICT,
+        refused::LAST_OPERATOR,
+    );
+    assert!(instance.is_listed_as_operator(&grace).await);
+}
+
+#[tokio::test]
+async fn anyone_but_an_operator_is_refused_the_role_of_others() {
+    let instance = an_instance_with_ada_and_grace_its_operator().await;
+    let (ada, grace) = (instance.ada.to_string(), instance.grace().await);
+
+    refused_as(
+        &instance.appoint(&instance.ada_signed_in, &ada).await,
+        StatusCode::FORBIDDEN,
+        refused::NOT_AN_OPERATOR,
+    );
+    refused_as(
+        &instance.dismiss(&instance.ada_signed_in, &grace).await,
+        StatusCode::FORBIDDEN,
+        refused::NOT_AN_OPERATOR,
+    );
+}
+
+#[tokio::test]
+async fn an_account_unconfirmed_locked_or_missing_is_not_made_an_operator() {
+    let instance = an_instance_with_ada_and_grace_its_operator().await;
+    let ada = instance.ada.to_string();
+    instance
+        .wired
+        .accounts
+        .sign_up("hedy@example.com", "Hedy", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    let hedy = instance
+        .wired
+        .secrets
+        .holder(&EmailAddress::new("hedy@example.com").expect("a plain address"))
+        .await
+        .expect("reading should succeed")
+        .expect("the address should be held")
+        .to_string();
+
+    refused_as(
+        &instance.appoint(&instance.grace_signed_in, &hedy).await,
+        StatusCode::CONFLICT,
+        refused::OPERATOR_ADDRESS_NOT_VERIFIED,
+    );
+    instance
+        .lock(&instance.grace_signed_in, &ada, "Sent spam.")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    refused_as(
+        &instance.appoint(&instance.grace_signed_in, &ada).await,
+        StatusCode::CONFLICT,
+        refused::LOCKED_CANNOT_BECOME_OPERATOR,
+    );
+    refused_as(
+        &instance
+            .appoint(
+                &instance.grace_signed_in,
+                &AccountId::generate(at(1_000)).to_string(),
+            )
+            .await,
+        StatusCode::NOT_FOUND,
+        refused::ACCOUNT_NOT_FOUND,
+    );
+}

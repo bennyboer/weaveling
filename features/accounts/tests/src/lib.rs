@@ -8,6 +8,9 @@ mod account_service;
 mod accounts_api;
 
 #[cfg(test)]
+mod appointing;
+
+#[cfg(test)]
 mod becoming_operator;
 
 #[cfg(test)]

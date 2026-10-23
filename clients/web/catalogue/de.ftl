@@ -485,3 +485,6 @@ instance-lock-hint = { $name } wird sofort abgemeldet und kann sich erst wieder 
 instance-lock-reason = Grund
 instance-lock-cancel = Abbrechen
 instance-lock-confirm = Sperren
+refused-last-operator = Wer die Instanz als Letzte oder Letzter betreibt, behält die Rolle, sonst könnte niemand diese Weaveling-Instanz verwalten.
+refused-operator-address-not-verified = Nur ein Konto mit bestätigter Adresse kann die Instanz betreiben.
+refused-locked-cannot-become-operator = Ein gesperrtes Konto kann die Instanz nicht betreiben.
