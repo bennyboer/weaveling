@@ -20,3 +20,6 @@ throttling = { version = "0.1.0", path = "../../../libraries/throttling", packag
 invitations-contract = { version = "0.1.0", path = "../contract", package = "weaveling-invitations-contract" }
 invitations-core = { version = "0.1.0", path = "../core", package = "weaveling-invitations-core" }
 invitations-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-invitations-rest" }
+invitations-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-invitations-messaging" }
+accounts-contract = { version = "0.1.0", path = "../../accounts/contract", package = "weaveling-accounts-contract" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }

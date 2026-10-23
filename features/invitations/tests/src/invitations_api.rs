@@ -3,7 +3,7 @@ use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::{ORIGIN, RETRY_AFTER};
 use axum_test::{TestResponse, TestServer};
-use eventsourcing::{AggregateId, EventStore, Version};
+use eventsourcing::{Agent, AggregateId, EventStore, Version};
 use invitations_contract::{InviteRequest, InvitedDTO, refused};
 use invitations_core::{InvitationEvent, InvitationId, KIND};
 use serde_json::Value;
@@ -161,5 +161,32 @@ async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all
         &server.delete("/invitations/not-an-id").await,
         StatusCode::BAD_REQUEST,
         refused::INVITATION_ID_INVALID,
+    );
+}
+
+#[tokio::test]
+async fn an_invitation_taken_up_is_not_withdrawn() {
+    let wired = wiring::wired();
+    let id = wired
+        .invitations
+        .issue(&an_operator(), ADA, INSTANCE)
+        .await
+        .expect("an operator may invite");
+    wired
+        .invitations
+        .accept(
+            &id,
+            at(1_700_000_100),
+            &Agent::Account("account_ada".into()),
+        )
+        .await
+        .expect("an open invitation is accepted");
+
+    refused_as(
+        &served_to(&wired, an_operator())
+            .delete(&format!("/invitations/{id}"))
+            .await,
+        StatusCode::CONFLICT,
+        refused::INVITATION_ALREADY_ACCEPTED,
     );
 }

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use eventsourcing::EventStore;
 use invitations_core::{InvitationEvent, InvitationService};
+use invitations_messaging::AcceptTakenUpInvitationListener;
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
 use throttling::{InMemoryThrottles, Throttles};
@@ -118,7 +119,36 @@ impl Feature for InvitationFeature {
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
-        Wired::serving(invitations_rest::router(service(ports, context)))
+        Wired::serving(invitations_rest::router(service(ports, context))).listening(vec![Arc::new(
+            AcceptTakenUpInvitationListener::new(service(ports, context)),
+        )])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clock::SystemClock;
+    use messaging::{InMemoryDeliveries, InProcessDispatcher};
+
+    use super::*;
+
+    #[test]
+    fn the_feature_hears_its_invitations_taken_up() {
+        let context = Context {
+            clock: Arc::new(SystemClock),
+            publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
+                InMemoryDeliveries::new(),
+            ))),
+        };
+
+        let wired = InvitationFeature::wire(&InvitationFeature::in_memory(&context), &context);
+
+        assert!(
+            wired
+                .listeners
+                .iter()
+                .any(|listener| listener.named().as_str() == "accept-taken-up-invitation")
+        );
     }
 }
 

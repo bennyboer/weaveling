@@ -591,6 +591,58 @@ async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_to_the_pa
     signed_in.end().await;
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
+    let signed_in = an_operator_signed_in_on_a_server("invited").await;
+    signed_in
+        .server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({ "email": "grace@example.com" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let token = fs::read_dir(&signed_in.drop)
+        .expect("the drop should have been made")
+        .map(|entry| fs::read_to_string(entry.expect("an entry").path()).expect("readable"))
+        .find(|mail| mail.contains("grace@example.com"))
+        .and_then(|mail| {
+            mail.split_once("?invitation=").map(|(_, rest)| {
+                rest.chars()
+                    .take_while(char::is_ascii_hexdigit)
+                    .collect::<String>()
+            })
+        })
+        .expect("the link should have been mailed");
+
+    let mut status = StatusCode::IM_A_TEAPOT;
+    for _ in 0..1_000 {
+        status = signed_in
+            .server
+            .post("/api/accounts/by-invitation")
+            .json(&json!({ "token": token, "name": "Grace", "password": "another long password" }))
+            .await
+            .status_code();
+        if status != StatusCode::UNPROCESSABLE_ENTITY {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert_eq!(
+        status,
+        StatusCode::CREATED,
+        "accounts hear of the invitation only through the outbox, its relay and their own listener"
+    );
+    signed_in
+        .server
+        .post("/api/sessions")
+        .json(&json!({ "email": "grace@example.com", "password": "another long password" }))
+        .await
+        .assert_status_ok();
+
+    signed_in.end().await;
+}
+
 #[tokio::test]
 async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_signing_in() {
     for (accounts, status) in [

@@ -4143,7 +4143,9 @@ dependencies = [
 name = "weaveling-invitations-messaging"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "time",
+ "weaveling-accounts-contract",
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventpublishing",
@@ -4187,14 +4189,17 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-accounts-contract",
  "weaveling-acting",
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
  "weaveling-invitations-contract",
  "weaveling-invitations-core",
+ "weaveling-invitations-messaging",
  "weaveling-invitations-rest",
  "weaveling-mailing",
+ "weaveling-messaging",
  "weaveling-throttling",
 ]
 
@@ -4204,12 +4209,14 @@ version = "0.1.0"
 dependencies = [
  "sqlx",
  "tokio",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-invitations-core",
  "weaveling-invitations-messaging",
  "weaveling-invitations-rest",
  "weaveling-invitations-store",
  "weaveling-mailing",
+ "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-test-harness",
  "weaveling-throttling",

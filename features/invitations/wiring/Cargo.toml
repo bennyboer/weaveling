@@ -24,3 +24,5 @@ sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 test-harness = { version = "0.1.0", path = "../../../libraries/test-harness", package = "weaveling-test-harness" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }

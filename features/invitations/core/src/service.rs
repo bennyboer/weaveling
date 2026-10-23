@@ -3,11 +3,11 @@ use std::sync::Arc;
 use acting::Acting;
 use clock::Clock;
 use email::{EmailAddress, InvalidEmailAddress};
-use eventsourcing::{AggregateId, EventSourcingService, EventStore, ServiceError};
+use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError};
 use mailing::{Mail, Mailer, Unsent};
 use thiserror::Error;
 use throttling::{Rule, Throttles, ThrottlesError};
-use time::Duration;
+use time::{Duration, OffsetDateTime};
 
 use crate::id::InvitationId;
 use crate::invitation::{Invitation, InvitationCommand, InvitationError, InvitationEvent};
@@ -102,6 +102,24 @@ impl InvitationService {
                 &AggregateId::from(invitation),
                 InvitationCommand::Withdraw,
                 &by.agent,
+            )
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn accept(
+        &self,
+        invitation: &InvitationId,
+        at: OffsetDateTime,
+        by: &Agent,
+    ) -> Result<(), InvitationServiceError> {
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(invitation),
+                InvitationCommand::Accept { at },
+                by,
             )
             .await?;
 
