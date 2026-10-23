@@ -1,5 +1,5 @@
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, Operators,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, Guarded, Operators,
     PasswordHash, Passwords, PendingVerification, SecretsError, Session, SessionToken, Sessions,
     Stage, Throttles, TokenDigest, Tries, VerificationCode, Verifications,
 };
@@ -749,6 +749,109 @@ pub async fn appointing_twice_is_appointing_once<S: Secrets>(secrets: &S) {
     );
 }
 
+async fn appointed(secrets: &impl Secrets, seconds: i64) -> AccountId {
+    let account = AccountId::generate(at(seconds));
+    secrets
+        .appoint(&account)
+        .await
+        .expect("appointing should succeed");
+
+    account
+}
+
+pub async fn one_of_two_operators_is_dismissed<S: Secrets>(secrets: &S) {
+    let ada = appointed(secrets, 1_000).await;
+    let grace = appointed(secrets, 2_000).await;
+
+    assert_eq!(
+        secrets
+            .dismiss(&ada)
+            .await
+            .expect("dismissing should succeed"),
+        Dismissal::Dismissed
+    );
+    assert_eq!(
+        secrets
+            .dismiss(&ada)
+            .await
+            .expect("dismissing should succeed"),
+        Dismissal::NotAppointed,
+        "she was dismissed, so the next dismissal finds her gone"
+    );
+    assert_eq!(
+        secrets
+            .dismiss(&grace)
+            .await
+            .expect("dismissing should succeed"),
+        Dismissal::LastOne
+    );
+}
+
+pub async fn the_last_operator_is_kept<S: Secrets>(secrets: &S) {
+    let ada = appointed(secrets, 1_000).await;
+
+    assert_eq!(
+        secrets
+            .dismiss(&ada)
+            .await
+            .expect("dismissing should succeed"),
+        Dismissal::LastOne
+    );
+    assert!(
+        secrets
+            .any_appointed()
+            .await
+            .expect("reading should succeed")
+    );
+}
+
+pub async fn someone_never_appointed_is_not_dismissed<S: Secrets>(secrets: &S) {
+    let _ada = appointed(secrets, 1_000).await;
+    let _grace = appointed(secrets, 2_000).await;
+
+    assert_eq!(
+        secrets
+            .dismiss(&AccountId::generate(at(3_000)))
+            .await
+            .expect("dismissing should succeed"),
+        Dismissal::NotAppointed
+    );
+}
+
+pub async fn operators_dismissed_all_at_once_leave_one<S: Secrets>(secrets: &S) {
+    let mut everyone = Vec::new();
+    for seconds in 1..=10 {
+        everyone.push(appointed(secrets, seconds * 1_000).await);
+    }
+
+    let dismissals =
+        future::join_all(everyone.iter().map(|account| secrets.dismiss(account))).await;
+
+    let told: Vec<Dismissal> = dismissals
+        .into_iter()
+        .map(|dismissal| dismissal.expect("dismissing should succeed"))
+        .collect();
+    assert_eq!(
+        told.iter()
+            .filter(|told| **told == Dismissal::Dismissed)
+            .count(),
+        9,
+        "two operators taking each other's role at once must not both count two and leave none: {told:?}"
+    );
+    assert_eq!(
+        told.iter()
+            .filter(|told| **told == Dismissal::LastOne)
+            .count(),
+        1
+    );
+    assert!(
+        secrets
+            .any_appointed()
+            .await
+            .expect("reading should succeed")
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -772,6 +875,10 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!($workbench, a_code_taken_by_many_at_once_goes_to_one);
         $crate::secrets_conformance_case!($workbench, nobody_is_an_operator_until_appointed);
         $crate::secrets_conformance_case!($workbench, appointing_twice_is_appointing_once);
+        $crate::secrets_conformance_case!($workbench, one_of_two_operators_is_dismissed);
+        $crate::secrets_conformance_case!($workbench, the_last_operator_is_kept);
+        $crate::secrets_conformance_case!($workbench, someone_never_appointed_is_not_dismissed);
+        $crate::secrets_conformance_case!($workbench, operators_dismissed_all_at_once_leave_one);
         $crate::secrets_conformance_case!($workbench, a_claimed_address_names_its_holder);
         $crate::secrets_conformance_case!($workbench, an_address_never_claimed_names_nobody);
         $crate::secrets_conformance_case!($workbench, an_address_is_held_by_one_account_only);

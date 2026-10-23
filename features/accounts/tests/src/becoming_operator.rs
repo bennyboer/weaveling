@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use accounts_core::{
-    AccountId, AccountService, AccountServiceError, EmailAddress, EmailAddresses, Operators,
-    SecretStores, SecretsError, TokenDigest,
+    AccountId, AccountService, AccountServiceError, Dismissal, EmailAddress, EmailAddresses,
+    Operators, SecretStores, SecretsError, TokenDigest,
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
@@ -194,6 +194,10 @@ impl Operators for FailingToAppointOnce {
         }
 
         self.kept.appoint(account).await
+    }
+
+    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
+        self.kept.dismiss(account).await
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {

@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, Operators,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, Guarded, Operators,
     PasswordHash, Passwords, PendingVerification, SecretsError, Session, Sessions, Stage,
     Throttles, TokenDigest, Tries, VerificationCode, Verifications,
 };
@@ -26,6 +26,13 @@ const APPOINT: &str = "
     VALUES (?1)
     ON CONFLICT (account) DO NOTHING
 ";
+
+const DISMISS_UNLESS_LAST: &str = "
+    DELETE FROM account_operators
+    WHERE account = ?1 AND (SELECT count(*) FROM account_operators) > 1
+";
+
+const APPOINTED: &str = "SELECT EXISTS (SELECT 1 FROM account_operators WHERE account = ?1)";
 
 const ANY_APPOINTED: &str = "SELECT EXISTS (SELECT 1 FROM account_operators)";
 
@@ -414,6 +421,28 @@ impl Operators for SqliteSecrets {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
+        let done = sqlx::query(DISMISS_UNLESS_LAST)
+            .bind(account.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+        if done.rows_affected() == 1 {
+            return Ok(Dismissal::Dismissed);
+        }
+        let appointed: bool = sqlx::query_scalar(APPOINTED)
+            .bind(account.to_string())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(if appointed {
+            Dismissal::LastOne
+        } else {
+            Dismissal::NotAppointed
+        })
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {

@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, Operators,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, Guarded, Operators,
     PasswordHash, Passwords, PendingVerification, SecretsError, Session, Sessions, Stage,
     Throttles, TokenDigest, Tries, VerificationCode, Verifications,
 };
@@ -25,6 +25,10 @@ const APPOINT: &str = "
     VALUES ($1)
     ON CONFLICT (account) DO NOTHING
 ";
+
+const EVERY_OPERATOR_HELD: &str = "SELECT account FROM account_operators FOR UPDATE";
+
+const DISMISS: &str = "DELETE FROM account_operators WHERE account = $1";
 
 const ANY_APPOINTED: &str = "SELECT EXISTS (SELECT 1 FROM account_operators)";
 
@@ -402,6 +406,29 @@ impl Operators for PostgresSecrets {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
+        let mut held = self.pool.begin().await.map_err(unreachable)?;
+        let appointed: Vec<String> = sqlx::query_scalar(EVERY_OPERATOR_HELD)
+            .fetch_all(&mut *held)
+            .await
+            .map_err(unreachable)?;
+        let dismissal = if !appointed.contains(&account.to_string()) {
+            Dismissal::NotAppointed
+        } else if appointed.len() == 1 {
+            Dismissal::LastOne
+        } else {
+            sqlx::query(DISMISS)
+                .bind(account.to_string())
+                .execute(&mut *held)
+                .await
+                .map_err(unreachable)?;
+            Dismissal::Dismissed
+        };
+        held.commit().await.map_err(unreachable)?;
+
+        Ok(dismissal)
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {

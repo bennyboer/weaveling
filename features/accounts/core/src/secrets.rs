@@ -123,5 +123,14 @@ pub trait Operators: Send + Sync {
 
     async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError>;
 
+    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError>;
+
     async fn any_appointed(&self) -> Result<bool, SecretsError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Dismissal {
+    Dismissed,
+    LastOne,
+    NotAppointed,
 }

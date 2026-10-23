@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, MutexGuard};
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, EmailAddress, EmailAddresses, Guarded, Operators,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, Guarded, Operators,
     PasswordHash, Passwords, PendingVerification, SecretsError, Session, Sessions, Throttles,
     TokenDigest, Tries, Verifications,
 };
@@ -183,6 +183,19 @@ impl Operators for InMemorySecrets {
         self.kept().operators.insert(*account);
 
         Ok(())
+    }
+
+    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
+        let mut kept = self.kept();
+        if !kept.operators.contains(account) {
+            return Ok(Dismissal::NotAppointed);
+        }
+        if kept.operators.len() == 1 {
+            return Ok(Dismissal::LastOne);
+        }
+        kept.operators.remove(account);
+
+        Ok(Dismissal::Dismissed)
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {
