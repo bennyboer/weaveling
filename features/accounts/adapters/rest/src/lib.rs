@@ -22,7 +22,6 @@ use clock::text;
 use eventsourcing::ServiceError;
 use serde::Deserialize;
 use serving::Problem;
-use time::Duration;
 
 pub fn router(accounts: AccountService) -> Router {
     Router::new()
@@ -426,19 +425,8 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
             Problem::unprocessable(refused::OPERATOR_CODE_WRONG, refusal)
         }
         AccountServiceError::Throttled { wait } => {
-            let seconds = whole_seconds_rounded_up(wait);
-            Problem::throttled(refused::THROTTLED, refusal, seconds)
-                .with("minutes", seconds.div_ceil(60))
+            Problem::waiting(refused::THROTTLED, refusal, wait)
         }
         unserveable => Problem::unexpected(unserveable),
-    }
-}
-
-fn whole_seconds_rounded_up(wait: Duration) -> u64 {
-    let whole = wait.whole_seconds().max(0).unsigned_abs();
-    if wait.subsec_nanoseconds() > 0 {
-        whole + 1
-    } else {
-        whole
     }
 }

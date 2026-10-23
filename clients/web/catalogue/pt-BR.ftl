@@ -498,3 +498,7 @@ instance-dismiss-hint = { $name } não poderá mais gerenciar esta instância do
 instance-dismiss-yourself-hint = Você não poderá mais gerenciar esta instância do Weaveling, e só outro operador poderá devolver o papel.
 instance-dismiss-confirm = Tirar o papel
 instance-role-cancel = Cancelar
+refused-origin-missing = O link de um convite é feito a partir da página de onde ele é enviado, e esta requisição não nomeou nenhuma.
+refused-invitation-id-invalid = Este não é o identificador de um convite.
+refused-invitation-not-found = Esse convite não existe.
+refused-invitation-already-accepted = Este convite já foi aceito.

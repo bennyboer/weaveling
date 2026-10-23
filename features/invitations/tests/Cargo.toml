@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
+serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 
@@ -14,5 +17,7 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "weaveling-mailing" }
 throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }
 
+invitations-contract = { version = "0.1.0", path = "../contract", package = "weaveling-invitations-contract" }
 invitations-core = { version = "0.1.0", path = "../core", package = "weaveling-invitations-core" }
 invitations-links = { version = "0.1.0", path = "../adapters/links", package = "weaveling-invitations-links" }
+invitations-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-invitations-rest" }

@@ -1,16 +1,48 @@
 use std::sync::Arc;
 
-use axum::Router;
 use eventsourcing::EventStore;
-use invitations_core::{InvitationEvent, InvitationLinks};
+use invitations_core::{InvitationEvent, InvitationLinks, InvitationService};
 use invitations_links::InMemoryInvitationLinks;
+use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
-use wiring::{Context, EventSourced, Feature, Wired};
+use throttling::{InMemoryThrottles, Throttles};
+use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
     pub links: Arc<dyn InvitationLinks>,
+    pub throttles: Arc<dyn Throttles>,
+    pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
+}
+
+pub fn service(ports: &Ports, context: &Context) -> InvitationService {
+    InvitationService::new(
+        ports.events.clone(),
+        ports.links.clone(),
+        ports.throttles.clone(),
+        ports.mailer.clone(),
+        context.clock.clone(),
+    )
+}
+
+pub async fn assembled_invitations(
+    storage: &Storage,
+    context: &Context,
+    mailer: Arc<dyn Mailer>,
+) -> Result<Assembled, Unprepared> {
+    let ports = Ports {
+        mailer,
+        ..wiring::ports::<InvitationFeature>(storage, context).await?
+    };
+    let wired = InvitationFeature::wire(&ports, context);
+
+    Ok(Assembled {
+        outbox: Some(ports.outbox.clone()),
+        routes: wired.routes,
+        listeners: wired.listeners,
+        settling: wired.settling,
+    })
 }
 
 pub struct InvitationFeature;
@@ -27,6 +59,8 @@ impl Feature for InvitationFeature {
         Ports {
             events,
             links: Arc::new(InMemoryInvitationLinks::default()),
+            throttles: Arc::new(InMemoryThrottles::default()),
+            mailer: Arc::new(LoggingMailer),
             outbox,
         }
     }
@@ -42,7 +76,11 @@ impl Feature for InvitationFeature {
 
         Ok(Ports {
             events,
-            links: Arc::new(invitations_links::PostgresInvitationLinks::new(pool)),
+            links: Arc::new(invitations_links::PostgresInvitationLinks::new(
+                pool.clone(),
+            )),
+            throttles: Arc::new(throttling::PostgresThrottles::new(pool)),
+            mailer: Arc::new(LoggingMailer),
             outbox,
         })
     }
@@ -53,6 +91,7 @@ impl Feature for InvitationFeature {
             eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
             invitations_links::postgres::migrations(),
+            throttling::postgres::migrations(),
         ]
     }
 
@@ -67,7 +106,9 @@ impl Feature for InvitationFeature {
 
         Ok(Ports {
             events,
-            links: Arc::new(invitations_links::SqliteInvitationLinks::new(pool)),
+            links: Arc::new(invitations_links::SqliteInvitationLinks::new(pool.clone())),
+            throttles: Arc::new(throttling::SqliteThrottles::new(pool)),
+            mailer: Arc::new(LoggingMailer),
             outbox,
         })
     }
@@ -78,6 +119,7 @@ impl Feature for InvitationFeature {
             eventsourcing::sqlite::migrations(),
             outbox::sqlite::migrations(),
             invitations_links::sqlite::migrations(),
+            throttling::sqlite::migrations(),
         ]
     }
 
@@ -85,9 +127,8 @@ impl Feature for InvitationFeature {
         Some(ports.outbox.clone())
     }
 
-    fn wire(_ports: &Ports, _context: &Context) -> Wired {
-        // TODO 3d-3: the invitations' service and routes
-        Wired::serving(Router::new())
+    fn wire(ports: &Ports, context: &Context) -> Wired {
+        Wired::serving(invitations_rest::router(service(ports, context)))
     }
 }
 

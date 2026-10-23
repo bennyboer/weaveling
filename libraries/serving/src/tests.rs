@@ -5,6 +5,7 @@ use axum::response::IntoResponse;
 use eventsourcing::{AggregateId, AggregateType, ServiceError, StoreError, Version};
 use serde_json::{Value, json};
 use thiserror::Error;
+use time::Duration;
 
 use super::*;
 
@@ -130,6 +131,26 @@ async fn a_throttled_problem_says_how_long_to_wait() {
 
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(response.headers()[RETRY_AFTER], "61");
+}
+
+#[tokio::test]
+async fn a_wait_is_told_in_whole_seconds_rounded_up_and_in_minutes() {
+    for (wait, seconds, minutes) in [
+        (Duration::seconds(60), "60", 1),
+        (Duration::milliseconds(59_500), "60", 1),
+        (Duration::seconds(61), "61", 2),
+    ] {
+        let response = Problem::waiting("too-many-tries", "wait", wait).into_response();
+
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+        assert_eq!(
+            response.headers()[RETRY_AFTER],
+            seconds,
+            "told as fewer seconds than are left, a client knocks too early"
+        );
+        let (_, told) = told(Problem::waiting("too-many-tries", "wait", wait)).await;
+        assert_eq!(told["minutes"], minutes);
+    }
 }
 
 #[tokio::test]

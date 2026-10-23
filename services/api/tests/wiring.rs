@@ -1,10 +1,12 @@
 use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
 use axum::body;
 use axum::body::Body;
+use axum::http::header::ORIGIN;
 use axum::http::{Request, StatusCode};
 use axum_test::TestServer;
 use clock::SystemClock;
@@ -440,10 +442,22 @@ fn code_dropped_for(drop: &std::path::Path, address: &str) -> String {
         .expect("a code should have been dropped")
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
+struct OperatorSignedIn {
+    server: TestServer,
+    relays: Relays,
+    drop: PathBuf,
+}
+
+impl OperatorSignedIn {
+    async fn end(self) {
+        self.relays.stop().await;
+        let _gone = fs::remove_dir_all(&self.drop);
+    }
+}
+
+async fn an_operator_signed_in_on_a_server(named: &str) -> OperatorSignedIn {
     let drop = std::env::temp_dir().join(format!(
-        "weaveling-instance-mail-drop-{}",
+        "weaveling-{named}-mail-drop-{}",
         std::process::id()
     ));
     let _gone = fs::remove_dir_all(&drop);
@@ -491,6 +505,18 @@ async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
         .await
         .assert_status(StatusCode::NO_CONTENT);
 
+    OperatorSignedIn {
+        server,
+        relays,
+        drop,
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
+    let signed_in = an_operator_signed_in_on_a_server("instance").await;
+    let server = &signed_in.server;
+
     let mut listed = Value::Null;
     for _ in 0..1_000 {
         listed = server.get("/api/instance/accounts").await.json();
@@ -505,6 +531,51 @@ async fn an_account_signed_up_on_the_server_reaches_the_operators_list() {
         "the list only hears of an account through the outbox, its relay and the accounts' own listener"
     );
 
-    relays.stop().await;
-    let _gone = fs::remove_dir_all(&drop);
+    signed_in.end().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_to_the_page_it_came_from() {
+    let signed_in = an_operator_signed_in_on_a_server("inviting").await;
+
+    signed_in
+        .server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({ "email": "grace@example.com" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let mailed: Vec<String> = fs::read_dir(&signed_in.drop)
+        .expect("the drop should have been made")
+        .map(|entry| fs::read_to_string(entry.expect("an entry").path()).expect("readable"))
+        .filter(|mail| mail.contains("grace@example.com"))
+        .collect();
+    assert_eq!(mailed.len(), 1);
+    assert!(
+        mailed[0].contains("https://weaveling.example.com/?invitation="),
+        "{}",
+        mailed[0]
+    );
+
+    signed_in.end().await;
+}
+
+#[tokio::test]
+async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_signing_in() {
+    for (accounts, status) in [
+        (Accounts::On, StatusCode::UNAUTHORIZED),
+        (Accounts::Off, StatusCode::NOT_FOUND),
+    ] {
+        let server = TestServer::new(weaveling_service_api::app(
+            Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
+        ));
+
+        server
+            .post("/api/invitations")
+            .add_header(ORIGIN, "https://weaveling.example.com")
+            .json(&json!({ "email": "grace@example.com" }))
+            .await
+            .assert_status(status);
+    }
 }

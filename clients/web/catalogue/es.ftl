@@ -498,3 +498,7 @@ instance-dismiss-hint = { $name } ya no podrá administrar esta instancia de Wea
 instance-dismiss-yourself-hint = Ya no podrás administrar esta instancia de Weaveling, y solo otro operador podrá devolverte el rol.
 instance-dismiss-confirm = Quitar el rol
 instance-role-cancel = Cancelar
+refused-origin-missing = El enlace de una invitación se forma con la página desde la que se envía, y esta petición no nombró ninguna.
+refused-invitation-id-invalid = Este no es el identificador de una invitación.
+refused-invitation-not-found = Esa invitación no existe.
+refused-invitation-already-accepted = Esta invitación ya fue aceptada.

@@ -7,6 +7,7 @@ use axum::http::header::{CONTENT_TYPE, RETRY_AFTER};
 use axum::response::{IntoResponse, Response};
 use eventsourcing::{ServiceError, StoreError};
 use serde_json::{Map, Value};
+use time::Duration;
 
 use crate::conditional::Unreadable;
 
@@ -57,6 +58,12 @@ impl Problem {
         }
     }
 
+    pub fn waiting(kind: &'static str, detail: impl Display, wait: Duration) -> Self {
+        let seconds = whole_seconds_rounded_up(wait);
+
+        Self::throttled(kind, detail, seconds).with("minutes", seconds.div_ceil(60))
+    }
+
     pub fn unexpected(error: impl Display) -> Self {
         tracing::error!(error = %error, "a request could not be served");
 
@@ -94,6 +101,15 @@ impl Problem {
             values: Map::new(),
             retry_after: None,
         }
+    }
+}
+
+fn whole_seconds_rounded_up(wait: Duration) -> u64 {
+    let whole = wait.whole_seconds().max(0).unsigned_abs();
+    if wait.subsec_nanoseconds() > 0 {
+        whole + 1
+    } else {
+        whole
     }
 }
 

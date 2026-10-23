@@ -1,0 +1,15 @@
+[package]
+name = "weaveling-invitations-rest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+
+acting = { version = "0.1.0", path = "../../../../libraries/acting", package = "weaveling-acting" }
+email = { version = "0.1.0", path = "../../../../libraries/email", package = "weaveling-email" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
+
+invitations-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-invitations-contract" }
+invitations-core = { version = "0.1.0", path = "../../core", package = "weaveling-invitations-core" }

@@ -3628,7 +3628,6 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "serde",
- "time",
  "weaveling-accounts-contract",
  "weaveling-accounts-core",
  "weaveling-acting",
@@ -3937,6 +3936,7 @@ dependencies = [
  "weaveling-appearances-contract",
  "weaveling-boards-contract",
  "weaveling-ideas-contract",
+ "weaveling-invitations-contract",
  "weaveling-messaging-contract",
  "weaveling-outline-contract",
  "weaveling-projects-contract",
@@ -4164,6 +4164,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-invitations-rest"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "weaveling-acting",
+ "weaveling-email",
+ "weaveling-eventsourcing",
+ "weaveling-invitations-contract",
+ "weaveling-invitations-core",
+ "weaveling-serving",
+]
+
+[[package]]
 name = "weaveling-invitations-store"
 version = "0.1.0"
 dependencies = [
@@ -4179,14 +4192,19 @@ dependencies = [
 name = "weaveling-invitations-tests"
 version = "0.1.0"
 dependencies = [
+ "axum",
+ "axum-test",
+ "serde_json",
  "time",
  "tokio",
  "weaveling-acting",
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
+ "weaveling-invitations-contract",
  "weaveling-invitations-core",
  "weaveling-invitations-links",
+ "weaveling-invitations-rest",
  "weaveling-mailing",
  "weaveling-throttling",
 ]
@@ -4195,16 +4213,18 @@ dependencies = [
 name = "weaveling-invitations-wiring"
 version = "0.1.0"
 dependencies = [
- "axum",
  "sqlx",
  "tokio",
  "weaveling-eventsourcing",
  "weaveling-invitations-core",
  "weaveling-invitations-links",
  "weaveling-invitations-messaging",
+ "weaveling-invitations-rest",
  "weaveling-invitations-store",
+ "weaveling-mailing",
  "weaveling-outbox",
  "weaveling-test-harness",
+ "weaveling-throttling",
  "weaveling-wiring",
 ]
 
@@ -4696,6 +4716,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-wiring",
+ "weaveling-invitations-wiring",
  "weaveling-live",
  "weaveling-mailing",
  "weaveling-messaging",
@@ -4717,6 +4738,7 @@ dependencies = [
  "axum",
  "serde_json",
  "thiserror",
+ "time",
  "tokio",
  "tracing",
  "weaveling-eventsourcing",

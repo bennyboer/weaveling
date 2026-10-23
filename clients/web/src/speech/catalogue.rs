@@ -232,6 +232,7 @@ mod tests {
         let every = projects_contract::refused::EVERY
             .into_iter()
             .chain(accounts_contract::refused::EVERY)
+            .chain(invitations_contract::refused::EVERY)
             .chain(boards_contract::refused::EVERY)
             .chain(ideas_contract::refused::EVERY)
             .chain(outline_contract::refused::EVERY)

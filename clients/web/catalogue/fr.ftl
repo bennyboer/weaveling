@@ -498,3 +498,7 @@ instance-dismiss-hint = { $name } ne pourra plus gérer cette instance de Weavel
 instance-dismiss-yourself-hint = Vous ne pourrez plus gérer cette instance de Weaveling, et seul un autre opérateur pourra vous rendre le rôle.
 instance-dismiss-confirm = Retirer le rôle
 instance-role-cancel = Annuler
+refused-origin-missing = Le lien d’une invitation est formé à partir de la page d’où elle est envoyée, et cette requête n’en nommait aucune.
+refused-invitation-id-invalid = Ce n’est pas l’identifiant d’une invitation.
+refused-invitation-not-found = Cette invitation n’existe pas.
+refused-invitation-already-accepted = Cette invitation a déjà été acceptée.

@@ -71,7 +71,7 @@ impl Adapters {
             publisher: dispatcher.clone(),
         };
 
-        let features = vec![
+        let mut features = vec![
             assemble::<ProjectFeature>(&storage, &context).await?,
             assemble::<SceneFeature>(&storage, &context).await?,
             assemble::<IdeaFeature>(&storage, &context).await?,
@@ -82,6 +82,10 @@ impl Adapters {
         ];
         let accounts = match accounts {
             Accounts::On => {
+                features.push(
+                    invitations_wiring::assembled_invitations(&storage, &context, mailer.clone())
+                        .await?,
+                );
                 Some(accounts_wiring::assembled_accounts(&storage, &context, mailer).await?)
             }
             Accounts::Off => None,
