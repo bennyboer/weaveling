@@ -10,6 +10,7 @@ pub const KIND: AggregateType = AggregateType::of("invitation");
 const ISSUED: EventName = EventName::of("ISSUED");
 const ACCEPTED: EventName = EventName::of("ACCEPTED");
 const WITHDRAWN: EventName = EventName::of("WITHDRAWN");
+const DECLINED: EventName = EventName::of("DECLINED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,6 +24,7 @@ pub enum InvitationCommand {
         at: OffsetDateTime,
     },
     Withdraw,
+    Decline,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,6 +36,7 @@ pub enum InvitationEvent {
     },
     Accepted,
     Withdrawn,
+    Declined,
     Snapshotted {
         to: EmailAddress,
         issued_at: OffsetDateTime,
@@ -47,6 +50,7 @@ pub enum Outcome {
     Open,
     Accepted,
     Withdrawn,
+    Declined,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +73,8 @@ pub enum InvitationError {
     Withdrawn,
     #[error("this invitation has run out")]
     Expired,
+    #[error("this invitation was declined, its address having an account already")]
+    Declined,
 }
 
 impl Invitation {
@@ -101,6 +107,7 @@ impl Event for InvitationEvent {
             Self::Issued { .. } => ISSUED,
             Self::Accepted => ACCEPTED,
             Self::Withdrawn => WITHDRAWN,
+            Self::Declined => DECLINED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -129,9 +136,9 @@ impl Aggregate for Invitation {
             InvitationCommand::Issue { to, digest, until } => {
                 Ok(vec![InvitationEvent::Issued { to, digest, until }])
             }
-            InvitationCommand::Accept { .. } | InvitationCommand::Withdraw => {
-                Err(InvitationError::NotIssuedYet)
-            }
+            InvitationCommand::Accept { .. }
+            | InvitationCommand::Withdraw
+            | InvitationCommand::Decline => Err(InvitationError::NotIssuedYet),
         }
     }
 
@@ -154,7 +161,9 @@ impl Aggregate for Invitation {
                 until: *until,
                 outcome: *outcome,
             }),
-            InvitationEvent::Accepted | InvitationEvent::Withdrawn => None,
+            InvitationEvent::Accepted | InvitationEvent::Withdrawn | InvitationEvent::Declined => {
+                None
+            }
         }
     }
 
@@ -166,7 +175,11 @@ impl Aggregate for Invitation {
         match (command, self.outcome) {
             (InvitationCommand::Issue { .. }, _) => Err(InvitationError::AlreadyIssued),
             (_, Outcome::Accepted) => Err(InvitationError::AlreadyAccepted),
-            (InvitationCommand::Withdraw, Outcome::Withdrawn) => Ok(vec![]),
+            (InvitationCommand::Withdraw, Outcome::Withdrawn | Outcome::Declined) => Ok(vec![]),
+            (InvitationCommand::Decline, Outcome::Declined) => Ok(vec![]),
+            (InvitationCommand::Decline, Outcome::Withdrawn) => Err(InvitationError::Withdrawn),
+            (InvitationCommand::Decline, Outcome::Open) => Ok(vec![InvitationEvent::Declined]),
+            (InvitationCommand::Accept { .. }, Outcome::Declined) => Err(InvitationError::Declined),
             (InvitationCommand::Withdraw, Outcome::Open) => Ok(vec![InvitationEvent::Withdrawn]),
             (InvitationCommand::Accept { .. }, Outcome::Withdrawn) => {
                 Err(InvitationError::Withdrawn)
@@ -185,6 +198,7 @@ impl Aggregate for Invitation {
             InvitationEvent::Issued { .. } => {}
             InvitationEvent::Accepted => self.outcome = Outcome::Accepted,
             InvitationEvent::Withdrawn => self.outcome = Outcome::Withdrawn,
+            InvitationEvent::Declined => self.outcome = Outcome::Declined,
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,

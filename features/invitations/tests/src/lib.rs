@@ -2,6 +2,9 @@
 mod accepting;
 
 #[cfg(test)]
+mod declining;
+
+#[cfg(test)]
 mod invitations_api;
 
 #[cfg(test)]

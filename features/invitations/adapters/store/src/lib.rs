@@ -14,6 +14,7 @@ enum StoredInvitationEvent {
     },
     Accepted,
     Withdrawn,
+    Declined,
     Snapshotted {
         to: String,
         #[serde(with = "time::serde::rfc3339")]
@@ -30,6 +31,7 @@ enum StoredOutcome {
     Open,
     Accepted,
     Withdrawn,
+    Declined,
 }
 
 pub fn codec() -> Codec<InvitationEvent> {
@@ -52,6 +54,7 @@ impl From<Outcome> for StoredOutcome {
             Outcome::Open => Self::Open,
             Outcome::Accepted => Self::Accepted,
             Outcome::Withdrawn => Self::Withdrawn,
+            Outcome::Declined => Self::Declined,
         }
     }
 }
@@ -62,6 +65,7 @@ impl From<StoredOutcome> for Outcome {
             StoredOutcome::Open => Self::Open,
             StoredOutcome::Accepted => Self::Accepted,
             StoredOutcome::Withdrawn => Self::Withdrawn,
+            StoredOutcome::Declined => Self::Declined,
         }
     }
 }
@@ -76,6 +80,7 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
             },
             InvitationEvent::Accepted => Self::Accepted,
             InvitationEvent::Withdrawn => Self::Withdrawn,
+            InvitationEvent::Declined => Self::Declined,
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,
@@ -110,6 +115,7 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
             },
             StoredInvitationEvent::Accepted => Self::Accepted,
             StoredInvitationEvent::Withdrawn => Self::Withdrawn,
+            StoredInvitationEvent::Declined => Self::Declined,
             StoredInvitationEvent::Snapshotted {
                 to,
                 issued_at,
@@ -144,7 +150,12 @@ mod tests {
 
     #[test]
     fn every_event_survives_the_journey_through_the_column() {
-        for outcome in [Outcome::Open, Outcome::Accepted, Outcome::Withdrawn] {
+        for outcome in [
+            Outcome::Open,
+            Outcome::Accepted,
+            Outcome::Withdrawn,
+            Outcome::Declined,
+        ] {
             for event in [
                 InvitationEvent::Issued {
                     to: ada(),
@@ -153,6 +164,7 @@ mod tests {
                 },
                 InvitationEvent::Accepted,
                 InvitationEvent::Withdrawn,
+                InvitationEvent::Declined,
                 InvitationEvent::Snapshotted {
                     to: ada(),
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),

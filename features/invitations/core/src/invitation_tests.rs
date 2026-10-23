@@ -176,7 +176,11 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
         ),
         Err(InvitationError::AlreadyIssued)
     );
-    for event in [InvitationEvent::Accepted, InvitationEvent::Withdrawn] {
+    for event in [
+        InvitationEvent::Accepted,
+        InvitationEvent::Withdrawn,
+        InvitationEvent::Declined,
+    ] {
         assert_eq!(Invitation::from_first(&event, &stamped(1, at(1_000))), None);
     }
 }
@@ -193,4 +197,57 @@ fn a_snapshot_holds_everything_the_invitation_is() {
 
     assert_eq!(restored, invitation);
     assert_eq!(behind, invitation);
+}
+
+fn declined_at(seconds: i64) -> Invitation {
+    let mut invitation = issued_at(seconds);
+    let declined = invitation
+        .decide(InvitationCommand::Decline, &Agent::System)
+        .expect("an open invitation is declined");
+    assert_eq!(declined, vec![InvitationEvent::Declined]);
+    invitation.apply(&declined[0], &stamped(2, at(seconds + 10)));
+
+    invitation
+}
+
+#[test]
+fn an_invitation_to_an_address_with_an_account_is_declined_and_closed() {
+    let invitation = declined_at(1_000);
+
+    assert_eq!(invitation.outcome(), Outcome::Declined);
+    assert_eq!(
+        invitation.decide(InvitationCommand::Decline, &Agent::System),
+        Ok(vec![]),
+        "declining twice changes nothing"
+    );
+    assert_eq!(
+        invitation.decide(InvitationCommand::Withdraw, &an_operator()),
+        Ok(vec![]),
+        "an operator withdrawing what was declined is told nothing is left to do"
+    );
+    assert_eq!(
+        invitation.decide(InvitationCommand::Accept { at: at(1_100) }, &Agent::System),
+        Err(InvitationError::Declined)
+    );
+}
+
+#[test]
+fn an_invitation_withdrawn_or_taken_up_is_not_declined() {
+    let mut withdrawn = issued_at(1_000);
+    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, at(1_010)));
+    let mut accepted = issued_at(1_000);
+    accepted.apply(&InvitationEvent::Accepted, &stamped(2, at(1_010)));
+
+    assert_eq!(
+        withdrawn.decide(InvitationCommand::Decline, &Agent::System),
+        Err(InvitationError::Withdrawn)
+    );
+    assert_eq!(
+        accepted.decide(InvitationCommand::Decline, &Agent::System),
+        Err(InvitationError::AlreadyAccepted)
+    );
+    assert_eq!(
+        Invitation::begin(InvitationCommand::Decline, &Agent::System),
+        Err(InvitationError::NotIssuedYet)
+    );
 }

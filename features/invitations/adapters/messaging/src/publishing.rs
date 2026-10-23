@@ -17,6 +17,7 @@ fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
         },
         InvitationEvent::Accepted => InvitationEventDTO::Accepted,
         InvitationEvent::Withdrawn => InvitationEventDTO::Withdrawn,
+        InvitationEvent::Declined => InvitationEventDTO::Declined,
         InvitationEvent::Snapshotted { .. } => return None,
     })
 }
@@ -25,7 +26,7 @@ fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
 mod tests {
     use email::EmailAddress;
     use eventsourcing::{Agent, AggregateId, Event, EventMetadata, Version};
-    use invitations_contract::{ACCEPTED, EVERY_INVITATION, ISSUED, WITHDRAWN};
+    use invitations_contract::{ACCEPTED, DECLINED, EVERY_INVITATION, ISSUED, WITHDRAWN};
     use invitations_core::{InvitationId, InvitationTokenDigest, KIND, Outcome};
     use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
@@ -67,6 +68,7 @@ mod tests {
             (an_issue(), ISSUED),
             (InvitationEvent::Accepted, ACCEPTED),
             (InvitationEvent::Withdrawn, WITHDRAWN),
+            (InvitationEvent::Declined, DECLINED),
         ]
     }
 
@@ -102,9 +104,13 @@ mod tests {
                 digest: "ab12".to_owned(),
                 until: "1970-01-08T00:16:40Z".to_owned(),
             },
-            "accounts keep their passes from it, the token's digest being harmless and the address judged so"
+            "accounts keep their tickets from it, the token's digest being harmless and the address judged so"
         );
-        for event in [InvitationEvent::Accepted, InvitationEvent::Withdrawn] {
+        for event in [
+            InvitationEvent::Accepted,
+            InvitationEvent::Withdrawn,
+            InvitationEvent::Declined,
+        ] {
             let told = message_for(&recorded(&id, event))
                 .expect("published")
                 .payload

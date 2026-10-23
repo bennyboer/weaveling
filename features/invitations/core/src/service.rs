@@ -126,6 +126,23 @@ impl InvitationService {
         Ok(())
     }
 
+    pub async fn decline(
+        &self,
+        invitation: &InvitationId,
+        by: &Agent,
+    ) -> Result<(), InvitationServiceError> {
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(invitation),
+                InvitationCommand::Decline,
+                by,
+            )
+            .await?;
+
+        Ok(())
+    }
+
     async fn not_throttled(&self, to: &EmailAddress) -> Result<(), InvitationServiceError> {
         let now = self.clock.now();
         let Some(tries) = self.throttles.tries(INVITING, to.as_str()).await? else {
