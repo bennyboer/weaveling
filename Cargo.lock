@@ -3566,6 +3566,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-accounts-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "time",
+ "tokio",
+ "weaveling-accounts-core",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-test-harness",
+]
+
+[[package]]
 name = "weaveling-accounts-contract"
 version = "0.1.0"
 dependencies = [
