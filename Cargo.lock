@@ -4785,6 +4785,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-throttling"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures-util",
+ "sqlx",
+ "thiserror",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-test-harness",
+]
+
+[[package]]
 name = "weaveling-wiring"
 version = "0.1.0"
 dependencies = [
