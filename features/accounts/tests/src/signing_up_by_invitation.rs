@@ -1,6 +1,6 @@
 use accounts_core::{
     AccountEvent, AccountId, AccountServiceError, EmailAddress, EmailAddresses, InvitationTicket,
-    InvitationTickets, InvitationToken, KIND,
+    InvitationTickets, InvitationToken, KIND, SigningUp,
 };
 use eventsourcing::{AggregateId, EventStore, Version};
 use time::Duration;
@@ -181,4 +181,35 @@ async fn an_address_with_an_account_already_is_told_to_sign_in() {
         first,
         "the account there stays the one there"
     );
+}
+
+#[tokio::test]
+async fn where_signing_up_is_by_invitation_only_an_invitation_lets_anyone_in() {
+    let wired = wiring::wired();
+    let accounts = wired.accounts.clone().signing_up(SigningUp::ByInvitation);
+    invited(&wired, ADA, TOKEN).await;
+
+    assert!(matches!(
+        accounts
+            .sign_up("bob@example.com", "Bob", HER_PASSWORD)
+            .await,
+        Err(AccountServiceError::SigningUpByInvitationOnly)
+    ));
+    assert_eq!(holder(&wired, "bob@example.com").await, None);
+    assert!(
+        wired.mailbox.sent_to("bob@example.com").is_empty(),
+        "nothing is mailed to whoever was not asked"
+    );
+    assert!(
+        matches!(
+            accounts.sign_up(ADA, "Ada", HER_PASSWORD).await,
+            Err(AccountServiceError::SigningUpByInvitationOnly)
+        ),
+        "even an invited address comes in by its link, not around it"
+    );
+
+    accounts
+        .sign_up_by_invitation(TOKEN, "Ada", HER_PASSWORD)
+        .await
+        .expect("an invitation is the way in");
 }

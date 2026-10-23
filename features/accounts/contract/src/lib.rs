@@ -167,11 +167,12 @@ pub mod refused {
     pub const LAST_OPERATOR: &str = "last-operator";
     pub const OPERATOR_ADDRESS_NOT_VERIFIED: &str = "operator-address-not-verified";
     pub const LOCKED_CANNOT_BECOME_OPERATOR: &str = "locked-cannot-become-operator";
+    pub const BY_INVITATION_ONLY: &str = "signing-up-by-invitation-only";
     pub const INVITATION_INVALID: &str = "invitation-invalid";
     pub const INVITATION_EXPIRED: &str = "invitation-expired";
     pub const EMAIL_ADDRESS_HAS_ACCOUNT: &str = "email-address-has-account";
 
-    pub const EVERY: [&str; 29] = [
+    pub const EVERY: [&str; 30] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -198,6 +199,7 @@ pub mod refused {
         LAST_OPERATOR,
         OPERATOR_ADDRESS_NOT_VERIFIED,
         LOCKED_CANNOT_BECOME_OPERATOR,
+        BY_INVITATION_ONLY,
         INVITATION_INVALID,
         INVITATION_EXPIRED,
         EMAIL_ADDRESS_HAS_ACCOUNT,

@@ -444,6 +444,9 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
         AccountServiceError::Throttled { wait } => {
             Problem::waiting(refused::THROTTLED, refusal, wait)
         }
+        AccountServiceError::SigningUpByInvitationOnly => {
+            Problem::forbidden(refused::BY_INVITATION_ONLY, refusal)
+        }
         AccountServiceError::InvitationInvalid => {
             Problem::unprocessable(refused::INVITATION_INVALID, refusal)
         }

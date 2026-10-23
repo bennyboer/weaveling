@@ -19,6 +19,7 @@ use crate::secrets::{
     SecretsError, Sessions, Verifications,
 };
 use crate::session::{Session, SessionToken, Stage};
+use crate::signing_up::SigningUp;
 use crate::throttle::Guarded;
 use crate::ticket::InvitationToken;
 use email::{EmailAddress, InvalidEmailAddress};
@@ -52,6 +53,8 @@ pub enum AccountServiceError {
     LastOperator,
     #[error("this is not the code that makes an operator")]
     OperatorCodeWrong,
+    #[error("signing up here is by invitation only")]
+    SigningUpByInvitationOnly,
     #[error("this invitation's link lets nobody sign up, or not any more")]
     InvitationInvalid,
     #[error("this invitation has run out; ask for a new one")]
@@ -91,6 +94,7 @@ pub struct AccountService {
     catalog: Arc<dyn AccountCatalog>,
     mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
+    signing_up: SigningUp,
 }
 
 impl AccountService {
@@ -123,7 +127,12 @@ impl AccountService {
             catalog,
             mailer,
             clock,
+            signing_up: SigningUp::Open,
         }
+    }
+
+    pub fn signing_up(self, signing_up: SigningUp) -> Self {
+        Self { signing_up, ..self }
     }
 
     pub async fn sign_up(
@@ -132,6 +141,9 @@ impl AccountService {
         name: &str,
         password: &str,
     ) -> Result<(), AccountServiceError> {
+        if self.signing_up == SigningUp::ByInvitation {
+            return Err(AccountServiceError::SigningUpByInvitationOnly);
+        }
         let email = EmailAddress::new(email)?;
         let name = AccountName::new(name)?;
         let password = Password::new(password)?;

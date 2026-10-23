@@ -9,6 +9,7 @@ mod password;
 mod secrets;
 mod service;
 mod session;
+mod signing_up;
 mod throttle;
 mod ticket;
 
@@ -30,5 +31,6 @@ pub use secrets::{
 };
 pub use service::{AccountService, AccountServiceError, SignedIn};
 pub use session::{Session, SessionToken, Stage, TokenDigest};
+pub use signing_up::SigningUp;
 pub use throttle::Guarded;
 pub use ticket::{InvitationTicket, InvitationToken};

@@ -488,6 +488,7 @@ instance-lock-confirm = Bloquear
 refused-last-operator = Quem opera a instância por último mantém o papel, senão ninguém poderia gerenciar esta instância do Weaveling.
 refused-operator-address-not-verified = Só uma conta com endereço confirmado pode operar a instância.
 refused-locked-cannot-become-operator = Uma conta bloqueada não pode operar a instância.
+refused-signing-up-by-invitation-only = Nesta instância do Weaveling só é possível criar uma conta por convite.
 refused-invitation-invalid = O link deste convite não permite criar nenhuma conta, ou não mais.
 refused-invitation-expired = Este convite expirou. Peça um novo.
 refused-email-address-has-account = Este e-mail já tem uma conta. Entre com ela.

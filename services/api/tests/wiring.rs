@@ -120,6 +120,36 @@ async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
 }
 
 #[tokio::test]
+async fn a_server_signing_up_by_invitation_refuses_a_plain_sign_up_and_takes_links() {
+    let server = TestServer::new(weaveling_service_api::app(
+        Adapters::in_memory(Accounts::On, Arc::new(SystemClock))
+            .await
+            .signing_up(SignUp::ByInvitation),
+    ));
+
+    let plain = server
+        .post("/api/accounts")
+        .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
+        .await;
+    let by_link = server
+        .post("/api/accounts/by-invitation")
+        .json(&json!({ "token": "a token nobody was given", "name": "Ada", "password": "correct horse battery" }))
+        .await;
+
+    plain.assert_status(StatusCode::FORBIDDEN);
+    assert_eq!(
+        plain.json::<Value>()["type"],
+        "signing-up-by-invitation-only"
+    );
+    by_link.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        by_link.json::<Value>()["type"],
+        "invitation-invalid",
+        "the way in by a link stands open, and only a link of its own lets anyone through"
+    );
+}
+
+#[tokio::test]
 async fn unless_told_otherwise_anyone_may_sign_up() {
     let server = TestServer::new(weaveling_service_api::app(
         Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await,

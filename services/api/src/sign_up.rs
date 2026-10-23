@@ -2,6 +2,7 @@ use std::env;
 use std::fmt::{self, Display, Formatter};
 
 use accounts_contract::sign_up;
+use accounts_core::SigningUp;
 use thiserror::Error;
 
 pub const WEAVELING_SIGN_UP: &str = "WEAVELING_SIGN_UP";
@@ -39,6 +40,15 @@ impl SignUp {
         match self {
             Self::Open => sign_up::OPEN,
             Self::ByInvitation => sign_up::BY_INVITATION,
+        }
+    }
+}
+
+impl From<SignUp> for SigningUp {
+    fn from(sign_up: SignUp) -> Self {
+        match sign_up {
+            SignUp::Open => Self::Open,
+            SignUp::ByInvitation => Self::ByInvitation,
         }
     }
 }

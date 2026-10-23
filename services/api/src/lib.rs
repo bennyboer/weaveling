@@ -117,7 +117,13 @@ impl Adapters {
     }
 
     pub fn signing_up(self, sign_up: SignUp) -> Self {
-        Self { sign_up, ..self }
+        Self {
+            sign_up,
+            accounts: self
+                .accounts
+                .map(|accounts| accounts.signing_up(sign_up.into())),
+            ..self
+        }
     }
 
     pub fn refusing_on_purpose(self, flakiness: Flakiness) -> Self {

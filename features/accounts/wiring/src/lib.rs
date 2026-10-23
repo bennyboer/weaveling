@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use accounts_catalog::InMemoryAccountCatalog;
-use accounts_core::{AccountCatalog, AccountEvent, AccountService, SecretStores};
+use accounts_core::{AccountCatalog, AccountEvent, AccountService, SecretStores, SigningUp};
 use accounts_messaging::{CatalogueAccountsListener, KeepInvitationTicketsListener};
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
@@ -65,15 +65,36 @@ pub async fn assembled_accounts(
         mailer,
         ..wiring::ports::<AccountFeature>(storage, context).await?
     };
-    let service = service(&ports, context);
 
-    Ok(AssembledAccounts {
-        open_routes: accounts_rest::router(service.clone()),
-        guarded_routes: accounts_rest::guarded_router(service.clone()),
-        service,
-        outbox: ports.outbox.clone(),
-        listeners: listeners(&ports, context),
-    })
+    Ok(AssembledAccounts::serving(
+        service(&ports, context),
+        ports.outbox.clone(),
+        listeners(&ports, context),
+    ))
+}
+
+impl AssembledAccounts {
+    fn serving(
+        service: AccountService,
+        outbox: Arc<dyn Outbox>,
+        listeners: Vec<Arc<dyn Listener>>,
+    ) -> Self {
+        Self {
+            open_routes: accounts_rest::router(service.clone()),
+            guarded_routes: accounts_rest::guarded_router(service.clone()),
+            service,
+            outbox,
+            listeners,
+        }
+    }
+
+    pub fn signing_up(self, signing_up: SigningUp) -> Self {
+        Self::serving(
+            self.service.signing_up(signing_up),
+            self.outbox,
+            self.listeners,
+        )
+    }
 }
 
 pub struct AccountFeature;

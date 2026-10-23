@@ -1,5 +1,8 @@
+use accounts_contract::SignUpRequest;
 use accounts_contract::{SignUpByInvitationRequest, refused};
-use accounts_core::{EmailAddress, InvitationTicket, InvitationTickets, InvitationToken};
+use accounts_core::{
+    EmailAddress, InvitationTicket, InvitationTickets, InvitationToken, SigningUp,
+};
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum_test::{TestResponse, TestServer};
@@ -100,5 +103,26 @@ async fn an_address_with_an_account_already_is_refused_by_its_kind() {
         signs_up(&server, TOKEN).await,
         StatusCode::CONFLICT,
         refused::EMAIL_ADDRESS_HAS_ACCOUNT,
+    );
+}
+
+#[tokio::test]
+async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_its_kind() {
+    let wired = wiring::wired();
+    let server = TestServer::new(accounts_rest::router(
+        wired.accounts.clone().signing_up(SigningUp::ByInvitation),
+    ));
+
+    refused_as(
+        server
+            .post("/accounts")
+            .json(&SignUpRequest {
+                email: ADA.to_owned(),
+                name: "Ada".to_owned(),
+                password: HER_PASSWORD.to_owned(),
+            })
+            .await,
+        StatusCode::FORBIDDEN,
+        refused::BY_INVITATION_ONLY,
     );
 }
