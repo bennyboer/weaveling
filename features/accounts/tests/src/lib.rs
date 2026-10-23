@@ -20,6 +20,9 @@ mod gate_api;
 mod instance_api;
 
 #[cfg(test)]
+mod invitation_tickets;
+
+#[cfg(test)]
 mod locking;
 
 #[cfg(test)]

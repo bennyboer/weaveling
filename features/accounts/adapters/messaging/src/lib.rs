@@ -1,6 +1,8 @@
 mod publishing;
+mod ticketing;
 
 pub use publishing::message_for;
+pub use ticketing::KeepInvitationTicketsListener;
 
 use std::sync::Arc;
 

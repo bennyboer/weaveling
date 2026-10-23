@@ -12,6 +12,7 @@ eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
 accounts-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-accounts-contract" }
 accounts-core = { version = "0.1.0", path = "../../core", package = "weaveling-accounts-core" }
+invitations-contract = { version = "0.1.0", path = "../../../invitations/contract", package = "weaveling-invitations-contract" }
 
 [dev-dependencies]
 serde_json = { workspace = true }

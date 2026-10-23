@@ -32,6 +32,7 @@ pub struct Wired {
     pub clock: Arc<FixedClock>,
     pub catalog: Arc<InMemoryAccountCatalog>,
     pub consuming: DeliveryConsumer,
+    pub publisher: Arc<InProcessDispatcher>,
 }
 
 pub fn wired() -> Wired {
@@ -71,7 +72,8 @@ pub fn wired() -> Wired {
         throttles,
         told,
         mailbox,
-        consuming: DeliveryConsumer::new(dispatcher, deliveries, clock.clone()),
+        consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, clock.clone()),
+        publisher: dispatcher,
         clock,
         catalog,
     }

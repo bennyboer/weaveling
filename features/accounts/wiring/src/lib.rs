@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use accounts_catalog::InMemoryAccountCatalog;
 use accounts_core::{AccountCatalog, AccountEvent, AccountService, SecretStores};
-use accounts_messaging::CatalogueAccountsListener;
+use accounts_messaging::{CatalogueAccountsListener, KeepInvitationTicketsListener};
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
 use eventsourcing::EventStore;
@@ -36,11 +36,16 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 }
 
 fn listeners(ports: &Ports, context: &Context) -> Vec<Arc<dyn Listener>> {
-    vec![Arc::new(CatalogueAccountsListener::new(
-        ports.events.clone(),
-        ports.catalog.clone(),
-        context.clock.clone(),
-    ))]
+    vec![
+        Arc::new(CatalogueAccountsListener::new(
+            ports.events.clone(),
+            ports.catalog.clone(),
+            context.clock.clone(),
+        )),
+        Arc::new(KeepInvitationTicketsListener::new(
+            ports.secrets.invitation_tickets.clone(),
+        )),
+    ]
 }
 
 pub struct AssembledAccounts {

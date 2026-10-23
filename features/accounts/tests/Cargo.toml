@@ -27,3 +27,4 @@ accounts-messaging = { version = "0.1.0", path = "../adapters/messaging", packag
 accounts-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-accounts-rest" }
 accounts-secrets = { version = "0.1.0", path = "../adapters/secrets", package = "weaveling-accounts-secrets" }
 accounts-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-accounts-wiring" }
+invitations-contract = { version = "0.1.0", path = "../../invitations/contract", package = "weaveling-invitations-contract" }
