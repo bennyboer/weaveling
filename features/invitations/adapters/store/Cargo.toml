@@ -1,0 +1,14 @@
+[package]
+name = "weaveling-invitations-store"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+time = { workspace = true, features = ["serde", "serde-well-known"] }
+
+email = { version = "0.1.0", path = "../../../../libraries/email", package = "weaveling-email" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+invitations-core = { version = "0.1.0", path = "../../core", package = "weaveling-invitations-core" }

@@ -1,0 +1,16 @@
+[package]
+name = "weaveling-invitations-messaging"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+
+invitations-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-invitations-contract" }
+invitations-core = { version = "0.1.0", path = "../../core", package = "weaveling-invitations-core" }
+
+[dev-dependencies]
+email = { version = "0.1.0", path = "../../../../libraries/email", package = "weaveling-email" }
+time = { workspace = true }

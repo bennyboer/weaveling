@@ -12,6 +12,8 @@ An operator invites an address to the instance; the address gets a link, and who
 
 **Invitations into a project must not tell an owner whether an address already has an account,** answering alike either way; an operator, who sees every account anyway, is told.
 
-Being built in [3d](../../ROADMAP.md#milestone-17--accounts-members-and-roles): the domain and the links' store stand; the feature's wiring, REST, the client and cleaning up expired invitations follow.
+Being built in [3d](../../ROADMAP.md#milestone-17--accounts-members-and-roles): the domain, the links' store, the codec, publishing and the wiring stand; the service, REST, the server's assembly, the client and cleaning up expired invitations follow.
 
-**Crates:** `core` (aggregate, token, links port) · `adapters/links` (the links' store in memory, on PostgreSQL and on SQLite).
+**Messages tell what happened to which invitation, never to whom it was sent:** they are kept, and refused ones shown, so the address stays in the events alone.
+
+**Crates:** `core` (aggregate, token, links port) · `contract` (routing keys, event DTO) · `adapters/store` (stored-event codec) · `adapters/links` (the links' store in memory, on PostgreSQL and on SQLite) · `adapters/messaging` (event publisher) · `wiring`.

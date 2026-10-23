@@ -4102,6 +4102,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-invitations-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "weaveling-invitations-core"
 version = "0.1.0"
 dependencies = [
@@ -4125,6 +4132,48 @@ dependencies = [
  "tokio",
  "weaveling-invitations-core",
  "weaveling-test-harness",
+]
+
+[[package]]
+name = "weaveling-invitations-messaging"
+version = "0.1.0"
+dependencies = [
+ "time",
+ "weaveling-email",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-invitations-contract",
+ "weaveling-invitations-core",
+ "weaveling-messaging",
+]
+
+[[package]]
+name = "weaveling-invitations-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
+ "weaveling-email",
+ "weaveling-eventsourcing",
+ "weaveling-invitations-core",
+]
+
+[[package]]
+name = "weaveling-invitations-wiring"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "sqlx",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-invitations-core",
+ "weaveling-invitations-links",
+ "weaveling-invitations-messaging",
+ "weaveling-invitations-store",
+ "weaveling-outbox",
+ "weaveling-test-harness",
+ "weaveling-wiring",
 ]
 
 [[package]]
