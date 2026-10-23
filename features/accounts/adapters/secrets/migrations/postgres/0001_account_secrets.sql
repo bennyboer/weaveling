@@ -35,8 +35,9 @@ CREATE TABLE account_operators (
 );
 
 CREATE TABLE account_invitation_tickets (
-    digest      TEXT COLLATE "C" PRIMARY KEY,
-    invitation  TEXT COLLATE "C" NOT NULL UNIQUE,
-    email       TEXT COLLATE "C" NOT NULL,
-    until       TIMESTAMPTZ      NOT NULL
+    invitation  TEXT COLLATE "C" PRIMARY KEY,
+    digest      TEXT COLLATE "C" UNIQUE,
+    email       TEXT COLLATE "C",
+    until       TIMESTAMPTZ,
+    ended       BOOLEAN          NOT NULL DEFAULT FALSE
 );

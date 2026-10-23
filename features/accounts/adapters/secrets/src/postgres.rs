@@ -90,12 +90,18 @@ const KEEP_TICKET: &str = "
 ";
 
 const TAKE_TICKET: &str = "
-    DELETE FROM account_invitation_tickets
-    WHERE digest = $1
+    UPDATE account_invitation_tickets
+    SET ended = TRUE
+    WHERE digest = $1 AND NOT ended
     RETURNING invitation, email, until
 ";
 
-const FORGET_TICKET: &str = "DELETE FROM account_invitation_tickets WHERE invitation = $1";
+const FORGET_TICKET: &str = "
+    INSERT INTO account_invitation_tickets (invitation, ended)
+    VALUES ($1, TRUE)
+    ON CONFLICT (invitation) DO UPDATE
+    SET ended = TRUE
+";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/postgres")

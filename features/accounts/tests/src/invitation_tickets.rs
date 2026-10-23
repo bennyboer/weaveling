@@ -90,6 +90,21 @@ async fn a_withdrawn_invitation_leaves_no_ticket_and_the_others_kept() {
 }
 
 #[tokio::test]
+async fn an_issue_told_again_after_its_withdrawal_leaves_no_ticket() {
+    let wired = wiring::wired();
+    tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
+    tell(&wired, withdrawn("invitation_ada")).await;
+
+    tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
+
+    assert_eq!(
+        ticket_for(&wired, "ab12").await,
+        None,
+        "messages come at least once, so a late one must not open a withdrawn link"
+    );
+}
+
+#[tokio::test]
 async fn an_accepted_invitation_is_not_heard() {
     let tickets = KeepInvitationTicketsListener::new(wiring::wired().secrets.clone());
 

@@ -35,8 +35,9 @@ CREATE TABLE account_operators (
 );
 
 CREATE TABLE account_invitation_tickets (
-    digest      TEXT PRIMARY KEY,
-    invitation  TEXT NOT NULL UNIQUE,
-    email       TEXT NOT NULL,
-    until       TEXT NOT NULL
+    invitation  TEXT    PRIMARY KEY,
+    digest      TEXT    UNIQUE,
+    email       TEXT,
+    until       TEXT,
+    ended       BOOLEAN NOT NULL DEFAULT FALSE
 );

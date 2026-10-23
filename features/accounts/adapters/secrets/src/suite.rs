@@ -908,6 +908,81 @@ pub async fn a_ticket_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S)
     );
 }
 
+pub async fn a_ticket_taken_is_not_kept_again<S: Secrets>(secrets: &S) {
+    let ticket = a_ticket("invitation_ada", "ada@example.com");
+    secrets
+        .keep_ticket(&a_digest("ada's"), &ticket)
+        .await
+        .expect("keeping should succeed");
+    secrets
+        .take_ticket(&a_digest("ada's"))
+        .await
+        .expect("taking should succeed");
+
+    secrets
+        .keep_ticket(&a_digest("ada's"), &ticket)
+        .await
+        .expect("an issue told again keeps nothing");
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        None,
+        "a message told again must not let a second account in"
+    );
+}
+
+pub async fn a_ticket_forgotten_is_not_kept_again<S: Secrets>(secrets: &S) {
+    let ticket = a_ticket("invitation_ada", "ada@example.com");
+    secrets
+        .keep_ticket(&a_digest("ada's"), &ticket)
+        .await
+        .expect("keeping should succeed");
+    secrets
+        .forget_ticket("invitation_ada")
+        .await
+        .expect("forgetting should succeed");
+
+    secrets
+        .keep_ticket(&a_digest("ada's"), &ticket)
+        .await
+        .expect("an issue told again keeps nothing");
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        None,
+        "a withdrawn link stays withdrawn, however late its issue is told again"
+    );
+}
+
+pub async fn an_invitation_forgotten_before_its_ticket_came_keeps_none<S: Secrets>(secrets: &S) {
+    secrets
+        .forget_ticket("invitation_ada")
+        .await
+        .expect("forgetting should succeed");
+
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("an issue told after its withdrawal keeps nothing");
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        None
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -936,6 +1011,12 @@ macro_rules! conformance_tests {
             a_forgotten_invitation_leaves_no_ticket_and_the_others_kept
         );
         $crate::secrets_conformance_case!($workbench, a_ticket_taken_by_many_at_once_goes_to_one);
+        $crate::secrets_conformance_case!($workbench, a_ticket_taken_is_not_kept_again);
+        $crate::secrets_conformance_case!($workbench, a_ticket_forgotten_is_not_kept_again);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            an_invitation_forgotten_before_its_ticket_came_keeps_none
+        );
         $crate::secrets_conformance_case!($workbench, a_kept_code_is_taken_once);
         $crate::secrets_conformance_case!($workbench, only_the_latest_code_kept_can_be_taken);
         $crate::secrets_conformance_case!($workbench, no_code_kept_takes_nothing);

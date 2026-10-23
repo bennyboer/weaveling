@@ -16,7 +16,8 @@ struct Kept {
     sessions: HashMap<TokenDigest, Session>,
     operator_code: Option<TokenDigest>,
     operators: HashSet<AccountId>,
-    invitation_tickets: HashMap<TokenDigest, InvitationTicket>,
+    invitation_tickets: HashMap<String, (TokenDigest, InvitationTicket)>,
+    ended_invitations: HashSet<String>,
 }
 
 #[derive(Default)]
@@ -175,10 +176,16 @@ impl InvitationTickets for InMemorySecrets {
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<(), SecretsError> {
-        self.kept()
+        let mut kept = self.kept();
+        let digest_held = kept
             .invitation_tickets
-            .entry(digest.clone())
-            .or_insert_with(|| ticket.clone());
+            .values()
+            .any(|(held, _)| held == digest);
+        if !digest_held {
+            kept.invitation_tickets
+                .entry(ticket.invitation.clone())
+                .or_insert_with(|| (digest.clone(), ticket.clone()));
+        }
 
         Ok(())
     }
@@ -187,13 +194,24 @@ impl InvitationTickets for InMemorySecrets {
         &self,
         digest: &TokenDigest,
     ) -> Result<Option<InvitationTicket>, SecretsError> {
-        Ok(self.kept().invitation_tickets.remove(digest))
+        let mut guard = self.kept();
+        let kept = &mut *guard;
+        let open = kept
+            .invitation_tickets
+            .iter()
+            .find(|(invitation, (held, _))| {
+                held == digest && !kept.ended_invitations.contains(*invitation)
+            })
+            .map(|(_, (_, ticket))| ticket.clone());
+        if let Some(ticket) = &open {
+            kept.ended_invitations.insert(ticket.invitation.clone());
+        }
+
+        Ok(open)
     }
 
     async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
-        self.kept()
-            .invitation_tickets
-            .retain(|_, ticket| ticket.invitation != invitation);
+        self.kept().ended_invitations.insert(invitation.to_owned());
 
         Ok(())
     }
