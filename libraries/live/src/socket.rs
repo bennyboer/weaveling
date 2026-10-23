@@ -41,7 +41,7 @@ async fn forward(mut socket: WebSocket, mut hearing: Hearing) {
 mod tests {
     use axum::Router;
     use axum::extract::{Path, State};
-    use axum::routing::get;
+    use axum::routing;
     use axum_test::TestServer;
 
     use super::*;
@@ -66,8 +66,8 @@ mod tests {
     fn served(broadcaster: Broadcaster) -> TestServer {
         TestServer::builder().http_transport().build(
             Router::new()
-                .route("/live/{about}", get(following))
-                .route("/standing/{about}", get(following_from_seven))
+                .route("/live/{about}", routing::get(following))
+                .route("/standing/{about}", routing::get(following_from_seven))
                 .with_state(broadcaster),
         )
     }

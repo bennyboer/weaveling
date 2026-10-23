@@ -5,11 +5,12 @@ use leptos::{IntoView, ev};
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 
-use crate::boards::carrying::{Carrying, EVERY_HANDLE, Held, nudge};
+use crate::boards::carrying;
+use crate::boards::carrying::{Carrying, EVERY_HANDLE, Held};
 use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Spot};
 use crate::ideas::model::{Idea, IdeaId};
-use crate::speech::say_with;
+use crate::speech;
 
 pub fn card(href: String, idea: Idea, at: Placement, handles: Handles) -> impl IntoView {
     let shown = idea.shown_as().to_owned();
@@ -69,7 +70,7 @@ pub fn card(href: String, idea: Idea, at: Placement, handles: Handles) -> impl I
                 return;
             }
 
-            let Some(to) = nudge(&event.key(), event.shift_key(), at.spot) else {
+            let Some(to) = carrying::nudge(&event.key(), event.shift_key(), at.spot) else {
                 return;
             };
             event.prevent_default();
@@ -225,5 +226,5 @@ fn say_about_side(shown: &str, side: &str) -> String {
     args.set("idea", shown.to_owned());
     args.set("side", side.to_owned());
 
-    say_with("board-resize", &args)
+    speech::say_with("board-resize", &args)
 }

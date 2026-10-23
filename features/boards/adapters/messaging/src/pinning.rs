@@ -7,7 +7,7 @@ use eventpublishing::aggregate_in;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use messaging::{Failure, Handler, Message};
 
-use crate::letting_go::let_go_of_what_is_gone;
+use crate::letting_go;
 
 pub struct ProjectPinnedIdeasListener {
     events: EventSourcingService<Board>,
@@ -43,7 +43,7 @@ impl ProjectPinnedIdeasListener {
             .map(|positioned| positioned.idea)
             .collect();
         self.catalog.holds(*board, &holding).await?;
-        let_go_of_what_is_gone(&self.boards, self.catalog.as_ref(), *board).await?;
+        letting_go::let_go_of_what_is_gone(&self.boards, self.catalog.as_ref(), *board).await?;
 
         Ok(())
     }

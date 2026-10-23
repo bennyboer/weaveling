@@ -3,7 +3,8 @@ use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
 use crate::Registry;
-use crate::postgres::{PostgresRegistry, migrations};
+use crate::postgres;
+use crate::postgres::PostgresRegistry;
 use crate::suite::Workbench;
 
 struct OnPostgres {
@@ -19,7 +20,7 @@ impl Workbench for OnPostgres {
     async fn setup() -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool: PgPool = fixture.create_schema("registry").await;
-        migrations()
+        postgres::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty namespace");

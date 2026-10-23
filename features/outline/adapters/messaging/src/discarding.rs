@@ -5,7 +5,7 @@ use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
 use outline_core::{Attachment, OutlineCatalog, OutlineService};
 
-use crate::letting_go::let_go_everywhere;
+use crate::letting_go;
 
 pub struct DetachOnDiscardListener {
     outlines: OutlineService,
@@ -27,7 +27,7 @@ impl Handler for DetachOnDiscardListener {
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let discarded = published_in::<IdeaEventDTO>(message)?;
 
-        let_go_everywhere(
+        letting_go::let_go_everywhere(
             &self.outlines,
             self.catalog.as_ref(),
             &Attachment::idea(&discarded.aggregate.id),

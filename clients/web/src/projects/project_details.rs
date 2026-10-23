@@ -1,23 +1,26 @@
 use fluent_bundle::FluentArgs;
 use leptos::html::{self, Input};
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 use leptos::{IntoView, ev};
 use quotation::QuotationMarks;
 use scenes_contract::QuotationRestylingDTO;
 
-use crate::dialog::modal;
+use crate::dialog;
 use crate::http::ApiError;
-use crate::icons::{Icon, mark};
+use crate::icons;
+use crate::icons::Icon;
 use crate::live::{Following, Told};
-use crate::problem::problem;
-use crate::projects::details_form::{DetailsDraft, details_fields};
+use crate::problem;
+use crate::projects::details_form;
+use crate::projects::details_form::DetailsDraft;
 use crate::projects::model::{DescribedProject, ProjectId, Version};
 use crate::projects::open_project::OpenProject;
 use crate::projects::service;
-use crate::scenes::restyling::{Restyled, standing};
+use crate::scenes::restyling::Restyled;
 use crate::scenes::service as scenes;
-use crate::speech::{Speech, said};
+use crate::speech;
+use crate::speech::Speech;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Stage {
@@ -39,11 +42,11 @@ pub fn project_details(project: ProjectId) -> impl IntoView {
         html::button()
             .r#type("button")
             .class("project-details-button")
-            .attr("aria-label", said("project-details"))
-            .attr("title", said("project-details"))
+            .attr("aria-label", speech::said("project-details"))
+            .attr("title", speech::said("project-details"))
             .disabled(move || open_project.described().is_none())
             .on(ev::click, move |_| changing.set(true))
-            .child(mark(Icon::Cogwheel)),
+            .child(icons::mark(Icon::Cogwheel)),
         move || {
             changing
                 .get()
@@ -86,7 +89,7 @@ fn changing_dialog(
         }
         saving.set(true);
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             let renamed = match name.trim() == before.name {
                 true => Ok(before.version),
                 false => service::rename(&project, name.trim())
@@ -119,25 +122,30 @@ fn changing_dialog(
         });
     };
 
-    modal(
-        Signal::derive(said("project-details")),
+    dialog::modal(
+        Signal::derive(speech::said("project-details")),
         "project-details",
         move || changing.set(false),
         move || match stage.get() {
             Stage::Editing => (
-                details_fields(draft, field, move || refused.set(None), move || save(false)),
-                move || refused.get().map(problem),
+                details_form::details_fields(
+                    draft,
+                    field,
+                    move || refused.set(None),
+                    move || save(false),
+                ),
+                move || refused.get().map(problem::problem),
                 html::div().class("dialog-actions").child((
                     html::button()
                         .r#type("button")
                         .on(ev::click, move |_| changing.set(false))
-                        .child(said("project-details-cancel")),
+                        .child(speech::said("project-details-cancel")),
                     html::button()
                         .r#type("button")
                         .class("primary")
                         .disabled(move || draft.title.get().trim().is_empty() || saving.get())
                         .on(ev::click, move |_| save(false))
-                        .child(said("project-details-save")),
+                        .child(speech::said("project-details-save")),
                 )),
             )
                 .into_any(),
@@ -153,13 +161,13 @@ fn changing_dialog(
                     html::button()
                         .r#type("button")
                         .on(ev::click, move |_| stage.set(Stage::Editing))
-                        .child(said("project-details-back")),
+                        .child(speech::said("project-details-back")),
                     html::button()
                         .r#type("button")
                         .class("primary")
                         .disabled(move || saving.get())
                         .on(ev::click, move |_| save(true))
-                        .child(said("project-details-change-the-marks")),
+                        .child(speech::said("project-details-change-the-marks")),
                 )),
             )
                 .into_any(),
@@ -195,7 +203,7 @@ fn restyling(
         }),
         html::progress()
             .class("restyling")
-            .attr("aria-label", said("restyling"))
+            .attr("aria-label", speech::said("restyling"))
             .attr("max", move || shown_on_the_bar(restyled.get()).1)
             .attr("value", move || shown_on_the_bar(restyled.get()).0),
         html::div().class("dialog-actions").child(
@@ -203,7 +211,7 @@ fn restyling(
                 .r#type("button")
                 .class("primary")
                 .on(ev::click, move |_| changing.set(false))
-                .child(said("restyling-close")),
+                .child(speech::said("restyling-close")),
         ),
     )
 }
@@ -223,14 +231,17 @@ fn follow(project: ProjectId, saved_against: Version, restyled: RwSignal<Restyle
         &format!("/api/scenes/quotation-restylings/live?project={project}"),
         move |told: Told| {
             if let Ok(found) = serde_json::from_value::<QuotationRestylingDTO>(told.event) {
-                _ = restyled.try_set(standing(Some(found.into()), saved_against));
+                _ = restyled.try_set(crate::scenes::restyling::standing(
+                    Some(found.into()),
+                    saved_against,
+                ));
             }
         },
         move || {
             let project = asked.clone();
-            spawn_local(async move {
+            task::spawn_local(async move {
                 if let Ok(found) = scenes::quotation_restyling(&project).await {
-                    _ = restyled.try_set(standing(found, saved_against));
+                    _ = restyled.try_set(crate::scenes::restyling::standing(found, saved_against));
                 }
             });
         },

@@ -5,7 +5,8 @@ use leptos::html::Div;
 use leptos::prelude::*;
 use web_sys::{Element, IntersectionObserverEntry};
 
-use crate::nearness::{Nearness, entries_placed_by};
+use crate::nearness;
+use crate::nearness::Nearness;
 use crate::scenes::model::SceneId;
 use crate::writing::saving::Saving;
 
@@ -21,7 +22,7 @@ pub struct Viewport {
 }
 
 fn entries_of(entries: Array) -> Vec<(SceneId, IntersectionObserverEntry)> {
-    entries_placed_by(SCENE_PLACE, entries)
+    nearness::entries_placed_by(SCENE_PLACE, entries)
         .into_iter()
         .map(|(scene, entry)| (SceneId::from(scene), entry))
         .collect()

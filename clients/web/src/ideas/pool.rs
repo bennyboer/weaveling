@@ -6,11 +6,12 @@ use leptos_router::components::A;
 
 use crate::http::ApiError;
 use crate::ideas::followed;
-use crate::ideas::model::{Idea, hold};
+use crate::ideas::model;
+use crate::ideas::model::Idea;
 use crate::ideas::service;
-use crate::problem::problem;
+use crate::problem;
 use crate::route;
-use crate::speech::said;
+use crate::speech;
 
 #[component]
 pub fn Pool(project: String) -> impl IntoView {
@@ -38,7 +39,7 @@ pub fn Pool(project: String) -> impl IntoView {
                         failed.set(None);
                         held.update(|known| {
                             if let Some(known) = known {
-                                hold(known, idea);
+                                model::hold(known, idea);
                             }
                         });
                     }
@@ -57,7 +58,7 @@ pub fn Pool(project: String) -> impl IntoView {
     let ideas = move || held.get().unwrap_or_default();
 
     html::section().class("pool").child((
-        html::h2().child(said("ideas")),
+        html::h2().child(speech::said("ideas")),
         html::form()
             .class("capture")
             .on(ev::submit, move |event| {
@@ -67,21 +68,25 @@ pub fn Pool(project: String) -> impl IntoView {
             .child((
                 html::input()
                     .r#type("text")
-                    .attr("aria-label", said("idea-asked"))
-                    .placeholder(said("idea-asked"))
+                    .attr("aria-label", speech::said("idea-asked"))
+                    .placeholder(speech::said("idea-asked"))
                     .node_ref(title),
                 html::button()
                     .r#type("submit")
                     .disabled(capturing.pending())
-                    .child(said("ideas-capture")),
+                    .child(speech::said("ideas-capture")),
             )),
-        move || failed.get().map(problem),
+        move || failed.get().map(problem::problem),
         move || {
-            (ideas().is_empty()).then(|| html::p().class("empty").child(said(nothing_yet(held))))
+            (ideas().is_empty()).then(|| {
+                html::p()
+                    .class("empty")
+                    .child(speech::said(nothing_yet(held)))
+            })
         },
         html::ul()
             .class("ideas")
-            .attr("aria-label", said("ideas"))
+            .attr("aria-label", speech::said("ideas"))
             .child(move || {
                 ideas()
                     .into_iter()

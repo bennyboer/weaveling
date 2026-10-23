@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use test_harness::PostgresFixture;
 
-use crate::deliveries::postgres::{PostgresDeliveries, migrations};
+use crate::deliveries::postgres;
+use crate::deliveries::postgres::PostgresDeliveries;
 use crate::deliveries::suite::Workbench;
 
 struct OnPostgres {
@@ -16,7 +17,7 @@ impl Workbench for OnPostgres {
     async fn setup() -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("messaging").await;
-        migrations()
+        postgres::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty namespace");

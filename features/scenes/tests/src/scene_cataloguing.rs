@@ -4,7 +4,7 @@ use messaging::{Listener, Message, RoutingKey};
 use scenes_catalog::InMemorySceneCatalog;
 use scenes_contract::{CREATED, DELETED, OPENING_CHANGED, RETITLED};
 use scenes_core::{ProjectLink, SceneCatalog, SceneChange, SceneId, SceneSummary, SceneTitle};
-use scenes_messaging::{CatalogueScenesListener, message_for};
+use scenes_messaging::CatalogueScenesListener;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
@@ -37,7 +37,7 @@ fn a_workbench() -> Wired {
 impl Wired {
     async fn hears(&self, change: SceneChange, seconds: i64) {
         self.catalogue
-            .handle(&message_for(&change, at(seconds)))
+            .handle(&scenes_messaging::message_for(&change, at(seconds)))
             .await
             .expect("the listener should take what scenes announces");
     }

@@ -1,7 +1,7 @@
 use fluent_bundle::FluentArgs;
 use time::{OffsetDateTime, UtcOffset};
 
-use crate::speech::say_with;
+use crate::speech;
 
 pub fn human_time(moment: OffsetDateTime) -> String {
     let here = UtcOffset::current_local_offset().unwrap_or(UtcOffset::UTC);
@@ -17,7 +17,7 @@ fn told(moment: OffsetDateTime) -> String {
     args.set("hour", format!("{:02}", moment.hour()));
     args.set("minute", format!("{:02}", moment.minute()));
 
-    say_with("moment", &args)
+    speech::say_with("moment", &args)
 }
 
 #[cfg(test)]

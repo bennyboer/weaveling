@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 
 use crate::ideas::followed;
 use crate::ideas::model::{Idea, IdeaId};
@@ -98,7 +98,7 @@ impl SceneIdeas {
             return;
         }
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             match scenes::open(&scene).await {
                 Ok(found) => self
                     .linked
@@ -133,7 +133,7 @@ impl SceneIdeas {
         });
         self.saving.write_begun();
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             for idea in &chosen {
                 match scenes::link(&scene, idea).await {
                     Ok(found) => self
@@ -162,7 +162,7 @@ impl SceneIdeas {
         });
         self.saving.write_begun();
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             match scenes::unlink(&scene, &idea).await {
                 Ok(found) => self
                     .linked

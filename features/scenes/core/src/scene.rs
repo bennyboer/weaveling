@@ -6,9 +6,8 @@ use yrs::updates::encoder::Encode;
 use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
 use quotation::QuotationMarks;
-use words::{opening_of, words_in};
 
-use crate::projection::{plain_text, restyle};
+use crate::projection;
 use crate::{IdeaLink, ProjectLink, SceneId, SceneTitle};
 
 #[derive(Debug, Error)]
@@ -103,21 +102,22 @@ impl Scene {
     }
 
     pub fn text(&self) -> String {
-        plain_text(&self.doc)
+        projection::plain_text(&self.doc)
     }
 
     pub fn words(&self) -> usize {
-        words_in(&self.text())
+        words::words_in(&self.text())
     }
 
     pub fn opening(&self) -> String {
-        opening_of(&self.text())
+        words::opening_of(&self.text())
     }
 
     pub fn restyled(&self, style: QuotationMarks) -> Option<Vec<u8>> {
         let before = self.doc.transact().state_vector();
 
-        restyle(&self.doc, style).then(|| self.doc.transact().encode_state_as_update_v1(&before))
+        projection::restyle(&self.doc, style)
+            .then(|| self.doc.transact().encode_state_as_update_v1(&before))
     }
 }
 

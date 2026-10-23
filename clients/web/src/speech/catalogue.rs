@@ -70,12 +70,12 @@ mod tests {
     use std::collections::BTreeSet;
 
     use fluent_syntax::ast::{Entry, Expression, InlineExpression, Pattern, PatternElement};
-    use fluent_syntax::parser::parse;
+    use fluent_syntax::parser;
 
     use super::*;
 
     fn messages_of(language: Language) -> Vec<(String, BTreeSet<String>)> {
-        let parsed = parse(source_of(language))
+        let parsed = parser::parse(source_of(language))
             .unwrap_or_else(|(_, errors)| panic!("{language:?} does not parse: {errors:?}"));
 
         parsed
@@ -123,7 +123,7 @@ mod tests {
 
     #[test]
     fn the_names_a_message_asks_for_are_found_in_its_choices_too() {
-        let parsed = parse(
+        let parsed = parser::parse(
             "chosen = { $count ->
     [one] { $name }
    *[other] { $place }

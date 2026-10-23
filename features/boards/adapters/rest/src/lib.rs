@@ -5,7 +5,7 @@ use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post};
+use axum::routing;
 use boards_contract::{
     BoardDTO, OpenBoardRequest, PinIdeaRequest, PositionedIdeaDTO, ReshapeIdeaRequest, SizeDTO,
     SpotDTO, refused,
@@ -14,11 +14,11 @@ use boards_core::{
     Board, BoardError, BoardService, BoardServiceError, IdeaLink, PositionedIdea, Size, Spot,
 };
 use eventsourcing::{Agent, Standing, Version};
-use live::{Broadcaster, followed_from};
-use serving::{Problem, demanded, tag};
+use live::Broadcaster;
+use serving::Problem;
 
 pub fn live(broadcaster: Broadcaster, boards: BoardService) -> Router {
-    followed_from(
+    live::followed_from(
         "/boards/live",
         broadcaster,
         |asked| asked.get("board").cloned(),
@@ -37,10 +37,13 @@ pub fn live(broadcaster: Broadcaster, boards: BoardService) -> Router {
 
 pub fn router(boards: BoardService) -> Router {
     Router::new()
-        .route("/boards", post(open))
-        .route("/boards/{board}", get(find))
-        .route("/boards/{board}/ideas", post(pin))
-        .route("/boards/{board}/ideas/{idea}", delete(unpin).patch(reshape))
+        .route("/boards", routing::post(open))
+        .route("/boards/{board}", routing::get(find))
+        .route("/boards/{board}/ideas", routing::post(pin))
+        .route(
+            "/boards/{board}/ideas/{idea}",
+            routing::delete(unpin).patch(reshape),
+        )
         .with_state(boards)
 }
 
@@ -83,7 +86,7 @@ async fn pin(
             IdeaLink::from(request.idea.as_str()),
             as_spot(request.spot),
             as_size(request.size),
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -109,7 +112,7 @@ async fn reshape(
             IdeaLink::from(idea.as_str()),
             request.spot.map(as_spot),
             request.size.map(as_size),
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -132,7 +135,7 @@ async fn unpin(
         .unpin(
             &board,
             IdeaLink::from(idea.as_str()),
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -152,7 +155,7 @@ fn as_size(size: SizeDTO) -> Size {
 fn to_response(status: StatusCode, board: &str, standing: &Standing<Board>) -> Response {
     (
         status,
-        [(ETAG, tag(standing.version))],
+        [(ETAG, serving::tag(standing.version))],
         Json(to_dto(board, &standing.state, standing.version)),
     )
         .into_response()

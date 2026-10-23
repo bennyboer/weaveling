@@ -6,10 +6,11 @@ use axum_test::{TestResponse, TestServer};
 use serde_json::Value;
 use time::Duration;
 
-use crate::wiring::{ADA, HER_PASSWORD, Wired, at, wired};
+use crate::wiring;
+use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 async fn served_with_ada_verified() -> (Wired, TestServer) {
-    let wired = wired();
+    let wired = wiring::wired();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -174,7 +175,7 @@ async fn a_wrong_password_signs_nobody_in_and_sets_no_cookie() {
 
 #[tokio::test]
 async fn an_unverified_address_is_forbidden_until_verified() {
-    let wired = wired();
+    let wired = wiring::wired();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -245,12 +246,14 @@ async fn a_session_is_over_after_thirty_days_and_ended_once_found_so() {
     let token = signed_in_token(&server).await;
     let cookie = format!("{SESSION_COOKIE}={token}");
 
-    wired.clock.set(at(1_700_000_000) + Duration::days(30));
+    wired
+        .clock
+        .set(wiring::at(1_700_000_000) + Duration::days(30));
     current_with(&server, &cookie).await.assert_status_ok();
 
     wired
         .clock
-        .set(at(1_700_000_000) + Duration::days(30) + Duration::seconds(1));
+        .set(wiring::at(1_700_000_000) + Duration::days(30) + Duration::seconds(1));
     refused_as(
         &current_with(&server, &cookie).await,
         StatusCode::UNAUTHORIZED,
@@ -304,7 +307,7 @@ async fn a_wait_part_way_through_a_second_is_rounded_up() {
 
     wired
         .clock
-        .set(at(1_700_000_000) + Duration::milliseconds(500));
+        .set(wiring::at(1_700_000_000) + Duration::milliseconds(500));
     let response = server
         .post("/sessions")
         .json(&signing_in(ADA, HER_PASSWORD))

@@ -5,9 +5,9 @@ pub mod picker;
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 
-use crate::kept::{keep, recall};
-use crate::speech::catalogue::{knows, worded};
-use crate::speech::language::{Language, the_reader_s};
+use crate::kept;
+use crate::speech::catalogue::knows;
+use crate::speech::language::Language;
 
 const SPOKEN: &str = "weaveling.language";
 
@@ -18,9 +18,9 @@ pub struct Speech {
 
 impl Speech {
     pub fn heard() -> Self {
-        let spoken = recall(SPOKEN)
+        let spoken = kept::recall(SPOKEN)
             .and_then(|tag| Language::told(&tag))
-            .unwrap_or_else(the_reader_s);
+            .unwrap_or_else(crate::speech::language::the_reader_s);
         mark_the_page(spoken);
 
         Self {
@@ -34,16 +34,16 @@ impl Speech {
 
     pub fn speak(self, language: Language) {
         self.spoken.set(language);
-        keep(SPOKEN, language.tag());
+        kept::keep(SPOKEN, language.tag());
         mark_the_page(language);
     }
 
     pub fn say(self, message: &str) -> String {
-        worded(self.spoken.get(), message, None)
+        crate::speech::catalogue::worded(self.spoken.get(), message, None)
     }
 
     pub fn say_with(self, message: &str, args: &FluentArgs) -> String {
-        worded(self.spoken.get(), message, Some(args))
+        crate::speech::catalogue::worded(self.spoken.get(), message, Some(args))
     }
 
     pub fn knows(self, message: &str) -> bool {
@@ -52,18 +52,18 @@ impl Speech {
 }
 
 pub fn say(message: &str) -> String {
-    worded(spoken_here(), message, None)
+    crate::speech::catalogue::worded(spoken_here(), message, None)
 }
 
 pub fn say_with(message: &str, args: &FluentArgs) -> String {
-    worded(spoken_here(), message, Some(args))
+    crate::speech::catalogue::worded(spoken_here(), message, Some(args))
 }
 
 pub fn say_about(message: &str, name: &str, value: &str) -> String {
     let mut args = FluentArgs::new();
     args.set(name.to_owned(), value.to_owned());
 
-    worded(spoken_here(), message, Some(&args))
+    crate::speech::catalogue::worded(spoken_here(), message, Some(&args))
 }
 
 fn spoken_here() -> Language {

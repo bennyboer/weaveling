@@ -1,12 +1,12 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
-use leptos_router::hooks::use_navigate;
+use leptos_router::hooks;
 
-use crate::dialog::modal;
+use crate::dialog;
 use crate::outline::model::Section;
 use crate::route;
 use crate::scenes::model::SceneId;
-use crate::speech::{said, say, say_about};
+use crate::speech;
 use crate::writing::write_view_state::WriteViewState;
 
 pub fn placing(state: WriteViewState, project: String) -> impl IntoView {
@@ -27,19 +27,19 @@ fn section_chooser(
 ) -> impl IntoView {
     let named = untrack(|| state.labels.of_scene(&scene)).shown;
     let told = match named.trim() {
-        "" => say("placing-told-unnamed"),
-        named => say_about("placing-told", "scene", named),
+        "" => speech::say("placing-told-unnamed"),
+        named => speech::say_about("placing-told", "scene", named),
     };
 
-    modal(
-        Signal::derive(said("placing")),
+    dialog::modal(
+        Signal::derive(speech::said("placing")),
         "placing",
         move || state.margin.return_to_writing(),
         (
             html::p().child(told),
             html::ul()
                 .class("sections")
-                .attr("aria-label", said("placing-sections"))
+                .attr("aria-label", speech::said("placing-sections"))
                 .child(
                     untrack(|| state.structure.sections())
                         .into_iter()
@@ -51,7 +51,7 @@ fn section_chooser(
             html::div().class("dialog-actions").child(
                 html::button()
                     .on(ev::click, move |_| state.margin.return_to_writing())
-                    .child(said("cancel")),
+                    .child(speech::said("cancel")),
             ),
         ),
     )
@@ -64,9 +64,9 @@ fn section_choice(
     project: StoredValue<String>,
     state: WriteViewState,
 ) -> impl IntoView {
-    let navigate = use_navigate();
+    let navigate = hooks::use_navigate();
     let titled = match section.title.trim() {
-        "" => say("heading-untitled"),
+        "" => speech::say("heading-untitled"),
         title => title.to_owned(),
     };
     let to = section.id.clone();

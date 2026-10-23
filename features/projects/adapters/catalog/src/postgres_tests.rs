@@ -3,8 +3,10 @@ use projects_core::{ProjectCatalog, ProjectId};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
-use crate::postgres::{PostgresProjectCatalog, migrations};
-use crate::suite::{Workbench, a_summary, at};
+use crate::postgres;
+use crate::postgres::PostgresProjectCatalog;
+use crate::suite;
+use crate::suite::Workbench;
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -19,7 +21,7 @@ impl Workbench for OnPostgres {
     async fn setup() -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool: PgPool = fixture.create_schema("projects").await;
-        migrations()
+        postgres::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty namespace");
@@ -71,8 +73,8 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
     let bench = OnPostgres::setup().await;
     bench
         .store
-        .remember(&a_summary(
-            ProjectId::generate(at(1_000)),
+        .remember(&suite::a_summary(
+            ProjectId::generate(suite::at(1_000)),
             "The Silent Loom",
         ))
         .await

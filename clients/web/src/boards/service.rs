@@ -5,7 +5,8 @@ use boards_contract::{
 use gloo_net::http::Request;
 
 use crate::boards::model::{Board, BoardId, Placement, PositionedIdea, Size, Spot};
-use crate::http::{ApiError, parsed, sent, sent_with};
+use crate::http;
+use crate::http::ApiError;
 use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 
@@ -16,9 +17,9 @@ pub async fn open(project: &ProjectId) -> Result<Board, ApiError> {
     let payload = OpenBoardRequest {
         project: project.to_string(),
     };
-    let response = sent_with(Request::post(BOARDS), &payload).await?;
+    let response = http::sent_with(Request::post(BOARDS), &payload).await?;
 
-    Ok(as_board(parsed(response, SUBJECT).await?))
+    Ok(as_board(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn pin(board: &BoardId, idea: &IdeaId, at: Placement) -> Result<Board, ApiError> {
@@ -27,9 +28,10 @@ pub async fn pin(board: &BoardId, idea: &IdeaId, at: Placement) -> Result<Board,
         spot: to_spot_dto(at.spot),
         size: to_size_dto(at.size),
     };
-    let response = sent_with(Request::post(&format!("{BOARDS}/{board}/ideas")), &payload).await?;
+    let response =
+        http::sent_with(Request::post(&format!("{BOARDS}/{board}/ideas")), &payload).await?;
 
-    Ok(as_board(parsed(response, SUBJECT).await?))
+    Ok(as_board(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn reshape(
@@ -42,17 +44,17 @@ pub async fn reshape(
         spot: to.map(to_spot_dto),
         size: size.map(to_size_dto),
     };
-    let response = sent_with(
+    let response = http::sent_with(
         Request::patch(&format!("{BOARDS}/{board}/ideas/{idea}")),
         &payload,
     )
     .await?;
 
-    Ok(as_board(parsed(response, SUBJECT).await?))
+    Ok(as_board(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn unpin(board: &BoardId, idea: &IdeaId) -> Result<(), ApiError> {
-    let response = sent(Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}"))).await?;
+    let response = http::sent(Request::delete(&format!("{BOARDS}/{board}/ideas/{idea}"))).await?;
 
     if response.ok() {
         return Ok(());

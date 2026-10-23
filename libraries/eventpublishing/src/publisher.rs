@@ -1,7 +1,7 @@
 use std::error::Error as AnyError;
 use std::str::FromStr;
 
-use clock::text::serialize;
+use clock::text;
 use eventsourcing::{AggregateType, Event, EventName, Recorded};
 use messaging::{Message, RoutingKey};
 use serde::Serialize;
@@ -48,7 +48,7 @@ where
         },
         aggregate: PublishedAggregate::of(&happened.metadata),
         agent: PublishedAgent::of(&happened.metadata.agent),
-        occurred_at: serialize(happened.metadata.occurred_at),
+        occurred_at: text::serialize(happened.metadata.occurred_at),
     };
     let payload = serde_json::to_value(published)
         .expect("a published event is plain data and cannot fail to serialize");

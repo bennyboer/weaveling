@@ -5,9 +5,9 @@ use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, post, put};
+use axum::routing;
 use eventsourcing::{Agent, Standing, Version};
-use live::{Broadcaster, followed_from};
+use live::Broadcaster;
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -17,30 +17,33 @@ use outline_core::{
     Attachment, Changed, InvalidSectionTitle, Outline, OutlineError, OutlineService,
     OutlineServiceError, PlacedSection, SectionId, SectionTitle,
 };
-use serving::{Problem, demanded, tag};
+use serving::Problem;
 
 pub fn router(outlines: OutlineService) -> Router {
     Router::new()
-        .route("/outlines", post(open))
-        .route("/outlines/{outline}", get(find))
-        .route("/outlines/{outline}/sections", post(add))
+        .route("/outlines", routing::post(open))
+        .route("/outlines/{outline}", routing::get(find))
+        .route("/outlines/{outline}/sections", routing::post(add))
         .route(
             "/outlines/{outline}/sections/{section}",
-            delete(remove).patch(retitle),
+            routing::delete(remove).patch(retitle),
         )
-        .route("/outlines/{outline}/sections/{section}/place", put(place))
+        .route(
+            "/outlines/{outline}/sections/{section}/place",
+            routing::put(place),
+        )
         .route(
             "/outlines/{outline}/sections/{section}/promote",
-            post(promote),
+            routing::post(promote),
         )
         .route(
             "/outlines/{outline}/sections/{section}/demote",
-            post(demote),
+            routing::post(demote),
         )
-        .route("/outlines/{outline}/attachments", post(attach))
+        .route("/outlines/{outline}/attachments", routing::post(attach))
         .route(
             "/outlines/{outline}/attachments/{kind}/{attached}",
-            delete(detach),
+            routing::delete(detach),
         )
         .with_state(outlines)
 }
@@ -63,7 +66,7 @@ async fn open(
 }
 
 pub fn live(broadcaster: Broadcaster, outlines: OutlineService) -> Router {
-    followed_from(
+    live::followed_from(
         "/outlines/live",
         broadcaster,
         |asked| asked.get("outline").cloned(),
@@ -102,7 +105,7 @@ async fn add(
             named_section(request.under)?,
             named_section(request.after)?,
             titled(&request.title)?,
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -115,7 +118,7 @@ async fn add(
 
     Ok((
         StatusCode::CREATED,
-        [(ETAG, tag(standing.version))],
+        [(ETAG, serving::tag(standing.version))],
         Json(AddedSectionResponse {
             section: added.section.to_string(),
             outline: to_change_dto(&outline, &standing, &unchanged),
@@ -136,7 +139,7 @@ async fn retitle(
             &outline,
             section.parse().map_err(invalid_id)?,
             titled(&request.title)?,
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -162,7 +165,7 @@ async fn place(
             section.parse().map_err(invalid_id)?,
             named_section(request.under)?,
             named_section(request.after)?,
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -185,7 +188,7 @@ async fn promote(
         .promote(
             &outline,
             section.parse().map_err(invalid_id)?,
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -208,7 +211,7 @@ async fn demote(
         .demote(
             &outline,
             section.parse().map_err(invalid_id)?,
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -231,7 +234,7 @@ async fn remove(
         .remove(
             &outline,
             section.parse().map_err(invalid_id)?,
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -257,7 +260,7 @@ async fn attach(
             to_attachment(&request.attachment),
             request.section.parse().map_err(invalid_id)?,
             request.after.as_ref().map(to_attachment),
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -288,7 +291,7 @@ async fn detach(
     };
 
     outlines
-        .detach(&outline, attachment, demanded(&headers)?, &acting)
+        .detach(&outline, attachment, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -308,7 +311,7 @@ fn titled(given: &str) -> Result<SectionTitle, Problem> {
 fn to_response(status: StatusCode, outline: &str, standing: &Standing<Outline>) -> Response {
     (
         status,
-        [(ETAG, tag(standing.version))],
+        [(ETAG, serving::tag(standing.version))],
         Json(to_dto(outline, &standing.state, standing.version)),
     )
         .into_response()
@@ -317,7 +320,7 @@ fn to_response(status: StatusCode, outline: &str, standing: &Standing<Outline>) 
 fn to_change_response(outline: &str, standing: &Standing<Outline>, changed: &Changed) -> Response {
     (
         StatusCode::OK,
-        [(ETAG, tag(standing.version))],
+        [(ETAG, serving::tag(standing.version))],
         Json(to_change_dto(outline, standing, changed)),
     )
         .into_response()

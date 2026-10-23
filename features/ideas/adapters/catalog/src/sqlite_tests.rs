@@ -3,8 +3,10 @@ use ideas_core::{IdeaCatalog, IdeaId, ProjectLink};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 
-use crate::sqlite::{SqliteIdeaCatalog, migrations};
-use crate::suite::{Workbench, a_summary, at};
+use crate::sqlite;
+use crate::sqlite::SqliteIdeaCatalog;
+use crate::suite;
+use crate::suite::Workbench;
 
 struct OnSqlite {
     fixture: SqliteFixture,
@@ -19,7 +21,7 @@ impl Workbench for OnSqlite {
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
         let pool: SqlitePool = fixture.create_database("ideas").await;
-        migrations()
+        sqlite::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty file");
@@ -47,8 +49,8 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
     let bench = OnSqlite::setup().await;
     bench
         .store
-        .remember(&a_summary(
-            IdeaId::generate(at(1_000)),
+        .remember(&suite::a_summary(
+            IdeaId::generate(suite::at(1_000)),
             "project_1",
             "The Loom",
         ))

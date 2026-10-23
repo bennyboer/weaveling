@@ -5,7 +5,7 @@ use outline_core::{
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
 
-use crate::rows::{attachment_from, attachment_type_of};
+use crate::rows;
 
 const REMEMBER: &str = "
     INSERT INTO outline_summaries (outline, project)
@@ -129,7 +129,8 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         outline: OutlineId,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
-        let attachment_types: Vec<&str> = attachments.iter().map(attachment_type_of).collect();
+        let attachment_types: Vec<&str> =
+            attachments.iter().map(rows::attachment_type_of).collect();
         let attachment_ids: Vec<String> = attachments.iter().map(ToString::to_string).collect();
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
@@ -155,7 +156,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         attachment: &Attachment,
     ) -> Result<Vec<OutlineId>, CatalogError> {
         let found = sqlx::query(HOLDING)
-            .bind(attachment_type_of(attachment))
+            .bind(rows::attachment_type_of(attachment))
             .bind(attachment.to_string())
             .fetch_all(&self.pool)
             .await
@@ -173,7 +174,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
 
     async fn mark_gone(&self, attachment: &Attachment) -> Result<(), CatalogError> {
         sqlx::query(GONE)
-            .bind(attachment_type_of(attachment))
+            .bind(rows::attachment_type_of(attachment))
             .bind(attachment.to_string())
             .execute(&self.pool)
             .await
@@ -196,7 +197,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
                     row.try_get("attachment_type").map_err(unreachable)?;
                 let attachment_id: String = row.try_get("attachment_id").map_err(unreachable)?;
 
-                attachment_from(&attachment_type, &attachment_id)
+                rows::attachment_from(&attachment_type, &attachment_id)
             })
             .collect()
     }

@@ -2,7 +2,7 @@ use messaging::Message;
 use sqlx::{Postgres, Transaction};
 
 use crate::outbox::Origin;
-use crate::postgres::as_bigint;
+use crate::postgres;
 
 const NOTIFY: &str = "SELECT pg_notify(left('outbox_waiting_' || current_schema(), 63), '')";
 
@@ -21,7 +21,7 @@ pub async fn enqueue(
     sqlx::query(ENQUEUE)
         .bind(origin.aggregate)
         .bind(origin.kind)
-        .bind(as_bigint(origin.version))
+        .bind(postgres::as_bigint(origin.version))
         .bind(message.id.as_uuid())
         .bind(message.conversation.as_message_id().as_uuid())
         .bind(message.caused_by.map(|caused| caused.as_uuid()))

@@ -2,7 +2,8 @@ use leptos::html::Li;
 use leptos::prelude::*;
 use web_sys::Element;
 
-use crate::nearness::{Nearness, entries_placed_by};
+use crate::nearness;
+use crate::nearness::Nearness;
 
 pub const LEAVES_PLACE: &str = "data-leaves";
 
@@ -21,14 +22,14 @@ impl InView {
 
         in_view.nearness.observing(
             move |entries| {
-                for (leaves, entry) in entries_placed_by(LEAVES_PLACE, entries) {
+                for (leaves, entry) in nearness::entries_placed_by(LEAVES_PLACE, entries) {
                     if entry.is_intersecting() {
                         in_view.nearness.set(&leaves, true);
                     }
                 }
             },
             move |entries| {
-                for (leaves, entry) in entries_placed_by(LEAVES_PLACE, entries) {
+                for (leaves, entry) in nearness::entries_placed_by(LEAVES_PLACE, entries) {
                     if !entry.is_intersecting() && !in_view.holds(&entry.target()) {
                         in_view.nearness.set(&leaves, false);
                     }

@@ -8,8 +8,10 @@ use scenes_core::{SceneId, StoreError};
 use sqlx::{Row, SqlitePool};
 use test_harness::SqliteFixture;
 
-use crate::sqlite::{SqliteSceneStore, migrations};
-use crate::suite::{Tables, Workbench, at, message_for};
+use crate::sqlite;
+use crate::sqlite::SqliteSceneStore;
+use crate::suite;
+use crate::suite::{Tables, Workbench};
 
 struct OnSqlite {
     fixture: SqliteFixture,
@@ -21,11 +23,11 @@ struct OnSqlite {
 struct Compacting(OnSqlite);
 
 fn a_clock() -> Arc<FixedClock> {
-    Arc::new(FixedClock::new(at(2_000)))
+    Arc::new(FixedClock::new(suite::at(2_000)))
 }
 
 fn enqueuing(store: SqliteSceneStore) -> SqliteSceneStore {
-    store.enqueuing(a_clock(), message_for)
+    store.enqueuing(a_clock(), suite::message_for)
 }
 
 async fn relayed(pool: &SqlitePool, heard: &Arc<FakePublisher>) -> Vec<Message> {
@@ -44,7 +46,7 @@ async fn a_migrated_schema() -> (SqliteFixture, SqlitePool) {
         .run(&pool)
         .await
         .expect("the outbox should lay down in an empty file");
-    migrations()
+    sqlite::migrations()
         .run(&pool)
         .await
         .expect("the scene schema should lay down in an empty file");

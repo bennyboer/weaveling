@@ -9,7 +9,8 @@ use projects_contract::DELETED;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -20,7 +21,7 @@ fn an_author() -> Agent {
 }
 
 fn a_workbench() -> (Wired, DiscardOutlinesOnProjectDeletedListener) {
-    let wired = wired(Arc::new(FixedClock::new(at(1_000))));
+    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(wired.outlines.clone());
 
     (wired, sweep)

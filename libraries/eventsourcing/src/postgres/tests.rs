@@ -5,8 +5,9 @@ use test_harness::PostgresFixture;
 use crate::aggregate::AggregateId;
 use crate::codec::Codec;
 use crate::postgres::PostgresEventStore;
-use crate::testing::sample::{SAMPLE, SampleEvent, message_for};
-use crate::testing::stored::{codec, nonsense};
+use crate::testing::sample;
+use crate::testing::sample::{SAMPLE, SampleEvent};
+use crate::testing::stored;
 use crate::testing::{Tables, Workbench};
 
 struct OnPostgres {
@@ -36,7 +37,7 @@ impl Workbench for OnPostgres {
     async fn setup() -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool = ready_for("sample", &fixture).await;
-        let store = PostgresEventStore::new(pool.clone(), codec(), message_for);
+        let store = PostgresEventStore::new(pool.clone(), stored::codec(), sample::message_for);
 
         Self {
             fixture,
@@ -66,7 +67,7 @@ impl Workbench for OnPostgres {
 #[async_trait]
 impl Tables for OnPostgres {
     fn reading_with(&self, codec: Codec<SampleEvent>) -> Self::Store {
-        PostgresEventStore::new(self.pool.clone(), codec, message_for)
+        PostgresEventStore::new(self.pool.clone(), codec, sample::message_for)
     }
 
     async fn close(&self) {
@@ -89,7 +90,7 @@ impl Tables for OnPostgres {
         .bind(aggregate.as_str())
         .bind(SAMPLE.as_str())
         .bind(version as i64)
-        .bind(nonsense())
+        .bind(stored::nonsense())
         .execute(&self.pool)
         .await
         .expect("writing a row by hand should succeed");

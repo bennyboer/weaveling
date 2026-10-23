@@ -1,10 +1,9 @@
 use outbox::Origin;
-use outbox::postgres::enqueue;
 use sqlx::{Postgres, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
-use crate::postgres::{PostgresEventStore, agent, as_bigint};
+use crate::postgres::{PostgresEventStore, agent};
 use crate::store::StoreError;
 use crate::version::Version;
 
@@ -48,7 +47,7 @@ where
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
-        if head != as_bigint(expected) {
+        if head != crate::postgres::as_bigint(expected) {
             return Err(StoreError::outdated(aggregate, kind, expected));
         }
 
@@ -76,10 +75,10 @@ where
         sqlx::query(WRITE)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
-            .bind(as_bigint(happened.metadata.version))
+            .bind(crate::postgres::as_bigint(happened.metadata.version))
             .bind(happened.event.name().as_str())
             .bind((self.codec.body)(&happened.event))
-            .bind(as_bigint(happened.event.version()))
+            .bind(crate::postgres::as_bigint(happened.event.version()))
             .bind(agent::encode(&happened.metadata.agent))
             .bind(happened.metadata.occurred_at)
             .bind(happened.metadata.is_snapshot)
@@ -110,7 +109,7 @@ where
             version: happened.metadata.version.count(),
         };
 
-        enqueue(transaction, origin, &message)
+        outbox::postgres::enqueue(transaction, origin, &message)
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }

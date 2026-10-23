@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos_router::hooks::use_navigate;
+use leptos_router::hooks;
 
 use crate::http::ApiError;
 use crate::ideas::followed;
@@ -10,7 +10,8 @@ use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::route;
 use crate::scenes::followed as scenes_followed;
-use crate::scenes::model::{SceneSummary, hold};
+use crate::scenes::model;
+use crate::scenes::model::SceneSummary;
 use crate::scenes::service as scene_service;
 use outline_contract::OutlineEventDTO;
 
@@ -116,7 +117,7 @@ impl OutlineViewState {
             move |summary| {
                 scenes.update(|held| {
                     if let Some(held) = held {
-                        hold(held, summary.clone());
+                        model::hold(held, summary.clone());
                     }
                 })
             },
@@ -263,7 +264,7 @@ impl OutlineViewState {
             Action::new_local(move |to: &SectionId| {
                 let id = id.clone();
                 let to = to.clone();
-                let opening = use_navigate();
+                let opening = hooks::use_navigate();
 
                 async move {
                     let started = match scene_service::create(&id).await {
@@ -271,7 +272,9 @@ impl OutlineViewState {
                         Err(failure) => return problem.set(Some(failure)),
                     };
 
-                    scenes.update(|held| hold(held.get_or_insert_default(), started.summarized()));
+                    scenes.update(|held| {
+                        model::hold(held.get_or_insert_default(), started.summarized())
+                    });
                     let Some(open) = outline.get_untracked() else {
                         return;
                     };

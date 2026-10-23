@@ -7,9 +7,9 @@ pub mod unreachable;
 pub use account_menu::account_in_masthead;
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 
-use crate::http::when_no_longer_signed_in;
+use crate::http;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedInAccount {
@@ -45,7 +45,7 @@ impl CurrentSession {
         let session = Self {
             state: RwSignal::new(SignInState::Unknown),
         };
-        when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
+        http::when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
         session.ask();
 
         session
@@ -57,7 +57,7 @@ impl CurrentSession {
     }
 
     fn ask(self) {
-        spawn_local(async move {
+        task::spawn_local(async move {
             self.state
                 .set(service::current().await.unwrap_or(SignInState::Unreachable));
         });
@@ -80,7 +80,7 @@ impl CurrentSession {
     }
 
     fn sign_out(self) {
-        spawn_local(async move {
+        task::spawn_local(async move {
             if service::sign_out().await.is_ok() {
                 self.state.set(SignInState::SignedOut);
             }

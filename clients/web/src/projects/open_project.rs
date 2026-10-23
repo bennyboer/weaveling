@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 
 use crate::http::ApiError;
 use crate::live::{Following, Told};
@@ -51,7 +51,7 @@ impl OpenProject {
         let asked = self.latest.get_value() + 1;
         self.latest.set_value(asked);
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             let found = service::details(&project).await;
             let still_open = self
                 .project

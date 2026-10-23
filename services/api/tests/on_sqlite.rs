@@ -13,10 +13,10 @@ use mailing::LoggingMailer;
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
-use weaveling_service_api::{Accounts, Adapters, Storage, Unprepared, app};
+use weaveling_service_api::{Accounts, Adapters, Storage, Unprepared};
 use wiring::sqlite::{DataDirectory, Files};
 
-use journeys::{Backend, DATABASES, Journey, id_in};
+use journeys::{Backend, DATABASES, Journey};
 
 struct OnSqlite {
     fixture: SqliteFixture,
@@ -133,16 +133,18 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
     let local = || Storage::Sqlite(files.clone());
 
     let id = {
-        let first = TestServer::new(app(Adapters::assembled(
-            local(),
-            Accounts::Off,
-            Arc::new(LoggingMailer),
-            Arc::new(SystemClock),
-        )
-        .await
-        .expect("the first start should lay every file down")));
+        let first = TestServer::new(weaveling_service_api::app(
+            Adapters::assembled(
+                local(),
+                Accounts::Off,
+                Arc::new(LoggingMailer),
+                Arc::new(SystemClock),
+            )
+            .await
+            .expect("the first start should lay every file down"),
+        ));
 
-        id_in(
+        journeys::id_in(
             &first
                 .post("/api/projects")
                 .json(&json!({ "name": "Outliving" }))
@@ -153,14 +155,16 @@ async fn what_was_written_survives_the_service_starting_again_from_its_files() {
     };
     files.close_everything().await;
 
-    let second = TestServer::new(app(Adapters::assembled(
-        local(),
-        Accounts::Off,
-        Arc::new(LoggingMailer),
-        Arc::new(SystemClock),
-    )
-    .await
-    .expect("a second start should find every file already laid down")));
+    let second = TestServer::new(weaveling_service_api::app(
+        Adapters::assembled(
+            local(),
+            Accounts::Off,
+            Arc::new(LoggingMailer),
+            Arc::new(SystemClock),
+        )
+        .await
+        .expect("a second start should find every file already laid down"),
+    ));
     let found = second.get(&format!("/api/projects/{id}")).await;
 
     found.assert_status_ok();

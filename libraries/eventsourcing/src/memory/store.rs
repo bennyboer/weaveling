@@ -187,7 +187,8 @@ mod tests {
 
     use super::*;
     use crate::testing::Workbench;
-    use crate::testing::sample::{SampleEvent, message_for};
+    use crate::testing::sample;
+    use crate::testing::sample::SampleEvent;
 
     struct InMemory {
         store: InMemoryEventStore<SampleEvent>,
@@ -207,7 +208,7 @@ mod tests {
             ));
 
             Self {
-                store: InMemoryEventStore::enqueuing_to(outbox.clone(), message_for),
+                store: InMemoryEventStore::enqueuing_to(outbox.clone(), sample::message_for),
                 outbox,
                 publisher,
             }

@@ -3,7 +3,8 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::http::{ApiError, Particular, Refusal};
-use crate::speech::{Speech, said};
+use crate::speech;
+use crate::speech::Speech;
 
 pub fn problem(failure: ApiError) -> impl IntoView {
     html::p()
@@ -21,7 +22,7 @@ pub fn problem_to_dismiss(
         html::button()
             .r#type("button")
             .class("dismiss")
-            .attr("aria-label", said("problem-dismiss"))
+            .attr("aria-label", speech::said("problem-dismiss"))
             .on(ev::click, move |_| dismiss())
             .child("\u{00d7}"),
     ))

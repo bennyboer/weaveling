@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use accounts_core::{AccountEvent, AccountService, SecretStores};
-use accounts_messaging::message_for;
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
 use eventsourcing::EventStore;
@@ -63,7 +62,8 @@ impl Feature for AccountFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } = EventSourced::in_memory(message_for, context);
+        let EventSourced { events, outbox } =
+            EventSourced::in_memory(accounts_messaging::message_for, context);
         let secrets = Arc::new(InMemorySecrets::default());
 
         Ports {
@@ -76,8 +76,12 @@ impl Feature for AccountFeature {
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, Unprepared> {
-        let EventSourced { events, outbox } =
-            EventSourced::on_postgres(&pool, accounts_store::codec(), message_for, context);
+        let EventSourced { events, outbox } = EventSourced::on_postgres(
+            &pool,
+            accounts_store::codec(),
+            accounts_messaging::message_for,
+            context,
+        );
         let secrets = Arc::new(accounts_secrets::PostgresSecrets::new(pool));
 
         Ok(Ports {
@@ -99,8 +103,12 @@ impl Feature for AccountFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, Unprepared> {
-        let EventSourced { events, outbox } =
-            EventSourced::on_sqlite(&pool, accounts_store::codec(), message_for, context);
+        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+            &pool,
+            accounts_store::codec(),
+            accounts_messaging::message_for,
+            context,
+        );
         let secrets = Arc::new(accounts_secrets::SqliteSecrets::new(pool));
 
         Ok(Ports {

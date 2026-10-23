@@ -4,18 +4,18 @@ use leptos::{IntoView, view};
 use leptos_router::components::A;
 
 use crate::route;
-use crate::shell::masthead;
-use crate::speech::said;
+use crate::shell;
+use crate::speech;
 
 #[component]
 pub fn MissingPage() -> impl IntoView {
     (
-        masthead(None),
+        shell::masthead(None),
         html::main().child(html::div().class("column").child((
-            html::p().class("empty").child(said("missing")),
+            html::p().class("empty").child(speech::said("missing")),
             view! {
                 <A href=route::WORKSPACE attr:class="back">
-                    {said("missing-back")}
+                    {speech::said("missing-back")}
                 </A>
             },
         ))),

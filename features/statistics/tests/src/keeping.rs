@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use messaging::{Listener, Message, RoutingKey};
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
-use serde_json::to_value;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, WordCount, WordCountCatalog};
 use statistics_messaging::ProjectWordCountsListener;
@@ -45,7 +44,7 @@ impl Wired {
 fn counted(scene: &str, words: u64, seconds: i64) -> Message {
     Message::opening(
         RoutingKey::parse(WORDS_COUNTED).expect("a declared key"),
-        to_value(WordsCountedDTO {
+        serde_json::to_value(WordsCountedDTO {
             scene: scene.to_owned(),
             project: "project_1".to_owned(),
             words,
@@ -58,7 +57,7 @@ fn counted(scene: &str, words: u64, seconds: i64) -> Message {
 fn deleted(scene: &str) -> Message {
     Message::opening(
         RoutingKey::parse(DELETED).expect("a declared key"),
-        to_value(SceneDeletedDTO {
+        serde_json::to_value(SceneDeletedDTO {
             scene: scene.to_owned(),
         })
         .expect("a deletion is plain data"),

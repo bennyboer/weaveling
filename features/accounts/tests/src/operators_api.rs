@@ -4,10 +4,11 @@ use axum::http::header::{COOKIE, SET_COOKIE};
 use axum_test::TestServer;
 use serde_json::Value;
 
-use crate::wiring::{ADA, HER_PASSWORD, Wired, wired};
+use crate::wiring;
+use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 async fn served_with_ada_signed_in() -> (Wired, TestServer, String) {
-    let wired = wired();
+    let wired = wiring::wired();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)

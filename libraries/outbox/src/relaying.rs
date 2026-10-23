@@ -152,7 +152,8 @@ mod tests {
 
     use super::*;
     use crate::outbox::Origin;
-    use crate::postgres::{PostgresOutbox, enqueue};
+    use crate::postgres;
+    use crate::postgres::PostgresOutbox;
 
     fn briskly() -> Cadence {
         Cadence {
@@ -166,7 +167,7 @@ mod tests {
 
     async fn a_waiting_message(pool: &PgPool) {
         let mut transaction = pool.begin().await.expect("a transaction opens");
-        enqueue(
+        postgres::enqueue(
             &mut transaction,
             Origin {
                 aggregate: "scene_1",

@@ -13,7 +13,8 @@ use messaging::RoutingKey;
 use registry::Registry;
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -34,7 +35,7 @@ fn an_author() -> Agent {
 fn a_workbench() -> (Wired, Arc<FixedClock>) {
     let clock = Arc::new(FixedClock::new(at(1_000)));
 
-    (wired(clock.clone()), clock)
+    (wiring::wired(clock.clone()), clock)
 }
 
 async fn an_open_board(wired: &Wired) -> BoardId {

@@ -3,12 +3,12 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use leptos_router::NavigateOptions;
-use leptos_router::hooks::use_navigate;
+use leptos_router::hooks;
 
-use crate::dialog::modal;
+use crate::dialog;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
-use crate::speech::{said, say, say_about, say_with};
+use crate::speech;
 use crate::writing::beginnings::Unplaced;
 use crate::writing::heading::KeptTitle;
 use crate::writing::side::Side;
@@ -48,7 +48,7 @@ enum Answer {
 }
 
 pub fn asking(state: WriteViewState) -> impl IntoView {
-    let navigate = StoredValue::new_local(use_navigate());
+    let navigate = StoredValue::new_local(hooks::use_navigate());
     Effect::new(move || {
         if let Some(unplaced) = state.beginnings.unplaced() {
             state.beginnings.let_unplaced_be_asked();
@@ -63,8 +63,8 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
             let choices = untrack(|| question.with_value(|question| offered(question, state)));
             let cancel = move || state.margin.return_to_writing();
 
-            modal(
-                say(title),
+            dialog::modal(
+                speech::say(title),
                 "",
                 cancel,
                 (
@@ -73,7 +73,7 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
                         untrack(|| question.with_value(way_back)).map(|way_back| {
                             html::button()
                                 .on(ev::click, move |_| cancel())
-                                .child(said(way_back))
+                                .child(speech::said(way_back))
                         }),
                         choices
                             .into_iter()
@@ -88,7 +88,7 @@ pub fn asking(state: WriteViewState) -> impl IntoView {
                                             })
                                         });
                                     })
-                                    .child(said(label))
+                                    .child(speech::said(label))
                             })
                             .collect::<Vec<_>>(),
                     )),
@@ -141,8 +141,8 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
         Asking::DeleteScene(scene) => {
             let shown = untrack(|| state.labels.of_scene(scene)).shown;
             let told = match shown.trim() {
-                "" => say("asked-delete-scene-told-unnamed"),
-                shown => say_about("asked-delete-scene-told", "scene", shown),
+                "" => speech::say("asked-delete-scene-told-unnamed"),
+                shown => speech::say_about("asked-delete-scene-told", "scene", shown),
             };
 
             ("asked-delete-scene", told)
@@ -152,11 +152,11 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
             let mut args = FluentArgs::new();
             args.set("section", title.trim().to_owned());
             let told = match shown.trim() {
-                "" => say_with("removed-meanwhile-told-unnamed", &args),
+                "" => speech::say_with("removed-meanwhile-told-unnamed", &args),
                 shown => {
                     args.set("scene", shown.to_owned());
 
-                    say_with("removed-meanwhile-told", &args)
+                    speech::say_with("removed-meanwhile-told", &args)
                 }
             };
 
@@ -164,11 +164,11 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
         }
         Asking::PlaceGone(Unplaced::Scene { begins, .. }) => (
             "place-gone",
-            say_about("place-gone-scene", "begins", begins.trim()),
+            speech::say_about("place-gone-scene", "begins", begins.trim()),
         ),
         Asking::PlaceGone(Unplaced::Section { titled }) => (
             "place-gone",
-            say_about("place-gone-section", "section", titled.trim()),
+            speech::say_about("place-gone-section", "section", titled.trim()),
         ),
         Asking::RenamedMeanwhile { mine, theirs, .. } => {
             let mut args = FluentArgs::new();
@@ -177,10 +177,13 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
 
             (
                 "renamed-meanwhile",
-                say_with("renamed-meanwhile-heading-told", &args),
+                speech::say_with("renamed-meanwhile-heading-told", &args),
             )
         }
-        Asking::RemoveSection(_) => ("asked-remove-section", say("asked-remove-section-told")),
+        Asking::RemoveSection(_) => (
+            "asked-remove-section",
+            speech::say("asked-remove-section-told"),
+        ),
         Asking::RemoveChosen { scenes, sections } => {
             let mut args = FluentArgs::new();
             args.set("scenes", scenes.len());
@@ -201,7 +204,7 @@ fn worded(question: &Asking, state: WriteViewState) -> (&'static str, String) {
             ]
             .into_iter()
             .flatten()
-            .map(|sentence| say_with(sentence, &args))
+            .map(|sentence| speech::say_with(sentence, &args))
             .collect::<Vec<_>>()
             .join(" ");
 

@@ -7,7 +7,8 @@ use web_sys::HtmlElement;
 use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::side::Side;
 use crate::writing::structure::Structure;
-use crate::writing::walk::{Stop, Towards, stops_in_reading_order};
+use crate::writing::walk;
+use crate::writing::walk::{Stop, Towards};
 
 #[derive(Clone, Copy)]
 pub struct Choosing {
@@ -144,7 +145,7 @@ pub fn hand_the_keys_to_the_book() {
 fn choosable(structure: Structure, loose: LooseScenes, side: Side) -> Vec<Stop> {
     match side {
         Side::Book => structure
-            .read(stops_in_reading_order)
+            .read(walk::stops_in_reading_order)
             .unwrap_or_default()
             .into_iter()
             .filter(|stop| matches!(stop, Stop::Heading(_) | Stop::Scene(_)))

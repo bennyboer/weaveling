@@ -8,10 +8,11 @@ use axum_test::{TestResponse, TestServer};
 use serde_json::Value;
 use time::Duration;
 
-use crate::wiring::{ADA, HER_PASSWORD, Wired, at, wired};
+use crate::wiring;
+use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 fn served() -> (Wired, TestServer) {
-    let wired = wired();
+    let wired = wiring::wired();
     let server = TestServer::new(wired.routes.clone());
 
     (wired, server)
@@ -160,7 +161,9 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
         .assert_status(StatusCode::ACCEPTED);
     let code = wired.last_code_sent_to(ADA);
 
-    wired.clock.set(at(1_700_000_000) + Duration::hours(1));
+    wired
+        .clock
+        .set(wiring::at(1_700_000_000) + Duration::hours(1));
     refused_as(
         server
             .post("/accounts/verification")
@@ -172,7 +175,7 @@ async fn an_expired_or_exhausted_code_is_refused_as_such() {
         refused::CODE_EXPIRED,
     );
 
-    wired.clock.set(at(1_700_000_000));
+    wired.clock.set(wiring::at(1_700_000_000));
     let wrong = if code == "000000" { "000001" } else { "000000" };
     for _ in 0..5 {
         let _refused = server

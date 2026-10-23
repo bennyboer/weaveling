@@ -13,7 +13,8 @@ use projects_contract::{
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 
 const UNKNOWN_ID: &str = "project_031VkO0hnpeQZUiAB7nDma";
 
@@ -47,7 +48,7 @@ fn a_server() -> Serving {
 }
 
 fn a_server_on(clock: Arc<FixedClock>) -> Serving {
-    let wired = wired(clock);
+    let wired = wiring::wired(clock);
     let server = TestServer::new(wired.routes.clone().layer(Extension(Agent::Local)));
 
     Serving { server, wired }

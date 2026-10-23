@@ -1,11 +1,10 @@
 use boards_contract::{BoardEventDTO, SizeDTO, SpotDTO};
 use boards_core::{BoardEvent, Size, Spot};
-use eventpublishing::message_for as message_carrying;
 use eventsourcing::Recorded;
 use messaging::Message;
 
 pub fn message_for(happened: &Recorded<BoardEvent>) -> Option<Message> {
-    message_carrying(happened, body)
+    eventpublishing::message_for(happened, body)
 }
 
 fn body(event: &BoardEvent) -> Option<BoardEventDTO> {
@@ -54,7 +53,7 @@ mod tests {
         EVERY_BOARD, IDEA_MOVED, IDEA_PINNED, IDEA_RAISED, IDEA_RESIZED, IDEA_UNPINNED, STARTED,
     };
     use boards_core::{BoardId, IdeaLink, KIND, PositionedIdea, ProjectLink};
-    use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
+    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Version};
     use messaging::{Handler, RoutingKey, Subscription};
     use time::{Duration, OffsetDateTime};
@@ -139,7 +138,7 @@ mod tests {
 
         for (event, declared) in everything_worth_publishing() {
             assert_eq!(
-                routing_for(KIND, event.name()).to_string(),
+                eventpublishing::routing_for(KIND, event.name()).to_string(),
                 declared,
                 "the key the library derives and the key subscribers bind to must not drift"
             );
@@ -149,13 +148,13 @@ mod tests {
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
-        assert_eq!(everything_from(KIND), EVERY_BOARD);
+        assert_eq!(eventpublishing::everything_from(KIND), EVERY_BOARD);
         assert!(
             everything_worth_publishing()
                 .into_iter()
                 .all(|(event, _)| Subscription::parse(EVERY_BOARD)
                     .expect("a declared pattern")
-                    .covers(&routing_for(KIND, event.name()))),
+                    .covers(&eventpublishing::routing_for(KIND, event.name()))),
             "a listener asking for every board must hear all of them"
         );
     }
@@ -172,7 +171,7 @@ mod tests {
                 })
         };
 
-        assert!(listening(&routing_for(
+        assert!(listening(&eventpublishing::routing_for(
             KIND,
             BoardEvent::Started {
                 project: ProjectLink::from("project_1")
@@ -190,7 +189,7 @@ mod tests {
             },
         ] {
             assert!(
-                !listening(&routing_for(KIND, pinning.name())),
+                !listening(&eventpublishing::routing_for(KIND, pinning.name())),
                 "which board a project has can only change when one is started, so a drop must not \
                  cost a projection write"
             );

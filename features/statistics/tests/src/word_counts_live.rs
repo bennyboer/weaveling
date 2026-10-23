@@ -8,7 +8,6 @@ use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
 use statistics_rest::TellingWordCounts;
 use time::OffsetDateTime;
-use tokio::time::timeout;
 
 struct CountsFollowed {
     catalog: TellingWordCounts,
@@ -51,7 +50,7 @@ async fn counted(catalog: &TellingWordCounts, scene: &str, project: &str, words:
 }
 
 async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = timeout(Duration::from_secs(1), socket.receive_text())
+    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
         .await
         .expect("the counts are told while they are fresh");
 

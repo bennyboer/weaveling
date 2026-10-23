@@ -4,7 +4,8 @@ use scenes_contract::{
     ScenePageDTO,
 };
 
-use crate::http::{ApiError, checked, parsed, sent, sent_with};
+use crate::http;
+use crate::http::ApiError;
 use crate::ideas::model::IdeaId;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::{Scene, SceneId, SceneSummary};
@@ -16,38 +17,39 @@ const SUBJECT: &str = "scene";
 const RESTYLING: &str = "rewriting of the quotation marks";
 
 pub async fn open(id: &SceneId) -> Result<Scene, ApiError> {
-    let response = sent(Request::get(&format!("{SCENES}/{id}"))).await?;
+    let response = http::sent(Request::get(&format!("{SCENES}/{id}"))).await?;
 
-    Ok(as_scene(parsed(response, SUBJECT).await?))
+    Ok(as_scene(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn retitle(id: &SceneId, title: &str) -> Result<Scene, ApiError> {
     let payload = RetitleSceneRequest {
         title: title.to_owned(),
     };
-    let response = sent_with(Request::patch(&format!("{SCENES}/{id}")), &payload).await?;
+    let response = http::sent_with(Request::patch(&format!("{SCENES}/{id}")), &payload).await?;
 
-    Ok(as_scene(parsed(response, SUBJECT).await?))
+    Ok(as_scene(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn link(id: &SceneId, idea: &IdeaId) -> Result<Scene, ApiError> {
     let payload = LinkIdeaRequest {
         idea: idea.to_string(),
     };
-    let response = sent_with(Request::post(&format!("{SCENES}/{id}/ideas")), &payload).await?;
+    let response =
+        http::sent_with(Request::post(&format!("{SCENES}/{id}/ideas")), &payload).await?;
 
-    Ok(as_scene(parsed(response, SUBJECT).await?))
+    Ok(as_scene(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn unlink(id: &SceneId, idea: &IdeaId) -> Result<Scene, ApiError> {
-    let response = sent(Request::delete(&format!("{SCENES}/{id}/ideas/{idea}"))).await?;
+    let response = http::sent(Request::delete(&format!("{SCENES}/{id}/ideas/{idea}"))).await?;
 
-    Ok(as_scene(parsed(response, SUBJECT).await?))
+    Ok(as_scene(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn delete(id: &SceneId) -> Result<(), ApiError> {
-    let response = sent(Request::delete(&format!("{SCENES}/{id}"))).await?;
-    checked(response, SUBJECT).await?;
+    let response = http::sent(Request::delete(&format!("{SCENES}/{id}"))).await?;
+    http::checked(response, SUBJECT).await?;
     written::forget(id);
 
     Ok(())
@@ -62,8 +64,8 @@ pub async fn in_project(project: &ProjectId) -> Result<Vec<SceneSummary>, ApiErr
             Some(last) => format!("{SCENES}?project={project}&after={last}"),
             None => format!("{SCENES}?project={project}"),
         };
-        let response = sent(Request::get(&asked)).await?;
-        let page: ScenePageDTO = parsed(response, SUBJECT).await?;
+        let response = http::sent(Request::get(&asked)).await?;
+        let page: ScenePageDTO = http::parsed(response, SUBJECT).await?;
         listed.extend(page.scenes.into_iter().map(SceneSummary::from));
 
         match page.next {
@@ -76,14 +78,14 @@ pub async fn in_project(project: &ProjectId) -> Result<Vec<SceneSummary>, ApiErr
 pub async fn quotation_restyling(
     project: &ProjectId,
 ) -> Result<Option<QuotationRestyling>, ApiError> {
-    let response = sent(Request::get(&format!(
+    let response = http::sent(Request::get(&format!(
         "{SCENES}/quotation-restylings/{project}"
     )))
     .await?;
     if response.status() == 404 {
         return Ok(None);
     }
-    let found: QuotationRestylingDTO = parsed(response, RESTYLING).await?;
+    let found: QuotationRestylingDTO = http::parsed(response, RESTYLING).await?;
 
     Ok(Some(QuotationRestyling::from(found)))
 }
@@ -92,8 +94,8 @@ pub async fn create(project: &ProjectId) -> Result<Scene, ApiError> {
     let payload = CreateSceneRequest {
         project: project.to_string(),
     };
-    let response = sent_with(Request::post(SCENES), &payload).await?;
-    let made = as_scene(parsed(response, SUBJECT).await?);
+    let response = http::sent_with(Request::post(SCENES), &payload).await?;
+    let made = as_scene(http::parsed(response, SUBJECT).await?);
     written::remember(project, made.summarized());
 
     Ok(made)

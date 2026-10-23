@@ -4,7 +4,7 @@ use ideas_contract::IdeaEventDTO;
 
 use crate::live::Told;
 use crate::projects::model::ProjectId;
-use crate::speech::say;
+use crate::speech;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IdeaId(String);
@@ -32,7 +32,7 @@ impl Display for IdeaId {
 impl Idea {
     pub fn shown_as(&self) -> String {
         if self.title.is_empty() {
-            say("untitled")
+            speech::say("untitled")
         } else {
             self.title.clone()
         }

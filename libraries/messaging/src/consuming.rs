@@ -5,7 +5,8 @@ use clock::Clock;
 
 use tokio::sync::watch;
 
-use crate::delivering::{ATTEMPTS, Deliveries, again_after};
+use crate::delivering;
+use crate::delivering::{ATTEMPTS, Deliveries};
 use crate::in_process::InProcessDispatcher;
 use crate::listening::{Delivery, NotHandled, Notifications};
 
@@ -163,7 +164,7 @@ impl DeliveryConsumer {
                     error = %why,
                     "a listener refused a message, so it will be offered again"
                 );
-                let again_at = now + again_after(queued.attempts + 1);
+                let again_at = now + delivering::again_after(queued.attempts + 1);
                 self.settled(
                     self.deliveries
                         .mark_as_refused(queued.id, &why, again_at)
@@ -339,7 +340,7 @@ mod tests {
 
         wired
             .clock
-            .set(at(1_000) + again_after(1) + Duration::seconds(1));
+            .set(at(1_000) + delivering::again_after(1) + Duration::seconds(1));
         wired.consumer().drain(16).await;
 
         assert_eq!(
@@ -362,7 +363,7 @@ mod tests {
         wired.consumer().drain(16).await;
         wired
             .clock
-            .set(at(1_000) + again_after(1) + Duration::seconds(1));
+            .set(at(1_000) + delivering::again_after(1) + Duration::seconds(1));
         wired.consumer().drain(16).await;
 
         assert_eq!(fussy.how_many(), 1);
@@ -386,7 +387,7 @@ mod tests {
         for attempt in 1..=ATTEMPTS {
             wired.clock.set(now);
             wired.consumer().drain(16).await;
-            now = now + again_after(attempt) + Duration::seconds(1);
+            now = now + delivering::again_after(attempt) + Duration::seconds(1);
         }
 
         assert_eq!(

@@ -1,9 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
-
-use words::opening_of;
+use leptos::task;
 
 use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scenes;
@@ -80,7 +78,7 @@ impl Labels {
     pub fn opening_is(self, scene: SceneId, text: String) {
         self.opened_here
             .update_value(|here| _ = here.insert(scene.clone()));
-        let opening = opening_of(&text);
+        let opening = words::opening_of(&text);
         let unchanged = self
             .openings
             .with_untracked(|openings| openings.get(&scene) == Some(&opening));
@@ -107,7 +105,7 @@ impl Labels {
             .update_value(|renaming| _ = renaming.insert(scene.clone()));
         self.saving.write_begun();
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             if let Err(failure) = scenes::retitle(&scene, &title).await {
                 self.titles
                     .update(|titles| _ = titles.insert(scene.clone(), before));

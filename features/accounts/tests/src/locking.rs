@@ -3,7 +3,8 @@ use accounts_core::{
 };
 use eventsourcing::{AggregateId, EventStore, ServiceError, Version};
 
-use crate::wiring::{HER_PASSWORD, Wired, at, wired};
+use crate::wiring;
+use crate::wiring::{HER_PASSWORD, Wired};
 
 const ADA: &str = "ada@example.com";
 const GRACE: &str = "grace@example.com";
@@ -58,7 +59,7 @@ async fn is_locked(wired: &Wired, id: &AccountId) -> bool {
 
 #[tokio::test]
 async fn an_operator_locks_an_account_and_its_sessions_end_at_once() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     let (token, _) = wired
         .accounts
@@ -85,7 +86,7 @@ async fn an_operator_locks_an_account_and_its_sessions_end_at_once() {
 
 #[tokio::test]
 async fn a_lock_is_told_as_the_operators_doing() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     wired
@@ -108,7 +109,7 @@ async fn a_lock_is_told_as_the_operators_doing() {
 
 #[tokio::test]
 async fn a_locked_account_is_refused_at_signing_in_only_once_its_password_is_right() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
@@ -131,7 +132,7 @@ async fn a_locked_account_is_refused_at_signing_in_only_once_its_password_is_rig
 
 #[tokio::test]
 async fn only_an_operator_locks_or_unlocks() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     let hedy = signed_up(&wired, "hedy@example.com").await;
 
@@ -155,7 +156,7 @@ async fn only_an_operator_locks_or_unlocks() {
 
 #[tokio::test]
 async fn an_unlocked_account_signs_in_again() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
@@ -178,7 +179,7 @@ async fn an_unlocked_account_signs_in_again() {
 
 #[tokio::test]
 async fn an_operator_cannot_lock_themselves() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (_ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     assert!(matches!(
@@ -191,7 +192,7 @@ async fn an_operator_cannot_lock_themselves() {
 
 #[tokio::test]
 async fn an_account_is_locked_only_with_a_reason() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
 
     assert!(matches!(
@@ -203,7 +204,7 @@ async fn an_account_is_locked_only_with_a_reason() {
 
 #[tokio::test]
 async fn a_locked_account_may_set_a_new_password_but_stays_locked() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     wired
         .accounts
@@ -233,21 +234,21 @@ async fn a_locked_account_may_set_a_new_password_but_stays_locked() {
 
 #[tokio::test]
 async fn unlocking_brings_back_no_session_the_lock_ended() {
-    let wired = wired();
+    let wired = wiring::wired();
     let (ada, grace) = ada_and_grace_the_operator(&wired).await;
     let (token, _) = wired
         .accounts
         .begin_session(ADA, HER_PASSWORD)
         .await
         .expect("she signs in before she is locked");
-    wired.clock.set(at(1_700_000_060));
+    wired.clock.set(wiring::at(1_700_000_060));
     wired
         .accounts
         .lock(&grace, &ada, "Sent spam.")
         .await
         .expect("an operator may lock an account");
 
-    wired.clock.set(at(1_700_000_120));
+    wired.clock.set(wiring::at(1_700_000_120));
     wired
         .accounts
         .unlock(&grace, &ada)

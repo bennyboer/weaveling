@@ -7,7 +7,7 @@ use tokio::sync::watch;
 use crate::outbox::Origin;
 use clock::text;
 
-use crate::sqlite::as_integer;
+use crate::sqlite;
 
 static ENQUEUED: LazyLock<watch::Sender<u64>> = LazyLock::new(|| watch::channel(0).0);
 
@@ -30,7 +30,7 @@ pub async fn enqueue(
     sqlx::query(ENQUEUE)
         .bind(origin.aggregate)
         .bind(origin.kind)
-        .bind(as_integer(origin.version))
+        .bind(sqlite::as_integer(origin.version))
         .bind(message.id.as_uuid().hyphenated().to_string())
         .bind(
             message

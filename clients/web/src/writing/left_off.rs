@@ -2,14 +2,15 @@ use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 
-use crate::kept::{keep, recall};
+use crate::kept;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::side::Side;
 use crate::writing::structure::Structure;
 use crate::writing::viewport::Viewport;
-use crate::writing::walk::{Stop, Towards, Walk, stops_in_reading_order};
+use crate::writing::walk;
+use crate::writing::walk::{Stop, Towards, Walk};
 
 #[derive(Clone, Copy)]
 pub struct LeftOff {
@@ -77,7 +78,7 @@ impl LeftOff {
     }
 
     pub fn remember(self, scene: &SceneId, at: u32) {
-        keep(&self.key(), &format!("{scene} {at}"));
+        kept::keep(&self.key(), &format!("{scene} {at}"));
     }
 
     pub fn land(self, following: Option<SceneId>) {
@@ -99,7 +100,7 @@ impl LeftOff {
         let read = match self.side {
             Side::Book => self
                 .structure
-                .read_untracked(stops_in_reading_order)
+                .read_untracked(walk::stops_in_reading_order)
                 .unwrap_or_default(),
             Side::Loose => self
                 .loose
@@ -133,7 +134,7 @@ impl LeftOff {
     }
 
     fn recalled(self) -> Option<(SceneId, u32)> {
-        let kept = recall(&self.key())?;
+        let kept = kept::recall(&self.key())?;
         let (scene, at) = kept.split_once(' ')?;
 
         Some((SceneId::from(scene.to_owned()), at.parse().ok()?))

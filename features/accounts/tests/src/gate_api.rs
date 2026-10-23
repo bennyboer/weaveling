@@ -2,21 +2,22 @@ use accounts_contract::{SESSION_COOKIE, SignInRequest, refused};
 use accounts_core::{AccountId, Session, SessionToken, Sessions, Stage};
 use axum::http::StatusCode;
 use axum::http::header::{COOKIE, SET_COOKIE};
-use axum::routing::get;
+use axum::routing;
 use axum::{Extension, Router};
 use axum_test::{TestResponse, TestServer};
 use clock::Clock;
 use eventsourcing::Agent;
 use serde_json::Value;
 
-use crate::wiring::{ADA, HER_PASSWORD, Wired, wired};
+use crate::wiring;
+use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 async fn who_acts(Extension(acting): Extension<Agent>) -> String {
     acting.to_string()
 }
 
 async fn behind_the_gate() -> (Wired, TestServer, TestServer) {
-    let wired = wired();
+    let wired = wiring::wired();
     wired
         .accounts
         .sign_up(ADA, "Ada", HER_PASSWORD)
@@ -29,7 +30,7 @@ async fn behind_the_gate() -> (Wired, TestServer, TestServer) {
         .expect("the code sent should verify");
     let work = accounts_rest::admitting_only_the_signed_in(
         wired.accounts.clone(),
-        Router::new().route("/work", get(who_acts)),
+        Router::new().route("/work", routing::get(who_acts)),
     );
 
     let accounts = TestServer::new(wired.routes.clone());

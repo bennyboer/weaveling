@@ -4,8 +4,10 @@ use async_trait::async_trait;
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 
-use crate::deliveries::sqlite::{SqliteDeliveries, migrations};
-use crate::deliveries::suite::{Workbench, a_listener, a_message, at};
+use crate::deliveries::sqlite;
+use crate::deliveries::sqlite::SqliteDeliveries;
+use crate::deliveries::suite;
+use crate::deliveries::suite::Workbench;
 use crate::delivering::Deliveries;
 
 struct OnSqlite {
@@ -21,7 +23,7 @@ impl Workbench for OnSqlite {
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
         let pool = fixture.create_database("messaging").await;
-        migrations()
+        sqlite::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty file");
@@ -55,7 +57,10 @@ async fn an_enqueued_delivery_wakes_whoever_is_waiting_for_one() {
 
     bench
         .store()
-        .enqueue(&a_listener("catalogue-idea"), &a_message("idea.captured"))
+        .enqueue(
+            &suite::a_listener("catalogue-idea"),
+            &suite::a_message("idea.captured"),
+        )
         .await
         .expect("enqueuing should succeed");
     let woken = tokio::time::timeout(Duration::from_secs(1), notifications.wait()).await;
@@ -73,18 +78,21 @@ async fn giving_up_moves_a_delivery_rather_than_copying_it() {
     let bench = OnSqlite::setup().await;
     bench
         .store()
-        .enqueue(&a_listener("catalogue-idea"), &a_message("idea.captured"))
+        .enqueue(
+            &suite::a_listener("catalogue-idea"),
+            &suite::a_message("idea.captured"),
+        )
         .await
         .expect("enqueuing should succeed");
     let claimed = bench
         .store()
-        .claim_due(at(1_000), 16)
+        .claim_due(suite::at(1_000), 16)
         .await
         .expect("claiming should succeed");
 
     bench
         .store()
-        .give_up(claimed[0].id, "it refused five times", at(1_001))
+        .give_up(claimed[0].id, "it refused five times", suite::at(1_001))
         .await
         .expect("giving up should succeed");
 

@@ -8,7 +8,6 @@ use scenes_core::{ProjectLink, SceneCatalog, SceneId, SceneTitle};
 use scenes_rest::TellingScenes;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
-use tokio::time::timeout;
 
 struct ScenesFollowed {
     catalog: TellingScenes,
@@ -40,7 +39,7 @@ fn a_scene(made_at: i64) -> SceneId {
 }
 
 async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = timeout(Duration::from_secs(1), socket.receive_text())
+    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
         .await
         .expect("a scene's summary is told while it is fresh");
 

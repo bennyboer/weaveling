@@ -3,10 +3,11 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
-use crate::dialog::modal;
-use crate::icons::{Icon, mark};
+use crate::dialog;
+use crate::icons;
+use crate::icons::Icon;
 use crate::ideas::model::{Idea, IdeaId};
-use crate::speech::{said, say_with};
+use crate::speech;
 #[derive(Clone, Copy)]
 pub struct Wording {
     pub title: &'static str,
@@ -48,15 +49,15 @@ pub fn link_dialog(
             .collect::<Vec<_>>()
     };
 
-    modal(
-        Signal::derive(said(wording.title)),
+    dialog::modal(
+        Signal::derive(speech::said(wording.title)),
         "",
         close,
         (
             html::input()
                 .r#type("search")
-                .attr("aria-label", said("find-an-idea"))
-                .attr("placeholder", said("find-an-idea"))
+                .attr("aria-label", speech::said("find-an-idea"))
+                .attr("placeholder", speech::said("find-an-idea"))
                 .node_ref(search)
                 .on(ev::input, move |event| {
                     finding.set(event_target_value(&event));
@@ -70,12 +71,12 @@ pub fn link_dialog(
                         false => "no-idea-matches",
                     };
 
-                    return html::p().class("empty").child(said(why)).into_any();
+                    return html::p().class("empty").child(speech::said(why)).into_any();
                 }
 
                 html::ul()
                     .class("choices")
-                    .attr("aria-label", said(wording.listed))
+                    .attr("aria-label", speech::said(wording.listed))
                     .child(
                         found
                             .into_iter()
@@ -88,7 +89,7 @@ pub fn link_dialog(
                 html::button()
                     .r#type("button")
                     .on(ev::click, move |_| close())
-                    .child(said("cancel")),
+                    .child(speech::said("cancel")),
                 html::button()
                     .r#type("button")
                     .disabled(move || chosen.with(Vec::is_empty))
@@ -100,7 +101,7 @@ pub fn link_dialog(
                         let mut args = FluentArgs::new();
                         args.set("count", chosen.with(Vec::len));
 
-                        say_with(wording.confirmed, &args)
+                        speech::say_with(wording.confirmed, &args)
                     }),
             )),
         ),
@@ -125,7 +126,7 @@ fn choice(idea: Idea, chosen: RwSignal<Vec<IdeaId>>) -> impl IntoView {
                         None => held.push(toggled.clone()),
                     })
                 }),
-            mark(Icon::Idea),
+            icons::mark(Icon::Idea),
             shown,
         )),
     )

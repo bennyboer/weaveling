@@ -1,9 +1,10 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
-use crate::icons::{Icon, mark};
+use crate::icons;
+use crate::icons::Icon;
 use crate::scenes::model::SceneId;
-use crate::speech::{said, say};
+use crate::speech;
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -42,7 +43,7 @@ pub fn going_back(state: WriteViewState) -> impl IntoView {
                     let label = state.labels.of_scene(&scene);
 
                     match label.shown.trim() {
-                        "" => say("scene-an-empty-one"),
+                        "" => speech::say("scene-an-empty-one"),
                         _ => label.shown,
                     }
                 };
@@ -52,8 +53,8 @@ pub fn going_back(state: WriteViewState) -> impl IntoView {
                     .class("going-back")
                     .on(ev::click, move |_| state.left_off.go_back())
                     .child((
-                        mark(Icon::Later),
-                        html::span().child(said("going-back")),
+                        icons::mark(Icon::Later),
+                        html::span().child(speech::said("going-back")),
                         html::span().class("where").child(named),
                     ))
             })

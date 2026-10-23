@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 use statistics_contract::WordCountDTO;
 
 use crate::live::{Following, Told};
@@ -12,7 +12,7 @@ use crate::writing::beginnings::Beginnings;
 use crate::writing::book_rail::BookRail;
 use crate::writing::choosing::Choosing;
 use crate::writing::copying::Copying;
-use crate::writing::drawers::keep_apart;
+use crate::writing::drawers;
 use crate::writing::editors::Editors;
 use crate::writing::focus::Focus;
 use crate::writing::inspector::Inspector;
@@ -99,7 +99,7 @@ impl WriteViewState {
             connection: StoredValue::new_local(SyncConnection::new()),
             quiet_note: QuietNote::none(),
         };
-        keep_apart(state.book_rail.drawer(), state.inspector.drawer());
+        drawers::keep_apart(state.book_rail.drawer(), state.inspector.drawer());
         let listing = project.clone();
         let counting = project.clone();
 
@@ -124,7 +124,7 @@ impl WriteViewState {
                 let project = project.clone();
                 counts_told_meanwhile.set_value(Vec::new());
 
-                spawn_local(async move {
+                task::spawn_local(async move {
                     match statistics::word_counts(&project).await {
                         Ok(counted) => {
                             state.word_count.told(counted);

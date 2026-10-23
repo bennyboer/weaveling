@@ -1,8 +1,9 @@
 use leptos::html;
 use leptos::prelude::*;
 
-use crate::drawer::{Drawer, Edge, Inside, drawer};
-use crate::speech::said;
+use crate::drawer;
+use crate::drawer::{Drawer, Edge, Inside};
+use crate::speech;
 
 const WIDE: f64 = 960.0;
 
@@ -20,13 +21,13 @@ pub fn laid_out(
 
     html::div().class("laid-out").child((
         work,
-        drawer(
+        drawer::drawer(
             tray,
             Edge::Right,
             tally,
             Inside {
                 id: "tray",
-                named: said("tray").into(),
+                named: speech::said("tray").into(),
                 called: "tray",
                 head: (),
                 body: kept,

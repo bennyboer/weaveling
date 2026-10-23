@@ -14,7 +14,7 @@ use eventsourcing::Agent;
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::wired;
+use crate::wiring;
 
 const UNKNOWN_BOARD: &str = "board_031VkO0hnpeQZUiAB7nDma";
 
@@ -37,7 +37,7 @@ fn a_server() -> TestServer {
 }
 
 fn a_server_and_its_boards() -> (TestServer, BoardService) {
-    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_700_000_000))));
 
     (
         TestServer::new(wired.routes.layer(Extension(Agent::Local))),

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Version};
 use time::{Duration, OffsetDateTime};
@@ -14,7 +15,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 fn a_workbench() -> (IdeaService, Arc<FixedClock>) {
     let clock = Arc::new(FixedClock::new(at(1_000)));
 
-    (wired(clock.clone()).ideas, clock)
+    (wiring::wired(clock.clone()).ideas, clock)
 }
 
 fn an_author() -> Agent {
@@ -212,7 +213,7 @@ async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
         ideas: service,
         store,
         ..
-    } = wired(Arc::new(FixedClock::new(at(1_000))));
+    } = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
     let id = service
         .capture("project_1", "The Loom", &an_author())
         .await
@@ -261,7 +262,7 @@ async fn an_idea_survives_on_its_snapshot_alone() {
         ideas: service,
         store,
         ..
-    } = wired(Arc::new(FixedClock::new(at(1_000))));
+    } = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
     let id = service
         .capture("project_1", "The Loom", &an_author())
         .await

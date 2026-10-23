@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 
 use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scenes;
@@ -36,7 +36,7 @@ impl LooseScenes {
         });
         self.saving.write_begun();
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             if let Err(failure) = scenes::delete(&scene).await {
                 self.listed.set(before);
                 self.problems.report(failure);

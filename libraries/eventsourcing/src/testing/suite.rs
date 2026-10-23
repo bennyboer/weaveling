@@ -2,7 +2,8 @@ use crate::aggregate::AggregateId;
 use crate::codec::Codec;
 use crate::event::{Event, Recorded};
 use crate::store::{EventStore, StoreError};
-use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind, recorded, stamped};
+use crate::testing::sample;
+use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind};
 use crate::testing::{Tables, Workbench};
 use crate::version::Version;
 
@@ -23,7 +24,7 @@ fn a_snapshot() -> SampleEvent {
 }
 
 fn at(aggregate: &AggregateId, version: u64, event: SampleEvent) -> Recorded<SampleEvent> {
-    let mut metadata = stamped(aggregate, version);
+    let mut metadata = sample::stamped(aggregate, version);
     metadata.is_snapshot = matches!(event, SampleEvent::Snapshotted { .. });
 
     Recorded { event, metadata }
@@ -34,7 +35,7 @@ async fn given_a_stream(
     aggregate: &AggregateId,
     events: Vec<SampleEvent>,
 ) {
-    let stream = recorded(aggregate, events);
+    let stream = sample::recorded(aggregate, events);
 
     for (counted, entry) in stream.into_iter().enumerate() {
         store

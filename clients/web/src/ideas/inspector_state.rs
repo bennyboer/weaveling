@@ -11,8 +11,9 @@ use crate::outline::model::{Section, SectionId};
 use crate::outline::service as outline_service;
 use crate::route;
 use crate::scenes::followed as scenes_followed;
-use crate::scenes::model::{SceneId, SceneSummary, hold};
-use crate::speech::say;
+use crate::scenes::model;
+use crate::scenes::model::{SceneId, SceneSummary};
+use crate::speech;
 
 #[derive(Clone, Copy)]
 pub struct InspectorState {
@@ -127,7 +128,7 @@ impl InspectorState {
                     let (followed, ask) = scenes_followed::follow(
                         &route::project_id(&project.get_untracked()),
                         move |listed| _ = scenes.try_set(listed.to_vec()),
-                        move |summary| scenes.update(|held| hold(held, summary.clone())),
+                        move |summary| scenes.update(|held| model::hold(held, summary.clone())),
                         move |failure| _ = problem.try_set(Some(failure)),
                     );
                     scenes_followed.set_value(Some((followed, Box::new(ask))));
@@ -204,7 +205,7 @@ impl InspectorState {
                     .find(|section| section.id == id)
                     .map(|section| section.title.clone())
                     .filter(|title| !title.is_empty())
-                    .unwrap_or_else(|| say("untitled"));
+                    .unwrap_or_else(|| speech::say("untitled"));
 
                 (id, named)
             })
@@ -226,7 +227,7 @@ impl InspectorState {
                     .iter()
                     .find(|scene| scene.id == id)
                     .map(SceneSummary::shown_as)
-                    .unwrap_or_else(|| say("untitled"));
+                    .unwrap_or_else(|| speech::say("untitled"));
 
                 (id, named)
             })

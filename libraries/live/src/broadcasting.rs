@@ -79,7 +79,6 @@ mod tests {
 
     use messaging::RoutingKey;
     use time::OffsetDateTime;
-    use tokio::time::timeout;
 
     use super::*;
 
@@ -114,7 +113,7 @@ mod tests {
             .await
             .expect("passing on is not a failure");
 
-        let told = timeout(Duration::from_millis(100), hearing.next())
+        let told = tokio::time::timeout(Duration::from_millis(100), hearing.next())
             .await
             .expect("the change is passed on at once")
             .expect("the broadcaster still tells");
@@ -146,7 +145,7 @@ mod tests {
             .expect("a stray message is no reason to stop");
 
         assert!(
-            timeout(Duration::from_millis(100), hearing.next())
+            tokio::time::timeout(Duration::from_millis(100), hearing.next())
                 .await
                 .is_err()
         );
@@ -168,13 +167,13 @@ mod tests {
         .await
         .expect("passing on is not a failure");
 
-        let told = timeout(Duration::from_millis(100), everyone.next())
+        let told = tokio::time::timeout(Duration::from_millis(100), everyone.next())
             .await
             .expect("the change is passed on at once")
             .expect("the broadcaster still tells");
         let frame: Value = serde_json::from_str(&told).expect("a frame is JSON");
         assert_eq!(frame["of"], "outline_1");
-        let its_own = timeout(Duration::from_millis(100), one.next())
+        let its_own = tokio::time::timeout(Duration::from_millis(100), one.next())
             .await
             .expect("whoever follows the one aggregate is told too")
             .expect("the broadcaster still tells");

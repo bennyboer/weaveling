@@ -3,10 +3,11 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
-use crate::dialog::modal;
+use crate::dialog;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
-use crate::speech::{Speech, said};
+use crate::speech;
+use crate::speech::Speech;
 
 #[component]
 pub fn ConfirmDelete(workspace: Workspace, overlays: Overlays) -> impl IntoView {
@@ -23,8 +24,8 @@ pub fn ConfirmDelete(workspace: Workspace, overlays: Overlays) -> impl IntoView 
                 speech.say_with("delete-project-fate", &args)
             };
 
-            modal(
-                Signal::derive(said("delete-project-dialog")),
+            dialog::modal(
+                Signal::derive(speech::said("delete-project-dialog")),
                 "",
                 move || overlays.dismiss(),
                 (
@@ -32,7 +33,7 @@ pub fn ConfirmDelete(workspace: Workspace, overlays: Overlays) -> impl IntoView 
                     html::div().class("dialog-actions").child((
                         html::button()
                             .on(ev::click, move |_| overlays.dismiss())
-                            .child(said("delete-project-cancel")),
+                            .child(speech::said("delete-project-cancel")),
                         html::button()
                             .class("danger")
                             .disabled(workspace.deleting())
@@ -40,7 +41,7 @@ pub fn ConfirmDelete(workspace: Workspace, overlays: Overlays) -> impl IntoView 
                                 overlays.dismiss();
                                 workspace.delete(id.clone());
                             })
-                            .child(said("delete-project-confirm")),
+                            .child(speech::said("delete-project-confirm")),
                     )),
                 ),
             )

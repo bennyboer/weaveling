@@ -6,7 +6,7 @@ use eventpublishing::published_in;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use ideas_contract::EVERY_IDEA;
 use ideas_core::{Idea, IdeaEvent, IdeaId};
-use live::{Broadcaster, frame_of};
+use live::Broadcaster;
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use serde_json::Value;
 
@@ -67,8 +67,10 @@ impl Listener for BroadcastIdeaChangesListener {
                 routing: message.routing.clone(),
                 because: Box::new(because),
             })?;
-        self.broadcaster
-            .tell(standing.state.project().as_str(), frame_of(&published));
+        self.broadcaster.tell(
+            standing.state.project().as_str(),
+            live::frame_of(&published),
+        );
 
         Ok(())
     }

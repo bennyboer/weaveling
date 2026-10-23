@@ -4,7 +4,7 @@ use clock::SystemClock;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 use weaveling_service_api::{
-    Accounts, Adapters, Backend, Flakiness, Mailing, Relays, Settling, WEAVELING_FLAKY, app,
+    Accounts, Adapters, Backend, Flakiness, Mailing, Relays, Settling, WEAVELING_FLAKY,
 };
 
 const LOG_LEVEL_UNLESS_TOLD: &str = "info";
@@ -36,7 +36,7 @@ async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>) {
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let settling = adapters.settling();
-    let routes = app(adapters);
+    let routes = weaveling_service_api::app(adapters);
 
     (
         routes,

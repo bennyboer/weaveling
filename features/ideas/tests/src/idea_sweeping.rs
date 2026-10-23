@@ -11,7 +11,7 @@ use projects_contract::DELETED;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::wired;
+use crate::wiring;
 
 const A_PROJECT: &str = "project_1";
 
@@ -255,7 +255,7 @@ async fn a_continuation_nobody_can_read_is_refused() {
 
 #[tokio::test]
 async fn a_project_larger_than_one_batch_is_swept_to_the_end_by_the_wired_sweep() {
-    let wired = wired(Arc::new(FixedClock::new(at(1_000))));
+    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
     for nth in 0..=AT_MOST {
         wired
             .ideas

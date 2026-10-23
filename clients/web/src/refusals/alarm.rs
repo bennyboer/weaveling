@@ -1,15 +1,16 @@
 use std::collections::BTreeSet;
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 use leptos::{IntoView, ev, html};
 
-use crate::icons::{Icon, mark};
+use crate::icons;
+use crate::icons::Icon;
 use crate::live::Following;
-use crate::refusals::dialog::refusals_dialog;
+use crate::refusals::dialog;
 use crate::refusals::model::Refusal;
 use crate::refusals::service;
-use crate::speech::said;
+use crate::speech;
 
 #[derive(Clone, Copy)]
 pub struct AlarmState {
@@ -42,7 +43,7 @@ impl AlarmState {
     }
 
     fn ask(self) {
-        spawn_local(async move {
+        task::spawn_local(async move {
             if let Ok(found) = service::all().await {
                 self.arrived(found);
             }
@@ -108,7 +109,7 @@ impl AlarmState {
     }
 
     pub fn retry(self, refusal: i64) {
-        spawn_local(async move {
+        task::spawn_local(async move {
             if service::retry(refusal).await.is_ok() {
                 self.ask();
             }
@@ -116,7 +117,7 @@ impl AlarmState {
     }
 
     pub fn acknowledge(self, refusal: i64) {
-        spawn_local(async move {
+        task::spawn_local(async move {
             if service::acknowledge(refusal).await.is_ok() {
                 self.ask();
             }
@@ -133,30 +134,30 @@ pub fn alarm(state: AlarmState) -> impl IntoView {
                     .class("alarm")
                     .class(("raised", move || state.raised()))
                     .class(("pulsing", move || state.is_pulsing()))
-                    .attr("aria-label", said("refusals"))
+                    .attr("aria-label", speech::said("refusals"))
                     .on(ev::click, move |_| state.start_looking())
                     .on(ev::animationend, move |_| state.stop_pulsing())
-                    .child(mark(Icon::Flash))
+                    .child(icons::mark(Icon::Flash))
             })
         },
         move || state.is_noting().then(|| note(state)),
-        move || state.is_looking().then(|| refusals_dialog(state)),
+        move || state.is_looking().then(|| dialog::refusals_dialog(state)),
     )
 }
 
 fn note(state: AlarmState) -> impl IntoView {
     html::div().class("refused-note").role("status").child((
-        html::span().child(said("alarm-note")),
+        html::span().child(speech::said("alarm-note")),
         html::button()
             .r#type("button")
             .class("show")
             .on(ev::click, move |_| state.start_looking())
-            .child(said("alarm-show")),
+            .child(speech::said("alarm-show")),
         html::button()
             .r#type("button")
             .class("dismiss")
-            .attr("aria-label", said("problem-dismiss"))
+            .attr("aria-label", speech::said("problem-dismiss"))
             .on(ev::click, move |_| state.dismiss_note())
-            .child(mark(Icon::Remove)),
+            .child(icons::mark(Icon::Remove)),
     ))
 }

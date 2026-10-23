@@ -3,24 +3,27 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 
-use crate::icons::{Icon, mark};
+use crate::icons;
+use crate::icons::Icon;
+use crate::speech;
+use crate::speech::Speech;
 use crate::speech::language::Language;
-use crate::speech::{Speech, said};
 
 pub fn picker() -> impl IntoView {
     let speech = expect_context::<Speech>();
 
     html::div().class("speaking").child((
-        html::span()
-            .attr("aria-hidden", "true")
-            .child((move || speech.language().short_name(), mark(Icon::Open))),
+        html::span().attr("aria-hidden", "true").child((
+            move || speech.language().short_name(),
+            icons::mark(Icon::Open),
+        )),
         choices(speech),
     ))
 }
 
 fn choices(speech: Speech) -> impl IntoView {
     html::select()
-        .attr("aria-label", said("language"))
+        .attr("aria-label", speech::said("language"))
         .on(ev::change, move |event| {
             if let Some(chosen) = Language::told(&event_target_value(&event)) {
                 speech.speak(chosen);

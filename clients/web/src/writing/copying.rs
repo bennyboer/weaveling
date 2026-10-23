@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 use web_sys::ClipboardEvent;
 
 use crate::scenes::model::SceneId;
@@ -52,7 +52,7 @@ impl Copying {
     }
 
     fn copy_once_fetched(self) {
-        spawn_local(async move {
+        task::spawn_local(async move {
             let missing = self.not_at_hand();
             self.fetch(missing).await;
 

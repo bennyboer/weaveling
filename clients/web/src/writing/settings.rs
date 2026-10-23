@@ -1,6 +1,6 @@
 use leptos::prelude::*;
 
-use crate::kept::{forget, keep, recall};
+use crate::kept;
 
 const SPELLING: &str = "weaveling.writing.spellcheck";
 const JUSTIFIED: &str = "weaveling.writing.justified";
@@ -19,9 +19,9 @@ pub struct Settings {
 impl Settings {
     pub fn as_last_left() -> Self {
         Self {
-            spelling: RwSignal::new(recall(SPELLING).as_deref() != Some(OFF)),
-            justified: RwSignal::new(recall(JUSTIFIED).as_deref() == Some(ON)),
-            typewriter: RwSignal::new(recall(TYPEWRITER).as_deref() == Some(ON)),
+            spelling: RwSignal::new(kept::recall(SPELLING).as_deref() != Some(OFF)),
+            justified: RwSignal::new(kept::recall(JUSTIFIED).as_deref() == Some(ON)),
+            typewriter: RwSignal::new(kept::recall(TYPEWRITER).as_deref() == Some(ON)),
             open: RwSignal::new(false),
         }
     }
@@ -33,8 +33,8 @@ impl Settings {
     pub fn check_spelling(self, wanted: bool) {
         self.spelling.set(wanted);
         match wanted {
-            true => forget(SPELLING),
-            false => keep(SPELLING, OFF),
+            true => kept::forget(SPELLING),
+            false => kept::keep(SPELLING, OFF),
         }
     }
 
@@ -45,8 +45,8 @@ impl Settings {
     pub fn justify(self, wanted: bool) {
         self.justified.set(wanted);
         match wanted {
-            true => keep(JUSTIFIED, ON),
-            false => forget(JUSTIFIED),
+            true => kept::keep(JUSTIFIED, ON),
+            false => kept::forget(JUSTIFIED),
         }
     }
 
@@ -57,8 +57,8 @@ impl Settings {
     pub fn scroll_like_a_typewriter(self, wanted: bool) {
         self.typewriter.set(wanted);
         match wanted {
-            true => keep(TYPEWRITER, ON),
-            false => forget(TYPEWRITER),
+            true => kept::keep(TYPEWRITER, ON),
+            false => kept::forget(TYPEWRITER),
         }
     }
 

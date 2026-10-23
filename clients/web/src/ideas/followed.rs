@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 
 use crate::http::ApiError;
-use crate::ideas::model::{Idea, taken_in};
+use crate::ideas::model;
+use crate::ideas::model::Idea;
 use crate::ideas::service;
 use crate::live::{Following, Told};
 use crate::projects::model::ProjectId;
@@ -44,7 +45,7 @@ pub fn following(
             let Some(known) = held.try_get_untracked() else {
                 return;
             };
-            match known.and_then(|known| taken_in(known, told)) {
+            match known.and_then(|known| model::taken_in(known, told)) {
                 Some(next) => _ = held.try_set(Some(next)),
                 None => _ = asking.dispatch(()),
             }

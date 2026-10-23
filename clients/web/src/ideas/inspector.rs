@@ -3,11 +3,12 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 
-use crate::icons::{Icon, mark};
+use crate::icons;
+use crate::icons::Icon;
 use crate::ideas::inspector_state::InspectorState;
-use crate::problem::problem;
+use crate::problem;
 use crate::route;
-use crate::speech::said;
+use crate::speech;
 
 pub fn inspector(state: InspectorState) -> impl IntoView {
     (name_field(state), appears_in(state))
@@ -17,8 +18,8 @@ fn name_field(state: InspectorState) -> impl IntoView {
     html::h1().class("idea-name").child(
         html::input()
             .r#type("text")
-            .attr("aria-label", said("inspector-idea-name"))
-            .attr("placeholder", said("untitled"))
+            .attr("aria-label", speech::said("inspector-idea-name"))
+            .attr("placeholder", speech::said("untitled"))
             .prop("value", move || {
                 state.opened().map(|idea| idea.title).unwrap_or_default()
             })
@@ -30,7 +31,7 @@ fn name_field(state: InspectorState) -> impl IntoView {
 
 fn appears_in(state: InspectorState) -> impl IntoView {
     html::section().class("appears-in").child((
-        html::h2().child(said("inspector-appears-in")),
+        html::h2().child(speech::said("inspector-appears-in")),
         move || {
             let sections = state.noting_sections();
             let scenes = state.linking_scenes();
@@ -38,7 +39,7 @@ fn appears_in(state: InspectorState) -> impl IntoView {
             if sections.is_empty() && scenes.is_empty() {
                 return html::p()
                     .class("empty")
-                    .child(said("inspector-appears-nowhere"))
+                    .child(speech::said("inspector-appears-nowhere"))
                     .into_any();
             }
 
@@ -51,7 +52,7 @@ fn appears_in(state: InspectorState) -> impl IntoView {
                 .map(|(id, named)| place(Icon::Scene, route::writing_at(&project, &id), named));
 
             html::ul()
-                .attr("aria-label", said("inspector-appears-in"))
+                .attr("aria-label", speech::said("inspector-appears-in"))
                 .child(in_sections.chain(in_scenes).collect::<Vec<_>>())
                 .into_any()
         },
@@ -60,7 +61,7 @@ fn appears_in(state: InspectorState) -> impl IntoView {
 
 fn place(icon: Icon, at: String, named: String) -> impl IntoView {
     html::li().child((
-        mark(icon),
+        icons::mark(icon),
         view! {
             <A href=at attr:class="name">
                 {named}
@@ -76,8 +77,11 @@ pub fn docked(state: InspectorState) -> impl IntoView {
         ready.get().then(|| {
             html::section()
                 .class("docked-inspector")
-                .attr("aria-label", said("inspector"))
-                .child((move || state.problem().map(problem), inspector(state)))
+                .attr("aria-label", speech::said("inspector"))
+                .child((
+                    move || state.problem().map(problem::problem),
+                    inspector(state),
+                ))
         })
     }
 }

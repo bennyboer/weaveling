@@ -9,9 +9,9 @@ use std::sync::Arc;
 
 use accounts_contract::ServiceModeDTO;
 use accounts_core::{AccountServiceError, OperatorCode};
-use accounts_wiring::{AssembledAccounts, assembled_accounts};
+use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
-use axum::routing::get;
+use axum::routing;
 use axum::{Extension, Json, Router};
 use boards_wiring::BoardFeature;
 use clock::Clock;
@@ -78,7 +78,9 @@ impl Adapters {
             assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
         let accounts = match accounts {
-            Accounts::On => Some(assembled_accounts(&storage, &context, mailer).await?),
+            Accounts::On => {
+                Some(accounts_wiring::assembled_accounts(&storage, &context, mailer).await?)
+            }
             Accounts::Off => None,
         };
 
@@ -160,8 +162,8 @@ async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared
 pub fn app(adapters: Adapters) -> Router {
     let keeps_accounts = adapters.accounts.is_some();
     let service = Router::new()
-        .route("/health", get(health))
-        .route("/mode", get(move || mode(keeps_accounts)))
+        .route("/health", routing::get(health))
+        .route("/mode", routing::get(move || mode(keeps_accounts)))
         .merge(refusals::router(
             adapters.deliveries.clone(),
             adapters.dispatcher.clone(),

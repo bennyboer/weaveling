@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use test_harness::SqliteFixture;
 
-use crate::sqlite::{SqliteSecrets, migrations};
+use crate::sqlite;
+use crate::sqlite::SqliteSecrets;
 use crate::suite::Workbench;
 
 struct OnSqlite {
@@ -16,7 +17,7 @@ impl Workbench for OnSqlite {
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
         let pool = fixture.create_database("accounts").await;
-        migrations()
+        sqlite::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty file");

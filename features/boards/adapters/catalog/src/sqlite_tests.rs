@@ -4,7 +4,8 @@ use test_harness::SqliteFixture;
 
 use boards_core::{BoardCatalog, BoardId, IdeaLink};
 
-use crate::sqlite::{SqliteBoardCatalog, migrations};
+use crate::sqlite;
+use crate::sqlite::SqliteBoardCatalog;
 use crate::suite::Workbench;
 
 struct OnSqlite {
@@ -20,7 +21,7 @@ impl Workbench for OnSqlite {
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
         let pool: SqlitePool = fixture.create_database("boards").await;
-        migrations()
+        sqlite::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty file");

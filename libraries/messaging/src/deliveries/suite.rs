@@ -1,7 +1,7 @@
 use time::{Duration, OffsetDateTime};
-use tokio::time::timeout;
 
-use crate::delivering::{ATTEMPTS, DeadLetter, Deliveries, again_after};
+use crate::delivering;
+use crate::delivering::{ATTEMPTS, DeadLetter, Deliveries};
 use crate::listening::ListenerName;
 use crate::message::Message;
 use crate::routing::RoutingKey;
@@ -243,13 +243,14 @@ pub async fn a_retried_dead_letter_wakes_whoever_is_waiting(deliveries: &impl De
         .notifications()
         .await
         .expect("asking for notifications is not a failure");
-    let _enqueued = timeout(std::time::Duration::from_millis(100), notifications.wait()).await;
+    let _enqueued =
+        tokio::time::timeout(std::time::Duration::from_millis(100), notifications.wait()).await;
 
     deliveries
         .retry(dead.id, at(2_000))
         .await
         .expect("retrying should succeed");
-    let woken = timeout(std::time::Duration::from_secs(1), notifications.wait()).await;
+    let woken = tokio::time::timeout(std::time::Duration::from_secs(1), notifications.wait()).await;
 
     assert!(
         woken.is_ok(),
@@ -379,15 +380,16 @@ pub async fn the_backoff_grows_with_each_attempt(deliveries: &impl Deliveries) {
     let _ = deliveries.waiting().await;
 
     assert!(
-        again_after(1) < Duration::seconds(1),
+        delivering::again_after(1) < Duration::seconds(1),
         "the failure we actually have is a projection a beat behind, which clears at once"
     );
     assert!(
-        again_after(1) < again_after(2) && again_after(2) < again_after(3),
+        delivering::again_after(1) < delivering::again_after(2)
+            && delivering::again_after(2) < delivering::again_after(3),
         "a listener failing for a reason that will not clear soon should be asked less often"
     );
     assert!(
-        again_after(ATTEMPTS) > Duration::minutes(1),
+        delivering::again_after(ATTEMPTS) > Duration::minutes(1),
         "the tail has to outlast a database blinking, or an outage dead-letters everything that \
          was in flight"
     );

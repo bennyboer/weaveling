@@ -111,7 +111,8 @@ Say why the expectation holds or what breaks if it does not — never restate th
 
 ## Rust
 
-- Import rather than qualify. `use sqlx::postgres::PgListener;`, never `sqlx::postgres::PgListener` inline. The exception is a one-off `std::time::Duration` beside a `time::Duration` already in scope.
+- Import types rather than qualify them. `use sqlx::postgres::PgListener;`, never `sqlx::postgres::PgListener` inline. The exception is a one-off `std::time::Duration` beside a `time::Duration` already in scope. Traits, enums and constants are imported the same way.
+- Call a free function through its module, never import it by itself: `use crate::speech;` and `speech::said("sign-out")`, `eventpublishing::message_for(happened, body)`, `routing::get(handler)`. The path says where the function lives, and two functions of one name, a feature's `message_for` and the library's it wraps, need no alias. Where the module's own name would clash, with a crate of that name (`tokio::time` beside `time`) or with another module (`outbox::postgres` beside `crate::postgres`), the call takes the longer path. Associated functions (`Account::from_first`) carry their type already; macros (`json!`), attributes, preludes meant for globbing (`leptos::prelude::*`) and a test module's `use super::*` are untouched.
 - `thiserror` for every error type; `#[error(transparent)]` when wrapping another error whole.
 - `expect` carries the reason it cannot fail: `.expect("a plain title is fine")`.
 - Modules and re-exports behind a feature come last, after a blank line and grouped by feature, so what a build leaves out stands apart from what every build has; a feature's test module sits in its feature's group. The blank line is also what keeps rustfmt from sorting them back in.

@@ -1,11 +1,10 @@
 use clock::text;
 use outbox::Origin;
-use outbox::sqlite::enqueue;
 use sqlx::{Sqlite, Transaction};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
-use crate::sqlite::{SqliteEventStore, agent, as_integer};
+use crate::sqlite::{SqliteEventStore, agent};
 use crate::store::StoreError;
 use crate::version::Version;
 
@@ -51,7 +50,7 @@ where
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
-        if head != as_integer(expected) {
+        if head != crate::sqlite::as_integer(expected) {
             return Err(StoreError::outdated(aggregate, kind, expected));
         }
 
@@ -79,10 +78,10 @@ where
         sqlx::query(WRITE)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
-            .bind(as_integer(happened.metadata.version))
+            .bind(crate::sqlite::as_integer(happened.metadata.version))
             .bind(happened.event.name().as_str())
             .bind((self.codec.body)(&happened.event).to_string())
-            .bind(as_integer(happened.event.version()))
+            .bind(crate::sqlite::as_integer(happened.event.version()))
             .bind(agent::encode(&happened.metadata.agent))
             .bind(text::written(happened.metadata.occurred_at))
             .bind(happened.metadata.is_snapshot)
@@ -113,7 +112,7 @@ where
             version: happened.metadata.version.count(),
         };
 
-        enqueue(transaction, origin, &message)
+        outbox::sqlite::enqueue(transaction, origin, &message)
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }

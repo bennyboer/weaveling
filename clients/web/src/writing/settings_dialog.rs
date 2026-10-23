@@ -1,8 +1,8 @@
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
-use crate::dialog::modal;
-use crate::speech::said;
+use crate::dialog;
+use crate::speech;
 use crate::writing::write_view_state::WriteViewState;
 
 pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
@@ -10,8 +10,8 @@ pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
 
     move || {
         settings.is_open().then(|| {
-            modal(
-                Signal::derive(said("writing-settings")),
+            dialog::modal(
+                Signal::derive(speech::said("writing-settings")),
                 "writing-settings",
                 move || settings.close(),
                 (
@@ -37,7 +37,7 @@ pub fn settings_dialog(state: WriteViewState) -> impl IntoView {
                         html::button()
                             .r#type("button")
                             .on(ev::click, move |_| settings.close())
-                            .child(said("settings-close")),
+                            .child(speech::said("settings-close")),
                     ),
                 ),
             )
@@ -58,6 +58,6 @@ fn setting(
             .on(ev::change, move |event| {
                 turned(event_target_checked(&event));
             }),
-        html::span().child((said(named), html::small().child(said(told)))),
+        html::span().child((speech::said(named), html::small().child(speech::said(told)))),
     ))
 }

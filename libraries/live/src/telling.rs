@@ -33,7 +33,7 @@ mod tests {
     use std::time::Duration;
 
     use serde_json::Value;
-    use tokio::time::timeout;
+    use tokio::time;
 
     use super::*;
 
@@ -48,7 +48,7 @@ mod tests {
 
         let mut told = Vec::new();
         for _ in 0..2 {
-            let frame = timeout(Duration::from_millis(100), hearing.next())
+            let frame = time::timeout(Duration::from_millis(100), hearing.next())
                 .await
                 .expect("told at once")
                 .expect("the broadcaster still tells");

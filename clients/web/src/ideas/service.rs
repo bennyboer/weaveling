@@ -1,7 +1,8 @@
 use gloo_net::http::Request;
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
 
-use crate::http::{ApiError, parsed, sent, sent_with};
+use crate::http;
+use crate::http::ApiError;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::written;
 use crate::projects::model::ProjectId;
@@ -10,8 +11,8 @@ const IDEAS: &str = "/api/ideas";
 const SUBJECT: &str = "idea";
 
 pub async fn list(project: &ProjectId) -> Result<Vec<Idea>, ApiError> {
-    let response = sent(Request::get(&format!("{IDEAS}?project={project}"))).await?;
-    let listed: Vec<IdeaDTO> = parsed(response, SUBJECT).await?;
+    let response = http::sent(Request::get(&format!("{IDEAS}?project={project}"))).await?;
+    let listed: Vec<IdeaDTO> = http::parsed(response, SUBJECT).await?;
 
     Ok(written::caught_up(
         project,
@@ -24,18 +25,18 @@ pub async fn capture(project: &ProjectId, title: &str) -> Result<Idea, ApiError>
         project: project.to_string(),
         title: title.to_owned(),
     };
-    let response = sent_with(Request::post(IDEAS), &payload).await?;
+    let response = http::sent_with(Request::post(IDEAS), &payload).await?;
 
-    Ok(kept(as_idea(parsed(response, SUBJECT).await?)))
+    Ok(kept(as_idea(http::parsed(response, SUBJECT).await?)))
 }
 
 pub async fn retitle(id: &IdeaId, title: &str) -> Result<Idea, ApiError> {
     let payload = RetitleIdeaRequest {
         title: title.to_owned(),
     };
-    let response = sent_with(Request::patch(&format!("{IDEAS}/{id}")), &payload).await?;
+    let response = http::sent_with(Request::patch(&format!("{IDEAS}/{id}")), &payload).await?;
 
-    Ok(kept(as_idea(parsed(response, SUBJECT).await?)))
+    Ok(kept(as_idea(http::parsed(response, SUBJECT).await?)))
 }
 
 fn kept(idea: Idea) -> Idea {
@@ -54,7 +55,7 @@ fn as_idea(dto: IdeaDTO) -> Idea {
 }
 
 pub async fn get(id: &IdeaId) -> Result<Idea, ApiError> {
-    let response = sent(Request::get(&format!("{IDEAS}/{id}"))).await?;
+    let response = http::sent(Request::get(&format!("{IDEAS}/{id}"))).await?;
 
-    Ok(as_idea(parsed(response, SUBJECT).await?))
+    Ok(as_idea(http::parsed(response, SUBJECT).await?))
 }

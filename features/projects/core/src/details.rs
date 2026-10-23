@@ -1,5 +1,5 @@
 use std::fmt::{self, Display, Formatter};
-use std::iter::once;
+use std::iter;
 
 use thiserror::Error;
 use words::{TextRules, Unfit};
@@ -38,7 +38,7 @@ impl BookLanguage {
             return Err(refused());
         }
 
-        let normalised = once(primary.to_ascii_lowercase())
+        let normalised = iter::once(primary.to_ascii_lowercase())
             .chain(parts.map(|part| match part.len() {
                 2 if part.chars().all(|sign| sign.is_ascii_alphabetic()) => {
                     part.to_ascii_uppercase()

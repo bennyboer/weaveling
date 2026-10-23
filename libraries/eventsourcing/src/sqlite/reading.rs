@@ -6,7 +6,8 @@ use sqlx::{Row, Sqlite};
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
 use crate::metadata::EventMetadata;
-use crate::sqlite::{SqliteEventStore, agent, as_integer};
+use crate::sqlite;
+use crate::sqlite::{SqliteEventStore, agent};
 use crate::store::StoreError;
 use crate::version::Version;
 
@@ -183,7 +184,7 @@ fn query_for<'q>(
         .bind(kind.as_str());
 
     for version in versions {
-        query = query.bind(as_integer(*version));
+        query = query.bind(sqlite::as_integer(*version));
     }
 
     query

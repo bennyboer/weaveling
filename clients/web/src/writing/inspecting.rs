@@ -3,14 +3,17 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 
-use crate::drawer::{Edge, Inside, drawer};
-use crate::icons::{Icon, mark};
+use crate::drawer;
+use crate::drawer::{Edge, Inside};
+use crate::icons;
+use crate::icons::Icon;
 use crate::ideas::model::IdeaId;
 use crate::outline::model::SectionId;
 use crate::route;
-use crate::scenes::link_dialog::{LINKING, Wording, link_dialog};
+use crate::scenes::link_dialog;
+use crate::scenes::link_dialog::{LINKING, Wording};
 use crate::scenes::model::SceneId;
-use crate::speech::{said, say, say_about};
+use crate::speech;
 use crate::writing::inspector::Inspected;
 use crate::writing::write_view_state::WriteViewState;
 
@@ -31,11 +34,11 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
         }
     });
     let named = move || match inspector.inspected() {
-        Some(Inspected::Section(_)) => say("this-section"),
-        _ => say("this-scene"),
+        Some(Inspected::Section(_)) => speech::say("this-section"),
+        _ => speech::say("this-scene"),
     };
 
-    drawer(
+    drawer::drawer(
         inspector.drawer(),
         Edge::Right,
         named,
@@ -47,7 +50,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
             body: move || match inspector.inspected() {
                 None => html::p()
                     .class("nothing-yet")
-                    .child(said("inspector-nothing-yet"))
+                    .child(speech::said("inspector-nothing-yet"))
                     .into_any(),
                 Some(Inspected::Scene(scene)) => (
                     title_field(scene.clone(), state),
@@ -64,7 +67,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
                     (move || match still_there.get() {
                         false => html::p()
                             .class("nothing-yet")
-                            .child(said("inspector-section-removed"))
+                            .child(speech::said("inspector-section-removed"))
                             .into_any(),
                         true => (
                             html::p().class("section-name").child({
@@ -72,7 +75,7 @@ pub fn inspecting(state: WriteViewState, project: String) -> impl IntoView {
 
                                 move || match state.structure.title_of(&section) {
                                     Some(title) if !title.trim().is_empty() => title,
-                                    _ => say("heading-untitled"),
+                                    _ => speech::say("heading-untitled"),
                                 }
                             }),
                             pinned(section.clone(), project, state),
@@ -92,16 +95,18 @@ fn pinned(
     state: WriteViewState,
 ) -> impl IntoView {
     html::section().class("drawn-from").child((
-        html::h3().class("tally").child(said("pinned-ideas")),
+        html::h3()
+            .class("tally")
+            .child(speech::said("pinned-ideas")),
         move || {
             let ideas = state.structure.ideas_of(&section);
             match ideas.is_empty() {
                 true => html::p()
                     .class("empty")
-                    .child(said("pinned-none"))
+                    .child(speech::said("pinned-none"))
                     .into_any(),
                 false => html::ul()
-                    .attr("aria-label", said("pinned-ideas"))
+                    .attr("aria-label", speech::said("pinned-ideas"))
                     .child(
                         ideas
                             .into_iter()
@@ -115,7 +120,7 @@ fn pinned(
             .r#type("button")
             .class("link-an-idea")
             .on(ev::click, move |_| state.scene_ideas.start_picking())
-            .child((mark(Icon::Plus), said("pin-an-idea"))),
+            .child((icons::mark(Icon::Plus), speech::said("pin-an-idea"))),
     ))
 }
 
@@ -128,7 +133,7 @@ fn pinned_idea(idea: IdeaId, project: StoredValue<String>, state: WriteViewState
         let shown = named.clone();
 
         html::li().child((
-            mark(Icon::Idea),
+            icons::mark(Icon::Idea),
             view! {
                 <A href=at attr:class="name">
                     {shown}
@@ -136,10 +141,13 @@ fn pinned_idea(idea: IdeaId, project: StoredValue<String>, state: WriteViewState
             },
             html::button()
                 .r#type("button")
-                .attr("aria-label", say_about("section-unpin", "idea", &named))
-                .attr("title", say_about("section-unpin", "idea", &named))
+                .attr(
+                    "aria-label",
+                    speech::say_about("section-unpin", "idea", &named),
+                )
+                .attr("title", speech::say_about("section-unpin", "idea", &named))
                 .on(ev::click, move |_| state.structure.unpin(unpinned.clone()))
-                .child(mark(Icon::Remove)),
+                .child(icons::mark(Icon::Remove)),
         ))
     }
 }
@@ -168,10 +176,10 @@ fn title_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
     html::input()
         .r#type("text")
         .class("scene-name")
-        .attr("aria-label", said("scene-title"))
+        .attr("aria-label", speech::said("scene-title"))
         .attr("placeholder", move || {
             label.with(|label| match label.shown.as_str() {
-                "" => say("scene-an-empty-one"),
+                "" => speech::say("scene-an-empty-one"),
                 opening if !label.titled => opening.to_owned(),
                 _ => String::new(),
             })
@@ -211,15 +219,15 @@ fn drawn_from(
     state: WriteViewState,
 ) -> impl IntoView {
     html::section().class("drawn-from").child((
-        html::h3().class("tally").child(said("drawn-from")),
+        html::h3().class("tally").child(speech::said("drawn-from")),
         move || match state.scene_ideas.linked_to(&scene) {
             None => ().into_any(),
             Some(linked) if linked.is_empty() => html::p()
                 .class("empty")
-                .child(said("drawn-from-none"))
+                .child(speech::said("drawn-from-none"))
                 .into_any(),
             Some(linked) => html::ul()
-                .attr("aria-label", said("drawn-from"))
+                .attr("aria-label", speech::said("drawn-from"))
                 .child(
                     linked
                         .into_iter()
@@ -232,7 +240,7 @@ fn drawn_from(
             .r#type("button")
             .class("link-an-idea")
             .on(ev::click, move |_| state.scene_ideas.start_picking())
-            .child((mark(Icon::Plus), said("link-an-idea"))),
+            .child((icons::mark(Icon::Plus), speech::said("link-an-idea"))),
     ))
 }
 
@@ -247,7 +255,7 @@ fn linked_idea(
     let shown = named.clone();
 
     html::li().child((
-        mark(Icon::Idea),
+        icons::mark(Icon::Idea),
         view! {
             <A href=at attr:class="name">
                 {shown}
@@ -255,12 +263,15 @@ fn linked_idea(
         },
         html::button()
             .r#type("button")
-            .attr("aria-label", say_about("unlink-idea", "idea", &named))
-            .attr("title", say_about("unlink-idea", "idea", &named))
+            .attr(
+                "aria-label",
+                speech::say_about("unlink-idea", "idea", &named),
+            )
+            .attr("title", speech::say_about("unlink-idea", "idea", &named))
             .on(ev::click, move |_| {
                 state.scene_ideas.unlink(scene.clone(), idea.clone())
             })
-            .child(mark(Icon::Remove)),
+            .child(icons::mark(Icon::Remove)),
     ))
 }
 
@@ -284,7 +295,7 @@ pub fn ideas_to_choose(state: WriteViewState) -> impl IntoView {
             Some(Inspected::Section(section)) => {
                 let section = StoredValue::new(section);
 
-                link_dialog(
+                link_dialog::link_dialog(
                     PINNING,
                     Signal::derive(move || {
                         ideas
@@ -298,7 +309,7 @@ pub fn ideas_to_choose(state: WriteViewState) -> impl IntoView {
                 )
                 .into_any()
             }
-            _ => link_dialog(
+            _ => link_dialog::link_dialog(
                 LINKING,
                 Signal::derive(move || {
                     inspector

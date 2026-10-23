@@ -68,12 +68,12 @@ impl Hearing {
 mod tests {
     use std::time::Duration;
 
-    use tokio::time::timeout;
+    use tokio::time;
 
     use super::*;
 
     async fn soon(hearing: &mut Hearing) -> Option<Arc<str>> {
-        timeout(Duration::from_millis(100), hearing.next())
+        time::timeout(Duration::from_millis(100), hearing.next())
             .await
             .ok()
             .flatten()

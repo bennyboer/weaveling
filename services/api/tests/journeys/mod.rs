@@ -9,7 +9,7 @@ use clock::SystemClock;
 use mailing::LoggingMailer;
 use outbox::Cadence;
 use serde_json::{Value, json};
-use weaveling_service_api::{Accounts, Adapters, Relays, Storage, app};
+use weaveling_service_api::{Accounts, Adapters, Relays, Storage};
 
 pub const DATABASES: [&str; 9] = [
     "messaging",
@@ -43,7 +43,9 @@ pub struct Journey<B: Backend> {
 }
 
 pub async fn a_server_on<B: Backend>(backend: &B) -> TestServer {
-    TestServer::new(app(adapters_on(backend, Accounts::Off).await))
+    TestServer::new(weaveling_service_api::app(
+        adapters_on(backend, Accounts::Off).await,
+    ))
 }
 
 async fn adapters_on<B: Backend>(backend: &B, accounts: Accounts) -> Adapters {
@@ -68,7 +70,9 @@ impl<B: Backend> Journey<B> {
 
     async fn unrelayed_with(accounts: Accounts) -> Self {
         let backend = B::setup().await;
-        let server = TestServer::new(app(adapters_on(&backend, accounts).await));
+        let server = TestServer::new(weaveling_service_api::app(
+            adapters_on(&backend, accounts).await,
+        ));
 
         Self {
             backend,
@@ -91,7 +95,7 @@ impl<B: Backend> Journey<B> {
 
         Self {
             backend,
-            server: TestServer::new(app(adapters)),
+            server: TestServer::new(weaveling_service_api::app(adapters)),
             relays: Some(relays),
         }
     }

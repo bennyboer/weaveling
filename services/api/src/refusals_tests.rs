@@ -13,7 +13,8 @@ use messaging_contract::RefusalDTO;
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
 
-use crate::refusals::{TellingDeliveries, router};
+use crate::refusals;
+use crate::refusals::TellingDeliveries;
 
 const OCCURRED: OffsetDateTime = datetime!(2026-10-08 09:00 UTC);
 
@@ -60,12 +61,14 @@ impl Refused {
         ));
         let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
         dispatcher.listen(Arc::new(Cataloguing));
-        let server = TestServer::builder().http_transport().build(router(
-            deliveries.clone(),
-            dispatcher,
-            Arc::new(FixedClock::new(ASKED)),
-            broadcaster,
-        ));
+        let server = TestServer::builder()
+            .http_transport()
+            .build(refusals::router(
+                deliveries.clone(),
+                dispatcher,
+                Arc::new(FixedClock::new(ASKED)),
+                broadcaster,
+            ));
 
         Self { deliveries, server }
     }

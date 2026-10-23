@@ -3,41 +3,39 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use leptos_router::NavigateOptions;
 use leptos_router::components::A;
-use leptos_router::hooks::use_navigate;
+use leptos_router::hooks;
 use wasm_bindgen::{JsCast, JsValue};
 use web_sys::{Element, FocusEvent, KeyboardEvent, ScrollIntoViewOptions, ScrollLogicalPosition};
 
 use crate::outline::model::{Section, SectionId};
-use crate::problem::problem;
+use crate::problem;
 use crate::projects::open_project::OpenProject;
 use crate::route;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::SyncConnection;
-use crate::speech::{said, say};
-use crate::writing::asking::{Asking, asking};
+use crate::speech;
+use crate::writing::asking;
+use crate::writing::asking::Asking;
 use crate::writing::beginnings::Pending;
-use crate::writing::bringing_back::{Landing, bringing_back};
-use crate::writing::choosing::hand_the_keys_to_the_book;
-use crate::writing::contents::contents;
-use crate::writing::drawers::drawer_toggles;
-use crate::writing::focus::focus_line;
-use crate::writing::going_back::going_back;
-use crate::writing::heading::pending_heading;
-use crate::writing::heading::{first_heading, section_heading};
-use crate::writing::inspecting::{ideas_to_choose, inspecting};
+use crate::writing::bringing_back;
+use crate::writing::bringing_back::Landing;
+use crate::writing::contents;
+use crate::writing::drawers;
+use crate::writing::focus;
+use crate::writing::going_back;
+use crate::writing::heading;
+use crate::writing::inspecting;
 use crate::writing::inspector::Inspected;
 use crate::writing::margin::Edge;
-use crate::writing::menus::{
-    book_edge, insertion, open_menu_where_writing, scene_margin, section_margin,
-};
-use crate::writing::opening::{opening, pending_first_scene, pending_scene};
-use crate::writing::placing::placing;
-use crate::writing::quiet_note::quiet_note;
-use crate::writing::scene_in_flow::{scene_in_flow, waiting_scene};
-use crate::writing::settings_dialog::settings_dialog;
+use crate::writing::menus;
+use crate::writing::opening;
+use crate::writing::placing;
+use crate::writing::quiet_note;
+use crate::writing::scene_in_flow;
+use crate::writing::settings_dialog;
 use crate::writing::side::Side;
-use crate::writing::status_note::status_note;
-use crate::writing::typewriter::typewriter_scrolling;
+use crate::writing::status_note;
+use crate::writing::typewriter;
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -58,7 +56,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
     let open = Memo::new(move |_| state.structure.is_open());
     let unshaped = Memo::new(move |_| state.structure.is_unshaped());
 
-    let navigate = use_navigate();
+    let navigate = hooks::use_navigate();
 
     Effect::new(move |landed: Option<bool>| {
         let ready = open.get() && (side == Side::Book || state.loose.is_known());
@@ -139,7 +137,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
                 return;
             }
             state.choosing.begin_at(from);
-            hand_the_keys_to_the_book();
+            crate::writing::choosing::hand_the_keys_to_the_book();
         }
         state.choosing.reach_to(over);
         drawn_again_after_the_browser(state);
@@ -188,9 +186,9 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
 
     let book_view = html::article()
         .class("writing")
-        .attr("aria-label", said("book"))
+        .attr("aria-label", speech::said("book"))
         .style(("--empty-scene", move || {
-            as_css_text(&say("scene-invitation"))
+            as_css_text(&speech::say("scene-invitation"))
         }))
         .attr("tabindex", "-1")
         .attr("lang", move || open_project.language())
@@ -220,7 +218,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
             }
         })
         .child((
-            move || state.problems.latest().map(problem),
+            move || state.problems.latest().map(problem::problem),
             move || {
                 let anything_outside = !state.loose.in_order().is_empty();
 
@@ -229,7 +227,7 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
             },
             move || match side {
                 Side::Book => (
-                    unshaped.get().then(|| first_heading(state)),
+                    unshaped.get().then(|| heading::first_heading(state)),
                     open.get().then(|| book(state)),
                 )
                     .into_any(),
@@ -238,27 +236,27 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         ));
 
     (
-        focus_line(state),
+        focus::focus_line(state),
         book_view,
-        asking(state),
-        bringing_back(state),
-        status_note(state),
-        inspecting(state, segment),
-        (side == Side::Book).then(|| contents(state)),
-        drawer_toggles(state),
-        going_back(state),
-        quiet_note(state),
-        ideas_to_choose(state),
-        settings_dialog(state),
-        typewriter_scrolling(state),
-        placing(state, placed_from),
+        asking::asking(state),
+        bringing_back::bringing_back(state),
+        status_note::status_note(state),
+        inspecting::inspecting(state, segment),
+        (side == Side::Book).then(|| contents::contents(state)),
+        drawers::drawer_toggles(state),
+        going_back::going_back(state),
+        quiet_note::quiet_note(state),
+        inspecting::ideas_to_choose(state),
+        settings_dialog::settings_dialog(state),
+        typewriter::typewriter_scrolling(state),
+        placing::placing(state, placed_from),
     )
 }
 
 fn writing(event: &KeyboardEvent, state: WriteViewState) {
     match event.key().as_str() {
         "Escape" => state.margin.return_to_writing(),
-        "F10" if event.shift_key() => open_menu_where_writing(event, state),
+        "F10" if event.shift_key() => menus::open_menu_where_writing(event, state),
         "F" | "f" if event.shift_key() && (event.ctrl_key() || event.meta_key()) => {
             event.prevent_default();
             state.focus.toggle();
@@ -364,7 +362,7 @@ fn reached_by_shift_click(clicked: Stop, state: WriteViewState) -> bool {
             return false;
         }
         state.choosing.begin_at(here);
-        hand_the_keys_to_the_book();
+        crate::writing::choosing::hand_the_keys_to_the_book();
     }
     state.choosing.reach_to(clicked);
 
@@ -481,7 +479,7 @@ fn book(state: WriteViewState) -> impl IntoView {
     let ends_in_a_scene = Memo::new(move |_| state.structure.ends_in_a_scene());
 
     view! {
-        {book_edge(Edge::Start, state)}
+        {menus::book_edge(Edge::Start, state)}
         <For
             each=move || state.structure.sections()
             key=|(_, section)| section.id.clone()
@@ -489,7 +487,7 @@ fn book(state: WriteViewState) -> impl IntoView {
         >
             {section_in_flow(section, state)}
         </For>
-        {move || (!ends_in_a_scene.get()).then(|| book_edge(Edge::End, state))}
+        {move || (!ends_in_a_scene.get()).then(|| menus::book_edge(Edge::End, state))}
     }
 }
 
@@ -500,16 +498,16 @@ fn side_switch(project: String, state: WriteViewState) -> impl IntoView {
 
     html::nav()
         .class("side-switch")
-        .attr("aria-label", said("writing-sides"))
+        .attr("aria-label", speech::said("writing-sides"))
         .child((
             view! {
                 <A href=book exact=true>
-                    {said("writing-side-book")}
+                    {speech::said("writing-side-book")}
                 </A>
             },
             view! {
                 <A href=elsewhere exact=true>
-                    {said("writing-side-loose")}
+                    {speech::said("writing-side-loose")}
                     <span class="tally">{move || loose.get()}</span>
                 </A>
             },
@@ -522,7 +520,7 @@ fn loose_side(state: WriteViewState) -> impl IntoView {
     view! {
         {move || {
             none.get()
-                .then(|| html::p().class("every-scene-placed").child(said("writing-every-scene-placed")))
+                .then(|| html::p().class("every-scene-placed").child(speech::said("writing-every-scene-placed")))
         }}
         <For
             each=move || state.loose.in_order()
@@ -561,20 +559,20 @@ fn section_in_flow(section: Section, state: WriteViewState) -> impl IntoView {
                 .class("heading-row")
                 .attr("data-section", id.to_string())
                 .child((
-                    section_heading(depth, section, state),
-                    section_margin(id.clone(), depth, state),
+                    heading::section_heading(depth, section, state),
+                    menus::section_margin(id.clone(), depth, state),
                 )),
             html::div().class("scenes").child(scenes_of(id, state)),
             move || {
                 (empty.get() || state.beginnings.hands_over(&waiting))
-                    .then(|| opening(waiting.clone(), state))
+                    .then(|| opening::opening(waiting.clone(), state))
             },
             move || {
                 below.get().map(|pending| match pending {
                     Pending::Section { after } => {
                         let depth = state.structure.depth_of(&after);
 
-                        pending_heading(after, depth, state).into_any()
+                        heading::pending_heading(after, depth, state).into_any()
                     }
                     Pending::Scene { .. } => ().into_any(),
                 })
@@ -596,8 +594,8 @@ fn scenes_of(section: SectionId, state: WriteViewState) -> impl IntoView {
     });
 
     view! {
-        {insertion(first, state)}
-        {move || first_wanted.get().then(|| pending_first_scene(starting.clone(), state))}
+        {menus::insertion(first, state)}
+        {move || first_wanted.get().then(|| opening::pending_first_scene(starting.clone(), state))}
         <For
             each=move || state.structure.scenes_of(&section)
             key=|scene| scene.clone()
@@ -629,18 +627,18 @@ fn scene_slot(section: Option<SectionId>, scene: SceneId, state: WriteViewState)
         .node_ref(place)
         .child(move || {
             if !near.get() {
-                return waiting_scene(scene.clone(), state).into_any();
+                return scene_in_flow::waiting_scene(scene.clone(), state).into_any();
             }
 
             (
                 html::div().class("scene-row").child((
-                    scene_margin(scene.clone(), state),
-                    scene_in_flow(scene.clone(), state),
+                    menus::scene_margin(scene.clone(), state),
+                    scene_in_flow::scene_in_flow(scene.clone(), state),
                 )),
                 section.clone().map(|section| {
                     (
                         pending_after(section.clone(), scene.clone(), state),
-                        insertion(
+                        menus::insertion(
                             Landing {
                                 section,
                                 after: Some(scene.clone()),
@@ -664,7 +662,7 @@ fn pending_after(section: SectionId, scene: SceneId, state: WriteViewState) -> i
     move || {
         wanted
             .get()
-            .then(|| pending_scene(section.clone(), scene.clone(), state))
+            .then(|| opening::pending_scene(section.clone(), scene.clone(), state))
     }
 }
 

@@ -10,7 +10,8 @@ use async_trait::async_trait;
 
 use time::Duration;
 
-use crate::wiring::{ADA, HER_PASSWORD, Wired, at, wired};
+use crate::wiring;
+use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
 const HER_NEW_PASSWORD: &str = "a better horse, a better battery";
 const RESETTING: &str = "Setting a new Weaveling password";
@@ -70,7 +71,7 @@ fn wrong(code: &str) -> &'static str {
 
 #[tokio::test]
 async fn asking_to_reset_sends_a_code_for_it_to_the_address() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, true).await;
 
     a_reset_asked_for(&wired).await;
@@ -80,7 +81,7 @@ async fn asking_to_reset_sends_a_code_for_it_to_the_address() {
 
 #[tokio::test]
 async fn asking_for_an_address_nobody_has_sends_nothing_and_says_nothing() {
-    let wired = wired();
+    let wired = wiring::wired();
 
     wired
         .accounts
@@ -93,7 +94,7 @@ async fn asking_for_an_address_nobody_has_sends_nothing_and_says_nothing() {
 
 #[tokio::test]
 async fn an_address_held_but_not_the_accounts_own_gets_no_code() {
-    let wired = wired();
+    let wired = wiring::wired();
     let id = ada_signed_up(&wired, true).await;
     wired
         .secrets
@@ -115,7 +116,7 @@ async fn an_address_held_but_not_the_accounts_own_gets_no_code() {
 
 #[tokio::test]
 async fn the_code_sent_sets_the_new_password_and_the_old_one_no_longer_signs_in() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, true).await;
     let code = a_reset_asked_for(&wired).await;
 
@@ -134,7 +135,7 @@ async fn the_code_sent_sets_the_new_password_and_the_old_one_no_longer_signs_in(
 
 #[tokio::test]
 async fn resetting_confirms_an_address_not_yet_confirmed() {
-    let wired = wired();
+    let wired = wiring::wired();
     let id = ada_signed_up(&wired, false).await;
     let code = a_reset_asked_for(&wired).await;
 
@@ -158,7 +159,7 @@ async fn resetting_confirms_an_address_not_yet_confirmed() {
 
 #[tokio::test]
 async fn a_wrong_code_resets_nothing() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, true).await;
     let code = a_reset_asked_for(&wired).await;
 
@@ -174,7 +175,7 @@ async fn a_wrong_code_resets_nothing() {
 
 #[tokio::test]
 async fn a_code_to_confirm_the_address_resets_no_password() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, false).await;
 
     assert!(matches!(
@@ -188,7 +189,7 @@ async fn a_code_to_confirm_the_address_resets_no_password() {
 
 #[tokio::test]
 async fn a_used_reset_code_is_used_up() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, true).await;
     let code = a_reset_asked_for(&wired).await;
     wired
@@ -208,7 +209,7 @@ async fn a_used_reset_code_is_used_up() {
 
 #[tokio::test]
 async fn guesses_at_a_reset_code_are_counted_like_any_others() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, true).await;
     let code = a_reset_asked_for(&wired).await;
     for _ in 0..PendingVerification::MAX_TRIES {
@@ -229,7 +230,7 @@ async fn guesses_at_a_reset_code_are_counted_like_any_others() {
 
 #[tokio::test]
 async fn a_new_password_must_be_one_that_would_be_taken_at_signing_up() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, true).await;
     let code = a_reset_asked_for(&wired).await;
 
@@ -266,7 +267,7 @@ impl Passwords for FailingOnce {
 
 #[tokio::test]
 async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
-    let wired = wired();
+    let wired = wiring::wired();
     let passwords = Arc::new(FailingOnce {
         kept: wired.secrets.clone(),
         armed: AtomicBool::new(false),
@@ -332,12 +333,14 @@ async fn still_signed_in(accounts: &AccountService, token: &SessionToken) -> boo
 
 #[tokio::test]
 async fn a_reset_ends_every_session_begun_before_it_on_every_device() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, true).await;
     let phone = a_session(&wired.accounts).await;
     let laptop = a_session(&wired.accounts).await;
 
-    wired.clock.set(at(1_700_000_000) + Duration::minutes(1));
+    wired
+        .clock
+        .set(wiring::at(1_700_000_000) + Duration::minutes(1));
     let code = a_reset_asked_for(&wired).await;
     wired
         .accounts
@@ -363,7 +366,7 @@ async fn a_reset_ends_every_session_begun_before_it_on_every_device() {
 
 #[tokio::test]
 async fn signing_in_the_moment_after_a_reset_counts() {
-    let wired = wired();
+    let wired = wiring::wired();
     ada_signed_up(&wired, true).await;
     let code = a_reset_asked_for(&wired).await;
     wired
@@ -384,7 +387,7 @@ async fn signing_in_the_moment_after_a_reset_counts() {
 
 #[tokio::test]
 async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
-    let wired = wired();
+    let wired = wiring::wired();
     let passwords = Arc::new(FailingOnce {
         kept: wired.secrets.clone(),
         armed: AtomicBool::new(false),
@@ -408,7 +411,9 @@ async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
         .expect("the code sent should verify");
     let theirs = a_session(&accounts).await;
 
-    wired.clock.set(at(1_700_000_000) + Duration::minutes(1));
+    wired
+        .clock
+        .set(wiring::at(1_700_000_000) + Duration::minutes(1));
     accounts
         .ask_to_reset_password(ADA)
         .await

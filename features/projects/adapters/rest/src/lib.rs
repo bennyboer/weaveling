@@ -5,10 +5,10 @@ use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, put};
-use clock::text::serialize;
+use axum::routing;
+use clock::text;
 use eventsourcing::{Agent, Standing};
-use live::{Broadcaster, followed_at};
+use live::Broadcaster;
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
     RenameProjectRequest, refused,
@@ -17,12 +17,12 @@ use projects_core::{
     InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName, InvalidQuotationMarks,
     Project, ProjectError, ProjectService, ProjectServiceError, ProjectSummary, RawDetails,
 };
-use serving::{Problem, demanded, tag};
+use serving::Problem;
 
 pub const FOLLOWED: &str = "projects";
 
 pub fn live(broadcaster: Broadcaster) -> Router {
-    followed_at("/projects/live", broadcaster, |asked| {
+    live::followed_at("/projects/live", broadcaster, |asked| {
         Some(
             asked
                 .get("project")
@@ -34,9 +34,12 @@ pub fn live(broadcaster: Broadcaster) -> Router {
 
 pub fn router(projects: ProjectService) -> Router {
     Router::new()
-        .route("/projects", get(list).post(create))
-        .route("/projects/{id}", get(find).patch(rename).delete(remove))
-        .route("/projects/{id}/details", put(change_details))
+        .route("/projects", routing::get(list).post(create))
+        .route(
+            "/projects/{id}",
+            routing::get(find).patch(rename).delete(remove),
+        )
+        .route("/projects/{id}/details", routing::put(change_details))
         .with_state(projects)
 }
 
@@ -51,8 +54,8 @@ fn to_dto(summary: &ProjectSummary) -> ProjectDTO {
         id: summary.id.to_string(),
         version: summary.version.count(),
         name: summary.name.to_string(),
-        created_at: serialize(summary.created_at),
-        updated_at: serialize(summary.updated_at),
+        created_at: text::serialize(summary.created_at),
+        updated_at: text::serialize(summary.updated_at),
     }
 }
 
@@ -96,7 +99,7 @@ async fn rename(
     Json(request): Json<RenameProjectRequest>,
 ) -> Result<Response, Problem> {
     projects
-        .rename(&id, &request.name, demanded(&headers)?, &acting)
+        .rename(&id, &request.name, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -122,7 +125,7 @@ async fn change_details(
                 quotation: request.quotation.as_deref(),
                 description: &request.description,
             },
-            demanded(&headers)?,
+            serving::demanded(&headers)?,
             &acting,
         )
         .await
@@ -142,7 +145,7 @@ async fn remove(
     headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     projects
-        .delete(&id, demanded(&headers)?, &acting)
+        .delete(&id, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -154,7 +157,7 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Re
 
     (
         status,
-        [(ETAG, tag(standing.version))],
+        [(ETAG, serving::tag(standing.version))],
         Json(ProjectDetailsDTO {
             id: id.to_owned(),
             version: standing.version.count(),
@@ -162,8 +165,8 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Re
             language: project.details().language.as_ref().map(ToString::to_string),
             quotation: project.details().quotation.map(|style| style.to_string()),
             description: project.details().description.to_string(),
-            created_at: serialize(project.created_at()),
-            updated_at: serialize(project.updated_at()),
+            created_at: text::serialize(project.created_at()),
+            updated_at: text::serialize(project.updated_at()),
         }),
     )
         .into_response()

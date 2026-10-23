@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::extract::{Query, State};
-use axum::routing::get;
+use axum::routing;
 use axum::{Json, Router};
-use live::{Broadcaster, Teller, followed_at};
+use live::{Broadcaster, Teller};
 use serde::Deserialize;
 use serving::Problem;
 use statistics_contract::WordCountDTO;
@@ -13,12 +13,12 @@ use time::OffsetDateTime;
 
 pub fn router(catalog: Arc<dyn WordCountCatalog>) -> Router {
     Router::new()
-        .route("/statistics/word-counts", get(word_counts))
+        .route("/statistics/word-counts", routing::get(word_counts))
         .with_state(catalog)
 }
 
 pub fn live(broadcaster: Broadcaster) -> Router {
-    followed_at("/statistics/word-counts/live", broadcaster, |asked| {
+    live::followed_at("/statistics/word-counts/live", broadcaster, |asked| {
         asked.get("project").cloned()
     })
 }

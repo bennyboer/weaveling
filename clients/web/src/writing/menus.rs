@@ -5,14 +5,14 @@ use leptos::{IntoView, ev, html};
 use wasm_bindgen::JsCast;
 use web_sys::{Element, HtmlElement, KeyboardEvent};
 
-use crate::icons::{Icon, mark};
+use crate::icons;
+use crate::icons::Icon;
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
-use crate::speech::{said, say, say_with};
+use crate::speech;
 use crate::writing::asking::Asking;
 use crate::writing::bringing_back::Landing;
-use crate::writing::heading::level_of;
-use crate::writing::heading::{lift, nest};
+use crate::writing::heading;
 use crate::writing::margin::{Edge, Marked, Menu};
 use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
@@ -34,13 +34,13 @@ pub fn scene_margin(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 .r#type("button")
                 .class("menu-button grip")
                 .attr("tabindex", "-1")
-                .attr("aria-label", said("move-scene"))
-                .attr("title", said("drag-to-move"))
+                .attr("aria-label", speech::said("move-scene"))
+                .attr("title", speech::said("drag-to-move"))
                 .on(ev::pointerdown, move |event| {
                     event.prevent_default();
                     state.moving.pick_up(carried.clone());
                 })
-                .child(mark(Icon::Grip))
+                .child(icons::mark(Icon::Grip))
         }),
         move || {
             if renaming.get() {
@@ -94,7 +94,7 @@ pub fn section_margin(
     let marked = Marked::Section(section.clone());
 
     html::div()
-        .class(move || format!("heading-margin level-{}", level_of(depth.get())))
+        .class(move || format!("heading-margin level-{}", heading::level_of(depth.get())))
         .child((margin_menu(
             "section-actions",
             Icon::More,
@@ -109,13 +109,13 @@ pub fn section_margin(
                     state.structure.can_nest(&section).then(|| {
                         keyed_item("menu-nest", ("Tab", "keys-tab"), move || {
                             state.margin.close();
-                            nest(nested.clone(), state);
+                            heading::nest(nested.clone(), state);
                         })
                     }),
                     state.structure.can_lift(&section).then(|| {
                         keyed_item("menu-lift", ("Shift+Tab", "keys-shift-tab"), move || {
                             state.margin.close();
-                            lift(lifted.clone(), state);
+                            heading::lift(lifted.clone(), state);
                         })
                     }),
                     item("menu-remove-section", false, move || {
@@ -288,15 +288,15 @@ fn margin_menu(
             html::button()
                 .class("menu-button")
                 .class(("dotted", matches!(icon, Icon::More)))
-                .attr("aria-label", said(named))
+                .attr("aria-label", speech::said(named))
                 .attr("aria-keyshortcuts", opened_by)
                 .attr("title", move || {
                     opened_by.map(|_| {
                         let mut args = FluentArgs::new();
-                        args.set("menu", say(named));
-                        args.set("keys", say("keys-shift-f10"));
+                        args.set("menu", speech::say(named));
+                        args.set("keys", speech::say("keys-shift-f10"));
 
-                        say_with("menu-button-title", &args)
+                        speech::say_with("menu-button-title", &args)
                     })
                 })
                 .attr("aria-haspopup", "menu")
@@ -305,7 +305,7 @@ fn margin_menu(
                 .on(ev::click, move |_| {
                     state.margin.toggle(marked.clone(), menu_kind)
                 })
-                .child(mark(icon)),
+                .child(icons::mark(icon)),
             move || {
                 open.get().then(|| {
                     html::div()
@@ -373,7 +373,7 @@ fn item(
         .role("menuitem")
         .class(("danger", danger))
         .on(ev::click, move |_| chosen())
-        .child(said(named))
+        .child(speech::said(named))
 }
 
 fn keyed_item(
@@ -386,8 +386,10 @@ fn keyed_item(
         .attr("aria-keyshortcuts", keys)
         .on(ev::click, move |_| chosen())
         .child((
-            said(named),
-            html::kbd().attr("aria-hidden", "true").child(said(shown)),
+            speech::said(named),
+            html::kbd()
+                .attr("aria-hidden", "true")
+                .child(speech::said(shown)),
         ))
 }
 
@@ -428,7 +430,7 @@ fn renaming_field(scene: SceneId, state: WriteViewState) -> impl IntoView {
 
     html::input()
         .class("scene-label renaming")
-        .attr("aria-label", said("scene-title"))
+        .attr("aria-label", speech::said("scene-title"))
         .attr("placeholder", placeholder)
         .prop("value", state.labels.title_of(&scene))
         .node_ref(field)

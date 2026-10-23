@@ -1,13 +1,13 @@
 use leptos::html::Input;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 use leptos::{IntoView, ev, html};
 
-use crate::dialog::modal;
+use crate::dialog;
 use crate::outline::model::SectionId;
 use crate::scenes::model::{SceneId, SceneSummary};
 use crate::scenes::service as scenes;
-use crate::speech::said;
+use crate::speech;
 use crate::writing::write_view_state::WriteViewState;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -29,7 +29,7 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
     let waiting: RwSignal<Option<Vec<SceneSummary>>> = RwSignal::new(None);
     let project = state.structure.project();
 
-    spawn_local(async move {
+    task::spawn_local(async move {
         match scenes::in_project(&project).await {
             Ok(all) => {
                 let outside: Vec<SceneSummary> = all
@@ -66,26 +66,29 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
     };
     let first_landing = landing.clone();
 
-    modal(
-        Signal::derive(said("bring-back")),
+    dialog::modal(
+        Signal::derive(speech::said("bring-back")),
         "",
         move || state.margin.return_to_writing(),
         (
             move || match waiting.get() {
-                None => html::p().class("empty").child(said("looking")).into_any(),
+                None => html::p()
+                    .class("empty")
+                    .child(speech::said("looking"))
+                    .into_any(),
                 Some(outside) if outside.is_empty() => html::p()
                     .class("empty")
-                    .child(said("bring-back-none"))
+                    .child(speech::said("bring-back-none"))
                     .into_any(),
                 Some(_) => {
                     let entering = first_landing.clone();
 
                     (
-                        html::p().child(said("bring-back-told")),
+                        html::p().child(speech::said("bring-back-told")),
                         html::input()
                             .r#type("search")
-                            .attr("aria-label", said("bring-back-find"))
-                            .attr("placeholder", said("bring-back-find"))
+                            .attr("aria-label", speech::said("bring-back-find"))
+                            .attr("placeholder", speech::said("bring-back-find"))
                             .node_ref(search)
                             .on(ev::input, move |event| {
                                 finding.set(event_target_value(&event));
@@ -111,11 +114,11 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
                     false => ().into_any(),
                     true if found.is_empty() => html::p()
                         .class("empty")
-                        .child(said("bring-back-no-match"))
+                        .child(speech::said("bring-back-no-match"))
                         .into_any(),
                     true => html::ul()
                         .class("choices")
-                        .attr("aria-label", said("outline-scenes-waiting"))
+                        .attr("aria-label", speech::said("outline-scenes-waiting"))
                         .child(
                             found
                                 .into_iter()
@@ -128,7 +131,7 @@ fn chooser(landing: Landing, state: WriteViewState) -> impl IntoView {
             html::div().class("dialog-actions").child(
                 html::button()
                     .on(ev::click, move |_| state.margin.return_to_writing())
-                    .child(said("cancel")),
+                    .child(speech::said("cancel")),
             ),
         ),
     )

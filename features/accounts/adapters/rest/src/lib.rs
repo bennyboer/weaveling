@@ -10,33 +10,43 @@ use axum::Router;
 use axum::extract::{Request, State};
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, StatusCode};
-use axum::middleware::{Next, from_fn_with_state};
+use axum::middleware;
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing;
 use axum::{Extension, Json};
 use serving::Problem;
 use time::Duration;
 
 pub fn router(accounts: AccountService) -> Router {
     Router::new()
-        .route("/accounts", post(sign_up))
-        .route("/accounts/verification", post(verify))
-        .route("/accounts/verification/code", post(send_code_again))
-        .route("/accounts/password-reset", post(ask_to_reset_password))
-        .route("/accounts/password", post(reset_password))
-        .route("/sessions", post(begin_session))
-        .route("/sessions/current", get(current).delete(end_session))
+        .route("/accounts", routing::post(sign_up))
+        .route("/accounts/verification", routing::post(verify))
+        .route(
+            "/accounts/verification/code",
+            routing::post(send_code_again),
+        )
+        .route(
+            "/accounts/password-reset",
+            routing::post(ask_to_reset_password),
+        )
+        .route("/accounts/password", routing::post(reset_password))
+        .route("/sessions", routing::post(begin_session))
+        .route(
+            "/sessions/current",
+            routing::get(current).delete(end_session),
+        )
         .with_state(accounts)
 }
 
 pub fn guarded_router(accounts: AccountService) -> Router {
     Router::new()
-        .route("/operators", post(become_operator))
+        .route("/operators", routing::post(become_operator))
         .with_state(accounts)
 }
 
 pub fn admitting_only_the_signed_in(accounts: AccountService, routes: Router) -> Router {
-    routes.layer(from_fn_with_state(accounts, admit))
+    routes.layer(middleware::from_fn_with_state(accounts, admit))
 }
 
 async fn admit(

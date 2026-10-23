@@ -4,11 +4,11 @@ use clock::FixedClock;
 use eventsourcing::{Agent, AggregateId, EventMetadata, Recorded, Version};
 use messaging::{Message, RoutingKey};
 use projects_core::{KIND, ProjectCatalog, ProjectEvent, ProjectId, ProjectName, RawDetails};
-use projects_messaging::message_for;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -19,7 +19,7 @@ fn an_author() -> Agent {
 }
 
 fn a_workbench() -> Wired {
-    wired(Arc::new(FixedClock::new(at(1_000))))
+    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
 async fn listed(wired: &Wired) -> Vec<String> {
@@ -65,7 +65,7 @@ fn message_about(id: &ProjectId, event: ProjectEvent) -> Message {
         event,
     };
 
-    message_for(&happened).expect("this event should be published")
+    projects_messaging::message_for(&happened).expect("this event should be published")
 }
 
 fn a_started_project_told_of(id: &ProjectId) -> Message {

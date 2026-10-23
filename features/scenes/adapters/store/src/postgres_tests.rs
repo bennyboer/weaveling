@@ -8,8 +8,10 @@ use scenes_core::{SceneId, StoreError};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
-use crate::postgres::{PostgresSceneStore, migrations};
-use crate::suite::{Tables, Workbench, at, message_for};
+use crate::postgres;
+use crate::postgres::PostgresSceneStore;
+use crate::suite;
+use crate::suite::{Tables, Workbench};
 
 struct OnPostgres {
     fixture: PostgresFixture,
@@ -21,11 +23,11 @@ struct OnPostgres {
 struct Compacting(OnPostgres);
 
 fn a_clock() -> Arc<FixedClock> {
-    Arc::new(FixedClock::new(at(2_000)))
+    Arc::new(FixedClock::new(suite::at(2_000)))
 }
 
 fn enqueuing(store: PostgresSceneStore) -> PostgresSceneStore {
-    store.enqueuing(a_clock(), message_for)
+    store.enqueuing(a_clock(), suite::message_for)
 }
 
 async fn relayed(pool: &PgPool, heard: &Arc<FakePublisher>) -> Vec<Message> {
@@ -44,7 +46,7 @@ async fn a_migrated_schema() -> (PostgresFixture, PgPool) {
         .run(&pool)
         .await
         .expect("the outbox should lay down in an empty namespace");
-    migrations()
+    postgres::migrations()
         .run(&pool)
         .await
         .expect("the scene schema should lay down in an empty namespace");

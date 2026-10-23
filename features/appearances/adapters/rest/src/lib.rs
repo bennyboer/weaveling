@@ -4,20 +4,20 @@ use appearances_contract::{IdeaPlacesDTO, PlaceDTO};
 use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, Subject};
 use async_trait::async_trait;
 use axum::extract::{Query, State};
-use axum::routing::get;
+use axum::routing;
 use axum::{Json, Router};
-use live::{Broadcaster, Teller, followed_at};
+use live::{Broadcaster, Teller};
 use serde::Deserialize;
 use serving::Problem;
 
 pub fn router(catalog: Arc<dyn AppearanceCatalog>) -> Router {
     Router::new()
-        .route("/appearances", get(places_of))
+        .route("/appearances", routing::get(places_of))
         .with_state(catalog)
 }
 
 pub fn live(broadcaster: Broadcaster) -> Router {
-    followed_at("/appearances/live", broadcaster, |asked| {
+    live::followed_at("/appearances/live", broadcaster, |asked| {
         asked.get("idea").cloned()
     })
 }

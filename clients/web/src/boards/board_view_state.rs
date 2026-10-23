@@ -1,12 +1,14 @@
 use leptos::prelude::*;
 
-use crate::boards::carrying::{CARD, snapped};
+use crate::boards::carrying;
+use crate::boards::carrying::CARD;
 use crate::boards::model::{Board, Placement, PositionedIdea, Size, Spot};
 use crate::boards::service;
 use crate::boards::viewport::Viewport;
 use crate::http::ApiError;
 use crate::ideas::followed;
-use crate::ideas::model::{Idea, IdeaId, hold};
+use crate::ideas::model;
+use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as ideas;
 use crate::live::{Following, Told};
 use crate::projects::model::ProjectId;
@@ -180,7 +182,7 @@ impl BoardViewState {
                     let idea = caught.id.clone();
                     pool.update(|held| {
                         if let Some(held) = held {
-                            hold(held, caught);
+                            model::hold(held, caught);
                         }
                     });
 
@@ -266,7 +268,7 @@ impl BoardViewState {
                 match ideas::retitle(&idea, &title).await {
                     Ok(renamed) => pool.update(|held| {
                         if let Some(held) = held {
-                            hold(held, renamed);
+                            model::hold(held, renamed);
                         }
                     }),
                     Err(failure) => problem.set(Some(failure)),
@@ -458,7 +460,7 @@ fn next_spot(board: Option<&Board>, seen: Viewport) -> Spot {
 }
 
 fn slot(nth: i64, from: Spot) -> Spot {
-    snapped(Spot {
+    carrying::snapped(Spot {
         x: from.x + STEP + (nth % COLUMNS) * (STEP * 5),
         y: from.y + STEP + (nth / COLUMNS) * (STEP * 3),
     })

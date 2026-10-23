@@ -2,16 +2,17 @@ use leptos::html::{self, Input};
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
 use leptos_router::NavigateOptions;
-use leptos_router::hooks::use_navigate;
+use leptos_router::hooks;
 
-use crate::dialog::modal;
-use crate::problem::problem;
-use crate::projects::details_form::{DetailsDraft, details_fields};
-use crate::projects::languages::the_browser_s;
+use crate::dialog;
+use crate::problem;
+use crate::projects::details_form;
+use crate::projects::details_form::DetailsDraft;
+use crate::projects::languages;
 use crate::projects::model::{ProjectDetails, ProjectId};
 use crate::projects::workspace::Workspace;
 use crate::route;
-use crate::speech::said;
+use crate::speech;
 
 #[component]
 pub fn NewProject(workspace: Workspace) -> impl IntoView {
@@ -32,7 +33,7 @@ pub fn NewProject(workspace: Workspace) -> impl IntoView {
     html::div().class("new-project").child((
         html::input()
             .r#type("text")
-            .placeholder(said("new-project-working-title"))
+            .placeholder(speech::said("new-project-working-title"))
             .prop("value", move || draft.get())
             .on(ev::input, move |event| {
                 draft.set(event_target_value(&event))
@@ -45,7 +46,7 @@ pub fn NewProject(workspace: Workspace) -> impl IntoView {
         html::button()
             .disabled(unusable)
             .on(ev::click, move |_| ask())
-            .child(said("new-project-create")),
+            .child(speech::said("new-project-create")),
         move || {
             asking
                 .get()
@@ -62,7 +63,7 @@ fn new_project_dialog(
     let details = DetailsDraft::of(
         draft,
         &ProjectDetails {
-            language: the_browser_s().map(str::to_owned),
+            language: languages::the_browser_s().map(str::to_owned),
             quotation: None,
             description: String::new(),
         },
@@ -82,30 +83,30 @@ fn new_project_dialog(
         workspace.create(name, details.details());
     };
 
-    modal(
-        Signal::derive(said("new-project-dialog")),
+    dialog::modal(
+        Signal::derive(speech::said("new-project-dialog")),
         "project-details",
         move || asking.set(false),
         (
-            details_fields(details, title, move || attempted.set(false), create),
+            details_form::details_fields(details, title, move || attempted.set(false), create),
             move || {
                 attempted
                     .get()
                     .then(|| refused.get())
                     .flatten()
-                    .map(problem)
+                    .map(problem::problem)
             },
             html::div().class("dialog-actions").child((
                 html::button()
                     .r#type("button")
                     .on(ev::click, move |_| asking.set(false))
-                    .child(said("new-project-cancel")),
+                    .child(speech::said("new-project-cancel")),
                 html::button()
                     .r#type("button")
                     .class("primary")
                     .disabled(move || draft.get().trim().is_empty() || creating.get())
                     .on(ev::click, move |_| create())
-                    .child(said("new-project-confirm")),
+                    .child(speech::said("new-project-confirm")),
             )),
         ),
     )
@@ -117,7 +118,7 @@ fn go_into_a_project_once_it_lands(
     asking: RwSignal<bool>,
 ) {
     let created = workspace.created();
-    let navigate = use_navigate();
+    let navigate = hooks::use_navigate();
 
     Effect::new(move |before: Option<Option<ProjectId>>| {
         let landed = created.get();

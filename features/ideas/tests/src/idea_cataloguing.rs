@@ -3,12 +3,12 @@ use std::sync::Arc;
 use clock::FixedClock;
 use eventsourcing::{Agent, AggregateId, EventMetadata, Recorded, Version};
 use ideas_core::{IdeaCatalog, IdeaEvent, IdeaId, IdeaTitle, KIND, ProjectLink};
-use ideas_messaging::message_for;
 use messaging::{Message, RoutingKey};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -19,7 +19,7 @@ fn an_author() -> Agent {
 }
 
 fn a_workbench() -> Wired {
-    wired(Arc::new(FixedClock::new(at(1_000))))
+    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
 async fn listed(wired: &Wired) -> Vec<String> {
@@ -61,7 +61,7 @@ fn message_about(id: &IdeaId, event: IdeaEvent) -> Message {
         event,
     };
 
-    message_for(&happened).expect("this event should be published")
+    ideas_messaging::message_for(&happened).expect("this event should be published")
 }
 
 fn a_captured_idea_told_of(id: &IdeaId) -> Message {

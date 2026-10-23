@@ -3,9 +3,9 @@ use leptos::prelude::*;
 use leptos::view;
 use leptos_router::NavigateOptions;
 use leptos_router::components::Redirect;
-use leptos_router::hooks::{use_params_map, use_query_map};
+use leptos_router::hooks;
 
-use crate::app::project_page::project_page;
+use crate::app::project_page;
 use crate::route;
 use crate::scenes::model::SceneId;
 use crate::shell::Viewing;
@@ -14,7 +14,7 @@ use crate::writing::write_view::{WriteView, WriteViewProps};
 
 #[component]
 pub fn ProjectPage() -> impl IntoView {
-    let params = use_params_map();
+    let params = hooks::use_params_map();
 
     move || {
         params
@@ -42,9 +42,9 @@ pub fn LooseScenesPage() -> impl IntoView {
 }
 
 fn writing_on(side: Side) -> impl IntoView {
-    let following = untrack(|| use_query_map().read().get("scene")).map(SceneId::from);
+    let following = untrack(|| hooks::use_query_map().read().get("scene")).map(SceneId::from);
 
-    project_page(Viewing::Write, move |project| {
+    project_page::project_page(Viewing::Write, move |project| {
         WriteView(WriteViewProps {
             project,
             following: following.clone(),

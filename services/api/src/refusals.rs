@@ -5,10 +5,10 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use axum::routing::{get, post};
+use axum::routing;
 use clock::Clock;
-use clock::text::serialize;
-use live::{Broadcaster, Teller, followed_at};
+use clock::text;
+use live::{Broadcaster, Teller};
 use messaging::{
     DeadLetter, Deliveries, DeliveryError, InProcessDispatcher, ListenerName, Message,
     Notifications, Queued,
@@ -34,15 +34,15 @@ pub fn router(
     broadcaster: Broadcaster,
 ) -> Router {
     Router::new()
-        .route("/refusals", get(list))
-        .route("/refusals/{id}/acknowledge", post(acknowledge))
-        .route("/refusals/{id}/retry", post(retry))
+        .route("/refusals", routing::get(list))
+        .route("/refusals/{id}/acknowledge", routing::post(acknowledge))
+        .route("/refusals/{id}/retry", routing::post(retry))
         .with_state(Refusals {
             deliveries,
             dispatcher,
             clock,
         })
-        .merge(followed_at("/refusals/live", broadcaster, |_| {
+        .merge(live::followed_at("/refusals/live", broadcaster, |_| {
             Some(REFUSALS.to_owned())
         }))
 }
@@ -179,8 +179,8 @@ fn to_dto(dead: &DeadLetter, dispatcher: &InProcessDispatcher) -> RefusalDTO {
         attempts: dead.attempts,
         why: dead.why.clone(),
         plainly: dispatcher.when_refused(&dead.listener).map(str::to_owned),
-        occurred_at: serialize(dead.message.occurred_at),
-        given_up_at: serialize(dead.given_up_at),
-        acknowledged_at: dead.acknowledged_at.map(serialize),
+        occurred_at: text::serialize(dead.message.occurred_at),
+        given_up_at: text::serialize(dead.given_up_at),
+        acknowledged_at: dead.acknowledged_at.map(text::serialize),
     }
 }

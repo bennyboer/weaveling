@@ -14,8 +14,8 @@ use outline_core::{OutlineService, SectionTitle};
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 
-use crate::shapes::shaped;
-use crate::wiring::wired;
+use crate::shapes;
+use crate::wiring;
 
 const UNKNOWN_OUTLINE: &str = "outline_031VkO0hnpeQZUiAB7nDma";
 const UNKNOWN_SECTION: &str = "section_031VkO0hnpeQZUiAB7nDma";
@@ -39,7 +39,7 @@ fn a_server() -> TestServer {
 }
 
 fn a_server_and_its_outlines() -> (TestServer, OutlineService) {
-    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_700_000_000))));
 
     (
         TestServer::new(wired.routes.layer(Extension(Agent::Local))),
@@ -144,7 +144,7 @@ async fn a_new_section_comes_back_named() {
     );
     assert_eq!(
         shape(&added.outline),
-        shaped(
+        shapes::shaped(
             "
             Part One
         "
@@ -170,7 +170,7 @@ async fn sections_nest_where_they_are_put() {
 
     assert_eq!(
         shape(&added.outline),
-        shaped(
+        shapes::shaped(
             "
             Part One
               Chapter 1
@@ -199,7 +199,7 @@ async fn a_section_can_be_retitled_for_the_table_of_contents() {
     response.assert_status(StatusCode::OK);
     assert_eq!(
         shape(&response.json::<OutlineChangeDTO>()),
-        shaped(
+        shapes::shaped(
             "
             The Silent Loom
         "
@@ -247,7 +247,7 @@ async fn promoting_lifts_a_section_and_takes_what_followed_it_along() {
     response.assert_status(StatusCode::OK);
     assert_eq!(
         shape(&response.json::<OutlineChangeDTO>()),
-        shaped(
+        shapes::shaped(
             "
             Chapter 1
               Arrival
@@ -283,7 +283,7 @@ async fn demoting_nests_a_section_under_the_one_before_it() {
     response.assert_status(StatusCode::OK);
     assert_eq!(
         shape(&response.json::<OutlineChangeDTO>()),
-        shaped(
+        shapes::shaped(
             "
             Chapter 1
               Chapter 2
@@ -322,7 +322,7 @@ async fn a_section_can_be_moved_under_another_with_its_children() {
     response.assert_status(StatusCode::OK);
     assert_eq!(
         shape(&response.json::<OutlineChangeDTO>()),
-        shaped(
+        shapes::shaped(
             "
             Part One
             Part Two
@@ -376,7 +376,7 @@ async fn removing_a_section_lifts_its_children_into_its_place() {
     response.assert_status(StatusCode::OK);
     assert_eq!(
         shape(&response.json::<OutlineChangeDTO>()),
-        shaped(
+        shapes::shaped(
             "
             Chapter 1
             Part Two

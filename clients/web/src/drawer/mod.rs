@@ -4,11 +4,12 @@ pub mod width;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
-use crate::drawer::handle::{Grows, drawer_handle};
+use crate::drawer::handle::Grows;
 use crate::drawer::width::DrawerWidth;
-use crate::icons::{Icon, mark};
-use crate::kept::{keep, recall};
-use crate::speech::say_about;
+use crate::icons;
+use crate::icons::Icon;
+use crate::kept;
+use crate::speech;
 
 const OPEN: &str = "open";
 const SHUT: &str = "shut";
@@ -28,7 +29,7 @@ pub struct Drawer {
 
 impl Drawer {
     pub fn as_last_left(kept: &str, open_at_first: bool) -> Self {
-        let open = recall(kept).map_or(open_at_first, |kept| kept == OPEN);
+        let open = kept::recall(kept).map_or(open_at_first, |kept| kept == OPEN);
 
         Self {
             kept: StoredValue::new(kept.to_owned()),
@@ -57,7 +58,7 @@ impl Drawer {
         self.open.set(open);
 
         self.kept
-            .with_value(|kept| keep(kept, if open { OPEN } else { SHUT }));
+            .with_value(|kept| kept::keep(kept, if open { OPEN } else { SHUT }));
     }
 }
 
@@ -116,8 +117,8 @@ where
             .on(ev::keydown, escaping)
             .child((html::span().child(tab), move || {
                 match (edge, drawer.is_open()) {
-                    (Edge::Right, false) | (Edge::Left, true) => mark(Icon::PullOut),
-                    (Edge::Right, true) | (Edge::Left, false) => mark(Icon::PushIn),
+                    (Edge::Right, false) | (Edge::Left, true) => icons::mark(Icon::PullOut),
+                    (Edge::Right, true) | (Edge::Left, false) => icons::mark(Icon::PushIn),
                 }
             })),
         html::aside()
@@ -128,13 +129,13 @@ where
             .style(("width", move || format!("{}px", width.shown())))
             .on(ev::keydown, escaping)
             .child((
-                drawer_handle(
+                crate::drawer::handle::drawer_handle(
                     width,
                     match edge {
                         Edge::Left => Grows::Rightwards,
                         Edge::Right => Grows::Leftwards,
                     },
-                    move || say_about("drawer-resize", "drawer", called),
+                    move || speech::say_about("drawer-resize", "drawer", called),
                 ),
                 html::div().class("inside").child((
                     html::div().class("head").child((
@@ -143,7 +144,7 @@ where
                             .r#type("button")
                             .class("shut")
                             .attr("aria-label", move || {
-                                say_about("drawer-close", "drawer", called)
+                                speech::say_about("drawer-close", "drawer", called)
                             })
                             .on(ev::click, move |_| drawer.close())
                             .child("\u{00d7}"),

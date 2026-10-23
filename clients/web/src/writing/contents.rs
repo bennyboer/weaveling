@@ -2,11 +2,13 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 use web_sys::{ScrollIntoViewOptions, ScrollLogicalPosition};
 
-use crate::drawer::{Edge, Inside, drawer};
-use crate::icons::{Icon, mark};
+use crate::drawer;
+use crate::drawer::{Edge, Inside};
+use crate::icons;
+use crate::icons::Icon;
 use crate::outline::model::{Section, SectionId};
 use crate::scenes::model::SceneId;
-use crate::speech::{said, say, say_about};
+use crate::speech;
 use crate::writing::book_rail::Fold;
 use crate::writing::viewport::SCENE_PLACE;
 use crate::writing::walk::{Stop, Towards};
@@ -31,16 +33,16 @@ enum Entry {
 pub fn contents(state: WriteViewState) -> impl IntoView {
     let rail = state.book_rail;
 
-    drawer(
+    drawer::drawer(
         rail.drawer(),
         Edge::Left,
-        || say("contents"),
+        || speech::say("contents"),
         Inside {
             id: BOOK_RAIL,
-            named: said("contents").into(),
+            named: speech::said("contents").into(),
             called: "contents",
             head: (
-                html::p().class("tally").child(said("contents")),
+                html::p().class("tally").child(speech::said("contents")),
                 folding_everything(state),
             ),
             body: html::ol().class("rail-entries").child(move || {
@@ -78,19 +80,19 @@ fn folding_everything(state: WriteViewState) -> impl IntoView {
         html::button()
             .r#type("button")
             .class("fold-all")
-            .attr("aria-label", said("contents-unfold-all"))
-            .attr("title", said("contents-unfold-all"))
+            .attr("aria-label", speech::said("contents-unfold-all"))
+            .attr("title", speech::said("contents-unfold-all"))
             .disabled(all_unfolded)
             .on(ev::click, move |_| rail.unfold_all())
-            .child(mark(Icon::UnfoldAll)),
+            .child(icons::mark(Icon::UnfoldAll)),
         html::button()
             .r#type("button")
             .class("fold-all")
-            .attr("aria-label", said("contents-fold-all"))
-            .attr("title", said("contents-fold-all"))
+            .attr("aria-label", speech::said("contents-fold-all"))
+            .attr("title", speech::said("contents-fold-all"))
             .disabled(all_folded)
             .on(ev::click, move |_| rail.fold_all())
-            .child(mark(Icon::FoldAll)),
+            .child(icons::mark(Icon::FoldAll)),
     )
 }
 
@@ -143,7 +145,7 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
         } => {
             let unfolded = fold != Fold::Folded;
             let shown = match title.trim() {
-                "" => say("heading-untitled"),
+                "" => speech::say("heading-untitled"),
                 _ => title,
             };
             let turning = id.clone();
@@ -160,16 +162,18 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
                             .attr(
                                 "aria-label",
                                 match unfolded {
-                                    true => say_about("outline-fold", "section", &shown),
-                                    false => say_about("contents-unfold", "section", &shown),
+                                    true => speech::say_about("outline-fold", "section", &shown),
+                                    false => {
+                                        speech::say_about("contents-unfold", "section", &shown)
+                                    }
                                 },
                             )
                             .on(ev::click, move |_| {
                                 state.book_rail.turn(turning.clone(), fold)
                             })
                             .child(match unfolded {
-                                true => mark(Icon::Open),
-                                false => mark(Icon::Closed),
+                                true => icons::mark(Icon::Open),
+                                false => icons::mark(Icon::Closed),
                             })
                     }),
                     html::button()
@@ -195,7 +199,7 @@ fn row(entry: Entry, state: WriteViewState) -> impl IntoView {
                             let label = state.labels.of_scene(&named);
 
                             match label.shown.trim() {
-                                "" => say("scene-an-empty-one"),
+                                "" => speech::say("scene-an-empty-one"),
                                 _ => label.shown,
                             }
                         }),

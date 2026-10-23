@@ -1,11 +1,10 @@
 use accounts_contract::{AccountEventDTO, lock_kind};
 use accounts_core::{AccountEvent, LockKind};
-use eventpublishing::message_for as message_carrying;
 use eventsourcing::Recorded;
 use messaging::Message;
 
 pub fn message_for(happened: &Recorded<AccountEvent>) -> Option<Message> {
-    message_carrying(happened, body)
+    eventpublishing::message_for(happened, body)
 }
 
 fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
@@ -38,7 +37,7 @@ mod tests {
         BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, LOCKED, PASSWORD_RESET, SIGNED_UP, UNLOCKED,
     };
     use accounts_core::{AccountId, AccountName, EmailAddress, KIND, LockReason};
-    use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
+    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AggregateId, Event, EventMetadata, Version};
     use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
@@ -113,7 +112,7 @@ mod tests {
 
         for (event, declared) in everything_worth_publishing() {
             assert_eq!(
-                routing_for(KIND, event.name()).to_string(),
+                eventpublishing::routing_for(KIND, event.name()).to_string(),
                 declared,
                 "the key the library derives and the key subscribers bind to must not drift"
             );
@@ -123,12 +122,12 @@ mod tests {
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
-        assert_eq!(everything_from(KIND), EVERY_ACCOUNT);
+        assert_eq!(eventpublishing::everything_from(KIND), EVERY_ACCOUNT);
         assert!(
             everything_worth_publishing().into_iter().all(|(event, _)| {
                 Subscription::parse(EVERY_ACCOUNT)
                     .expect("a declared pattern")
-                    .covers(&routing_for(KIND, event.name()))
+                    .covers(&eventpublishing::routing_for(KIND, event.name()))
             }),
             "a listener asking for every account must hear all of them"
         );

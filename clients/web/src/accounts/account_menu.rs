@@ -5,7 +5,8 @@ use leptos_router::components::A;
 
 use crate::accounts::{CurrentSession, SignInState, SignedInAccount};
 use crate::route;
-use crate::speech::{Speech, said};
+use crate::speech;
+use crate::speech::Speech;
 
 pub fn account_in_masthead() -> impl IntoView {
     let session = expect_context::<CurrentSession>();
@@ -64,7 +65,7 @@ fn account_menu(
                         account.operator.then(|| {
                             view! {
                                 <A href=route::INSTANCE attr:role="menuitem">
-                                    {said("account-menu-operator")}
+                                    {speech::said("account-menu-operator")}
                                 </A>
                             }
                         }),
@@ -72,7 +73,7 @@ fn account_menu(
                             .r#type("button")
                             .role("menuitem")
                             .on(ev::click, move |_| session.sign_out())
-                            .child(said("sign-out")),
+                            .child(speech::said("sign-out")),
                     ))
                 })
             },

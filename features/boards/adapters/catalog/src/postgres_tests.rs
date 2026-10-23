@@ -4,7 +4,8 @@ use test_harness::PostgresFixture;
 
 use boards_core::{BoardCatalog, BoardId, IdeaLink};
 
-use crate::postgres::{PostgresBoardCatalog, migrations};
+use crate::postgres;
+use crate::postgres::PostgresBoardCatalog;
 use crate::suite::Workbench;
 
 struct OnPostgres {
@@ -20,7 +21,7 @@ impl Workbench for OnPostgres {
     async fn setup() -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool: PgPool = fixture.create_schema("boards").await;
-        migrations()
+        postgres::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty namespace");

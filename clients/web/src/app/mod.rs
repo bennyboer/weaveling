@@ -26,7 +26,7 @@ use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
 use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
-use crate::shell::status_bar;
+use crate::shell;
 use crate::speech::Speech;
 
 #[component]
@@ -53,7 +53,7 @@ pub fn App() -> impl IntoView {
                 Screen::SignIn => view! { <SignInPage /> }.into_any(),
                 Screen::Work => work(overlays).into_any(),
             }}
-            {status_bar()}
+            {shell::status_bar()}
         </Router>
     }
 }

@@ -1,7 +1,8 @@
 use leptos::ev;
 use leptos::prelude::*;
 
-use crate::kept::{keep, recall};
+use crate::kept;
+use crate::kept::keep;
 
 const AT_FIRST: f64 = 320.0;
 pub const NARROWEST: f64 = 224.0;
@@ -18,7 +19,7 @@ pub struct DrawerWidth {
 
 impl DrawerWidth {
     pub fn as_last_left(kept: String) -> Self {
-        let chosen = recall(&kept)
+        let chosen = kept::recall(&kept)
             .and_then(|kept| kept.parse().ok())
             .filter(|width: &f64| width.is_finite())
             .unwrap_or(AT_FIRST);

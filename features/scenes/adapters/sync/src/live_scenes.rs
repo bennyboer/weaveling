@@ -12,7 +12,7 @@ use scenes_core::{
 };
 use thiserror::Error;
 use tokio::sync::broadcast;
-use tokio::time::{Instant as Moment, interval, sleep};
+use tokio::time::Instant as Moment;
 use tracing::warn;
 
 use crate::protocol::Message;
@@ -229,7 +229,7 @@ impl Presence {
         let scene = self.scene.clone();
         let service = self.shared.service.clone();
         tokio::spawn(async move {
-            sleep(wait).await;
+            tokio::time::sleep(wait).await;
             scene.recount_waiting.store(false, Ordering::Release);
             scene.recount(&service).await;
         });
@@ -418,7 +418,7 @@ impl LiveScenes {
 
         let shared = Arc::downgrade(&self.shared);
         tokio::spawn(async move {
-            let mut ticks = interval(SWEEP_EVERY);
+            let mut ticks = tokio::time::interval(SWEEP_EVERY);
             loop {
                 ticks.tick().await;
                 let Some(shared) = shared.upgrade() else {

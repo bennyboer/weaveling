@@ -2,7 +2,8 @@ use leptos::prelude::*;
 
 use crate::http::ApiError;
 use crate::live::{Following, Told};
-use crate::projects::model::{Project, ProjectDetails, ProjectId, taken_in};
+use crate::projects::model;
+use crate::projects::model::{Project, ProjectDetails, ProjectId};
 use crate::projects::service;
 
 type CreateAction = Action<(String, ProjectDetails), Result<Project, ApiError>>;
@@ -50,7 +51,7 @@ impl Workspace {
                 let Some(held) = known.try_get_untracked() else {
                     return;
                 };
-                match held.and_then(|held| taken_in(held, told)) {
+                match held.and_then(|held| model::taken_in(held, told)) {
                     Some(next) => _ = known.try_set(Some(next)),
                     None => _ = listing.dispatch(()),
                 }

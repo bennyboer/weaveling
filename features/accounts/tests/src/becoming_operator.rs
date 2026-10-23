@@ -8,7 +8,8 @@ use accounts_core::{
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
 
-use crate::wiring::{HER_PASSWORD, Wired, wired};
+use crate::wiring;
+use crate::wiring::{HER_PASSWORD, Wired};
 
 async fn signed_up(wired: &Wired, email: &str, verified: bool) -> AccountId {
     wired
@@ -55,7 +56,7 @@ async fn is_operator(wired: &Wired, id: &AccountId) -> bool {
 
 #[tokio::test]
 async fn the_code_drawn_while_there_is_no_operator_makes_a_verified_account_one() {
-    let wired = wired();
+    let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let code = drawn(&wired).await;
 
@@ -78,7 +79,7 @@ async fn the_code_drawn_while_there_is_no_operator_makes_a_verified_account_one(
 
 #[tokio::test]
 async fn once_there_is_an_operator_no_code_is_drawn() {
-    let wired = wired();
+    let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let code = drawn(&wired).await;
     wired
@@ -99,7 +100,7 @@ async fn once_there_is_an_operator_no_code_is_drawn() {
 
 #[tokio::test]
 async fn a_code_makes_one_operator_only() {
-    let wired = wired();
+    let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let grace = signed_up(&wired, "grace@example.com", true).await;
     let code = drawn(&wired).await;
@@ -118,7 +119,7 @@ async fn a_code_makes_one_operator_only() {
 
 #[tokio::test]
 async fn a_code_drawn_at_an_earlier_start_is_good_no_longer() {
-    let wired = wired();
+    let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let earlier = drawn(&wired).await;
     let _later = drawn(&wired).await;
@@ -131,7 +132,7 @@ async fn a_code_drawn_at_an_earlier_start_is_good_no_longer() {
 
 #[tokio::test]
 async fn a_wrong_code_makes_no_operator() {
-    let wired = wired();
+    let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let _code = drawn(&wired).await;
 
@@ -147,7 +148,7 @@ async fn a_wrong_code_makes_no_operator() {
 
 #[tokio::test]
 async fn an_unverified_address_is_refused_and_leaves_the_code_for_after_it_is_verified() {
-    let wired = wired();
+    let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", false).await;
     let code = drawn(&wired).await;
 
@@ -202,7 +203,7 @@ impl Operators for FailingToAppointOnce {
 
 #[tokio::test]
 async fn an_operator_broken_off_before_being_appointed_is_appointed_by_the_next_code() {
-    let wired = wired();
+    let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let accounts = AccountService::new(
         wired.store.clone(),

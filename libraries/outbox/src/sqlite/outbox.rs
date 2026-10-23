@@ -11,7 +11,7 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 use crate::outbox::{CLAIM_FOR, Delivered, Outbox, OutboxError};
-use crate::sqlite::enqueuing::hearing_enqueued;
+use crate::sqlite::enqueuing;
 
 const CLAIM: &str = "
     UPDATE outbox
@@ -127,7 +127,7 @@ impl Outbox for SqliteOutbox {
     }
 
     async fn notifications(&self) -> Result<Box<dyn Notifications>, OutboxError> {
-        Ok(Box::new(Enqueued(hearing_enqueued())))
+        Ok(Box::new(Enqueued(enqueuing::hearing_enqueued())))
     }
 }
 

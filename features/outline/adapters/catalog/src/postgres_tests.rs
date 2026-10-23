@@ -4,7 +4,8 @@ use test_harness::PostgresFixture;
 
 use outline_core::{Attachment, OutlineCatalog, OutlineId};
 
-use crate::postgres::{PostgresOutlineCatalog, migrations};
+use crate::postgres;
+use crate::postgres::PostgresOutlineCatalog;
 use crate::suite::Workbench;
 
 struct OnPostgres {
@@ -20,7 +21,7 @@ impl Workbench for OnPostgres {
     async fn setup() -> Self {
         let fixture = PostgresFixture::setup().await;
         let pool: PgPool = fixture.create_schema("outline").await;
-        migrations()
+        postgres::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty namespace");

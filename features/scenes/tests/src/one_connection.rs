@@ -7,7 +7,6 @@ use scenes_store::InMemorySceneStore;
 use scenes_sync::{Connection, Envelope, LiveScenes, Message};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
-use tokio::time::timeout;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const A_PROJECT: &str = "project_1";
@@ -70,7 +69,7 @@ async fn edit(connection: &mut Connection, scene: &str, saying: &str) {
 }
 
 async fn next(heard: &mut UnboundedReceiver<Vec<u8>>) -> Option<Envelope> {
-    timeout(Wait::from_millis(200), heard.recv())
+    tokio::time::timeout(Wait::from_millis(200), heard.recv())
         .await
         .ok()
         .flatten()

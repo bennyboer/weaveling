@@ -5,7 +5,8 @@ use eventsourcing::{Agent, ServiceError, Version};
 use projects_core::{InvalidProjectName, ProjectError, ProjectId, ProjectSummary, RawDetails};
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -20,7 +21,7 @@ fn a_service() -> Wired {
 }
 
 fn a_service_on(clock: Arc<FixedClock>) -> Wired {
-    wired(clock)
+    wiring::wired(clock)
 }
 
 async fn a_project(wired: &Wired, named: &str) -> String {

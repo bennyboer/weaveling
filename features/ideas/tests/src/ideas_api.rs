@@ -9,7 +9,8 @@ use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
 use ideas_core::{IdeaTitle, KIND};
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 
@@ -58,7 +59,7 @@ fn a_server() -> Serving {
 }
 
 fn a_server_acting_as(acting: Agent) -> Serving {
-    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_700_000_000))));
     let server = TestServer::new(wired.routes.clone().layer(Extension(acting)));
 
     Serving { server, wired }
@@ -118,7 +119,7 @@ async fn an_idea_is_captured_by_whoever_the_request_says_acts() {
 
 #[tokio::test]
 async fn a_request_nobody_is_said_to_act_in_is_not_served() {
-    let wired = wired(Arc::new(FixedClock::new(at(1_700_000_000))));
+    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_700_000_000))));
     let server = TestServer::new(wired.routes.clone());
 
     server

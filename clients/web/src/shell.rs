@@ -3,12 +3,14 @@ use leptos::prelude::*;
 use leptos::{IntoView, view};
 use leptos_router::components::A;
 
-use crate::accounts::account_in_masthead;
+use crate::accounts;
 use crate::projects::open_project::OpenProject;
-use crate::projects::project_details::project_details;
-use crate::refusals::alarm::{AlarmState, alarm};
+use crate::projects::project_details;
+use crate::refusals::alarm;
+use crate::refusals::alarm::AlarmState;
 use crate::route;
-use crate::speech::{picker, said};
+use crate::speech;
+use crate::speech::picker;
 use crate::theme;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -62,7 +64,7 @@ pub fn mark() -> impl IntoView {
 pub fn masthead(inside: Option<Inside>) -> impl IntoView {
     html::header().class("masthead").child((
         view! {
-            <A href=route::WORKSPACE attr:class="wordmark" attr:aria-label=said("masthead-all-projects")>
+            <A href=route::WORKSPACE attr:class="wordmark" attr:aria-label=speech::said("masthead-all-projects")>
                 {mark()}
                 <span>"Weaveling"</span>
             </A>
@@ -70,15 +72,15 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
         inside.map(whereabouts),
         theme::picker(),
         picker::picker(),
-        account_in_masthead(),
+        accounts::account_in_masthead(),
     ))
 }
 
 pub fn status_bar() -> impl IntoView {
     html::footer()
         .class("status-bar")
-        .attr("aria-label", said("status-bar"))
-        .child(alarm(AlarmState::new()))
+        .attr("aria-label", speech::said("status-bar"))
+        .child(alarm::alarm(AlarmState::new()))
 }
 
 fn whereabouts(inside: Inside) -> impl IntoView {
@@ -98,11 +100,11 @@ fn whereabouts(inside: Inside) -> impl IntoView {
                 .class("whose")
                 .attr("title", shown)
                 .child(html::span().child(shown)),
-            project_details(id),
+            project_details::project_details(id),
         )),
         html::nav()
             .class("views")
-            .attr("aria-label", said("masthead-views"))
+            .attr("aria-label", speech::said("masthead-views"))
             .child(
                 [
                     Viewing::Write,
@@ -123,7 +125,7 @@ fn tab(view: Viewing, project: String, here: Option<Viewing>) -> impl IntoView {
 
     view! {
         <A href=at attr:class=move || if here { "view here" } else { "view" }>
-            <span>{said(view.message())}</span>
+            <span>{speech::said(view.message())}</span>
         </A>
     }
 }

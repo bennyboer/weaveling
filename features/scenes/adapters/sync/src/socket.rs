@@ -2,7 +2,7 @@ use axum::Router;
 use axum::extract::State;
 use axum::extract::ws::{Message as Frame, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
-use axum::routing::get;
+use axum::routing;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -12,7 +12,7 @@ use crate::live_scenes::LiveScenes;
 
 pub fn router(live: LiveScenes) -> Router {
     Router::new()
-        .route("/scenes/sync", get(attach))
+        .route("/scenes/sync", routing::get(attach))
         .with_state(live)
 }
 

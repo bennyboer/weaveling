@@ -5,7 +5,8 @@ use outline_contract::{
     RetitleSectionRequest, refused,
 };
 
-use crate::http::{ApiError, checked, parsed, rejection, sent, sent_with};
+use crate::http;
+use crate::http::ApiError;
 use crate::ideas::model::IdeaId;
 use crate::outline::model::{
     Attachment, Outline, OutlineChange, OutlineId, Section, SectionChange, SectionId,
@@ -20,9 +21,9 @@ pub async fn open(project: &ProjectId) -> Result<Outline, ApiError> {
     let payload = OpenOutlineRequest {
         project: project.to_string(),
     };
-    let response = sent_with(Request::post(OUTLINES), &payload).await?;
+    let response = http::sent_with(Request::post(OUTLINES), &payload).await?;
 
-    Ok(as_outline(parsed(response, SUBJECT).await?))
+    Ok(as_outline(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn add(
@@ -36,12 +37,12 @@ pub async fn add(
         after: after.map(|after| after.to_string()),
         title: title.to_owned(),
     };
-    let response = sent_with(
+    let response = http::sent_with(
         Request::post(&format!("{OUTLINES}/{outline}/sections")),
         &payload,
     )
     .await?;
-    let added: AddedSectionResponse = parsed(answered(response).await?, SUBJECT).await?;
+    let added: AddedSectionResponse = http::parsed(answered(response).await?, SUBJECT).await?;
 
     Ok((SectionId::from(added.section), as_change(added.outline)))
 }
@@ -54,7 +55,7 @@ pub async fn retitle(
     let payload = RetitleSectionRequest {
         title: title.to_owned(),
     };
-    let response = sent_with(
+    let response = http::sent_with(
         Request::patch(&format!("{OUTLINES}/{outline}/sections/{section}")),
         &payload,
     )
@@ -73,7 +74,7 @@ pub async fn place(
         under: under.map(|under| under.to_string()),
         after: after.map(|after| after.to_string()),
     };
-    let response = sent_with(
+    let response = http::sent_with(
         Request::put(&format!("{OUTLINES}/{outline}/sections/{section}/place")),
         &payload,
     )
@@ -91,7 +92,7 @@ pub async fn demote(outline: &OutlineId, section: &SectionId) -> Result<OutlineC
 }
 
 pub async fn remove(outline: &OutlineId, section: &SectionId) -> Result<OutlineChange, ApiError> {
-    let response = sent(Request::delete(&format!(
+    let response = http::sent(Request::delete(&format!(
         "{OUTLINES}/{outline}/sections/{section}"
     )))
     .await?;
@@ -110,7 +111,7 @@ pub async fn attach(
         section: to.to_string(),
         after: after.as_ref().map(to_dto),
     };
-    let response = sent_with(
+    let response = http::sent_with(
         Request::post(&format!("{OUTLINES}/{outline}/attachments")),
         &payload,
     )
@@ -124,12 +125,12 @@ pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), 
         Attachment::Scene(scene) => ("scenes", scene.to_string()),
         Attachment::Idea(idea) => ("ideas", idea.to_string()),
     };
-    let response = sent(Request::delete(&format!(
+    let response = http::sent(Request::delete(&format!(
         "{OUTLINES}/{outline}/attachments/{kind}/{id}"
     )))
     .await?;
 
-    checked(answered(response).await?, SUBJECT)
+    http::checked(answered(response).await?, SUBJECT)
         .await
         .map(|_| ())
 }
@@ -137,7 +138,9 @@ pub async fn detach(outline: &OutlineId, attachment: &Attachment) -> Result<(), 
 const TOLD_AS_THEY_ARE: [&str; 2] = [refused::TITLE_TOO_LONG, refused::TITLE_CONTROL_CHARACTER];
 
 async fn changed(response: Response) -> Result<OutlineChange, ApiError> {
-    Ok(as_change(parsed(answered(response).await?, SUBJECT).await?))
+    Ok(as_change(
+        http::parsed(answered(response).await?, SUBJECT).await?,
+    ))
 }
 
 async fn answered(response: Response) -> Result<Response, ApiError> {
@@ -145,7 +148,7 @@ async fn answered(response: Response) -> Result<Response, ApiError> {
         return Ok(response);
     }
 
-    match rejection(response).await {
+    match http::rejection(response).await {
         ApiError::Rejected(refusal)
             if refusal
                 .kind
@@ -163,7 +166,7 @@ async fn urged(
     section: &SectionId,
     how: &str,
 ) -> Result<OutlineChange, ApiError> {
-    let response = sent(Request::post(&format!(
+    let response = http::sent(Request::post(&format!(
         "{OUTLINES}/{outline}/sections/{section}/{how}"
     )))
     .await?;

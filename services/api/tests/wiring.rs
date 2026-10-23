@@ -3,17 +3,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Router;
-use axum::body::{Body, to_bytes};
+use axum::body;
+use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use axum_test::TestServer;
 use clock::SystemClock;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, Storage, app};
+use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, Storage};
 
 async fn new_app() -> Router {
-    app(Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await)
+    weaveling_service_api::app(Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await)
 }
 
 async fn get(path: &str) -> (StatusCode, String) {
@@ -45,7 +46,7 @@ async fn reply(request: Request<Body>) -> (StatusCode, String) {
         .await
         .expect("the app should respond");
     let status = response.status();
-    let body = to_bytes(response.into_body(), usize::MAX)
+    let body = body::to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("the body should be readable");
 
@@ -69,8 +70,8 @@ async fn the_projects_feature_is_mounted_under_api() {
 }
 
 async fn signing_up(accounts: Accounts) -> StatusCode {
-    let server = TestServer::new(app(
-        Adapters::in_memory(accounts, Arc::new(SystemClock)).await
+    let server = TestServer::new(weaveling_service_api::app(
+        Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
     ));
 
     server
@@ -83,8 +84,8 @@ async fn signing_up(accounts: Accounts) -> StatusCode {
 #[tokio::test]
 async fn the_service_says_whether_it_keeps_accounts() {
     for (accounts, said) in [(Accounts::On, true), (Accounts::Off, false)] {
-        let server = TestServer::new(app(
-            Adapters::in_memory(accounts, Arc::new(SystemClock)).await
+        let server = TestServer::new(weaveling_service_api::app(
+            Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
         ));
 
         let answered = server.get("/api/service/mode").await;
@@ -96,11 +97,9 @@ async fn the_service_says_whether_it_keeps_accounts() {
 
 #[tokio::test]
 async fn with_accounts_on_the_work_waits_behind_signing_in() {
-    let server = TestServer::new(app(Adapters::in_memory(
-        Accounts::On,
-        Arc::new(SystemClock),
-    )
-    .await));
+    let server = TestServer::new(weaveling_service_api::app(
+        Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await,
+    ));
 
     let refused = server.get("/api/projects").await;
     refused.assert_status(StatusCode::UNAUTHORIZED);
@@ -117,11 +116,9 @@ async fn with_accounts_on_the_work_waits_behind_signing_in() {
 
 #[tokio::test]
 async fn with_accounts_on_becoming_the_operator_waits_behind_signing_in_too() {
-    let server = TestServer::new(app(Adapters::in_memory(
-        Accounts::On,
-        Arc::new(SystemClock),
-    )
-    .await));
+    let server = TestServer::new(weaveling_service_api::app(
+        Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await,
+    ));
 
     let refused = server
         .post("/api/operators")
@@ -155,11 +152,9 @@ async fn a_code_is_drawn_at_start_only_where_accounts_are_on() {
 
 #[tokio::test]
 async fn with_accounts_off_the_work_is_done_by_the_one_local_person() {
-    let server = TestServer::new(app(Adapters::in_memory(
-        Accounts::Off,
-        Arc::new(SystemClock),
-    )
-    .await));
+    let server = TestServer::new(weaveling_service_api::app(
+        Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await,
+    ));
 
     server
         .get("/api/projects")
@@ -313,7 +308,7 @@ async fn in_memory_a_captured_idea_travels_all_the_way_to_its_catalog() {
             ..Cadence::default()
         },
     );
-    let server = TestServer::new(app(adapters));
+    let server = TestServer::new(weaveling_service_api::app(adapters));
     let project = server
         .post("/api/projects")
         .json(&json!({ "name": "Kept in mind" }))
@@ -353,14 +348,16 @@ async fn a_server_with_a_mail_drop_leaves_each_code_there() {
     let drop = std::env::temp_dir().join(format!("weaveling-app-mail-drop-{}", std::process::id()));
     let _gone = fs::remove_dir_all(&drop);
     let mailing = Mailing::Dropped { into: drop.clone() };
-    let server = TestServer::new(app(Adapters::assembled(
-        Storage::InMemory,
-        Accounts::On,
-        mailing.mailer(),
-        Arc::new(SystemClock),
-    )
-    .await
-    .expect("nothing kept in memory needs preparing")));
+    let server = TestServer::new(weaveling_service_api::app(
+        Adapters::assembled(
+            Storage::InMemory,
+            Accounts::On,
+            mailing.mailer(),
+            Arc::new(SystemClock),
+        )
+        .await
+        .expect("nothing kept in memory needs preparing"),
+    ));
 
     server
         .post("/api/accounts")

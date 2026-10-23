@@ -3,7 +3,7 @@ use accounts_core::{
     PasswordHash, Passwords, PendingVerification, SecretsError, Session, SessionToken, Sessions,
     Stage, Throttles, TokenDigest, Tries, VerificationCode, Verifications,
 };
-use futures_util::future::join_all;
+use futures_util::future;
 use time::OffsetDateTime;
 
 pub trait Secrets:
@@ -288,8 +288,10 @@ pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &
         .await
         .expect("issuing should succeed");
 
-    let attempts =
-        join_all((0..20).map(|_| secrets.attempt(&account, CodePurpose::ConfirmAddress, 5))).await;
+    let attempts = future::join_all(
+        (0..20).map(|_| secrets.attempt(&account, CodePurpose::ConfirmAddress, 5)),
+    )
+    .await;
 
     let counted = attempts
         .iter()
@@ -618,7 +620,7 @@ pub async fn tries_counted_at_once_are_each_counted<S: Secrets>(secrets: &S) {
     let ada = an_address("ada@example.com");
 
     let counted =
-        join_all((0..20).map(|_| secrets.count(Guarded::SigningIn, &ada, at(1_000)))).await;
+        future::join_all((0..20).map(|_| secrets.count(Guarded::SigningIn, &ada, at(1_000)))).await;
 
     assert!(counted.iter().all(Result::is_ok));
     assert_eq!(
@@ -696,7 +698,7 @@ pub async fn a_code_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S) {
         .expect("keeping should succeed");
 
     let digest = a_digest("first");
-    let taken = join_all((0..20).map(|_| secrets.take_code(&digest))).await;
+    let taken = future::join_all((0..20).map(|_| secrets.take_code(&digest))).await;
 
     assert_eq!(
         taken

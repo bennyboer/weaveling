@@ -1,6 +1,7 @@
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
-use crate::postgres::{PostgresEventStore, as_bigint};
+use crate::postgres;
+use crate::postgres::PostgresEventStore;
 use crate::store::StoreError;
 use crate::version::Version;
 
@@ -49,7 +50,7 @@ impl<E> PostgresEventStore<E> {
         sqlx::query(DISCARD)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
-            .bind(as_bigint(through))
+            .bind(postgres::as_bigint(through))
             .execute(&self.pool)
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;

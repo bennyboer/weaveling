@@ -3,15 +3,16 @@ use messaging_contract::RefusalDTO;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
-use crate::http::{ApiError, checked, parsed, sent};
+use crate::http;
+use crate::http::ApiError;
 use crate::refusals::model::Refusal;
 
 const REFUSALS: &str = "/api/service/refusals";
 const SUBJECT: &str = "refusal";
 
 pub async fn all() -> Result<Vec<Refusal>, ApiError> {
-    let response = sent(Request::get(REFUSALS)).await?;
-    let refused: Vec<RefusalDTO> = parsed(response, SUBJECT).await?;
+    let response = http::sent(Request::get(REFUSALS)).await?;
+    let refused: Vec<RefusalDTO> = http::parsed(response, SUBJECT).await?;
 
     refused.into_iter().map(to_refusal).collect()
 }
@@ -25,8 +26,8 @@ pub async fn acknowledge(refusal: i64) -> Result<(), ApiError> {
 }
 
 async fn act_on(refusal: i64, deed: &str) -> Result<(), ApiError> {
-    let response = sent(Request::post(&format!("{REFUSALS}/{refusal}/{deed}"))).await?;
-    checked(response, SUBJECT).await?;
+    let response = http::sent(Request::post(&format!("{REFUSALS}/{refusal}/{deed}"))).await?;
+    http::checked(response, SUBJECT).await?;
 
     Ok(())
 }

@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use boards_core::{BoardCatalog, BoardEvent, BoardId, KIND, ProjectLink};
-use boards_messaging::message_for;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventMetadata, EventStore, Recorded, Version};
 use messaging::Message;
 use time::{Duration, OffsetDateTime};
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -18,7 +18,7 @@ fn an_author() -> Agent {
 }
 
 fn a_workbench() -> Wired {
-    wired(Arc::new(FixedClock::new(at(1_000))))
+    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
 fn recorded(id: &BoardId, event: BoardEvent, version: u64) -> Recorded<BoardEvent> {
@@ -46,7 +46,7 @@ fn a_start(id: &BoardId, project: &str) -> Recorded<BoardEvent> {
 }
 
 fn told_of(happened: &Recorded<BoardEvent>) -> Message {
-    message_for(happened).expect("a start should be published")
+    boards_messaging::message_for(happened).expect("a start should be published")
 }
 
 async fn a_stored_board(wired: &Wired, project: &str) -> BoardId {

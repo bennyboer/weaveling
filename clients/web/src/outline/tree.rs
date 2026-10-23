@@ -9,15 +9,17 @@ use leptos_router::components::A;
 use wasm_bindgen::JsCast;
 use web_sys::{HtmlElement, HtmlInputElement};
 
-use crate::dialog::modal;
-use crate::icons::{Icon, mark};
+use crate::dialog;
+use crate::icons;
+use crate::icons::Icon;
 use crate::outline::in_view::{InView, LEAVES_PLACE};
 use crate::outline::model::{Attachment, Section, SectionId};
 use crate::outline::outline_view_state::{OutlineViewState, Urge};
-use crate::problem::problem_to_dismiss;
+use crate::problem;
 use crate::route;
-use crate::speech::{Speech, said, say, say_about};
-use crate::tray::laid_out;
+use crate::speech;
+use crate::speech::Speech;
+use crate::tray;
 
 #[derive(Clone, PartialEq, Eq)]
 enum Landing {
@@ -76,25 +78,30 @@ pub fn OutlineView(project: String) -> impl IntoView {
         move || {
             state
                 .problem()
-                .map(|failure| problem_to_dismiss(failure, move || state.dismiss()))
+                .map(|failure| problem::problem_to_dismiss(failure, move || state.dismiss()))
         },
         move || {
             held.renamed_meanwhile
                 .get()
                 .map(|asked| renamed_meanwhile(asked, held))
         },
-        laid_out(
+        tray::laid_out(
             html::div()
                 .class("manuscript")
                 .child((
-                    html::p().class("tally").child(said("outline-manuscript")),
+                    html::p()
+                        .class("tally")
+                        .child(speech::said("outline-manuscript")),
                     html::ul()
                         .class("branches")
-                        .attr("aria-label", said("outline-the-manuscript"))
+                        .attr("aria-label", speech::said("outline-the-manuscript"))
                         .child(move || twigs(None, held)),
                     move || {
-                        (state.ready() && state.sections().is_empty())
-                            .then(|| html::p().class("empty").child(said("outline-nothing-yet")))
+                        (state.ready() && state.sections().is_empty()).then(|| {
+                            html::p()
+                                .class("empty")
+                                .child(speech::said("outline-nothing-yet"))
+                        })
                     },
                     html::button()
                         .r#type("button")
@@ -103,12 +110,12 @@ pub fn OutlineView(project: String) -> impl IntoView {
                         .on(ev::click, move |_| {
                             state.add(None, last_top(state), String::new())
                         })
-                        .child((mark(Icon::Plus), said("outline-add-section"))),
+                        .child((icons::mark(Icon::Plus), speech::said("outline-add-section"))),
                 ))
                 .into_any(),
             kept(held).into_any(),
             move || {
-                say_about(
+                speech::say_about(
                     "outline-not-in-the-book",
                     "count",
                     &state.waiting_scenes().len().to_string(),
@@ -347,8 +354,8 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     })
                     .child(
                         move || match held.folded.with(|shut| shut.contains(&drawn)) {
-                            true => mark(Icon::Closed),
-                            false => mark(Icon::Open),
+                            true => icons::mark(Icon::Closed),
+                            false => icons::mark(Icon::Open),
                         },
                     )
                     .into_any()
@@ -361,7 +368,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
 
                     move || about_section("outline-section", &state.title_of(&mine))
                 })
-                .placeholder(said("untitled"))
+                .placeholder(speech::said("untitled"))
                 .prop("value", {
                     let mine = valued.clone();
                     let own = Memo::new(move |_| state.title_of(&mine));
@@ -436,7 +443,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                 (!bears(&hollowed, held)).then(|| {
                     html::span()
                         .class("hollow")
-                        .child((mark(Icon::Hollow), "empty"))
+                        .child((icons::mark(Icon::Hollow), "empty"))
                 })
             },
             html::div()
@@ -521,7 +528,7 @@ fn grip(section: SectionId, held: Held) -> impl IntoView {
             held.hauling.set(None);
             held.landing.set(None);
         })
-        .child(mark(Icon::Grip))
+        .child(icons::mark(Icon::Grip))
 }
 
 fn landing_at(x: i32, y: i32, section: &SectionId, held: Held) -> Option<Landing> {
@@ -558,7 +565,7 @@ fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
     let shown = state.named(&attachment);
     let taken = attachment.clone();
     let named = shown.clone();
-    let marked = mark(icon_for(&attachment));
+    let marked = icons::mark(icon_for(&attachment));
     let at = held.project.with_value(|project| match &attachment {
         Attachment::Scene(scene) => route::writing_at(project, scene),
         Attachment::Idea(idea) => route::idea(project, idea, &shown),
@@ -574,7 +581,7 @@ fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
                 </A>
             },
             deed(
-                say_about("outline-take-out", "name", &shown),
+                speech::say_about("outline-take-out", "name", &shown),
                 Icon::Remove,
                 move || state.detach(taken.clone()),
             ),
@@ -586,7 +593,7 @@ fn kept(held: Held) -> impl IntoView {
 
     (
         html::p().class("tally").child(move || {
-            say_about(
+            speech::say_about(
                 "outline-not-in-the-book",
                 "count",
                 &state.waiting_scenes().len().to_string(),
@@ -594,7 +601,7 @@ fn kept(held: Held) -> impl IntoView {
         }),
         html::ul()
             .class("waiting")
-            .attr("aria-label", said("outline-scenes-waiting"))
+            .attr("aria-label", speech::said("outline-scenes-waiting"))
             .child(move || {
                 state
                     .waiting_scenes()
@@ -610,13 +617,15 @@ fn kept(held: Held) -> impl IntoView {
             (state.ready() && state.waiting_scenes().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child(said("outline-every-scene-placed"))
+                    .child(speech::said("outline-every-scene-placed"))
             })
         },
-        html::p().class("tally").child(said("outline-ideas")),
+        html::p()
+            .class("tally")
+            .child(speech::said("outline-ideas")),
         html::ul()
             .class("waiting")
-            .attr("aria-label", said("outline-ideas-waiting"))
+            .attr("aria-label", speech::said("outline-ideas-waiting"))
             .child(move || {
                 state
                     .waiting_ideas()
@@ -628,7 +637,9 @@ fn kept(held: Held) -> impl IntoView {
                     })
                     .collect::<Vec<_>>()
             }),
-        html::p().class("how").child(said("outline-how-to-place")),
+        html::p()
+            .class("how")
+            .child(speech::said("outline-how-to-place")),
     )
 }
 
@@ -636,7 +647,7 @@ fn carried(attachment: Attachment, shown: String, held: Held) -> impl IntoView {
     let mine = attachment.clone();
     let taken = attachment.clone();
     let dropped = attachment;
-    let marked = mark(icon_for(&mine));
+    let marked = icons::mark(icon_for(&mine));
 
     html::li().child(
         html::button()
@@ -648,7 +659,7 @@ fn carried(attachment: Attachment, shown: String, held: Held) -> impl IntoView {
             .attr("aria-label", {
                 let shown = shown.clone();
 
-                move || say_about("outline-place", "name", &shown)
+                move || speech::say_about("outline-place", "name", &shown)
             })
             .on(ev::pointerdown, move |event| {
                 if let Some(under) = event
@@ -718,7 +729,7 @@ fn urging(urge: Urge, section: SectionId, state: OutlineViewState) -> impl IntoV
             event.stop_propagation();
             state.urge(section.clone(), urge);
         })
-        .child(mark(icon))
+        .child(icons::mark(icon))
 }
 
 fn writing(section: SectionId, state: OutlineViewState) -> impl IntoView {
@@ -737,7 +748,7 @@ fn writing(section: SectionId, state: OutlineViewState) -> impl IntoView {
             event.stop_propagation();
             state.write_in(section.clone());
         })
-        .child(mark(Icon::Quill))
+        .child(icons::mark(Icon::Quill))
 }
 
 fn pruning(section: SectionId, state: OutlineViewState) -> impl IntoView {
@@ -752,7 +763,7 @@ fn pruning(section: SectionId, state: OutlineViewState) -> impl IntoView {
             event.stop_propagation();
             state.remove(section.clone());
         })
-        .child(mark(Icon::Remove))
+        .child(icons::mark(Icon::Remove))
 }
 
 fn deed(what: String, icon: Icon, done: impl Fn() + 'static) -> impl IntoView {
@@ -763,23 +774,23 @@ fn deed(what: String, icon: Icon, done: impl Fn() + 'static) -> impl IntoView {
             event.stop_propagation();
             done();
         })
-        .child(mark(icon))
+        .child(icons::mark(icon))
 }
 
 fn about_section(message: &str, title: &str) -> String {
-    say_about(message, "section", &shown_or_blank(title))
+    speech::say_about(message, "section", &shown_or_blank(title))
 }
 
 fn named_as(kind: &'static str) -> impl Fn() -> String + Send + Sync + 'static {
     move || match kind {
-        "scenes" => say("outline-scenes"),
-        _ => say("outline-ideas"),
+        "scenes" => speech::say("outline-scenes"),
+        _ => speech::say("outline-ideas"),
     }
 }
 
 fn shown_or_blank(shown: &str) -> String {
     match shown.is_empty() {
-        true => say("untitled"),
+        true => speech::say("untitled"),
         false => shown.to_owned(),
     }
 }
@@ -837,8 +848,8 @@ fn renamed_meanwhile(asked: RenamedMeanwhile, held: Held) -> impl IntoView {
     let theirs = asked.clone();
     let mine = asked;
 
-    modal(
-        Signal::derive(said("renamed-meanwhile")),
+    dialog::modal(
+        Signal::derive(speech::said("renamed-meanwhile")),
         "",
         close,
         (
@@ -852,7 +863,7 @@ fn renamed_meanwhile(asked: RenamedMeanwhile, held: Held) -> impl IntoView {
                         }
                         close();
                     })
-                    .child(said("renamed-meanwhile-theirs")),
+                    .child(speech::said("renamed-meanwhile-theirs")),
                 html::button()
                     .r#type("button")
                     .class("primary")
@@ -860,7 +871,7 @@ fn renamed_meanwhile(asked: RenamedMeanwhile, held: Held) -> impl IntoView {
                         held.state.retitle(mine.section.clone(), mine.mine.clone());
                         close();
                     })
-                    .child(said("renamed-meanwhile-mine")),
+                    .child(speech::said("renamed-meanwhile-mine")),
             )),
         ),
     )

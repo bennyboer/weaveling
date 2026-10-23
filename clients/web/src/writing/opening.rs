@@ -4,9 +4,9 @@ use leptos::{IntoView, ev, html};
 
 use crate::outline::model::SectionId;
 use crate::scenes::model::SceneId;
-use crate::speech::said;
+use crate::speech;
 use crate::writing::beginnings::Pending;
-use crate::writing::heading::walk_on;
+use crate::writing::heading;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
 
@@ -72,8 +72,8 @@ fn scene_line(section: SectionId, line: Line, state: WriteViewState) -> impl Int
         .class("opening")
         .attr("contenteditable", "plaintext-only")
         .attr("role", "textbox")
-        .attr("aria-label", said(NEXT))
-        .attr("data-placeholder", said(INVITATION))
+        .attr("aria-label", speech::said(NEXT))
+        .attr("data-placeholder", speech::said(INVITATION))
         .node_ref(host)
         .on(ev::input, {
             let section = section.clone();
@@ -111,7 +111,7 @@ fn scene_line(section: SectionId, line: Line, state: WriteViewState) -> impl Int
             }
 
             let anchor = match &line {
-                Line::Opening => return walk_on(&event, host, stop.clone(), state),
+                Line::Opening => return heading::walk_on(&event, host, stop.clone(), state),
                 Line::After(scene) => Stop::Scene(scene.clone()),
                 Line::First => Stop::Heading(section.clone()),
             };

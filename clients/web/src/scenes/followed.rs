@@ -1,5 +1,5 @@
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 use scenes_contract::SceneSummaryDTO;
 
 use crate::http::ApiError;
@@ -22,7 +22,7 @@ pub fn follow(
             let project = project.clone();
             meanwhile.set_value(Vec::new());
 
-            spawn_local(async move {
+            task::spawn_local(async move {
                 match service::in_project(&project).await {
                     Ok(all) => {
                         listed(&all);

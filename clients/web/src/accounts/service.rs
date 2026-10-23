@@ -5,7 +5,8 @@ use accounts_contract::{
 use gloo_net::http::Request;
 
 use crate::accounts::{SignInState, SignedInAccount};
-use crate::http::{ApiError, checked, parsed, sent, sent_with};
+use crate::http;
+use crate::http::ApiError;
 
 const MODE: &str = "/api/service/mode";
 const ACCOUNTS: &str = "/api/accounts";
@@ -19,16 +20,16 @@ const OPERATORS: &str = "/api/operators";
 const SUBJECT: &str = "session";
 
 pub async fn current() -> Result<SignInState, ApiError> {
-    let mode: ServiceModeDTO = parsed(sent(Request::get(MODE)).await?, SUBJECT).await?;
+    let mode: ServiceModeDTO = http::parsed(http::sent(Request::get(MODE)).await?, SUBJECT).await?;
     if !mode.accounts {
         return Ok(SignInState::NoAccounts);
     }
 
-    let response = sent(Request::get(CURRENT)).await?;
+    let response = http::sent(Request::get(CURRENT)).await?;
     match response.status() {
         401 => Ok(SignInState::SignedOut),
         _ => Ok(SignInState::SignedIn(as_signed_in_account(
-            parsed(response, SUBJECT).await?,
+            http::parsed(response, SUBJECT).await?,
         ))),
     }
 }
@@ -38,9 +39,9 @@ pub async fn sign_in(email: &str, password: &str) -> Result<SignedInAccount, Api
         email: email.to_owned(),
         password: password.to_owned(),
     };
-    let response = sent_with(Request::post(SESSIONS), &payload).await?;
+    let response = http::sent_with(Request::post(SESSIONS), &payload).await?;
 
-    Ok(as_signed_in_account(parsed(response, SUBJECT).await?))
+    Ok(as_signed_in_account(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn sign_up(email: &str, name: &str, password: &str) -> Result<(), ApiError> {
@@ -50,9 +51,12 @@ pub async fn sign_up(email: &str, name: &str, password: &str) -> Result<(), ApiE
         password: password.to_owned(),
     };
 
-    checked(sent_with(Request::post(ACCOUNTS), &payload).await?, SUBJECT)
-        .await
-        .map(|_| ())
+    http::checked(
+        http::sent_with(Request::post(ACCOUNTS), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn verify(email: &str, code: &str) -> Result<(), ApiError> {
@@ -61,8 +65,8 @@ pub async fn verify(email: &str, code: &str) -> Result<(), ApiError> {
         code: code.to_owned(),
     };
 
-    checked(
-        sent_with(Request::post(VERIFICATION), &payload).await?,
+    http::checked(
+        http::sent_with(Request::post(VERIFICATION), &payload).await?,
         SUBJECT,
     )
     .await
@@ -74,9 +78,12 @@ pub async fn send_code_again(email: &str) -> Result<(), ApiError> {
         email: email.to_owned(),
     };
 
-    checked(sent_with(Request::post(NEW_CODE), &payload).await?, SUBJECT)
-        .await
-        .map(|_| ())
+    http::checked(
+        http::sent_with(Request::post(NEW_CODE), &payload).await?,
+        SUBJECT,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn ask_to_reset_password(email: &str) -> Result<(), ApiError> {
@@ -84,8 +91,8 @@ pub async fn ask_to_reset_password(email: &str) -> Result<(), ApiError> {
         email: email.to_owned(),
     };
 
-    checked(
-        sent_with(Request::post(PASSWORD_RESET), &payload).await?,
+    http::checked(
+        http::sent_with(Request::post(PASSWORD_RESET), &payload).await?,
         SUBJECT,
     )
     .await
@@ -99,8 +106,8 @@ pub async fn reset_password(email: &str, code: &str, password: &str) -> Result<(
         password: password.to_owned(),
     };
 
-    checked(
-        sent_with(Request::post(NEW_PASSWORD), &payload).await?,
+    http::checked(
+        http::sent_with(Request::post(NEW_PASSWORD), &payload).await?,
         SUBJECT,
     )
     .await
@@ -112,8 +119,8 @@ pub async fn become_operator(code: &str) -> Result<(), ApiError> {
         code: code.to_owned(),
     };
 
-    checked(
-        sent_with(Request::post(OPERATORS), &payload).await?,
+    http::checked(
+        http::sent_with(Request::post(OPERATORS), &payload).await?,
         SUBJECT,
     )
     .await
@@ -121,7 +128,7 @@ pub async fn become_operator(code: &str) -> Result<(), ApiError> {
 }
 
 pub async fn sign_out() -> Result<(), ApiError> {
-    checked(sent(Request::delete(CURRENT)).await?, SUBJECT)
+    http::checked(http::sent(Request::delete(CURRENT)).await?, SUBJECT)
         .await
         .map(|_| ())
 }

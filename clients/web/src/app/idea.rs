@@ -1,18 +1,19 @@
 use leptos::IntoView;
 use leptos::html;
 use leptos::prelude::*;
-use leptos_router::hooks::use_params_map;
+use leptos_router::hooks;
 
-use crate::ideas::inspector::inspector;
+use crate::ideas::inspector;
 use crate::ideas::inspector_state::InspectorState;
-use crate::problem::problem;
+use crate::problem;
 use crate::route;
-use crate::shell::{Inside, masthead};
-use crate::speech::said;
+use crate::shell;
+use crate::shell::Inside;
+use crate::speech;
 
 #[component]
 pub fn IdeaPage() -> impl IntoView {
-    let params = use_params_map();
+    let params = hooks::use_params_map();
     let project = Memo::new(move |_| params.read().get("project").unwrap_or_default());
     let asked = Signal::derive(move || {
         params
@@ -24,15 +25,15 @@ pub fn IdeaPage() -> impl IntoView {
     let ready = Memo::new(move |_| state.opened().is_some());
 
     (
-        move || masthead(Some(Inside::of(&state.project(), None))),
+        move || shell::masthead(Some(Inside::of(&state.project(), None))),
         html::main().child(html::div().class("column").child((
-            move || state.problem().map(problem),
+            move || state.problem().map(problem::problem),
             move || {
                 match ready.get() {
-                    true => inspector(state).into_any(),
+                    true => inspector::inspector(state).into_any(),
                     false => html::p()
                         .class("empty")
-                        .child(said("idea-opening"))
+                        .child(speech::said("idea-opening"))
                         .into_any(),
                 }
             },

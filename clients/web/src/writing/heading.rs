@@ -6,7 +6,7 @@ use leptos::{IntoView, ev, html};
 use web_sys::{HtmlDivElement, KeyboardEvent, Node};
 
 use crate::outline::model::{Section, SectionId};
-use crate::speech::said;
+use crate::speech;
 use crate::writing::asking::Asking;
 use crate::writing::beginnings::Pending;
 use crate::writing::walk::{Stop, Towards};
@@ -165,7 +165,7 @@ pub fn section_heading(
         .attr("aria-level", move || level_of(depth.get()).to_string())
         .attr("contenteditable", "plaintext-only")
         .attr("spellcheck", "false")
-        .attr("data-placeholder", said(UNTITLED))
+        .attr("data-placeholder", speech::said(UNTITLED))
         .node_ref(host)
         .child(written)
         .on(ev::input, {
@@ -279,7 +279,7 @@ fn new_heading(after: Option<SectionId>, depth: usize, state: WriteViewState) ->
         .attr("spellcheck", "false")
         .attr(
             "data-placeholder",
-            said(if after.is_some() { NEXT } else { FIRST }),
+            speech::said(if after.is_some() { NEXT } else { FIRST }),
         )
         .node_ref(host)
         .on(ev::input, {

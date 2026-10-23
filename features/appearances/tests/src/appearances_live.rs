@@ -7,7 +7,7 @@ use appearances_rest::TellingAppearances;
 use axum_test::{TestServer, TestWebSocket};
 use live::Broadcaster;
 use serde_json::{Value, json};
-use tokio::time::timeout;
+use tokio::time;
 
 fn an_idea(id: &str) -> Subject {
     Subject::Idea(IdeaLink::from(id))
@@ -55,7 +55,7 @@ async fn followed(ideas: &[&str]) -> Followed {
 }
 
 async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = timeout(Duration::from_secs(1), socket.receive_text())
+    let frame = time::timeout(Duration::from_secs(1), socket.receive_text())
         .await
         .expect("the places are told while they are fresh");
 
@@ -63,7 +63,7 @@ async fn told(socket: &mut TestWebSocket) -> Value {
 }
 
 async fn nothing_told(socket: &mut TestWebSocket) -> bool {
-    timeout(Duration::from_millis(200), socket.receive_text())
+    time::timeout(Duration::from_millis(200), socket.receive_text())
         .await
         .is_err()
 }

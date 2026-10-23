@@ -7,20 +7,21 @@ use wasm_bindgen::JsCast;
 use web_sys::HtmlElement;
 
 use crate::boards::board_view_state::BoardViewState;
-use crate::boards::card::card;
+use crate::boards::card;
+use crate::boards::carrying;
+use crate::boards::carrying::CARD;
 use crate::boards::carrying::Carrying;
-use crate::boards::carrying::{CARD, snapped};
-use crate::boards::chrome::{actions, naming, zooming};
+use crate::boards::chrome;
 use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Size, Spot};
 use crate::boards::viewport::{NEARER, Viewport};
-use crate::ideas::inspector::docked;
+use crate::ideas::inspector;
 use crate::ideas::inspector_state::InspectorState;
 use crate::ideas::model::{Idea, IdeaId};
-use crate::problem::problem_to_dismiss;
+use crate::problem;
 use crate::route;
-use crate::speech::{said, say_about};
-use crate::tray::laid_out;
+use crate::speech;
+use crate::tray;
 
 const DOTS: i64 = 20;
 
@@ -56,13 +57,13 @@ pub fn BoardView(project: String) -> impl IntoView {
         move || {
             state
                 .problem()
-                .map(|failure| problem_to_dismiss(failure, move || state.dismiss()))
+                .map(|failure| problem::problem_to_dismiss(failure, move || state.dismiss()))
         },
-        laid_out(
+        tray::laid_out(
             corkboard(project, handles).into_any(),
             kept(handles, inspector).into_any(),
             move || {
-                say_about(
+                speech::say_about(
                     "board-not-on-it",
                     "count",
                     &state.unpinned().len().to_string(),
@@ -76,9 +77,9 @@ fn kept(handles: Handles, inspector: InspectorState) -> impl IntoView {
     let state = handles.state;
 
     (
-        docked(inspector),
+        inspector::docked(inspector),
         html::p().class("tally").child(move || {
-            say_about(
+            speech::say_about(
                 "board-not-on-it",
                 "count",
                 &state.unpinned().len().to_string(),
@@ -86,7 +87,7 @@ fn kept(handles: Handles, inspector: InspectorState) -> impl IntoView {
         }),
         html::ul()
             .class("waiting")
-            .attr("aria-label", said("board-waiting"))
+            .attr("aria-label", speech::said("board-waiting"))
             .child(move || {
                 state
                     .unpinned()
@@ -98,10 +99,12 @@ fn kept(handles: Handles, inspector: InspectorState) -> impl IntoView {
             (state.ready() && state.unpinned().is_empty()).then(|| {
                 html::p()
                     .class("empty")
-                    .child(said("board-every-idea-pinned"))
+                    .child(speech::said("board-every-idea-pinned"))
             })
         },
-        html::p().class("how").child(said("board-how-to-pin")),
+        html::p()
+            .class("how")
+            .child(speech::said("board-how-to-pin")),
     )
 }
 
@@ -129,7 +132,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
     html::section()
         .class("corkboard")
         .node_ref(board_ref)
-        .attr("aria-label", said("board"))
+        .attr("aria-label", speech::said("board"))
         .attr("style", move || viewport.get().grid(DOTS))
         .on(ev::capture(ev::pointerdown), move |event| {
             let Some(at) = pointed_at(&event) else {
@@ -226,7 +229,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
                                 .pinned()
                                 .into_iter()
                                 .map(|(idea, at)| {
-                                    card(
+                                    card::card(
                                         route::idea(&project, &idea.id, &idea.title),
                                         idea,
                                         at,
@@ -236,19 +239,19 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
                                 .collect::<Vec<_>>()
                         }
                     },
-                    move || held.get().map(|open| naming(open, handles)),
+                    move || held.get().map(|open| chrome::naming(open, handles)),
                 )),
             move || {
                 let (idea, at) = chosen()?;
 
-                Some(actions(
+                Some(chrome::actions(
                     route::idea(&project, &idea.id, &idea.title),
                     idea,
                     at,
                     handles,
                 ))
             },
-            zooming(viewport, board_ref),
+            chrome::zooming(viewport, board_ref),
         ))
 }
 
@@ -266,7 +269,7 @@ fn pointed_at(event: &ev::MouseEvent) -> Option<Spot> {
 
 fn around(middle: Spot, size: Size) -> Placement {
     Placement {
-        spot: snapped(Spot {
+        spot: carrying::snapped(Spot {
             x: middle.x - size.width / 2,
             y: middle.y - size.height / 2,
         }),
@@ -326,7 +329,7 @@ fn pinnable(idea: Idea, handles: Handles) -> impl IntoView {
             .attr("aria-label", {
                 let shown = shown.clone();
 
-                move || say_about("board-pin", "idea", &shown)
+                move || speech::say_about("board-pin", "idea", &shown)
             })
             .on(ev::click, move |_| {
                 handles

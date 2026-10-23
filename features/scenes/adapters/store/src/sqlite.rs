@@ -5,7 +5,7 @@ use crate::enqueuing::{Mapping, SceneMessageMapping};
 use async_trait::async_trait;
 use clock::Clock;
 use outbox::Origin;
-use outbox::sqlite::enqueue;
+use outbox::sqlite;
 use scenes_core::{
     IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
@@ -151,7 +151,7 @@ impl SqliteSceneStore {
             version: 0,
         };
 
-        enqueue(transaction, origin, &mapping.message(&change))
+        sqlite::enqueue(transaction, origin, &mapping.message(&change))
             .await
             .map_err(unreachable)
     }

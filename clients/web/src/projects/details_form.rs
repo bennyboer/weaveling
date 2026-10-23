@@ -5,7 +5,8 @@ use leptos::{IntoView, ev};
 
 use crate::projects::languages::BOOK_LANGUAGES;
 use crate::projects::model::ProjectDetails;
-use crate::speech::{Speech, said};
+use crate::speech;
+use crate::speech::Speech;
 use quotation::QuotationMarks;
 
 #[derive(Clone, Copy)]
@@ -57,7 +58,7 @@ pub fn details_fields(
 
     (
         html::label().class("field").child((
-            html::span().child(said("details-title")),
+            html::span().child(speech::said("details-title")),
             html::input()
                 .r#type("text")
                 .node_ref(title)
@@ -73,7 +74,7 @@ pub fn details_fields(
                 }),
         )),
         html::label().class("field").child((
-            html::span().child(said("details-book-language")),
+            html::span().child(speech::said("details-book-language")),
             html::select()
                 .on(ev::change, move |event| {
                     draft.language.set(event_target_value(&event))
@@ -82,7 +83,7 @@ pub fn details_fields(
                     html::option()
                         .value("")
                         .prop("selected", move || draft.language.get().is_empty())
-                        .child(said("details-book-language-unset")),
+                        .child(speech::said("details-book-language-unset")),
                     BOOK_LANGUAGES
                         .iter()
                         .map(|tag| {
@@ -93,10 +94,10 @@ pub fn details_fields(
                         })
                         .collect::<Vec<_>>(),
                 )),
-            html::small().child(said("details-book-language-hint")),
+            html::small().child(speech::said("details-book-language-hint")),
         )),
         html::label().class("field").child((
-            html::span().child(said("details-quotation")),
+            html::span().child(speech::said("details-quotation")),
             html::select()
                 .on(ev::change, move |event| {
                     draft.quotation.set(event_target_value(&event))
@@ -126,13 +127,16 @@ pub fn details_fields(
                         })
                         .collect::<Vec<_>>(),
                 )),
-            html::small().child(said("details-quotation-hint")),
+            html::small().child(speech::said("details-quotation-hint")),
         )),
         html::label().class("field").child((
-            html::span().child(said("details-description")),
+            html::span().child(speech::said("details-description")),
             html::textarea()
                 .attr("rows", "3")
-                .attr("placeholder", said("details-description-placeholder"))
+                .attr(
+                    "placeholder",
+                    speech::said("details-description-placeholder"),
+                )
                 .prop("value", move || draft.description.get())
                 .on(ev::input, move |event| {
                     draft.description.set(event_target_value(&event))

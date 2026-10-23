@@ -11,7 +11,8 @@ use time::OffsetDateTime;
 use crate::outbox::Outbox;
 use crate::relaying::{Cadence, RelayTask};
 use crate::sqlite::{SqliteOutbox, enqueue};
-use crate::suite::{Bench, Then, Workbench, a_link_message, from_a_scene};
+use crate::suite;
+use crate::suite::{Bench, Then, Workbench};
 
 struct OnSqlite {
     fixture: SqliteFixture,
@@ -46,7 +47,7 @@ impl Workbench for OnSqlite {
     async fn enqueue(&self, messages: &[Message], then: Then) {
         let mut transaction = self.pool.begin().await.expect("a transaction opens");
         for message in messages {
-            enqueue(&mut transaction, from_a_scene(), message)
+            enqueue(&mut transaction, suite::from_a_scene(), message)
                 .await
                 .expect("enqueueing should succeed");
         }
@@ -110,14 +111,14 @@ async fn an_enqueued_message_wakes_the_relay() {
 async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
     let bench = Bench::<OnSqlite>::setup().await;
     let outbox = bench.workbench.outbox.clone();
-    let message = a_link_message();
+    let message = suite::a_link_message();
     let mut transaction = bench
         .workbench
         .pool
         .begin()
         .await
         .expect("a transaction opens");
-    enqueue(&mut transaction, from_a_scene(), &message)
+    enqueue(&mut transaction, suite::from_a_scene(), &message)
         .await
         .expect("enqueueing should succeed");
 

@@ -6,7 +6,8 @@ use time::OffsetDateTime;
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
 use crate::metadata::EventMetadata;
-use crate::postgres::{PostgresEventStore, agent, as_bigint};
+use crate::postgres;
+use crate::postgres::{PostgresEventStore, agent};
 use crate::store::StoreError;
 use crate::version::Version;
 
@@ -98,7 +99,7 @@ fn query_for<'q>(
         .bind(kind.as_str());
 
     for version in versions {
-        query = query.bind(as_bigint(*version));
+        query = query.bind(postgres::as_bigint(*version));
     }
 
     query

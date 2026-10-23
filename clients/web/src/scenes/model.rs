@@ -1,10 +1,9 @@
 use std::fmt::{self, Display, Formatter};
 
 use scenes_contract::SceneSummaryDTO;
-use words::opening_of;
 
 use crate::ideas::model::IdeaId;
-use crate::speech::say;
+use crate::speech;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SceneId(String);
@@ -22,7 +21,7 @@ impl Scene {
         SceneSummary {
             id: self.id.clone(),
             title: self.title.clone(),
-            opening: opening_of(&self.text),
+            opening: words::opening_of(&self.text),
         }
     }
 }
@@ -41,7 +40,7 @@ impl SceneSummary {
         }
 
         match self.opening.as_str() {
-            "" => say("scene-empty"),
+            "" => speech::say("scene-empty"),
             opening => opening.to_owned(),
         }
     }

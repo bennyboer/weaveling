@@ -6,8 +6,8 @@ use axum::Json;
 use axum::Router;
 use axum::extract::{FromRef, Path, Query, State};
 use axum::http::StatusCode;
-use axum::routing::{delete, get, post};
-use live::{Broadcaster, Teller, followed_at};
+use axum::routing;
+use live::{Broadcaster, Teller};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO, SceneSummaryDTO, refused,
@@ -40,7 +40,7 @@ impl FromRef<Scenes> for Arc<dyn SceneCatalog> {
 }
 
 pub fn live_scenes(broadcaster: Broadcaster) -> Router {
-    followed_at("/scenes/live", broadcaster, |asked| {
+    live::followed_at("/scenes/live", broadcaster, |asked| {
         asked.get("project").cloned()
     })
 }
@@ -125,10 +125,13 @@ impl SceneCatalog for TellingScenes {
 
 pub fn router(service: SceneService, catalog: Arc<dyn SceneCatalog>) -> Router {
     Router::new()
-        .route("/scenes", get(list).post(create))
-        .route("/scenes/{id}", get(find).patch(retitle).delete(remove))
-        .route("/scenes/{id}/ideas", post(link))
-        .route("/scenes/{id}/ideas/{idea}", delete(unlink))
+        .route("/scenes", routing::get(list).post(create))
+        .route(
+            "/scenes/{id}",
+            routing::get(find).patch(retitle).delete(remove),
+        )
+        .route("/scenes/{id}/ideas", routing::post(link))
+        .route("/scenes/{id}/ideas/{idea}", routing::delete(unlink))
         .with_state(Scenes { service, catalog })
 }
 
@@ -137,9 +140,12 @@ pub fn quotation_restylings(
     broadcaster: Broadcaster,
 ) -> Router {
     Router::new()
-        .route("/scenes/quotation-restylings/{project}", get(progress))
+        .route(
+            "/scenes/quotation-restylings/{project}",
+            routing::get(progress),
+        )
         .with_state(tasks)
-        .merge(followed_at(
+        .merge(live::followed_at(
             "/scenes/quotation-restylings/live",
             broadcaster,
             |asked| asked.get("project").cloned(),

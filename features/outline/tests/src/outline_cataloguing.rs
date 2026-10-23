@@ -10,13 +10,13 @@ use outline_core::{
     Attachment, KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, ProjectLink, SectionId,
     SectionTitle,
 };
-use outline_messaging::message_for;
 use time::{Duration, OffsetDateTime};
 
 use registry::Registry;
 
-use crate::shapes::shaped;
-use crate::wiring::{Wired, wired};
+use crate::shapes;
+use crate::wiring;
+use crate::wiring::Wired;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -27,7 +27,7 @@ fn an_author() -> Agent {
 }
 
 fn a_workbench() -> Wired {
-    wired(Arc::new(FixedClock::new(at(1_000))))
+    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
 }
 
 fn titled(what: &str) -> SectionTitle {
@@ -59,7 +59,7 @@ fn a_start(id: &OutlineId, project: &str) -> Recorded<OutlineEvent> {
 }
 
 fn told_of(happened: &Recorded<OutlineEvent>) -> Message {
-    message_for(happened).expect("a start should be published")
+    outline_messaging::message_for(happened).expect("a start should be published")
 }
 
 async fn a_stored_outline(wired: &Wired, project: &str) -> OutlineId {
@@ -257,7 +257,7 @@ async fn a_service_that_never_saw_the_writes_reads_the_same_book_out_of_the_log(
 
     assert_eq!(
         shape(&replayed.state),
-        shaped(
+        shapes::shaped(
             "
             Part One
               Chapter 1

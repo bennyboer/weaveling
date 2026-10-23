@@ -1,20 +1,20 @@
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev};
-use leptos_router::hooks::use_navigate;
+use leptos_router::hooks;
 
-use crate::boards::card::boxed;
+use crate::boards::card;
 use crate::boards::handles::{Handles, Naming};
 use crate::boards::model::{Placement, Spot};
 use crate::boards::viewport::{NEARER, Viewport};
 use crate::ideas::model::Idea;
-use crate::speech::{said, say_about};
+use crate::speech;
 
 const ROOM_ABOVE: i64 = 42;
 const BAR_GAP: i64 = 8;
 
 pub fn actions(href: String, idea: Idea, at: Placement, handles: Handles) -> impl IntoView {
-    let opening = use_navigate();
+    let opening = hooks::use_navigate();
     let shown = idea.shown_as().to_owned();
     let called = shown.clone();
     let id = idea.id;
@@ -62,7 +62,7 @@ pub fn actions(href: String, idea: Idea, at: Placement, handles: Handles) -> imp
 fn about(message: &'static str, shown: &str) -> impl Fn() -> String + Send + Sync + use<> {
     let shown = shown.to_owned();
 
-    move || say_about(message, "idea", &shown)
+    move || speech::say_about(message, "idea", &shown)
 }
 
 fn deed(
@@ -101,7 +101,7 @@ pub fn naming(held: Naming, handles: Handles) -> impl IntoView {
             false => "pinned-rename",
         })
         .attr("aria-label", asked)
-        .attr("style", boxed(at))
+        .attr("style", card::boxed(at))
         .node_ref(field)
         .prop("value", held.was().to_owned())
         .on(ev::pointerdown, |event| event.stop_propagation())
@@ -152,25 +152,25 @@ pub fn zooming(viewport: RwSignal<Viewport>, board: NodeRef<html::Section>) -> i
     html::div()
         .class("zooming")
         .attr("role", "toolbar")
-        .attr("aria-label", said("board-zoom"))
+        .attr("aria-label", speech::said("board-zoom"))
         .on(ev::pointerdown, |event| event.stop_propagation())
         .on(ev::wheel, |event| event.stop_propagation())
         .child((
-            deed(said("board-zoom-out"), "\u{2212}", move || {
+            deed(speech::said("board-zoom-out"), "\u{2212}", move || {
                 let middle = middle_of(board);
                 viewport.update(|it| *it = it.zoomed(middle, 1.0 / NEARER));
             }),
             html::button()
                 .r#type("button")
                 .class("reading")
-                .attr("aria-label", said("board-zoom-reset"))
+                .attr("aria-label", speech::said("board-zoom-reset"))
                 .on(ev::click, move |event| {
                     event.stop_propagation();
                     let middle = middle_of(board);
                     viewport.update(|it| *it = it.unzoomed(middle));
                 })
                 .child(move || viewport.get().as_percent()),
-            deed(said("board-zoom-in"), "+", move || {
+            deed(speech::said("board-zoom-in"), "+", move || {
                 let middle = middle_of(board);
                 viewport.update(|it| *it = it.zoomed(middle, NEARER));
             }),

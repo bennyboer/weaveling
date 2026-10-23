@@ -13,8 +13,9 @@ use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
 use crate::sqlite::SqliteEventStore;
 use crate::store::{EventStore, StoreError};
-use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind, message_for};
-use crate::testing::stored::{codec, nonsense};
+use crate::testing::sample;
+use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind};
+use crate::testing::stored;
 use crate::testing::{Tables, Workbench};
 use crate::version::Version;
 
@@ -45,7 +46,7 @@ impl Workbench for OnSqlite {
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
         let pool = ready_for("sample", &fixture).await;
-        let store = SqliteEventStore::new(pool.clone(), codec(), message_for);
+        let store = SqliteEventStore::new(pool.clone(), stored::codec(), sample::message_for);
 
         Self {
             fixture,
@@ -75,7 +76,7 @@ impl Workbench for OnSqlite {
 #[async_trait]
 impl Tables for OnSqlite {
     fn reading_with(&self, codec: Codec<SampleEvent>) -> Self::Store {
-        SqliteEventStore::new(self.pool.clone(), codec, message_for)
+        SqliteEventStore::new(self.pool.clone(), codec, sample::message_for)
     }
 
     async fn close(&self) {
@@ -98,7 +99,7 @@ impl Tables for OnSqlite {
         .bind(aggregate.as_str())
         .bind(SAMPLE.as_str())
         .bind(version as i64)
-        .bind(nonsense().to_string())
+        .bind(stored::nonsense().to_string())
         .execute(&self.pool)
         .await
         .expect("writing a row by hand should succeed");
@@ -270,15 +271,15 @@ async fn a_writer_kept_waiting_by_another_is_told_it_is_stale_not_that_the_file_
     )
     .bind(aggregate.as_str())
     .bind(SAMPLE.as_str())
-    .bind((codec().body)(&retitled("Theirs")).to_string())
+    .bind((stored::codec().body)(&retitled("Theirs")).to_string())
     .execute(&mut *other)
     .await
     .expect("the other writer writes");
 
     let store = Arc::new(SqliteEventStore::new(
         bench.pool.clone(),
-        codec(),
-        message_for,
+        stored::codec(),
+        sample::message_for,
     ));
     let appending = tokio::spawn({
         let aggregate = aggregate.clone();

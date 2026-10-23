@@ -1,4 +1,4 @@
-use std::iter::once;
+use std::iter;
 
 use eventsourcing::{
     Agent, Aggregate, AggregateId, AggregateType, Event, EventMetadata, EventName, Version,
@@ -124,7 +124,9 @@ impl Aggregate for Project {
                 let detailed = (details != ProjectDetails::default())
                     .then_some(ProjectEvent::DetailsChanged(details));
 
-                Ok(once(ProjectEvent::Started(name)).chain(detailed).collect())
+                Ok(iter::once(ProjectEvent::Started(name))
+                    .chain(detailed)
+                    .collect())
             }
             _ => Err(ProjectError::NotStartedYet),
         }
@@ -182,7 +184,7 @@ impl Aggregate for Project {
                 let restyled = (style != self.details.quotation_marks())
                     .then_some(ProjectEvent::QuotationChanged(style));
 
-                Ok(once(ProjectEvent::DetailsChanged(details))
+                Ok(iter::once(ProjectEvent::DetailsChanged(details))
                     .chain(restyled)
                     .collect())
             }

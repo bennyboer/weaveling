@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::pin::Pin;
 
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 
 use crate::http::ApiError;
 use crate::ideas::model::IdeaId;
@@ -12,9 +12,10 @@ use crate::outline::service;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
-use crate::writing::cursor_kept::keeping_the_cursor;
+use crate::writing::cursor_kept;
 use crate::writing::problems::Problems;
-use crate::writing::rearranged::{Removed, placements, rearranged, removed};
+use crate::writing::rearranged;
+use crate::writing::rearranged::Removed;
 use crate::writing::saving::Saving;
 use outline_contract::OutlineEventDTO;
 
@@ -63,7 +64,7 @@ impl Structure {
         };
         let project = project.clone();
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             match service::open(&project).await {
                 Ok(opened) => {
                     let outline = opened.id.clone();
@@ -113,11 +114,14 @@ impl Structure {
     }
 
     fn notice(self, before: &Outline, after: &Outline) {
-        let moved = rearranged(&placements(before), &placements(after));
+        let moved = rearranged::rearranged(
+            &rearranged::placements(before),
+            &rearranged::placements(after),
+        );
         if !moved.is_empty() {
             self.rearranged_by_others.set(moved);
         }
-        let gone = removed(before, after);
+        let gone = rearranged::removed(before, after);
         if !gone.is_empty() {
             self.removed_by_others.set(gone);
         }
@@ -130,7 +134,7 @@ impl Structure {
         }
         _ = self.reload_in_flight.try_set_value(true);
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             loop {
                 _ = self.outdated_meanwhile.try_set_value(false);
                 let Some(project) = self.project.try_get_value() else {
@@ -601,7 +605,7 @@ impl Structure {
         }
         self.writing.set_value(true);
 
-        spawn_local(async move {
+        task::spawn_local(async move {
             while let Some(next) = self.writes.try_update_value(VecDeque::pop_front).flatten() {
                 next.await;
                 self.saving.write_done();
@@ -641,7 +645,7 @@ impl Structure {
         });
 
         if newer {
-            keeping_the_cursor(|| self.outline.set(Some(arrived)));
+            cursor_kept::keeping_the_cursor(|| self.outline.set(Some(arrived)));
         }
     }
 }

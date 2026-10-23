@@ -7,7 +7,7 @@ use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use messaging::{Failure, Handler, Message};
 use outline_core::{Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlineService};
 
-use crate::letting_go::let_go_of_what_is_gone;
+use crate::letting_go;
 
 pub struct IndexAttachmentsListener {
     events: EventSourcingService<Outline>,
@@ -39,7 +39,7 @@ impl IndexAttachmentsListener {
         self.catalog
             .holds(*outline, &standing.state.attachments())
             .await?;
-        let_go_of_what_is_gone(&self.outlines, self.catalog.as_ref(), *outline).await?;
+        letting_go::let_go_of_what_is_gone(&self.outlines, self.catalog.as_ref(), *outline).await?;
 
         Ok(())
     }

@@ -5,24 +5,27 @@ use axum::extract::{Path, Query, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing;
 use eventsourcing::{Agent, Standing};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
 use ideas_core::{Idea, IdeaError, IdeaService, IdeaServiceError, IdeaSummary, InvalidIdeaTitle};
-use live::{Broadcaster, followed_at};
+use live::Broadcaster;
 use serde::Deserialize;
-use serving::{Problem, demanded, tag};
+use serving::Problem;
 
 pub fn live(broadcaster: Broadcaster) -> Router {
-    followed_at("/ideas/live", broadcaster, |asked| {
+    live::followed_at("/ideas/live", broadcaster, |asked| {
         asked.get("project").cloned()
     })
 }
 
 pub fn router(ideas: IdeaService) -> Router {
     Router::new()
-        .route("/ideas", get(list).post(capture))
-        .route("/ideas/{id}", get(find).patch(retitle).delete(discard))
+        .route("/ideas", routing::get(list).post(capture))
+        .route(
+            "/ideas/{id}",
+            routing::get(find).patch(retitle).delete(discard),
+        )
         .with_state(ideas)
 }
 
@@ -81,7 +84,7 @@ async fn retitle(
     Json(request): Json<RetitleIdeaRequest>,
 ) -> Result<Response, Problem> {
     ideas
-        .retitle(&id, &request.title, demanded(&headers)?, &acting)
+        .retitle(&id, &request.title, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -99,7 +102,7 @@ async fn discard(
     headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     ideas
-        .discard(&id, demanded(&headers)?, &acting)
+        .discard(&id, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -111,7 +114,7 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Idea>) -> Respo
 
     (
         status,
-        [(ETAG, tag(standing.version))],
+        [(ETAG, serving::tag(standing.version))],
         Json(IdeaDTO {
             id: id.to_owned(),
             version: standing.version.count(),

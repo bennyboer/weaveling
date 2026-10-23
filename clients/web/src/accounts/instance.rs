@@ -1,21 +1,21 @@
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 use leptos::{IntoView, component, ev, html, view};
 use leptos_router::components::A;
 
 use crate::accounts::{CurrentSession, SignInState, service};
 use crate::http::ApiError;
-use crate::problem::problem;
+use crate::problem;
 use crate::route;
-use crate::shell::masthead;
-use crate::speech::said;
+use crate::shell;
+use crate::speech;
 
 #[component]
 pub fn InstancePage() -> impl IntoView {
     let session = expect_context::<CurrentSession>();
 
     (
-        masthead(None),
+        shell::masthead(None),
         html::main()
             .class("operating")
             .child(move || match session.state.get() {
@@ -28,8 +28,10 @@ pub fn InstancePage() -> impl IntoView {
 
 fn operating() -> impl IntoView {
     (
-        html::h1().child(said("operator-heading")),
-        html::p().class("hint").child(said("operator-you-are")),
+        html::h1().child(speech::said("operator-heading")),
+        html::p()
+            .class("hint")
+            .child(speech::said("operator-you-are")),
     )
 }
 
@@ -45,7 +47,7 @@ fn becoming(session: CurrentSession) -> impl IntoView {
         asking.set(true);
         refused.set(None);
         let typed = code.get_untracked();
-        spawn_local(async move {
+        task::spawn_local(async move {
             match service::become_operator(&typed).await {
                 Ok(()) => session.became_operator(),
                 Err(failed) => refused.set(Some(failed)),
@@ -55,8 +57,10 @@ fn becoming(session: CurrentSession) -> impl IntoView {
     };
 
     (
-        html::h1().child(said("operator-become-heading")),
-        html::p().class("hint").child(said("operator-become-hint")),
+        html::h1().child(speech::said("operator-become-heading")),
+        html::p()
+            .class("hint")
+            .child(speech::said("operator-become-hint")),
         html::form()
             .on(ev::submit, move |event| {
                 event.prevent_default();
@@ -64,7 +68,7 @@ fn becoming(session: CurrentSession) -> impl IntoView {
             })
             .child((
                 html::label().class("field").child((
-                    html::span().child(said("operator-code")),
+                    html::span().child(speech::said("operator-code")),
                     html::input()
                         .r#type("text")
                         .attr("autocomplete", "off")
@@ -73,22 +77,24 @@ fn becoming(session: CurrentSession) -> impl IntoView {
                         .prop("value", move || code.get())
                         .on(ev::input, move |event| code.set(event_target_value(&event))),
                 )),
-                move || refused.get().map(problem),
+                move || refused.get().map(problem::problem),
                 html::button()
                     .r#type("submit")
                     .class("primary")
                     .disabled(move || asking.get())
-                    .child(said("operator-become-confirm")),
+                    .child(speech::said("operator-become-confirm")),
             )),
     )
 }
 
 fn without_accounts() -> impl IntoView {
     (
-        html::p().class("hint").child(said("operator-no-accounts")),
+        html::p()
+            .class("hint")
+            .child(speech::said("operator-no-accounts")),
         view! {
             <A href=route::WORKSPACE attr:class="back">
-                {said("missing-back")}
+                {speech::said("missing-back")}
             </A>
         },
     )

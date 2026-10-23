@@ -1,14 +1,15 @@
 use accounts_contract::refused;
 use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
-use leptos::task::spawn_local;
+use leptos::task;
 use leptos::{IntoView, component, ev, html};
 
 use crate::accounts::{CurrentSession, service};
 use crate::http::ApiError;
-use crate::problem::problem;
-use crate::shell::masthead;
-use crate::speech::{Speech, said};
+use crate::problem;
+use crate::shell;
+use crate::speech;
+use crate::speech::Speech;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Form {
@@ -42,7 +43,7 @@ pub fn SignInPage() -> impl IntoView {
     };
 
     (
-        masthead(None),
+        shell::masthead(None),
         html::main()
             .class("signing-in")
             .child(move || match page.form.get() {
@@ -75,33 +76,38 @@ fn sign_in_form(page: Page) -> impl IntoView {
     };
 
     (
-        html::h1().child(said("sign-in-heading")),
+        html::h1().child(speech::said("sign-in-heading")),
         notice(page),
         form(
             sign_in,
             (
-                field(said("sign-in-email"), "email", "username", page.email),
                 field(
-                    said("sign-in-password"),
+                    speech::said("sign-in-email"),
+                    "email",
+                    "username",
+                    page.email,
+                ),
+                field(
+                    speech::said("sign-in-password"),
                     "password",
                     "current-password",
                     password,
                 ),
-                move || refused.get().map(problem),
+                move || refused.get().map(problem::problem),
                 move || {
                     not_verified().then(|| {
-                        turning(said("code-enter"), move || {
+                        turning(speech::said("code-enter"), move || {
                             page.turn_to(Form::EnterCode, None)
                         })
                     })
                 },
-                submitting(said("sign-in-confirm"), asking),
+                submitting(speech::said("sign-in-confirm"), asking),
             ),
         ),
-        turning(said("reset-instead"), move || {
+        turning(speech::said("reset-instead"), move || {
             page.turn_to(Form::AskReset, None)
         }),
-        turning(said("sign-up-instead"), move || {
+        turning(speech::said("sign-up-instead"), move || {
             page.turn_to(Form::SignUp, None)
         }),
     )
@@ -127,26 +133,26 @@ fn sign_up_form(page: Page) -> impl IntoView {
     };
 
     (
-        html::h1().child(said("sign-up-heading")),
+        html::h1().child(speech::said("sign-up-heading")),
         form(
             sign_up,
             (
-                field(said("sign-up-name"), "text", "name", name),
-                field(said("sign-in-email"), "email", "email", page.email),
+                field(speech::said("sign-up-name"), "text", "name", name),
+                field(speech::said("sign-in-email"), "email", "email", page.email),
                 field(
-                    said("sign-in-password"),
+                    speech::said("sign-in-password"),
                     "password",
                     "new-password",
                     password,
                 ),
                 html::small()
                     .class("hint")
-                    .child(said("sign-up-password-hint")),
-                move || refused.get().map(problem),
-                submitting(said("sign-up-confirm"), asking),
+                    .child(speech::said("sign-up-password-hint")),
+                move || refused.get().map(problem::problem),
+                submitting(speech::said("sign-up-confirm"), asking),
             ),
         ),
-        turning(said("sign-in-instead"), move || {
+        turning(speech::said("sign-in-instead"), move || {
             page.turn_to(Form::SignIn, None)
         }),
     )
@@ -184,19 +190,19 @@ fn code_form(page: Page) -> impl IntoView {
     });
 
     (
-        html::h1().child(said("code-heading")),
+        html::h1().child(speech::said("code-heading")),
         sent_to(page),
         notice(page),
         form(
             verify,
             (
                 code_boxes(code),
-                move || refused.get().map(problem),
-                submitting(said("code-confirm"), asking),
+                move || refused.get().map(problem::problem),
+                submitting(speech::said("code-confirm"), asking),
             ),
         ),
-        turning(said("code-again"), send_again),
-        turning(said("back-to-sign-in"), move || {
+        turning(speech::said("code-again"), send_again),
+        turning(speech::said("back-to-sign-in"), move || {
             page.turn_to(Form::SignIn, None)
         }),
     )
@@ -216,16 +222,21 @@ fn ask_reset_form(page: Page) -> impl IntoView {
     };
 
     (
-        html::h1().child(said("reset-heading")),
+        html::h1().child(speech::said("reset-heading")),
         form(
             ask,
             (
-                field(said("sign-in-email"), "email", "username", page.email),
-                move || refused.get().map(problem),
-                submitting(said("reset-ask"), asking),
+                field(
+                    speech::said("sign-in-email"),
+                    "email",
+                    "username",
+                    page.email,
+                ),
+                move || refused.get().map(problem::problem),
+                submitting(speech::said("reset-ask"), asking),
             ),
         ),
-        turning(said("back-to-sign-in"), move || {
+        turning(speech::said("back-to-sign-in"), move || {
             page.turn_to(Form::SignIn, None)
         }),
     )
@@ -262,23 +273,28 @@ fn reset_form(page: Page) -> impl IntoView {
     };
 
     (
-        html::h1().child(said("reset-heading")),
+        html::h1().child(speech::said("reset-heading")),
         sent_to(page),
         notice(page),
         form(
             reset,
             (
                 code_boxes(code),
-                field(said("reset-password"), "password", "new-password", password),
+                field(
+                    speech::said("reset-password"),
+                    "password",
+                    "new-password",
+                    password,
+                ),
                 html::small()
                     .class("hint")
-                    .child(said("sign-up-password-hint")),
-                move || refused.get().map(problem),
-                submitting(said("reset-confirm"), asking),
+                    .child(speech::said("sign-up-password-hint")),
+                move || refused.get().map(problem::problem),
+                submitting(speech::said("reset-confirm"), asking),
             ),
         ),
-        turning(said("code-again"), send_again),
-        turning(said("back-to-sign-in"), move || {
+        turning(speech::said("code-again"), send_again),
+        turning(speech::said("back-to-sign-in"), move || {
             page.turn_to(Form::SignIn, None)
         }),
     )
@@ -307,7 +323,7 @@ fn code_boxes(code: RwSignal<String>) -> impl IntoView {
     let focused = RwSignal::new(false);
 
     html::label().class("field").child((
-        html::span().child(said("code-field")),
+        html::span().child(speech::said("code-field")),
         html::div().class("code-boxes").child((
             html::input()
                 .r#type("text")
@@ -356,7 +372,7 @@ fn asked(
     asking.set(true);
     refused.set(None);
 
-    spawn_local(async move {
+    task::spawn_local(async move {
         if let Err(failed) = answer.await {
             refused.set(Some(failed));
         }
@@ -379,7 +395,7 @@ fn notice(page: Page) -> impl IntoView {
             html::p()
                 .class("notice")
                 .role("status")
-                .child(said(message))
+                .child(speech::said(message))
         })
     }
 }

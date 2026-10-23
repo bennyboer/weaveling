@@ -6,10 +6,10 @@ use axum::extract::Query;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::get;
+use axum::routing;
 
 use crate::Broadcaster;
-use crate::socket::{streaming, streaming_from};
+use crate::socket;
 
 pub type Asked = HashMap<String, String>;
 
@@ -20,10 +20,10 @@ pub fn followed_at(
 ) -> Router {
     Router::new().route(
         path,
-        get(
+        routing::get(
             move |upgrade: WebSocketUpgrade, Query(asked): Query<Asked>| async move {
                 match about(&asked) {
-                    Some(about) => streaming(upgrade, broadcaster.hear(&about)),
+                    Some(about) => socket::streaming(upgrade, broadcaster.hear(&about)),
                     None => StatusCode::BAD_REQUEST.into_response(),
                 }
             },
@@ -43,7 +43,7 @@ where
 {
     Router::new().route(
         path,
-        get(
+        routing::get(
             move |upgrade: WebSocketUpgrade, Query(asked): Query<Asked>| async move {
                 let Some(about) = about(&asked) else {
                     return StatusCode::BAD_REQUEST.into_response();
@@ -51,8 +51,8 @@ where
                 let hearing = broadcaster.hear(&about);
 
                 match standing(about).await {
-                    Some(version) => streaming_from(upgrade, version, hearing),
-                    None => streaming(upgrade, hearing),
+                    Some(version) => socket::streaming_from(upgrade, version, hearing),
+                    None => socket::streaming(upgrade, hearing),
                 }
             },
         ),

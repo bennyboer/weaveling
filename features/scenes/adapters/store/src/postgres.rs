@@ -5,7 +5,7 @@ use crate::enqueuing::{Mapping, SceneMessageMapping};
 use async_trait::async_trait;
 use clock::Clock;
 use outbox::Origin;
-use outbox::postgres::enqueue;
+use outbox::postgres;
 use scenes_core::{
     IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
@@ -153,7 +153,7 @@ impl PostgresSceneStore {
             version: 0,
         };
 
-        enqueue(transaction, origin, &mapping.message(&change))
+        postgres::enqueue(transaction, origin, &mapping.message(&change))
             .await
             .map_err(unreachable)
     }

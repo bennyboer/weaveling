@@ -1,11 +1,10 @@
-use eventpublishing::message_for as message_carrying;
 use eventsourcing::Recorded;
 use ideas_contract::IdeaEventDTO;
 use ideas_core::IdeaEvent;
 use messaging::Message;
 
 pub fn message_for(happened: &Recorded<IdeaEvent>) -> Option<Message> {
-    message_carrying(happened, body)
+    eventpublishing::message_for(happened, body)
 }
 
 fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
@@ -24,7 +23,7 @@ fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
+    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Recorded, Version};
     use ideas_contract::{CAPTURED, DISCARDED, EVERY_IDEA, RETITLED};
     use ideas_core::{IdeaId, IdeaTitle, KIND, ProjectLink};
@@ -86,7 +85,7 @@ mod tests {
             let name = event.name();
 
             assert_eq!(
-                routing_for(KIND, name).to_string(),
+                eventpublishing::routing_for(KIND, name).to_string(),
                 declared,
                 "the key the library derives and the key subscribers bind to must not drift"
             );
@@ -96,12 +95,12 @@ mod tests {
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
-        assert_eq!(everything_from(KIND), EVERY_IDEA);
+        assert_eq!(eventpublishing::everything_from(KIND), EVERY_IDEA);
         assert!(
             everything_worth_publishing().into_iter().all(|(event, _)| {
                 Subscription::parse(EVERY_IDEA)
                     .expect("a declared pattern")
-                    .covers(&routing_for(KIND, event.name()))
+                    .covers(&eventpublishing::routing_for(KIND, event.name()))
             }),
             "a listener asking for every idea must handle all of them"
         );

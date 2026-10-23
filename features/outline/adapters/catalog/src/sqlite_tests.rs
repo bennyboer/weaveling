@@ -4,7 +4,8 @@ use test_harness::SqliteFixture;
 
 use outline_core::{Attachment, OutlineCatalog, OutlineId};
 
-use crate::sqlite::{SqliteOutlineCatalog, migrations};
+use crate::sqlite;
+use crate::sqlite::SqliteOutlineCatalog;
 use crate::suite::Workbench;
 
 struct OnSqlite {
@@ -20,7 +21,7 @@ impl Workbench for OnSqlite {
     async fn setup() -> Self {
         let fixture = SqliteFixture::setup();
         let pool: SqlitePool = fixture.create_database("outline").await;
-        migrations()
+        sqlite::migrations()
             .run(&pool)
             .await
             .expect("the schema should lay down in an empty file");

@@ -2,7 +2,8 @@ use std::fmt::{self, Debug, Formatter};
 
 use rand_core::{OsRng, RngCore};
 
-use crate::session::{TokenDigest, hex};
+use crate::session;
+use crate::session::TokenDigest;
 
 pub struct OperatorCode(String);
 
@@ -13,7 +14,7 @@ impl OperatorCode {
         let mut drawn = [0_u8; Self::BYTES];
         OsRng.fill_bytes(&mut drawn);
 
-        Self(hex(&drawn))
+        Self(session::hex(&drawn))
     }
 
     pub fn presented(raw: &str) -> Self {

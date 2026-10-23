@@ -1,4 +1,4 @@
-use axum::body::to_bytes;
+use axum::body;
 use axum::http::header::{CONTENT_TYPE, IF_MATCH, RETRY_AFTER};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse;
@@ -83,7 +83,7 @@ async fn told(problem: Problem) -> (StatusCode, Value) {
     let response = problem.into_response();
     let status = response.status();
     assert_eq!(response.headers()[CONTENT_TYPE], PROBLEM);
-    let body = to_bytes(response.into_body(), usize::MAX)
+    let body = body::to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("a body");
 

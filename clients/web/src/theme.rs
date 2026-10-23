@@ -3,8 +3,9 @@ use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 
-use crate::kept::{keep, recall};
-use crate::speech::{Speech, said};
+use crate::kept;
+use crate::speech;
+use crate::speech::Speech;
 
 const REMEMBERED: &str = "weaveling.theme";
 const MARKED: &str = "data-theme";
@@ -59,7 +60,7 @@ pub fn picker() -> impl IntoView {
         html::div()
             .class("theming")
             .attr("role", "group")
-            .attr("aria-label", said("theme"))
+            .attr("aria-label", speech::said("theme"))
             .child(
                 Theme::EVERY
                     .into_iter()
@@ -93,7 +94,7 @@ fn turning(chosen: RwSignal<Theme>) -> impl IntoView {
 fn swatch(theme: Theme, chosen: RwSignal<Theme>) -> impl IntoView {
     html::button()
         .r#type("button")
-        .attr("aria-label", said(theme.message()))
+        .attr("aria-label", speech::said(theme.message()))
         .attr("aria-pressed", move || {
             if chosen.get() == theme {
                 "true"
@@ -116,11 +117,11 @@ fn choose(theme: Theme) {
         };
     }
 
-    keep(REMEMBERED, theme.stored());
+    kept::keep(REMEMBERED, theme.stored());
 }
 
 fn remembered() -> Theme {
-    recall(REMEMBERED).map_or(Theme::System, |said| Theme::told(&said))
+    kept::recall(REMEMBERED).map_or(Theme::System, |said| Theme::told(&said))
 }
 
 fn mark(theme: Theme) -> impl IntoView {

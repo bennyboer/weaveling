@@ -3,12 +3,11 @@ use leptos::html;
 use leptos::html::Div;
 use leptos::prelude::*;
 use wasm_bindgen::closure::Closure;
-use words::words_in;
 
 use crate::projects::open_project::OpenProject;
 use crate::scenes::model::SceneId;
 use crate::scenes::prose::ProseEditor;
-use crate::writing::choosing::hand_the_keys_to_the_book;
+use crate::writing::choosing;
 use crate::writing::side::Side;
 use crate::writing::walk::{Stop, Towards};
 use crate::writing::write_view_state::WriteViewState;
@@ -107,7 +106,7 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                             choosing.reach(Towards::After);
                         }
                     }
-                    hand_the_keys_to_the_book();
+                    choosing::hand_the_keys_to_the_book();
 
                     true
                 }
@@ -125,7 +124,9 @@ pub fn scene_in_flow(scene: SceneId, state: WriteViewState) -> impl IntoView {
                 let scene = scene.clone();
 
                 move |text: String| {
-                    state.word_count.scene_has(scene.clone(), words_in(&text));
+                    state
+                        .word_count
+                        .scene_has(scene.clone(), words::words_in(&text));
                     state.labels.opening_is(scene.clone(), text);
                 }
             });

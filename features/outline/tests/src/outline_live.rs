@@ -9,12 +9,12 @@ use eventsourcing::Agent;
 use outline_contract::{AddSectionRequest, OpenOutlineRequest, OutlineDTO};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
-use tokio::time::timeout;
 
-use crate::wiring::{Wired, wired};
+use crate::wiring;
+use crate::wiring::Wired;
 
 fn served() -> (Wired, TestServer) {
-    let wired = wired(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
+    let wired = wiring::wired(Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)));
     let server = TestServer::builder()
         .http_transport()
         .build(wired.routes.clone().layer(Extension(Agent::Local)));
@@ -62,7 +62,7 @@ async fn following(server: &TestServer, outline: &str) -> TestWebSocket {
 }
 
 async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = timeout(Duration::from_secs(1), socket.receive_text())
+    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
         .await
         .expect("a change is told while it is fresh");
 

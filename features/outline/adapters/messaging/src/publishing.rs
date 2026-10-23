@@ -1,11 +1,10 @@
-use eventpublishing::message_for as message_carrying;
 use eventsourcing::Recorded;
 use messaging::Message;
 use outline_contract::{AttachmentDTO, OutlineEventDTO};
 use outline_core::{Attachment, OutlineEvent};
 
 pub fn message_for(happened: &Recorded<OutlineEvent>) -> Option<Message> {
-    message_carrying(happened, body)
+    eventpublishing::message_for(happened, body)
 }
 
 fn to_dto(attachment: &Attachment) -> AttachmentDTO {
@@ -77,7 +76,7 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventpublishing::{aggregate_in, everything_from, published_in, routing_for};
+    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Version};
     use messaging::{Handler, RoutingKey, Subscription};
     use outline_contract::{
@@ -212,7 +211,7 @@ mod tests {
 
         for (event, declared) in everything_worth_publishing() {
             assert_eq!(
-                routing_for(KIND, event.name()).to_string(),
+                eventpublishing::routing_for(KIND, event.name()).to_string(),
                 declared,
                 "the key the library derives and the key subscribers bind to must not drift"
             );
@@ -222,11 +221,14 @@ mod tests {
 
     #[test]
     fn the_subscription_the_contract_declares_is_the_one_the_library_derives() {
-        assert_eq!(everything_from(KIND), EVERY_OUTLINE);
+        assert_eq!(eventpublishing::everything_from(KIND), EVERY_OUTLINE);
         assert!(
             everything_worth_publishing()
                 .into_iter()
-                .all(|(event, _)| heard_by(&[EVERY_OUTLINE], &routing_for(KIND, event.name()))),
+                .all(|(event, _)| heard_by(
+                    &[EVERY_OUTLINE],
+                    &eventpublishing::routing_for(KIND, event.name())
+                )),
             "a listener asking for every outline must hear all of them"
         );
     }
@@ -236,7 +238,7 @@ mod tests {
         for (event, _) in everything_worth_publishing() {
             let woken = heard_by(
                 <crate::CatalogueOutlinesListener as Handler>::LISTENS_TO,
-                &routing_for(KIND, event.name()),
+                &eventpublishing::routing_for(KIND, event.name()),
             );
 
             assert_eq!(
@@ -253,7 +255,7 @@ mod tests {
 
     #[test]
     fn removing_a_section_wakes_the_attachment_index_because_it_detaches_scenes() {
-        let removal = routing_for(
+        let removal = eventpublishing::routing_for(
             KIND,
             OutlineEvent::SectionRemoved {
                 section: a_section(),

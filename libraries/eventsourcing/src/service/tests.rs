@@ -7,8 +7,9 @@ use super::*;
 use crate::agent::AccountId;
 use crate::memory::InMemoryEventStore;
 use crate::patch::Patcher;
+use crate::testing::sample;
+use crate::testing::sample::SampleKind;
 use crate::testing::sample::{Sample, SampleCommand, SampleError, SampleEvent};
-use crate::testing::sample::{SampleKind, a_sample, recorded, stamped};
 
 fn a_store() -> Arc<InMemoryEventStore<SampleEvent>> {
     Arc::new(InMemoryEventStore::new())
@@ -527,7 +528,7 @@ async fn an_event_stored_at_an_older_version_is_upgraded_before_the_aggregate_se
             &id,
             Sample::KIND,
             Version::ZERO,
-            &recorded(
+            &sample::recorded(
                 &id,
                 vec![SampleEvent::CreatedBeforeKinds {
                     title: "The Loom".to_owned(),
@@ -563,7 +564,7 @@ async fn an_unpatched_old_event_would_not_rebuild_at_all() {
 
     assert_eq!(untouched, ancient);
     assert!(
-        Sample::from_first(&untouched, &stamped(&a_sample(), 1)).is_none(),
+        Sample::from_first(&untouched, &sample::stamped(&sample::a_sample(), 1)).is_none(),
         "the previous test only means something because the aggregate cannot read the old shape"
     );
 }
@@ -595,7 +596,7 @@ async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
             &id,
             Sample::KIND,
             Version::ZERO,
-            &recorded(
+            &sample::recorded(
                 &id,
                 vec![SampleEvent::CreatedBeforeKinds {
                     title: "The Loom".to_owned(),
@@ -634,7 +635,7 @@ async fn an_event_two_versions_old_climbs_the_whole_chain() {
             &id,
             Sample::KIND,
             Version::ZERO,
-            &recorded(
+            &sample::recorded(
                 &id,
                 vec![SampleEvent::CreatedBeforeDescriptions {
                     title: "The Loom".to_owned(),
@@ -769,7 +770,7 @@ impl EventStore<SampleEvent> for BalksOnce {
 async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
     let store = a_store();
     a_service(store.clone())
-        .begin(&a_sample(), a_creation(), &an_author())
+        .begin(&sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     let balking = BalksOnce::wrapping(store, 2);
@@ -780,7 +781,7 @@ async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
 
     let landed = service
         .execute(
-            &a_sample(),
+            &sample::a_sample(),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
             &an_author(),
         )
@@ -797,7 +798,7 @@ async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
 async fn a_command_gives_up_once_it_has_run_out_of_tries() {
     let store = a_store();
     a_service(store.clone())
-        .begin(&a_sample(), a_creation(), &an_author())
+        .begin(&sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     let service = EventSourcingService::<Sample>::new(
@@ -807,7 +808,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
 
     let refused = service
         .execute(
-            &a_sample(),
+            &sample::a_sample(),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
             &an_author(),
         )
@@ -823,7 +824,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
 async fn a_command_aimed_at_one_version_is_never_tried_again() {
     let store = a_store();
     a_service(store.clone())
-        .begin(&a_sample(), a_creation(), &an_author())
+        .begin(&sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     let service = EventSourcingService::<Sample>::new(
@@ -833,7 +834,7 @@ async fn a_command_aimed_at_one_version_is_never_tried_again() {
 
     let refused = service
         .execute_at(
-            &a_sample(),
+            &sample::a_sample(),
             Version::of(1),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
             &an_author(),
