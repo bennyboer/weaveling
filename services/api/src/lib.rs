@@ -4,6 +4,7 @@ mod flaky;
 mod mail;
 mod refusals;
 mod relays;
+mod sign_up;
 
 use std::sync::Arc;
 
@@ -35,6 +36,7 @@ pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
 pub use mail::{Mailing, WEAVELING_MAIL_DROP};
 pub use relays::Relays;
+pub use sign_up::{SignUp, UnreadableSignUp, WEAVELING_SIGN_UP};
 pub use wiring::{Settling, Storage, Unprepared};
 
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
@@ -48,6 +50,7 @@ pub struct Adapters {
     features: Vec<Assembled>,
     accounts: Option<AssembledAccounts>,
     flakiness: Option<Flakiness>,
+    sign_up: SignUp,
 }
 
 impl Adapters {
@@ -92,6 +95,7 @@ impl Adapters {
             features,
             accounts,
             flakiness: None,
+            sign_up: SignUp::Open,
         })
     }
 
@@ -106,6 +110,10 @@ impl Adapters {
             Some(accounts) => accounts.service.draw_operator_code().await,
             None => Ok(None),
         }
+    }
+
+    pub fn signing_up(self, sign_up: SignUp) -> Self {
+        Self { sign_up, ..self }
     }
 
     pub fn refusing_on_purpose(self, flakiness: Flakiness) -> Self {
@@ -160,10 +168,16 @@ async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared
 }
 
 pub fn app(adapters: Adapters) -> Router {
-    let keeps_accounts = adapters.accounts.is_some();
+    let told = ServiceModeDTO {
+        accounts: adapters.accounts.is_some(),
+        sign_up: adapters
+            .accounts
+            .is_some()
+            .then(|| adapters.sign_up.told().to_owned()),
+    };
     let service = Router::new()
         .route("/health", routing::get(health))
-        .route("/mode", routing::get(move || mode(keeps_accounts)))
+        .route("/mode", routing::get(move || mode(told.clone())))
         .merge(refusals::router(
             adapters.deliveries.clone(),
             adapters.dispatcher.clone(),
@@ -212,8 +226,8 @@ async fn health() -> &'static str {
     "ok"
 }
 
-async fn mode(accounts: bool) -> Json<ServiceModeDTO> {
-    Json(ServiceModeDTO { accounts })
+async fn mode(told: ServiceModeDTO) -> Json<ServiceModeDTO> {
+    Json(told)
 }
 
 #[cfg(test)]

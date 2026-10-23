@@ -82,6 +82,8 @@ pub struct SignedInDTO {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ServiceModeDTO {
     pub accounts: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sign_up: Option<String>,
 }
 
 pub const SESSION_COOKIE: &str = "weaveling_session";
@@ -112,6 +114,11 @@ pub enum AccountEventDTO {
     Locked { kind: String },
     #[serde(rename = "UNLOCKED")]
     Unlocked { kind: String },
+}
+
+pub mod sign_up {
+    pub const OPEN: &str = "open";
+    pub const BY_INVITATION: &str = "invitation";
 }
 
 pub mod lock_kind {

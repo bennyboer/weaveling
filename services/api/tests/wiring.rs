@@ -11,7 +11,7 @@ use clock::SystemClock;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, Storage};
+use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, SignUp, Storage};
 
 async fn new_app() -> Router {
     weaveling_service_api::app(Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await)
@@ -82,17 +82,51 @@ async fn signing_up(accounts: Accounts) -> StatusCode {
 }
 
 #[tokio::test]
-async fn the_service_says_whether_it_keeps_accounts() {
-    for (accounts, said) in [(Accounts::On, true), (Accounts::Off, false)] {
+async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
+    for (accounts, sign_up, said) in [
+        (
+            Accounts::On,
+            SignUp::Open,
+            json!({ "accounts": true, "sign_up": "open" }),
+        ),
+        (
+            Accounts::On,
+            SignUp::ByInvitation,
+            json!({ "accounts": true, "sign_up": "invitation" }),
+        ),
+        (
+            Accounts::Off,
+            SignUp::ByInvitation,
+            json!({ "accounts": false }),
+        ),
+    ] {
         let server = TestServer::new(weaveling_service_api::app(
-            Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
+            Adapters::in_memory(accounts, Arc::new(SystemClock))
+                .await
+                .signing_up(sign_up),
         ));
 
         let answered = server.get("/api/service/mode").await;
 
         answered.assert_status_ok();
-        assert_eq!(answered.json::<Value>(), json!({ "accounts": said }));
+        assert_eq!(
+            answered.json::<Value>(),
+            said,
+            "without accounts nobody signs up, so the way in is not told"
+        );
     }
+}
+
+#[tokio::test]
+async fn unless_told_otherwise_anyone_may_sign_up() {
+    let server = TestServer::new(weaveling_service_api::app(
+        Adapters::in_memory(Accounts::On, Arc::new(SystemClock)).await,
+    ));
+
+    assert_eq!(
+        server.get("/api/service/mode").await.json::<Value>()["sign_up"],
+        "open"
+    );
 }
 
 #[tokio::test]
