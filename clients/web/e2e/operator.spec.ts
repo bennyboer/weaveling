@@ -15,7 +15,7 @@ const accountButton = (page: Page) =>
     .getByRole("button", { name: "Account: Ada Lovelace" });
 
 const operatorInMenu = (page: Page) =>
-  page.getByRole("menu").getByRole("menuitem", { name: "Operator" });
+  page.getByRole("menu").getByRole("menuitem", { name: "Manage instance" });
 
 async function signedIn(page: Page) {
   const server = await aServerWithAccounts(page);
@@ -39,14 +39,14 @@ test("the code from the log makes whoever is signed in the operator", async ({
   await expect(page.getByRole("menuitem", { name: "Sign out" })).toBeVisible();
   await expect(operatorInMenu(page)).toHaveCount(0);
 
-  await page.goto("/operator");
+  await page.goto("/instance");
   await expect(
     page.getByRole("heading", { name: "Become the operator" }),
   ).toBeVisible();
   await enterCode(page, THE_OPERATOR_CODE);
 
   await expect(
-    page.getByRole("heading", { name: "Operator", exact: true }),
+    page.getByRole("heading", { name: "Manage instance" }),
   ).toBeVisible();
   expect(server.operator).toBe(true);
 });
@@ -62,15 +62,28 @@ test("the operator finds the way back through the account's menu", async ({
   await accountButton(page).click();
   await operatorInMenu(page).click();
 
-  await expect(page).toHaveURL(/\/operator$/);
+  await expect(page).toHaveURL(/\/instance$/);
   await expect(
-    page.getByRole("heading", { name: "Operator", exact: true }),
+    page.getByRole("heading", { name: "Manage instance" }),
   ).toBeVisible();
+});
+
+test("the hint stands apart from the field it explains", async ({ page }) => {
+  await signedIn(page);
+  await page.goto("/instance");
+
+  const hint = await page
+    .getByText("Enter the code the server wrote to its log when it started.")
+    .boundingBox();
+  const label = await page.getByText("Code", { exact: true }).boundingBox();
+
+  expect(hint && label).toBeTruthy();
+  expect(label!.y - (hint!.y + hint!.height)).toBeGreaterThanOrEqual(20);
 });
 
 test("a wrong code says so and makes no operator", async ({ page }) => {
   const server = await signedIn(page);
-  await page.goto("/operator");
+  await page.goto("/instance");
 
   await enterCode(page, "not the code at all");
 
@@ -86,10 +99,12 @@ test("a wrong code says so and makes no operator", async ({ page }) => {
 test("without accounts there is no operator to become", async ({ page }) => {
   test.skip(withAccounts, "the server these tests run against keeps accounts");
 
-  await page.goto("/operator");
+  await page.goto("/instance");
 
   await expect(
-    page.getByText("This Weaveling instance keeps no accounts, so it has no operator."),
+    page.getByText(
+      "This Weaveling instance keeps no accounts, so it has no operator.",
+    ),
   ).toBeVisible();
   await expect(page.getByLabel("Code")).toHaveCount(0);
 });

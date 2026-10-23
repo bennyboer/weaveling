@@ -11,7 +11,7 @@ use crate::shell::masthead;
 use crate::speech::said;
 
 #[component]
-pub fn OperatorPage() -> impl IntoView {
+pub fn InstancePage() -> impl IntoView {
     let session = expect_context::<CurrentSession>();
 
     (

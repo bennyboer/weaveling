@@ -63,7 +63,7 @@ fn account_menu(
                         html::hr(),
                         account.operator.then(|| {
                             view! {
-                                <A href=route::OPERATOR attr:role="menuitem">
+                                <A href=route::INSTANCE attr:role="menuitem">
                                     {said("account-menu-operator")}
                                 </A>
                             }

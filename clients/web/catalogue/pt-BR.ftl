@@ -455,8 +455,8 @@ refused-too-many-tries =
        *[other] Tentativas demais. Espere { $minutes } minutos antes de tentar de novo.
     }
 refused-operator-code-wrong = Este não é o código que o servidor escreveu no log.
-account-menu-operator = Operador
-operator-heading = Operador
+account-menu-operator = Gerenciar instância
+operator-heading = Gerenciar instância
 operator-you-are = Você é quem opera esta instância do Weaveling. As contas serão listadas aqui.
 operator-become-heading = Tornar-se o operador
 operator-become-hint = Digite o código que o servidor escreveu no log ao iniciar.

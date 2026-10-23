@@ -1,5 +1,5 @@
 mod account_menu;
-pub mod operator;
+pub mod instance;
 mod service;
 pub mod sign_in;
 pub mod unreachable;
