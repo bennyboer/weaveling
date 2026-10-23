@@ -2,6 +2,9 @@
 mod accepting;
 
 #[cfg(test)]
+mod cataloguing;
+
+#[cfg(test)]
 mod declining;
 
 #[cfg(test)]

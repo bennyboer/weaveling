@@ -12,17 +12,20 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
+invitations-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-invitations-catalog" }
 invitations-core = { version = "0.1.0", path = "../core", package = "weaveling-invitations-core" }
 invitations-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-invitations-rest" }
 invitations-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-invitations-messaging" }
 invitations-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-invitations-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "throttling/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "throttling/sqlite"]
+postgres = ["dep:sqlx", "invitations-catalog/postgres", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "throttling/postgres"]
+sqlite = ["dep:sqlx", "invitations-catalog/sqlite", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "throttling/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 test-harness = { version = "0.1.0", path = "../../../libraries/test-harness", package = "weaveling-test-harness" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+email = { version = "0.1.0", path = "../../../libraries/email", package = "weaveling-email" }
+time = { workspace = true }

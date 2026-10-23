@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
 use eventsourcing::EventStore;
-use invitations_core::{InvitationEvent, InvitationService};
-use invitations_messaging::{AcceptTakenUpInvitationListener, DeclineInvitationListener};
+use invitations_catalog::InMemoryInvitationCatalog;
+use invitations_core::{InvitationCatalog, InvitationEvent, InvitationService};
+use invitations_messaging::{
+    AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
+};
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
 use throttling::{InMemoryThrottles, Throttles};
@@ -11,6 +14,7 @@ use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wir
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
     pub throttles: Arc<dyn Throttles>,
+    pub catalog: Arc<dyn InvitationCatalog>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -57,6 +61,7 @@ impl Feature for InvitationFeature {
         Ports {
             events,
             throttles: Arc::new(InMemoryThrottles::default()),
+            catalog: Arc::new(InMemoryInvitationCatalog::new()),
             mailer: Arc::new(LoggingMailer),
             outbox,
         }
@@ -73,7 +78,8 @@ impl Feature for InvitationFeature {
 
         Ok(Ports {
             events,
-            throttles: Arc::new(throttling::PostgresThrottles::new(pool)),
+            throttles: Arc::new(throttling::PostgresThrottles::new(pool.clone())),
+            catalog: Arc::new(invitations_catalog::PostgresInvitationCatalog::new(pool)),
             mailer: Arc::new(LoggingMailer),
             outbox,
         })
@@ -85,6 +91,7 @@ impl Feature for InvitationFeature {
             eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
             throttling::postgres::migrations(),
+            invitations_catalog::postgres::migrations(),
         ]
     }
 
@@ -99,7 +106,8 @@ impl Feature for InvitationFeature {
 
         Ok(Ports {
             events,
-            throttles: Arc::new(throttling::SqliteThrottles::new(pool)),
+            throttles: Arc::new(throttling::SqliteThrottles::new(pool.clone())),
+            catalog: Arc::new(invitations_catalog::SqliteInvitationCatalog::new(pool)),
             mailer: Arc::new(LoggingMailer),
             outbox,
         })
@@ -111,6 +119,7 @@ impl Feature for InvitationFeature {
             eventsourcing::sqlite::migrations(),
             outbox::sqlite::migrations(),
             throttling::sqlite::migrations(),
+            invitations_catalog::sqlite::migrations(),
         ]
     }
 
@@ -124,6 +133,11 @@ impl Feature for InvitationFeature {
                 ports, context,
             ))),
             Arc::new(DeclineInvitationListener::new(service(ports, context))),
+            Arc::new(CatalogueInvitationsListener::new(
+                ports.events.clone(),
+                ports.catalog.clone(),
+                context.clock.clone(),
+            )),
         ])
     }
 }
@@ -131,22 +145,60 @@ impl Feature for InvitationFeature {
 #[cfg(test)]
 mod tests {
     use clock::SystemClock;
+    use email::EmailAddress;
+    use eventsourcing::Version;
+    use invitations_core::{InvitationId, InvitationSummary, Outcome};
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
+    use time::OffsetDateTime;
 
     use super::*;
 
-    #[test]
-    fn the_feature_hears_its_invitations_taken_up_and_declined() {
-        let context = Context {
+    pub(super) fn a_context() -> Context {
+        Context {
             clock: Arc::new(SystemClock),
             publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
                 InMemoryDeliveries::new(),
             ))),
+        }
+    }
+
+    pub(super) async fn the_list_keeps_what_it_is_told(ports: &Ports) {
+        let summary = InvitationSummary {
+            id: InvitationId::generate(OffsetDateTime::UNIX_EPOCH),
+            version: Version::of(1),
+            to: EmailAddress::new("ada@example.com").expect("a plain address"),
+            issued_at: OffsetDateTime::UNIX_EPOCH,
+            until: OffsetDateTime::UNIX_EPOCH,
+            outcome: Outcome::Open,
         };
+
+        ports
+            .catalog
+            .remember(&summary)
+            .await
+            .expect("the list's table lies beside the events");
+
+        assert_eq!(
+            ports
+                .catalog
+                .listed_after(None, 10)
+                .await
+                .expect("listing should succeed"),
+            vec![summary]
+        );
+    }
+
+    #[test]
+    fn the_feature_hears_its_invitations_taken_up_declined_and_listed() {
+        let context = a_context();
 
         let wired = InvitationFeature::wire(&InvitationFeature::in_memory(&context), &context);
 
-        for named in ["accept-taken-up-invitation", "decline-invitation"] {
+        for named in [
+            "accept-taken-up-invitation",
+            "decline-invitation",
+            "catalogue-invitation",
+        ] {
             assert!(
                 wired
                     .listeners
@@ -165,7 +217,7 @@ mod postgres_tests {
     use super::*;
 
     #[tokio::test]
-    async fn every_part_of_the_schema_lays_down_beside_the_others_and_again() {
+    async fn every_part_of_the_schema_lays_down_beside_the_others_again_and_holds_the_list() {
         let fixture = PostgresFixture::setup().await;
         let pool = fixture.create_schema("invitations").await;
 
@@ -178,6 +230,18 @@ mod postgres_tests {
             }
         }
 
+        let ports = InvitationFeature::on_postgres(pool.clone(), &super::tests::a_context())
+            .expect("wiring should succeed");
+        super::tests::the_list_keeps_what_it_is_told(&ports).await;
+        let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM invitation_summaries")
+            .fetch_one(&pool)
+            .await
+            .expect("counting should succeed");
+        assert_eq!(
+            kept, 1,
+            "the list is kept in the feature's database, not in memory"
+        );
+
         fixture.cleanup().await;
     }
 }
@@ -189,7 +253,7 @@ mod sqlite_tests {
     use super::*;
 
     #[tokio::test]
-    async fn every_part_of_the_schema_lays_down_beside_the_others_and_again() {
+    async fn every_part_of_the_schema_lays_down_beside_the_others_again_and_holds_the_list() {
         let fixture = SqliteFixture::setup();
         let pool = fixture.create_database("invitations").await;
 
@@ -201,6 +265,18 @@ mod sqlite_tests {
                     .expect("each part keeps a ledger of its own, so none mistakes another's 0001");
             }
         }
+
+        let ports = InvitationFeature::on_sqlite(pool.clone(), &super::tests::a_context())
+            .expect("wiring should succeed");
+        super::tests::the_list_keeps_what_it_is_told(&ports).await;
+        let kept: i64 = sqlx::query_scalar("SELECT count(*) FROM invitation_summaries")
+            .fetch_one(&pool)
+            .await
+            .expect("counting should succeed");
+        assert_eq!(
+            kept, 1,
+            "the list is kept in the feature's database, not in memory"
+        );
 
         fixture.cleanup().await;
     }

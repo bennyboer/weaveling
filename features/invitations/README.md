@@ -10,7 +10,7 @@ An operator invites an address to the instance; the address gets a link, and who
 
 **Accepting is heard, not asked for.** Accounts sign the address up through their ticket and tell `account.signed.up.by.invitation`; the listener `accept-taken-up-invitation` records `Accepted` as of that sign-up, however late it hears of it. One told again, or crossing a withdrawal on its way, changes nothing. Declining is heard the same way, from `account.invitation.declined`, by `decline-invitation`; a declined invitation is closed, withdrawing it changes nothing and it is never accepted.
 
-**The operators' list is a read model** (`InvitationCatalog`) of every invitation by its latest version, `InvitationSummary`: to whom, since when, until when and how it stands. It lists the open and the declined, newest first and in pages, and leaves out the accepted and the withdrawn without forgetting them, so a message heard late cannot bring one back.
+**The operators' list is a read model** (`InvitationCatalog`) of every invitation by its latest version, `InvitationSummary`: to whom, since when, until when and how it stands. It lists the open and the declined, newest first and in pages, and leaves out the accepted and the withdrawn without forgetting them, so a message heard late cannot bring one back. The listener `catalogue-invitation` hears every invitation's change and remembers how it stands now, read from its events, not what the message was about.
 
 **Following the link confirms the address,** since the link reached it, which is all the code mailed at signing up would show.
 

@@ -18,6 +18,7 @@ mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "w
 throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }
 
 invitations-contract = { version = "0.1.0", path = "../contract", package = "weaveling-invitations-contract" }
+invitations-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-invitations-catalog" }
 invitations-core = { version = "0.1.0", path = "../core", package = "weaveling-invitations-core" }
 invitations-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-invitations-rest" }
 invitations-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-invitations-messaging" }
