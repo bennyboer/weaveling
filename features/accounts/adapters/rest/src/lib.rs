@@ -8,6 +8,7 @@ use accounts_core::{
     InvalidAccountName, InvalidEmailAddress, InvalidLockReason, InvalidPassword, LockKind, Session,
     SessionToken, SignedIn, Stage,
 };
+use acting::Acting;
 use axum::Router;
 use axum::extract::{Path, Query, Request, State};
 use axum::http::header::{COOKIE, SET_COOKIE};
@@ -75,6 +76,10 @@ async fn admit(
     match accounts.signed_in(&token).await {
         Ok(Some(signed_in)) if signed_in.session.may_act() => {
             let account = signed_in.session.account;
+            request.extensions_mut().insert(Acting {
+                agent: account.acting(),
+                operator: signed_in.account.is_operator(),
+            });
             request.extensions_mut().insert(account.acting());
             request.extensions_mut().insert(account);
             next.run(request).await

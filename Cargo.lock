@@ -3631,6 +3631,7 @@ dependencies = [
  "time",
  "weaveling-accounts-contract",
  "weaveling-accounts-core",
+ "weaveling-acting",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-serving",
@@ -3678,6 +3679,7 @@ dependencies = [
  "weaveling-accounts-rest",
  "weaveling-accounts-secrets",
  "weaveling-accounts-wiring",
+ "weaveling-acting",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-mailing",
@@ -3705,6 +3707,13 @@ dependencies = [
  "weaveling-outbox",
  "weaveling-throttling",
  "weaveling-wiring",
+]
+
+[[package]]
+name = "weaveling-acting"
+version = "0.1.0"
+dependencies = [
+ "weaveling-eventsourcing",
 ]
 
 [[package]]

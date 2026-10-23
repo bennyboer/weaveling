@@ -1,5 +1,6 @@
 use accounts_contract::{SESSION_COOKIE, SignInRequest, refused};
 use accounts_core::{AccountId, Session, SessionToken, Sessions, Stage};
+use acting::Acting;
 use axum::http::StatusCode;
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::routing;
@@ -16,6 +17,10 @@ async fn who_acts(Extension(acting): Extension<Agent>) -> String {
     acting.to_string()
 }
 
+async fn how_it_acts(Extension(acting): Extension<Acting>) -> String {
+    format!("{} operator: {}", acting.agent, acting.operator)
+}
+
 async fn behind_the_gate() -> (Wired, TestServer, TestServer) {
     let wired = wiring::wired();
     wired
@@ -30,7 +35,9 @@ async fn behind_the_gate() -> (Wired, TestServer, TestServer) {
         .expect("the code sent should verify");
     let work = accounts_rest::admitting_only_the_signed_in(
         wired.accounts.clone(),
-        Router::new().route("/work", routing::get(who_acts)),
+        Router::new()
+            .route("/work", routing::get(who_acts))
+            .route("/acting", routing::get(how_it_acts)),
     );
 
     let accounts = TestServer::new(wired.routes.clone());
@@ -119,5 +126,40 @@ async fn a_session_still_owing_its_second_factor_does_not_pass() {
             .get("/work")
             .add_header(COOKIE, format!("{SESSION_COOKIE}={}", token.as_str()))
             .await,
+    );
+}
+
+#[tokio::test]
+async fn the_work_is_told_whether_whoever_acts_is_an_operator_as_it_now_stands() {
+    let (wired, accounts, work) = behind_the_gate().await;
+    let cookie = a_session_cookie(&accounts).await;
+    let ada = wired
+        .accounts
+        .sign_in(ADA, HER_PASSWORD)
+        .await
+        .expect("the right pair should sign in");
+    let acting = |operator: bool| format!("{} operator: {operator}", ada.acting());
+
+    assert_eq!(
+        work.get("/acting").add_header(COOKIE, &cookie).await.text(),
+        acting(false)
+    );
+
+    let code = wired
+        .accounts
+        .draw_operator_code()
+        .await
+        .expect("drawing should succeed")
+        .expect("with nobody appointed a code is drawn");
+    wired
+        .accounts
+        .become_operator(&ada, code.as_str())
+        .await
+        .expect("the code drawn makes an operator");
+
+    assert_eq!(
+        work.get("/acting").add_header(COOKIE, &cookie).await.text(),
+        acting(true),
+        "the same session counts the role from the next request on, read from the account"
     );
 }

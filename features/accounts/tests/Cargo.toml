@@ -19,6 +19,7 @@ outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "wea
 throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
+acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
 accounts-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-accounts-catalog" }
 accounts-contract = { version = "0.1.0", path = "../contract", package = "weaveling-accounts-contract" }
 accounts-core = { version = "0.1.0", path = "../core", package = "weaveling-accounts-core" }
