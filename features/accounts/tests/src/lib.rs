@@ -20,6 +20,9 @@ mod gate_api;
 mod instance_api;
 
 #[cfg(test)]
+mod invitation_sign_up_api;
+
+#[cfg(test)]
 mod invitation_tickets;
 
 #[cfg(test)]

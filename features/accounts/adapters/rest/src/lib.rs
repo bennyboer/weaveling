@@ -1,7 +1,8 @@
 use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, BecomeOperatorRequest, LockDTO, LockRequest,
     NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE, SendCodeRequest, SignInRequest,
-    SignUpRequest, SignedInDTO, VerifyEmailRequest, lock_kind, refused, stage,
+    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest, lock_kind, refused,
+    stage,
 };
 use accounts_core::{
     AccountError, AccountId, AccountService, AccountServiceError, AccountSummary,
@@ -26,6 +27,10 @@ use serving::Problem;
 pub fn router(accounts: AccountService) -> Router {
     Router::new()
         .route("/accounts", routing::post(sign_up))
+        .route(
+            "/accounts/by-invitation",
+            routing::post(sign_up_by_invitation),
+        )
         .route("/accounts/verification", routing::post(verify))
         .route(
             "/accounts/verification/code",
@@ -98,6 +103,18 @@ async fn sign_up(
         .map_err(problem_of)?;
 
     Ok(StatusCode::ACCEPTED)
+}
+
+async fn sign_up_by_invitation(
+    State(accounts): State<AccountService>,
+    Json(request): Json<SignUpByInvitationRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .sign_up_by_invitation(&request.token, &request.name, &request.password)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::CREATED)
 }
 
 async fn verify(
@@ -426,6 +443,15 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
         }
         AccountServiceError::Throttled { wait } => {
             Problem::waiting(refused::THROTTLED, refusal, wait)
+        }
+        AccountServiceError::InvitationInvalid => {
+            Problem::unprocessable(refused::INVITATION_INVALID, refusal)
+        }
+        AccountServiceError::InvitationExpired => {
+            Problem::unprocessable(refused::INVITATION_EXPIRED, refusal)
+        }
+        AccountServiceError::EmailAddressHasAccount => {
+            Problem::refused(refused::EMAIL_ADDRESS_HAS_ACCOUNT, refusal)
         }
         unserveable => Problem::unexpected(unserveable),
     }

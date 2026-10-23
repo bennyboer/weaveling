@@ -8,6 +8,13 @@ pub struct SignUpRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct SignUpByInvitationRequest {
+    pub token: String,
+    pub name: String,
+    pub password: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct VerifyEmailRequest {
     pub email: String,
     pub code: String,
@@ -160,8 +167,11 @@ pub mod refused {
     pub const LAST_OPERATOR: &str = "last-operator";
     pub const OPERATOR_ADDRESS_NOT_VERIFIED: &str = "operator-address-not-verified";
     pub const LOCKED_CANNOT_BECOME_OPERATOR: &str = "locked-cannot-become-operator";
+    pub const INVITATION_INVALID: &str = "invitation-invalid";
+    pub const INVITATION_EXPIRED: &str = "invitation-expired";
+    pub const EMAIL_ADDRESS_HAS_ACCOUNT: &str = "email-address-has-account";
 
-    pub const EVERY: [&str; 26] = [
+    pub const EVERY: [&str; 29] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -188,5 +198,8 @@ pub mod refused {
         LAST_OPERATOR,
         OPERATOR_ADDRESS_NOT_VERIFIED,
         LOCKED_CANNOT_BECOME_OPERATOR,
+        INVITATION_INVALID,
+        INVITATION_EXPIRED,
+        EMAIL_ADDRESS_HAS_ACCOUNT,
     ];
 }
