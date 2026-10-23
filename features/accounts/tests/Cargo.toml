@@ -19,5 +19,6 @@ outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "wea
 
 accounts-contract = { version = "0.1.0", path = "../contract", package = "weaveling-accounts-contract" }
 accounts-core = { version = "0.1.0", path = "../core", package = "weaveling-accounts-core" }
+accounts-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-accounts-messaging" }
 accounts-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-accounts-rest" }
 accounts-secrets = { version = "0.1.0", path = "../adapters/secrets", package = "weaveling-accounts-secrets" }

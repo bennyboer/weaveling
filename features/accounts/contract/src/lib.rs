@@ -57,6 +57,35 @@ pub struct ServiceModeDTO {
 
 pub const SESSION_COOKIE: &str = "weaveling_session";
 
+pub const SIGNED_UP: &str = "account.signed.up";
+pub const EMAIL_VERIFIED: &str = "account.email.verified";
+pub const PASSWORD_RESET: &str = "account.password.reset";
+pub const BECAME_OPERATOR: &str = "account.became.operator";
+pub const LOCKED: &str = "account.locked";
+pub const UNLOCKED: &str = "account.unlocked";
+pub const EVERY_ACCOUNT: &str = "account.#";
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(tag = "name")]
+pub enum AccountEventDTO {
+    #[serde(rename = "SIGNED_UP")]
+    SignedUp,
+    #[serde(rename = "EMAIL_VERIFIED")]
+    EmailVerified,
+    #[serde(rename = "PASSWORD_RESET")]
+    PasswordReset,
+    #[serde(rename = "BECAME_OPERATOR")]
+    BecameOperator,
+    #[serde(rename = "LOCKED")]
+    Locked { kind: String },
+    #[serde(rename = "UNLOCKED")]
+    Unlocked { kind: String },
+}
+
+pub mod lock_kind {
+    pub const OPERATOR: &str = "operator";
+}
+
 pub mod stage {
     pub const SIGNED_IN: &str = "signed-in";
     pub const SECOND_FACTOR_OWED: &str = "second-factor-owed";

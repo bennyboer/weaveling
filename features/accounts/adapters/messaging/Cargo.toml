@@ -1,0 +1,15 @@
+[package]
+name = "weaveling-accounts-messaging"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+accounts-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-accounts-contract" }
+accounts-core = { version = "0.1.0", path = "../../core", package = "weaveling-accounts-core" }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+time = { workspace = true }

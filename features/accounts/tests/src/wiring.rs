@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use accounts_core::{AccountEvent, AccountService, SecretStores};
+use accounts_messaging::message_for;
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
 use clock::FixedClock;
-use eventsourcing::{InMemoryEventStore, Recorded};
+use eventsourcing::InMemoryEventStore;
 use mailing::FakeMailbox;
-use messaging::{FakePublisher, Message, RoutingKey};
+use messaging::FakePublisher;
 use outbox::InMemoryOutbox;
-use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
 pub const ADA: &str = "ada@example.com";
@@ -28,24 +28,13 @@ pub struct Wired {
     pub clock: Arc<FixedClock>,
 }
 
-fn each_event_told(happened: &Recorded<AccountEvent>) -> Option<Message> {
-    Some(Message::opening(
-        RoutingKey::parse("account.happened").expect("a plain routing key"),
-        json!(happened.metadata.aggregate.as_str()),
-        happened.metadata.occurred_at,
-    ))
-}
-
 pub fn wired() -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
     let told = Arc::new(InMemoryOutbox::new(
         Arc::new(FakePublisher::default()),
         clock.clone(),
     ));
-    let store = Arc::new(InMemoryEventStore::enqueuing_to(
-        told.clone(),
-        each_event_told,
-    ));
+    let store = Arc::new(InMemoryEventStore::enqueuing_to(told.clone(), message_for));
     let secrets = Arc::new(InMemorySecrets::default());
     let mailbox = Arc::new(FakeMailbox::default());
     let accounts = AccountService::new(
