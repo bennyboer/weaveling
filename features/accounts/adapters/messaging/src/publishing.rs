@@ -13,6 +13,7 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
         AccountEvent::EmailVerified => AccountEventDTO::EmailVerified,
         AccountEvent::PasswordReset => AccountEventDTO::PasswordReset,
         AccountEvent::BecameOperator => AccountEventDTO::BecameOperator,
+        AccountEvent::StoppedBeingOperator => AccountEventDTO::StoppedBeingOperator,
         AccountEvent::Locked { kind, .. } => AccountEventDTO::Locked {
             kind: named(*kind).to_owned(),
         },
@@ -34,7 +35,8 @@ mod tests {
     use std::collections::BTreeMap;
 
     use accounts_contract::{
-        BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, LOCKED, PASSWORD_RESET, SIGNED_UP, UNLOCKED,
+        BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, LOCKED, PASSWORD_RESET, SIGNED_UP,
+        STOPPED_BEING_OPERATOR, UNLOCKED,
     };
     use accounts_core::{AccountId, AccountName, EmailAddress, KIND, LockReason};
     use eventpublishing::{aggregate_in, published_in};
@@ -92,6 +94,7 @@ mod tests {
             (AccountEvent::EmailVerified, EMAIL_VERIFIED),
             (AccountEvent::PasswordReset, PASSWORD_RESET),
             (AccountEvent::BecameOperator, BECAME_OPERATOR),
+            (AccountEvent::StoppedBeingOperator, STOPPED_BEING_OPERATOR),
             (a_lock(), LOCKED),
             (
                 AccountEvent::Unlocked {

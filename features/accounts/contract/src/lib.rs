@@ -90,6 +90,7 @@ pub const SIGNED_UP: &str = "account.signed.up";
 pub const EMAIL_VERIFIED: &str = "account.email.verified";
 pub const PASSWORD_RESET: &str = "account.password.reset";
 pub const BECAME_OPERATOR: &str = "account.became.operator";
+pub const STOPPED_BEING_OPERATOR: &str = "account.stopped.being.operator";
 pub const LOCKED: &str = "account.locked";
 pub const UNLOCKED: &str = "account.unlocked";
 pub const EVERY_ACCOUNT: &str = "account.#";
@@ -105,6 +106,8 @@ pub enum AccountEventDTO {
     PasswordReset,
     #[serde(rename = "BECAME_OPERATOR")]
     BecameOperator,
+    #[serde(rename = "STOPPED_BEING_OPERATOR")]
+    StoppedBeingOperator,
     #[serde(rename = "LOCKED")]
     Locked { kind: String },
     #[serde(rename = "UNLOCKED")]

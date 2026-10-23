@@ -182,6 +182,7 @@ fn verifying_or_a_reset_alone_cannot_begin_an_account() {
         AccountEvent::EmailVerified,
         AccountEvent::PasswordReset,
         AccountEvent::BecameOperator,
+        AccountEvent::StoppedBeingOperator,
         a_lock(),
         an_unlock(),
     ] {
@@ -354,4 +355,47 @@ fn nobody_is_locked_or_unlocked_before_signing_up() {
             Err(AccountError::NotSignedUpYet)
         );
     }
+}
+
+#[test]
+fn an_operator_stops_being_one() {
+    let mut account = a_verified_account();
+    account.apply(&AccountEvent::BecameOperator, &stamped(3, at(3_000)));
+
+    let stopped = account
+        .decide(AccountCommand::StopBeingOperator, &herself())
+        .expect("an operator may stop being one");
+    assert_eq!(stopped, vec![AccountEvent::StoppedBeingOperator]);
+    account.apply(&AccountEvent::StoppedBeingOperator, &stamped(4, at(4_000)));
+
+    assert!(!account.is_operator());
+}
+
+#[test]
+fn an_account_that_is_no_operator_stops_being_none() {
+    assert_eq!(
+        a_verified_account().decide(AccountCommand::StopBeingOperator, &herself()),
+        Ok(vec![]),
+        "taking a role away twice, or from two tabs, is no reason to fail"
+    );
+}
+
+#[test]
+fn a_locked_account_cannot_become_an_operator() {
+    let mut account = a_verified_account();
+    account.apply(&a_lock(), &stamped(3, at(3_000)));
+
+    assert_eq!(
+        account.decide(AccountCommand::BecomeOperator, &herself()),
+        Err(AccountError::LockedCannotBecomeOperator),
+        "or an operator could be made of someone locked, whom no operator can be"
+    );
+}
+
+#[test]
+fn nobody_stops_being_an_operator_before_signing_up() {
+    assert_eq!(
+        Account::begin(AccountCommand::StopBeingOperator, &herself()),
+        Err(AccountError::NotSignedUpYet)
+    );
 }

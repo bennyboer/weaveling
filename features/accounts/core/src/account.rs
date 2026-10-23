@@ -14,6 +14,7 @@ const SIGNED_UP: EventName = EventName::of("SIGNED_UP");
 const EMAIL_VERIFIED: EventName = EventName::of("EMAIL_VERIFIED");
 const PASSWORD_RESET: EventName = EventName::of("PASSWORD_RESET");
 const BECAME_OPERATOR: EventName = EventName::of("BECAME_OPERATOR");
+const STOPPED_BEING_OPERATOR: EventName = EventName::of("STOPPED_BEING_OPERATOR");
 const LOCKED: EventName = EventName::of("LOCKED");
 const UNLOCKED: EventName = EventName::of("UNLOCKED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
@@ -24,6 +25,7 @@ pub enum AccountCommand {
     Verify,
     ResetPassword,
     BecomeOperator,
+    StopBeingOperator,
     Lock(LockKind, LockReason),
     Unlock(LockKind),
 }
@@ -37,6 +39,7 @@ pub enum AccountEvent {
     EmailVerified,
     PasswordReset,
     BecameOperator,
+    StoppedBeingOperator,
     Locked {
         kind: LockKind,
         reason: LockReason,
@@ -76,6 +79,8 @@ pub enum AccountError {
     NotVerifiedYet,
     #[error("an operator cannot be locked; the role is to be taken away first")]
     OperatorCannotBeLocked,
+    #[error("a locked account cannot become an operator")]
+    LockedCannotBecomeOperator,
 }
 
 impl Account {
@@ -119,6 +124,7 @@ impl Event for AccountEvent {
             Self::EmailVerified => EMAIL_VERIFIED,
             Self::PasswordReset => PASSWORD_RESET,
             Self::BecameOperator => BECAME_OPERATOR,
+            Self::StoppedBeingOperator => STOPPED_BEING_OPERATOR,
             Self::Locked { .. } => LOCKED,
             Self::Unlocked { .. } => UNLOCKED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
@@ -147,6 +153,7 @@ impl Aggregate for Account {
             AccountCommand::Verify
             | AccountCommand::ResetPassword
             | AccountCommand::BecomeOperator
+            | AccountCommand::StopBeingOperator
             | AccountCommand::Lock(..)
             | AccountCommand::Unlock(_) => Err(AccountError::NotSignedUpYet),
         }
@@ -183,6 +190,7 @@ impl Aggregate for Account {
             AccountEvent::EmailVerified
             | AccountEvent::PasswordReset
             | AccountEvent::BecameOperator
+            | AccountEvent::StoppedBeingOperator
             | AccountEvent::Locked { .. }
             | AccountEvent::Unlocked { .. } => None,
         }
@@ -204,7 +212,12 @@ impl Aggregate for Account {
             ]),
             AccountCommand::BecomeOperator if !self.verified => Err(AccountError::NotVerifiedYet),
             AccountCommand::BecomeOperator if self.operator => Ok(vec![]),
+            AccountCommand::BecomeOperator if !self.locks.is_empty() => {
+                Err(AccountError::LockedCannotBecomeOperator)
+            }
             AccountCommand::BecomeOperator => Ok(vec![AccountEvent::BecameOperator]),
+            AccountCommand::StopBeingOperator if !self.operator => Ok(vec![]),
+            AccountCommand::StopBeingOperator => Ok(vec![AccountEvent::StoppedBeingOperator]),
             AccountCommand::Lock(..) if self.operator => Err(AccountError::OperatorCannotBeLocked),
             AccountCommand::Lock(kind, _) if self.locks.contains_key(&kind) => Ok(vec![]),
             AccountCommand::Lock(kind, reason) => Ok(vec![AccountEvent::Locked { kind, reason }]),
@@ -219,6 +232,7 @@ impl Aggregate for Account {
             AccountEvent::EmailVerified => self.verified = true,
             AccountEvent::PasswordReset => self.sessions_since = Some(metadata.occurred_at),
             AccountEvent::BecameOperator => self.operator = true,
+            AccountEvent::StoppedBeingOperator => self.operator = false,
             AccountEvent::Locked { kind, reason } => {
                 self.locks.insert(
                     *kind,

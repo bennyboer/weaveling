@@ -14,6 +14,7 @@ enum StoredAccountEvent {
     EmailVerified,
     PasswordReset,
     BecameOperator,
+    StoppedBeingOperator,
     Locked {
         kind: StoredLockKind,
         reason: String,
@@ -88,6 +89,7 @@ impl From<&AccountEvent> for StoredAccountEvent {
             AccountEvent::EmailVerified => Self::EmailVerified,
             AccountEvent::PasswordReset => Self::PasswordReset,
             AccountEvent::BecameOperator => Self::BecameOperator,
+            AccountEvent::StoppedBeingOperator => Self::StoppedBeingOperator,
             AccountEvent::Locked { kind, reason } => Self::Locked {
                 kind: (*kind).into(),
                 reason: reason.to_string(),
@@ -152,6 +154,7 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             StoredAccountEvent::EmailVerified => Self::EmailVerified,
             StoredAccountEvent::PasswordReset => Self::PasswordReset,
             StoredAccountEvent::BecameOperator => Self::BecameOperator,
+            StoredAccountEvent::StoppedBeingOperator => Self::StoppedBeingOperator,
             StoredAccountEvent::Locked { kind, reason } => Self::Locked {
                 kind: kind.into(),
                 reason: readable_reason(&reason)?,
@@ -231,6 +234,7 @@ mod tests {
             AccountEvent::EmailVerified,
             AccountEvent::PasswordReset,
             AccountEvent::BecameOperator,
+            AccountEvent::StoppedBeingOperator,
             AccountEvent::Locked {
                 kind: LockKind::Operator,
                 reason: LockReason::new("Sent spam.").expect("a plain reason"),
