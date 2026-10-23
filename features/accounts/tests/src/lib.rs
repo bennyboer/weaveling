@@ -1,4 +1,7 @@
 #[cfg(test)]
+mod abandoned_claims;
+
+#[cfg(test)]
 mod account_cataloguing;
 
 #[cfg(test)]

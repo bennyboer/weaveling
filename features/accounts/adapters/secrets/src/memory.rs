@@ -7,10 +7,11 @@ use accounts_core::{
     Session, Sessions, TokenDigest, Verifications,
 };
 use async_trait::async_trait;
+use time::OffsetDateTime;
 
 #[derive(Default)]
 struct Kept {
-    email_addresses: HashMap<EmailAddress, AccountId>,
+    email_addresses: HashMap<EmailAddress, (AccountId, OffsetDateTime)>,
     passwords: HashMap<AccountId, PasswordHash>,
     pending: HashMap<(AccountId, CodePurpose), PendingVerification>,
     sessions: HashMap<TokenDigest, Session>,
@@ -33,23 +34,50 @@ impl InMemorySecrets {
 
 #[async_trait]
 impl EmailAddresses for InMemorySecrets {
-    async fn claim(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
+    async fn claim(
+        &self,
+        email: &EmailAddress,
+        account: &AccountId,
+        at: OffsetDateTime,
+    ) -> Result<(), SecretsError> {
         let mut kept = self.kept();
         if kept.email_addresses.contains_key(email) {
             return Err(SecretsError::Taken);
         }
-        kept.email_addresses.insert(email.clone(), *account);
+        kept.email_addresses.insert(email.clone(), (*account, at));
 
         Ok(())
     }
 
+    async fn take_over(
+        &self,
+        email: &EmailAddress,
+        from: &AccountId,
+        to: &AccountId,
+        claimed_before: OffsetDateTime,
+        at: OffsetDateTime,
+    ) -> Result<bool, SecretsError> {
+        let mut kept = self.kept();
+        match kept.email_addresses.get_mut(email) {
+            Some(claim) if claim.0 == *from && claim.1 < claimed_before => {
+                *claim = (*to, at);
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
     async fn holder(&self, email: &EmailAddress) -> Result<Option<AccountId>, SecretsError> {
-        Ok(self.kept().email_addresses.get(email).copied())
+        Ok(self
+            .kept()
+            .email_addresses
+            .get(email)
+            .map(|(account, _)| *account))
     }
 
     async fn release(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
         let mut kept = self.kept();
-        if kept.email_addresses.get(email) == Some(account) {
+        if kept.email_addresses.get(email).map(|(held, _)| held) == Some(account) {
             kept.email_addresses.remove(email);
         }
 

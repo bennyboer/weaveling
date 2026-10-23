@@ -101,6 +101,7 @@ async fn an_address_held_but_not_the_accounts_own_gets_no_code() {
         .claim(
             &EmailAddress::new("ada@example.org").expect("a plain address"),
             &id,
+            wiring::at(1_700_000_000),
         )
         .await
         .expect("claiming should succeed");

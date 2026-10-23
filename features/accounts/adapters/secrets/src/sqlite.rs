@@ -10,6 +10,7 @@ use clock::text;
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
+use time::OffsetDateTime;
 
 const KEEP_CODE: &str = "
     INSERT INTO account_operator_code (digest)
@@ -36,9 +37,15 @@ const APPOINTED: &str = "SELECT EXISTS (SELECT 1 FROM account_operators WHERE ac
 const ANY_APPOINTED: &str = "SELECT EXISTS (SELECT 1 FROM account_operators)";
 
 const CLAIM: &str = "
-    INSERT INTO account_email_addresses (email, account)
-    VALUES (?1, ?2)
+    INSERT INTO account_email_addresses (email, account, claimed_at)
+    VALUES (?1, ?2, ?3)
     ON CONFLICT (email) DO NOTHING
+";
+
+const TAKE_OVER: &str = "
+    UPDATE account_email_addresses
+    SET account = ?3, claimed_at = ?5
+    WHERE email = ?1 AND account = ?2 AND claimed_at < ?4
 ";
 
 const HOLDER: &str = "SELECT account FROM account_email_addresses WHERE email = ?1";
@@ -189,10 +196,16 @@ fn to_pending(row: &SqliteRow) -> Result<PendingVerification, SecretsError> {
 
 #[async_trait]
 impl EmailAddresses for SqliteSecrets {
-    async fn claim(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
+    async fn claim(
+        &self,
+        email: &EmailAddress,
+        account: &AccountId,
+        at: OffsetDateTime,
+    ) -> Result<(), SecretsError> {
         let done = sqlx::query(CLAIM)
             .bind(email.as_str())
             .bind(account.to_string())
+            .bind(text::written(at))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -201,6 +214,27 @@ impl EmailAddresses for SqliteSecrets {
             0 => Err(SecretsError::Taken),
             _ => Ok(()),
         }
+    }
+
+    async fn take_over(
+        &self,
+        email: &EmailAddress,
+        from: &AccountId,
+        to: &AccountId,
+        claimed_before: OffsetDateTime,
+        at: OffsetDateTime,
+    ) -> Result<bool, SecretsError> {
+        let done = sqlx::query(TAKE_OVER)
+            .bind(email.as_str())
+            .bind(from.to_string())
+            .bind(to.to_string())
+            .bind(text::written(claimed_before))
+            .bind(text::written(at))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(done.rows_affected() == 1)
     }
 
     async fn holder(&self, email: &EmailAddress) -> Result<Option<AccountId>, SecretsError> {

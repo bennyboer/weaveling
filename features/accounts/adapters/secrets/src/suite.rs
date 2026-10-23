@@ -50,7 +50,7 @@ fn pending(code: &str, until: i64) -> PendingVerification {
 pub async fn a_claimed_address_names_its_holder<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &account)
+        .claim(&an_address("ada@example.com"), &account, at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -76,7 +76,7 @@ pub async fn an_address_never_claimed_names_nobody<S: Secrets>(secrets: &S) {
 pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &S) {
     let first = AccountId::generate(at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &first)
+        .claim(&an_address("ada@example.com"), &first, at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -84,6 +84,7 @@ pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &S) {
         .claim(
             &an_address("ada@example.com"),
             &AccountId::generate(at(2_000)),
+            at(1_000),
         )
         .await;
 
@@ -102,7 +103,7 @@ pub async fn one_account_may_hold_two_addresses<S: Secrets>(secrets: &S) {
     let account = AccountId::generate(at(1_000));
     for address in ["ada@example.com", "ada@example.org"] {
         secrets
-            .claim(&an_address(address), &account)
+            .claim(&an_address(address), &account, at(1_000))
             .await
             .expect("claiming should succeed");
     }
@@ -122,7 +123,7 @@ pub async fn one_account_may_hold_two_addresses<S: Secrets>(secrets: &S) {
 pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &S) {
     let first = AccountId::generate(at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &first)
+        .claim(&an_address("ada@example.com"), &first, at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -142,6 +143,7 @@ pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &S) {
         .claim(
             &an_address("ada@example.com"),
             &AccountId::generate(at(2_000)),
+            at(1_000),
         )
         .await
         .expect("a released address is free again");
@@ -150,7 +152,7 @@ pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &S) {
 pub async fn an_address_is_released_only_by_the_account_holding_it<S: Secrets>(secrets: &S) {
     let holder = AccountId::generate(at(1_000));
     secrets
-        .claim(&an_address("ada@example.com"), &holder)
+        .claim(&an_address("ada@example.com"), &holder, at(1_000))
         .await
         .expect("claiming should succeed");
 
@@ -983,6 +985,167 @@ pub async fn an_invitation_forgotten_before_its_ticket_came_keeps_none<S: Secret
     );
 }
 
+pub async fn a_claim_made_before_the_moment_given_is_taken_over_from_its_holder<S: Secrets>(
+    secrets: &S,
+) {
+    let abandoned = AccountId::generate(at(1_000));
+    let taking = AccountId::generate(at(3_000));
+    secrets
+        .claim(&an_address("ada@example.com"), &abandoned, at(1_000))
+        .await
+        .expect("claiming should succeed");
+
+    assert!(
+        secrets
+            .take_over(
+                &an_address("ada@example.com"),
+                &abandoned,
+                &taking,
+                at(2_000),
+                at(3_000)
+            )
+            .await
+            .expect("taking over should succeed")
+    );
+    assert_eq!(
+        secrets
+            .holder(&an_address("ada@example.com"))
+            .await
+            .expect("reading should succeed"),
+        Some(taking)
+    );
+}
+
+pub async fn a_claim_made_since_the_moment_given_is_kept<S: Secrets>(secrets: &S) {
+    let recent = AccountId::generate(at(1_000));
+    secrets
+        .claim(&an_address("ada@example.com"), &recent, at(1_000))
+        .await
+        .expect("claiming should succeed");
+
+    for claimed_before in [at(1_000), at(500)] {
+        assert!(
+            !secrets
+                .take_over(
+                    &an_address("ada@example.com"),
+                    &recent,
+                    &AccountId::generate(at(3_000)),
+                    claimed_before,
+                    at(3_000),
+                )
+                .await
+                .expect("taking over should succeed"),
+            "a sign-up may still be under way"
+        );
+    }
+    assert_eq!(
+        secrets
+            .holder(&an_address("ada@example.com"))
+            .await
+            .expect("reading should succeed"),
+        Some(recent)
+    );
+}
+
+pub async fn a_claim_is_taken_over_only_from_the_holder_named<S: Secrets>(secrets: &S) {
+    let holder = AccountId::generate(at(1_000));
+    secrets
+        .claim(&an_address("ada@example.com"), &holder, at(1_000))
+        .await
+        .expect("claiming should succeed");
+
+    assert!(
+        !secrets
+            .take_over(
+                &an_address("ada@example.com"),
+                &AccountId::generate(at(1_500)),
+                &AccountId::generate(at(3_000)),
+                at(2_000),
+                at(3_000),
+            )
+            .await
+            .expect("taking over should succeed")
+    );
+    assert!(
+        !secrets
+            .take_over(
+                &an_address("nobody@example.com"),
+                &holder,
+                &AccountId::generate(at(3_000)),
+                at(2_000),
+                at(3_000),
+            )
+            .await
+            .expect("an address nobody claimed is not taken over"),
+    );
+    assert_eq!(
+        secrets
+            .holder(&an_address("ada@example.com"))
+            .await
+            .expect("reading should succeed"),
+        Some(holder)
+    );
+}
+
+pub async fn a_claim_taken_over_is_new_from_then<S: Secrets>(secrets: &S) {
+    let abandoned = AccountId::generate(at(1_000));
+    let taking = AccountId::generate(at(3_000));
+    secrets
+        .claim(&an_address("ada@example.com"), &abandoned, at(1_000))
+        .await
+        .expect("claiming should succeed");
+    secrets
+        .take_over(
+            &an_address("ada@example.com"),
+            &abandoned,
+            &taking,
+            at(2_000),
+            at(3_000),
+        )
+        .await
+        .expect("taking over should succeed");
+
+    assert!(
+        !secrets
+            .take_over(
+                &an_address("ada@example.com"),
+                &taking,
+                &AccountId::generate(at(4_000)),
+                at(2_500),
+                at(4_000),
+            )
+            .await
+            .expect("taking over should succeed"),
+        "the one that took it over is under way from the moment it did"
+    );
+}
+
+pub async fn a_claim_taken_over_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S) {
+    let abandoned = AccountId::generate(at(1_000));
+    secrets
+        .claim(&an_address("ada@example.com"), &abandoned, at(1_000))
+        .await
+        .expect("claiming should succeed");
+    let takers: Vec<AccountId> = (0..8).map(|n| AccountId::generate(at(3_000 + n))).collect();
+    let address = an_address("ada@example.com");
+
+    let taken = future::join_all(
+        takers
+            .iter()
+            .map(|taker| secrets.take_over(&address, &abandoned, taker, at(2_000), at(3_000))),
+    )
+    .await;
+
+    assert_eq!(
+        taken
+            .into_iter()
+            .map(|taken| taken.expect("taking over should succeed"))
+            .filter(|took| *took)
+            .count(),
+        1
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -1016,6 +1179,20 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!(
             $workbench,
             an_invitation_forgotten_before_its_ticket_came_keeps_none
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_claim_made_before_the_moment_given_is_taken_over_from_its_holder
+        );
+        $crate::secrets_conformance_case!($workbench, a_claim_made_since_the_moment_given_is_kept);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_claim_is_taken_over_only_from_the_holder_named
+        );
+        $crate::secrets_conformance_case!($workbench, a_claim_taken_over_is_new_from_then);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_claim_taken_over_by_many_at_once_goes_to_one
         );
         $crate::secrets_conformance_case!($workbench, a_kept_code_is_taken_once);
         $crate::secrets_conformance_case!($workbench, only_the_latest_code_kept_can_be_taken);

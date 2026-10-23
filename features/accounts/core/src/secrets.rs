@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use thiserror::Error;
+use time::OffsetDateTime;
 
 use crate::code::{CodePurpose, PendingVerification};
 use crate::id::AccountId;
@@ -63,7 +64,21 @@ pub enum Attempt {
 
 #[async_trait]
 pub trait EmailAddresses: Send + Sync {
-    async fn claim(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError>;
+    async fn claim(
+        &self,
+        email: &EmailAddress,
+        account: &AccountId,
+        at: OffsetDateTime,
+    ) -> Result<(), SecretsError>;
+
+    async fn take_over(
+        &self,
+        email: &EmailAddress,
+        from: &AccountId,
+        to: &AccountId,
+        claimed_before: OffsetDateTime,
+        at: OffsetDateTime,
+    ) -> Result<bool, SecretsError>;
 
     async fn holder(&self, email: &EmailAddress) -> Result<Option<AccountId>, SecretsError>;
 

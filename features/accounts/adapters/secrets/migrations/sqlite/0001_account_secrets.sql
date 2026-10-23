@@ -1,6 +1,7 @@
 CREATE TABLE account_email_addresses (
-    email    TEXT PRIMARY KEY,
-    account  TEXT NOT NULL
+    email       TEXT PRIMARY KEY,
+    account     TEXT NOT NULL,
+    claimed_at  TEXT NOT NULL
 );
 
 CREATE TABLE account_passwords (

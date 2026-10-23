@@ -1,6 +1,7 @@
 CREATE TABLE account_email_addresses (
-    email    TEXT COLLATE "C" PRIMARY KEY,
-    account  TEXT COLLATE "C" NOT NULL
+    email       TEXT COLLATE "C" PRIMARY KEY,
+    account     TEXT COLLATE "C" NOT NULL,
+    claimed_at  TIMESTAMPTZ      NOT NULL
 );
 
 CREATE TABLE account_passwords (

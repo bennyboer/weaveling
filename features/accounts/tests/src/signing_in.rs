@@ -105,7 +105,7 @@ async fn an_address_held_but_not_yet_the_accounts_own_does_not_sign_in() {
     let reserved = EmailAddress::new("ada@example.org").expect("a plain address");
     wired
         .secrets
-        .claim(&reserved, &id)
+        .claim(&reserved, &id, wired.clock.now())
         .await
         .expect("claiming should succeed");
 
@@ -128,6 +128,7 @@ async fn an_address_claimed_for_an_account_that_never_came_to_be_does_not_sign_i
         .claim(
             &EmailAddress::new(ADA).expect("a plain address"),
             &AccountId::generate(wired.clock.now()),
+            wired.clock.now(),
         )
         .await
         .expect("claiming should succeed");

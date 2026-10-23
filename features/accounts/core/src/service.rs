@@ -25,6 +25,8 @@ use crate::ticket::InvitationToken;
 use email::{EmailAddress, InvalidEmailAddress};
 use throttling::{Throttles, ThrottlesError};
 
+const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
+
 #[derive(Debug, Error)]
 pub enum AccountServiceError {
     #[error(transparent)]
@@ -151,9 +153,8 @@ impl AccountService {
 
         let hashed = password.hashed();
         let id = AccountId::generate(self.clock.now());
-        match self.email_addresses.claim(&email, &id).await {
-            Err(SecretsError::Taken) => return self.tell_already_signed_up(&email).await,
-            claimed => claimed?,
+        if !self.claimed(&email, &id).await? {
+            return self.tell_already_signed_up(&email).await;
         }
 
         if let Err(refused) = self
@@ -194,9 +195,8 @@ impl AccountService {
         }
 
         let id = AccountId::generate(self.clock.now());
-        match self.email_addresses.claim(&ticket.to, &id).await {
-            Err(SecretsError::Taken) => return Err(AccountServiceError::EmailAddressHasAccount),
-            claimed => claimed?,
+        if !self.claimed(&ticket.to, &id).await? {
+            return Err(AccountServiceError::EmailAddressHasAccount);
         }
         if let Err(refused) = self
             .events
@@ -222,10 +222,10 @@ impl AccountService {
     pub async fn send_code_again(&self, email: &str) -> Result<(), AccountServiceError> {
         let email = EmailAddress::new(email)?;
         self.counted_mail_to(&email).await?;
-        let Some(id) = self.email_addresses.holder(&email).await? else {
+        let Some((id, account)) = self.whose(&email).await? else {
             return Ok(());
         };
-        if self.get(&id).await?.state.is_verified() {
+        if account.is_verified() {
             return Ok(());
         }
 
@@ -595,6 +595,33 @@ impl AccountService {
             .await?;
 
         Ok(())
+    }
+
+    async fn claimed(
+        &self,
+        email: &EmailAddress,
+        id: &AccountId,
+    ) -> Result<bool, AccountServiceError> {
+        let now = self.clock.now();
+        match self.email_addresses.claim(email, id, now).await {
+            Err(SecretsError::Taken) => {}
+            claimed => {
+                claimed?;
+                return Ok(true);
+            }
+        }
+        let Some(holder) = self.email_addresses.holder(email).await? else {
+            return Ok(false);
+        };
+
+        match self.get(&holder).await {
+            Err(AccountServiceError::Events(ServiceError::NotFound { .. })) => Ok(self
+                .email_addresses
+                .take_over(email, &holder, id, now - CLAIM_ABANDONED_AFTER, now)
+                .await?),
+            Ok(_) => Ok(false),
+            Err(failed) => Err(failed),
+        }
     }
 
     async fn whose(
