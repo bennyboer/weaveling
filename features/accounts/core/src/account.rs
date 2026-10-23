@@ -11,6 +11,7 @@ use email::EmailAddress;
 pub const KIND: AggregateType = AggregateType::of("account");
 
 const SIGNED_UP: EventName = EventName::of("SIGNED_UP");
+const SIGNED_UP_BY_INVITATION: EventName = EventName::of("SIGNED_UP_BY_INVITATION");
 const EMAIL_VERIFIED: EventName = EventName::of("EMAIL_VERIFIED");
 const PASSWORD_RESET: EventName = EventName::of("PASSWORD_RESET");
 const BECAME_OPERATOR: EventName = EventName::of("BECAME_OPERATOR");
@@ -22,6 +23,11 @@ const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AccountCommand {
     SignUp(EmailAddress, AccountName),
+    SignUpByInvitation {
+        email: EmailAddress,
+        name: AccountName,
+        invitation: String,
+    },
     Verify,
     ResetPassword,
     BecomeOperator,
@@ -35,6 +41,11 @@ pub enum AccountEvent {
     SignedUp {
         email: EmailAddress,
         name: AccountName,
+    },
+    SignedUpByInvitation {
+        email: EmailAddress,
+        name: AccountName,
+        invitation: String,
     },
     EmailVerified,
     PasswordReset,
@@ -121,6 +132,7 @@ impl Event for AccountEvent {
     fn name(&self) -> EventName {
         match self {
             Self::SignedUp { .. } => SIGNED_UP,
+            Self::SignedUpByInvitation { .. } => SIGNED_UP_BY_INVITATION,
             Self::EmailVerified => EMAIL_VERIFIED,
             Self::PasswordReset => PASSWORD_RESET,
             Self::BecameOperator => BECAME_OPERATOR,
@@ -150,6 +162,15 @@ impl Aggregate for Account {
     fn begin(command: AccountCommand, _agent: &Agent) -> Result<Vec<AccountEvent>, AccountError> {
         match command {
             AccountCommand::SignUp(email, name) => Ok(vec![AccountEvent::SignedUp { email, name }]),
+            AccountCommand::SignUpByInvitation {
+                email,
+                name,
+                invitation,
+            } => Ok(vec![AccountEvent::SignedUpByInvitation {
+                email,
+                name,
+                invitation,
+            }]),
             AccountCommand::Verify
             | AccountCommand::ResetPassword
             | AccountCommand::BecomeOperator
@@ -165,6 +186,15 @@ impl Aggregate for Account {
                 email: email.clone(),
                 name: name.clone(),
                 verified: false,
+                signed_up_at: metadata.occurred_at,
+                sessions_since: None,
+                operator: false,
+                locks: BTreeMap::new(),
+            }),
+            AccountEvent::SignedUpByInvitation { email, name, .. } => Some(Self {
+                email: email.clone(),
+                name: name.clone(),
+                verified: true,
                 signed_up_at: metadata.occurred_at,
                 sessions_since: None,
                 operator: false,
@@ -202,7 +232,9 @@ impl Aggregate for Account {
         _agent: &Agent,
     ) -> Result<Vec<AccountEvent>, AccountError> {
         match command {
-            AccountCommand::SignUp(..) => Err(AccountError::AlreadySignedUp),
+            AccountCommand::SignUp(..) | AccountCommand::SignUpByInvitation { .. } => {
+                Err(AccountError::AlreadySignedUp)
+            }
             AccountCommand::Verify if self.verified => Ok(vec![]),
             AccountCommand::Verify => Ok(vec![AccountEvent::EmailVerified]),
             AccountCommand::ResetPassword if self.verified => Ok(vec![AccountEvent::PasswordReset]),
@@ -228,7 +260,7 @@ impl Aggregate for Account {
 
     fn apply(&mut self, event: &AccountEvent, metadata: &EventMetadata) {
         match event {
-            AccountEvent::SignedUp { .. } => {}
+            AccountEvent::SignedUp { .. } | AccountEvent::SignedUpByInvitation { .. } => {}
             AccountEvent::EmailVerified => self.verified = true,
             AccountEvent::PasswordReset => self.sessions_since = Some(metadata.occurred_at),
             AccountEvent::BecameOperator => self.operator = true,

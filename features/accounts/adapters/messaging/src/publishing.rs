@@ -10,6 +10,11 @@ pub fn message_for(happened: &Recorded<AccountEvent>) -> Option<Message> {
 fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
     Some(match event {
         AccountEvent::SignedUp { .. } => AccountEventDTO::SignedUp,
+        AccountEvent::SignedUpByInvitation { invitation, .. } => {
+            AccountEventDTO::SignedUpByInvitation {
+                invitation: invitation.clone(),
+            }
+        }
         AccountEvent::EmailVerified => AccountEventDTO::EmailVerified,
         AccountEvent::PasswordReset => AccountEventDTO::PasswordReset,
         AccountEvent::BecameOperator => AccountEventDTO::BecameOperator,
@@ -36,7 +41,7 @@ mod tests {
 
     use accounts_contract::{
         BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, LOCKED, PASSWORD_RESET, SIGNED_UP,
-        STOPPED_BEING_OPERATOR, UNLOCKED,
+        SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, UNLOCKED,
     };
     use accounts_core::{AccountId, AccountName, EmailAddress, KIND, LockReason};
     use eventpublishing::{aggregate_in, published_in};
@@ -81,6 +86,16 @@ mod tests {
         AccountEvent::SignedUp { email, name }
     }
 
+    fn a_sign_up_by_invitation() -> AccountEvent {
+        let (email, name) = ada();
+
+        AccountEvent::SignedUpByInvitation {
+            email,
+            name,
+            invitation: "invitation_1".to_owned(),
+        }
+    }
+
     fn a_lock() -> AccountEvent {
         AccountEvent::Locked {
             kind: LockKind::Operator,
@@ -91,6 +106,7 @@ mod tests {
     fn everything_worth_publishing() -> Vec<(AccountEvent, &'static str)> {
         vec![
             (a_sign_up(), SIGNED_UP),
+            (a_sign_up_by_invitation(), SIGNED_UP_BY_INVITATION),
             (AccountEvent::EmailVerified, EMAIL_VERIFIED),
             (AccountEvent::PasswordReset, PASSWORD_RESET),
             (AccountEvent::BecameOperator, BECAME_OPERATOR),
@@ -188,6 +204,23 @@ mod tests {
             AccountEventDTO::Unlocked {
                 kind: "operator".to_owned()
             }
+        );
+    }
+
+    #[test]
+    fn a_sign_up_by_invitation_says_which_invitation_was_taken_up() {
+        let told = eventpublishing::published_in::<AccountEventDTO>(&published(
+            &an_account(),
+            a_sign_up_by_invitation(),
+        ))
+        .expect("what we wrote must be readable");
+
+        assert_eq!(
+            told.event.body,
+            AccountEventDTO::SignedUpByInvitation {
+                invitation: "invitation_1".to_owned()
+            },
+            "invitations hear from it that the invitation was accepted"
         );
     }
 

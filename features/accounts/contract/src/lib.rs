@@ -89,6 +89,7 @@ pub struct ServiceModeDTO {
 pub const SESSION_COOKIE: &str = "weaveling_session";
 
 pub const SIGNED_UP: &str = "account.signed.up";
+pub const SIGNED_UP_BY_INVITATION: &str = "account.signed.up.by.invitation";
 pub const EMAIL_VERIFIED: &str = "account.email.verified";
 pub const PASSWORD_RESET: &str = "account.password.reset";
 pub const BECAME_OPERATOR: &str = "account.became.operator";
@@ -102,6 +103,8 @@ pub const EVERY_ACCOUNT: &str = "account.#";
 pub enum AccountEventDTO {
     #[serde(rename = "SIGNED_UP")]
     SignedUp,
+    #[serde(rename = "SIGNED_UP_BY_INVITATION")]
+    SignedUpByInvitation { invitation: String },
     #[serde(rename = "EMAIL_VERIFIED")]
     EmailVerified,
     #[serde(rename = "PASSWORD_RESET")]

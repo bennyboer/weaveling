@@ -66,6 +66,63 @@ fn a_signed_up_account_is_not_verified_yet() {
     assert_eq!(account.signed_up_at(), at(1_000));
 }
 
+fn by_invitation() -> AccountCommand {
+    let (email, name) = ada();
+
+    AccountCommand::SignUpByInvitation {
+        email,
+        name,
+        invitation: "invitation_1".to_owned(),
+    }
+}
+
+#[test]
+fn an_account_signed_up_by_invitation_has_its_address_confirmed_from_the_start() {
+    let (email, name) = ada();
+    let signed_up = Account::begin(by_invitation(), &herself()).expect("anyone may sign up");
+
+    assert_eq!(
+        signed_up,
+        vec![AccountEvent::SignedUpByInvitation {
+            email,
+            name,
+            invitation: "invitation_1".to_owned(),
+        }]
+    );
+    let account =
+        Account::from_first(&signed_up[0], &stamped(1, at(1_000))).expect("signing up gives birth");
+    assert!(
+        account.is_verified(),
+        "the link reached the address, which is all a code would have shown"
+    );
+    assert_eq!(account.email(), &ada().0);
+    assert_eq!(account.name(), &ada().1);
+    assert_eq!(account.signed_up_at(), at(1_000));
+    assert!(!account.is_operator());
+}
+
+#[test]
+fn an_account_is_signed_up_once_however_it_came() {
+    let (email, name) = ada();
+    let by_invitation_first = Account::from_first(
+        &Account::begin(by_invitation(), &herself()).expect("anyone may sign up")[0],
+        &stamped(1, at(1_000)),
+    )
+    .expect("signing up gives birth");
+
+    for account in [a_signed_up_account(), by_invitation_first] {
+        for again in [
+            AccountCommand::SignUp(email.clone(), name.clone()),
+            by_invitation(),
+        ] {
+            assert_eq!(
+                account.decide(again, &herself()),
+                Err(AccountError::AlreadySignedUp)
+            );
+        }
+    }
+}
+
 #[test]
 fn nothing_but_signing_up_can_come_first() {
     assert_eq!(

@@ -11,6 +11,11 @@ enum StoredAccountEvent {
         email: String,
         name: String,
     },
+    SignedUpByInvitation {
+        email: String,
+        name: String,
+        invitation: String,
+    },
     EmailVerified,
     PasswordReset,
     BecameOperator,
@@ -86,6 +91,15 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 email: email.to_string(),
                 name: name.to_string(),
             },
+            AccountEvent::SignedUpByInvitation {
+                email,
+                name,
+                invitation,
+            } => Self::SignedUpByInvitation {
+                email: email.to_string(),
+                name: name.to_string(),
+                invitation: invitation.clone(),
+            },
             AccountEvent::EmailVerified => Self::EmailVerified,
             AccountEvent::PasswordReset => Self::PasswordReset,
             AccountEvent::BecameOperator => Self::BecameOperator,
@@ -150,6 +164,18 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
             StoredAccountEvent::SignedUp { email, name } => {
                 let (email, name) = readable(&email, &name)?;
                 Self::SignedUp { email, name }
+            }
+            StoredAccountEvent::SignedUpByInvitation {
+                email,
+                name,
+                invitation,
+            } => {
+                let (email, name) = readable(&email, &name)?;
+                Self::SignedUpByInvitation {
+                    email,
+                    name,
+                    invitation,
+                }
             }
             StoredAccountEvent::EmailVerified => Self::EmailVerified,
             StoredAccountEvent::PasswordReset => Self::PasswordReset,
@@ -231,6 +257,11 @@ mod tests {
                 email: email.clone(),
                 name: name.clone(),
             },
+            AccountEvent::SignedUpByInvitation {
+                email: email.clone(),
+                name: name.clone(),
+                invitation: "invitation_1".to_owned(),
+            },
             AccountEvent::EmailVerified,
             AccountEvent::PasswordReset,
             AccountEvent::BecameOperator,
@@ -267,6 +298,8 @@ mod tests {
         for refused in [
             json!({ "SignedUp": { "email": "ada", "name": "Ada" } }),
             json!({ "SignedUp": { "email": "ada@example.com", "name": "  " } }),
+            json!({ "SignedUpByInvitation": { "email": "ada", "name": "Ada", "invitation": "invitation_1" } }),
+            json!({ "SignedUpByInvitation": { "email": "ada@example.com", "name": "  ", "invitation": "invitation_1" } }),
             json!({ "Locked": { "kind": "operator", "reason": " " } }),
             json!({ "Snapshotted": { "email": "ada@example.com", "name": "Ada", "verified": true, "signed_up_at": "1970-01-01T00:16:40Z", "operator": false, "locks": [{ "kind": "operator", "reason": " ", "since": "1970-01-01T00:16:40Z" }] } }),
             json!({ "Snapshotted": { "email": "ada", "name": "Ada", "verified": true, "signed_up_at": "1970-01-01T00:16:40Z" } }),
