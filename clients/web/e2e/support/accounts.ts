@@ -10,6 +10,36 @@ export const HER_PASSWORD = "correct horse battery";
 export const THE_CODE = "123456";
 export const THE_OPERATOR_CODE = "346af3a2b90cbb3ab7cd3cb07ccc2a1f";
 
+export type Listed = {
+  id: string;
+  name: string;
+  email: string;
+  verified: boolean;
+  operator: boolean;
+  signed_up_at: string;
+  locks: { kind: string; reason: string; since: string }[];
+};
+
+export const GRACE: Listed = {
+  id: "account_2",
+  name: "Grace Hopper",
+  email: "grace@example.com",
+  verified: true,
+  operator: false,
+  signed_up_at: "2026-10-22T08:00:00Z",
+  locks: [],
+};
+
+export const HEDY: Listed = {
+  id: "account_3",
+  name: "Hedy Lamarr",
+  email: "hedy@example.com",
+  verified: false,
+  operator: false,
+  signed_up_at: "2026-10-23T08:00:00Z",
+  locks: [],
+};
+
 export type Server = {
   password: string;
   resetsAsked: number;
@@ -21,6 +51,8 @@ export type Server = {
   codesTried: number;
   projectsAsked: number;
   operator: boolean;
+  listed: Listed[];
+  pageSize: number;
 };
 
 const refusing = (
@@ -52,6 +84,8 @@ export async function aServerWithAccounts(
     codesTried: 0,
     projectsAsked: 0,
     operator: false,
+    listed: [],
+    pageSize: 100,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -134,6 +168,59 @@ export async function aServerWithAccounts(
     server.operator = true;
     return route.fulfill({ status: 204 });
   });
+  await page.route(at("/api/instance/accounts"), async (route) => {
+    if (!server.operator) {
+      return refusing(route, 403, "not-an-operator");
+    }
+    const everyone: Listed[] = [
+      ...server.listed,
+      {
+        id: ADA.account,
+        name: ADA.name,
+        email: ADA.email,
+        verified: true,
+        operator: true,
+        signed_up_at: "2026-10-21T08:00:00Z",
+        locks: [],
+      },
+    ];
+    const after = new URL(route.request().url()).searchParams.get("after");
+    const from = after
+      ? everyone.findIndex((account) => account.id === after) + 1
+      : 0;
+    const accounts = everyone.slice(from, from + server.pageSize);
+    const next =
+      from + server.pageSize < everyone.length
+        ? accounts[accounts.length - 1].id
+        : null;
+    return route.fulfill({ json: { accounts, next } });
+  });
+  await page.route(
+    (url) => /^\/api\/instance\/accounts\/[^/]+\/lock$/.test(url.pathname),
+    async (route) => {
+      const id = new URL(route.request().url()).pathname.split("/")[4];
+      const account = server.listed.find((listed) => listed.id === id);
+      if (!account) {
+        return refusing(route, 404, "account-not-found");
+      }
+      if (route.request().method() === "DELETE") {
+        account.locks = [];
+        return route.fulfill({ status: 204 });
+      }
+      const { reason } = route.request().postDataJSON();
+      if (reason.trim() === "") {
+        return refusing(route, 422, "lock-reason-blank");
+      }
+      account.locks = [
+        {
+          kind: "operator",
+          reason: reason.trim(),
+          since: new Date().toISOString(),
+        },
+      ];
+      return route.fulfill({ status: 204 });
+    },
+  );
   await page.route(at("/api/projects"), async (route) => {
     server.projectsAsked += 1;
     return server.signedIn

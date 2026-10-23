@@ -80,6 +80,7 @@ restyling-close = Close
 
 problem-not-found =
     { $subject ->
+        [account] That account no longer exists.
         [appearances] Those appearances no longer exist.
         [board] That board no longer exists.
         [idea] That idea no longer exists.
@@ -457,7 +458,7 @@ refused-too-many-tries =
 refused-operator-code-wrong = This is not the code the server logged.
 account-menu-operator = Manage instance
 operator-heading = Manage instance
-operator-you-are = You are the operator of this Weaveling instance. The accounts will be listed here.
+operator-you-are = You are the operator of this Weaveling instance.
 operator-become-heading = Become the operator
 operator-become-hint = Enter the code the server wrote to its log when it started.
 operator-code = Code
@@ -471,3 +472,16 @@ refused-lock-reason-control-character = A reason cannot hold control characters.
 refused-lock-reason-too-long = A reason can be at most { $max } characters long; this one has { $actual }.
 refused-account-id-invalid = This is not an account's id.
 refused-account-not-found = There is no such account.
+instance-accounts-heading = Accounts
+instance-accounts-more = Show more
+instance-account-signed-up = Signed up on { $when }
+instance-account-unverified = Address not confirmed
+instance-account-operator = Operator
+instance-account-locked = Locked since { $when }
+instance-account-lock = Lock…
+instance-account-unlock = Unlock
+instance-lock-dialog = Lock { $name }
+instance-lock-hint = { $name } is signed out at once and cannot sign in again until unlocked. The reason is kept with the lock and shown here.
+instance-lock-reason = Reason
+instance-lock-cancel = Cancel
+instance-lock-confirm = Lock

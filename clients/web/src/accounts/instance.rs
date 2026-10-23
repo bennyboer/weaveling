@@ -3,7 +3,7 @@ use leptos::task;
 use leptos::{IntoView, component, ev, html, view};
 use leptos_router::components::A;
 
-use crate::accounts::{CurrentSession, SignInState, service};
+use crate::accounts::{CurrentSession, SignInState, listing, service};
 use crate::http::ApiError;
 use crate::problem;
 use crate::route;
@@ -32,6 +32,7 @@ fn operating() -> impl IntoView {
         html::p()
             .class("hint")
             .child(speech::said("operator-you-are")),
+        listing::accounts_listing(),
     )
 }
 

@@ -1,9 +1,10 @@
 use accounts_contract::{
-    BecomeOperatorRequest, NewPasswordRequest, PasswordResetRequest, SendCodeRequest,
-    ServiceModeDTO, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
+    AccountPageDTO, BecomeOperatorRequest, LockRequest, NewPasswordRequest, PasswordResetRequest,
+    SendCodeRequest, ServiceModeDTO, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
 };
 use gloo_net::http::Request;
 
+use crate::accounts::listed::AccountPage;
 use crate::accounts::{SignInState, SignedInAccount};
 use crate::http;
 use crate::http::ApiError;
@@ -17,7 +18,9 @@ const NEW_PASSWORD: &str = "/api/accounts/password";
 const SESSIONS: &str = "/api/sessions";
 const CURRENT: &str = "/api/sessions/current";
 const OPERATORS: &str = "/api/operators";
+const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const SUBJECT: &str = "session";
+const ACCOUNT: &str = "account";
 
 pub async fn current() -> Result<SignInState, ApiError> {
     let mode: ServiceModeDTO = http::parsed(http::sent(Request::get(MODE)).await?, SUBJECT).await?;
@@ -125,6 +128,40 @@ pub async fn become_operator(code: &str) -> Result<(), ApiError> {
     )
     .await
     .map(|_| ())
+}
+
+pub async fn list_accounts(after: Option<&str>) -> Result<AccountPage, ApiError> {
+    let asked = match after {
+        Some(after) => format!("{INSTANCE_ACCOUNTS}?after={after}"),
+        None => INSTANCE_ACCOUNTS.to_owned(),
+    };
+    let page: AccountPageDTO =
+        http::parsed(http::sent(Request::get(&asked)).await?, ACCOUNT).await?;
+
+    AccountPage::of(page)
+}
+
+pub async fn lock_account(id: &str, reason: &str) -> Result<(), ApiError> {
+    let payload = LockRequest {
+        reason: reason.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::put(&locked(id)), &payload).await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn unlock_account(id: &str) -> Result<(), ApiError> {
+    http::checked(http::sent(Request::delete(&locked(id))).await?, ACCOUNT)
+        .await
+        .map(|_| ())
+}
+
+fn locked(id: &str) -> String {
+    format!("{INSTANCE_ACCOUNTS}/{id}/lock")
 }
 
 pub async fn sign_out() -> Result<(), ApiError> {

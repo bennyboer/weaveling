@@ -80,6 +80,7 @@ restyling-close = Fermer
 
 problem-not-found =
     { $subject ->
+        [account] Ce compte n’existe plus.
         [appearances] Ces apparitions n’existent plus.
         [board] Ce tableau n’existe plus.
         [idea] Cette idée n’existe plus.
@@ -457,7 +458,7 @@ refused-too-many-tries =
 refused-operator-code-wrong = Ce n'est pas le code que le serveur a écrit dans le journal.
 account-menu-operator = Gérer l'instance
 operator-heading = Gérer l'instance
-operator-you-are = Vous êtes l'opérateur de cette instance de Weaveling. Les comptes seront listés ici.
+operator-you-are = Vous êtes l'opérateur de cette instance de Weaveling.
 operator-become-heading = Devenir l'opérateur
 operator-become-hint = Saisissez le code que le serveur a écrit dans son journal au démarrage.
 operator-code = Code
@@ -471,3 +472,16 @@ refused-lock-reason-control-character = Une raison ne peut pas contenir de carac
 refused-lock-reason-too-long = Une raison peut compter au plus { $max } caractères ; celle-ci en a { $actual }.
 refused-account-id-invalid = Ce n'est pas l'identifiant d'un compte.
 refused-account-not-found = Ce compte n'existe pas.
+instance-accounts-heading = Comptes
+instance-accounts-more = Afficher plus
+instance-account-signed-up = Inscrit le { $when }
+instance-account-unverified = Adresse non confirmée
+instance-account-operator = Opère l’instance
+instance-account-locked = Verrouillé depuis le { $when }
+instance-account-lock = Verrouiller…
+instance-account-unlock = Déverrouiller
+instance-lock-dialog = Verrouiller { $name }
+instance-lock-hint = { $name } est déconnecté aussitôt et ne peut plus se connecter tant que le compte reste verrouillé. La raison est gardée avec le verrou et affichée ici.
+instance-lock-reason = Raison
+instance-lock-cancel = Annuler
+instance-lock-confirm = Verrouiller

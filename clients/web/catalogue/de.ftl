@@ -80,6 +80,7 @@ restyling-close = Schließen
 
 problem-not-found =
     { $subject ->
+        [account] Dieses Konto gibt es nicht mehr.
         [appearances] Diese Auftritte gibt es nicht mehr.
         [board] Diese Pinnwand gibt es nicht mehr.
         [idea] Diese Idee gibt es nicht mehr.
@@ -457,7 +458,7 @@ refused-too-many-tries =
 refused-operator-code-wrong = Das ist nicht der Code, den der Server ins Log geschrieben hat.
 account-menu-operator = Instanz verwalten
 operator-heading = Instanz verwalten
-operator-you-are = Du betreibst diese Weaveling-Instanz. Hier werden die Konten aufgelistet.
+operator-you-are = Du betreibst diese Weaveling-Instanz.
 operator-become-heading = Betrieb übernehmen
 operator-become-hint = Gib den Code ein, den der Server beim Start ins Log geschrieben hat.
 operator-code = Code
@@ -471,3 +472,16 @@ refused-lock-reason-control-character = Ein Grund darf keine Steuerzeichen entha
 refused-lock-reason-too-long = Ein Grund darf höchstens { $max } Zeichen lang sein, dieser hat { $actual }.
 refused-account-id-invalid = Das ist nicht die Kennung eines Kontos.
 refused-account-not-found = Dieses Konto gibt es nicht.
+instance-accounts-heading = Konten
+instance-accounts-more = Mehr zeigen
+instance-account-signed-up = Registriert am { $when }
+instance-account-unverified = Adresse nicht bestätigt
+instance-account-operator = Betreibt die Instanz
+instance-account-locked = Gesperrt seit { $when }
+instance-account-lock = Sperren …
+instance-account-unlock = Entsperren
+instance-lock-dialog = { $name } sperren
+instance-lock-hint = { $name } wird sofort abgemeldet und kann sich erst wieder anmelden, wenn das Konto entsperrt ist. Der Grund bleibt bei der Sperre und wird hier gezeigt.
+instance-lock-reason = Grund
+instance-lock-cancel = Abbrechen
+instance-lock-confirm = Sperren

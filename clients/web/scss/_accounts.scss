@@ -98,6 +98,115 @@
   margin-bottom: 1.5rem;
 }
 
+.operating:has(> .accounts) {
+  width: min(44rem, 100% - 2rem);
+}
+
+.operating .accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+
+  li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .who {
+    flex: 1 1 14rem;
+    min-width: 0;
+
+    p {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .name {
+    font-size: 1.05rem;
+  }
+
+  .email,
+  .signed-up {
+    color: var(--muted);
+    font-size: 0.85rem;
+  }
+
+  .marks {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    flex: 1 1 12rem;
+  }
+
+  .mark {
+    padding: 0.1rem 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+
+    &.locked {
+      border-color: var(--alarm);
+      color: var(--alarm);
+    }
+  }
+
+  .lock {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0;
+  }
+
+  .reason {
+    font-size: 0.85rem;
+    white-space: pre-line;
+  }
+}
+
+.operating .more {
+  margin-top: 1rem;
+}
+
+.dialog.lock-account {
+  width: min(30rem, 92vw);
+  max-width: none;
+
+  .hint {
+    margin: 0 0 1.25rem;
+  }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    margin: 0 0 1rem;
+
+    > span {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 5rem;
+      padding: 0.6rem 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 0.375rem;
+      background: var(--paper);
+      color: var(--ink);
+      font: inherit;
+      resize: vertical;
+    }
+  }
+}
+
 .masthead .account {
   position: relative;
   align-self: center;

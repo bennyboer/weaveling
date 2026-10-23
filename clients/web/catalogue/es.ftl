@@ -80,6 +80,7 @@ restyling-close = Cerrar
 
 problem-not-found =
     { $subject ->
+        [account] Esa cuenta ya no existe.
         [appearances] Esas apariciones ya no existen.
         [board] Ese tablero ya no existe.
         [idea] Esa idea ya no existe.
@@ -457,7 +458,7 @@ refused-too-many-tries =
 refused-operator-code-wrong = Este no es el código que el servidor escribió en el registro.
 account-menu-operator = Administrar instancia
 operator-heading = Administrar instancia
-operator-you-are = Eres quien opera esta instancia de Weaveling. Aquí se listarán las cuentas.
+operator-you-are = Eres quien opera esta instancia de Weaveling.
 operator-become-heading = Convertirte en operador
 operator-become-hint = Introduce el código que el servidor escribió en su registro al arrancar.
 operator-code = Código
@@ -471,3 +472,16 @@ refused-lock-reason-control-character = Un motivo no puede contener caracteres d
 refused-lock-reason-too-long = Un motivo puede tener como máximo { $max } caracteres; este tiene { $actual }.
 refused-account-id-invalid = Este no es el identificador de una cuenta.
 refused-account-not-found = Esa cuenta no existe.
+instance-accounts-heading = Cuentas
+instance-accounts-more = Mostrar más
+instance-account-signed-up = Registrada el { $when }
+instance-account-unverified = Dirección sin confirmar
+instance-account-operator = Opera la instancia
+instance-account-locked = Bloqueada desde el { $when }
+instance-account-lock = Bloquear…
+instance-account-unlock = Desbloquear
+instance-lock-dialog = Bloquear a { $name }
+instance-lock-hint = { $name } sale de su sesión al instante y no puede volver a entrar hasta que se desbloquee. El motivo se guarda con el bloqueo y se muestra aquí.
+instance-lock-reason = Motivo
+instance-lock-cancel = Cancelar
+instance-lock-confirm = Bloquear
