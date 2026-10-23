@@ -1,0 +1,18 @@
+[package]
+name = "weaveling-invitations-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+
+acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+email = { version = "0.1.0", path = "../../../libraries/email", package = "weaveling-email" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "weaveling-mailing" }
+throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }
+
+invitations-core = { version = "0.1.0", path = "../core", package = "weaveling-invitations-core" }
+invitations-links = { version = "0.1.0", path = "../adapters/links", package = "weaveling-invitations-links" }

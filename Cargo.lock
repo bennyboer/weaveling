@@ -4129,9 +4129,13 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror",
  "time",
+ "weaveling-acting",
+ "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-mailing",
+ "weaveling-throttling",
 ]
 
 [[package]]
@@ -4169,6 +4173,22 @@ dependencies = [
  "weaveling-email",
  "weaveling-eventsourcing",
  "weaveling-invitations-core",
+]
+
+[[package]]
+name = "weaveling-invitations-tests"
+version = "0.1.0"
+dependencies = [
+ "time",
+ "tokio",
+ "weaveling-acting",
+ "weaveling-clock",
+ "weaveling-email",
+ "weaveling-eventsourcing",
+ "weaveling-invitations-core",
+ "weaveling-invitations-links",
+ "weaveling-mailing",
+ "weaveling-throttling",
 ]
 
 [[package]]
