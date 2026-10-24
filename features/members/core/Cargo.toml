@@ -1,0 +1,13 @@
+[package]
+name = "weaveling-members-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+indexmap = { workspace = true }
+thiserror = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+[dev-dependencies]
+time = { workspace = true }

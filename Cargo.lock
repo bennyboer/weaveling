@@ -4285,6 +4285,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-members-core"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "thiserror",
+ "time",
+ "weaveling-eventsourcing",
+]
+
+[[package]]
 name = "weaveling-messaging"
 version = "0.1.0"
 dependencies = [
