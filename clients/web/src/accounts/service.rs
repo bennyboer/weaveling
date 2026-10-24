@@ -24,10 +24,10 @@ const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const SUBJECT: &str = "session";
 const ACCOUNT: &str = "account";
 
-pub async fn current() -> Result<(SignInState, Option<String>), ApiError> {
+pub async fn current() -> Result<(SignInState, ServiceModeDTO), ApiError> {
     let mode: ServiceModeDTO = http::parsed(http::sent(Request::get(MODE)).await?, SUBJECT).await?;
     if !mode.accounts {
-        return Ok((SignInState::NoAccounts, mode.sign_up));
+        return Ok((SignInState::NoAccounts, mode));
     }
 
     let response = http::sent(Request::get(CURRENT)).await?;
@@ -36,7 +36,7 @@ pub async fn current() -> Result<(SignInState, Option<String>), ApiError> {
         _ => SignInState::SignedIn(as_signed_in_account(http::parsed(response, SUBJECT).await?)),
     };
 
-    Ok((state, mode.sign_up))
+    Ok((state, mode))
 }
 
 pub async fn sign_up_by_invitation(
@@ -64,12 +64,17 @@ pub async fn sign_in(email: &str, password: &str) -> Result<SignedInAccount, Api
     Ok(as_signed_in_account(http::parsed(response, SUBJECT).await?))
 }
 
-pub async fn sign_up(email: &str, name: &str, password: &str) -> Result<(), ApiError> {
+pub async fn sign_up(
+    email: &str,
+    name: &str,
+    password: &str,
+    operator_code: Option<&str>,
+) -> Result<(), ApiError> {
     let payload = SignUpRequest {
         email: email.to_owned(),
         name: name.to_owned(),
         password: password.to_owned(),
-        operator_code: None,
+        operator_code: operator_code.map(str::to_owned),
     };
 
     http::checked(

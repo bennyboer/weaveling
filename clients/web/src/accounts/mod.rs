@@ -61,6 +61,7 @@ pub enum Screen {
 pub struct CurrentSession {
     state: RwSignal<SignInState>,
     signing_up: RwSignal<SigningUp>,
+    operator_wanted: RwSignal<bool>,
 }
 
 impl CurrentSession {
@@ -72,10 +73,15 @@ impl CurrentSession {
         self.signing_up.get()
     }
 
+    pub fn operator_wanted(self) -> bool {
+        self.operator_wanted.get()
+    }
+
     pub fn asked() -> Self {
         let session = Self {
             state: RwSignal::new(SignInState::Unknown),
             signing_up: RwSignal::new(SigningUp::Open),
+            operator_wanted: RwSignal::new(false),
         };
         http::when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
         session.ask();
@@ -91,8 +97,10 @@ impl CurrentSession {
     fn ask(self) {
         task::spawn_local(async move {
             match service::current().await {
-                Ok((state, told)) => {
-                    self.signing_up.set(SigningUp::told(told.as_deref()));
+                Ok((state, mode)) => {
+                    self.signing_up
+                        .set(SigningUp::told(mode.sign_up.as_deref()));
+                    self.operator_wanted.set(mode.operator_wanted);
                     self.state.set(state);
                 }
                 Err(_) => self.state.set(SignInState::Unreachable),
@@ -105,10 +113,14 @@ impl CurrentSession {
     }
 
     pub fn signed_in(self, account: SignedInAccount) {
+        if account.operator {
+            self.operator_wanted.set(false);
+        }
         self.state.set(SignInState::SignedIn(account));
     }
 
     pub fn became_operator(self) {
+        self.operator_wanted.set(false);
         self.state.update(|state| {
             if let SignInState::SignedIn(account) = state {
                 account.operator = true;

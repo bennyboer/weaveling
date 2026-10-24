@@ -18,6 +18,7 @@ use crate::speech::Speech;
 enum Form {
     SignIn,
     SignUp,
+    SetUp,
     Accept,
     EnterCode,
     AskReset,
@@ -30,6 +31,7 @@ struct Page {
     email: RwSignal<String>,
     notice: RwSignal<Option<&'static str>>,
     invitation: RwSignal<Option<String>>,
+    operator_code: RwSignal<Option<String>>,
 }
 
 impl Page {
@@ -60,6 +62,7 @@ pub fn SignInPage() -> impl IntoView {
         email: RwSignal::new(String::new()),
         notice: RwSignal::new(None),
         invitation: RwSignal::new(invitation),
+        operator_code: RwSignal::new(None),
     };
 
     (
@@ -69,6 +72,7 @@ pub fn SignInPage() -> impl IntoView {
             .child(move || match page.form.get() {
                 Form::SignIn => sign_in_form(page).into_any(),
                 Form::SignUp => sign_up_form(page).into_any(),
+                Form::SetUp => set_up_form(page).into_any(),
                 Form::Accept => accept_form(page).into_any(),
                 Form::EnterCode => code_form(page).into_any(),
                 Form::AskReset => ask_reset_form(page).into_any(),
@@ -83,12 +87,25 @@ fn sign_in_form(page: Page) -> impl IntoView {
     let refused = RwSignal::new(None::<ApiError>);
     let asking = RwSignal::new(false);
 
+    let navigate = hooks::use_navigate();
     let sign_in = move || {
-        let (given, typed) = (page.email.get_untracked(), password.get_untracked());
+        let (given, typed, operating) = (
+            page.email.get_untracked(),
+            password.get_untracked(),
+            page.operator_code.get_untracked(),
+        );
+        let navigate = navigate.clone();
         asked(asking, refused, async move {
-            service::sign_in(&given, &typed)
-                .await
-                .map(|account| session.signed_in(account))
+            let mut account = service::sign_in(&given, &typed).await?;
+            if let Some(code) = operating
+                && service::become_operator(&code).await.is_ok()
+            {
+                account.operator = true;
+                navigate(route::INSTANCE_ACCOUNTS, NavigateOptions::default());
+            }
+            session.signed_in(account);
+
+            Ok(())
         });
     };
     let not_verified = move || {
@@ -135,6 +152,15 @@ fn sign_in_form(page: Page) -> impl IntoView {
                 })
             })
         },
+        move || {
+            (session.signing_up() == SigningUp::ByInvitation && session.operator_wanted()).then(
+                || {
+                    turning(speech::said("set-up-instead"), move || {
+                        page.turn_to(Form::SetUp, None)
+                    })
+                },
+            )
+        },
     )
 }
 
@@ -151,7 +177,7 @@ fn sign_up_form(page: Page) -> impl IntoView {
             password.get_untracked(),
         );
         asked(asking, refused, async move {
-            service::sign_up(&email, &named, &typed)
+            service::sign_up(&email, &named, &typed, None)
                 .await
                 .map(|()| page.turn_to(Form::EnterCode, None))
         });
@@ -162,6 +188,58 @@ fn sign_up_form(page: Page) -> impl IntoView {
         form(
             sign_up,
             (
+                field(speech::said("sign-up-name"), "text", "name", name),
+                field(speech::said("sign-in-email"), "email", "email", page.email),
+                field(
+                    speech::said("sign-in-password"),
+                    "password",
+                    "new-password",
+                    password,
+                ),
+                html::small()
+                    .class("hint")
+                    .child(speech::said("sign-up-password-hint")),
+                move || refused.get().map(problem::problem),
+                submitting(speech::said("sign-up-confirm"), asking),
+            ),
+        ),
+        turning(speech::said("sign-in-instead"), move || {
+            page.turn_to(Form::SignIn, None)
+        }),
+    )
+}
+
+fn set_up_form(page: Page) -> impl IntoView {
+    let name = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
+    let code = RwSignal::new(String::new());
+    let refused = RwSignal::new(None::<ApiError>);
+    let asking = RwSignal::new(false);
+
+    let set_up = move || {
+        let (email, named, typed, logged) = (
+            page.email.get_untracked(),
+            name.get_untracked(),
+            password.get_untracked(),
+            code.get_untracked(),
+        );
+        asked(asking, refused, async move {
+            service::sign_up(&email, &named, &typed, Some(&logged))
+                .await
+                .map(|()| {
+                    page.operator_code.set(Some(logged));
+                    page.turn_to(Form::EnterCode, None);
+                })
+        });
+    };
+
+    (
+        html::h1().child(speech::said("set-up-heading")),
+        html::p().class("hint").child(speech::said("set-up-hint")),
+        form(
+            set_up,
+            (
+                field(speech::said("set-up-code"), "text", "off", code),
                 field(speech::said("sign-up-name"), "text", "name", name),
                 field(speech::said("sign-in-email"), "email", "email", page.email),
                 field(

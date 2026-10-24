@@ -68,6 +68,7 @@ export type Server = {
   signingUp: "open" | "invitation";
   invitationRefused: { status: number; type: string } | null;
   signedInAs: typeof ADA | null;
+  operatorWanted: boolean;
 };
 
 const refusing = (
@@ -106,10 +107,17 @@ export async function aServerWithAccounts(
     signingUp: "open",
     invitationRefused: null,
     signedInAs: null,
+    operatorWanted: false,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
-    route.fulfill({ json: { accounts: true, sign_up: server.signingUp } }),
+    route.fulfill({
+      json: {
+        accounts: true,
+        sign_up: server.signingUp,
+        operator_wanted: server.operatorWanted && !server.operator,
+      },
+    }),
   );
   await page.route(at("/api/sessions/current"), async (route) => {
     if (route.request().method() === "DELETE") {
@@ -165,7 +173,17 @@ export async function aServerWithAccounts(
     });
   });
   await page.route(at("/api/accounts"), async (route) => {
-    const { email, name, password } = route.request().postDataJSON();
+    const { email, name, password, operator_code } = route
+      .request()
+      .postDataJSON();
+    if (server.signingUp === "invitation") {
+      if (!server.operatorWanted || server.operator || !operator_code) {
+        return refusing(route, 403, "signing-up-by-invitation-only");
+      }
+      if (operator_code.trim() !== THE_OPERATOR_CODE) {
+        return refusing(route, 422, "operator-code-wrong");
+      }
+    }
     if (password.length < 12) {
       return refusing(route, 422, "password-too-short", {
         min: 12,

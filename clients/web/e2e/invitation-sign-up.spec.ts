@@ -140,3 +140,29 @@ test("the token never travels to the server in the address", async ({
 
   expect(asked.filter((url) => url.includes(THE_INVITATION))).toEqual([]);
 });
+
+test("the word under the invitation's heading stands apart from the first field", async ({
+  page,
+}) => {
+  await aServerWithAccounts(page);
+  await page.goto(`/invitation#${THE_INVITATION}`);
+
+  const hint = await page
+    .getByText("Choose your name and a password.")
+    .boundingBox();
+  const field = await page
+    .locator(".field > span")
+    .filter({ hasText: "Your name" })
+    .boundingBox();
+  const between = await page
+    .locator(".field > span")
+    .filter({ hasText: /^Password$/ })
+    .boundingBox();
+  const name = await page.getByLabel("Your name").boundingBox();
+  expect(hint && field && between && name).toBeTruthy();
+
+  expect(
+    field!.y - (hint!.y + hint!.height),
+    "as much room as between one field and the next",
+  ).toBeGreaterThanOrEqual(between!.y - (name!.y + name!.height));
+});
