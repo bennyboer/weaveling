@@ -8,8 +8,6 @@ pub use discarding::UnpinOnDiscardListener;
 pub use pinning::ProjectPinnedIdeasListener;
 
 pub use publishing::message_for;
-
-use eventpublishing::aggregate_in;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -58,7 +56,8 @@ impl Handler for CatalogueBoardsListener {
     const WHEN_REFUSED: &'static str = "A board did not reach the list of boards.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.catalogue(&aggregate_in::<BoardId>(message)?).await
+        self.catalogue(&eventpublishing::aggregate_in::<BoardId>(message)?)
+            .await
     }
 }
 

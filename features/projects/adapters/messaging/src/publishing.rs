@@ -30,7 +30,6 @@ fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Recorded, Version};
     use messaging::Subscription;
     use projects_contract::{
@@ -125,7 +124,7 @@ mod tests {
     fn what_a_project_event_says_comes_from_the_features_own_mapping() {
         let id = a_project();
 
-        let body = published_in::<ProjectEventDTO>(&published(&id, a_start()))
+        let body = eventpublishing::published_in::<ProjectEventDTO>(&published(&id, a_start()))
             .expect("what we wrote must be readable");
 
         assert_eq!(
@@ -145,9 +144,11 @@ mod tests {
             description: ProjectDescription::new("A weaver's daughter.").expect("plain"),
         };
 
-        let body =
-            published_in::<ProjectEventDTO>(&published(&id, ProjectEvent::DetailsChanged(details)))
-                .expect("what we wrote must be readable");
+        let body = eventpublishing::published_in::<ProjectEventDTO>(&published(
+            &id,
+            ProjectEvent::DetailsChanged(details),
+        ))
+        .expect("what we wrote must be readable");
 
         assert_eq!(
             body.event.body,
@@ -163,7 +164,7 @@ mod tests {
     fn a_changed_quotation_style_travels_by_its_name() {
         let id = a_project();
 
-        let body = published_in::<ProjectEventDTO>(&published(
+        let body = eventpublishing::published_in::<ProjectEventDTO>(&published(
             &id,
             ProjectEvent::QuotationChanged(QuotationMarks::PointingOut),
         ))
@@ -214,7 +215,7 @@ mod tests {
         let id = a_project();
 
         assert_eq!(
-            aggregate_in::<ProjectId>(&published(&id, a_start()))
+            eventpublishing::aggregate_in::<ProjectId>(&published(&id, a_start()))
                 .expect("what we wrote must be readable"),
             id
         );

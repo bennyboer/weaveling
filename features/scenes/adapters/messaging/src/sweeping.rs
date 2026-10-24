@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventpublishing::published_in;
 use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
 use projects_contract::{DELETED, ProjectEventDTO};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
@@ -81,7 +80,7 @@ fn what_to_sweep(asked: &Message) -> Result<(String, Option<String>), Failure> {
         return Ok((carried.project, Some(carried.after)));
     }
 
-    let deleted = published_in::<ProjectEventDTO>(asked)?;
+    let deleted = eventpublishing::published_in::<ProjectEventDTO>(asked)?;
 
     Ok((deleted.aggregate.id, None))
 }

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventpublishing::published_in;
 use eventsourcing::{Agent, ServiceError};
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use ideas_core::{IdeaCatalog, IdeaError, IdeaId, IdeaService, IdeaServiceError, ProjectLink};
@@ -96,7 +95,7 @@ fn what_to_sweep(asked: &Message) -> Result<(ProjectLink, Option<IdeaId>), Failu
         ));
     }
 
-    let deleted = published_in::<ProjectEventDTO>(asked)?;
+    let deleted = eventpublishing::published_in::<ProjectEventDTO>(asked)?;
 
     Ok((ProjectLink::from(deleted.aggregate.id.as_str()), None))
 }

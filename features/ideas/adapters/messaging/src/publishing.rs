@@ -23,7 +23,6 @@ fn body(event: &IdeaEvent) -> Option<IdeaEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Recorded, Version};
     use ideas_contract::{CAPTURED, DISCARDED, EVERY_IDEA, RETITLED};
     use ideas_core::{IdeaId, IdeaTitle, KIND, ProjectLink};
@@ -110,7 +109,7 @@ mod tests {
     fn what_an_idea_event_says_comes_from_the_features_own_mapping() {
         let id = an_idea();
 
-        let body = published_in::<IdeaEventDTO>(&published(&id, a_capture()))
+        let body = eventpublishing::published_in::<IdeaEventDTO>(&published(&id, a_capture()))
             .expect("what we wrote must be readable");
 
         assert_eq!(
@@ -157,7 +156,7 @@ mod tests {
         let id = an_idea();
 
         assert_eq!(
-            aggregate_in::<IdeaId>(&published(&id, a_capture()))
+            eventpublishing::aggregate_in::<IdeaId>(&published(&id, a_capture()))
                 .expect("what we wrote must be readable"),
             id
         );

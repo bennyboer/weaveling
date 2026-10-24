@@ -53,7 +53,6 @@ mod tests {
         EVERY_BOARD, IDEA_MOVED, IDEA_PINNED, IDEA_RAISED, IDEA_RESIZED, IDEA_UNPINNED, STARTED,
     };
     use boards_core::{BoardId, IdeaLink, KIND, PositionedIdea, ProjectLink};
-    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Version};
     use messaging::{Handler, RoutingKey, Subscription};
     use time::{Duration, OffsetDateTime};
@@ -200,7 +199,7 @@ mod tests {
     fn a_pin_carries_the_idea_and_where_it_landed() {
         let id = a_board();
 
-        let told = published_in::<BoardEventDTO>(&published(&id, a_pin()))
+        let told = eventpublishing::published_in::<BoardEventDTO>(&published(&id, a_pin()))
             .expect("what we wrote must be readable");
 
         assert_eq!(
@@ -224,7 +223,7 @@ mod tests {
             to: Size::of(400, 90),
         };
 
-        let told = published_in::<BoardEventDTO>(&published(&id, stretched))
+        let told = eventpublishing::published_in::<BoardEventDTO>(&published(&id, stretched))
             .expect("what we wrote must be readable");
 
         assert_eq!(
@@ -278,7 +277,7 @@ mod tests {
         let id = a_board();
 
         assert_eq!(
-            aggregate_in::<BoardId>(&published(&id, a_pin()))
+            eventpublishing::aggregate_in::<BoardId>(&published(&id, a_pin()))
                 .expect("what we wrote must be readable"),
             id
         );

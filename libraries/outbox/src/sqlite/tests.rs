@@ -10,7 +10,7 @@ use time::OffsetDateTime;
 
 use crate::outbox::Outbox;
 use crate::relaying::{Cadence, RelayTask};
-use crate::sqlite::{SqliteOutbox, enqueue};
+use crate::sqlite::SqliteOutbox;
 use crate::suite;
 use crate::suite::{Bench, Then, Workbench};
 
@@ -47,7 +47,7 @@ impl Workbench for OnSqlite {
     async fn enqueue(&self, messages: &[Message], then: Then) {
         let mut transaction = self.pool.begin().await.expect("a transaction opens");
         for message in messages {
-            enqueue(&mut transaction, suite::from_a_scene(), message)
+            crate::sqlite::enqueue(&mut transaction, suite::from_a_scene(), message)
                 .await
                 .expect("enqueueing should succeed");
         }
@@ -118,7 +118,7 @@ async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
         .begin()
         .await
         .expect("a transaction opens");
-    enqueue(&mut transaction, suite::from_a_scene(), &message)
+    crate::sqlite::enqueue(&mut transaction, suite::from_a_scene(), &message)
         .await
         .expect("enqueueing should succeed");
 

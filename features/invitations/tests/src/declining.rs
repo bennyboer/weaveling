@@ -6,7 +6,7 @@ use messaging::{Handler, Listener, Message, RoutingKey};
 use serde_json::{Value, json};
 
 use crate::wiring;
-use crate::wiring::{ORIGIN, Wired, an_operator};
+use crate::wiring::{ORIGIN, Wired};
 
 const ADA: &str = "ada@example.com";
 
@@ -32,7 +32,7 @@ fn told(event: Value) -> Message {
 async fn invited(wired: &Wired) -> InvitationId {
     wired
         .invitations
-        .issue(&an_operator(), ADA, ORIGIN)
+        .issue(&wiring::an_operator(), ADA, ORIGIN)
         .await
         .expect("an operator may invite")
         .id
@@ -84,7 +84,7 @@ async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
     let accepted = invited(&wired).await;
     wired
         .invitations
-        .withdraw(&an_operator(), &withdrawn)
+        .withdraw(&wiring::an_operator(), &withdrawn)
         .await
         .expect("an operator may withdraw");
     wired

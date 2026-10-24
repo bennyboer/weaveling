@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventpublishing::published_in;
 use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
 use projects_contract::{ProjectEventDTO, QUOTATION_CHANGED};
 use quotation::QuotationMarks;
@@ -147,7 +146,7 @@ fn what_to_restyle(asked: &Message) -> Result<QuotationRestylingTask, Failure> {
         });
     }
 
-    let changed = published_in::<ProjectEventDTO>(asked)?;
+    let changed = eventpublishing::published_in::<ProjectEventDTO>(asked)?;
     let ProjectEventDTO::QuotationChanged { quotation } = changed.event.body else {
         return Err("a project event that names no quotation style".into());
     };

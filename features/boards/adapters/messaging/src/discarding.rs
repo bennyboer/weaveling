@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use boards_core::{BoardCatalog, BoardService, IdeaLink};
-use eventpublishing::published_in;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
 
@@ -25,7 +24,7 @@ impl Handler for UnpinOnDiscardListener {
     const WHEN_REFUSED: &'static str = "A discarded idea could not be taken off a board.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        let discarded = published_in::<IdeaEventDTO>(message)?;
+        let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
 
         letting_go::let_go_everywhere(
             &self.boards,

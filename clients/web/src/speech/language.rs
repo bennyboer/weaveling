@@ -1,5 +1,3 @@
-use leptos::prelude::window;
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Language {
     English,
@@ -62,7 +60,7 @@ impl Language {
 }
 
 pub fn the_reader_s() -> Language {
-    window()
+    leptos::prelude::window()
         .navigator()
         .languages()
         .iter()

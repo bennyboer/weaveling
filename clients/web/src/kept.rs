@@ -1,4 +1,3 @@
-use leptos::prelude::window;
 use web_sys::Storage;
 
 pub fn recall(key: &str) -> Option<String> {
@@ -18,5 +17,5 @@ pub fn forget(key: &str) {
 }
 
 fn shelf() -> Option<Storage> {
-    window().local_storage().ok().flatten()
+    leptos::prelude::window().local_storage().ok().flatten()
 }

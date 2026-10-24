@@ -1,4 +1,3 @@
-use eventpublishing::aggregate_in;
 use outline_contract::{DISCARDED, STARTED};
 use std::sync::Arc;
 
@@ -47,6 +46,7 @@ impl Handler for CatalogueOutlinesListener {
     const WHEN_REFUSED: &'static str = "An outline did not reach the list of outlines.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.catalogue(&aggregate_in::<OutlineId>(message)?).await
+        self.catalogue(&eventpublishing::aggregate_in::<OutlineId>(message)?)
+            .await
     }
 }

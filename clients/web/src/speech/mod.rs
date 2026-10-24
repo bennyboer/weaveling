@@ -6,7 +6,6 @@ use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 
 use crate::kept;
-use crate::speech::catalogue::knows;
 use crate::speech::language::Language;
 
 const SPOKEN: &str = "weaveling.language";
@@ -47,7 +46,7 @@ impl Speech {
     }
 
     pub fn knows(self, message: &str) -> bool {
-        knows(self.spoken.get(), message)
+        catalogue::knows(self.spoken.get(), message)
     }
 }
 

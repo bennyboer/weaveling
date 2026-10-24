@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use appearances_core::{AppearanceCatalog, IdeaLink, Place, SectionLink, Subject};
-use eventpublishing::published_in;
 use messaging::{Failure, Handler, Message};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
 
@@ -30,7 +29,7 @@ impl Handler for ProjectOutlineAppearancesListener {
     const WHEN_REFUSED: &'static str = "Where an idea appears in the outline was not updated.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        let published = published_in::<OutlineEventDTO>(message)?;
+        let published = eventpublishing::published_in::<OutlineEventDTO>(message)?;
         let version = published.aggregate.version;
 
         match published.event.body {

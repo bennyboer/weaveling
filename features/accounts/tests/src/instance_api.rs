@@ -11,7 +11,7 @@ use eventsourcing::Version;
 use serde_json::Value;
 
 use crate::wiring;
-use crate::wiring::{HER_PASSWORD, Wired, at};
+use crate::wiring::{HER_PASSWORD, Wired};
 
 const ADA: &str = "ada@example.com";
 const GRACE: &str = "grace@example.com";
@@ -64,7 +64,7 @@ async fn signed_in(server: &TestServer, email: &str) -> String {
 async fn an_instance_with_ada_and_grace_its_operator() -> Instance {
     let wired = wiring::wired();
     let ada = signed_up(&wired, ADA, "Ada").await;
-    wired.clock.set(at(1_700_000_060));
+    wired.clock.set(wiring::at(1_700_000_060));
     let grace = signed_up(&wired, GRACE, "Grace").await;
     let code = wired
         .accounts
@@ -284,7 +284,7 @@ async fn the_operator_is_not_locked() {
 #[tokio::test]
 async fn an_account_that_is_not_there_or_no_account_at_all_is_said_so() {
     let instance = an_instance_with_ada_and_grace_its_operator().await;
-    let nobody = AccountId::generate(at(1_000)).to_string();
+    let nobody = AccountId::generate(wiring::at(1_000)).to_string();
 
     refused_as(
         &instance
@@ -320,14 +320,14 @@ async fn a_long_list_comes_a_page_at_a_time() {
             .wired
             .catalog
             .remember(&AccountSummary {
-                id: AccountId::generate(at(1_000 + seconds)),
+                id: AccountId::generate(wiring::at(1_000 + seconds)),
                 version: Version::of(1),
                 name: AccountName::new("Someone").expect("a plain name"),
                 email: EmailAddress::new(&format!("someone{seconds}@example.com"))
                     .expect("a plain address"),
                 verified: true,
                 operator: false,
-                signed_up_at: at(1_000 + seconds),
+                signed_up_at: wiring::at(1_000 + seconds),
                 locks: BTreeMap::new(),
             })
             .await
@@ -347,6 +347,38 @@ async fn a_long_list_comes_a_page_at_a_time() {
     assert_eq!(first.accounts.len(), accounts_rest::PAGE);
     assert_eq!(second.accounts.len(), 2);
     assert_eq!(second.next, None);
+}
+
+#[tokio::test]
+async fn a_list_that_fills_one_page_exactly_promises_no_next() {
+    let instance = an_instance_with_ada_and_grace_its_operator().await;
+    for seconds in 0..accounts_rest::PAGE as i64 - 2 {
+        instance
+            .wired
+            .catalog
+            .remember(&AccountSummary {
+                id: AccountId::generate(wiring::at(1_000 + seconds)),
+                version: Version::of(1),
+                name: AccountName::new("Someone").expect("a plain name"),
+                email: EmailAddress::new(&format!("someone{seconds}@example.com"))
+                    .expect("a plain address"),
+                verified: true,
+                operator: false,
+                signed_up_at: wiring::at(1_000 + seconds),
+                locks: BTreeMap::new(),
+            })
+            .await
+            .expect("remembering should succeed");
+    }
+
+    let page: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();
+
+    assert_eq!(
+        page.accounts.len(),
+        accounts_rest::PAGE,
+        "Ada and Grace fill it"
+    );
+    assert_eq!(page.next, None);
 }
 
 impl Instance {
@@ -471,7 +503,7 @@ async fn an_account_unconfirmed_locked_or_missing_is_not_made_an_operator() {
         &instance
             .appoint(
                 &instance.grace_signed_in,
-                &AccountId::generate(at(1_000)).to_string(),
+                &AccountId::generate(wiring::at(1_000)).to_string(),
             )
             .await,
         StatusCode::NOT_FOUND,

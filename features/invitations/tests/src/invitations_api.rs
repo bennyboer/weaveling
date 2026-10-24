@@ -9,7 +9,7 @@ use invitations_core::{InvitationEvent, InvitationId, KIND};
 use serde_json::Value;
 
 use crate::wiring;
-use crate::wiring::{ORIGIN as INSTANCE, Wired, an_operator, at, no_operator};
+use crate::wiring::{ORIGIN as INSTANCE, Wired};
 
 const ADA: &str = "ada@example.com";
 
@@ -42,7 +42,7 @@ fn refused_as(response: &TestResponse, status: StatusCode, kind: &str) -> Value 
 #[tokio::test]
 async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from() {
     let wired = wiring::wired();
-    let server = served_to(&wired, an_operator());
+    let server = served_to(&wired, wiring::an_operator());
 
     let response = invite(&server, ADA).await;
 
@@ -81,7 +81,7 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
 #[tokio::test]
 async fn an_invitation_named_from_no_page_is_refused() {
     let wired = wiring::wired();
-    let server = served_to(&wired, an_operator());
+    let server = served_to(&wired, wiring::an_operator());
 
     refused_as(
         &server.post("/invitations").json(&inviting(ADA)).await,
@@ -96,11 +96,11 @@ async fn anyone_but_an_operator_is_refused() {
     let wired = wiring::wired();
     let id = wired
         .invitations
-        .issue(&an_operator(), ADA, INSTANCE)
+        .issue(&wiring::an_operator(), ADA, INSTANCE)
         .await
         .expect("an operator may invite")
         .id;
-    let server = served_to(&wired, no_operator());
+    let server = served_to(&wired, wiring::no_operator());
 
     refused_as(
         &invite(&server, "grace@example.com").await,
@@ -117,7 +117,7 @@ async fn anyone_but_an_operator_is_refused() {
 #[tokio::test]
 async fn an_address_is_refused_by_its_kind() {
     let wired = wiring::wired();
-    let server = served_to(&wired, an_operator());
+    let server = served_to(&wired, wiring::an_operator());
 
     refused_as(
         &invite(&server, "ada").await,
@@ -135,7 +135,7 @@ async fn an_address_is_refused_by_its_kind() {
 #[tokio::test]
 async fn an_address_invited_too_often_is_told_how_long_to_wait() {
     let wired = wiring::wired();
-    let server = served_to(&wired, an_operator());
+    let server = served_to(&wired, wiring::an_operator());
     for _ in 0..3 {
         invite(&server, ADA)
             .await
@@ -154,11 +154,11 @@ async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all
     let wired = wiring::wired();
     let id = wired
         .invitations
-        .issue(&an_operator(), ADA, INSTANCE)
+        .issue(&wiring::an_operator(), ADA, INSTANCE)
         .await
         .expect("an operator may invite")
         .id;
-    let server = served_to(&wired, an_operator());
+    let server = served_to(&wired, wiring::an_operator());
 
     server
         .delete(&format!("/invitations/{id}"))
@@ -168,7 +168,7 @@ async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all
         &server
             .delete(&format!(
                 "/invitations/{}",
-                InvitationId::generate(at(1_000))
+                InvitationId::generate(wiring::at(1_000))
             ))
             .await,
         StatusCode::NOT_FOUND,
@@ -186,7 +186,7 @@ async fn an_invitation_taken_up_is_not_withdrawn() {
     let wired = wiring::wired();
     let id = wired
         .invitations
-        .issue(&an_operator(), ADA, INSTANCE)
+        .issue(&wiring::an_operator(), ADA, INSTANCE)
         .await
         .expect("an operator may invite")
         .id;
@@ -194,14 +194,14 @@ async fn an_invitation_taken_up_is_not_withdrawn() {
         .invitations
         .accept(
             &id,
-            at(1_700_000_100),
+            wiring::at(1_700_000_100),
             &Agent::Account("account_ada".into()),
         )
         .await
         .expect("an open invitation is accepted");
 
     refused_as(
-        &served_to(&wired, an_operator())
+        &served_to(&wired, wiring::an_operator())
             .delete(&format!("/invitations/{id}"))
             .await,
         StatusCode::CONFLICT,

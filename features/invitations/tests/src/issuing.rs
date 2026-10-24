@@ -3,7 +3,7 @@ use invitations_core::{InvitationEvent, InvitationId, InvitationServiceError, KI
 use time::Duration;
 
 use crate::wiring;
-use crate::wiring::{ORIGIN, Wired, an_operator, at, no_operator};
+use crate::wiring::{ORIGIN, Wired};
 
 const ADA: &str = "ada@example.com";
 
@@ -24,7 +24,7 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
 
     let id = wired
         .invitations
-        .issue(&an_operator(), " Ada@Example.com ", ORIGIN)
+        .issue(&wiring::an_operator(), " Ada@Example.com ", ORIGIN)
         .await
         .expect("an operator may invite")
         .id;
@@ -43,7 +43,7 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
             [InvitationEvent::Issued { to, digest, until }]
                 if to.as_str() == ADA
                     && *digest == token.digest()
-                    && *until == at(1_700_000_000) + Duration::days(7)
+                    && *until == wiring::at(1_700_000_000) + Duration::days(7)
         ),
         "the invitation keeps its link's token by its digest alone, and holds for seven days"
     );
@@ -55,7 +55,11 @@ async fn the_link_is_made_from_the_origin_however_it_ends() {
 
     wired
         .invitations
-        .issue(&an_operator(), ADA, "https://weaveling.example.com/")
+        .issue(
+            &wiring::an_operator(),
+            ADA,
+            "https://weaveling.example.com/",
+        )
         .await
         .expect("an operator may invite");
 
@@ -71,19 +75,25 @@ async fn only_an_operator_invites_or_withdraws() {
     let wired = wiring::wired();
 
     assert!(matches!(
-        wired.invitations.issue(&no_operator(), ADA, ORIGIN).await,
+        wired
+            .invitations
+            .issue(&wiring::no_operator(), ADA, ORIGIN)
+            .await,
         Err(InvitationServiceError::NotAnOperator)
     ));
     assert!(wired.mailbox.sent_to(ADA).is_empty());
 
     let id = wired
         .invitations
-        .issue(&an_operator(), ADA, ORIGIN)
+        .issue(&wiring::an_operator(), ADA, ORIGIN)
         .await
         .expect("an operator may invite")
         .id;
     assert!(matches!(
-        wired.invitations.withdraw(&no_operator(), &id).await,
+        wired
+            .invitations
+            .withdraw(&wiring::no_operator(), &id)
+            .await,
         Err(InvitationServiceError::NotAnOperator)
     ));
     assert_eq!(told(&wired, &id).await.len(), 1);
@@ -94,7 +104,10 @@ async fn an_address_that_could_never_be_mailed_is_refused() {
     let wired = wiring::wired();
 
     assert!(matches!(
-        wired.invitations.issue(&an_operator(), "ada", ORIGIN).await,
+        wired
+            .invitations
+            .issue(&wiring::an_operator(), "ada", ORIGIN)
+            .await,
         Err(InvitationServiceError::InvalidEmail(_))
     ));
 }
@@ -105,13 +118,13 @@ async fn an_address_invited_three_times_must_wait_before_the_fourth_while_anothe
     for _ in 0..3 {
         wired
             .invitations
-            .issue(&an_operator(), ADA, ORIGIN)
+            .issue(&wiring::an_operator(), ADA, ORIGIN)
             .await
             .expect("three invitations to one address are free");
     }
 
     assert!(matches!(
-        wired.invitations.issue(&an_operator(), ADA, ORIGIN).await,
+        wired.invitations.issue(&wiring::an_operator(), ADA, ORIGIN).await,
         Err(InvitationServiceError::Throttled { wait }) if wait == Duration::minutes(1)
     ));
     assert_eq!(
@@ -121,15 +134,17 @@ async fn an_address_invited_three_times_must_wait_before_the_fourth_while_anothe
     );
     wired
         .invitations
-        .issue(&an_operator(), "grace@example.com", ORIGIN)
+        .issue(&wiring::an_operator(), "grace@example.com", ORIGIN)
         .await
         .expect("another address is counted apart");
 
-    wired.clock.set(at(1_700_000_000) + Duration::days(1));
+    wired
+        .clock
+        .set(wiring::at(1_700_000_000) + Duration::days(1));
     for _ in 0..3 {
         wired
             .invitations
-            .issue(&an_operator(), ADA, ORIGIN)
+            .issue(&wiring::an_operator(), ADA, ORIGIN)
             .await
             .expect("a day later the count starts over, three free again");
     }
@@ -140,14 +155,14 @@ async fn an_operator_withdraws_an_invitation() {
     let wired = wiring::wired();
     let id = wired
         .invitations
-        .issue(&an_operator(), ADA, ORIGIN)
+        .issue(&wiring::an_operator(), ADA, ORIGIN)
         .await
         .expect("an operator may invite")
         .id;
 
     wired
         .invitations
-        .withdraw(&an_operator(), &id)
+        .withdraw(&wiring::an_operator(), &id)
         .await
         .expect("an operator may withdraw");
 
@@ -164,7 +179,10 @@ async fn an_invitation_that_is_not_there_is_not_withdrawn() {
     assert!(matches!(
         wired
             .invitations
-            .withdraw(&an_operator(), &InvitationId::generate(at(1_000)))
+            .withdraw(
+                &wiring::an_operator(),
+                &InvitationId::generate(wiring::at(1_000))
+            )
             .await,
         Err(InvitationServiceError::Events(
             ServiceError::NotFound { .. }

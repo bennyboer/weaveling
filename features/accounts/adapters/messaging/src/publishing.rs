@@ -56,7 +56,6 @@ mod tests {
         PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, UNLOCKED,
     };
     use accounts_core::{AccountId, AccountName, EmailAddress, KIND, LockReason};
-    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AggregateId, Event, EventMetadata, Version};
     use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
@@ -202,9 +201,9 @@ mod tests {
     fn a_lock_and_an_unlock_say_whose_lock_it_is() {
         let id = an_account();
 
-        let locked = published_in::<AccountEventDTO>(&published(&id, a_lock()))
+        let locked = eventpublishing::published_in::<AccountEventDTO>(&published(&id, a_lock()))
             .expect("what we wrote must be readable");
-        let unlocked = published_in::<AccountEventDTO>(&published(
+        let unlocked = eventpublishing::published_in::<AccountEventDTO>(&published(
             &id,
             AccountEvent::Unlocked {
                 kind: LockKind::Operator,
@@ -286,7 +285,7 @@ mod tests {
         let id = an_account();
 
         assert_eq!(
-            aggregate_in::<AccountId>(&published(&id, a_sign_up()))
+            eventpublishing::aggregate_in::<AccountId>(&published(&id, a_sign_up()))
                 .expect("what we wrote must be readable"),
             id
         );

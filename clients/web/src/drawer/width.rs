@@ -2,7 +2,6 @@ use leptos::ev;
 use leptos::prelude::*;
 
 use crate::kept;
-use crate::kept::keep;
 
 const AT_FIRST: f64 = 320.0;
 pub const NARROWEST: f64 = 224.0;
@@ -75,7 +74,7 @@ impl DrawerWidth {
 
     pub fn keep(self) {
         let width = self.shown_untracked().round().to_string();
-        self.kept.with_value(|kept| keep(kept, &width));
+        self.kept.with_value(|kept| kept::keep(kept, &width));
     }
 }
 

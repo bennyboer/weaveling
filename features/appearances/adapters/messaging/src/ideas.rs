@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use appearances_core::{AppearanceCatalog, IdeaLink, Subject};
-use eventpublishing::published_in;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
 
@@ -22,7 +21,7 @@ impl Handler for ForgetDiscardedIdeaListener {
     const WHEN_REFUSED: &'static str = "A discarded idea is still listed where it appeared.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        let discarded = published_in::<IdeaEventDTO>(message)?;
+        let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
 
         Ok(self
             .catalog

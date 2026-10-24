@@ -76,7 +76,6 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventpublishing::{aggregate_in, published_in};
     use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Version};
     use messaging::{Handler, RoutingKey, Subscription};
     use outline_contract::{
@@ -278,8 +277,11 @@ mod tests {
         let id = an_outline();
         let section = a_section();
 
-        let told = published_in::<OutlineEventDTO>(&published(&id, attaching_to(section)))
-            .expect("what we wrote must be readable");
+        let told = eventpublishing::published_in::<OutlineEventDTO>(&published(
+            &id,
+            attaching_to(section),
+        ))
+        .expect("what we wrote must be readable");
 
         assert_eq!(
             told.event.body,
@@ -299,7 +301,7 @@ mod tests {
         let section = a_section();
         let promoted = OutlineEvent::SectionPromoted { section };
 
-        let told = published_in::<OutlineEventDTO>(&published(&id, promoted))
+        let told = eventpublishing::published_in::<OutlineEventDTO>(&published(&id, promoted))
             .expect("what we wrote must be readable");
 
         assert_eq!(
@@ -350,7 +352,7 @@ mod tests {
         let id = an_outline();
 
         assert_eq!(
-            aggregate_in::<OutlineId>(&published(&id, an_attachment()))
+            eventpublishing::aggregate_in::<OutlineId>(&published(&id, an_attachment()))
                 .expect("what we wrote must be readable"),
             id
         );

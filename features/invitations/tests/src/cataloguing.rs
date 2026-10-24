@@ -12,7 +12,7 @@ use serde_json::json;
 use time::Duration;
 
 use crate::wiring;
-use crate::wiring::{ORIGIN, Wired, an_operator};
+use crate::wiring::{ORIGIN, Wired};
 
 const ADA: &str = "ada@example.com";
 
@@ -55,7 +55,7 @@ impl Listing {
     async fn invited(&self, to: &str) -> InvitationId {
         self.wired
             .invitations
-            .issue(&an_operator(), to, ORIGIN)
+            .issue(&wiring::an_operator(), to, ORIGIN)
             .await
             .expect("an operator may invite")
             .id

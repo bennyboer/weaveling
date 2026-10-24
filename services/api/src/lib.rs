@@ -27,7 +27,7 @@ use scenes_wiring::SceneFeature;
 use serving::Problem;
 use statistics_wiring::StatisticsFeature;
 use tower_http::trace::TraceLayer;
-use wiring::{Assembled, Context, assemble};
+use wiring::{Assembled, Context};
 
 use crate::flaky::FlakyListener;
 use crate::refusals::TellingDeliveries;
@@ -74,13 +74,13 @@ impl Adapters {
         };
 
         let mut features = vec![
-            assemble::<ProjectFeature>(&storage, &context).await?,
-            assemble::<SceneFeature>(&storage, &context).await?,
-            assemble::<IdeaFeature>(&storage, &context).await?,
-            assemble::<BoardFeature>(&storage, &context).await?,
-            assemble::<OutlineFeature>(&storage, &context).await?,
-            assemble::<AppearanceFeature>(&storage, &context).await?,
-            assemble::<StatisticsFeature>(&storage, &context).await?,
+            wiring::assemble::<ProjectFeature>(&storage, &context).await?,
+            wiring::assemble::<SceneFeature>(&storage, &context).await?,
+            wiring::assemble::<IdeaFeature>(&storage, &context).await?,
+            wiring::assemble::<BoardFeature>(&storage, &context).await?,
+            wiring::assemble::<OutlineFeature>(&storage, &context).await?,
+            wiring::assemble::<AppearanceFeature>(&storage, &context).await?,
+            wiring::assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
         let accounts = match accounts {
             Accounts::On => {

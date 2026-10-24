@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use clock::Clock;
-use eventpublishing::published_in;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use ideas_contract::EVERY_IDEA;
 use ideas_core::{Idea, IdeaEvent, IdeaId};
@@ -52,7 +51,7 @@ impl Listener for BroadcastIdeaChangesListener {
     }
 
     async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        let Ok(published) = published_in::<Value>(message) else {
+        let Ok(published) = eventpublishing::published_in::<Value>(message) else {
             return Ok(());
         };
         let Ok(id) = published.aggregate.id.parse::<IdeaId>() else {

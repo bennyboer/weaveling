@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use eventpublishing::{PublishedEvent, published_in};
+use eventpublishing::PublishedEvent;
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use serde_json::{Value, json};
 
@@ -61,7 +61,7 @@ impl Listener for BroadcastChangesListener {
     }
 
     async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
-        if let Ok(published) = published_in::<Value>(message) {
+        if let Ok(published) = eventpublishing::published_in::<Value>(message) {
             let frame = frame_of(&published);
             if let Some(about) = &self.about {
                 self.broadcaster.tell(about, frame.clone());

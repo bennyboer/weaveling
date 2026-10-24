@@ -13,7 +13,7 @@ use serde_json::Value;
 use time::Duration;
 
 use crate::wiring;
-use crate::wiring::{Wired, an_operator, at, no_operator};
+use crate::wiring::Wired;
 
 fn served_to(wired: &Wired, acting: Acting) -> TestServer {
     TestServer::new(invitations_rest::router(wired.invitations.clone()).layer(Extension(acting)))
@@ -21,13 +21,13 @@ fn served_to(wired: &Wired, acting: Acting) -> TestServer {
 
 fn a_summary(seconds: i64, to: &str, outcome: Outcome) -> InvitationSummary {
     InvitationSummary {
-        id: InvitationId::generate(at(seconds)),
+        id: InvitationId::generate(wiring::at(seconds)),
         version: Version::of(1),
         to: EmailAddress::new(to).expect("a plain address"),
-        issued_at: at(seconds),
-        until: at(seconds) + Duration::days(7),
+        issued_at: wiring::at(seconds),
+        until: wiring::at(seconds) + Duration::days(7),
         outcome,
-        retire_after: at(seconds) + Duration::days(7),
+        retire_after: wiring::at(seconds) + Duration::days(7),
     }
 }
 
@@ -64,7 +64,7 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
     )
     .await;
 
-    let page: InvitationPageDTO = served_to(&wired, an_operator())
+    let page: InvitationPageDTO = served_to(&wired, wiring::an_operator())
         .get("/invitations")
         .await
         .json();
@@ -118,7 +118,7 @@ async fn a_long_list_comes_in_pages_and_the_next_goes_on_after_the_last() {
         )
         .await;
     }
-    let server = served_to(&wired, an_operator());
+    let server = served_to(&wired, wiring::an_operator());
 
     let first: InvitationPageDTO = server.get("/invitations").await.json();
     let next: InvitationPageDTO = server
@@ -138,12 +138,14 @@ async fn only_an_operator_sees_the_list_and_no_page_begins_after_nonsense() {
     let wired = wiring::wired();
 
     refused_as(
-        &served_to(&wired, no_operator()).get("/invitations").await,
+        &served_to(&wired, wiring::no_operator())
+            .get("/invitations")
+            .await,
         StatusCode::FORBIDDEN,
         refused::NOT_AN_OPERATOR,
     );
     refused_as(
-        &served_to(&wired, an_operator())
+        &served_to(&wired, wiring::an_operator())
             .get("/invitations")
             .add_query_param("after", "not-an-id")
             .await,
@@ -168,7 +170,7 @@ async fn a_list_that_fills_one_page_exactly_promises_no_next() {
         .await;
     }
 
-    let page: InvitationPageDTO = served_to(&wired, an_operator())
+    let page: InvitationPageDTO = served_to(&wired, wiring::an_operator())
         .get("/invitations")
         .await
         .json();

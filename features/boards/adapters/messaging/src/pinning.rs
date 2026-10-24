@@ -3,7 +3,6 @@ use std::sync::Arc;
 use boards_contract::{IDEA_PINNED, IDEA_UNPINNED};
 use boards_core::{Board, BoardCatalog, BoardEvent, BoardId, BoardService, IdeaLink};
 use clock::Clock;
-use eventpublishing::aggregate_in;
 use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use messaging::{Failure, Handler, Message};
 
@@ -57,6 +56,7 @@ impl Handler for ProjectPinnedIdeasListener {
         "A pin did not reach the record of which ideas a board holds.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.index(&aggregate_in::<BoardId>(message)?).await
+        self.index(&eventpublishing::aggregate_in::<BoardId>(message)?)
+            .await
     }
 }

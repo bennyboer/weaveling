@@ -1,9 +1,7 @@
-use std::sync::Arc;
-
-use eventpublishing::published_in;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
 use outline_core::{Attachment, OutlineCatalog, OutlineService};
+use std::sync::Arc;
 
 use crate::letting_go;
 
@@ -25,7 +23,7 @@ impl Handler for DetachOnDiscardListener {
     const WHEN_REFUSED: &'static str = "A discarded idea could not be taken out of the outline.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        let discarded = published_in::<IdeaEventDTO>(message)?;
+        let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
 
         letting_go::let_go_everywhere(
             &self.outlines,

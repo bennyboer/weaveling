@@ -1,4 +1,3 @@
-use eventpublishing::aggregate_in;
 use outline_contract::{ATTACHED, DETACHED, SECTION_REMOVED};
 use std::sync::Arc;
 
@@ -53,6 +52,7 @@ impl Handler for IndexAttachmentsListener {
         "A change to the outline did not reach the record of what it holds.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.index(&aggregate_in::<OutlineId>(message)?).await
+        self.index(&eventpublishing::aggregate_in::<OutlineId>(message)?)
+            .await
     }
 }

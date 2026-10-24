@@ -1,5 +1,4 @@
 use boards_core::{BoardError, BoardService, BoardServiceError, ProjectLink};
-use eventpublishing::published_in;
 use eventsourcing::{Agent, ServiceError};
 use messaging::{Failure, Handler, Message};
 use projects_contract::{DELETED, ProjectEventDTO};
@@ -48,7 +47,7 @@ impl Handler for DiscardBoardsOnProjectDeletedListener {
     const WHEN_REFUSED: &'static str = "The board of a deleted project was not cleared away.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        let deleted = published_in::<ProjectEventDTO>(message)?;
+        let deleted = eventpublishing::published_in::<ProjectEventDTO>(message)?;
 
         self.discard_everything(&ProjectLink::from(deleted.aggregate.id.as_str()))
             .await
