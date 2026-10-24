@@ -20,6 +20,7 @@ use eventsourcing::Agent;
 use ideas_wiring::IdeaFeature;
 use live::Broadcaster;
 use mailing::{LoggingMailer, Mailer};
+use members_wiring::MembersFeature;
 use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use outline_wiring::OutlineFeature;
 use projects_wiring::ProjectFeature;
@@ -88,6 +89,7 @@ impl Adapters {
                     invitations_wiring::assembled_invitations(&storage, &context, mailer.clone())
                         .await?,
                 );
+                features.push(wiring::assemble::<MembersFeature>(&storage, &context).await?);
                 Some(accounts_wiring::assembled_accounts(&storage, &context, mailer).await?)
             }
             Accounts::Off => None,

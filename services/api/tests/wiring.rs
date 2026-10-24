@@ -1,3 +1,5 @@
+mod mail_drop;
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -450,28 +452,6 @@ async fn a_server_with_a_mail_drop_leaves_each_code_there() {
     let _gone = fs::remove_dir_all(&drop);
 }
 
-fn code_dropped_for(drop: &std::path::Path, address: &str) -> String {
-    fs::read_dir(drop)
-        .expect("the drop should have been made")
-        .map(|entry| {
-            serde_json::from_slice::<Value>(
-                &fs::read(entry.expect("an entry").path()).expect("readable"),
-            )
-            .expect("a mail as JSON")
-        })
-        .filter(|mail| mail["to"] == address)
-        .find_map(|mail| {
-            mail["body"].as_str().and_then(|body| {
-                body.split_whitespace()
-                    .find(|word| {
-                        word.len() == 6 && word.bytes().all(|digit| digit.is_ascii_digit())
-                    })
-                    .map(str::to_owned)
-            })
-        })
-        .expect("a code should have been dropped")
-}
-
 struct OperatorSignedIn {
     server: TestServer,
     relays: Relays,
@@ -529,7 +509,7 @@ async fn an_operator_signed_in_on_a_server_signing_up(
         .assert_status(StatusCode::ACCEPTED);
     server
         .post("/api/accounts/verification")
-        .json(&json!({ "email": "ada@example.com", "code": code_dropped_for(&drop, "ada@example.com") }))
+        .json(&json!({ "email": "ada@example.com", "code": mail_drop::code_dropped_for(&drop, "ada@example.com") }))
         .await
         .assert_status(StatusCode::NO_CONTENT);
     server

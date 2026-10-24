@@ -1,6 +1,7 @@
 #![cfg(feature = "postgres")]
 
 mod journeys;
+mod mail_drop;
 
 use std::collections::HashMap;
 use std::sync::Arc;

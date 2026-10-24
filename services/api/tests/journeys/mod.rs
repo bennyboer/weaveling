@@ -1,4 +1,6 @@
+use std::fs;
 use std::future::Future;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -9,12 +11,13 @@ use clock::SystemClock;
 use mailing::LoggingMailer;
 use outbox::Cadence;
 use serde_json::{Value, json};
-use weaveling_service_api::{Accounts, Adapters, Relays, Storage};
+use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, Storage};
 
-pub const DATABASES: [&str; 10] = [
+pub const DATABASES: [&str; 11] = [
     "messaging",
     "accounts",
     "invitations",
+    "members",
     "projects",
     "ideas",
     "boards",
@@ -41,6 +44,7 @@ pub struct Journey<B: Backend> {
     pub backend: B,
     pub server: TestServer,
     relays: Option<Relays>,
+    drop: Option<PathBuf>,
 }
 
 pub async fn a_server_on<B: Backend>(backend: &B) -> TestServer {
@@ -79,6 +83,7 @@ impl<B: Backend> Journey<B> {
             backend,
             server,
             relays: None,
+            drop: None,
         }
     }
 
@@ -98,12 +103,65 @@ impl<B: Backend> Journey<B> {
             backend,
             server: TestServer::new(weaveling_service_api::app(adapters)),
             relays: Some(relays),
+            drop: None,
+        }
+    }
+
+    pub async fn signed_in(named: &str) -> Self {
+        let backend = B::setup().await;
+        let drop = std::env::temp_dir().join(format!(
+            "weaveling-journey-{named}-mail-drop-{}",
+            std::process::id()
+        ));
+        let _gone = fs::remove_dir_all(&drop);
+        let adapters = Adapters::assembled(
+            backend.storage(),
+            Accounts::On,
+            Mailing::Dropped { into: drop.clone() }.mailer(),
+            Arc::new(SystemClock),
+        )
+        .await
+        .expect("every feature's schema should lay down");
+        let relays = Relays::started(
+            adapters.outboxes(),
+            adapters.consuming(),
+            Cadence {
+                deliver_every: Duration::from_millis(10),
+                ..Cadence::default()
+            },
+        );
+        let mut server = TestServer::new(weaveling_service_api::app(adapters));
+        server.save_cookies();
+        server
+            .post("/api/accounts")
+            .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
+            .await
+            .assert_status(StatusCode::ACCEPTED);
+        server
+            .post("/api/accounts/verification")
+            .json(&json!({ "email": "ada@example.com", "code": crate::mail_drop::code_dropped_for(&drop, "ada@example.com") }))
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+        server
+            .post("/api/sessions")
+            .json(&json!({ "email": "ada@example.com", "password": "correct horse battery" }))
+            .await
+            .assert_status_ok();
+
+        Self {
+            backend,
+            server,
+            relays: Some(relays),
+            drop: Some(drop),
         }
     }
 
     pub async fn end(self) {
         if let Some(relays) = self.relays {
             relays.stop().await;
+        }
+        if let Some(drop) = self.drop {
+            let _gone = fs::remove_dir_all(&drop);
         }
         self.backend.cleanup().await;
     }
@@ -529,6 +587,26 @@ pub async fn an_idea_appears_wherever_it_was_noted_or_linked_until_discarded<B: 
     journey.end().await;
 }
 
+pub async fn whoever_starts_a_project_owns_it<B: Backend>() {
+    let journey = Journey::<B>::signed_in("owning").await;
+
+    let project = journey.project("Owned").await;
+
+    let owned = vec![format!("{project} owner")];
+    let (backend, owned) = (&journey.backend, &owned);
+    assert!(
+        until(|| async move {
+            backend
+                .read("members", "SELECT project || ' ' || role FROM memberships")
+                .await
+                == *owned
+        })
+        .await,
+        "the start is relayed, the members are founded by its listener, and the list hears of them"
+    );
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -543,6 +621,7 @@ macro_rules! journeys {
             deleting_a_scene_takes_it_out_of_the_book,
             linking_an_idea_is_announced_and_relayed,
             an_idea_appears_wherever_it_was_noted_or_linked_until_discarded,
+            whoever_starts_a_project_owns_it,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

@@ -4345,6 +4345,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-members-wiring"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "sqlx",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-members-catalog",
+ "weaveling-members-core",
+ "weaveling-members-messaging",
+ "weaveling-members-store",
+ "weaveling-messaging",
+ "weaveling-outbox",
+ "weaveling-test-harness",
+ "weaveling-wiring",
+]
+
+[[package]]
 name = "weaveling-messaging"
 version = "0.1.0"
 dependencies = [
@@ -4809,6 +4828,7 @@ dependencies = [
  "weaveling-invitations-wiring",
  "weaveling-live",
  "weaveling-mailing",
+ "weaveling-members-wiring",
  "weaveling-messaging",
  "weaveling-messaging-contract",
  "weaveling-outbox",
