@@ -18,6 +18,7 @@ tracing-subscriber = { workspace = true }
 ### LIBRARIES ###
 #################
 
+authorizing = { version = "0.1.0", path = "../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 wiring = { version = "0.1.0", path = "../../libraries/wiring", package = "weaveling-wiring" }

@@ -3804,6 +3804,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-authorizing"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "thiserror",
+ "tokio",
+ "weaveling-eventsourcing",
+]
+
+[[package]]
 name = "weaveling-boards-catalog"
 version = "0.1.0"
 dependencies = [
@@ -4312,6 +4322,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
 ]
@@ -4351,6 +4362,7 @@ dependencies = [
  "axum",
  "sqlx",
  "tokio",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-members-catalog",
@@ -4820,6 +4832,7 @@ dependencies = [
  "weaveling-accounts-rest",
  "weaveling-accounts-wiring",
  "weaveling-appearances-wiring",
+ "weaveling-authorizing",
  "weaveling-boards-wiring",
  "weaveling-chores",
  "weaveling-clock",

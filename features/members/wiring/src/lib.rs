@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use authorizing::Authorizer;
 use axum::Router;
 use eventsourcing::EventStore;
 use members_catalog::InMemoryMembershipCatalog;
-use members_core::{MembersEvent, MembersService, MembershipCatalog};
+use members_core::{MembersAuthorizer, MembersEvent, MembersService, MembershipCatalog};
 use members_messaging::{CatalogueMembersListener, FoundMembersOfStartedProjectListener};
 use outbox::Outbox;
-use wiring::{Context, EventSourced, Feature, Wired};
+use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<MembersEvent>>,
@@ -16,6 +17,30 @@ pub struct Ports {
 
 pub fn service(ports: &Ports, context: &Context) -> MembersService {
     MembersService::new(ports.events.clone(), context.clock.clone())
+}
+
+pub struct AssembledMembers {
+    pub assembled: Assembled,
+    pub authorizer: Arc<dyn Authorizer>,
+}
+
+pub async fn assembled_members(
+    storage: &Storage,
+    context: &Context,
+) -> Result<AssembledMembers, Unprepared> {
+    let ports = wiring::ports::<MembersFeature>(storage, context).await?;
+    let wired = MembersFeature::wire(&ports, context);
+
+    Ok(AssembledMembers {
+        assembled: Assembled {
+            outbox: Some(ports.outbox.clone()),
+            routes: wired.routes,
+            listeners: wired.listeners,
+            settling: wired.settling,
+            chores: wired.chores,
+        },
+        authorizer: Arc::new(MembersAuthorizer::new(ports.catalog.clone())),
+    })
 }
 
 pub struct MembersFeature;

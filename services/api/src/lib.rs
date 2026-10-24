@@ -12,6 +12,7 @@ use accounts_contract::ServiceModeDTO;
 use accounts_core::{AccountService, AccountServiceError, OperatorCode};
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
+use authorizing::{AllowingEverything, Authorizer};
 use axum::routing;
 use axum::{Extension, Json, Router};
 use boards_wiring::BoardFeature;
@@ -20,7 +21,6 @@ use eventsourcing::Agent;
 use ideas_wiring::IdeaFeature;
 use live::Broadcaster;
 use mailing::{LoggingMailer, Mailer};
-use members_wiring::MembersFeature;
 use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use outline_wiring::OutlineFeature;
 use projects_wiring::ProjectFeature;
@@ -52,6 +52,7 @@ pub struct Adapters {
     refusals: Broadcaster,
     features: Vec<Assembled>,
     accounts: Option<AssembledAccounts>,
+    authorizer: Arc<dyn Authorizer>,
     flakiness: Option<Flakiness>,
     sign_up: SignUp,
 }
@@ -83,13 +84,16 @@ impl Adapters {
             wiring::assemble::<AppearanceFeature>(&storage, &context).await?,
             wiring::assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
+        let mut authorizer: Arc<dyn Authorizer> = Arc::new(AllowingEverything);
         let accounts = match accounts {
             Accounts::On => {
                 features.push(
                     invitations_wiring::assembled_invitations(&storage, &context, mailer.clone())
                         .await?,
                 );
-                features.push(wiring::assemble::<MembersFeature>(&storage, &context).await?);
+                let members = members_wiring::assembled_members(&storage, &context).await?;
+                features.push(members.assembled);
+                authorizer = members.authorizer;
                 Some(accounts_wiring::assembled_accounts(&storage, &context, mailer).await?)
             }
             Accounts::Off => None,
@@ -102,6 +106,7 @@ impl Adapters {
             refusals,
             features,
             accounts,
+            authorizer,
             flakiness: None,
             sign_up: SignUp::Open,
         })
@@ -111,6 +116,10 @@ impl Adapters {
         Self::assembled(Storage::InMemory, accounts, Arc::new(LoggingMailer), clock)
             .await
             .expect("nothing kept in memory needs preparing")
+    }
+
+    pub fn authorizer(&self) -> Arc<dyn Authorizer> {
+        self.authorizer.clone()
     }
 
     pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountServiceError> {

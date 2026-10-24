@@ -1,0 +1,13 @@
+[package]
+name = "weaveling-authorizing"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+thiserror = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }

@@ -5,6 +5,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use authorizing::{Act, Authorizer};
 use axum::Router;
 use axum::body;
 use axum::body::Body;
@@ -12,6 +13,7 @@ use axum::http::header::ORIGIN;
 use axum::http::{Request, StatusCode};
 use axum_test::TestServer;
 use clock::SystemClock;
+use eventsourcing::Agent;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -456,6 +458,7 @@ struct OperatorSignedIn {
     server: TestServer,
     relays: Relays,
     drop: PathBuf,
+    authorizer: Arc<dyn Authorizer>,
 }
 
 impl OperatorSignedIn {
@@ -500,6 +503,7 @@ async fn an_operator_signed_in_on_a_server_signing_up(
             ..Cadence::default()
         },
     );
+    let authorizer = adapters.authorizer();
     let mut server = TestServer::new(weaveling_service_api::app(adapters));
     server.save_cookies();
     server
@@ -527,6 +531,7 @@ async fn an_operator_signed_in_on_a_server_signing_up(
         server,
         relays,
         drop,
+        authorizer,
     }
 }
 
@@ -784,4 +789,65 @@ async fn the_server_does_the_invitations_chores_only_where_there_are_accounts() 
             chores
         );
     }
+}
+
+#[tokio::test]
+async fn without_accounts_the_one_local_person_may_do_everything_in_any_project() {
+    let authorizer = Adapters::in_memory(Accounts::Off, Arc::new(SystemClock))
+        .await
+        .authorizer();
+
+    for act in [Act::Read, Act::Write, Act::Manage] {
+        assert!(
+            authorizer
+                .may(&Agent::Local, act, "project_1")
+                .await
+                .expect("nothing to ask")
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_whoever_starts_a_project_may_manage_it_and_nobody_else_may_read_it() {
+    let signed_in = an_operator_signed_in_on_a_server("authorizing").await;
+    let ada: Value = signed_in.server.get("/api/sessions/current").await.json();
+    let ada = Agent::Account(
+        ada["account"]
+            .as_str()
+            .expect("the session names its account")
+            .into(),
+    );
+    let started: Value = signed_in
+        .server
+        .post("/api/projects")
+        .json(&json!({ "name": "Guarded" }))
+        .await
+        .json();
+    let project = started["id"].as_str().expect("a project has an id");
+
+    let mut managing = false;
+    for _ in 0..1_000 {
+        managing = signed_in
+            .authorizer
+            .may(&ada, Act::Manage, project)
+            .await
+            .expect("asking should succeed");
+        if managing {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+
+    assert!(
+        managing,
+        "the start is relayed, its members founded and listed, and the authorizer asks the list"
+    );
+    assert!(
+        !signed_in
+            .authorizer
+            .may(&Agent::Account("account_grace".into()), Act::Read, project)
+            .await
+            .expect("asking should succeed")
+    );
+    signed_in.end().await;
 }
