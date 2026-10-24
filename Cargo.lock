@@ -4289,9 +4289,11 @@ name = "weaveling-members-catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "sqlx",
  "tokio",
  "weaveling-eventsourcing",
  "weaveling-members-core",
+ "weaveling-test-harness",
 ]
 
 [[package]]
