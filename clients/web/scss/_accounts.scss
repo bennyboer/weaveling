@@ -98,11 +98,11 @@
   margin-bottom: 1.5rem;
 }
 
-.operating:has(> .accounts) {
+.operating:has(> .accounts, > .invitations) {
   width: min(44rem, 100% - 2rem);
 }
 
-.operating .accounts {
+.operating :is(.accounts, .invitations) {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -142,7 +142,8 @@
   }
 
   .email,
-  .signed-up {
+  .signed-up,
+  .issued {
     color: var(--muted);
     font-size: 0.85rem;
   }
@@ -165,6 +166,11 @@
     &.locked {
       border-color: var(--alarm);
       color: var(--alarm);
+    }
+
+    &.expired,
+    &.declined {
+      color: var(--muted);
     }
   }
 
@@ -196,6 +202,15 @@
 
 .operating .more {
   margin-top: 1rem;
+}
+
+.operating .invitations .email {
+  color: inherit;
+  font-size: 1.05rem;
+}
+
+.operating h2 + .hint {
+  margin-top: 0;
 }
 
 .dialog.change-role {

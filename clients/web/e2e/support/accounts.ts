@@ -40,6 +40,15 @@ export const HEDY: Listed = {
   locks: [],
 };
 
+export type Invited = {
+  id: string;
+  email: string;
+  issued_at: string;
+  until: string;
+  status: string;
+  declined_for?: string;
+};
+
 export type Server = {
   password: string;
   resetsAsked: number;
@@ -52,6 +61,7 @@ export type Server = {
   projectsAsked: number;
   operator: boolean;
   listed: Listed[];
+  invited: Invited[];
   pageSize: number;
 };
 
@@ -85,6 +95,7 @@ export async function aServerWithAccounts(
     projectsAsked: 0,
     operator: false,
     listed: [],
+    invited: [],
     pageSize: 100,
   };
 
@@ -167,6 +178,21 @@ export async function aServerWithAccounts(
     }
     server.operator = true;
     return route.fulfill({ status: 204 });
+  });
+  await page.route(at("/api/invitations"), async (route) => {
+    if (!server.operator) {
+      return refusing(route, 403, "not-an-operator");
+    }
+    const after = new URL(route.request().url()).searchParams.get("after");
+    const from = after
+      ? server.invited.findIndex((invitation) => invitation.id === after) + 1
+      : 0;
+    const invitations = server.invited.slice(from, from + server.pageSize);
+    const next =
+      from + server.pageSize < server.invited.length
+        ? invitations[invitations.length - 1].id
+        : null;
+    return route.fulfill({ json: { invitations, next } });
   });
   await page.route(at("/api/instance/accounts"), async (route) => {
     if (!server.operator) {

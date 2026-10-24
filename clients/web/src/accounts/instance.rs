@@ -5,6 +5,7 @@ use leptos_router::components::A;
 
 use crate::accounts::{CurrentSession, SignInState, listing, service};
 use crate::http::ApiError;
+use crate::invitations;
 use crate::problem;
 use crate::route;
 use crate::shell;
@@ -33,6 +34,7 @@ fn operating() -> impl IntoView {
             .class("hint")
             .child(speech::said("operator-you-are")),
         listing::accounts_listing(),
+        invitations::listing::invitations_listing(),
     )
 }
 
