@@ -3919,6 +3919,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-chores"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "weaveling-client-web"
 version = "0.1.0"
 dependencies = [
@@ -4226,9 +4235,11 @@ dependencies = [
 name = "weaveling-invitations-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
  "time",
  "tokio",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
@@ -4730,6 +4741,7 @@ dependencies = [
  "weaveling-accounts-wiring",
  "weaveling-appearances-wiring",
  "weaveling-boards-wiring",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-wiring",
@@ -4879,6 +4891,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-messaging",

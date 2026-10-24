@@ -4,12 +4,13 @@ use clock::SystemClock;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 use weaveling_service_api::{
-    Accounts, Adapters, Backend, Flakiness, Mailing, Relays, Settling, SignUp, WEAVELING_FLAKY,
+    Accounts, Adapters, Backend, Chores, Flakiness, Mailing, Relays, Settling, SignUp,
+    WEAVELING_FLAKY,
 };
 
 const LOG_LEVEL_UNLESS_TOLD: &str = "info";
 
-async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>) {
+async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>, Chores) {
     let backend = Backend::from_environment().unwrap_or_else(|why| panic!("{why}"));
     let accounts = Accounts::from_environment().unwrap_or_else(|why| panic!("{why}"));
     let mailing = Mailing::from_environment();
@@ -36,19 +37,21 @@ async fn serving() -> (axum::Router, Relays, Vec<Arc<dyn Settling>>) {
         .unwrap_or_else(|why| panic!("{why}"))
     {
         tracing::warn!(
-            "there is no operator yet: sign in, open /instance and enter the code {}",
+            "there is no operator yet: open /setup and enter the code {}",
             code.as_str()
         );
     }
     let outboxes = adapters.outboxes();
     let consuming = adapters.consuming();
     let settling = adapters.settling();
+    let chores = adapters.chores();
     let routes = weaveling_service_api::app(adapters);
 
     (
         routes,
         Relays::started(outboxes, consuming, backend.cadence()),
         settling,
+        Chores::started(chores),
     )
 }
 
@@ -61,7 +64,7 @@ async fn main() {
         )
         .init();
 
-    let (routes, relays, settling) = serving().await;
+    let (routes, relays, settling, chores) = serving().await;
 
     let listener = TcpListener::bind("127.0.0.1:3000")
         .await
@@ -76,10 +79,13 @@ async fn main() {
         .await
         .expect("should serve");
 
-    stop(settling, relays).await;
+    stop(settling, relays, chores).await;
 }
 
-async fn stop(settling: Vec<Arc<dyn Settling>>, relays: Relays) {
+async fn stop(settling: Vec<Arc<dyn Settling>>, relays: Relays, chores: Chores) {
+    chores.stop().await;
+    tracing::info!("the chores have stopped");
+
     for settled in settling {
         settled.settle().await;
     }

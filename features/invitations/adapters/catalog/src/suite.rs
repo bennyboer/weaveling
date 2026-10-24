@@ -28,6 +28,7 @@ pub fn a_summary(id: InvitationId, to: &str) -> InvitationSummary {
         issued_at: at(1_000),
         until: at(605_800),
         outcome: Outcome::Open,
+        forgotten_after: at(605_800),
     }
 }
 
@@ -168,6 +169,67 @@ pub async fn a_page_holds_at_most_what_was_asked_newest_first_and_the_next_goes_
     assert_eq!(addresses(&next), ["someone1000@example.com"]);
 }
 
+pub async fn what_is_due_is_forgotten_and_counted_and_the_rest_kept(
+    catalog: &impl InvitationCatalog,
+) {
+    let due = InvitationSummary {
+        forgotten_after: at(1_000),
+        ..a_summary(issued(1_000), "due@example.com")
+    };
+    let at_its_moment = InvitationSummary {
+        forgotten_after: at(2_000),
+        ..a_summary(issued(2_000), "now@example.com")
+    };
+    let later = InvitationSummary {
+        forgotten_after: at(3_000),
+        ..a_summary(issued(3_000), "later@example.com")
+    };
+    for summary in [&due, &at_its_moment, &later] {
+        remembered(catalog, summary).await;
+    }
+
+    let forgotten = catalog
+        .forget_due(at(2_000))
+        .await
+        .expect("forgetting should succeed");
+
+    assert_eq!(forgotten, 1);
+    assert_eq!(listed(catalog).await, vec![later, at_its_moment]);
+}
+
+pub async fn a_summary_heard_anew_is_due_when_its_newest_says(catalog: &impl InvitationCatalog) {
+    let id = issued(1_000);
+    remembered(
+        catalog,
+        &InvitationSummary {
+            forgotten_after: at(1_500),
+            ..a_summary(id, "ada@example.com")
+        },
+    )
+    .await;
+    remembered(
+        catalog,
+        &InvitationSummary {
+            version: Version::of(2),
+            outcome: declined(),
+            forgotten_after: at(5_000),
+            ..a_summary(id, "ada@example.com")
+        },
+    )
+    .await;
+
+    catalog
+        .forget_due(at(2_000))
+        .await
+        .expect("forgetting should succeed");
+
+    assert_eq!(
+        listed(catalog).await.len(),
+        1,
+        "declined later, it is kept longer"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -187,6 +249,14 @@ macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::catalog_conformance_case!($workbench, a_remembered_invitation_is_listed_as_it_was);
         $crate::catalog_conformance_case!($workbench, an_empty_list_lists_nothing);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            what_is_due_is_forgotten_and_counted_and_the_rest_kept
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_summary_heard_anew_is_due_when_its_newest_says
+        );
         $crate::catalog_conformance_case!($workbench, a_newer_summary_replaces_the_older);
         $crate::catalog_conformance_case!(
             $workbench,

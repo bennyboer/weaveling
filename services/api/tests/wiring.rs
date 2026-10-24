@@ -786,3 +786,22 @@ async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_sign
             .assert_status(status);
     }
 }
+
+#[tokio::test]
+async fn the_server_does_the_invitations_chores_only_where_there_are_accounts() {
+    for (accounts, chores) in [
+        (Accounts::On, vec!["forget-due-invitations"]),
+        (Accounts::Off, vec![]),
+    ] {
+        let adapters = Adapters::in_memory(accounts, Arc::new(SystemClock)).await;
+
+        assert_eq!(
+            adapters
+                .chores()
+                .iter()
+                .map(|chore| chore.named())
+                .collect::<Vec<_>>(),
+            chores
+        );
+    }
+}

@@ -27,6 +27,7 @@ fn a_summary(seconds: i64, to: &str, outcome: Outcome) -> InvitationSummary {
         issued_at: at(seconds),
         until: at(seconds) + Duration::days(7),
         outcome,
+        forgotten_after: at(seconds) + Duration::days(7),
     }
 }
 

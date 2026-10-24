@@ -34,6 +34,7 @@ use crate::refusals::TellingDeliveries;
 
 pub use accounts::{Accounts, UnreadableAccounts, WEAVELING_ACCOUNTS};
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
+pub use chores::{Chore, Chores};
 pub use flaky::{Flakiness, Unflaky, WEAVELING_FLAKY};
 pub use mail::{Mailing, WEAVELING_MAIL_DROP};
 pub use relays::Relays;
@@ -140,6 +141,13 @@ impl Adapters {
             self.deliveries.clone(),
             self.clock.clone(),
         )
+    }
+
+    pub fn chores(&self) -> Vec<Arc<dyn Chore>> {
+        self.features
+            .iter()
+            .flat_map(|feature| feature.chores.clone())
+            .collect()
     }
 
     pub fn settling(&self) -> Vec<Arc<dyn Settling>> {

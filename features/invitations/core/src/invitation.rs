@@ -46,6 +46,7 @@ pub enum InvitationEvent {
         issued_at: OffsetDateTime,
         until: OffsetDateTime,
         outcome: Outcome,
+        settled_at: Option<OffsetDateTime>,
     },
 }
 
@@ -68,6 +69,7 @@ pub struct Invitation {
     issued_at: OffsetDateTime,
     until: OffsetDateTime,
     outcome: Outcome,
+    settled_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -95,6 +97,15 @@ impl Invitation {
 
     pub fn issued_at(&self) -> OffsetDateTime {
         self.issued_at
+    }
+
+    pub fn settled_at(&self) -> Option<OffsetDateTime> {
+        self.settled_at
+    }
+
+    fn settle(&mut self, outcome: Outcome, metadata: &EventMetadata) {
+        self.outcome = outcome;
+        self.settled_at = Some(metadata.occurred_at);
     }
 
     pub fn until(&self) -> OffsetDateTime {
@@ -158,17 +169,20 @@ impl Aggregate for Invitation {
                 issued_at: metadata.occurred_at,
                 until: *until,
                 outcome: Outcome::Open,
+                settled_at: None,
             }),
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,
                 until,
                 outcome,
+                settled_at,
             } => Some(Self {
                 to: to.clone(),
                 issued_at: *issued_at,
                 until: *until,
                 outcome: *outcome,
+                settled_at: *settled_at,
             }),
             InvitationEvent::Accepted
             | InvitationEvent::Withdrawn
@@ -208,22 +222,26 @@ impl Aggregate for Invitation {
         }
     }
 
-    fn apply(&mut self, event: &InvitationEvent, _metadata: &EventMetadata) {
+    fn apply(&mut self, event: &InvitationEvent, metadata: &EventMetadata) {
         match event {
             InvitationEvent::Issued { .. } => {}
-            InvitationEvent::Accepted => self.outcome = Outcome::Accepted,
-            InvitationEvent::Withdrawn => self.outcome = Outcome::Withdrawn,
-            InvitationEvent::Declined { reason } => self.outcome = Outcome::Declined(*reason),
+            InvitationEvent::Accepted => self.settle(Outcome::Accepted, metadata),
+            InvitationEvent::Withdrawn => self.settle(Outcome::Withdrawn, metadata),
+            InvitationEvent::Declined { reason } => {
+                self.settle(Outcome::Declined(*reason), metadata)
+            }
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,
                 until,
                 outcome,
+                settled_at,
             } => {
                 self.to = to.clone();
                 self.issued_at = *issued_at;
                 self.until = *until;
                 self.outcome = *outcome;
+                self.settled_at = *settled_at;
             }
         }
     }
@@ -234,6 +252,7 @@ impl Aggregate for Invitation {
             issued_at: self.issued_at,
             until: self.until,
             outcome: self.outcome,
+            settled_at: self.settled_at,
         }
     }
 }

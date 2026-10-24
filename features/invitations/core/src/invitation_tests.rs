@@ -286,3 +286,13 @@ fn an_invitation_withdrawn_or_taken_up_is_not_declined() {
         Err(InvitationError::NotIssuedYet)
     );
 }
+
+#[test]
+fn an_invitation_remembers_when_it_was_settled_and_an_open_one_was_not() {
+    let open = issued_at(1_000);
+    let mut withdrawn = issued_at(1_000);
+    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, at(4_000)));
+
+    assert_eq!(open.settled_at(), None);
+    assert_eq!(withdrawn.settled_at(), Some(at(4_000)));
+}

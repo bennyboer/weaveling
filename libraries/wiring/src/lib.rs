@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use axum::Router;
+use chores::Chore;
 use clock::Clock;
 use messaging::{Listener, Publisher};
 
@@ -36,6 +37,7 @@ pub struct Wired {
     pub routes: Router,
     pub listeners: Vec<Arc<dyn Listener>>,
     pub settling: Vec<Arc<dyn Settling>>,
+    pub chores: Vec<Arc<dyn Chore>>,
 }
 
 impl Wired {
@@ -44,6 +46,7 @@ impl Wired {
             routes,
             listeners: Vec::new(),
             settling: Vec::new(),
+            chores: Vec::new(),
         }
     }
 
@@ -54,6 +57,11 @@ impl Wired {
 
     pub fn settling_before_stopping(mut self, settling: Vec<Arc<dyn Settling>>) -> Self {
         self.settling = settling;
+        self
+    }
+
+    pub fn doing_chores(mut self, chores: Vec<Arc<dyn Chore>>) -> Self {
+        self.chores = chores;
         self
     }
 }

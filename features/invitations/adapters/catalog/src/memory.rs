@@ -3,6 +3,7 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use invitations_core::{CatalogError, InvitationCatalog, InvitationId, InvitationSummary};
+use time::OffsetDateTime;
 
 type Kept = BTreeMap<InvitationId, InvitationSummary>;
 
@@ -53,6 +54,14 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
             .take(at_most)
             .cloned()
             .collect())
+    }
+
+    async fn forget_due(&self, now: OffsetDateTime) -> Result<u64, CatalogError> {
+        let mut kept = self.write();
+        let before = kept.len();
+        kept.retain(|_, summary| summary.forgotten_after >= now);
+
+        Ok(u64::try_from(before - kept.len()).expect("a count fits"))
     }
 }
 

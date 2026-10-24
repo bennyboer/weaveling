@@ -1,3 +1,5 @@
+mod forgetting;
+
 use std::sync::Arc;
 
 use eventsourcing::EventStore;
@@ -10,6 +12,8 @@ use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
 use throttling::{InMemoryThrottles, Throttles};
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
+
+use crate::forgetting::ForgetDueInvitations;
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
@@ -45,6 +49,7 @@ pub async fn assembled_invitations(
         routes: wired.routes,
         listeners: wired.listeners,
         settling: wired.settling,
+        chores: wired.chores,
     })
 }
 
@@ -129,17 +134,22 @@ impl Feature for InvitationFeature {
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
-        Wired::serving(invitations_rest::router(service(ports, context))).listening(vec![
-            Arc::new(AcceptTakenUpInvitationListener::new(service(
-                ports, context,
-            ))),
-            Arc::new(DeclineInvitationListener::new(service(ports, context))),
-            Arc::new(CatalogueInvitationsListener::new(
-                ports.events.clone(),
+        Wired::serving(invitations_rest::router(service(ports, context)))
+            .listening(vec![
+                Arc::new(AcceptTakenUpInvitationListener::new(service(
+                    ports, context,
+                ))),
+                Arc::new(DeclineInvitationListener::new(service(ports, context))),
+                Arc::new(CatalogueInvitationsListener::new(
+                    ports.events.clone(),
+                    ports.catalog.clone(),
+                    context.clock.clone(),
+                )),
+            ])
+            .doing_chores(vec![Arc::new(ForgetDueInvitations::new(
                 ports.catalog.clone(),
                 context.clock.clone(),
-            )),
-        ])
+            ))])
     }
 }
 
@@ -171,6 +181,7 @@ mod tests {
             issued_at: OffsetDateTime::UNIX_EPOCH,
             until: OffsetDateTime::UNIX_EPOCH,
             outcome: Outcome::Open,
+            forgotten_after: OffsetDateTime::UNIX_EPOCH,
         };
 
         ports
@@ -186,6 +197,47 @@ mod tests {
                 .await
                 .expect("listing should succeed"),
             vec![summary]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_feature_forgets_what_is_due_from_its_list_as_a_chore() {
+        let context = a_context();
+        let ports = InvitationFeature::in_memory(&context);
+        let wired = InvitationFeature::wire(&ports, &context);
+        let due = InvitationSummary {
+            id: InvitationId::generate(OffsetDateTime::UNIX_EPOCH),
+            version: Version::of(1),
+            to: EmailAddress::new("ada@example.com").expect("a plain address"),
+            issued_at: OffsetDateTime::UNIX_EPOCH,
+            until: OffsetDateTime::UNIX_EPOCH,
+            outcome: Outcome::Open,
+            forgotten_after: OffsetDateTime::UNIX_EPOCH,
+        };
+        ports
+            .catalog
+            .remember(&due)
+            .await
+            .expect("remembering should succeed");
+
+        let [chore] = wired.chores.as_slice() else {
+            panic!("the feature hands over one chore");
+        };
+        assert_eq!(chore.named(), "forget-due-invitations");
+        assert_eq!(
+            chore
+                .carry_out()
+                .await
+                .expect("the chore should be carried out"),
+            1
+        );
+        assert!(
+            ports
+                .catalog
+                .listed_after(None, 10)
+                .await
+                .expect("listing should succeed")
+                .is_empty()
         );
     }
 

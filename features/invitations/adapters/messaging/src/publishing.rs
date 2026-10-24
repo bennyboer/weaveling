@@ -188,6 +188,7 @@ mod tests {
                     issued_at: at(1_000),
                     until: at(1_000) + Duration::days(7),
                     outcome: Outcome::Open,
+                    settled_at: None,
                 }
             ))
             .is_none()

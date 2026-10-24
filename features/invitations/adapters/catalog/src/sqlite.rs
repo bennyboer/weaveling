@@ -14,26 +14,29 @@ use crate::outcome;
 
 const REMEMBER: &str = "
     INSERT INTO invitation_summaries
-        (invitation, version, email, issued_at, until, outcome, declined_for)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        (invitation, version, email, issued_at, until, outcome, declined_for, forgotten_after)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
     ON CONFLICT (invitation) DO UPDATE
     SET version      = excluded.version,
         email        = excluded.email,
         issued_at    = excluded.issued_at,
         until        = excluded.until,
         outcome      = excluded.outcome,
-        declined_for = excluded.declined_for
+        declined_for = excluded.declined_for,
+        forgotten_after = excluded.forgotten_after
     WHERE invitation_summaries.version < excluded.version
 ";
 
 const LISTED_AFTER: &str = "
-    SELECT invitation, version, email, issued_at, until, outcome, declined_for
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, forgotten_after
     FROM invitation_summaries
     WHERE outcome IN ('open', 'declined')
       AND (?1 IS NULL OR invitation < ?1)
     ORDER BY invitation DESC
     LIMIT ?2
 ";
+
+const FORGET_DUE: &str = "DELETE FROM invitation_summaries WHERE forgotten_after < ?1";
 
 const LEDGER: &str = "_sqlx_migrations_invitation_summaries";
 
@@ -80,6 +83,7 @@ fn to_summary(row: &SqliteRow) -> Result<InvitationSummary, CatalogError> {
         issued_at: moment(row, "issued_at")?,
         until: moment(row, "until")?,
         outcome: outcome::read(&kept, declined_for.as_deref())?,
+        forgotten_after: moment(row, "forgotten_after")?,
     })
 }
 
@@ -96,6 +100,7 @@ impl InvitationCatalog for SqliteInvitationCatalog {
             .bind(text::written(summary.until))
             .bind(kept)
             .bind(declined_for)
+            .bind(text::written(summary.forgotten_after))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -116,5 +121,15 @@ impl InvitationCatalog for SqliteInvitationCatalog {
             .map_err(unreachable)?;
 
         found.iter().map(to_summary).collect()
+    }
+
+    async fn forget_due(&self, now: OffsetDateTime) -> Result<u64, CatalogError> {
+        let done = sqlx::query(FORGET_DUE)
+            .bind(text::written(now))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(done.rows_affected())
     }
 }

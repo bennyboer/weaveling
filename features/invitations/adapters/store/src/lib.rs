@@ -24,6 +24,8 @@ enum StoredInvitationEvent {
         #[serde(with = "time::serde::rfc3339")]
         until: OffsetDateTime,
         outcome: StoredOutcome,
+        #[serde(default, with = "time::serde::rfc3339::option")]
+        settled_at: Option<OffsetDateTime>,
     },
 }
 
@@ -112,11 +114,13 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 issued_at,
                 until,
                 outcome,
+                settled_at,
             } => Self::Snapshotted {
                 to: to.to_string(),
                 issued_at: *issued_at,
                 until: *until,
                 outcome: (*outcome).into(),
+                settled_at: *settled_at,
             },
         }
     }
@@ -149,11 +153,13 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 issued_at,
                 until,
                 outcome,
+                settled_at,
             } => Self::Snapshotted {
                 to: readable(&to)?,
                 issued_at,
                 until,
                 outcome: outcome.into(),
+                settled_at,
             },
         })
     }
@@ -200,6 +206,7 @@ mod tests {
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                     outcome,
+                    settled_at: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(3_000)),
                 },
             ] {
                 assert_eq!(round_trip(event.clone()), event);

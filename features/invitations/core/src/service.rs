@@ -103,6 +103,7 @@ impl InvitationService {
             issued_at: now,
             until,
             outcome: Outcome::Open,
+            forgotten_after: until + InvitationSummary::EXPIRED_LISTED_FOR,
         })
     }
 

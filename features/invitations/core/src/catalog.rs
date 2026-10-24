@@ -3,7 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use eventsourcing::Version;
 use thiserror::Error;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, Invitation, Outcome};
@@ -17,6 +17,7 @@ pub struct InvitationSummary {
     pub issued_at: OffsetDateTime,
     pub until: OffsetDateTime,
     pub outcome: Outcome,
+    pub forgotten_after: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,9 +48,15 @@ pub trait InvitationCatalog: Send + Sync {
         after: Option<&InvitationId>,
         at_most: usize,
     ) -> Result<Vec<InvitationSummary>, CatalogError>;
+
+    async fn forget_due(&self, now: OffsetDateTime) -> Result<u64, CatalogError>;
 }
 
 impl InvitationSummary {
+    pub const EXPIRED_LISTED_FOR: Duration = Duration::days(30);
+    pub const DECLINED_LISTED_FOR: Duration = Duration::days(30);
+    pub const SETTLED_KEPT_FOR: Duration = Duration::days(1);
+
     pub fn of(id: InvitationId, version: Version, invitation: &Invitation) -> Self {
         Self {
             id,
@@ -58,6 +65,7 @@ impl InvitationSummary {
             issued_at: invitation.issued_at(),
             until: invitation.until(),
             outcome: invitation.outcome(),
+            forgotten_after: forgotten_after(invitation),
         }
     }
 
@@ -72,6 +80,16 @@ impl InvitationSummary {
 
     pub fn stays_listed(&self) -> bool {
         matches!(self.outcome, Outcome::Open | Outcome::Declined(_))
+    }
+}
+
+fn forgotten_after(invitation: &Invitation) -> OffsetDateTime {
+    match (invitation.outcome(), invitation.settled_at()) {
+        (Outcome::Declined(_), Some(settled)) => settled + InvitationSummary::DECLINED_LISTED_FOR,
+        (Outcome::Accepted | Outcome::Withdrawn, Some(settled)) => {
+            settled + InvitationSummary::SETTLED_KEPT_FOR
+        }
+        _ => invitation.until() + InvitationSummary::EXPIRED_LISTED_FOR,
     }
 }
 
@@ -125,6 +143,7 @@ mod tests {
                 issued_at: at(1_000),
                 until: at(5_000),
                 outcome: Outcome::Open,
+                forgotten_after: at(5_000) + Duration::days(30),
             }
         );
 
@@ -150,6 +169,7 @@ mod tests {
             issued_at: at(1_000),
             until: at(5_000),
             outcome,
+            forgotten_after: at(5_000),
         };
 
         assert!(summary(Outcome::Open).stays_listed());
@@ -167,6 +187,7 @@ mod tests {
             issued_at: at(1_000),
             until: at(5_000),
             outcome: Outcome::Open,
+            forgotten_after: at(5_000),
         };
 
         assert_eq!(summary.status(at(5_000)), Some(Status::Open));
@@ -182,6 +203,7 @@ mod tests {
             issued_at: at(1_000),
             until: at(5_000),
             outcome,
+            forgotten_after: at(5_000),
         };
         let declined = Outcome::Declined(DeclineReason::AddressHasAccount);
 
@@ -193,6 +215,49 @@ mod tests {
             );
             assert_eq!(summary(Outcome::Accepted).status(now), None);
             assert_eq!(summary(Outcome::Withdrawn).status(now), None);
+        }
+    }
+
+    #[test]
+    fn a_summary_is_forgotten_a_month_after_running_out_or_being_declined_and_a_day_after_settling_otherwise()
+     {
+        let issued = || {
+            Invitation::from_first(
+                &InvitationEvent::Issued {
+                    to: ada(),
+                    digest: InvitationTokenDigest::kept("ab12".to_owned()),
+                    until: at(5_000),
+                },
+                &stamped(1, 1_000),
+            )
+            .expect("issuing gives birth")
+        };
+        let settled = |event: InvitationEvent| {
+            let mut invitation = issued();
+            invitation.apply(&event, &stamped(2, 2_000));
+            InvitationSummary::of(
+                InvitationId::generate(at(1_000)),
+                Version::of(2),
+                &invitation,
+            )
+            .forgotten_after
+        };
+
+        assert_eq!(
+            InvitationSummary::of(InvitationId::generate(at(1_000)), Version::of(1), &issued())
+                .forgotten_after,
+            at(5_000) + Duration::days(30),
+            "an operator sees for a month that an invitation ran out"
+        );
+        assert_eq!(
+            settled(InvitationEvent::Declined {
+                reason: DeclineReason::AddressHasAccount
+            }),
+            at(2_000) + Duration::days(30),
+            "and for a month why one was declined"
+        );
+        for gone in [InvitationEvent::Accepted, InvitationEvent::Withdrawn] {
+            assert_eq!(settled(gone), at(2_000) + Duration::days(1));
         }
     }
 }
