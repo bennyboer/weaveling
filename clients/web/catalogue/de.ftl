@@ -489,6 +489,7 @@ instance-invitations-heading = Einladungen
 instance-invite-email = E-Mail-Adresse
 instance-invite-confirm = Einladen
 instance-invitation-withdraw = Zurückziehen
+instance-invitation-invite-again = Erneut einladen
 instance-invitations-none = Gerade ist niemand eingeladen.
 instance-invitations-more = Mehr Einladungen zeigen
 instance-invitation-issued = Eingeladen am { $when }

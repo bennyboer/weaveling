@@ -161,7 +161,7 @@ test("an address invited too often is told how long to wait", async ({
   await expect(row(page, "grace@example.com")).toHaveCount(0);
 });
 
-test("an operator withdraws an open or expired invitation, a declined one offers nothing to withdraw", async ({
+test("an operator withdraws an open invitation, one run out or declined offers nothing to withdraw", async ({
   page,
 }) => {
   const server = await anOperatorInviting(page, [OPEN, DECLINED, EXPIRED]);
@@ -181,8 +181,12 @@ test("an operator withdraws an open or expired invitation, a declined one offers
     DECLINED.id,
     EXPIRED.id,
   ]);
+  await expect(row(page, "hedy@example.com")).toContainText("Ran out on");
   await expect(
     row(page, "hedy@example.com").getByRole("button", { name: "Withdraw" }),
+  ).toHaveCount(0);
+  await expect(
+    row(page, "hedy@example.com").getByRole("button", { name: "Invite again" }),
   ).toBeVisible();
 });
 
@@ -220,3 +224,31 @@ for (const width of [1280, 320]) {
     }
   });
 }
+
+test("an invitation run out is invited again, the new one listed open above it", async ({
+  page,
+}) => {
+  const server = await anOperatorInviting(page, [OPEN, EXPIRED]);
+  await expect(row(page, "grace@example.com")).toContainText("Open until");
+  await expect(
+    row(page, "grace@example.com").getByRole("button", {
+      name: "Invite again",
+    }),
+  ).toHaveCount(0);
+
+  await row(page, "hedy@example.com")
+    .getByRole("button", { name: "Invite again" })
+    .click();
+
+  await expect(row(page, "hedy@example.com")).toHaveCount(2);
+  await expect(row(page, "hedy@example.com").first()).toContainText(
+    "Open until",
+  );
+  await expect(row(page, "hedy@example.com").last()).toContainText(
+    "Ran out on",
+  );
+  expect(server.invited[0]).toMatchObject({
+    email: "hedy@example.com",
+    status: "open",
+  });
+});

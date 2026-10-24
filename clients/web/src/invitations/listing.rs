@@ -87,8 +87,9 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
         &[("when", moment::human_time(invitation.issued_at))],
     );
     let until = moment::human_time(invitation.until);
-    let withdrawable = matches!(invitation.status, Status::Open | Status::Expired);
+    let withdrawable = invitation.status == Status::Open;
     let id = invitation.id.clone();
+    let again = (invitation.status == Status::Expired).then(|| invitation.email.clone());
     let (mark, told) = match invitation.status {
         Status::Open => (
             "mark",
@@ -112,11 +113,20 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
         html::div()
             .class("marks")
             .child(html::span().class(mark).child(told)),
-        html::div().class("actions").child(withdrawable.then(|| {
-            html::button()
-                .r#type("button")
-                .on(ev::click, move |_| invited.withdraw(id.clone()))
-                .child(speech::said("instance-invitation-withdraw"))
-        })),
+        html::div().class("actions").child((
+            again.map(|email| {
+                html::button()
+                    .r#type("button")
+                    .disabled(move || invited.inviting.get())
+                    .on(ev::click, move |_| invited.invite(email.clone(), || {}))
+                    .child(speech::said("instance-invitation-invite-again"))
+            }),
+            withdrawable.then(|| {
+                html::button()
+                    .r#type("button")
+                    .on(ev::click, move |_| invited.withdraw(id.clone()))
+                    .child(speech::said("instance-invitation-withdraw"))
+            }),
+        )),
     ))
 }
