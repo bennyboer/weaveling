@@ -1,4 +1,6 @@
+use std::convert::Infallible;
 use std::fmt::{self, Display, Formatter};
+use std::str::FromStr;
 
 use indexmap::IndexMap;
 
@@ -86,6 +88,14 @@ impl From<String> for ProjectLink {
 impl From<&str> for ProjectLink {
     fn from(given: &str) -> Self {
         Self(given.to_owned())
+    }
+}
+
+impl FromStr for ProjectLink {
+    type Err = Infallible;
+
+    fn from_str(given: &str) -> Result<Self, Self::Err> {
+        Ok(Self::from(given))
     }
 }
 

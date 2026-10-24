@@ -12,6 +12,10 @@ Who may work in a project, and as what.
 
 **Who is in which project as what is a read model** (`MembershipCatalog`), kept as each project's members whole, `ProjectMembers`, by their latest version: the `Authorizer` asks it for one account's role in one project, and the projects list for every project an account is in, its `memberships_of`, ordered by project. A newer list replaces the older whole, so whoever left is gone with it; an older one heard late changes nothing. On PostgreSQL and SQLite a project's version is claimed first, in `project_member_lists`, and only a claim that took replaces its rows in `memberships`, all in one transaction; ids sort bytewise, so the order of an account's projects does not hang on the database's locale.
 
-Being built in [slice 4](../../ROADMAP.md#milestone-17--accounts-members-and-roles): the domain, the stored-event codec and the read model, in memory, on PostgreSQL and on SQLite, stand. Founding on `project.created` and the `Authorizer` follow.
+**Whoever starts a project owns it.** The listener `found-members-of-started-project` hears `project.started` and founds the project's members with the account the message names as acting. A project started by no account, in local mode, has no members, which the `Authorizer` will not ask for there. Founding twice is no failure, the store refusing the second begin as outdated, since a message comes at least once.
 
-**Crates:** `core` (aggregate, read-model port) · `adapters/store` (stored-event codec) · `adapters/catalog` (the read model in memory, on PostgreSQL and on SQLite).
+**The list of who may work where follows every change.** Each change is told as `members.founded`, `members.joined`, `members.role.changed`, `members.left` or `members.removed`, naming accounts by id and roles by name, never an address. The listener `catalogue-members` hears them all and remembers the project's members as they stand now, read from their events, not what the message was about.
+
+Being built in [slice 4](../../ROADMAP.md#milestone-17--accounts-members-and-roles): the domain, the stored-event codec, the read model in memory, on PostgreSQL and on SQLite, the messages and both listeners stand. The wiring, assembling it into the server, and the `Authorizer` follow.
+
+**Crates:** `core` (aggregate, read-model port, service) · `contract` (routing keys, event DTO) · `adapters/store` (stored-event codec) · `adapters/catalog` (the read model in memory, on PostgreSQL and on SQLite) · `adapters/messaging` (event publisher and listeners).

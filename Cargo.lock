@@ -4297,6 +4297,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-members-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "weaveling-members-core"
 version = "0.1.0"
 dependencies = [
@@ -4304,7 +4311,27 @@ dependencies = [
  "indexmap",
  "thiserror",
  "time",
+ "tokio",
+ "weaveling-clock",
  "weaveling-eventsourcing",
+]
+
+[[package]]
+name = "weaveling-members-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-members-catalog",
+ "weaveling-members-contract",
+ "weaveling-members-core",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
 ]
 
 [[package]]
