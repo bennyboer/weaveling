@@ -17,7 +17,7 @@ pub struct InvitationSummary {
     pub issued_at: OffsetDateTime,
     pub until: OffsetDateTime,
     pub outcome: Outcome,
-    pub forgotten_after: OffsetDateTime,
+    pub retire_after: OffsetDateTime,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +49,13 @@ pub trait InvitationCatalog: Send + Sync {
         at_most: usize,
     ) -> Result<Vec<InvitationSummary>, CatalogError>;
 
-    async fn forget_due(&self, now: OffsetDateTime) -> Result<u64, CatalogError>;
+    async fn due_for_retiring(
+        &self,
+        now: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<InvitationId>, CatalogError>;
+
+    async fn forget(&self, invitation: &InvitationId) -> Result<(), CatalogError>;
 }
 
 impl InvitationSummary {
@@ -65,7 +71,7 @@ impl InvitationSummary {
             issued_at: invitation.issued_at(),
             until: invitation.until(),
             outcome: invitation.outcome(),
-            forgotten_after: forgotten_after(invitation),
+            retire_after: retire_after(invitation),
         }
     }
 
@@ -83,11 +89,11 @@ impl InvitationSummary {
     }
 }
 
-fn forgotten_after(invitation: &Invitation) -> OffsetDateTime {
+fn retire_after(invitation: &Invitation) -> OffsetDateTime {
     match (invitation.outcome(), invitation.settled_at()) {
         (Outcome::Declined(_), Some(settled)) => settled + InvitationSummary::DECLINED_LISTED_FOR,
         (Outcome::Accepted | Outcome::Withdrawn, Some(settled)) => {
-            settled + InvitationSummary::SETTLED_KEPT_FOR
+            (settled + InvitationSummary::SETTLED_KEPT_FOR).max(invitation.until())
         }
         _ => invitation.until() + InvitationSummary::EXPIRED_LISTED_FOR,
     }
@@ -143,7 +149,7 @@ mod tests {
                 issued_at: at(1_000),
                 until: at(5_000),
                 outcome: Outcome::Open,
-                forgotten_after: at(5_000) + Duration::days(30),
+                retire_after: at(5_000) + Duration::days(30),
             }
         );
 
@@ -169,7 +175,7 @@ mod tests {
             issued_at: at(1_000),
             until: at(5_000),
             outcome,
-            forgotten_after: at(5_000),
+            retire_after: at(5_000),
         };
 
         assert!(summary(Outcome::Open).stays_listed());
@@ -187,7 +193,7 @@ mod tests {
             issued_at: at(1_000),
             until: at(5_000),
             outcome: Outcome::Open,
-            forgotten_after: at(5_000),
+            retire_after: at(5_000),
         };
 
         assert_eq!(summary.status(at(5_000)), Some(Status::Open));
@@ -203,7 +209,7 @@ mod tests {
             issued_at: at(1_000),
             until: at(5_000),
             outcome,
-            forgotten_after: at(5_000),
+            retire_after: at(5_000),
         };
         let declined = Outcome::Declined(DeclineReason::AddressHasAccount);
 
@@ -219,7 +225,7 @@ mod tests {
     }
 
     #[test]
-    fn a_summary_is_forgotten_a_month_after_running_out_or_being_declined_and_a_day_after_settling_otherwise()
+    fn an_invitation_retires_a_month_after_running_out_or_being_declined_and_a_day_after_settling_but_never_before_running_out()
      {
         let issued = || {
             Invitation::from_first(
@@ -240,12 +246,12 @@ mod tests {
                 Version::of(2),
                 &invitation,
             )
-            .forgotten_after
+            .retire_after
         };
 
         assert_eq!(
             InvitationSummary::of(InvitationId::generate(at(1_000)), Version::of(1), &issued())
-                .forgotten_after,
+                .retire_after,
             at(5_000) + Duration::days(30),
             "an operator sees for a month that an invitation ran out"
         );
@@ -257,7 +263,39 @@ mod tests {
             "and for a month why one was declined"
         );
         for gone in [InvitationEvent::Accepted, InvitationEvent::Withdrawn] {
+            let mut holding_long = Invitation::from_first(
+                &InvitationEvent::Issued {
+                    to: ada(),
+                    digest: InvitationTokenDigest::kept("ab12".to_owned()),
+                    until: at(500_000),
+                },
+                &stamped(1, 1_000),
+            )
+            .expect("issuing gives birth");
+            holding_long.apply(&gone, &stamped(2, 2_000));
+            assert_eq!(
+                InvitationSummary::of(
+                    InvitationId::generate(at(1_000)),
+                    Version::of(2),
+                    &holding_long
+                )
+                .retire_after,
+                at(500_000),
+                "never before it runs out, or a late issue could open a withdrawn link again"
+            );
             assert_eq!(settled(gone), at(2_000) + Duration::days(1));
         }
+        let mut long_after = issued();
+        long_after.apply(&InvitationEvent::Withdrawn, &stamped(2, 9_000));
+        assert_eq!(
+            InvitationSummary::of(
+                InvitationId::generate(at(1_000)),
+                Version::of(2),
+                &long_after
+            )
+            .retire_after,
+            at(9_000) + Duration::days(1),
+            "withdrawn after it ran out, a day after"
+        )
     }
 }

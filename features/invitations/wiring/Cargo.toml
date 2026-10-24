@@ -26,6 +26,7 @@ postgres = ["dep:sqlx", "invitations-catalog/postgres", "wiring/postgres", "even
 sqlite = ["dep:sqlx", "invitations-catalog/sqlite", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "throttling/sqlite"]
 
 [dev-dependencies]
+acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 test-harness = { version = "0.1.0", path = "../../../libraries/test-harness", package = "weaveling-test-harness" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }

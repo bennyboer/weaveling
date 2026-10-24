@@ -177,6 +177,7 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
         Err(InvitationError::AlreadyIssued)
     );
     for event in [
+        InvitationEvent::Retired,
         InvitationEvent::Accepted,
         InvitationEvent::Withdrawn,
         InvitationEvent::Declined {
@@ -295,4 +296,38 @@ fn an_invitation_remembers_when_it_was_settled_and_an_open_one_was_not() {
 
     assert_eq!(open.settled_at(), None);
     assert_eq!(withdrawn.settled_at(), Some(at(4_000)));
+}
+
+#[test]
+fn an_invitation_retires_once_however_it_stands() {
+    let mut withdrawn = issued_at(1_000);
+    withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, at(2_000)));
+
+    for invitation in [issued_at(1_000), withdrawn, declined_at(1_000)] {
+        let retiring = invitation
+            .decide(InvitationCommand::Retire, &Agent::System)
+            .expect("any invitation retires");
+        assert_eq!(retiring, vec![InvitationEvent::Retired]);
+
+        let mut retired = invitation.clone();
+        retired.apply(&retiring[0], &stamped(3, at(3_000)));
+        assert!(retired.is_retired());
+        assert_eq!(
+            retired.outcome(),
+            invitation.outcome(),
+            "retiring changes how it stood not at all"
+        );
+        assert_eq!(
+            retired.decide(InvitationCommand::Retire, &Agent::System),
+            Ok(vec![]),
+            "retiring twice changes nothing"
+        );
+        let restored = Invitation::from_first(&retired.snapshot(), &stamped(3, at(4_000)))
+            .expect("a snapshot gives birth");
+        assert!(restored.is_retired(), "a snapshot keeps that it retired");
+    }
+    assert_eq!(
+        Invitation::begin(InvitationCommand::Retire, &Agent::System),
+        Err(InvitationError::NotIssuedYet)
+    );
 }

@@ -28,7 +28,7 @@ pub fn a_summary(id: InvitationId, to: &str) -> InvitationSummary {
         issued_at: at(1_000),
         until: at(605_800),
         outcome: Outcome::Open,
-        forgotten_after: at(605_800),
+        retire_after: at(605_800),
     }
 }
 
@@ -169,32 +169,44 @@ pub async fn a_page_holds_at_most_what_was_asked_newest_first_and_the_next_goes_
     assert_eq!(addresses(&next), ["someone1000@example.com"]);
 }
 
-pub async fn what_is_due_is_forgotten_and_counted_and_the_rest_kept(
+pub async fn what_is_past_its_moment_is_due_for_retiring_soonest_first_and_no_more_than_asked(
     catalog: &impl InvitationCatalog,
 ) {
-    let due = InvitationSummary {
-        forgotten_after: at(1_000),
-        ..a_summary(issued(1_000), "due@example.com")
+    let soonest = InvitationSummary {
+        retire_after: at(1_000),
+        ..a_summary(issued(3_000), "soonest@example.com")
+    };
+    let next = InvitationSummary {
+        retire_after: at(1_500),
+        ..a_summary(issued(1_000), "next@example.com")
+    };
+    let third = InvitationSummary {
+        retire_after: at(1_800),
+        ..a_summary(issued(2_000), "third@example.com")
     };
     let at_its_moment = InvitationSummary {
-        forgotten_after: at(2_000),
-        ..a_summary(issued(2_000), "now@example.com")
+        retire_after: at(2_000),
+        ..a_summary(issued(4_000), "now@example.com")
     };
-    let later = InvitationSummary {
-        forgotten_after: at(3_000),
-        ..a_summary(issued(3_000), "later@example.com")
-    };
-    for summary in [&due, &at_its_moment, &later] {
+    for summary in [&third, &soonest, &at_its_moment, &next] {
         remembered(catalog, summary).await;
     }
 
-    let forgotten = catalog
-        .forget_due(at(2_000))
-        .await
-        .expect("forgetting should succeed");
-
-    assert_eq!(forgotten, 1);
-    assert_eq!(listed(catalog).await, vec![later, at_its_moment]);
+    assert_eq!(
+        catalog
+            .due_for_retiring(at(2_000), 2)
+            .await
+            .expect("asking should succeed"),
+        vec![soonest.id, next.id]
+    );
+    assert_eq!(
+        catalog
+            .due_for_retiring(at(2_000), 10)
+            .await
+            .expect("asking should succeed"),
+        vec![soonest.id, next.id, third.id],
+        "one at its very moment is not due yet"
+    );
 }
 
 pub async fn a_summary_heard_anew_is_due_when_its_newest_says(catalog: &impl InvitationCatalog) {
@@ -202,7 +214,7 @@ pub async fn a_summary_heard_anew_is_due_when_its_newest_says(catalog: &impl Inv
     remembered(
         catalog,
         &InvitationSummary {
-            forgotten_after: at(1_500),
+            retire_after: at(1_500),
             ..a_summary(id, "ada@example.com")
         },
     )
@@ -212,22 +224,40 @@ pub async fn a_summary_heard_anew_is_due_when_its_newest_says(catalog: &impl Inv
         &InvitationSummary {
             version: Version::of(2),
             outcome: declined(),
-            forgotten_after: at(5_000),
+            retire_after: at(5_000),
             ..a_summary(id, "ada@example.com")
         },
     )
     .await;
 
-    catalog
-        .forget_due(at(2_000))
-        .await
-        .expect("forgetting should succeed");
-
-    assert_eq!(
-        listed(catalog).await.len(),
-        1,
+    assert!(
+        catalog
+            .due_for_retiring(at(2_000), 10)
+            .await
+            .expect("asking should succeed")
+            .is_empty(),
         "declined later, it is kept longer"
     );
+}
+
+pub async fn a_forgotten_invitation_leaves_the_list_and_the_others_stay(
+    catalog: &impl InvitationCatalog,
+) {
+    let gone = a_summary(issued(1_000), "gone@example.com");
+    let stays = a_summary(issued(2_000), "stays@example.com");
+    remembered(catalog, &gone).await;
+    remembered(catalog, &stays).await;
+
+    catalog
+        .forget(&gone.id)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .forget(&issued(9_000))
+        .await
+        .expect("forgetting what was never listed is harmless");
+
+    assert_eq!(listed(catalog).await, vec![stays]);
 }
 
 #[macro_export]
@@ -251,7 +281,11 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!($workbench, an_empty_list_lists_nothing);
         $crate::catalog_conformance_case!(
             $workbench,
-            what_is_due_is_forgotten_and_counted_and_the_rest_kept
+            what_is_past_its_moment_is_due_for_retiring_soonest_first_and_no_more_than_asked
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_forgotten_invitation_leaves_the_list_and_the_others_stay
         );
         $crate::catalog_conformance_case!(
             $workbench,

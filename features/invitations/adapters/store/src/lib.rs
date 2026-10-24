@@ -17,6 +17,7 @@ enum StoredInvitationEvent {
     Declined {
         reason: StoredDeclineReason,
     },
+    Retired,
     Snapshotted {
         to: String,
         #[serde(with = "time::serde::rfc3339")]
@@ -26,6 +27,8 @@ enum StoredInvitationEvent {
         outcome: StoredOutcome,
         #[serde(default, with = "time::serde::rfc3339::option")]
         settled_at: Option<OffsetDateTime>,
+        #[serde(default)]
+        retired: bool,
     },
 }
 
@@ -109,18 +112,21 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
             InvitationEvent::Declined { reason } => Self::Declined {
                 reason: (*reason).into(),
             },
+            InvitationEvent::Retired => Self::Retired,
             InvitationEvent::Snapshotted {
                 to,
                 issued_at,
                 until,
                 outcome,
                 settled_at,
+                retired,
             } => Self::Snapshotted {
                 to: to.to_string(),
                 issued_at: *issued_at,
                 until: *until,
                 outcome: (*outcome).into(),
                 settled_at: *settled_at,
+                retired: *retired,
             },
         }
     }
@@ -148,18 +154,21 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
             StoredInvitationEvent::Declined { reason } => Self::Declined {
                 reason: reason.into(),
             },
+            StoredInvitationEvent::Retired => Self::Retired,
             StoredInvitationEvent::Snapshotted {
                 to,
                 issued_at,
                 until,
                 outcome,
                 settled_at,
+                retired,
             } => Self::Snapshotted {
                 to: readable(&to)?,
                 issued_at,
                 until,
                 outcome: outcome.into(),
                 settled_at,
+                retired,
             },
         })
     }
@@ -207,7 +216,9 @@ mod tests {
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                     outcome,
                     settled_at: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(3_000)),
+                    retired: true,
                 },
+                InvitationEvent::Retired,
             ] {
                 assert_eq!(round_trip(event.clone()), event);
             }

@@ -6,5 +6,5 @@ CREATE TABLE invitation_summaries (
     until            TEXT    NOT NULL,
     outcome          TEXT    NOT NULL,
     declined_for     TEXT,
-    forgotten_after  TEXT    NOT NULL
+    retire_after     TEXT    NOT NULL
 );

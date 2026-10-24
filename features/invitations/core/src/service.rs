@@ -103,7 +103,7 @@ impl InvitationService {
             issued_at: now,
             until,
             outcome: Outcome::Open,
-            forgotten_after: until + InvitationSummary::EXPIRED_LISTED_FOR,
+            retire_after: until + InvitationSummary::EXPIRED_LISTED_FOR,
         })
     }
 
@@ -146,6 +146,19 @@ impl InvitationService {
                     .map(|status| ListedInvitation { summary, status })
             })
             .collect())
+    }
+
+    pub async fn retire(&self, invitation: &InvitationId) -> Result<(), InvitationServiceError> {
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(invitation),
+                InvitationCommand::Retire,
+                &Agent::System,
+            )
+            .await?;
+
+        Ok(())
     }
 
     pub async fn accept(

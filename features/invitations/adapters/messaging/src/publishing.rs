@@ -20,6 +20,7 @@ fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
         InvitationEvent::Declined { reason } => InvitationEventDTO::Declined {
             reason: declined_for(*reason).to_owned(),
         },
+        InvitationEvent::Retired => InvitationEventDTO::Retired,
         InvitationEvent::Snapshotted { .. } => return None,
     })
 }
@@ -34,7 +35,7 @@ fn declined_for(reason: DeclineReason) -> &'static str {
 mod tests {
     use email::EmailAddress;
     use eventsourcing::{Agent, AggregateId, Event, EventMetadata, Version};
-    use invitations_contract::{ACCEPTED, DECLINED, EVERY_INVITATION, ISSUED, WITHDRAWN};
+    use invitations_contract::{ACCEPTED, DECLINED, EVERY_INVITATION, ISSUED, RETIRED, WITHDRAWN};
     use invitations_core::{InvitationId, InvitationTokenDigest, KIND, Outcome};
     use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
@@ -82,6 +83,7 @@ mod tests {
                 },
                 DECLINED,
             ),
+            (InvitationEvent::Retired, RETIRED),
         ]
     }
 
@@ -189,6 +191,7 @@ mod tests {
                     until: at(1_000) + Duration::days(7),
                     outcome: Outcome::Open,
                     settled_at: None,
+                    retired: false,
                 }
             ))
             .is_none()

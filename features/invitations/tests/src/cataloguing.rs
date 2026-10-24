@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use eventsourcing::Agent;
 use invitations_catalog::InMemoryInvitationCatalog;
-use invitations_contract::{ACCEPTED, DECLINED, ISSUED, WITHDRAWN};
+use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
 use invitations_core::{
     DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome,
 };
@@ -173,4 +173,31 @@ async fn a_message_about_no_invitation_is_refused() {
             .is_err(),
         "a message the listener cannot act on belongs in dead letters"
     );
+}
+
+#[tokio::test]
+async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_comes() {
+    let listing = listing();
+    let id = listing.invited(ADA).await;
+    listing
+        .listener
+        .take_in(&told(ISSUED, &id))
+        .await
+        .expect("cataloguing should succeed");
+    listing
+        .wired
+        .invitations
+        .retire(&id)
+        .await
+        .expect("an invitation retires");
+
+    for routing in [RETIRED, ISSUED] {
+        listing
+            .listener
+            .take_in(&told(routing, &id))
+            .await
+            .expect("cataloguing should succeed");
+    }
+
+    assert!(listing.listed().await.is_empty());
 }

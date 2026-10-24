@@ -1,4 +1,4 @@
-mod forgetting;
+mod retiring;
 
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ use outbox::Outbox;
 use throttling::{InMemoryThrottles, Throttles};
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
-use crate::forgetting::ForgetDueInvitations;
+use crate::retiring::RetireDueInvitations;
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
@@ -146,8 +146,9 @@ impl Feature for InvitationFeature {
                     context.clock.clone(),
                 )),
             ])
-            .doing_chores(vec![Arc::new(ForgetDueInvitations::new(
+            .doing_chores(vec![Arc::new(RetireDueInvitations::new(
                 ports.catalog.clone(),
+                service(ports, context),
                 context.clock.clone(),
             ))])
     }
@@ -155,10 +156,12 @@ impl Feature for InvitationFeature {
 
 #[cfg(test)]
 mod tests {
+    use acting::Acting;
     use clock::SystemClock;
     use email::EmailAddress;
     use eventsourcing::Version;
-    use invitations_core::{InvitationId, InvitationSummary, Outcome};
+    use eventsourcing::{Agent, AggregateId};
+    use invitations_core::{InvitationId, InvitationSummary, KIND, Outcome};
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use time::OffsetDateTime;
 
@@ -181,7 +184,7 @@ mod tests {
             issued_at: OffsetDateTime::UNIX_EPOCH,
             until: OffsetDateTime::UNIX_EPOCH,
             outcome: Outcome::Open,
-            forgotten_after: OffsetDateTime::UNIX_EPOCH,
+            retire_after: OffsetDateTime::UNIX_EPOCH,
         };
 
         ports
@@ -201,29 +204,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_feature_forgets_what_is_due_from_its_list_as_a_chore() {
+    async fn the_feature_retires_what_is_due_as_a_chore() {
         let context = a_context();
         let ports = InvitationFeature::in_memory(&context);
         let wired = InvitationFeature::wire(&ports, &context);
-        let due = InvitationSummary {
-            id: InvitationId::generate(OffsetDateTime::UNIX_EPOCH),
-            version: Version::of(1),
-            to: EmailAddress::new("ada@example.com").expect("a plain address"),
-            issued_at: OffsetDateTime::UNIX_EPOCH,
-            until: OffsetDateTime::UNIX_EPOCH,
-            outcome: Outcome::Open,
-            forgotten_after: OffsetDateTime::UNIX_EPOCH,
-        };
+        let issued = service(&ports, &context)
+            .issue(
+                &Acting {
+                    agent: Agent::Account("account_grace".into()),
+                    operator: true,
+                },
+                "ada@example.com",
+                "https://weaveling.example.com",
+            )
+            .await
+            .expect("an operator may invite");
         ports
             .catalog
-            .remember(&due)
+            .remember(&InvitationSummary {
+                retire_after: OffsetDateTime::UNIX_EPOCH,
+                ..issued.clone()
+            })
             .await
             .expect("remembering should succeed");
 
         let [chore] = wired.chores.as_slice() else {
             panic!("the feature hands over one chore");
         };
-        assert_eq!(chore.named(), "forget-due-invitations");
+        assert_eq!(chore.named(), "retire-due-invitations");
         assert_eq!(
             chore
                 .carry_out()
@@ -231,14 +239,15 @@ mod tests {
                 .expect("the chore should be carried out"),
             1
         );
-        assert!(
-            ports
-                .catalog
-                .listed_after(None, 10)
-                .await
-                .expect("listing should succeed")
-                .is_empty()
-        );
+        let told = ports
+            .events
+            .read_from(&AggregateId::from(&issued.id), KIND, Version::of(1))
+            .await
+            .expect("reading should succeed");
+        assert!(matches!(
+            told.last().map(|recorded| &recorded.event),
+            Some(InvitationEvent::Retired)
+        ));
     }
 
     #[test]

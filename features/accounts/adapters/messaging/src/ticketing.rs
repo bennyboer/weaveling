@@ -40,7 +40,9 @@ impl Handler for KeepInvitationTicketsListener {
             InvitationEventDTO::Withdrawn => {
                 Ok(self.accounts.forget_invitation_ticket(&invitation).await?)
             }
-            InvitationEventDTO::Accepted | InvitationEventDTO::Declined { .. } => Ok(()),
+            InvitationEventDTO::Accepted
+            | InvitationEventDTO::Declined { .. }
+            | InvitationEventDTO::Retired => Ok(()),
         }
     }
 }

@@ -37,6 +37,9 @@ impl Handler for CatalogueInvitationsListener {
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let id = eventpublishing::aggregate_in::<InvitationId>(message)?;
         let standing = self.events.latest(&AggregateId::from(&id)).await?;
+        if standing.state.is_retired() {
+            return Ok(self.catalog.forget(&id).await?);
+        }
 
         Ok(self
             .catalog

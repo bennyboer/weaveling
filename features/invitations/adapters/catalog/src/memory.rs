@@ -56,12 +56,29 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
             .collect())
     }
 
-    async fn forget_due(&self, now: OffsetDateTime) -> Result<u64, CatalogError> {
-        let mut kept = self.write();
-        let before = kept.len();
-        kept.retain(|_, summary| summary.forgotten_after >= now);
+    async fn due_for_retiring(
+        &self,
+        now: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<InvitationId>, CatalogError> {
+        let kept = self.read();
+        let mut due: Vec<&InvitationSummary> = kept
+            .values()
+            .filter(|summary| summary.retire_after < now)
+            .collect();
+        due.sort_by_key(|summary| summary.retire_after);
 
-        Ok(u64::try_from(before - kept.len()).expect("a count fits"))
+        Ok(due
+            .into_iter()
+            .take(at_most)
+            .map(|summary| summary.id)
+            .collect())
+    }
+
+    async fn forget(&self, invitation: &InvitationId) -> Result<(), CatalogError> {
+        self.write().remove(invitation);
+
+        Ok(())
     }
 }
 

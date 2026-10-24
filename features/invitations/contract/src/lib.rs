@@ -32,6 +32,7 @@ pub const ISSUED: &str = "invitation.issued";
 pub const ACCEPTED: &str = "invitation.accepted";
 pub const WITHDRAWN: &str = "invitation.withdrawn";
 pub const DECLINED: &str = "invitation.declined";
+pub const RETIRED: &str = "invitation.retired";
 pub const EVERY_INVITATION: &str = "invitation.#";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -49,6 +50,8 @@ pub enum InvitationEventDTO {
     Withdrawn,
     #[serde(rename = "DECLINED")]
     Declined { reason: String },
+    #[serde(rename = "RETIRED")]
+    Retired,
 }
 
 pub mod decline_reason {
