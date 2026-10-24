@@ -17,6 +17,9 @@ mod appointing;
 mod becoming_operator;
 
 #[cfg(test)]
+mod first_operator;
+
+#[cfg(test)]
 mod gate_api;
 
 #[cfg(test)]

@@ -23,6 +23,7 @@ fn signing_up(email: &str, name: &str, password: &str) -> SignUpRequest {
         email: email.to_owned(),
         name: name.to_owned(),
         password: password.to_owned(),
+        operator_code: None,
     }
 }
 

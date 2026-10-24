@@ -5,6 +5,8 @@ pub struct SignUpRequest {
     pub email: String,
     pub name: String,
     pub password: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operator_code: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -91,6 +93,8 @@ pub struct ServiceModeDTO {
     pub accounts: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sign_up: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub operator_wanted: bool,
 }
 
 pub const SESSION_COOKIE: &str = "weaveling_session";

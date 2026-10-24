@@ -147,6 +147,43 @@ impl AccountService {
         if self.signing_up == SigningUp::ByInvitation {
             return Err(AccountServiceError::SigningUpByInvitationOnly);
         }
+
+        self.signed_up(email, name, password).await
+    }
+
+    pub async fn sign_up_to_operate(
+        &self,
+        email: &str,
+        name: &str,
+        password: &str,
+        code: &str,
+    ) -> Result<(), AccountServiceError> {
+        if self.signing_up == SigningUp::ByInvitation {
+            if !self.operator_wanted().await? {
+                return Err(AccountServiceError::SigningUpByInvitationOnly);
+            }
+            if !self
+                .operators
+                .holds_code(&OperatorCode::presented(code).digest())
+                .await?
+            {
+                return Err(AccountServiceError::OperatorCodeWrong);
+            }
+        }
+
+        self.signed_up(email, name, password).await
+    }
+
+    pub async fn operator_wanted(&self) -> Result<bool, AccountServiceError> {
+        Ok(!self.operators.any_appointed().await?)
+    }
+
+    async fn signed_up(
+        &self,
+        email: &str,
+        name: &str,
+        password: &str,
+    ) -> Result<(), AccountServiceError> {
         let email = EmailAddress::new(email)?;
         let name = AccountName::new(name)?;
         let password = Password::new(password)?;

@@ -163,6 +163,10 @@ impl Operators for InMemorySecrets {
         Ok(())
     }
 
+    async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+        Ok(self.kept().operator_code.as_ref() == Some(digest))
+    }
+
     async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
         let mut kept = self.kept();
         if kept.operator_code.as_ref() != Some(digest) {

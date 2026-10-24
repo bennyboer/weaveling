@@ -19,6 +19,8 @@ const KEEP_CODE: &str = "
     SET digest = EXCLUDED.digest
 ";
 
+const HOLDS_CODE: &str = "SELECT EXISTS (SELECT 1 FROM account_operator_code WHERE digest = ?1)";
+
 const TAKE_CODE: &str = "DELETE FROM account_operator_code WHERE digest = ?1";
 
 const APPOINT: &str = "
@@ -395,6 +397,14 @@ impl Operators for SqliteSecrets {
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+        sqlx::query_scalar(HOLDS_CODE)
+            .bind(digest.as_str())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)
     }
 
     async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {

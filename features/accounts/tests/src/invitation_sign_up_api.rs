@@ -126,6 +126,40 @@ async fn an_address_with_an_account_already_is_refused_by_its_kind() {
 }
 
 #[tokio::test]
+async fn a_sign_up_with_the_operator_code_is_let_in_and_a_wrong_code_refused_by_its_kind() {
+    let wired = wiring::wired();
+    let code = wired
+        .accounts
+        .draw_operator_code()
+        .await
+        .expect("drawing should succeed")
+        .expect("with nobody appointed a code is drawn");
+    let server = TestServer::new(accounts_rest::router(
+        wired.accounts.clone().signing_up(SigningUp::ByInvitation),
+    ));
+    let signing_up = |code: &str| SignUpRequest {
+        email: ADA.to_owned(),
+        name: "Ada".to_owned(),
+        password: HER_PASSWORD.to_owned(),
+        operator_code: Some(code.to_owned()),
+    };
+
+    refused_as(
+        server
+            .post("/accounts")
+            .json(&signing_up("0123456789abcdef0123456789abcdef"))
+            .await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::OPERATOR_CODE_WRONG,
+    );
+    server
+        .post("/accounts")
+        .json(&signing_up(code.as_str()))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
 async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_its_kind() {
     let wired = wiring::wired();
     let server = TestServer::new(accounts_rest::router(
@@ -139,6 +173,7 @@ async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_it
                 email: ADA.to_owned(),
                 name: "Ada".to_owned(),
                 password: HER_PASSWORD.to_owned(),
+                operator_code: None,
             })
             .await,
         StatusCode::FORBIDDEN,

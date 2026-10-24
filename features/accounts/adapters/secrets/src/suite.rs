@@ -541,6 +541,39 @@ fn a_digest(of: &str) -> TokenDigest {
     TokenDigest::kept(of.to_owned())
 }
 
+pub async fn a_kept_code_is_held_until_taken_and_no_other_is<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_code(&a_digest("first"))
+        .await
+        .expect("keeping should succeed");
+
+    for _ in 0..2 {
+        assert!(
+            secrets
+                .holds_code(&a_digest("first"))
+                .await
+                .expect("looking should succeed"),
+            "looking at a code does not use it up"
+        );
+    }
+    assert!(
+        !secrets
+            .holds_code(&a_digest("second"))
+            .await
+            .expect("looking should succeed")
+    );
+    secrets
+        .take_code(&a_digest("first"))
+        .await
+        .expect("taking should succeed");
+    assert!(
+        !secrets
+            .holds_code(&a_digest("first"))
+            .await
+            .expect("looking should succeed")
+    );
+}
+
 pub async fn a_kept_code_is_taken_once<S: Secrets>(secrets: &S) {
     secrets
         .keep_code(&a_digest("first"))
@@ -1253,6 +1286,10 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!(
             $workbench,
             a_claim_taken_over_by_many_at_once_goes_to_one
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_kept_code_is_held_until_taken_and_no_other_is
         );
         $crate::secrets_conformance_case!($workbench, a_kept_code_is_taken_once);
         $crate::secrets_conformance_case!($workbench, only_the_latest_code_kept_can_be_taken);

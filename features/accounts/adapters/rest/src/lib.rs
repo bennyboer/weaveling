@@ -97,10 +97,19 @@ async fn sign_up(
     State(accounts): State<AccountService>,
     Json(request): Json<SignUpRequest>,
 ) -> Result<StatusCode, Problem> {
-    accounts
-        .sign_up(&request.email, &request.name, &request.password)
-        .await
-        .map_err(problem_of)?;
+    match &request.operator_code {
+        Some(code) => {
+            accounts
+                .sign_up_to_operate(&request.email, &request.name, &request.password, code)
+                .await
+        }
+        None => {
+            accounts
+                .sign_up(&request.email, &request.name, &request.password)
+                .await
+        }
+    }
+    .map_err(problem_of)?;
 
     Ok(StatusCode::ACCEPTED)
 }

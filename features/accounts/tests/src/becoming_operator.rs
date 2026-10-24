@@ -184,6 +184,10 @@ impl Operators for FailingToAppointOnce {
         self.kept.keep_code(digest).await
     }
 
+    async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+        self.kept.holds_code(digest).await
+    }
+
     async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
         self.kept.take_code(digest).await
     }

@@ -89,12 +89,12 @@ async fn the_service_says_whether_it_keeps_accounts_and_who_may_sign_up() {
         (
             Accounts::On,
             SignUp::Open,
-            json!({ "accounts": true, "sign_up": "open" }),
+            json!({ "accounts": true, "sign_up": "open", "operator_wanted": true }),
         ),
         (
             Accounts::On,
             SignUp::ByInvitation,
-            json!({ "accounts": true, "sign_up": "invitation" }),
+            json!({ "accounts": true, "sign_up": "invitation", "operator_wanted": true }),
         ),
         (
             Accounts::Off,
@@ -486,6 +486,13 @@ impl OperatorSignedIn {
 }
 
 async fn an_operator_signed_in_on_a_server(named: &str) -> OperatorSignedIn {
+    an_operator_signed_in_on_a_server_signing_up(named, SignUp::Open).await
+}
+
+async fn an_operator_signed_in_on_a_server_signing_up(
+    named: &str,
+    sign_up: SignUp,
+) -> OperatorSignedIn {
     let drop = std::env::temp_dir().join(format!(
         "weaveling-{named}-mail-drop-{}",
         std::process::id()
@@ -498,7 +505,8 @@ async fn an_operator_signed_in_on_a_server(named: &str) -> OperatorSignedIn {
         Arc::new(SystemClock),
     )
     .await
-    .expect("nothing kept in memory needs preparing");
+    .expect("nothing kept in memory needs preparing")
+    .signing_up(sign_up);
     let operator_code = adapters
         .draw_operator_code()
         .await
@@ -516,7 +524,7 @@ async fn an_operator_signed_in_on_a_server(named: &str) -> OperatorSignedIn {
     server.save_cookies();
     server
         .post("/api/accounts")
-        .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery" }))
+        .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery", "operator_code": operator_code.as_str() }))
         .await
         .assert_status(StatusCode::ACCEPTED);
     server
@@ -540,6 +548,29 @@ async fn an_operator_signed_in_on_a_server(named: &str) -> OperatorSignedIn {
         relays,
         drop,
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_server_signing_up_by_invitation_gets_its_first_operator_by_the_logged_code() {
+    let signed_in =
+        an_operator_signed_in_on_a_server_signing_up("first-operator", SignUp::ByInvitation).await;
+
+    let told: Value = signed_in.server.get("/api/service/mode").await.json();
+
+    assert_eq!(
+        told,
+        json!({ "accounts": true, "sign_up": "invitation" }),
+        "with an operator there, nobody is asked to set the instance up any more"
+    );
+    signed_in
+        .server
+        .post("/api/accounts")
+        .do_not_save_cookies()
+        .json(&json!({ "email": "grace@example.com", "name": "Grace", "password": "another long password", "operator_code": "0123456789abcdef0123456789abcdef" }))
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+
+    signed_in.end().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -69,6 +69,7 @@ pub async fn sign_up(email: &str, name: &str, password: &str) -> Result<(), ApiE
         email: email.to_owned(),
         name: name.to_owned(),
         password: password.to_owned(),
+        operator_code: None,
     };
 
     http::checked(

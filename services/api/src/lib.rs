@@ -9,7 +9,7 @@ mod sign_up;
 use std::sync::Arc;
 
 use accounts_contract::ServiceModeDTO;
-use accounts_core::{AccountServiceError, OperatorCode};
+use accounts_core::{AccountService, AccountServiceError, OperatorCode};
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
 use axum::routing;
@@ -24,6 +24,7 @@ use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use outline_wiring::OutlineFeature;
 use projects_wiring::ProjectFeature;
 use scenes_wiring::SceneFeature;
+use serving::Problem;
 use statistics_wiring::StatisticsFeature;
 use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context, assemble};
@@ -179,15 +180,23 @@ async fn deliveries(storage: &Storage) -> Result<Arc<dyn Deliveries>, Unprepared
 
 pub fn app(adapters: Adapters) -> Router {
     let told = ServiceModeDTO {
+        operator_wanted: false,
         accounts: adapters.accounts.is_some(),
         sign_up: adapters
             .accounts
             .is_some()
             .then(|| adapters.sign_up.told().to_owned()),
     };
+    let operating = adapters
+        .accounts
+        .as_ref()
+        .map(|accounts| accounts.service.clone());
     let service = Router::new()
         .route("/health", routing::get(health))
-        .route("/mode", routing::get(move || mode(told.clone())))
+        .route(
+            "/mode",
+            routing::get(move || mode(told.clone(), operating.clone())),
+        )
         .merge(refusals::router(
             adapters.deliveries.clone(),
             adapters.dispatcher.clone(),
@@ -236,8 +245,22 @@ async fn health() -> &'static str {
     "ok"
 }
 
-async fn mode(told: ServiceModeDTO) -> Json<ServiceModeDTO> {
-    Json(told)
+async fn mode(
+    told: ServiceModeDTO,
+    operating: Option<AccountService>,
+) -> Result<Json<ServiceModeDTO>, Problem> {
+    let operator_wanted = match operating {
+        Some(accounts) => accounts
+            .operator_wanted()
+            .await
+            .map_err(Problem::unexpected)?,
+        None => false,
+    };
+
+    Ok(Json(ServiceModeDTO {
+        operator_wanted,
+        ..told
+    }))
 }
 
 #[cfg(test)]

@@ -8,7 +8,7 @@ Only a server with `WEAVELING_ACCOUNTS=on` has accounts. Local mode has none, an
 
 **An address is claimed before its account is begun,** so two sign-ups never share it; a claim keeps when it was made, and one whose holder never came to be an account is taken over by the next sign-up once five minutes have passed, so a server stopping between the two steps does not keep the address from anyone for good.
 
-**Signing up is open or by invitation** (`SigningUp`, set by the server from `WEAVELING_SIGN_UP`). By invitation, a plain sign-up is refused and the link is the only way in; `POST /accounts/by-invitation` takes its token, a name and a password, makes the account confirmed and opens its session at once, answering as signing in does, since whoever followed the link need not know the address it came to.
+**Signing up is open or by invitation** (`SigningUp`, set by the server from `WEAVELING_SIGN_UP`). By invitation, a plain sign-up is refused and the link is the only way in, but for the first: while nobody is an operator, a sign-up bringing the operator code from the server's log is let in, and the code, only looked at then, makes that account the operator once its address is confirmed; `/api/service/mode` tells `operator_wanted` meanwhile; `POST /accounts/by-invitation` takes its token, a name and a password, makes the account confirmed and opens its session at once, answering as signing in does, since whoever followed the link need not know the address it came to.
 
 **Sessions end by comparison, not by sweeping.** An account records when its sessions last stopped counting, `sessions_since`, set by a new password or a lock; a session begun before that is over wherever it is kept. A locked account is admitted with no session at all.
 

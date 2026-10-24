@@ -124,6 +124,8 @@ pub trait Verifications: Send + Sync {
 pub trait Operators: Send + Sync {
     async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError>;
 
+    async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError>;
+
     async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError>;
 
     async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError>;
