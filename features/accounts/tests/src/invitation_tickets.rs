@@ -4,7 +4,7 @@ use accounts_core::{
 };
 use accounts_messaging::KeepInvitationTicketsListener;
 use eventsourcing::{AggregateId, EventStore, Version};
-use invitations_contract::{ACCEPTED, ISSUED, WITHDRAWN};
+use invitations_contract::{ACCEPTED, ISSUED, RETIRED, WITHDRAWN};
 use messaging::{Handler, Listener, Message, Publisher, RoutingKey};
 use serde_json::{Value, json};
 use time::Duration;
@@ -112,7 +112,7 @@ async fn an_issue_told_again_after_its_withdrawal_leaves_no_ticket() {
 async fn an_accepted_invitation_is_not_heard() {
     let tickets = KeepInvitationTicketsListener::new(wiring::wired().accounts.clone());
 
-    for heard in [ISSUED, WITHDRAWN] {
+    for heard in [ISSUED, WITHDRAWN, RETIRED] {
         assert!(tickets.hears(&RoutingKey::parse(heard).expect("a declared key is fine")));
     }
     assert!(
@@ -212,4 +212,39 @@ async fn an_issue_told_again_after_its_ticket_signed_the_address_up_declines_not
             .any(|recorded| matches!(recorded.event, AccountEvent::InvitationDeclined { .. })),
         "an invitation taken up is not declined by the account it made"
     );
+}
+
+fn retired(invitation: &str) -> Message {
+    told(
+        RETIRED,
+        invitation,
+        json!({ "version": 3, "name": "RETIRED" }),
+    )
+}
+
+#[tokio::test]
+async fn a_retired_invitation_leaves_no_ticket_nor_mark_and_the_others_stay() {
+    let wired = wiring::wired();
+    tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
+    tell(&wired, withdrawn("invitation_ada")).await;
+    tell(&wired, issued("invitation_bob", "bob@example.com", "cd34")).await;
+
+    tell(&wired, retired("invitation_ada")).await;
+
+    assert!(
+        wired
+            .secrets
+            .keep_ticket(
+                &TokenDigest::kept("ab12".to_owned()),
+                &InvitationTicket {
+                    invitation: "invitation_ada".to_owned(),
+                    to: EmailAddress::new(ADA).expect("a plain address"),
+                    until: wiring::at(1_700_000_000),
+                },
+            )
+            .await
+            .expect("keeping should succeed"),
+        "the withdrawn invitation's mark is gone with its ticket"
+    );
+    assert!(ticket_for(&wired, "cd34").await.is_some());
 }

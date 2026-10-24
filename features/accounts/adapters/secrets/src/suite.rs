@@ -1235,6 +1235,79 @@ pub async fn a_claim_taken_over_by_many_at_once_goes_to_one<S: Secrets>(secrets:
     );
 }
 
+pub async fn a_dropped_ticket_leaves_nothing_behind_open_ended_or_marked<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+    secrets
+        .keep_ticket(
+            &a_digest("bob's"),
+            &a_ticket("invitation_bob", "bob@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+    secrets
+        .take_ticket(&a_digest("bob's"))
+        .await
+        .expect("taking should succeed");
+    secrets
+        .forget_ticket("invitation_eve")
+        .await
+        .expect("forgetting should succeed");
+    secrets
+        .keep_ticket(
+            &a_digest("grace's"),
+            &a_ticket("invitation_grace", "grace@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+
+    for invitation in [
+        "invitation_ada",
+        "invitation_bob",
+        "invitation_eve",
+        "invitation_never",
+    ] {
+        secrets
+            .drop_ticket(invitation)
+            .await
+            .expect("dropping should succeed");
+    }
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        None
+    );
+    for (digest, invitation, to) in [
+        ("ada's", "invitation_ada", "ada@example.com"),
+        ("bob's", "invitation_bob", "bob@example.com"),
+        ("eve's", "invitation_eve", "eve@example.com"),
+    ] {
+        assert!(
+            secrets
+                .keep_ticket(&a_digest(digest), &a_ticket(invitation, to))
+                .await
+                .expect("keeping should succeed"),
+            "nothing of {invitation} is left, its mark neither"
+        );
+    }
+    assert!(
+        secrets
+            .take_ticket(&a_digest("grace's"))
+            .await
+            .expect("taking should succeed")
+            .is_some(),
+        "the others stay"
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -1266,6 +1339,10 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!(
             $workbench,
             an_invitation_kept_again_by_another_digest_keeps_its_first
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_dropped_ticket_leaves_nothing_behind_open_ended_or_marked
         );
         $crate::secrets_conformance_case!($workbench, a_ticket_taken_is_not_kept_again);
         $crate::secrets_conformance_case!($workbench, a_ticket_forgotten_is_not_kept_again);

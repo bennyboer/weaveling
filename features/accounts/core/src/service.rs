@@ -295,6 +295,13 @@ impl AccountService {
         Ok(self.invitation_tickets.forget_ticket(invitation).await?)
     }
 
+    pub async fn drop_invitation_ticket(
+        &self,
+        invitation: &str,
+    ) -> Result<(), AccountServiceError> {
+        Ok(self.invitation_tickets.drop_ticket(invitation).await?)
+    }
+
     pub async fn send_code_again(&self, email: &str) -> Result<(), AccountServiceError> {
         let email = EmailAddress::new(email)?;
         self.counted_mail_to(&email).await?;

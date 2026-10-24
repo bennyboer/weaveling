@@ -104,6 +104,8 @@ const TAKE_TICKET: &str = "
     RETURNING invitation, email, until
 ";
 
+const DROP_TICKET: &str = "DELETE FROM account_invitation_tickets WHERE invitation = $1";
+
 const FORGET_TICKET: &str = "
     INSERT INTO account_invitation_tickets (invitation, ended)
     VALUES ($1, TRUE)
@@ -477,6 +479,16 @@ impl InvitationTickets for PostgresSecrets {
 
     async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
         sqlx::query(FORGET_TICKET)
+            .bind(invitation)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+        sqlx::query(DROP_TICKET)
             .bind(invitation)
             .execute(&self.pool)
             .await

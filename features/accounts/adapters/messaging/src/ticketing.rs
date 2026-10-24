@@ -1,7 +1,7 @@
 use accounts_core::{AccountService, EmailAddress, InvitationTicket, TokenDigest};
 use async_trait::async_trait;
 use clock::text;
-use invitations_contract::{ISSUED, InvitationEventDTO, WITHDRAWN};
+use invitations_contract::{ISSUED, InvitationEventDTO, RETIRED, WITHDRAWN};
 use messaging::{Failure, Handler, Message};
 
 pub struct KeepInvitationTicketsListener {
@@ -17,7 +17,7 @@ impl KeepInvitationTicketsListener {
 #[async_trait]
 impl Handler for KeepInvitationTicketsListener {
     const NAME: &'static str = "keep-invitation-tickets";
-    const LISTENS_TO: &'static [&'static str] = &[ISSUED, WITHDRAWN];
+    const LISTENS_TO: &'static [&'static str] = &[ISSUED, WITHDRAWN, RETIRED];
     const WHEN_REFUSED: &'static str = "An invitation did not reach accounts, so its link may not let its address sign up, or still may after being withdrawn.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
@@ -40,9 +40,10 @@ impl Handler for KeepInvitationTicketsListener {
             InvitationEventDTO::Withdrawn => {
                 Ok(self.accounts.forget_invitation_ticket(&invitation).await?)
             }
-            InvitationEventDTO::Accepted
-            | InvitationEventDTO::Declined { .. }
-            | InvitationEventDTO::Retired => Ok(()),
+            InvitationEventDTO::Retired => {
+                Ok(self.accounts.drop_invitation_ticket(&invitation).await?)
+            }
+            InvitationEventDTO::Accepted | InvitationEventDTO::Declined { .. } => Ok(()),
         }
     }
 }

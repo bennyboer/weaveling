@@ -249,4 +249,12 @@ impl InvitationTickets for InMemorySecrets {
 
         Ok(())
     }
+
+    async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        kept.invitation_tickets.remove(invitation);
+        kept.ended_invitations.remove(invitation);
+
+        Ok(())
+    }
 }

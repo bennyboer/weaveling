@@ -149,6 +149,8 @@ pub trait InvitationTickets: Send + Sync {
     ) -> Result<Option<InvitationTicket>, SecretsError>;
 
     async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError>;
+
+    async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
