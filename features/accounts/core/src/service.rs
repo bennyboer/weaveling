@@ -181,7 +181,7 @@ impl AccountService {
         token: &str,
         name: &str,
         password: &str,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(SessionToken, SignedIn), AccountServiceError> {
         let name = AccountName::new(name)?;
         let hashed = Password::new(password)?.hashed();
         let Some(ticket) = self
@@ -216,8 +216,9 @@ impl AccountService {
             return Err(refused.into());
         }
         self.passwords.keep(&id, &hashed).await?;
+        let account = self.get(&id).await?.state;
 
-        Ok(())
+        self.opened(id, account).await
     }
 
     pub async fn keep_invitation_ticket(
@@ -405,6 +406,15 @@ impl AccountService {
         password: &str,
     ) -> Result<(SessionToken, SignedIn), AccountServiceError> {
         let (id, account) = self.signed_in_as(email, password).await?;
+
+        self.opened(id, account).await
+    }
+
+    async fn opened(
+        &self,
+        id: AccountId,
+        account: Account,
+    ) -> Result<(SessionToken, SignedIn), AccountServiceError> {
         let token = SessionToken::drawn();
         // TODO second factors: a session owes one, Stage::SecondFactorOwed, where the account has one
         let session = Session::begun(id, Stage::SignedIn, self.clock.now());

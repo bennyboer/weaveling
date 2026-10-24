@@ -108,13 +108,18 @@ async fn sign_up(
 async fn sign_up_by_invitation(
     State(accounts): State<AccountService>,
     Json(request): Json<SignUpByInvitationRequest>,
-) -> Result<StatusCode, Problem> {
-    accounts
+) -> Result<Response, Problem> {
+    let (token, signed_in) = accounts
         .sign_up_by_invitation(&request.token, &request.name, &request.password)
         .await
         .map_err(problem_of)?;
 
-    Ok(StatusCode::CREATED)
+    Ok((
+        StatusCode::CREATED,
+        [(SET_COOKIE, holding(&token))],
+        Json(to_dto(&signed_in)),
+    )
+        .into_response())
 }
 
 async fn verify(

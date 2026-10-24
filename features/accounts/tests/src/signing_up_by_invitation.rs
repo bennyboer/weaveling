@@ -30,6 +30,7 @@ async fn signs_up(wired: &Wired, token: &str) -> Result<(), AccountServiceError>
         .accounts
         .sign_up_by_invitation(token, "Ada", HER_PASSWORD)
         .await
+        .map(|_| ())
 }
 
 async fn holder(wired: &Wired, address: &str) -> Option<AccountId> {
@@ -45,11 +46,25 @@ async fn an_invitation_signs_its_address_up_confirmed_and_ready_to_sign_in() {
     let wired = wiring::wired();
     invited(&wired, ADA, TOKEN).await;
 
-    signs_up(&wired, TOKEN)
+    let (session, signed_in) = wired
+        .accounts
+        .sign_up_by_invitation(TOKEN, "Ada", HER_PASSWORD)
         .await
         .expect("an open invitation lets its address sign up");
 
     let id = holder(&wired, ADA).await.expect("the address is held");
+    assert_eq!(signed_in.session.account, id);
+    assert_eq!(signed_in.account.email().as_str(), ADA);
+    assert_eq!(
+        wired
+            .accounts
+            .signed_in(&session)
+            .await
+            .expect("reading should succeed")
+            .map(|signed_in| signed_in.session.account),
+        Some(id),
+        "whoever followed the link is signed in, needing nothing more"
+    );
     assert_eq!(
         wired
             .accounts

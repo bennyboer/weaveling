@@ -619,6 +619,7 @@ async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
         status = signed_in
             .server
             .post("/api/accounts/by-invitation")
+            .do_not_save_cookies()
             .json(&json!({ "token": token, "name": "Grace", "password": "another long password" }))
             .await
             .status_code();
@@ -636,6 +637,7 @@ async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
     signed_in
         .server
         .post("/api/sessions")
+        .do_not_save_cookies()
         .json(&json!({ "email": "grace@example.com", "password": "another long password" }))
         .await
         .assert_status_ok();
@@ -691,6 +693,7 @@ async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
     signed_in
         .server
         .post("/api/accounts/by-invitation")
+        .do_not_save_cookies()
         .json(&json!({ "token": token, "name": "Grace", "password": "another long password" }))
         .await
         .assert_status(StatusCode::CREATED);

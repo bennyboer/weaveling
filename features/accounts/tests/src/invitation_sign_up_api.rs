@@ -1,10 +1,10 @@
 use accounts_contract::SignUpRequest;
-use accounts_contract::{SignUpByInvitationRequest, refused};
+use accounts_contract::{SESSION_COOKIE, SignUpByInvitationRequest, SignedInDTO, refused, stage};
 use accounts_core::{
     EmailAddress, InvitationTicket, InvitationTickets, InvitationToken, SigningUp,
 };
 use axum::http::StatusCode;
-use axum::http::header::CONTENT_TYPE;
+use axum::http::header::{CONTENT_TYPE, SET_COOKIE};
 use axum_test::{TestResponse, TestServer};
 use serde_json::Value;
 use time::Duration;
@@ -51,13 +51,32 @@ fn refused_as(response: TestResponse, status: StatusCode, kind: &str) {
 }
 
 #[tokio::test]
-async fn an_invitation_makes_an_account_that_signs_in_at_once() {
+async fn an_invitation_makes_an_account_and_opens_its_session() {
     let (wired, server) = invited().await;
 
-    signs_up(&server, TOKEN)
-        .await
-        .assert_status(StatusCode::CREATED);
+    let response = signs_up(&server, TOKEN).await;
 
+    response.assert_status(StatusCode::CREATED);
+    let signed_in: SignedInDTO = response.json();
+    assert_eq!(
+        (
+            signed_in.name.as_str(),
+            signed_in.email.as_str(),
+            signed_in.stage.as_str()
+        ),
+        ("Ada", ADA, stage::SIGNED_IN)
+    );
+    let cookie = response
+        .maybe_header(SET_COOKIE)
+        .expect("a session is opened")
+        .to_str()
+        .expect("a cookie is plain text")
+        .to_owned();
+    assert!(
+        cookie.starts_with(&format!("{SESSION_COOKIE}=")),
+        "{cookie}"
+    );
+    assert!(cookie.contains("HttpOnly"), "{cookie}");
     wired
         .accounts
         .sign_in(ADA, HER_PASSWORD)
