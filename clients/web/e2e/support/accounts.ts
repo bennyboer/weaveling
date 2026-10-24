@@ -62,6 +62,7 @@ export type Server = {
   operator: boolean;
   listed: Listed[];
   invited: Invited[];
+  invitingWaits: number;
   pageSize: number;
 };
 
@@ -96,6 +97,7 @@ export async function aServerWithAccounts(
     operator: false,
     listed: [],
     invited: [],
+    invitingWaits: 0,
     pageSize: 100,
   };
 
@@ -183,6 +185,24 @@ export async function aServerWithAccounts(
     if (!server.operator) {
       return refusing(route, 403, "not-an-operator");
     }
+    if (route.request().method() === "POST") {
+      if (server.invitingWaits > 0) {
+        return refusing(route, 429, "too-many-tries", {
+          minutes: server.invitingWaits,
+        });
+      }
+      const { email } = route.request().postDataJSON();
+      const issued = new Date();
+      const invitation: Invited = {
+        id: `invitation_${100 + server.invited.length}`,
+        email: email.trim().toLowerCase(),
+        issued_at: issued.toISOString(),
+        until: new Date(issued.getTime() + 7 * 86_400_000).toISOString(),
+        status: "open",
+      };
+      server.invited.unshift(invitation);
+      return route.fulfill({ status: 201, json: invitation });
+    }
     const after = new URL(route.request().url()).searchParams.get("after");
     const from = after
       ? server.invited.findIndex((invitation) => invitation.id === after) + 1
@@ -194,6 +214,18 @@ export async function aServerWithAccounts(
         : null;
     return route.fulfill({ json: { invitations, next } });
   });
+  await page.route(
+    (url) => /^\/api\/invitations\/[^/]+$/.test(url.pathname),
+    async (route) => {
+      const id = new URL(route.request().url()).pathname.split("/")[3];
+      const at = server.invited.findIndex((invitation) => invitation.id === id);
+      if (at < 0) {
+        return refusing(route, 404, "invitation-not-found");
+      }
+      server.invited.splice(at, 1);
+      return route.fulfill({ status: 204 });
+    },
+  );
   await page.route(at("/api/instance/accounts"), async (route) => {
     if (!server.operator) {
       return refusing(route, 403, "not-an-operator");

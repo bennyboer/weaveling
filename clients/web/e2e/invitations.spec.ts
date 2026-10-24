@@ -77,7 +77,7 @@ test("the operator sees whom they invited, when, and how each stands", async ({
   await expect(row(page, "hedy@example.com")).toContainText(
     "Ran out on 17 Oct 2026",
   );
-  await expect(row(page, "ada@example.com").last()).toContainText(
+  await expect(row(page, "ada@example.com")).toContainText(
     "Not needed: this email address already has an account",
   );
   await expect(page.getByText("Nobody is invited just now.")).toHaveCount(0);
@@ -125,3 +125,98 @@ test("accounts and invitations are each a page of their own, kept on reload", as
   await expect(page).toHaveURL(/\/instance\/accounts$/);
   await expect(row(page, "Ada Lovelace")).toBeVisible();
 });
+
+test("an operator invites an address and sees it on the list at once", async ({
+  page,
+}) => {
+  const server = await anOperatorInviting(page, []);
+  const address = page.getByLabel("Email address");
+
+  await address.fill("Grace@Example.com");
+  await page.getByRole("button", { name: "Invite" }).click();
+
+  await expect(row(page, "grace@example.com")).toContainText("Open until");
+  await expect(address).toHaveValue("");
+  await expect(page.getByText("Nobody is invited just now.")).toHaveCount(0);
+  expect(server.invited.map((invitation) => invitation.email)).toEqual([
+    "grace@example.com",
+  ]);
+});
+
+test("an address invited too often is told how long to wait", async ({
+  page,
+}) => {
+  const server = await anOperatorInviting(page, []);
+  server.invitingWaits = 3;
+
+  await page.getByLabel("Email address").fill("grace@example.com");
+  await page.getByRole("button", { name: "Invite" }).click();
+
+  await expect(page.getByRole("alert")).toContainText(
+    "Please wait 3 minutes before trying again.",
+  );
+  await expect(page.getByLabel("Email address")).toHaveValue(
+    "grace@example.com",
+  );
+  await expect(row(page, "grace@example.com")).toHaveCount(0);
+});
+
+test("an operator withdraws an open or expired invitation, a declined one offers nothing to withdraw", async ({
+  page,
+}) => {
+  const server = await anOperatorInviting(page, [OPEN, DECLINED, EXPIRED]);
+
+  await expect(row(page, "ada@example.com")).toContainText(
+    "already has an account",
+  );
+  await expect(
+    row(page, "ada@example.com").getByRole("button", { name: "Withdraw" }),
+  ).toHaveCount(0);
+  await row(page, "grace@example.com")
+    .getByRole("button", { name: "Withdraw" })
+    .click();
+
+  await expect(row(page, "grace@example.com")).toHaveCount(0);
+  expect(server.invited.map((invitation) => invitation.id)).toEqual([
+    DECLINED.id,
+    EXPIRED.id,
+  ]);
+  await expect(
+    row(page, "hedy@example.com").getByRole("button", { name: "Withdraw" }),
+  ).toBeVisible();
+});
+
+for (const width of [1280, 320]) {
+  test(`the address to invite is one line, its button beside or below it at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await anOperatorInviting(page, []);
+
+    const field = await page.getByLabel("Email address").boundingBox();
+    const button = await page
+      .getByRole("button", { name: "Invite" })
+      .boundingBox();
+    const sections = await page
+      .getByRole("navigation", { name: "Sections" })
+      .boundingBox();
+    expect(field && button && sections).toBeTruthy();
+
+    expect(field!.height, "an address is a line, not a box").toBeLessThan(
+      button!.height * 1.5,
+    );
+    expect(Math.round(field!.x), "the field begins where the page does").toBe(
+      Math.round(sections!.x),
+    );
+    if (width >= 800) {
+      expect(
+        Math.round(field!.y + field!.height),
+        "the button sits beside the field",
+      ).toBe(Math.round(button!.y + button!.height));
+    } else {
+      expect(button!.y, "on a phone the button goes below").toBeGreaterThan(
+        field!.y + field!.height,
+      );
+    }
+  });
+}

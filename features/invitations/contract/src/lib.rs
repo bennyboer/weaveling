@@ -6,11 +6,6 @@ pub struct InviteRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-pub struct InvitedDTO {
-    pub id: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct InvitationSummaryDTO {
     pub id: String,
     pub email: String,

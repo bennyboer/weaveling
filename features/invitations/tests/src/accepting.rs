@@ -37,6 +37,7 @@ async fn invited(wired: &Wired) -> InvitationId {
         .issue(&an_operator(), ADA, ORIGIN)
         .await
         .expect("an operator may invite")
+        .id
 }
 
 async fn happened(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {

@@ -46,7 +46,7 @@ fn status_of(told: &str, declined_for: Option<&str>) -> Result<Status, ApiError>
     }
 }
 
-fn listed(summary: InvitationSummaryDTO) -> Result<ListedInvitation, ApiError> {
+pub fn listed(summary: InvitationSummaryDTO) -> Result<ListedInvitation, ApiError> {
     Ok(ListedInvitation {
         status: status_of(&summary.status, summary.declined_for.as_deref())?,
         issued_at: moment(&summary.issued_at)?,

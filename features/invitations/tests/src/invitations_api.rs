@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use axum::http::header::{ORIGIN, RETRY_AFTER};
 use axum_test::{TestResponse, TestServer};
 use eventsourcing::{Agent, AggregateId, EventStore, Version};
-use invitations_contract::{InviteRequest, InvitedDTO, refused};
+use invitations_contract::{InvitationSummaryDTO, InviteRequest, refused};
 use invitations_core::{InvitationEvent, InvitationId, KIND};
 use serde_json::Value;
 
@@ -47,7 +47,24 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
     let response = invite(&server, ADA).await;
 
     response.assert_status(StatusCode::CREATED);
-    let invited: InvitedDTO = response.json();
+    let invited: InvitationSummaryDTO = response.json();
+    assert_eq!(
+        (
+            invited.email.as_str(),
+            invited.issued_at.as_str(),
+            invited.until.as_str(),
+            invited.status.as_str(),
+            invited.declined_for,
+        ),
+        (
+            ADA,
+            "2023-11-14T22:13:20Z",
+            "2023-11-21T22:13:20Z",
+            "open",
+            None
+        ),
+        "the answer is the invitation as the list will show it, so the page need not wait for the list"
+    );
     assert!(
         wired.links_mailed_to(ADA)[0].starts_with("https://weaveling.example.com/?invitation=")
     );
@@ -83,7 +100,8 @@ async fn anyone_but_an_operator_is_refused() {
         .invitations
         .issue(&an_operator(), ADA, INSTANCE)
         .await
-        .expect("an operator may invite");
+        .expect("an operator may invite")
+        .id;
     let server = served_to(&wired, no_operator());
 
     refused_as(
@@ -140,7 +158,8 @@ async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all
         .invitations
         .issue(&an_operator(), ADA, INSTANCE)
         .await
-        .expect("an operator may invite");
+        .expect("an operator may invite")
+        .id;
     let server = served_to(&wired, an_operator());
 
     server
@@ -171,7 +190,8 @@ async fn an_invitation_taken_up_is_not_withdrawn() {
         .invitations
         .issue(&an_operator(), ADA, INSTANCE)
         .await
-        .expect("an operator may invite");
+        .expect("an operator may invite")
+        .id;
     wired
         .invitations
         .accept(

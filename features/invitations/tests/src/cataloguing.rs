@@ -58,6 +58,7 @@ impl Listing {
             .issue(&an_operator(), to, ORIGIN)
             .await
             .expect("an operator may invite")
+            .id
     }
 
     async fn listed(&self) -> Vec<InvitationSummary> {

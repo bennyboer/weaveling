@@ -211,7 +211,7 @@
   }
 }
 
-.operating .accounts .actions {
+.operating :is(.accounts, .invitations) .actions {
   grid-area: actions;
   display: flex;
   flex-wrap: wrap;
@@ -226,6 +226,20 @@
 
 .operating .more {
   margin-top: 1rem;
+}
+
+.operating .invite {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+
+  .field {
+    flex: 1 1 16rem;
+    margin: 0;
+  }
 }
 
 .operating .invitations .email {

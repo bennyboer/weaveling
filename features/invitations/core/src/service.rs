@@ -3,16 +3,16 @@ use std::sync::Arc;
 use acting::Acting;
 use clock::Clock;
 use email::{EmailAddress, InvalidEmailAddress};
-use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError};
+use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Version};
 use mailing::{Mail, Mailer, Unsent};
 use thiserror::Error;
 use throttling::{Rule, Throttles, ThrottlesError};
 use time::{Duration, OffsetDateTime};
 
-use crate::catalog::{CatalogError, InvitationCatalog, ListedInvitation};
+use crate::catalog::{CatalogError, InvitationCatalog, InvitationSummary, ListedInvitation};
 use crate::id::InvitationId;
 use crate::invitation::{
-    DeclineReason, Invitation, InvitationCommand, InvitationError, InvitationEvent,
+    DeclineReason, Invitation, InvitationCommand, InvitationError, InvitationEvent, Outcome,
 };
 use crate::token::InvitationToken;
 
@@ -68,7 +68,7 @@ impl InvitationService {
         by: &Acting,
         to: &str,
         origin: &str,
-    ) -> Result<InvitationId, InvitationServiceError> {
+    ) -> Result<InvitationSummary, InvitationServiceError> {
         operating(by)?;
         let to = EmailAddress::new(to)?;
         self.not_throttled(&to).await?;
@@ -76,7 +76,9 @@ impl InvitationService {
             .count(INVITING, to.as_str(), self.clock.now())
             .await?;
 
-        let id = InvitationId::generate(self.clock.now());
+        let now = self.clock.now();
+        let id = InvitationId::generate(now);
+        let until = now + Invitation::LASTS;
         let token = InvitationToken::drawn();
         let _landed = self
             .events
@@ -85,7 +87,7 @@ impl InvitationService {
                 InvitationCommand::Issue {
                     to: to.clone(),
                     digest: token.digest(),
-                    until: self.clock.now() + Invitation::LASTS,
+                    until,
                 },
                 &by.agent,
             )
@@ -94,7 +96,14 @@ impl InvitationService {
             .send(invitation_mail(&to, origin, &token))
             .await?;
 
-        Ok(id)
+        Ok(InvitationSummary {
+            id,
+            version: Version::of(1),
+            to,
+            issued_at: now,
+            until,
+            outcome: Outcome::Open,
+        })
     }
 
     pub async fn withdraw(

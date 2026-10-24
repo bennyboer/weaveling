@@ -26,7 +26,8 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
         .invitations
         .issue(&an_operator(), " Ada@Example.com ", ORIGIN)
         .await
-        .expect("an operator may invite");
+        .expect("an operator may invite")
+        .id;
 
     let links = wired.links_mailed_to(ADA);
     assert_eq!(links.len(), 1);
@@ -79,7 +80,8 @@ async fn only_an_operator_invites_or_withdraws() {
         .invitations
         .issue(&an_operator(), ADA, ORIGIN)
         .await
-        .expect("an operator may invite");
+        .expect("an operator may invite")
+        .id;
     assert!(matches!(
         wired.invitations.withdraw(&no_operator(), &id).await,
         Err(InvitationServiceError::NotAnOperator)
@@ -140,7 +142,8 @@ async fn an_operator_withdraws_an_invitation() {
         .invitations
         .issue(&an_operator(), ADA, ORIGIN)
         .await
-        .expect("an operator may invite");
+        .expect("an operator may invite")
+        .id;
 
     wired
         .invitations

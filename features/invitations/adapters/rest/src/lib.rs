@@ -7,8 +7,7 @@ use clock::text;
 use email::InvalidEmailAddress;
 use eventsourcing::ServiceError;
 use invitations_contract::{
-    InvitationPageDTO, InvitationSummaryDTO, InviteRequest, InvitedDTO, decline_reason, refused,
-    status,
+    InvitationPageDTO, InvitationSummaryDTO, InviteRequest, decline_reason, refused, status,
 };
 use invitations_core::{
     DeclineReason, InvitationError, InvitationId, InvitationService, InvitationServiceError,
@@ -29,7 +28,7 @@ async fn invite(
     Extension(acting): Extension<Acting>,
     headers: HeaderMap,
     Json(request): Json<InviteRequest>,
-) -> Result<(StatusCode, Json<InvitedDTO>), Problem> {
+) -> Result<(StatusCode, Json<InvitationSummaryDTO>), Problem> {
     let origin = headers
         .get(ORIGIN)
         .and_then(|origin| origin.to_str().ok())
@@ -40,12 +39,18 @@ async fn invite(
             )
         })?;
 
-    let id = invitations
+    let summary = invitations
         .issue(&acting, &request.email, origin)
         .await
         .map_err(problem_of)?;
 
-    Ok((StatusCode::CREATED, Json(InvitedDTO { id: id.to_string() })))
+    Ok((
+        StatusCode::CREATED,
+        Json(to_summary_dto(&ListedInvitation {
+            summary,
+            status: Status::Open,
+        })),
+    ))
 }
 
 pub const PAGE: usize = 100;

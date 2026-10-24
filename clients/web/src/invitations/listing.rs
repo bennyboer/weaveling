@@ -21,6 +21,8 @@ pub fn invitations_listing() -> impl IntoView {
     let invited = Invited::asked();
 
     (
+        inviting(invited),
+        move || invited.invite_refused.get().map(problem::problem),
         move || invited.refused.get().map(problem::problem),
         move || {
             (invited.loaded.get() && invited.invitations.with(Vec::is_empty)).then(|| {
@@ -34,7 +36,7 @@ pub fn invitations_listing() -> impl IntoView {
                 .invitations
                 .get()
                 .into_iter()
-                .map(listed)
+                .map(|invitation| listed(invited, invitation))
                 .collect_view()
         }),
         move || {
@@ -50,12 +52,43 @@ pub fn invitations_listing() -> impl IntoView {
     )
 }
 
-fn listed(invitation: ListedInvitation) -> impl IntoView {
+fn inviting(invited: Invited) -> impl IntoView {
+    let email = RwSignal::new(String::new());
+
+    html::form()
+        .class("invite")
+        .on(ev::submit, move |event| {
+            event.prevent_default();
+            invited.invite(email.get_untracked(), move || email.set(String::new()));
+        })
+        .child((
+            html::label().class("field").child((
+                html::span().child(speech::said("instance-invite-email")),
+                html::input()
+                    .r#type("email")
+                    .attr("autocomplete", "off")
+                    .required(true)
+                    .prop("value", move || email.get())
+                    .on(ev::input, move |event| {
+                        email.set(event_target_value(&event))
+                    }),
+            )),
+            html::button()
+                .r#type("submit")
+                .class("primary")
+                .disabled(move || invited.inviting.get())
+                .child(speech::said("instance-invite-confirm")),
+        ))
+}
+
+fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
     let issued = said_with(
         "instance-invitation-issued",
         &[("when", moment::human_time(invitation.issued_at))],
     );
     let until = moment::human_time(invitation.until);
+    let withdrawable = matches!(invitation.status, Status::Open | Status::Expired);
+    let id = invitation.id.clone();
     let (mark, told) = match invitation.status {
         Status::Open => (
             "mark",
@@ -79,5 +112,11 @@ fn listed(invitation: ListedInvitation) -> impl IntoView {
         html::div()
             .class("marks")
             .child(html::span().class(mark).child(told)),
+        html::div().class("actions").child(withdrawable.then(|| {
+            html::button()
+                .r#type("button")
+                .on(ev::click, move |_| invited.withdraw(id.clone()))
+                .child(speech::said("instance-invitation-withdraw"))
+        })),
     ))
 }
