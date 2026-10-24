@@ -1,4 +1,5 @@
 mod account_menu;
+pub mod invitation;
 mod listed;
 pub mod listing;
 mod lock_dialog;
@@ -10,6 +11,7 @@ pub mod unreachable;
 
 pub use account_menu::account_in_masthead;
 
+use accounts_contract::sign_up;
 use leptos::prelude::*;
 use leptos::task;
 
@@ -32,6 +34,22 @@ pub enum SignInState {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SigningUp {
+    Open,
+    ByInvitation,
+}
+
+impl SigningUp {
+    fn told(told: Option<&str>) -> Self {
+        match told {
+            None => Self::Open,
+            Some(told) if told == sign_up::OPEN => Self::Open,
+            Some(_) => Self::ByInvitation,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Screen {
     Blank,
     Unreachable,
@@ -42,6 +60,7 @@ pub enum Screen {
 #[derive(Clone, Copy)]
 pub struct CurrentSession {
     state: RwSignal<SignInState>,
+    signing_up: RwSignal<SigningUp>,
 }
 
 impl CurrentSession {
@@ -49,9 +68,14 @@ impl CurrentSession {
         self.state.get()
     }
 
+    pub fn signing_up(self) -> SigningUp {
+        self.signing_up.get()
+    }
+
     pub fn asked() -> Self {
         let session = Self {
             state: RwSignal::new(SignInState::Unknown),
+            signing_up: RwSignal::new(SigningUp::Open),
         };
         http::when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
         session.ask();
@@ -66,8 +90,13 @@ impl CurrentSession {
 
     fn ask(self) {
         task::spawn_local(async move {
-            self.state
-                .set(service::current().await.unwrap_or(SignInState::Unreachable));
+            match service::current().await {
+                Ok((state, told)) => {
+                    self.signing_up.set(SigningUp::told(told.as_deref()));
+                    self.state.set(state);
+                }
+                Err(_) => self.state.set(SignInState::Unreachable),
+            }
         });
     }
 
@@ -138,6 +167,18 @@ mod tests {
                 operator: false,
             })),
             Screen::Work
+        );
+    }
+
+    #[test]
+    fn signing_up_is_open_unless_the_server_says_otherwise_and_closed_for_anything_unknown() {
+        assert_eq!(SigningUp::told(None), SigningUp::Open);
+        assert_eq!(SigningUp::told(Some("open")), SigningUp::Open);
+        assert_eq!(SigningUp::told(Some("invitation")), SigningUp::ByInvitation);
+        assert_eq!(
+            SigningUp::told(Some("by-application")),
+            SigningUp::ByInvitation,
+            "a way in this page does not know is no reason to offer the open one"
         );
     }
 }

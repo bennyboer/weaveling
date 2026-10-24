@@ -214,7 +214,7 @@ fn invitation_mail(to: &EmailAddress, origin: &str, token: &InvitationToken) -> 
         to: to.to_string(),
         subject: "You are invited to Weaveling".to_owned(),
         body: format!(
-            "You are invited to sign up to the Weaveling instance at {origin}. Follow this link within seven days to do so: {origin}/?invitation={}\n\nIf you did not expect this, you can ignore this mail.",
+            "You are invited to sign up to the Weaveling instance at {origin}. Follow this link within seven days to do so: {origin}/invitation#{}\n\nIf you did not expect this, you can ignore this mail.",
             token.as_str()
         ),
     }

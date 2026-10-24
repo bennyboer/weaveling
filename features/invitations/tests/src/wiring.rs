@@ -66,7 +66,7 @@ impl Wired {
             .filter_map(|mail| {
                 mail.body
                     .split_whitespace()
-                    .find(|word| word.contains("?invitation="))
+                    .find(|word| word.contains("/invitation#"))
                     .map(str::to_owned)
             })
             .collect()
@@ -79,7 +79,7 @@ impl Wired {
             .expect("a link should have been mailed");
 
         InvitationToken::presented(
-            link.split_once("?invitation=")
+            link.split_once("/invitation#")
                 .expect("the link carries its token")
                 .1,
         )

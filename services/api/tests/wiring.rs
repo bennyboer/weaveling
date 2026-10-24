@@ -583,7 +583,7 @@ async fn an_operator_signed_in_on_the_server_invites_and_the_link_goes_to_the_pa
         .collect();
     assert_eq!(mailed.len(), 1);
     assert!(
-        mailed[0].contains("https://weaveling.example.com/?invitation="),
+        mailed[0].contains("https://weaveling.example.com/invitation#"),
         "{}",
         mailed[0]
     );
@@ -606,7 +606,7 @@ async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
         .map(|entry| fs::read_to_string(entry.expect("an entry").path()).expect("readable"))
         .find(|mail| mail.contains("grace@example.com"))
         .and_then(|mail| {
-            mail.split_once("?invitation=").map(|(_, rest)| {
+            mail.split_once("/invitation#").map(|(_, rest)| {
                 rest.chars()
                     .take_while(char::is_ascii_hexdigit)
                     .collect::<String>()
@@ -683,7 +683,7 @@ async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
         .map(|entry| fs::read_to_string(entry.expect("an entry").path()).expect("readable"))
         .find(|mail| mail.contains("grace@example.com"))
         .and_then(|mail| {
-            mail.split_once("?invitation=").map(|(_, rest)| {
+            mail.split_once("/invitation#").map(|(_, rest)| {
                 rest.chars()
                     .take_while(char::is_ascii_hexdigit)
                     .collect::<String>()

@@ -3,10 +3,13 @@ use fluent_bundle::FluentArgs;
 use leptos::prelude::*;
 use leptos::task;
 use leptos::{IntoView, component, ev, html};
+use leptos_router::NavigateOptions;
+use leptos_router::hooks;
 
-use crate::accounts::{CurrentSession, service};
+use crate::accounts::{CurrentSession, SigningUp, service};
 use crate::http::ApiError;
 use crate::problem;
+use crate::route;
 use crate::shell;
 use crate::speech;
 use crate::speech::Speech;
@@ -15,6 +18,7 @@ use crate::speech::Speech;
 enum Form {
     SignIn,
     SignUp,
+    Accept,
     EnterCode,
     AskReset,
     Reset,
@@ -25,6 +29,7 @@ struct Page {
     form: RwSignal<Form>,
     email: RwSignal<String>,
     notice: RwSignal<Option<&'static str>>,
+    invitation: RwSignal<Option<String>>,
 }
 
 impl Page {
@@ -36,10 +41,25 @@ impl Page {
 
 #[component]
 pub fn SignInPage() -> impl IntoView {
+    let location = hooks::use_location();
+    let invitation = (location.pathname.get_untracked() == route::INVITATION)
+        .then(|| {
+            location
+                .hash
+                .get_untracked()
+                .trim_start_matches('#')
+                .to_owned()
+        })
+        .filter(|token| !token.is_empty());
     let page = Page {
-        form: RwSignal::new(Form::SignIn),
+        form: RwSignal::new(if invitation.is_some() {
+            Form::Accept
+        } else {
+            Form::SignIn
+        }),
         email: RwSignal::new(String::new()),
         notice: RwSignal::new(None),
+        invitation: RwSignal::new(invitation),
     };
 
     (
@@ -49,6 +69,7 @@ pub fn SignInPage() -> impl IntoView {
             .child(move || match page.form.get() {
                 Form::SignIn => sign_in_form(page).into_any(),
                 Form::SignUp => sign_up_form(page).into_any(),
+                Form::Accept => accept_form(page).into_any(),
                 Form::EnterCode => code_form(page).into_any(),
                 Form::AskReset => ask_reset_form(page).into_any(),
                 Form::Reset => reset_form(page).into_any(),
@@ -107,9 +128,13 @@ fn sign_in_form(page: Page) -> impl IntoView {
         turning(speech::said("reset-instead"), move || {
             page.turn_to(Form::AskReset, None)
         }),
-        turning(speech::said("sign-up-instead"), move || {
-            page.turn_to(Form::SignUp, None)
-        }),
+        move || {
+            (session.signing_up() == SigningUp::Open).then(|| {
+                turning(speech::said("sign-up-instead"), move || {
+                    page.turn_to(Form::SignUp, None)
+                })
+            })
+        },
     )
 }
 
@@ -139,6 +164,65 @@ fn sign_up_form(page: Page) -> impl IntoView {
             (
                 field(speech::said("sign-up-name"), "text", "name", name),
                 field(speech::said("sign-in-email"), "email", "email", page.email),
+                field(
+                    speech::said("sign-in-password"),
+                    "password",
+                    "new-password",
+                    password,
+                ),
+                html::small()
+                    .class("hint")
+                    .child(speech::said("sign-up-password-hint")),
+                move || refused.get().map(problem::problem),
+                submitting(speech::said("sign-up-confirm"), asking),
+            ),
+        ),
+        turning(speech::said("sign-in-instead"), move || {
+            page.turn_to(Form::SignIn, None)
+        }),
+    )
+}
+
+fn accept_form(page: Page) -> impl IntoView {
+    let session = expect_context::<CurrentSession>();
+    let navigate = hooks::use_navigate();
+    let name = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
+    let refused = RwSignal::new(None::<ApiError>);
+    let asking = RwSignal::new(false);
+
+    let accept = move || {
+        let (token, named, typed) = (
+            page.invitation.get_untracked().unwrap_or_default(),
+            name.get_untracked(),
+            password.get_untracked(),
+        );
+        let navigate = navigate.clone();
+        asked(asking, refused, async move {
+            service::sign_up_by_invitation(&token, &named, &typed)
+                .await
+                .map(|account| {
+                    navigate(
+                        route::WORKSPACE,
+                        NavigateOptions {
+                            replace: true,
+                            ..Default::default()
+                        },
+                    );
+                    session.signed_in(account);
+                })
+        });
+    };
+
+    (
+        html::h1().child(speech::said("invitation-accept-heading")),
+        html::p()
+            .class("hint")
+            .child(speech::said("invitation-accept-hint")),
+        form(
+            accept,
+            (
+                field(speech::said("sign-up-name"), "text", "name", name),
                 field(
                     speech::said("sign-in-password"),
                     "password",

@@ -12,6 +12,7 @@ use leptos::{IntoView, ev, view};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::path;
 
+use crate::accounts::invitation::InvitationPage;
 use crate::accounts::sign_in::SignInPage;
 use crate::accounts::unreachable::UnreachablePage;
 use crate::accounts::{CurrentSession, Screen};
@@ -67,6 +68,7 @@ fn work(overlays: Overlays) -> impl IntoView {
                 path=path!("/")
                 view=move || WorkspacePage(WorkspacePageProps { workspace, overlays })
             />
+            <Route path=path!("/invitation") view=InvitationPage />
             <Route path=path!("/instance") view=InstancePage />
             <Route path=path!("/instance/accounts") view=InstanceAccountsPage />
             <Route path=path!("/instance/invitations") view=InstanceInvitationsPage />

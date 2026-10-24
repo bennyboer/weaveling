@@ -9,6 +9,7 @@ export const ADA = {
 export const HER_PASSWORD = "correct horse battery";
 export const THE_CODE = "123456";
 export const THE_OPERATOR_CODE = "346af3a2b90cbb3ab7cd3cb07ccc2a1f";
+export const THE_INVITATION = "5d1c0e7a9b3f4c6e8a2d7f1b0c9e3a5d";
 
 export type Listed = {
   id: string;
@@ -64,6 +65,9 @@ export type Server = {
   invited: Invited[];
   invitingWaits: number;
   pageSize: number;
+  signingUp: "open" | "invitation";
+  invitationRefused: { status: number; type: string } | null;
+  signedInAs: typeof ADA | null;
 };
 
 const refusing = (
@@ -99,10 +103,13 @@ export async function aServerWithAccounts(
     invited: [],
     invitingWaits: 0,
     pageSize: 100,
+    signingUp: "open",
+    invitationRefused: null,
+    signedInAs: null,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
-    route.fulfill({ json: { accounts: true } }),
+    route.fulfill({ json: { accounts: true, sign_up: server.signingUp } }),
   );
   await page.route(at("/api/sessions/current"), async (route) => {
     if (route.request().method() === "DELETE") {
@@ -111,7 +118,9 @@ export async function aServerWithAccounts(
       return route.fulfill({ status: 204 });
     }
     return server.signedIn
-      ? route.fulfill({ json: { ...ADA, operator: server.operator } })
+      ? route.fulfill({
+          json: { ...(server.signedInAs ?? ADA), operator: server.operator },
+        })
       : refusing(route, 401, "not-signed-in");
   });
   await page.route(at("/api/sessions"), async (route) => {
@@ -124,6 +133,36 @@ export async function aServerWithAccounts(
     }
     server.signedIn = true;
     return route.fulfill({ json: { ...ADA, operator: server.operator } });
+  });
+  await page.route(at("/api/accounts/by-invitation"), async (route) => {
+    const { token, name, password } = route.request().postDataJSON();
+    if (server.invitationRefused) {
+      return refusing(
+        route,
+        server.invitationRefused.status,
+        server.invitationRefused.type,
+      );
+    }
+    if (token !== THE_INVITATION) {
+      return refusing(route, 422, "invitation-invalid");
+    }
+    if (password.length < 12) {
+      return refusing(route, 422, "password-too-short", {
+        min: 12,
+        actual: password.length,
+      });
+    }
+    server.signedIn = true;
+    server.signedInAs = {
+      account: "account_9",
+      name,
+      email: "grace@example.com",
+      stage: "signed-in",
+    };
+    return route.fulfill({
+      status: 201,
+      json: { ...server.signedInAs, operator: false },
+    });
   });
   await page.route(at("/api/accounts"), async (route) => {
     const { email, name, password } = route.request().postDataJSON();

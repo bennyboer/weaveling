@@ -1,6 +1,7 @@
 use accounts_contract::{
     AccountPageDTO, BecomeOperatorRequest, LockRequest, NewPasswordRequest, PasswordResetRequest,
-    SendCodeRequest, ServiceModeDTO, SignInRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest,
+    SendCodeRequest, ServiceModeDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest,
+    SignedInDTO, VerifyEmailRequest,
 };
 use gloo_net::http::Request;
 
@@ -11,6 +12,7 @@ use crate::http::ApiError;
 
 const MODE: &str = "/api/service/mode";
 const ACCOUNTS: &str = "/api/accounts";
+const BY_INVITATION: &str = "/api/accounts/by-invitation";
 const VERIFICATION: &str = "/api/accounts/verification";
 const NEW_CODE: &str = "/api/accounts/verification/code";
 const PASSWORD_RESET: &str = "/api/accounts/password-reset";
@@ -22,19 +24,34 @@ const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const SUBJECT: &str = "session";
 const ACCOUNT: &str = "account";
 
-pub async fn current() -> Result<SignInState, ApiError> {
+pub async fn current() -> Result<(SignInState, Option<String>), ApiError> {
     let mode: ServiceModeDTO = http::parsed(http::sent(Request::get(MODE)).await?, SUBJECT).await?;
     if !mode.accounts {
-        return Ok(SignInState::NoAccounts);
+        return Ok((SignInState::NoAccounts, mode.sign_up));
     }
 
     let response = http::sent(Request::get(CURRENT)).await?;
-    match response.status() {
-        401 => Ok(SignInState::SignedOut),
-        _ => Ok(SignInState::SignedIn(as_signed_in_account(
-            http::parsed(response, SUBJECT).await?,
-        ))),
-    }
+    let state = match response.status() {
+        401 => SignInState::SignedOut,
+        _ => SignInState::SignedIn(as_signed_in_account(http::parsed(response, SUBJECT).await?)),
+    };
+
+    Ok((state, mode.sign_up))
+}
+
+pub async fn sign_up_by_invitation(
+    token: &str,
+    name: &str,
+    password: &str,
+) -> Result<SignedInAccount, ApiError> {
+    let payload = SignUpByInvitationRequest {
+        token: token.to_owned(),
+        name: name.to_owned(),
+        password: password.to_owned(),
+    };
+    let response = http::sent_with(Request::post(BY_INVITATION), &payload).await?;
+
+    Ok(as_signed_in_account(http::parsed(response, SUBJECT).await?))
 }
 
 pub async fn sign_in(email: &str, password: &str) -> Result<SignedInAccount, ApiError> {

@@ -4,6 +4,7 @@ use crate::scenes::model::SceneId;
 use crate::speech;
 
 pub const WORKSPACE: &str = "/";
+pub const INVITATION: &str = "/invitation";
 pub const INSTANCE_ACCOUNTS: &str = "/instance/accounts";
 pub const INSTANCE_INVITATIONS: &str = "/instance/invitations";
 

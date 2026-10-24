@@ -32,7 +32,7 @@ async fn an_operator_invites_an_address_and_it_is_mailed_a_link_to_the_instance(
     let links = wired.links_mailed_to(ADA);
     assert_eq!(links.len(), 1);
     assert!(
-        links[0].starts_with("https://weaveling.example.com/?invitation="),
+        links[0].starts_with("https://weaveling.example.com/invitation#"),
         "{}",
         links[0]
     );
@@ -60,7 +60,7 @@ async fn the_link_is_made_from_the_origin_however_it_ends() {
         .expect("an operator may invite");
 
     assert!(
-        wired.links_mailed_to(ADA)[0].starts_with("https://weaveling.example.com/?invitation="),
+        wired.links_mailed_to(ADA)[0].starts_with("https://weaveling.example.com/invitation#"),
         "{:?}",
         wired.links_mailed_to(ADA)
     );

@@ -65,9 +65,7 @@ async fn an_operator_invites_and_the_link_is_made_from_the_page_it_was_sent_from
         ),
         "the answer is the invitation as the list will show it, so the page need not wait for the list"
     );
-    assert!(
-        wired.links_mailed_to(ADA)[0].starts_with("https://weaveling.example.com/?invitation=")
-    );
+    assert!(wired.links_mailed_to(ADA)[0].starts_with("https://weaveling.example.com/invitation#"));
     let id: InvitationId = invited.id.parse().expect("the id told is an invitation's");
     let issued = wired
         .store
