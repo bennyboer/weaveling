@@ -50,7 +50,7 @@ async function anOperatorInviting(
       .getByRole("banner")
       .getByRole("button", { name: "Account: Ada Lovelace" }),
   ).toBeVisible();
-  await page.goto("/instance");
+  await page.goto("/instance/invitations");
 
   return server;
 }
@@ -64,8 +64,10 @@ test("the operator sees whom they invited, when, and how each stands", async ({
   await anOperatorInviting(page, [OPEN, DECLINED, EXPIRED]);
 
   await expect(
-    page.getByRole("heading", { name: "Invitations" }),
-  ).toBeVisible();
+    page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("link", { name: "Invitations" }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(row(page, "grace@example.com")).toContainText(
     "Invited on 23 Oct 2026",
   );
@@ -97,4 +99,29 @@ test("a long list of invitations comes a page at a time", async ({ page }) => {
 
   await expect(row(page, "hedy@example.com")).toBeVisible();
   await expect(more).toHaveCount(0);
+});
+
+test("accounts and invitations are each a page of their own, kept on reload", async ({
+  page,
+}) => {
+  const server = await anOperatorInviting(page, [OPEN]);
+  server.listed = [];
+  const sections = page.getByRole("navigation", { name: "Sections" });
+
+  await page.goto("/instance");
+  await expect(page).toHaveURL(/\/instance\/accounts$/);
+  await expect(row(page, "Ada Lovelace")).toBeVisible();
+  await expect(row(page, "grace@example.com")).toHaveCount(0);
+
+  await sections.getByRole("link", { name: "Invitations" }).click();
+  await expect(page).toHaveURL(/\/instance\/invitations$/);
+  await expect(row(page, "grace@example.com")).toBeVisible();
+  await expect(row(page, "Ada Lovelace")).toHaveCount(0);
+
+  await page.reload();
+  await expect(row(page, "grace@example.com")).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL(/\/instance\/accounts$/);
+  await expect(row(page, "Ada Lovelace")).toBeVisible();
 });

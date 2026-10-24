@@ -12,7 +12,6 @@ use leptos::{IntoView, ev, view};
 use leptos_router::components::{Route, Router, Routes};
 use leptos_router::path;
 
-use crate::accounts::instance::InstancePage;
 use crate::accounts::sign_in::SignInPage;
 use crate::accounts::unreachable::UnreachablePage;
 use crate::accounts::{CurrentSession, Screen};
@@ -23,6 +22,7 @@ use crate::app::missing::MissingPage;
 use crate::app::outline::OutlinePage;
 use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
 use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
+use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePage};
 use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
@@ -68,6 +68,8 @@ fn work(overlays: Overlays) -> impl IntoView {
                 view=move || WorkspacePage(WorkspacePageProps { workspace, overlays })
             />
             <Route path=path!("/instance") view=InstancePage />
+            <Route path=path!("/instance/accounts") view=InstanceAccountsPage />
+            <Route path=path!("/instance/invitations") view=InstanceInvitationsPage />
             <Route path=path!("/projects/:project") view=ProjectPage />
             <Route path=path!("/projects/:project/board") view=BoardPage />
             <Route path=path!("/projects/:project/outline") view=OutlinePage />

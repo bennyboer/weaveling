@@ -62,7 +62,7 @@ test("the operator finds the way back through the account's menu", async ({
   await accountButton(page).click();
   await operatorInMenu(page).click();
 
-  await expect(page).toHaveURL(/\/instance$/);
+  await expect(page).toHaveURL(/\/instance\/accounts$/);
   await expect(
     page.getByRole("heading", { name: "Manage instance" }),
   ).toBeVisible();

@@ -38,7 +38,11 @@ const row = (page: Page, name: string) =>
 test("the operator sees every account with what it is", async ({ page }) => {
   await anOperatorWith(page);
 
-  await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
+  await expect(
+    page
+      .getByRole("navigation", { name: "Sections" })
+      .getByRole("link", { name: "Accounts" }),
+  ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("listitem")).toHaveCount(3);
   await expect(row(page, "Hedy Lamarr")).toContainText("hedy@example.com");
   await expect(row(page, "Hedy Lamarr")).toContainText("Address not confirmed");

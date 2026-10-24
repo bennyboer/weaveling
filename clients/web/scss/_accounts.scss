@@ -98,7 +98,31 @@
   margin-bottom: 1.5rem;
 }
 
-.operating:has(> .accounts, > .invitations) {
+.operating .sections {
+  display: flex;
+  gap: 0.25rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--line);
+
+  a {
+    margin-bottom: -1px;
+    padding: 0.5rem 0.9rem;
+    border-bottom: 2px solid transparent;
+    color: var(--muted);
+    text-decoration: none;
+
+    &:hover {
+      color: inherit;
+    }
+
+    &[aria-current="page"] {
+      border-bottom-color: currentColor;
+      color: inherit;
+    }
+  }
+}
+
+.operating:has(> .sections) {
   width: min(44rem, 100% - 2rem);
 }
 

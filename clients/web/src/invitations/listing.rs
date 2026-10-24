@@ -21,7 +21,6 @@ pub fn invitations_listing() -> impl IntoView {
     let invited = Invited::asked();
 
     (
-        html::h2().child(speech::said("instance-invitations-heading")),
         move || invited.refused.get().map(problem::problem),
         move || {
             (invited.loaded.get() && invited.invitations.with(Vec::is_empty)).then(|| {

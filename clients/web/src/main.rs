@@ -7,6 +7,7 @@ mod drawer;
 mod http;
 mod icons;
 mod ideas;
+mod instance;
 mod invitations;
 mod kept;
 mod live;

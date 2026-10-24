@@ -1,11 +1,10 @@
 mod account_menu;
-pub mod instance;
 mod listed;
-mod listing;
+pub mod listing;
 mod lock_dialog;
 mod role_dialog;
 mod roster;
-mod service;
+pub mod service;
 pub mod sign_in;
 pub mod unreachable;
 
@@ -46,6 +45,10 @@ pub struct CurrentSession {
 }
 
 impl CurrentSession {
+    pub fn state(self) -> SignInState {
+        self.state.get()
+    }
+
     pub fn asked() -> Self {
         let session = Self {
             state: RwSignal::new(SignInState::Unknown),
@@ -76,7 +79,7 @@ impl CurrentSession {
         self.state.set(SignInState::SignedIn(account));
     }
 
-    fn became_operator(self) {
+    pub fn became_operator(self) {
         self.state.update(|state| {
             if let SignInState::SignedIn(account) = state {
                 account.operator = true;

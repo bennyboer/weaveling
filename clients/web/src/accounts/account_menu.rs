@@ -64,7 +64,7 @@ fn account_menu(
                         html::hr(),
                         account.operator.then(|| {
                             view! {
-                                <A href=route::INSTANCE attr:role="menuitem">
+                                <A href=route::INSTANCE_ACCOUNTS attr:role="menuitem">
                                     {speech::said("account-menu-operator")}
                                 </A>
                             }

@@ -472,6 +472,7 @@ refused-lock-reason-control-character = Um motivo não pode conter caracteres de
 refused-lock-reason-too-long = Um motivo pode ter no máximo { $max } caracteres; este tem { $actual }.
 refused-account-id-invalid = Este não é o identificador de uma conta.
 refused-account-not-found = Essa conta não existe.
+instance-sections = Seções
 instance-accounts-heading = Contas
 instance-accounts-more = Mostrar mais
 instance-account-signed-up = Cadastrada em { $when }

@@ -27,7 +27,6 @@ pub fn accounts_listing() -> impl IntoView {
     };
 
     (
-        html::h2().child(speech::said("instance-accounts-heading")),
         move || roster.refused.get().map(problem::problem),
         html::ul().class("accounts").child(move || {
             roster

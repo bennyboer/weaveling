@@ -1,7 +1,8 @@
 use leptos::prelude::*;
 use leptos::task;
 use leptos::{IntoView, component, ev, html, view};
-use leptos_router::components::A;
+use leptos_router::NavigateOptions;
+use leptos_router::components::{A, Redirect};
 
 use crate::accounts::{CurrentSession, SignInState, listing, service};
 use crate::http::ApiError;
@@ -11,31 +12,73 @@ use crate::route;
 use crate::shell;
 use crate::speech;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Section {
+    Accounts,
+    Invitations,
+}
+
 #[component]
 pub fn InstancePage() -> impl IntoView {
+    view! { <Redirect path=route::INSTANCE_ACCOUNTS options=replacing() /> }
+}
+
+#[component]
+pub fn InstanceAccountsPage() -> impl IntoView {
+    instance_page(Section::Accounts)
+}
+
+#[component]
+pub fn InstanceInvitationsPage() -> impl IntoView {
+    instance_page(Section::Invitations)
+}
+
+fn replacing() -> NavigateOptions {
+    NavigateOptions {
+        replace: true,
+        ..Default::default()
+    }
+}
+
+fn instance_page(section: Section) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
 
     (
         shell::masthead(None),
         html::main()
             .class("operating")
-            .child(move || match session.state.get() {
-                SignInState::SignedIn(account) if account.operator => operating().into_any(),
+            .child(move || match session.state() {
+                SignInState::SignedIn(account) if account.operator => operating(section).into_any(),
                 SignInState::SignedIn(_) => becoming(session).into_any(),
                 _ => without_accounts().into_any(),
             }),
     )
 }
 
-fn operating() -> impl IntoView {
+fn operating(section: Section) -> impl IntoView {
     (
         html::h1().child(speech::said("operator-heading")),
         html::p()
             .class("hint")
             .child(speech::said("operator-you-are")),
-        listing::accounts_listing(),
-        invitations::listing::invitations_listing(),
+        sections(),
+        match section {
+            Section::Accounts => listing::accounts_listing().into_any(),
+            Section::Invitations => invitations::listing::invitations_listing().into_any(),
+        },
     )
+}
+
+fn sections() -> impl IntoView {
+    html::nav()
+        .class("sections")
+        .attr("aria-label", move || speech::say("instance-sections"))
+        .child(view! {
+            <A href=route::INSTANCE_ACCOUNTS>{speech::said("instance-accounts-heading")}</A>
+            <A href=route::INSTANCE_INVITATIONS>
+                {speech::said("instance-invitations-heading")}
+            </A>
+        })
 }
 
 fn becoming(session: CurrentSession) -> impl IntoView {
