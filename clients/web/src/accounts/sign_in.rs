@@ -56,6 +56,10 @@ pub fn SignInPage() -> impl IntoView {
     let page = Page {
         form: RwSignal::new(if invitation.is_some() {
             Form::Accept
+        } else if location.pathname.get_untracked() == route::SETUP
+            && expect_context::<CurrentSession>().operator_wanted()
+        {
+            Form::SetUp
         } else {
             Form::SignIn
         }),
@@ -153,13 +157,11 @@ fn sign_in_form(page: Page) -> impl IntoView {
             })
         },
         move || {
-            (session.signing_up() == SigningUp::ByInvitation && session.operator_wanted()).then(
-                || {
-                    turning(speech::said("set-up-instead"), move || {
-                        page.turn_to(Form::SetUp, None)
-                    })
-                },
-            )
+            session.operator_wanted().then(|| {
+                turning(speech::said("set-up-instead"), move || {
+                    page.turn_to(Form::SetUp, None)
+                })
+            })
         },
     )
 }

@@ -436,6 +436,7 @@ set-up-instead = Configurar esta instância do Weaveling
 set-up-heading = Configurar esta instância do Weaveling
 set-up-hint = Ninguém opera esta instância do Weaveling ainda. Crie uma conta com o código do log do servidor; assim que seu endereço for confirmado, você passa a operá-la.
 set-up-code = Código do log do servidor
+set-up-done = Esta instância do Weaveling já está configurada: alguém a opera. Quem a opera pode torná-lo operador.
 invitation-accept-heading = Você recebeu um convite
 invitation-accept-hint = Escolha seu nome e uma senha. Sua conta usará o e-mail para o qual o convite foi enviado.
 invitation-signed-in = Você já entrou como { $email }. Um convite cria uma conta nova: para aceitá-lo, saia e abra o link de novo.

@@ -27,6 +27,7 @@ use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePag
 use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
+use crate::setup::SetUpPage;
 use crate::shell;
 use crate::speech::Speech;
 
@@ -69,6 +70,7 @@ fn work(overlays: Overlays) -> impl IntoView {
                 view=move || WorkspacePage(WorkspacePageProps { workspace, overlays })
             />
             <Route path=path!("/invitation") view=InvitationPage />
+            <Route path=path!("/setup") view=SetUpPage />
             <Route path=path!("/instance") view=InstancePage />
             <Route path=path!("/instance/accounts") view=InstanceAccountsPage />
             <Route path=path!("/instance/invitations") view=InstanceInvitationsPage />

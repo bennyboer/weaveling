@@ -436,6 +436,7 @@ set-up-instead = Set up this Weaveling instance
 set-up-heading = Set up this Weaveling instance
 set-up-hint = Nobody runs this Weaveling instance yet. Sign up with the code from the server's log; once your address is confirmed, you are its operator.
 set-up-code = Code from the server's log
+set-up-done = This Weaveling instance is set up already: someone runs it. An operator can make you one.
 invitation-accept-heading = You have been invited
 invitation-accept-hint = Choose your name and a password. Your account uses the email address the invitation came to.
 invitation-signed-in = You are already signed in as { $email }. An invitation makes a new account: to accept it, sign out and open the link again.

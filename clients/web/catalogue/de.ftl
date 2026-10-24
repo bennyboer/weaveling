@@ -436,6 +436,7 @@ set-up-instead = Diese Weaveling-Instanz einrichten
 set-up-heading = Diese Weaveling-Instanz einrichten
 set-up-hint = Noch verwaltet niemand diese Weaveling-Instanz. Registriere dich mit dem Code aus dem Server-Log; sobald deine Adresse bestätigt ist, verwaltest du sie.
 set-up-code = Code aus dem Server-Log
+set-up-done = Diese Weaveling-Instanz ist schon eingerichtet: Jemand verwaltet sie. Wer sie verwaltet, kann dich zum Verwalter ernennen.
 invitation-accept-heading = Du bist eingeladen
 invitation-accept-hint = Wähle deinen Namen und ein Passwort. Dein Konto nutzt die E-Mail-Adresse, an die die Einladung ging.
 invitation-signed-in = Du bist schon als { $email } angemeldet. Eine Einladung legt ein neues Konto an: Um sie anzunehmen, melde dich ab und öffne den Link noch einmal.

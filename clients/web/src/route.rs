@@ -5,6 +5,7 @@ use crate::speech;
 
 pub const WORKSPACE: &str = "/";
 pub const INVITATION: &str = "/invitation";
+pub const SETUP: &str = "/setup";
 pub const INSTANCE_ACCOUNTS: &str = "/instance/accounts";
 pub const INSTANCE_INVITATIONS: &str = "/instance/invitations";
 

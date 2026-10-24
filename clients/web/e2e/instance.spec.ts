@@ -242,9 +242,10 @@ test("an operator giving up the role is no longer shown the instance", async ({
     .getByRole("button", { name: "Take away the role" })
     .click();
 
-  await expect(
-    page.getByRole("heading", { name: "Become the operator" }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(/\/setup$/);
+  await expect(page.getByRole("main")).toContainText(
+    "This Weaveling instance is set up already",
+  );
   expect(server.operator).toBe(false);
 });
 

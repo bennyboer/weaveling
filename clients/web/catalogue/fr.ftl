@@ -436,6 +436,7 @@ set-up-instead = Configurer cette instance de Weaveling
 set-up-heading = Configurer cette instance de Weaveling
 set-up-hint = Personne n’opère encore cette instance de Weaveling. Créez un compte avec le code du journal du serveur ; dès votre adresse confirmée, vous en serez l’opérateur.
 set-up-code = Code du journal du serveur
+set-up-done = Cette instance de Weaveling est déjà configurée : quelqu’un l’opère. Un opérateur peut vous nommer opérateur.
 invitation-accept-heading = Vous avez reçu une invitation
 invitation-accept-hint = Choisissez votre nom et un mot de passe. Votre compte utilisera l’adresse e-mail à laquelle l’invitation a été envoyée.
 invitation-signed-in = Vous êtes déjà connecté en tant que { $email }. Une invitation crée un nouveau compte : pour l’accepter, déconnectez-vous et rouvrez le lien.

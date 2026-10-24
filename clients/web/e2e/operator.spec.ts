@@ -19,6 +19,7 @@ const operatorInMenu = (page: Page) =>
 
 async function signedIn(page: Page) {
   const server = await aServerWithAccounts(page);
+  server.operatorWanted = true;
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
   await expect(accountButton(page)).toBeVisible();
@@ -40,6 +41,7 @@ test("the code from the log makes whoever is signed in the operator", async ({
   await expect(operatorInMenu(page)).toHaveCount(0);
 
   await page.goto("/instance");
+  await expect(page).toHaveURL(/\/setup$/);
   await expect(
     page.getByRole("heading", { name: "Become the operator" }),
   ).toBeVisible();
@@ -48,6 +50,7 @@ test("the code from the log makes whoever is signed in the operator", async ({
   await expect(
     page.getByRole("heading", { name: "Manage instance" }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/instance\/accounts$/);
   expect(server.operator).toBe(true);
 });
 

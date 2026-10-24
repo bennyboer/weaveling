@@ -19,6 +19,7 @@ mod projects;
 mod refusals;
 mod route;
 mod scenes;
+mod setup;
 mod shell;
 mod speech;
 mod statistics;

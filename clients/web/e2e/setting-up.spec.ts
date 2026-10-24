@@ -6,6 +6,7 @@ import {
   THE_CODE,
   THE_OPERATOR_CODE,
   aServerWithAccounts,
+  signIn,
   type Server,
 } from "./support/accounts";
 
@@ -80,20 +81,28 @@ test("once an instance has an operator, nobody is offered to set it up", async (
   ).toHaveCount(0);
 });
 
-test("where anyone may sign up, setting up is not offered either", async ({
+test("where anyone may sign up, setting up is offered beside signing up while nobody runs the instance", async ({
   page,
 }) => {
   const server = await aServerWithAccounts(page);
   server.operatorWanted = true;
-
   await page.goto("/");
 
   await expect(
     page.getByRole("button", { name: "No account yet? Sign up" }),
   ).toBeVisible();
+  await setUp(page, THE_OPERATOR_CODE);
   await expect(
-    page.getByRole("button", { name: "Set up this Weaveling instance" }),
-  ).toHaveCount(0);
+    page.getByRole("heading", { name: "Confirm your address" }),
+  ).toBeVisible();
+  await page.getByLabel("Code", { exact: true }).fill(THE_CODE);
+  await page.getByLabel("Password").fill(HER_PASSWORD);
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+
+  await expect(
+    page.getByRole("heading", { name: "Manage instance" }),
+  ).toBeVisible();
+  expect(server.operator).toBe(true);
 });
 
 test("the word under the heading stands apart from the first field", async ({
@@ -124,4 +133,59 @@ test("the word under the heading stands apart from the first field", async ({
     field!.y - (hint!.y + hint!.height),
     "as much room as between one field and the next",
   ).toBeGreaterThanOrEqual(between!.y - (code!.y + code!.height));
+});
+
+test("setting up has an address of its own", async ({ page }) => {
+  await aFreshInstanceByInvitation(page);
+
+  await page.goto("/setup");
+
+  await expect(
+    page.getByRole("heading", { name: "Set up this Weaveling instance" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Code from the server's log")).toBeVisible();
+});
+
+test("signed in while nobody runs the instance, the menu leads to becoming its operator", async ({
+  page,
+}) => {
+  const server = await aServerWithAccounts(page);
+  server.operatorWanted = true;
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "Account: Ada Lovelace" })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Set up this Weaveling instance" })
+    .click();
+
+  await expect(page).toHaveURL(/\/setup$/);
+  await expect(
+    page.getByRole("heading", { name: "Become the operator" }),
+  ).toBeVisible();
+});
+
+test("signed in where someone runs the instance, setting up says so", async ({
+  page,
+}) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "Account: Ada Lovelace" })
+    .click();
+  await expect(
+    page.getByRole("menuitem", { name: "Set up this Weaveling instance" }),
+  ).toHaveCount(0);
+
+  await page.goto("/setup");
+
+  await expect(page.getByRole("main")).toContainText(
+    "This Weaveling instance is set up already",
+  );
+  await expect(page.getByLabel("Code")).toHaveCount(0);
 });
