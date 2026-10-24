@@ -1,0 +1,14 @@
+[package]
+name = "weaveling-members-catalog"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+members-core = { version = "0.1.0", path = "../../core", package = "weaveling-members-core" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

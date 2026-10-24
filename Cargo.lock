@@ -4285,13 +4285,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-members-catalog"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-members-core",
+]
+
+[[package]]
 name = "weaveling-members-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "indexmap",
  "thiserror",
  "time",
  "weaveling-eventsourcing",
+]
+
+[[package]]
+name = "weaveling-members-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "weaveling-eventsourcing",
+ "weaveling-members-core",
 ]
 
 [[package]]

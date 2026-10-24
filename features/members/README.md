@@ -10,6 +10,8 @@ Who may work in a project, and as what.
 
 **Told again, nothing changes:** joining in the role one has, changing a role to what it is, and leaving or removing someone gone already are no events, since invitations are heard at least once. Joining in another role than one has is refused; that is a change of role.
 
-Being built in [slice 4](../../ROADMAP.md#milestone-17--accounts-members-and-roles): the domain stands. The store, the read model of who is in which project, founding on `project.created` and the `Authorizer` follow.
+**Who is in which project as what is a read model** (`MembershipCatalog`), kept as each project's members whole, `ProjectMembers`, by their latest version: the `Authorizer` asks it for one account's role in one project, and the projects list for every project an account is in, its `memberships_of`, ordered by project. A newer list replaces the older whole, so whoever left is gone with it; an older one heard late changes nothing.
 
-**Crates:** `core` (aggregate).
+Being built in [slice 4](../../ROADMAP.md#milestone-17--accounts-members-and-roles): the domain, the stored-event codec and the read model in memory stand. The read model on PostgreSQL and SQLite, founding on `project.created` and the `Authorizer` follow.
+
+**Crates:** `core` (aggregate, read-model port) · `adapters/store` (stored-event codec) · `adapters/catalog` (the read model in memory).
