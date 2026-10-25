@@ -1,4 +1,7 @@
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
 use std::sync::Arc;
+use std::time::Duration;
 
 use clock::Clock;
 use thiserror::Error;
@@ -43,7 +46,16 @@ pub struct EventSourcingService<A: Aggregate> {
     clock: Arc<dyn Clock>,
 }
 
-const ATTEMPTS: u8 = 4;
+const ATTEMPTS: u8 = 8;
+const FIRST_PAUSE: Duration = Duration::from_millis(10);
+const LONGEST_PAUSE: Duration = Duration::from_millis(100);
+
+fn pause_after(attempt: u8) -> Duration {
+    let longest = (FIRST_PAUSE * (1 << (attempt - 1))).min(LONGEST_PAUSE);
+    let drawn = RandomState::new().build_hasher().finish();
+
+    longest.mul_f64((drawn % 1_000) as f64 / 1_000.0)
+}
 
 type Outcome<A> = Result<Appended<<A as Aggregate>::Event>, ServiceError<<A as Aggregate>::Error>>;
 type Reached<A> = Result<Version, ServiceError<<A as Aggregate>::Error>>;
@@ -111,9 +123,11 @@ where
     where
         A::Command: Clone,
     {
-        for _ in 1..ATTEMPTS {
+        for attempt in 1..ATTEMPTS {
             match self.once(aggregate, command.clone(), agent).await {
-                Err(ServiceError::Store(StoreError::Outdated { .. })) => continue,
+                Err(ServiceError::Store(StoreError::Outdated { .. })) => {
+                    tokio::time::sleep(pause_after(attempt)).await;
+                }
                 settled => return settled,
             }
         }

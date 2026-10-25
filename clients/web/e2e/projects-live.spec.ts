@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { API } from "./support/shell";
+import { withAccounts } from "./support/signed-in";
 
 const aTitle = (of: string) => `${of} ${crypto.randomUUID().slice(0, 8)}`;
 
@@ -31,7 +32,10 @@ async function aProject(page: Page, name: string) {
 function listed(page: Page): () => number {
   let times = 0;
   page.on("request", (request) => {
-    if (request.method() === "GET" && new URL(request.url()).pathname === "/api/projects") {
+    if (
+      request.method() === "GET" &&
+      new URL(request.url()).pathname === "/api/projects"
+    ) {
       times += 1;
     }
   });
@@ -50,7 +54,10 @@ async function aWorkspaceHearingOnly(
     const server = socket.connectToServer();
     server.onMessage((frame) => {
       const told = JSON.parse(String(frame));
-      if (told.event?.name === "STARTED" && String(told.event.project_name).startsWith(named)) {
+      if (
+        told.event?.name === "STARTED" &&
+        String(told.event.project_name).startsWith(named)
+      ) {
         mine.add(told.of);
       }
       if (!mine.has(told.of)) {
@@ -65,6 +72,13 @@ async function aWorkspaceHearingOnly(
   const asks = listed(page);
   await page.goto("/");
   await expect.poll(asks, { message: "asked once, as it connects" }).toBe(1);
+  await expect(
+    page
+      .getByRole("listitem")
+      .first()
+      .or(page.getByText("No projects yet.", { exact: false })),
+    "the list has arrived, so a change told now is not one told while it is on its way",
+  ).toBeVisible();
 
   return { asks, mine, passed: () => passed };
 }
@@ -102,9 +116,15 @@ test("a project another author renames or deletes changes in the list as it happ
 test("a change missed on the way asks for the list again, and the list comes out right", async ({
   page,
 }) => {
+  test.skip(
+    withAccounts,
+    "with accounts a project's start is not told on this channel, its owner not listed yet; the members' channel tells it",
+  );
   const title = aTitle("Missed");
   const renamed = aTitle("Rewoven");
-  const { asks, passed } = await aWorkspaceHearingOnly(page, title, { dropping: 1 });
+  const { asks, passed } = await aWorkspaceHearingOnly(page, title, {
+    dropping: 1,
+  });
 
   const project = await aProject(page, title);
   await expect.poll(passed).toBeGreaterThanOrEqual(1);
@@ -132,12 +152,16 @@ test("a rename answered after a newer one was told leaves the newer name", async
       return;
     }
     const response = await route.fetch();
-    await anotherAuthor(page, "patch", `/projects/${project}`, { name: theirs });
+    await anotherAuthor(page, "patch", `/projects/${project}`, {
+      name: theirs,
+    });
     await expect.poll(passed).toBe(2);
     await route.fulfill({ response });
   });
 
-  await rowFor(page, title).getByRole("button", { name: "More actions" }).click();
+  await rowFor(page, title)
+    .getByRole("button", { name: "More actions" })
+    .click();
   await page.getByRole("menuitem", { name: "Rename" }).click();
   await page.getByRole("listitem").getByRole("textbox").fill(mine);
   await page.getByRole("button", { name: "Save" }).click();
@@ -163,7 +187,9 @@ test("a row being renamed keeps what is typed while another project changes", as
   const { mine } = await aWorkspaceHearingOnly(page, title);
   mine.add(ours);
   mine.add(other);
-  await rowFor(page, loom).getByRole("button", { name: "More actions" }).click();
+  await rowFor(page, loom)
+    .getByRole("button", { name: "More actions" })
+    .click();
   await page.getByRole("menuitem", { name: "Rename" }).click();
   const field = page.getByRole("listitem").getByRole("textbox");
   await field.fill(typed);
@@ -171,7 +197,10 @@ test("a row being renamed keeps what is typed while another project changes", as
   await anotherAuthor(page, "patch", `/projects/${other}`, { name: theirs });
   await expect(rowFor(page, theirs)).toBeVisible();
 
-  await expect(field, "another project's change leaves this row as it is").toHaveValue(typed);
+  await expect(
+    field,
+    "another project's change leaves this row as it is",
+  ).toHaveValue(typed);
   await page.getByRole("button", { name: "Save" }).click();
   await expect(rowFor(page, typed)).toBeVisible();
 });

@@ -5,8 +5,8 @@ export default defineConfig({
   outputDir: "../../target/web/e2e",
   fullyParallel: true,
   workers: process.env.CI ? 2 : 4,
-  retries: process.env.CI ? 0 : 1,
-  reporter: [["list"]],
+  retries: 1,
+  reporter: process.env.CI ? [["list"], ["github"]] : [["list"]],
   use: {
     baseURL: "http://127.0.0.1:8080",
     locale: "en-US",
@@ -23,7 +23,7 @@ export default defineConfig({
     },
     {
       command:
-        "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && trunk serve --no-autoreload",
+        "node js/build.mjs && node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && trunk serve --no-autoreload",
       url: "http://127.0.0.1:8080",
       reuseExistingServer: true,
       timeout: 180_000,

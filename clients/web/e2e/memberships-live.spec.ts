@@ -8,6 +8,7 @@ import {
   toldOfMembers,
 } from "./support/accounts";
 import { API } from "./support/shell";
+import { withAccounts } from "./support/signed-in";
 
 const rowFor = (page: Page, title: string) =>
   page.getByRole("listitem").filter({ hasText: title });
@@ -77,7 +78,9 @@ test("a project one is let into joins the list, though it is not found at first"
         : route.fallback(),
   );
   const server = await signedIn(page);
-  await expect(page.getByRole("heading", { name: "Your projects" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your projects" }),
+  ).toBeVisible();
   await expect(rowFor(page, title)).toHaveCount(0);
 
   toldOfMembers(server, id, {
@@ -128,14 +131,51 @@ test("a new role changes nothing in the list", async ({ page }) => {
 });
 
 test("without accounts nobody follows the members", async ({ page }) => {
+  test.skip(withAccounts, "the server these tests run against keeps accounts");
   const followed: string[] = [];
   page.on("websocket", (socket) =>
     followed.push(new URL(socket.url()).pathname),
   );
 
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Your projects" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your projects" }),
+  ).toBeVisible();
   await expect.poll(() => followed).toContain("/api/projects/live");
 
   expect(followed).not.toContain("/api/members/live");
+});
+
+test("the list is asked for once on coming in, and again when the members' channel comes back", async ({
+  page,
+}) => {
+  let asked = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "GET" &&
+      new URL(request.url()).pathname === "/api/projects"
+    ) {
+      asked += 1;
+    }
+  });
+  const server = await signedIn(page);
+  await expect.poll(() => asked).toBe(1);
+  await page.evaluate(() => new Promise((settled) => setTimeout(settled, 300)));
+  expect(
+    asked,
+    "the members' channel opening the first time asks for nothing",
+  ).toBe(1);
+
+  await server.memberships[0].close();
+
+  await expect
+    .poll(() => server.memberships.length, {
+      message: "it follows the members again",
+    })
+    .toBe(2);
+  await expect
+    .poll(() => asked, {
+      message: "what was missed meanwhile is caught up by listing again",
+    })
+    .toBe(2);
 });

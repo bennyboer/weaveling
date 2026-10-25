@@ -147,6 +147,7 @@ test("a project url opened cold shows that project", async ({ page }) => {
 });
 
 test("a project can be opened in a new tab", async ({ page, context }) => {
+  await page.routeWebSocket(/\/api\/projects\/live$/, () => {});
   const title = await aNewProject(page, "NewTab");
   await page.getByRole("link", { name: "All projects" }).click();
 

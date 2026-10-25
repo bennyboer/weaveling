@@ -75,6 +75,7 @@ impl Workspace {
             move || _ = listing.dispatch(()),
         ));
         if with_accounts {
+            let reconnected = StoredValue::new(false);
             StoredValue::new_local(Following::start(
                 "/api/members/live",
                 move |told: FrameDTO| match model::membership_in(told) {
@@ -90,7 +91,12 @@ impl Workspace {
                     }
                     None => {}
                 },
-                move || _ = listing.dispatch(()),
+                move || {
+                    if reconnected.get_value() {
+                        listing.dispatch(());
+                    }
+                    reconnected.set_value(true);
+                },
             ));
         }
 

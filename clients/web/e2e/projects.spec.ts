@@ -320,8 +320,20 @@ test("cancelling the new project's details creates nothing and keeps the title",
 
 async function notFoundAtFirst(page: Page, times: number) {
   let missing = times;
+  let made: string | null = null;
   await page.route(
-    (url) => /^\/api\/projects\/[^/]+$/.test(url.pathname),
+    (url) => url.pathname === "/api/projects",
+    async (route) => {
+      if (route.request().method() !== "POST") {
+        return route.fallback();
+      }
+      const answered = await route.fetch();
+      made = (await answered.json()).id;
+      return route.fulfill({ response: answered });
+    },
+  );
+  await page.route(
+    (url) => made !== null && url.pathname === `/api/projects/${made}`,
     (route) =>
       route.request().method() === "GET" && missing-- > 0
         ? route.fulfill({

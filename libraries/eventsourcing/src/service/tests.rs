@@ -849,3 +849,129 @@ async fn a_command_aimed_at_one_version_is_never_tried_again() {
         "a caller who named a version must hear that it moved on, not have it papered over"
     );
 }
+
+struct Yielding {
+    inner: Arc<InMemoryEventStore<SampleEvent>>,
+}
+
+#[async_trait::async_trait]
+impl EventStore<SampleEvent> for Yielding {
+    async fn append(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        expected: Version,
+        stream: &[Recorded<SampleEvent>],
+    ) -> Result<(), StoreError> {
+        self.inner.append(aggregate, kind, expected, stream).await
+    }
+
+    async fn read_from(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        let read = self.inner.read_from(aggregate, kind, from).await;
+        tokio::task::yield_now().await;
+
+        read
+    }
+
+    async fn read_through(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+        through: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .read_through(aggregate, kind, from, through)
+            .await
+    }
+
+    async fn latest_snapshot(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn snapshot_at_or_before(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        version: Version,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .snapshot_at_or_before(aggregate, kind, version)
+            .await
+    }
+
+    async fn prune_through(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        through: Version,
+    ) -> Result<(), StoreError> {
+        self.inner.prune_through(aggregate, kind, through).await
+    }
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_collide() {
+    let store = a_store();
+    a_service(store.clone())
+        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .await
+        .expect("the sample is created");
+    let service = Arc::new(EventSourcingService::<Sample>::new(
+        Arc::new(Yielding { inner: store }),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    ));
+
+    let mut commanded = tokio::task::JoinSet::new();
+    for nth in 0..12 {
+        let service = service.clone();
+        commanded.spawn(async move {
+            service
+                .execute(
+                    &sample::a_sample(),
+                    SampleCommand::UpdateTitle(format!("Rewoven {nth}")),
+                    &an_author(),
+                )
+                .await
+                .map(|landed| landed.version)
+        });
+    }
+    let mut reached = Vec::new();
+    while let Some(landed) = commanded.join_next().await {
+        reached.push(
+            landed
+                .expect("the command runs to its end")
+                .expect("a collision with a command at the same time is ridden out, not refused"),
+        );
+    }
+    reached.sort();
+
+    assert_eq!(
+        reached,
+        (2..=13).map(Version::of).collect::<Vec<_>>(),
+        "twelve writers reading the same version at once, more than there are tries, each land once their pauses part them"
+    );
+}
+
+#[test]
+fn a_pause_before_trying_again_grows_with_each_try_is_never_longer_than_allowed_and_varies() {
+    for attempt in 1..ATTEMPTS {
+        let longest = (FIRST_PAUSE * (1 << (attempt - 1))).min(LONGEST_PAUSE);
+        let drawn: Vec<Duration> = (0..50).map(|_| pause_after(attempt)).collect();
+
+        assert!(drawn.iter().all(|pause| *pause < longest), "{attempt}");
+        assert!(
+            drawn.iter().any(|pause| *pause != drawn[0]),
+            "writers that collided once must not try again in step: {attempt}"
+        );
+    }
+}

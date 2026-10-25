@@ -22,7 +22,12 @@ function described(page: Page): () => number {
   let times = 0;
   page.on("request", (request) => {
     const path = new URL(request.url()).pathname;
-    if (request.method() === "GET" && /^\/api\/projects\/project_[^/]+$/.test(path)) {
+    const open = new URL(page.url()).pathname.split("/")[2]?.split("-").pop();
+    if (
+      request.method() === "GET" &&
+      open &&
+      path === `/api/projects/${open}`
+    ) {
       times += 1;
     }
   });
@@ -46,7 +51,10 @@ async function anOpenProjectFollowedLive(page: Page, named: string) {
 test("the open project's name follows another author's rename without asking again", async ({
   page,
 }) => {
-  const { asks, project } = await anOpenProjectFollowedLive(page, "OpenRenamed");
+  const { asks, project } = await anOpenProjectFollowedLive(
+    page,
+    "OpenRenamed",
+  );
   const renamed = `Rewoven ${crypto.randomUUID().slice(0, 8)}`;
 
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: renamed });
@@ -58,10 +66,15 @@ test("the open project's name follows another author's rename without asking aga
 test("the book's language follows another author's change of the details", async ({
   page,
 }) => {
-  const { asks, project } = await anOpenProjectFollowedLive(page, "OpenDetails");
+  const { asks, project } = await anOpenProjectFollowedLive(
+    page,
+    "OpenDetails",
+  );
   await openTheWritingView(page);
   await expect(flow(page)).toHaveAttribute("lang", "en");
-  const now = await (await page.request.get(`${API}/projects/${project}`)).json();
+  const now = await (
+    await page.request.get(`${API}/projects/${project}`)
+  ).json();
 
   await anotherAuthor(
     page,
@@ -91,8 +104,14 @@ test("an open project another author deletes says so, and is followed no longer"
 
   await anotherAuthor(page, "delete", `/projects/${project}`);
 
-  await expect(page.getByRole("alert")).toContainText("That project no longer exists.");
-  await expect.poll(() => closed, { message: "a project that is gone has nothing more to tell" }).toBe(true);
+  await expect(page.getByRole("alert")).toContainText(
+    "That project no longer exists.",
+  );
+  await expect
+    .poll(() => closed, {
+      message: "a project that is gone has nothing more to tell",
+    })
+    .toBe(true);
 });
 
 test("a change missed on the way asks for the project again, and it comes out right", async ({
@@ -121,7 +140,10 @@ test("a change missed on the way asks for the project again, and it comes out ri
   await anotherAuthor(page, "patch", `/projects/${project}`, { name: renamed });
 
   await expect(masthead(page)).toHaveText(renamed);
-  expect(asks(), "the rename after the missed one does not follow on, so it asks again").toBe(2);
+  expect(
+    asks(),
+    "the rename after the missed one does not follow on, so it asks again",
+  ).toBe(2);
 });
 
 test("a change told while the project is still on its way asks for it again", async ({
@@ -184,13 +206,18 @@ test("my details answered after another author's newer rename leave their name",
   });
   await page.reload();
   await expect.poll(() => heard).toBe(0);
-  await page.route(new RegExp(`/api/projects/${project}/details$`), async (route) => {
-    const response = await route.fetch();
-    await expect.poll(() => heard).toBe(1);
-    await anotherAuthor(page, "patch", `/projects/${project}`, { name: theirs });
-    await expect.poll(() => heard).toBe(2);
-    await route.fulfill({ response });
-  });
+  await page.route(
+    new RegExp(`/api/projects/${project}/details$`),
+    async (route) => {
+      const response = await route.fetch();
+      await expect.poll(() => heard).toBe(1);
+      await anotherAuthor(page, "patch", `/projects/${project}`, {
+        name: theirs,
+      });
+      await expect.poll(() => heard).toBe(2);
+      await route.fulfill({ response });
+    },
+  );
 
   await page.getByRole("button", { name: "Project details" }).click();
   const details = page.getByRole("dialog", { name: "Project details" });
