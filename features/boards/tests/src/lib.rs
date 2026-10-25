@@ -10,6 +10,8 @@ mod board_tidying;
 #[cfg(test)]
 mod boards_api;
 #[cfg(test)]
+mod boards_api_guarded;
+#[cfg(test)]
 mod boards_live;
 
 #[cfg(test)]

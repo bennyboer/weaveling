@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use authorizing::{Act, Authorizer, AuthorizerError};
 use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, StoreError,
@@ -25,12 +26,19 @@ pub enum BoardServiceError {
     Catalog(#[from] CatalogError),
     #[error(transparent)]
     Registry(#[from] RegistryError),
+    #[error(transparent)]
+    Authorizer(#[from] AuthorizerError),
+    #[error("there is no such project")]
+    ProjectNotThere,
+    #[error("only an author of the project may do this")]
+    NotAnAuthor,
 }
 
 #[derive(Clone)]
 pub struct BoardService {
     events: Arc<EventSourcingService<Board>>,
     registry: Arc<dyn Registry>,
+    authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
 }
 
@@ -43,16 +51,22 @@ impl BoardService {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
         registry: Arc<dyn Registry>,
+        authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             registry,
+            authorizer,
             clock,
         }
     }
 
     pub async fn open(&self, project: &str, agent: &Agent) -> Result<Open, BoardServiceError> {
+        self.admitted(agent, Act::Read, &ProjectLink::from(project), || {
+            BoardServiceError::ProjectNotThere
+        })
+        .await?;
         let id = self.claimed_by(project).await?;
         let key = AggregateId::from(&id);
 
@@ -73,6 +87,42 @@ impl BoardService {
         let board: BoardId = board.parse()?;
 
         Ok(self.events.latest(&AggregateId::from(&board)).await?)
+    }
+
+    pub async fn read(
+        &self,
+        board: &str,
+        agent: &Agent,
+    ) -> Result<Standing<Board>, BoardServiceError> {
+        let board: BoardId = board.parse()?;
+        let key = AggregateId::from(&board);
+        let standing = self.events.latest(&key).await?;
+        self.admitted(agent, Act::Read, standing.state.project(), || {
+            not_found(key)
+        })
+        .await?;
+
+        Ok(standing)
+    }
+
+    async fn admitted(
+        &self,
+        agent: &Agent,
+        act: Act,
+        project: &ProjectLink,
+        otherwise: impl FnOnce() -> BoardServiceError,
+    ) -> Result<(), BoardServiceError> {
+        if self.authorizer.may(agent, act, project.as_str()).await? {
+            Ok(())
+        } else if self
+            .authorizer
+            .may(agent, Act::Read, project.as_str())
+            .await?
+        {
+            Err(BoardServiceError::NotAnAuthor)
+        } else {
+            Err(otherwise())
+        }
     }
 
     pub async fn pin(
@@ -174,6 +224,11 @@ impl BoardService {
     ) -> Result<Version, BoardServiceError> {
         let board: BoardId = board.parse()?;
         let key = AggregateId::from(&board);
+        let standing = self.events.latest(&key).await?;
+        self.admitted(agent, Act::Write, standing.state.project(), || {
+            not_found(key.clone())
+        })
+        .await?;
 
         let landed = match expected {
             Some(expected) => {
@@ -186,4 +241,11 @@ impl BoardService {
 
         Ok(landed.version)
     }
+}
+
+fn not_found(key: AggregateId) -> BoardServiceError {
+    BoardServiceError::Events(ServiceError::NotFound {
+        aggregate: key,
+        kind: KIND,
+    })
 }

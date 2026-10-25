@@ -31,6 +31,7 @@ pub fn service(ports: &Ports, context: &Context) -> OutlineService {
     OutlineService::new(
         ports.events.clone(),
         ports.registry.clone(),
+        context.authorizer.clone(),
         context.clock.clone(),
     )
 }

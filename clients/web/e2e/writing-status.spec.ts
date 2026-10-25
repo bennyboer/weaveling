@@ -47,6 +47,7 @@ test("the status note makes room for the alarm beside it", async ({ page }) => {
           occurred_at: "2026-10-10T09:00:00Z",
           given_up_at: "2026-10-10T09:01:00Z",
           acknowledged_at: null,
+          may_be_tried_again: true,
         },
       ],
     }),

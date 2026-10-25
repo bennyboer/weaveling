@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use authorizing::{Act, Authorizer, AuthorizerError};
 use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing,
@@ -26,12 +27,19 @@ pub enum OutlineServiceError {
     Catalog(#[from] CatalogError),
     #[error(transparent)]
     Registry(#[from] RegistryError),
+    #[error(transparent)]
+    Authorizer(#[from] AuthorizerError),
+    #[error("there is no such project")]
+    ProjectNotThere,
+    #[error("only an author of the project may do this")]
+    NotAnAuthor,
 }
 
 #[derive(Clone)]
 pub struct OutlineService {
     events: Arc<EventSourcingService<Outline>>,
     registry: Arc<dyn Registry>,
+    authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
 }
 
@@ -76,16 +84,22 @@ impl OutlineService {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
         registry: Arc<dyn Registry>,
+        authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             registry,
+            authorizer,
             clock,
         }
     }
 
     pub async fn open(&self, project: &str, agent: &Agent) -> Result<Open, OutlineServiceError> {
+        self.admitted(agent, Act::Read, &ProjectLink::from(project), || {
+            OutlineServiceError::ProjectNotThere
+        })
+        .await?;
         let id = self.claimed_by(project).await?;
         let key = AggregateId::from(&id);
 
@@ -106,6 +120,42 @@ impl OutlineService {
         let outline: OutlineId = outline.parse()?;
 
         Ok(self.events.latest(&AggregateId::from(&outline)).await?)
+    }
+
+    pub async fn read(
+        &self,
+        outline: &str,
+        agent: &Agent,
+    ) -> Result<Standing<Outline>, OutlineServiceError> {
+        let outline: OutlineId = outline.parse()?;
+        let key = AggregateId::from(&outline);
+        let standing = self.events.latest(&key).await?;
+        self.admitted(agent, Act::Read, standing.state.project(), || {
+            not_found(key)
+        })
+        .await?;
+
+        Ok(standing)
+    }
+
+    async fn admitted(
+        &self,
+        agent: &Agent,
+        act: Act,
+        project: &ProjectLink,
+        otherwise: impl FnOnce() -> OutlineServiceError,
+    ) -> Result<(), OutlineServiceError> {
+        if self.authorizer.may(agent, act, project.as_str()).await? {
+            Ok(())
+        } else if self
+            .authorizer
+            .may(agent, Act::Read, project.as_str())
+            .await?
+        {
+            Err(OutlineServiceError::NotAnAuthor)
+        } else {
+            Err(otherwise())
+        }
     }
 
     pub async fn add(
@@ -313,6 +363,11 @@ impl OutlineService {
     ) -> Result<Changed, OutlineServiceError> {
         let outline: OutlineId = outline.parse()?;
         let key = AggregateId::from(&outline);
+        let standing = self.events.latest(&key).await?;
+        self.admitted(agent, Act::Write, standing.state.project(), || {
+            not_found(key.clone())
+        })
+        .await?;
 
         let landed = match expected {
             Some(expected) => {
@@ -325,4 +380,11 @@ impl OutlineService {
 
         Ok(Changed::by(landed))
     }
+}
+
+fn not_found(key: AggregateId) -> OutlineServiceError {
+    OutlineServiceError::Events(ServiceError::NotFound {
+        aggregate: key,
+        kind: KIND,
+    })
 }

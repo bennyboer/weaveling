@@ -85,6 +85,14 @@ pub mod refused {
     pub const NOT_PINNED: &str = "idea-not-pinned";
     pub const SHAPELESS: &str = "card-shapeless";
     pub const DISCARDED: &str = "board-discarded";
+    pub const NOT_AN_AUTHOR: &str = "not-an-author";
 
-    pub const EVERY: [&str; 5] = [ID_INVALID, ALREADY_PINNED, NOT_PINNED, SHAPELESS, DISCARDED];
+    pub const EVERY: [&str; 6] = [
+        ID_INVALID,
+        ALREADY_PINNED,
+        NOT_PINNED,
+        SHAPELESS,
+        DISCARDED,
+        NOT_AN_AUTHOR,
+    ];
 }

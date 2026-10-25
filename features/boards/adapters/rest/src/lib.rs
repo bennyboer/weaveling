@@ -1,7 +1,8 @@
 use axum::Extension;
 use axum::Json;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::ws::WebSocketUpgrade;
+use axum::extract::{Path, Query, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -14,25 +15,39 @@ use boards_core::{
     Board, BoardError, BoardService, BoardServiceError, IdeaLink, PositionedIdea, Size, Spot,
 };
 use eventsourcing::{Agent, Standing, Version};
-use live::Broadcaster;
+use live::{Asked, Broadcaster};
 use serving::Problem;
 
+#[derive(Clone)]
+struct Following {
+    broadcaster: Broadcaster,
+    boards: BoardService,
+}
+
 pub fn live(broadcaster: Broadcaster, boards: BoardService) -> Router {
-    live::followed_from(
-        "/boards/live",
-        broadcaster,
-        |asked| asked.get("board").cloned(),
-        move |board: String| {
-            let boards = boards.clone();
-            async move {
-                boards
-                    .get(&board)
-                    .await
-                    .ok()
-                    .map(|standing| standing.version.count())
-            }
-        },
-    )
+    Router::new()
+        .route("/boards/live", routing::get(follow))
+        .with_state(Following {
+            broadcaster,
+            boards,
+        })
+}
+
+async fn follow(
+    upgrade: WebSocketUpgrade,
+    State(following): State<Following>,
+    Extension(acting): Extension<Agent>,
+    Query(asked): Query<Asked>,
+) -> Response {
+    let Some(board) = asked.get("board") else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let hearing = following.broadcaster.hear(board);
+
+    match following.boards.read(board, &acting).await {
+        Ok(standing) => live::streaming_from(upgrade, standing.version.count(), hearing),
+        Err(refused) => problem_of(refused).into_response(),
+    }
 }
 
 pub fn router(boards: BoardService) -> Router {
@@ -66,9 +81,10 @@ async fn open(
 
 async fn find(
     State(boards): State<BoardService>,
+    Extension(acting): Extension<Agent>,
     Path(board): Path<String>,
 ) -> Result<Response, Problem> {
-    let found = boards.get(&board).await.map_err(problem_of)?;
+    let found = boards.read(&board, &acting).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &board, &found))
 }
@@ -194,6 +210,12 @@ fn problem_of(refusal: BoardServiceError) -> Problem {
             BoardError::Discarded => Problem::refused(refused::DISCARDED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
+        BoardServiceError::ProjectNotThere => {
+            Problem::not_found(serving::NOT_FOUND, BoardServiceError::ProjectNotThere)
+        }
+        BoardServiceError::NotAnAuthor => {
+            Problem::forbidden(refused::NOT_AN_AUTHOR, BoardServiceError::NotAnAuthor)
+        }
         unserveable => Problem::unexpected(unserveable),
     }
 }

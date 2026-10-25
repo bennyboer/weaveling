@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use authorizing::AllowingEverything;
+use authorizing::{AllowingEverything, Authorizer};
 use axum::Router;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardEvent, BoardService};
@@ -29,6 +29,10 @@ pub struct Wired {
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
+    wired_guarded_by(clock, Arc::new(AllowingEverything))
+}
+
+pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) -> Wired {
     let deliveries = Arc::new(InMemoryDeliveries::new());
     let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
     let outbox = Arc::new(InMemoryOutbox::new(dispatcher.clone(), clock.clone()));
@@ -47,7 +51,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let context = Context {
         clock,
         publisher: dispatcher.clone(),
-        authorizer: Arc::new(AllowingEverything),
+        authorizer,
     };
     let wired = boards_wiring::wire(&ports, &context);
 

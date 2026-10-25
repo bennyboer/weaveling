@@ -6,7 +6,7 @@ What lets an open browser hear that something changed, without asking again and 
 
 **The frames come from the outbox, not from the request that made the change.** `BroadcastChangesListener` is an ordinary listener on a feature's events, and `frame_of` turns what was published into what goes on the wire, the version and the event. So a frame tells only what was stored and published, in the order it was, and a change made by a listener reaches the browser the same way as one made by a click.
 
-**`followed_at` and `followed_from` are the routes a browser opens,** a WebSocket upgraded on a path, the topic read from the query. `followed_from` first tells the version the follower stands at, read only after its hearing began, so a change made between loading the page and opening the socket is not lost. `Teller` numbers frames itself, for what has no published version to carry.
+**`followed_at` is the route a browser opens,** a WebSocket upgraded on a path, the topic read from the query. A feature whose route must first read what is followed, to ask whether the follower may and to say where it stands, writes its own handler: it begins hearing, then reads, and answers **`streaming_from(version)`**, which tells that version first, so a change made between loading the page and opening the socket is not lost; boards and outlines do so. `Teller` numbers frames itself, for what has no published version to carry.
 
 **A frame has one shape,** `FrameDTO` from [`live-contract`](../live-contract), so what the server writes and the client reads cannot drift apart.
 

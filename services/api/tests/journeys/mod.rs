@@ -659,6 +659,59 @@ pub async fn an_idea_s_appearances_are_there_only_for_whoever_may_read_its_proje
     journey.end().await;
 }
 
+pub async fn a_project_s_board_is_there_only_for_whoever_may_read_its_project<B: Backend>() {
+    let journey = Journey::<B>::signed_in("pinning").await;
+    let project = journey.project("Pinned").await;
+    let server = &journey.server;
+    let at = format!("/api/projects/{project}");
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
+        "its owner may read the project once the members have heard of her"
+    );
+    let opened = journey
+        .posted("/api/boards", json!({ "project": project }), StatusCode::OK)
+        .await;
+    let board = opened["id"].as_str().expect("a board has an id").to_owned();
+
+    journey.signed_in_as_another("grace@example.com").await;
+
+    server
+        .post("/api/boards")
+        .json(&json!({ "project": project }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .get(&format!("/api/boards/{board}"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    journey.end().await;
+}
+
+pub async fn a_project_s_outline_is_there_only_for_whoever_may_read_its_project<B: Backend>() {
+    let journey = Journey::<B>::signed_in("outlining").await;
+    let project = journey.project("Outlined").await;
+    let server = &journey.server;
+    let at = format!("/api/projects/{project}");
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
+        "its owner may read the project once the members have heard of her"
+    );
+    let outline = journey.outline(&project).await;
+
+    journey.signed_in_as_another("grace@example.com").await;
+
+    server
+        .post("/api/outlines")
+        .json(&json!({ "project": project }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .get(&format!("/api/outlines/{outline}"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -675,6 +728,8 @@ macro_rules! journeys {
             an_idea_appears_wherever_it_was_noted_or_linked_until_discarded,
             whoever_starts_a_project_owns_it,
             an_idea_s_appearances_are_there_only_for_whoever_may_read_its_project,
+            a_project_s_board_is_there_only_for_whoever_may_read_its_project,
+            a_project_s_outline_is_there_only_for_whoever_may_read_its_project,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

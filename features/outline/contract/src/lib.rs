@@ -139,8 +139,9 @@ pub mod refused {
     pub const NO_SUCH_NEIGHBOUR: &str = "section-neighbour-not-found";
     pub const NOT_ATTACHED: &str = "not-in-the-outline";
     pub const DISCARDED: &str = "outline-discarded";
+    pub const NOT_AN_AUTHOR: &str = "not-an-author";
 
-    pub const EVERY: [&str; 9] = [
+    pub const EVERY: [&str; 10] = [
         ID_INVALID,
         TITLE_CONTROL_CHARACTER,
         TITLE_TOO_LONG,
@@ -150,5 +151,6 @@ pub mod refused {
         NO_SUCH_NEIGHBOUR,
         NOT_ATTACHED,
         DISCARDED,
+        NOT_AN_AUTHOR,
     ];
 }

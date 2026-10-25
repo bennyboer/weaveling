@@ -3861,6 +3861,7 @@ dependencies = [
  "indexmap",
  "thiserror",
  "time",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
@@ -3911,6 +3912,7 @@ dependencies = [
 name = "weaveling-boards-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
  "serde_json",
@@ -4515,6 +4517,7 @@ dependencies = [
  "indexmap",
  "thiserror",
  "time",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
@@ -4569,6 +4572,7 @@ dependencies = [
 name = "weaveling-outline-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
  "serde_json",

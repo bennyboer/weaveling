@@ -1,13 +1,14 @@
 use axum::Extension;
 use axum::Json;
 use axum::Router;
-use axum::extract::{Path, State};
+use axum::extract::ws::WebSocketUpgrade;
+use axum::extract::{Path, Query, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
 use eventsourcing::{Agent, Standing, Version};
-use live::Broadcaster;
+use live::{Asked, Broadcaster};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -65,29 +66,44 @@ async fn open(
     ))
 }
 
+#[derive(Clone)]
+struct Following {
+    broadcaster: Broadcaster,
+    outlines: OutlineService,
+}
+
 pub fn live(broadcaster: Broadcaster, outlines: OutlineService) -> Router {
-    live::followed_from(
-        "/outlines/live",
-        broadcaster,
-        |asked| asked.get("outline").cloned(),
-        move |outline: String| {
-            let outlines = outlines.clone();
-            async move {
-                outlines
-                    .get(&outline)
-                    .await
-                    .ok()
-                    .map(|standing| standing.version.count())
-            }
-        },
-    )
+    Router::new()
+        .route("/outlines/live", routing::get(follow))
+        .with_state(Following {
+            broadcaster,
+            outlines,
+        })
+}
+
+async fn follow(
+    upgrade: WebSocketUpgrade,
+    State(following): State<Following>,
+    Extension(acting): Extension<Agent>,
+    Query(asked): Query<Asked>,
+) -> Response {
+    let Some(outline) = asked.get("outline") else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+    let hearing = following.broadcaster.hear(outline);
+
+    match following.outlines.read(outline, &acting).await {
+        Ok(standing) => live::streaming_from(upgrade, standing.version.count(), hearing),
+        Err(refused) => problem_of(refused).into_response(),
+    }
 }
 
 async fn find(
     State(outlines): State<OutlineService>,
+    Extension(acting): Extension<Agent>,
     Path(outline): Path<String>,
 ) -> Result<Response, Problem> {
-    let found = outlines.get(&outline).await.map_err(problem_of)?;
+    let found = outlines.read(&outline, &acting).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &outline, &found))
 }
@@ -422,6 +438,12 @@ fn problem_of(refusal: OutlineServiceError) -> Problem {
             OutlineError::Discarded => Problem::refused(refused::DISCARDED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
+        OutlineServiceError::ProjectNotThere => {
+            Problem::not_found(serving::NOT_FOUND, OutlineServiceError::ProjectNotThere)
+        }
+        OutlineServiceError::NotAnAuthor => {
+            Problem::forbidden(refused::NOT_AN_AUTHOR, OutlineServiceError::NotAnAuthor)
+        }
         unserveable => Problem::unexpected(unserveable),
     }
 }

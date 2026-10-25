@@ -5,6 +5,9 @@ mod cost_per_change;
 mod outline_api;
 
 #[cfg(test)]
+mod outline_api_guarded;
+
+#[cfg(test)]
 mod outline_cataloguing;
 
 #[cfg(test)]
