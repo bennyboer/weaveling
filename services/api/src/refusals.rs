@@ -13,7 +13,7 @@ use messaging::{
     DeadLetter, Deliveries, DeliveryError, InProcessDispatcher, ListenerName, Message,
     Notifications, Queued,
 };
-use messaging_contract::RefusalDTO;
+use messaging_contract::{RefusalDTO, refused};
 use serde_json::json;
 use serving::Problem;
 use time::OffsetDateTime;
@@ -138,9 +138,11 @@ async fn list(State(refusals): State<Refusals>) -> Result<Json<Vec<RefusalDTO>>,
         .await
         .map_err(Problem::unexpected)?;
 
+    let now = refusals.clock.now();
+
     Ok(Json(
         dead.iter()
-            .map(|letter| to_dto(letter, &refusals.dispatcher))
+            .map(|letter| to_dto(letter, &refusals.dispatcher, now))
             .collect(),
     ))
 }
@@ -149,9 +151,24 @@ async fn retry(
     State(refusals): State<Refusals>,
     Path(id): Path<i64>,
 ) -> Result<StatusCode, Problem> {
+    let now = refusals.clock.now();
+    let dead = refusals
+        .deliveries
+        .dead_letters()
+        .await
+        .map_err(Problem::unexpected)?;
+    if dead
+        .iter()
+        .any(|letter| letter.id == id && !letter.may_be_tried_again(now))
+    {
+        return Err(Problem::refused(
+            refused::TOO_LATE_TO_TRY_AGAIN,
+            "a change this old is not tried again, as what it was about may be gone for good",
+        ));
+    }
     refusals
         .deliveries
-        .retry(id, refusals.clock.now())
+        .retry(id, now)
         .await
         .map_err(Problem::unexpected)?;
 
@@ -171,7 +188,7 @@ async fn acknowledge(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn to_dto(dead: &DeadLetter, dispatcher: &InProcessDispatcher) -> RefusalDTO {
+fn to_dto(dead: &DeadLetter, dispatcher: &InProcessDispatcher, now: OffsetDateTime) -> RefusalDTO {
     RefusalDTO {
         id: dead.id,
         listener: dead.listener.to_string(),
@@ -182,5 +199,6 @@ fn to_dto(dead: &DeadLetter, dispatcher: &InProcessDispatcher) -> RefusalDTO {
         occurred_at: text::serialize(dead.message.occurred_at),
         given_up_at: text::serialize(dead.given_up_at),
         acknowledged_at: dead.acknowledged_at.map(text::serialize),
+        may_be_tried_again: dead.may_be_tried_again(now),
     }
 }

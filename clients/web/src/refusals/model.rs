@@ -10,4 +10,5 @@ pub struct Refusal {
     pub plainly: Option<String>,
     pub given_up_at: OffsetDateTime,
     pub acknowledged: bool,
+    pub may_be_tried_again: bool,
 }

@@ -34,6 +34,7 @@ const refused = (
   occurred_at: "2026-10-10T09:00:00Z",
   given_up_at: "2026-10-10T09:01:00Z",
   acknowledged_at: acknowledged ? "2026-10-10T09:02:00Z" : null,
+  may_be_tried_again: true,
 });
 
 async function answering(page: Page, answer: () => Refused[]) {
@@ -53,7 +54,9 @@ async function aServerHolding(page: Page, start: Refused[]) {
   await page.route(`${REFUSALS}/*/acknowledge`, (route) => {
     const id = actedOn(route.request().url());
     held = held.map((refusal) =>
-      refusal.id === id ? refused(id, true, refusal.plainly) : refusal,
+      refusal.id === id
+        ? { ...refusal, acknowledged_at: refused(id, true).acknowledged_at }
+        : refusal,
     );
     return route.fulfill({ status: 204 });
   });
@@ -257,6 +260,31 @@ test("acknowledging keeps the change listed, greyed, and quiets the alarm", asyn
     "acknowledged is not given up on, so it can still be tried again",
   ).toBeVisible();
   expect(await alarm(page).getAttribute("class")).not.toContain("raised");
+});
+
+test("a change too old to try again says so and offers only acknowledging", async ({
+  page,
+}) => {
+  await aServerHolding(page, [
+    refused(1),
+    { ...refused(2), may_be_tried_again: false },
+  ]);
+  await lookingAtTheRefusals(page);
+  await expect(entries(page)).toHaveCount(2);
+
+  await expect(
+    entries(page).nth(1).getByRole("button", { name: "Try again" }),
+  ).toHaveCount(0);
+  await expect(entries(page).nth(1)).toContainText(
+    "This change happened over thirty days ago and is not tried again",
+  );
+  await expect(
+    entries(page).nth(1).getByRole("button", { name: "Acknowledge" }),
+  ).toBeVisible();
+  await expect(
+    entries(page).first().getByRole("button", { name: "Try again" }),
+  ).toBeVisible();
+  await expect(entries(page).first()).not.toContainText("thirty days");
 });
 
 test("the dialog closes by its button, by Escape and by clicking outside", async ({

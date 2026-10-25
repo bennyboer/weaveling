@@ -43,5 +43,6 @@ fn to_refusal(dto: RefusalDTO) -> Result<Refusal, ApiError> {
         given_up_at: OffsetDateTime::parse(&dto.given_up_at, &Rfc3339)
             .map_err(|_| ApiError::Unexpected)?,
         acknowledged: dto.acknowledged_at.is_some(),
+        may_be_tried_again: dto.may_be_tried_again,
     })
 }

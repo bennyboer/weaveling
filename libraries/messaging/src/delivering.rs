@@ -13,6 +13,8 @@ pub const BACKOFF: Duration = Duration::milliseconds(200);
 
 pub const SLOWER_BY: i32 = 5;
 
+pub const RETRIABLE_FOR: Duration = Duration::days(30);
+
 #[derive(Debug, Error)]
 pub enum DeliveryError {
     #[error("the deliveries could not be reached: {0}")]
@@ -38,6 +40,12 @@ pub struct DeadLetter {
     pub why: String,
     pub given_up_at: OffsetDateTime,
     pub acknowledged_at: Option<OffsetDateTime>,
+}
+
+impl DeadLetter {
+    pub fn may_be_tried_again(&self, now: OffsetDateTime) -> bool {
+        now - self.message.occurred_at <= RETRIABLE_FOR
+    }
 }
 
 #[async_trait]

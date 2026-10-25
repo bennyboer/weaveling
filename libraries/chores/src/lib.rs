@@ -1,3 +1,5 @@
+mod tombstones;
+
 use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
@@ -5,6 +7,8 @@ use std::time::Duration;
 use async_trait::async_trait;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+
+pub use tombstones::{ForgetOldTombstones, TOMBSTONES_KEPT_FOR, Tombstones};
 
 #[async_trait]
 pub trait Chore: Send + Sync {

@@ -5,11 +5,12 @@ use axum::http::StatusCode;
 use axum_test::{TestServer, TestWebSocket};
 use clock::FixedClock;
 use live::Broadcaster;
+use messaging::RETRIABLE_FOR;
 use messaging::{
     Deliveries, InMemoryDeliveries, InProcessDispatcher, Listener, ListenerName, Message,
     NotHandled, RoutingKey, Subscription,
 };
-use messaging_contract::RefusalDTO;
+use messaging_contract::{RefusalDTO, refused};
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
 
@@ -86,10 +87,20 @@ impl Refused {
     }
 
     async fn given_up_by(&self, listener: &str, routing: &str) {
+        self.given_up_on_what_happened(listener, routing, OCCURRED)
+            .await;
+    }
+
+    async fn given_up_on_what_happened(
+        &self,
+        listener: &str,
+        routing: &str,
+        occurred: OffsetDateTime,
+    ) {
         let message = Message::opening(
             RoutingKey::parse(routing).expect("a plain key is fine"),
             serde_json::json!({ "nothing": "much" }),
-            OCCURRED,
+            occurred,
         );
         self.deliveries
             .enqueue(
@@ -327,4 +338,54 @@ async fn a_delivery_refused_but_offered_again_tells_nothing() {
             .is_err(),
         "a delivery that will be offered again is not a refusal anyone needs to see"
     );
+}
+
+#[tokio::test]
+async fn a_change_is_tried_again_for_thirty_days_after_it_happened_and_not_after() {
+    let refused = Refused::nothing_yet();
+    refused
+        .given_up_on_what_happened(CATALOGUING, "idea.captured", ASKED - RETRIABLE_FOR)
+        .await;
+    refused
+        .given_up_on_what_happened(
+            CATALOGUING,
+            "idea.retitled",
+            ASKED - RETRIABLE_FOR - Duration::seconds(1),
+        )
+        .await;
+
+    let listed = refused.listed().await;
+
+    let triable: Vec<(String, bool)> = listed
+        .iter()
+        .map(|refusal| (refusal.routing.clone(), refusal.may_be_tried_again))
+        .collect();
+    assert_eq!(
+        triable,
+        vec![
+            ("idea.captured".to_owned(), true),
+            ("idea.retitled".to_owned(), false),
+        ],
+        "the list says which may be tried again, so the page need not know the limit"
+    );
+    let too_old = listed[1].id;
+    let response = refused
+        .server
+        .post(&format!("/refusals/{too_old}/retry"))
+        .await;
+    response.assert_status(StatusCode::CONFLICT);
+    assert_eq!(
+        response.json::<serde_json::Value>()["type"],
+        refused::TOO_LATE_TO_TRY_AGAIN
+    );
+    assert_eq!(
+        refused.listed().await.len(),
+        2,
+        "a change refused for being too old stays listed, to be acknowledged"
+    );
+    refused
+        .server
+        .post(&format!("/refusals/{}/retry", listed[0].id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
 }

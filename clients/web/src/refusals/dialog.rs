@@ -49,6 +49,7 @@ pub fn refusals_dialog(state: AlarmState) -> impl IntoView {
 
 fn refused(refusal: Refusal, state: AlarmState) -> impl IntoView {
     let id = refusal.id;
+    let may_be_tried_again = refusal.may_be_tried_again;
 
     html::li()
         .class(("acknowledged", refusal.acknowledged))
@@ -76,11 +77,18 @@ fn refused(refusal: Refusal, state: AlarmState) -> impl IntoView {
                     html::dd().child(html::code().child(refusal.why)),
                 )),
             )),
+            (!may_be_tried_again).then(|| {
+                html::p()
+                    .class("hint")
+                    .child(speech::said("refusal-too-old"))
+            }),
             html::div().class("dialog-actions").child((
-                html::button()
-                    .r#type("button")
-                    .on(ev::click, move |_| state.retry(id))
-                    .child(speech::said("refusal-retry")),
+                may_be_tried_again.then(|| {
+                    html::button()
+                        .r#type("button")
+                        .on(ev::click, move |_| state.retry(id))
+                        .child(speech::said("refusal-retry"))
+                }),
                 (!refusal.acknowledged).then(|| {
                     html::button()
                         .r#type("button")

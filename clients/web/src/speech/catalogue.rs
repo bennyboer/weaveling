@@ -236,7 +236,8 @@ mod tests {
             .chain(boards_contract::refused::EVERY)
             .chain(ideas_contract::refused::EVERY)
             .chain(outline_contract::refused::EVERY)
-            .chain(scenes_contract::refused::EVERY);
+            .chain(scenes_contract::refused::EVERY)
+            .chain(messaging_contract::refused::EVERY);
 
         for kind in every {
             assert!(

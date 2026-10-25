@@ -11,4 +11,11 @@ pub struct RefusalDTO {
     pub occurred_at: String,
     pub given_up_at: String,
     pub acknowledged_at: Option<String>,
+    pub may_be_tried_again: bool,
+}
+
+pub mod refused {
+    pub const TOO_LATE_TO_TRY_AGAIN: &str = "too-late-to-try-again";
+
+    pub const EVERY: [&str; 1] = [TOO_LATE_TO_TRY_AGAIN];
 }

@@ -18,7 +18,8 @@ pub mod sqlite;
 pub use consuming::DeliveryConsumer;
 pub use deliveries::InMemoryDeliveries;
 pub use delivering::{
-    ATTEMPTS, BACKOFF, CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued, again_after,
+    ATTEMPTS, BACKOFF, CLAIM_FOR, DeadLetter, Deliveries, DeliveryError, Queued, RETRIABLE_FOR,
+    again_after,
 };
 pub use fake::FakePublisher;
 pub use in_process::InProcessDispatcher;

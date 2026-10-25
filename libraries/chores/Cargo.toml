@@ -7,6 +7,10 @@ edition.workspace = true
 async-trait = { workspace = true }
 tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing = { workspace = true }
+time = { workspace = true }
+clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 
 [dev-dependencies]
+time = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }

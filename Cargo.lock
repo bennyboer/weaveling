@@ -3944,8 +3944,11 @@ name = "weaveling-chores"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "time",
  "tokio",
  "tracing",
+ "weaveling-clock",
+ "weaveling-messaging",
 ]
 
 [[package]]
