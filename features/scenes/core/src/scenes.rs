@@ -5,10 +5,11 @@ use clock::Clock;
 use eventsourcing::Agent;
 use time::OffsetDateTime;
 
+use crate::service::SceneService;
 use crate::{
     ProjectLink, QuotationRestyling, QuotationRestylingProgress, QuotationRestylingTasks, Scene,
-    SceneCatalog, SceneId, SceneRestyler, SceneService, SceneStore, SceneSummary, SceneTitle,
-    ScenesError, StoreError,
+    SceneCatalog, SceneId, SceneRestyler, SceneStore, SceneSummary, SceneTitle, ScenesError,
+    StoreError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -10,8 +10,7 @@ use projects_contract::DELETED;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
 use scenes_core::{
-    IdeaLink, ProjectLink, Scene, SceneId, SceneService, SceneStore, SceneTitle, ScenesCore,
-    StoreError,
+    IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesCore, StoreError,
 };
 use scenes_messaging::DeleteOnProjectDeletedListener;
 use scenes_store::InMemorySceneStore;
@@ -113,7 +112,6 @@ struct Wired {
     sweep: DeleteOnProjectDeletedListener,
     scenes: ScenesCore,
     store: Arc<Wavering>,
-    kept: SceneService,
     overheard: Arc<FakePublisher>,
 }
 
@@ -137,7 +135,6 @@ fn a_workbench(at_most: usize) -> Wired {
         sweep: DeleteOnProjectDeletedListener::new(scenes.clone(), overheard.clone(), clock)
             .taking_at_most(at_most),
         scenes,
-        kept: SceneService::new(store.clone(), Arc::new(FixedClock::new(at(1_000)))),
         store,
         overheard,
     }
@@ -162,8 +159,9 @@ impl Wired {
     }
 
     async fn still_there(&self, project: &str) -> Vec<SceneId> {
-        self.kept
-            .in_project(project, None, 1_000)
+        self.store
+            .held
+            .in_project(&ProjectLink::from(project), None, 1_000)
             .await
             .expect("listing should succeed")
     }

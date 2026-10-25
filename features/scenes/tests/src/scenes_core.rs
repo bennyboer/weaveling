@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use clock::FixedClock;
-use scenes_core::{FRAGMENT, SceneService, ScenesError, StoreError};
+use eventsourcing::Agent;
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
+use scenes_core::{FRAGMENT, ScenesCore, ScenesError, StoreError};
 use scenes_store::InMemorySceneStore;
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
@@ -12,12 +15,18 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn new_service() -> SceneService {
-    new_service_with(Arc::new(FixedClock::new(at(1_000))))
+fn new_core() -> ScenesCore {
+    new_core_with(Arc::new(FixedClock::new(at(1_000))))
 }
 
-fn new_service_with(clock: Arc<FixedClock>) -> SceneService {
-    SceneService::new(Arc::new(InMemorySceneStore::new()), clock)
+fn new_core_with(clock: Arc<FixedClock>) -> ScenesCore {
+    ScenesCore::new(
+        Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(AllowingEverything),
+        clock,
+    )
 }
 
 fn a_paragraph(saying: &str) -> Vec<u8> {
@@ -35,10 +44,13 @@ fn a_paragraph(saying: &str) -> Vec<u8> {
 
 #[tokio::test]
 async fn a_new_scene_starts_empty_and_can_be_opened_again() {
-    let service = new_service();
+    let scenes = new_core();
 
-    let created = service.create(A_PROJECT).await.expect("should create");
-    let opened = service
+    let created = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
+    let opened = scenes
         .open(&created.id().to_string())
         .await
         .expect("should open");
@@ -50,9 +62,12 @@ async fn a_new_scene_starts_empty_and_can_be_opened_again() {
 #[tokio::test]
 async fn a_scene_id_records_when_it_was_created() {
     let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
-    let service = new_service_with(clock);
+    let scenes = new_core_with(clock);
 
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
 
     let (seconds, _) = scene
         .id()
@@ -65,34 +80,43 @@ async fn a_scene_id_records_when_it_was_created() {
 
 #[tokio::test]
 async fn two_scenes_created_at_the_same_moment_are_still_distinct() {
-    let service = new_service();
+    let scenes = new_core();
 
-    let one = service.create(A_PROJECT).await.expect("should create");
-    let other = service.create(A_PROJECT).await.expect("should create");
+    let one = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
+    let other = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
 
     assert_ne!(one.id(), other.id());
 }
 
 #[tokio::test]
 async fn writing_prose_is_visible_when_the_scene_is_opened_again() {
-    let service = new_service();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scenes = new_core();
+    let scene = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     let id = scene.id().to_string();
 
-    service
+    scenes
         .apply(&id, &a_paragraph("The loom stood silent."))
         .await
         .expect("should apply");
 
-    let reopened = service.open(&id).await.expect("should open");
+    let reopened = scenes.open(&id).await.expect("should open");
     assert_eq!(reopened.text(), "The loom stood silent.");
 }
 
 #[tokio::test]
 async fn a_malformed_id_is_rejected_before_the_store_is_touched() {
-    let service = new_service();
+    let scenes = new_core();
 
-    let error = service.open("weaveling").await.expect_err("should reject");
+    let error = scenes.open("weaveling").await.expect_err("should reject");
 
     assert!(
         matches!(error, ScenesError::InvalidId(_)),
@@ -102,14 +126,17 @@ async fn a_malformed_id_is_rejected_before_the_store_is_touched() {
 
 #[tokio::test]
 async fn opening_a_scene_that_was_never_created_is_not_found() {
-    let service = new_service();
-    let never_created = service.create(A_PROJECT).await.expect("should create");
-    service
-        .delete(&never_created.id().to_string())
+    let scenes = new_core();
+    let never_created = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
+    scenes
+        .delete(&never_created.id().to_string(), &Agent::Local)
         .await
         .expect("should delete");
 
-    let error = service
+    let error = scenes
         .open(&never_created.id().to_string())
         .await
         .expect_err("should not find it");
@@ -122,56 +149,68 @@ async fn opening_a_scene_that_was_never_created_is_not_found() {
 
 #[tokio::test]
 async fn a_deleted_scene_takes_its_prose_with_it() {
-    let service = new_service();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scenes = new_core();
+    let scene = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     let id = scene.id().to_string();
-    service
+    scenes
         .apply(&id, &a_paragraph("The loom stood silent."))
         .await
         .expect("should apply");
 
-    service.delete(&id).await.expect("should delete");
+    scenes
+        .delete(&id, &Agent::Local)
+        .await
+        .expect("should delete");
 
-    let error = service.open(&id).await.expect_err("should be gone");
+    let error = scenes.open(&id).await.expect_err("should be gone");
     assert!(matches!(error, ScenesError::Store(StoreError::NotFound(_))));
 }
 
 #[tokio::test]
 async fn an_unusable_update_leaves_the_prose_as_it_was() {
-    let service = new_service();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scenes = new_core();
+    let scene = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     let id = scene.id().to_string();
-    service
+    scenes
         .apply(&id, &a_paragraph("The loom stood silent."))
         .await
         .expect("should apply");
 
-    let error = service
+    let error = scenes
         .apply(&id, &[255, 255, 255, 255])
         .await
         .expect_err("garbage should be refused");
 
     assert!(matches!(error, ScenesError::Store(StoreError::Unusable(_))));
-    let reopened = service.open(&id).await.expect("should still open");
+    let reopened = scenes.open(&id).await.expect("should still open");
     assert_eq!(reopened.text(), "The loom stood silent.");
 }
 
 #[tokio::test]
 async fn a_scene_written_by_two_authors_holds_both_contributions() {
-    let service = new_service();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scenes = new_core();
+    let scene = scenes
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     let id = scene.id().to_string();
 
-    service
+    scenes
         .apply(&id, &a_paragraph("Ada wrote this."))
         .await
         .expect("ada should write");
-    service
+    scenes
         .apply(&id, &a_paragraph("Bo wrote this."))
         .await
         .expect("bo should write");
 
-    let reopened = service.open(&id).await.expect("should open");
+    let reopened = scenes.open(&id).await.expect("should open");
     assert!(reopened.text().contains("Ada wrote this."));
     assert!(reopened.text().contains("Bo wrote this."));
 }

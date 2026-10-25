@@ -25,6 +25,5 @@ pub use quotation_restyling_tasks::{
 pub use restyler::SceneRestyler;
 pub use scene::{Scene, SceneError};
 pub use scenes::{Access, ScenesCore};
-pub use service::SceneService;
 pub use store::{SceneStore, StoreError};
 pub use title::{InvalidSceneTitle, SceneTitle};

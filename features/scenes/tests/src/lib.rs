@@ -14,13 +14,13 @@ mod one_connection_guarded;
 mod scene_cataloguing;
 
 #[cfg(test)]
-mod scene_service;
-
-#[cfg(test)]
 mod scenes_api;
 
 #[cfg(test)]
 mod scenes_api_guarded;
+
+#[cfg(test)]
+mod scenes_core;
 
 #[cfg(test)]
 mod shared_kernel;
