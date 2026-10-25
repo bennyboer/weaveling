@@ -2,6 +2,7 @@ use time::OffsetDateTime;
 
 use crate::agent::Agent;
 use crate::aggregate::{AggregateId, AggregateType};
+use crate::context::AggregateContext;
 use crate::version::Version;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -12,4 +13,5 @@ pub struct EventMetadata {
     pub agent: Agent,
     pub occurred_at: OffsetDateTime,
     pub is_snapshot: bool,
+    pub context: AggregateContext,
 }

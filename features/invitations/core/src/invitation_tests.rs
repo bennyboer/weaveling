@@ -1,5 +1,5 @@
 use email::EmailAddress;
-use eventsourcing::{Agent, Aggregate, AggregateId, EventMetadata, Version};
+use eventsourcing::{Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, Version};
 use time::{Duration, OffsetDateTime};
 
 use crate::invitation::*;
@@ -21,6 +21,7 @@ fn stamped(version: u64, occurred_at: OffsetDateTime) -> EventMetadata {
         agent: an_operator(),
         occurred_at,
         is_snapshot: false,
+        context: AggregateContext::default(),
     }
 }
 

@@ -5,14 +5,14 @@ use crate::store::StoreError;
 use crate::version::Version;
 
 const SINCE: &str = "
-    SELECT version, body, agent, occurred_at, is_snapshot
+    SELECT version, body, agent, occurred_at, is_snapshot, context
     FROM events
     WHERE aggregate = $1 AND kind = $2 AND version >= $3
     ORDER BY version
 ";
 
 const BETWEEN: &str = "
-    SELECT version, body, agent, occurred_at, is_snapshot
+    SELECT version, body, agent, occurred_at, is_snapshot, context
     FROM events
     WHERE aggregate = $1 AND kind = $2 AND version >= $3 AND version <= $4
     ORDER BY version

@@ -1,7 +1,9 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use eventsourcing::{AccountId, Agent, Aggregate, AggregateId, EventMetadata, Version};
+use eventsourcing::{
+    AccountId, Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, Version,
+};
 use time::{Duration, OffsetDateTime};
 
 use crate::id::SectionId;
@@ -30,6 +32,7 @@ fn a_metadata() -> EventMetadata {
         agent: an_author(),
         occurred_at: at(1_000),
         is_snapshot: false,
+        context: AggregateContext::default(),
     }
 }
 

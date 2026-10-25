@@ -30,7 +30,9 @@ fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Recorded, Version};
+    use eventsourcing::{
+        AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Recorded, Version,
+    };
     use messaging::Subscription;
     use projects_contract::{
         DELETED, DETAILS_CHANGED, EVERY_PROJECT, QUOTATION_CHANGED, RENAMED, STARTED,
@@ -62,6 +64,7 @@ mod tests {
                 agent: Agent::Account(AccountId::from("author-7")),
                 occurred_at: at(1_000),
                 is_snapshot: event.is_snapshot(),
+                context: AggregateContext::default(),
             },
             event,
         }

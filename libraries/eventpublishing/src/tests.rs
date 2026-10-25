@@ -1,6 +1,6 @@
 use eventsourcing::{
-    AccountId, Agent, AggregateId, AggregateType, Event, EventMetadata, EventName, Recorded,
-    Version,
+    AccountId, Agent, AggregateContext, AggregateId, AggregateType, Event, EventMetadata,
+    EventName, Recorded, Version,
 };
 use messaging::Message;
 use serde::{Deserialize, Serialize};
@@ -78,6 +78,7 @@ fn recorded(event: Happened, version: u64, agent: Agent) -> Recorded<Happened> {
             agent,
             occurred_at: at(1_000),
             is_snapshot: event.is_snapshot(),
+            context: AggregateContext::default(),
         },
         event,
     }
@@ -262,4 +263,30 @@ fn a_message_that_is_not_a_published_event_names_no_aggregate() {
         aggregate_in::<String>(&stray),
         Err(UnreadableMessage::NotAPublishedEvent(..))
     ));
+}
+
+#[test]
+fn what_is_published_carries_the_context_its_aggregate_was_left_in() {
+    let mut happened = recorded(a_capture(), 7, an_author());
+    happened.metadata.context = AggregateContext::default().with("shelf", "shelf_1");
+
+    let published = message_for(&happened, body).expect("a capture should be published");
+
+    assert_eq!(published.payload["context"], json!({ "shelf": "shelf_1" }));
+    assert_eq!(
+        read(&published).context.get("shelf").map(String::as_str),
+        Some("shelf_1")
+    );
+}
+
+#[test]
+fn an_aggregate_in_no_context_publishes_none() {
+    let published = message_for(&recorded(a_capture(), 7, an_author()), body)
+        .expect("a capture should be published");
+
+    assert!(
+        published.payload.get("context").is_none(),
+        "what belongs to the whole instance looks on the wire as it always did"
+    );
+    assert!(read(&published).context.is_empty());
 }

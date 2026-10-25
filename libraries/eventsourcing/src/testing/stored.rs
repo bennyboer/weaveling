@@ -22,10 +22,13 @@ enum StoredSample {
     DescriptionUpdated(String),
     Corrected(String),
     Deleted,
+    Shelved(String),
     Snapshotted {
         title: String,
         description: String,
         deleted: bool,
+        #[serde(default)]
+        shelf: Option<String>,
     },
 }
 
@@ -74,14 +77,17 @@ impl From<&SampleEvent> for StoredSample {
             }
             SampleEvent::Corrected(title) => Self::Corrected(title.clone()),
             SampleEvent::Deleted => Self::Deleted,
+            SampleEvent::Shelved(shelf) => Self::Shelved(shelf.clone()),
             SampleEvent::Snapshotted {
                 title,
                 description,
                 deleted,
+                shelf,
             } => Self::Snapshotted {
                 title: title.clone(),
                 description: description.clone(),
                 deleted: *deleted,
+                shelf: shelf.clone(),
             },
         }
     }
@@ -109,14 +115,17 @@ impl From<StoredSample> for SampleEvent {
             StoredSample::DescriptionUpdated(description) => Self::DescriptionUpdated(description),
             StoredSample::Corrected(title) => Self::Corrected(title),
             StoredSample::Deleted => Self::Deleted,
+            StoredSample::Shelved(shelf) => Self::Shelved(shelf),
             StoredSample::Snapshotted {
                 title,
                 description,
                 deleted,
+                shelf,
             } => Self::Snapshotted {
                 title,
                 description,
                 deleted,
+                shelf,
             },
         }
     }
@@ -177,6 +186,7 @@ mod tests {
                 title: "The Loom".to_owned(),
                 description: "A silent machine.".to_owned(),
                 deleted: true,
+                shelf: None,
             },
         ] {
             assert_eq!(round_trip(event.clone()), event);

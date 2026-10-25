@@ -8,6 +8,7 @@ CREATE TABLE events (
     agent           TEXT        NOT NULL,
     occurred_at     TIMESTAMPTZ NOT NULL,
     is_snapshot     BOOLEAN     NOT NULL,
+    context         JSONB       NOT NULL DEFAULT '{}',
     written_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     PRIMARY KEY (aggregate, kind, version)

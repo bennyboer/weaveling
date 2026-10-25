@@ -40,7 +40,9 @@ fn named(given: Role) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Version};
+    use eventsourcing::{
+        AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
+    };
     use members_contract::{EVERY_MEMBERS, FOUNDED, JOINED, LEFT, REMOVED, ROLE_CHANGED};
     use members_core::{KIND, Member, ProjectLink};
     use messaging::Subscription;
@@ -61,6 +63,7 @@ mod tests {
                 agent: Agent::Account(AccountId::from("account_ada")),
                 occurred_at: OffsetDateTime::UNIX_EPOCH,
                 is_snapshot: event.is_snapshot(),
+                context: AggregateContext::default(),
             },
             event,
         }

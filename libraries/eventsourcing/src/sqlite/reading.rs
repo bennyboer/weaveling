@@ -4,6 +4,7 @@ use sqlx::sqlite::{SqliteArguments, SqliteRow};
 use sqlx::{Row, Sqlite};
 
 use crate::aggregate::{AggregateId, AggregateType};
+use crate::context::AggregateContext;
 use crate::event::Recorded;
 use crate::metadata::EventMetadata;
 use crate::sqlite;
@@ -12,21 +13,21 @@ use crate::store::StoreError;
 use crate::version::Version;
 
 const SINCE: &str = "
-    SELECT version, body, agent, occurred_at, is_snapshot
+    SELECT version, body, agent, occurred_at, is_snapshot, context
     FROM events
     WHERE aggregate = ?1 AND kind = ?2 AND version >= ?3
     ORDER BY version
 ";
 
 const BETWEEN: &str = "
-    SELECT version, body, agent, occurred_at, is_snapshot
+    SELECT version, body, agent, occurred_at, is_snapshot, context
     FROM events
     WHERE aggregate = ?1 AND kind = ?2 AND version >= ?3 AND version <= ?4
     ORDER BY version
 ";
 
 const NEWEST: &str = "
-    SELECT version, body, agent, occurred_at, is_snapshot
+    SELECT version, body, agent, occurred_at, is_snapshot, context
     FROM events
     WHERE aggregate = ?1 AND kind = ?2 AND is_snapshot
     ORDER BY version DESC
@@ -34,7 +35,7 @@ const NEWEST: &str = "
 ";
 
 const NEWEST_BY: &str = "
-    SELECT version, body, agent, occurred_at, is_snapshot
+    SELECT version, body, agent, occurred_at, is_snapshot, context
     FROM events
     WHERE aggregate = ?1 AND kind = ?2 AND is_snapshot AND version <= ?3
     ORDER BY version DESC
@@ -147,6 +148,7 @@ impl<E> SqliteEventStore<E> {
         let agent: String = column(row, "agent", aggregate, kind)?;
         let occurred_at: String = column(row, "occurred_at", aggregate, kind)?;
         let is_snapshot: bool = column(row, "is_snapshot", aggregate, kind)?;
+        let context: String = column(row, "context", aggregate, kind)?;
 
         let unreadable = |what: &str| {
             StoreError::backend(
@@ -158,6 +160,10 @@ impl<E> SqliteEventStore<E> {
         let body: Value = serde_json::from_str(&body).map_err(|_| unreadable("a body"))?;
         let event = (self.codec.event)(body).ok_or_else(|| unreadable("a shape"))?;
         let occurred_at = text::read(&occurred_at).ok_or_else(|| unreadable("a time"))?;
+        let context = serde_json::from_str::<Value>(&context)
+            .ok()
+            .and_then(|written| AggregateContext::read(&written))
+            .ok_or_else(|| unreadable("a context"))?;
 
         Ok(Recorded {
             event,
@@ -168,6 +174,7 @@ impl<E> SqliteEventStore<E> {
                 agent: agent::decode(&agent),
                 occurred_at,
                 is_snapshot,
+                context,
             },
         })
     }

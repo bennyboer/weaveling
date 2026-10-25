@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use boards_core::{BoardCatalog, BoardEvent, BoardId, KIND, ProjectLink};
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent, AggregateId, EventMetadata, EventStore, Recorded, Version};
+use eventsourcing::{
+    AccountId, Agent, AggregateContext, AggregateId, EventMetadata, EventStore, Recorded, Version,
+};
 use messaging::Message;
 use time::{Duration, OffsetDateTime};
 
@@ -30,6 +32,7 @@ fn recorded(id: &BoardId, event: BoardEvent, version: u64) -> Recorded<BoardEven
             agent: an_author(),
             occurred_at: at(1_000),
             is_snapshot: false,
+            context: AggregateContext::default(),
         },
         event,
     }

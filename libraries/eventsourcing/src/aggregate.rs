@@ -1,6 +1,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use crate::agent::Agent;
+use crate::context::AggregateContext;
 use crate::event::Event;
 use crate::metadata::EventMetadata;
 use crate::patch::Patch;
@@ -31,6 +32,10 @@ pub trait Aggregate: Sized {
     fn apply(&mut self, event: &Self::Event, metadata: &EventMetadata);
 
     fn snapshot(&self) -> Self::Event;
+
+    fn context(&self) -> AggregateContext {
+        AggregateContext::default()
+    }
 
     fn snapshot_after(&self) -> Option<u32> {
         Some(100)

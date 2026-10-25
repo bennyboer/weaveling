@@ -6,7 +6,7 @@ use crate::store::StoreError;
 use crate::version::Version;
 
 const NEWEST: &str = "
-    SELECT version, body, agent, occurred_at, is_snapshot
+    SELECT version, body, agent, occurred_at, is_snapshot, context
     FROM events
     WHERE aggregate = $1 AND kind = $2 AND is_snapshot
     ORDER BY version DESC
@@ -14,7 +14,7 @@ const NEWEST: &str = "
 ";
 
 const NEWEST_BY: &str = "
-    SELECT version, body, agent, occurred_at, is_snapshot
+    SELECT version, body, agent, occurred_at, is_snapshot, context
     FROM events
     WHERE aggregate = $1 AND kind = $2 AND is_snapshot AND version <= $3
     ORDER BY version DESC

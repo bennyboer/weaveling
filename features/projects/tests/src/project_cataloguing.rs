@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use clock::FixedClock;
-use eventsourcing::{Agent, AggregateId, EventMetadata, Recorded, Version};
+use eventsourcing::{Agent, AggregateContext, AggregateId, EventMetadata, Recorded, Version};
 use messaging::{Message, RoutingKey};
 use projects_core::{KIND, ProjectCatalog, ProjectEvent, ProjectId, ProjectName, RawDetails};
 use serde_json::json;
@@ -61,6 +61,7 @@ fn message_about(id: &ProjectId, event: ProjectEvent) -> Message {
             agent: an_author(),
             occurred_at: at(1_000),
             is_snapshot: false,
+            context: AggregateContext::default(),
         },
         event,
     };

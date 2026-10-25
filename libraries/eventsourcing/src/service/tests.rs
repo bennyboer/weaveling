@@ -975,3 +975,88 @@ fn a_pause_before_trying_again_grows_with_each_try_is_never_longer_than_allowed_
         );
     }
 }
+
+fn shelves_in(stream: &[Recorded<SampleEvent>]) -> Vec<Option<String>> {
+    stream
+        .iter()
+        .map(|entry| entry.metadata.context.get("shelf").map(str::to_owned))
+        .collect()
+}
+
+#[tokio::test]
+async fn the_events_of_a_command_carry_the_context_the_command_left_the_aggregate_in() {
+    let store = a_store();
+    let service = a_service(store.clone());
+
+    let created = service
+        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .await
+        .expect("the sample is created");
+    let shelved = service
+        .execute(
+            &sample::a_sample(),
+            SampleCommand::Shelve("shelf_1".to_owned()),
+            &an_author(),
+        )
+        .await
+        .expect("the sample is shelved");
+
+    assert_eq!(
+        shelves_in(&created.events),
+        [None],
+        "a sample on no shelf is in no context"
+    );
+    assert_eq!(
+        shelves_in(&shelved.events),
+        [Some("shelf_1".to_owned())],
+        "the context is the aggregate's after the command, not before it"
+    );
+    let stored = store
+        .read_from(&sample::a_sample(), sample::SAMPLE, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(shelves_in(&stored), [None, Some("shelf_1".to_owned())]);
+}
+
+#[tokio::test]
+async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_keeps_it() {
+    let store = a_store();
+    let service = a_service(store.clone());
+    service
+        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .await
+        .expect("the sample is created");
+    service
+        .execute(
+            &sample::a_sample(),
+            SampleCommand::Shelve("shelf_1".to_owned()),
+            &an_author(),
+        )
+        .await
+        .expect("the sample is shelved");
+
+    service
+        .compact(&sample::a_sample(), &an_author())
+        .await
+        .expect("compacting should succeed");
+    let retitled = service
+        .execute(
+            &sample::a_sample(),
+            SampleCommand::UpdateTitle("Rewoven".to_owned()),
+            &an_author(),
+        )
+        .await
+        .expect("the sample is retitled");
+
+    let snapshot = store
+        .latest_snapshot(&sample::a_sample(), sample::SAMPLE)
+        .await
+        .expect("reading should succeed")
+        .expect("the snapshot is there");
+    assert_eq!(snapshot.metadata.context.get("shelf"), Some("shelf_1"));
+    assert_eq!(
+        shelves_in(&retitled.events),
+        [Some("shelf_1".to_owned())],
+        "grown from the snapshot, the sample still knows its shelf"
+    );
+}

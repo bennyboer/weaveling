@@ -8,6 +8,7 @@ use thiserror::Error;
 
 use crate::agent::Agent;
 use crate::aggregate::{Aggregate, AggregateId, AggregateType};
+use crate::context::AggregateContext;
 use crate::event::{Event, Recorded};
 use crate::metadata::EventMetadata;
 use crate::patch::Patcher;
@@ -189,7 +190,19 @@ where
             return Ok(Appended::nothing_at(expected));
         }
 
-        let stream = self.stamp(aggregate, expected, events, agent);
+        let mut stream = self.stamp(
+            aggregate,
+            expected,
+            events,
+            agent,
+            &AggregateContext::default(),
+        );
+        let state = grown(standing.map(|standing| standing.state), &stream)
+            .ok_or_else(|| self.unusable(aggregate))?;
+        let context = state.context();
+        for happened in &mut stream {
+            happened.metadata.context = context.clone();
+        }
         self.store
             .append(aggregate, A::KIND, expected, &stream)
             .await?;
@@ -199,8 +212,6 @@ where
             .expect("a non-empty batch was just stamped")
             .metadata
             .version;
-        let state = grown(standing.map(|standing| standing.state), &stream)
-            .ok_or_else(|| self.unusable(aggregate))?;
         let version = self
             .snapshot_if_due(aggregate, &state, landed, agent)
             .await?;
@@ -283,6 +294,7 @@ where
         expected: Version,
         events: Vec<A::Event>,
         agent: &Agent,
+        context: &AggregateContext,
     ) -> Vec<Recorded<A::Event>> {
         let occurred_at = self.clock.now();
         let mut version = expected;
@@ -300,6 +312,7 @@ where
                         agent: agent.clone(),
                         occurred_at,
                         is_snapshot: event.is_snapshot(),
+                        context: context.clone(),
                     },
                     event,
                 }
@@ -348,7 +361,7 @@ where
             });
         }
 
-        let stream = self.stamp(aggregate, reached, vec![snapshot], agent);
+        let stream = self.stamp(aggregate, reached, vec![snapshot], agent, &state.context());
         self.store
             .append(aggregate, A::KIND, reached, &stream)
             .await?;

@@ -1,5 +1,6 @@
 use crate::aggregate::AggregateId;
 use crate::codec::Codec;
+use crate::context::AggregateContext;
 use crate::event::{Event, Recorded};
 use crate::store::{EventStore, StoreError};
 use crate::testing::sample;
@@ -20,6 +21,7 @@ fn a_snapshot() -> SampleEvent {
         title: "The Loom".to_owned(),
         description: "A silent machine.".to_owned(),
         deleted: false,
+        shelf: None,
     }
 }
 
@@ -659,6 +661,54 @@ pub async fn a_version_below_zero_is_a_backend_failure_not_a_huge_version(bench:
     );
 }
 
+pub async fn an_event_s_context_is_read_back_as_it_was_written(
+    store: &impl EventStore<SampleEvent>,
+) {
+    let aggregate = AggregateId::from("sample_in_context");
+    let context = AggregateContext::default()
+        .with("shelf", "shelf_1")
+        .with("room", "room_2");
+    let mut created = at(&aggregate, 1, a_creation());
+    created.metadata.context = context.clone();
+    let mut snapshot = at(&aggregate, 2, a_snapshot());
+    snapshot.metadata.context = context.clone();
+    let plain = at(&aggregate, 3, SampleEvent::TitleUpdated("Plain".to_owned()));
+    for (expected, entry) in [created, snapshot, plain].into_iter().enumerate() {
+        store
+            .append(
+                &aggregate,
+                SAMPLE,
+                Version::of(expected as u64),
+                std::slice::from_ref(&entry),
+            )
+            .await
+            .expect("appending should succeed");
+    }
+
+    let found = store
+        .read_from(&aggregate, SAMPLE, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+    let latest = store
+        .latest_snapshot(&aggregate, SAMPLE)
+        .await
+        .expect("reading should succeed")
+        .expect("the snapshot is there");
+
+    assert_eq!(
+        found
+            .iter()
+            .map(|entry| entry.metadata.context.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            context.clone(),
+            context.clone(),
+            AggregateContext::default()
+        ]
+    );
+    assert_eq!(latest.metadata.context, context);
+}
+
 #[macro_export]
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -678,6 +728,10 @@ macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::conformance_case!($workbench, an_empty_stream_is_at_version_zero);
         $crate::conformance_case!($workbench, appended_events_read_back_in_order);
+        $crate::conformance_case!(
+            $workbench,
+            an_event_s_context_is_read_back_as_it_was_written
+        );
         $crate::conformance_case!($workbench, appending_at_a_stale_version_is_refused);
         $crate::conformance_case!($workbench, a_refused_append_leaves_the_stream_untouched);
         $crate::conformance_case!($workbench, one_append_may_carry_several_events);

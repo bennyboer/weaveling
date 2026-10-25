@@ -34,7 +34,7 @@ fn declined_for(reason: DeclineReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use email::EmailAddress;
-    use eventsourcing::{Agent, AggregateId, Event, EventMetadata, Version};
+    use eventsourcing::{Agent, AggregateContext, AggregateId, Event, EventMetadata, Version};
     use invitations_contract::{ACCEPTED, DECLINED, EVERY_INVITATION, ISSUED, RETIRED, WITHDRAWN};
     use invitations_core::{InvitationId, InvitationTokenDigest, KIND, Outcome};
     use messaging::Subscription;
@@ -59,6 +59,7 @@ mod tests {
                 agent: Agent::Account("account_1".into()),
                 occurred_at: at(1_000),
                 is_snapshot: event.is_snapshot(),
+                context: AggregateContext::default(),
             },
             event,
         }

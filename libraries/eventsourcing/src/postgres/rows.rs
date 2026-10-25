@@ -4,6 +4,7 @@ use sqlx::{Postgres, Row};
 use time::OffsetDateTime;
 
 use crate::aggregate::{AggregateId, AggregateType};
+use crate::context::AggregateContext;
 use crate::event::Recorded;
 use crate::metadata::EventMetadata;
 use crate::postgres;
@@ -30,6 +31,14 @@ impl<E> PostgresEventStore<E> {
         let agent: String = column(row, "agent", aggregate, kind)?;
         let occurred_at: OffsetDateTime = column(row, "occurred_at", aggregate, kind)?;
         let is_snapshot: bool = column(row, "is_snapshot", aggregate, kind)?;
+        let context: Value = column(row, "context", aggregate, kind)?;
+        let context = AggregateContext::read(&context).ok_or_else(|| {
+            StoreError::backend(
+                aggregate,
+                kind,
+                format!("version {version} keeps a context that is no context"),
+            )
+        })?;
 
         let event = (self.codec.event)(body).ok_or_else(|| {
             StoreError::backend(
@@ -48,6 +57,7 @@ impl<E> PostgresEventStore<E> {
                 agent: agent::decode(&agent),
                 occurred_at,
                 is_snapshot,
+                context,
             },
         })
     }

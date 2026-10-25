@@ -49,6 +49,7 @@ where
         aggregate: PublishedAggregate::of(&happened.metadata),
         agent: PublishedAgent::of(&happened.metadata.agent),
         occurred_at: text::serialize(happened.metadata.occurred_at),
+        context: happened.metadata.context.entries().clone(),
     };
     let payload = serde_json::to_value(published)
         .expect("a published event is plain data and cannot fail to serialize");

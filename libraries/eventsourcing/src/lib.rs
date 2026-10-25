@@ -1,6 +1,7 @@
 mod agent;
 mod aggregate;
 mod codec;
+mod context;
 mod event;
 mod memory;
 mod message_mapping;
@@ -25,6 +26,7 @@ mod testing;
 pub use agent::{AccountId, Agent};
 pub use aggregate::{Aggregate, AggregateId, AggregateType};
 pub use codec::Codec;
+pub use context::AggregateContext;
 pub use event::{Event, EventName, Recorded};
 pub use memory::InMemoryEventStore;
 pub use message_mapping::MessageMapping;

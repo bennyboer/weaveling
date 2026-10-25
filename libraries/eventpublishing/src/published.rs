@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use eventsourcing::{Agent, EventMetadata};
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +9,8 @@ pub struct PublishedEvent<B> {
     pub aggregate: PublishedAggregate,
     pub agent: PublishedAgent,
     pub occurred_at: String,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub context: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

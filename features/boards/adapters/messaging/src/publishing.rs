@@ -53,7 +53,9 @@ mod tests {
         EVERY_BOARD, IDEA_MOVED, IDEA_PINNED, IDEA_RAISED, IDEA_RESIZED, IDEA_UNPINNED, STARTED,
     };
     use boards_core::{BoardId, IdeaLink, KIND, PositionedIdea, ProjectLink};
-    use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Version};
+    use eventsourcing::{
+        AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
+    };
     use messaging::{Handler, RoutingKey, Subscription};
     use time::{Duration, OffsetDateTime};
 
@@ -76,6 +78,7 @@ mod tests {
                 agent: Agent::Account(AccountId::from("author-7")),
                 occurred_at: at(1_000),
                 is_snapshot: event.is_snapshot(),
+                context: AggregateContext::default(),
             },
             event,
         }

@@ -50,7 +50,7 @@ impl ProjectMembers {
 
 #[cfg(test)]
 mod tests {
-    use eventsourcing::{Agent, Aggregate, AggregateId, EventMetadata};
+    use eventsourcing::{Agent, Aggregate, AggregateContext, AggregateId, EventMetadata};
     use time::OffsetDateTime;
 
     use super::*;
@@ -64,6 +64,7 @@ mod tests {
             agent: Agent::System,
             occurred_at: OffsetDateTime::UNIX_EPOCH,
             is_snapshot: false,
+            context: AggregateContext::default(),
         }
     }
 

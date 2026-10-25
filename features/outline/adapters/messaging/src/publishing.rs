@@ -76,7 +76,9 @@ fn body(event: &OutlineEvent) -> Option<OutlineEventDTO> {
 
 #[cfg(test)]
 mod tests {
-    use eventsourcing::{AccountId, Agent, AggregateId, Event, EventMetadata, Version};
+    use eventsourcing::{
+        AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
+    };
     use messaging::{Handler, RoutingKey, Subscription};
     use outline_contract::{
         ATTACHED, DETACHED, EVERY_OUTLINE, SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED,
@@ -122,6 +124,7 @@ mod tests {
                 agent: Agent::Account(AccountId::from("author-7")),
                 occurred_at: at(1_000),
                 is_snapshot: event.is_snapshot(),
+                context: AggregateContext::default(),
             },
             event,
         }

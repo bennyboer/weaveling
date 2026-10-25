@@ -56,7 +56,7 @@ mod tests {
         PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, UNLOCKED,
     };
     use accounts_core::{AccountId, AccountName, EmailAddress, KIND, LockReason};
-    use eventsourcing::{AggregateId, Event, EventMetadata, Version};
+    use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
     use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
 
@@ -79,6 +79,7 @@ mod tests {
                 agent: id.acting(),
                 occurred_at: at(1_000),
                 is_snapshot: event.is_snapshot(),
+                context: AggregateContext::default(),
             },
             event,
         }

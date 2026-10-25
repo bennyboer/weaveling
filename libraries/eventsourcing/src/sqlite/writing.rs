@@ -18,8 +18,8 @@ const HEAD: &str = "
 
 const WRITE: &str = "
     INSERT INTO events
-        (aggregate, kind, version, name, body, body_version, agent, occurred_at, is_snapshot)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        (aggregate, kind, version, name, body, body_version, agent, occurred_at, is_snapshot, context)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
 ";
 
 impl<E> SqliteEventStore<E>
@@ -85,6 +85,7 @@ where
             .bind(agent::encode(&happened.metadata.agent))
             .bind(text::written(happened.metadata.occurred_at))
             .bind(happened.metadata.is_snapshot)
+            .bind(happened.metadata.context.written().to_string())
             .execute(&mut **transaction)
             .await
             .map_err(|failure| match is_unique_violation(&failure) {

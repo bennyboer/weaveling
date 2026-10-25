@@ -1,4 +1,6 @@
-use eventsourcing::{AccountId, Agent, Aggregate, AggregateId, Event, EventMetadata, Version};
+use eventsourcing::{
+    AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
+};
 use time::{Duration, OffsetDateTime};
 
 use crate::members::*;
@@ -15,6 +17,7 @@ fn stamped(version: u64) -> EventMetadata {
         agent: an_owner(),
         occurred_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
         is_snapshot: false,
+        context: AggregateContext::default(),
     }
 }
 

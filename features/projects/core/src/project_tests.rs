@@ -1,4 +1,6 @@
-use eventsourcing::{AccountId, Agent, Aggregate, AggregateId, Event, EventMetadata, Version};
+use eventsourcing::{
+    AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
+};
 use time::{Duration, OffsetDateTime};
 
 use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
@@ -25,6 +27,7 @@ fn stamped(version: u64, occurred_at: OffsetDateTime) -> EventMetadata {
         agent: an_author(),
         occurred_at,
         is_snapshot: false,
+        context: AggregateContext::default(),
     }
 }
 

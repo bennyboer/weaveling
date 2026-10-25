@@ -1,3 +1,4 @@
+use crate::context::AggregateContext;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -151,6 +152,7 @@ fn at(aggregate: &AggregateId, version: u64, event: SampleEvent) -> Recorded<Sam
                 + Duration::seconds(1_759_000_000)
                 + Duration::nanoseconds(123_456_789),
             is_snapshot: event.is_snapshot(),
+            context: AggregateContext::default(),
         },
         event,
     }

@@ -6,8 +6,8 @@ use boards_core::{
 };
 use clock::FixedClock;
 use eventsourcing::{
-    AccountId, Agent, AggregateId, EventMetadata, EventStore, Recorded, ServiceError, StoreError,
-    Version,
+    AccountId, Agent, AggregateContext, AggregateId, EventMetadata, EventStore, Recorded,
+    ServiceError, StoreError, Version,
 };
 use messaging::RoutingKey;
 use registry::Registry;
@@ -56,6 +56,7 @@ fn a_start(id: &BoardId) -> Recorded<BoardEvent> {
             agent: an_author(),
             occurred_at: at(500),
             is_snapshot: false,
+            context: AggregateContext::default(),
         },
         event: BoardEvent::Started {
             project: ProjectLink::from("project_1"),

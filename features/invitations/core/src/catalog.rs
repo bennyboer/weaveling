@@ -101,7 +101,7 @@ fn retire_after(invitation: &Invitation) -> OffsetDateTime {
 
 #[cfg(test)]
 mod tests {
-    use eventsourcing::{Agent, Aggregate, AggregateId, EventMetadata};
+    use eventsourcing::{Agent, Aggregate, AggregateContext, AggregateId, EventMetadata};
     use time::Duration;
 
     use super::*;
@@ -120,6 +120,7 @@ mod tests {
             agent: Agent::System,
             occurred_at: at(seconds),
             is_snapshot: false,
+            context: AggregateContext::default(),
         }
     }
 

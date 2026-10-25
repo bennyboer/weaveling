@@ -1,3 +1,4 @@
+use crate::context::AggregateContext;
 use messaging::{Message, RoutingKey};
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -19,6 +20,7 @@ pub const DESCRIPTION_UPDATED: EventName = EventName::of("DESCRIPTION_UPDATED");
 pub const DELETED: EventName = EventName::of("DELETED");
 pub const CORRECTED: EventName = EventName::of("CORRECTED");
 pub const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
+pub const SHELVED: EventName = EventName::of("SHELVED");
 
 #[derive(Clone)]
 pub enum SampleCommand {
@@ -27,6 +29,7 @@ pub enum SampleCommand {
     UpdateDescription(String),
     Rewrite { title: String, description: String },
     Delete,
+    Shelve(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -53,10 +56,12 @@ pub enum SampleEvent {
     DescriptionUpdated(String),
     Corrected(String),
     Deleted,
+    Shelved(String),
     Snapshotted {
         title: String,
         description: String,
         deleted: bool,
+        shelf: Option<String>,
     },
 }
 
@@ -66,6 +71,7 @@ pub struct Sample {
     pub description: String,
     pub kind: SampleKind,
     pub deleted: bool,
+    pub shelf: Option<String>,
 }
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -88,6 +94,7 @@ impl Event for SampleEvent {
             Self::DescriptionUpdated(_) => DESCRIPTION_UPDATED,
             Self::Corrected(_) => CORRECTED,
             Self::Deleted => DELETED,
+            Self::Shelved(_) => SHELVED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -116,6 +123,13 @@ impl Aggregate for Sample {
 
     const KIND: AggregateType = SAMPLE;
 
+    fn context(&self) -> AggregateContext {
+        match &self.shelf {
+            Some(shelf) => AggregateContext::default().with("shelf", shelf.clone()),
+            None => AggregateContext::default(),
+        }
+    }
+
     fn begin(command: SampleCommand, _agent: &Agent) -> Result<Vec<SampleEvent>, SampleError> {
         match command {
             SampleCommand::Create { title, description } => Ok(vec![SampleEvent::Created {
@@ -138,16 +152,19 @@ impl Aggregate for Sample {
                 description: description.clone(),
                 kind: *kind,
                 deleted: false,
+                shelf: None,
             }),
             SampleEvent::Snapshotted {
                 title,
                 description,
                 deleted,
+                shelf,
             } => Some(Self {
                 title: title.clone(),
                 description: description.clone(),
                 kind: SampleKind::Ordinary,
                 deleted: *deleted,
+                shelf: shelf.clone(),
             }),
             _ => None,
         }
@@ -173,6 +190,7 @@ impl Aggregate for Sample {
                 SampleEvent::DescriptionUpdated(description),
             ]),
             SampleCommand::Delete => Ok(vec![SampleEvent::Deleted]),
+            SampleCommand::Shelve(shelf) => Ok(vec![SampleEvent::Shelved(shelf)]),
         }
     }
 
@@ -185,14 +203,17 @@ impl Aggregate for Sample {
             SampleEvent::DescriptionUpdated(description) => self.description = description.clone(),
             SampleEvent::Corrected(title) => self.title = title.clone(),
             SampleEvent::Deleted => self.deleted = true,
+            SampleEvent::Shelved(shelf) => self.shelf = Some(shelf.clone()),
             SampleEvent::Snapshotted {
                 title,
                 description,
                 deleted,
+                shelf,
             } => {
                 self.title = title.clone();
                 self.description = description.clone();
                 self.deleted = *deleted;
+                self.shelf = shelf.clone();
             }
         }
     }
@@ -224,6 +245,7 @@ impl Aggregate for Sample {
             title: self.title.clone(),
             description: self.description.clone(),
             deleted: self.deleted,
+            shelf: self.shelf.clone(),
         }
     }
 }
@@ -240,6 +262,7 @@ pub fn stamped(aggregate: &AggregateId, version: u64) -> EventMetadata {
         agent: Agent::System,
         occurred_at: OffsetDateTime::UNIX_EPOCH,
         is_snapshot: false,
+        context: AggregateContext::default(),
     }
 }
 
@@ -472,6 +495,7 @@ mod tests {
                 title: "Elsewhere".to_owned(),
                 description: "Entirely".to_owned(),
                 deleted: true,
+                shelf: None,
             },
             &stamped(&a_sample(), 1),
         );
@@ -514,6 +538,7 @@ mod tests {
                     title: "The Loom".to_owned(),
                     description: "A silent machine.".to_owned(),
                     deleted: false,
+                    shelf: None,
                 },
             ],
         );

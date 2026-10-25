@@ -1,4 +1,6 @@
-use eventsourcing::{AccountId, Agent, Aggregate, AggregateId, Event, EventMetadata, Version};
+use eventsourcing::{
+    AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
+};
 use time::{Duration, OffsetDateTime};
 
 use crate::board::{
@@ -23,6 +25,7 @@ fn a_metadata(version: u64) -> EventMetadata {
         agent: an_author(),
         occurred_at: at(1_000),
         is_snapshot: false,
+        context: AggregateContext::default(),
     }
 }
 

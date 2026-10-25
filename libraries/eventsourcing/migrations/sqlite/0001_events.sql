@@ -8,6 +8,7 @@ CREATE TABLE events (
     agent           TEXT    NOT NULL,
     occurred_at     TEXT    NOT NULL,
     is_snapshot     INTEGER NOT NULL,
+    context         TEXT    NOT NULL DEFAULT '{}',
     written_at      TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
 
     PRIMARY KEY (aggregate, kind, version)

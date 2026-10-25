@@ -1,4 +1,6 @@
-use eventsourcing::{AccountId, Agent, Aggregate, AggregateId, Event, EventMetadata, Version};
+use eventsourcing::{
+    AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
+};
 use time::OffsetDateTime;
 
 use crate::idea::*;
@@ -20,6 +22,7 @@ fn stamped(version: u64) -> EventMetadata {
         agent: an_author(),
         occurred_at: OffsetDateTime::UNIX_EPOCH,
         is_snapshot: false,
+        context: AggregateContext::default(),
     }
 }
 
