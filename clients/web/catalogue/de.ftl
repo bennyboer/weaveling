@@ -120,6 +120,7 @@ refused-project-description-control-character = Eine Beschreibung darf außer Ze
 refused-project-description-too-long = Eine Beschreibung darf höchstens { $max } Zeichen lang sein, diese hat { $actual }.
 refused-project-deleted = Dieses Projekt wurde inzwischen gelöscht.
 refused-not-an-owner = Das darf nur, wem dieses Projekt gehört.
+refused-not-an-author = Das darf nur, wer an diesem Projekt mitschreibt.
 refused-board-id-invalid = Das ist keine gültige Pinnwand-ID.
 refused-idea-already-pinned = Diese Idee hängt schon an der Pinnwand.
 refused-idea-not-pinned = Diese Idee hängt nicht an der Pinnwand.

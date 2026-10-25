@@ -4043,6 +4043,7 @@ dependencies = [
  "async-trait",
  "thiserror",
  "time",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
@@ -4073,6 +4074,7 @@ version = "0.1.0"
 dependencies = [
  "axum",
  "serde",
+ "weaveling-authorizing",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-ideas-core",
@@ -4094,6 +4096,7 @@ dependencies = [
 name = "weaveling-ideas-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
  "serde_json",

@@ -11,6 +11,9 @@ mod idea_sweeping;
 mod ideas_api;
 
 #[cfg(test)]
+mod ideas_api_guarded;
+
+#[cfg(test)]
 mod ideas_live;
 
 #[cfg(test)]

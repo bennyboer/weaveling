@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore, Version};
 use ideas_catalog::InMemoryIdeaCatalog;
@@ -33,6 +34,7 @@ fn a_workbench(at_most: usize) -> Wired {
     let ideas = IdeaService::new(
         Arc::new(InMemoryEventStore::new()),
         catalog.clone(),
+        Arc::new(AllowingEverything),
         clock.clone(),
     );
 

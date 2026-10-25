@@ -7,6 +7,7 @@ edition.workspace = true
 async-trait = { workspace = true }
 thiserror = { workspace = true }
 
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }

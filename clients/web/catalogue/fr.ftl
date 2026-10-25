@@ -120,6 +120,7 @@ refused-project-description-control-character = Une description ne peut pas cont
 refused-project-description-too-long = Une description peut compter au plus { $max } caractères ; celle-ci en a { $actual }.
 refused-project-deleted = Ce projet a été supprimé entre-temps.
 refused-not-an-owner = Seul un propriétaire de ce projet peut faire cela.
+refused-not-an-author = Seul un auteur de ce projet peut faire cela.
 refused-board-id-invalid = Ce n’est pas un identifiant de tableau valide.
 refused-idea-already-pinned = Cette idée est déjà sur le tableau.
 refused-idea-not-pinned = Cette idée n’est pas sur le tableau.

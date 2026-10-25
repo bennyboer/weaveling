@@ -20,6 +20,7 @@ pub fn service(ports: &Ports, context: &Context) -> IdeaService {
     IdeaService::new(
         ports.events.clone(),
         ports.catalog.clone(),
+        context.authorizer.clone(),
         context.clock.clone(),
     )
 }
@@ -45,7 +46,10 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
 
-    Wired::serving(ideas_rest::router(ideas).merge(ideas_rest::live(broadcaster))).listening(vec![
+    Wired::serving(
+        ideas_rest::router(ideas).merge(ideas_rest::live(broadcaster, context.authorizer.clone())),
+    )
+    .listening(vec![
         Arc::new(broadcast),
         Arc::new(projector),
         Arc::new(sweep),

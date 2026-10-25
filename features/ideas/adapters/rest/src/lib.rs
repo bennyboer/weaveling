@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use authorizing::Authorizer;
 use axum::Extension;
 use axum::Json;
 use axum::Router;
@@ -9,14 +12,17 @@ use axum::routing;
 use eventsourcing::{Agent, Standing};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
 use ideas_core::{Idea, IdeaError, IdeaService, IdeaServiceError, IdeaSummary, InvalidIdeaTitle};
-use live::Broadcaster;
+use live::{Broadcaster, ReadersOfTheProject};
 use serde::Deserialize;
 use serving::Problem;
 
-pub fn live(broadcaster: Broadcaster) -> Router {
-    live::followed_at("/ideas/live", broadcaster, |asked| {
-        asked.get("project").cloned()
-    })
+pub fn live(broadcaster: Broadcaster, authorizer: Arc<dyn Authorizer>) -> Router {
+    live::followed_if(
+        "/ideas/live",
+        broadcaster,
+        |asked| asked.get("project").cloned(),
+        Arc::new(ReadersOfTheProject(authorizer)),
+    )
 }
 
 pub fn router(ideas: IdeaService) -> Router {
@@ -36,9 +42,13 @@ struct InProject {
 
 async fn list(
     State(ideas): State<IdeaService>,
+    Extension(acting): Extension<Agent>,
     Query(asked): Query<InProject>,
 ) -> Result<Json<Vec<IdeaDTO>>, Problem> {
-    let found = ideas.list(&asked.project).await.map_err(problem_of)?;
+    let found = ideas
+        .list(&asked.project, &acting)
+        .await
+        .map_err(problem_of)?;
 
     Ok(Json(found.iter().map(to_dto).collect()))
 }
@@ -69,9 +79,10 @@ async fn capture(
 
 async fn find(
     State(ideas): State<IdeaService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
 ) -> Result<Response, Problem> {
-    let found = ideas.get(&id).await.map_err(problem_of)?;
+    let found = ideas.read(&id, &acting).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &id, &found))
 }
@@ -143,6 +154,12 @@ fn problem_of(refusal: IdeaServiceError) -> Problem {
             IdeaError::Discarded => Problem::refused(refused::DISCARDED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
+        IdeaServiceError::ProjectNotThere => {
+            Problem::not_found(serving::NOT_FOUND, IdeaServiceError::ProjectNotThere)
+        }
+        IdeaServiceError::NotAnAuthor => {
+            Problem::forbidden(refused::NOT_AN_AUTHOR, IdeaServiceError::NotAnAuthor)
+        }
         unserveable => Problem::unexpected(unserveable),
     }
 }

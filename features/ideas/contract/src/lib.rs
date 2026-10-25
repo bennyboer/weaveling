@@ -47,11 +47,13 @@ pub mod refused {
     pub const TITLE_CONTROL_CHARACTER: &str = "idea-title-control-character";
     pub const TITLE_TOO_LONG: &str = "idea-title-too-long";
     pub const DISCARDED: &str = "idea-discarded";
+    pub const NOT_AN_AUTHOR: &str = "not-an-author";
 
-    pub const EVERY: [&str; 4] = [
+    pub const EVERY: [&str; 5] = [
         ID_INVALID,
         TITLE_CONTROL_CHARACTER,
         TITLE_TOO_LONG,
         DISCARDED,
+        NOT_AN_AUTHOR,
     ];
 }

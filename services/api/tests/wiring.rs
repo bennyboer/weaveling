@@ -998,6 +998,20 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         ))
         .await
         .assert_status(StatusCode::NOT_FOUND);
+    let project = started["id"].as_str().expect("an id");
+    server
+        .get(&format!("/api/ideas?project={project}"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .post("/api/ideas")
+        .json(&json!({ "project": project, "title": "Grace's idea" }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .get_websocket(&format!("/api/ideas/live?project={project}"))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 
     signed_in.end().await;
 }
