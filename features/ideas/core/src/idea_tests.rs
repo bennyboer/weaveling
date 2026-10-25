@@ -1,6 +1,7 @@
 use eventsourcing::{
     AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
 };
+use projects_contract::context::PROJECT;
 use time::OffsetDateTime;
 
 use crate::idea::*;
@@ -215,4 +216,9 @@ fn a_replayed_stream_ends_where_the_events_say() {
 
     assert_eq!(idea.title(), &a_title("The Silent Loom"));
     assert!(!idea.is_discarded());
+}
+
+#[test]
+fn an_idea_is_in_the_context_of_its_project() {
+    assert_eq!(a_captured_idea().context().get(PROJECT), Some("project_1"));
 }

@@ -1,6 +1,7 @@
 use eventsourcing::{
     AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
 };
+use projects_contract::context::PROJECT;
 use time::{Duration, OffsetDateTime};
 
 use crate::members::*;
@@ -376,4 +377,16 @@ fn a_project_s_members_are_kept_under_the_project_s_own_id() {
         AggregateId::from(&ProjectLink::from("project_1")),
         AggregateId::from("project_1")
     );
+}
+
+#[test]
+fn a_project_s_members_are_in_its_context_and_stay_so_through_a_snapshot() {
+    let members = with(&[(grace(), Role::Author)]);
+    let rebuilt =
+        Members::from_first(&members.snapshot(), &stamped(4)).expect("a snapshot gives birth");
+    let applied = after(founded_by_ada(), &[members.snapshot()]);
+
+    for held in [&members, &rebuilt, &applied] {
+        assert_eq!(held.context().get(PROJECT), Some("project_1"));
+    }
 }

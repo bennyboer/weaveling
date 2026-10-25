@@ -1,8 +1,10 @@
 use std::fmt::{self, Display, Formatter};
 
 use eventsourcing::{
-    Agent, Aggregate, AggregateId, AggregateType, Event, EventMetadata, EventName, Version,
+    Agent, Aggregate, AggregateContext, AggregateId, AggregateType, Event, EventMetadata,
+    EventName, Version,
 };
+use projects_contract::context;
 use thiserror::Error;
 
 use crate::id::IdeaId;
@@ -129,6 +131,10 @@ impl Aggregate for Idea {
     type Error = IdeaError;
 
     const KIND: AggregateType = KIND;
+
+    fn context(&self) -> AggregateContext {
+        AggregateContext::default().with(context::PROJECT, self.project.to_string())
+    }
 
     fn begin(command: IdeaCommand, _agent: &Agent) -> Result<Vec<IdeaEvent>, IdeaError> {
         match command {

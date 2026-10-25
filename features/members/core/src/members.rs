@@ -3,10 +3,11 @@ use std::fmt::{self, Display, Formatter};
 use std::str::FromStr;
 
 use indexmap::IndexMap;
+use projects_contract::context;
 
 use eventsourcing::{
-    AccountId, Agent, Aggregate, AggregateId, AggregateType, Event, EventMetadata, EventName,
-    Version,
+    AccountId, Agent, Aggregate, AggregateContext, AggregateId, AggregateType, Event,
+    EventMetadata, EventName, Version,
 };
 use thiserror::Error;
 
@@ -56,6 +57,7 @@ pub enum MembersEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Members {
+    project: ProjectLink,
     roles: IndexMap<AccountId, Role>,
 }
 
@@ -136,8 +138,9 @@ impl Members {
                 == 1
     }
 
-    fn of(members: &[Member]) -> Self {
+    fn of(project: ProjectLink, members: &[Member]) -> Self {
         Self {
+            project,
             roles: members
                 .iter()
                 .map(|member| (member.account.clone(), member.role))
@@ -174,6 +177,10 @@ impl Aggregate for Members {
 
     const KIND: AggregateType = KIND;
 
+    fn context(&self) -> AggregateContext {
+        AggregateContext::default().with(context::PROJECT, self.project.to_string())
+    }
+
     fn begin(command: MembersCommand, _agent: &Agent) -> Result<Vec<MembersEvent>, MembersError> {
         match command {
             MembersCommand::Found { owner } => Ok(vec![MembersEvent::Founded { owner }]),
@@ -184,13 +191,18 @@ impl Aggregate for Members {
         }
     }
 
-    fn from_first(event: &MembersEvent, _metadata: &EventMetadata) -> Option<Self> {
+    fn from_first(event: &MembersEvent, metadata: &EventMetadata) -> Option<Self> {
+        let project = ProjectLink::from(metadata.aggregate.as_str());
+
         match event {
-            MembersEvent::Founded { owner } => Some(Self::of(&[Member {
-                account: owner.clone(),
-                role: Role::Owner,
-            }])),
-            MembersEvent::Snapshotted { members } => Some(Self::of(members)),
+            MembersEvent::Founded { owner } => Some(Self::of(
+                project,
+                &[Member {
+                    account: owner.clone(),
+                    role: Role::Owner,
+                }],
+            )),
+            MembersEvent::Snapshotted { members } => Some(Self::of(project, members)),
             MembersEvent::Joined { .. }
             | MembersEvent::RoleChanged { .. }
             | MembersEvent::Left { .. }
@@ -243,7 +255,9 @@ impl Aggregate for Members {
             MembersEvent::Left { account } | MembersEvent::Removed { account } => {
                 self.roles.shift_remove(account);
             }
-            MembersEvent::Snapshotted { members } => *self = Self::of(members),
+            MembersEvent::Snapshotted { members } => {
+                *self = Self::of(self.project.clone(), members)
+            }
         }
     }
 

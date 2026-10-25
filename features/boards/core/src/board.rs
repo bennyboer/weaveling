@@ -1,9 +1,11 @@
 use std::fmt::{self, Display, Formatter};
 
 use indexmap::IndexMap;
+use projects_contract::context;
 
 use eventsourcing::{
-    Agent, Aggregate, AggregateId, AggregateType, Event, EventMetadata, EventName, Version,
+    Agent, Aggregate, AggregateContext, AggregateId, AggregateType, Event, EventMetadata,
+    EventName, Version,
 };
 use thiserror::Error;
 
@@ -279,6 +281,10 @@ impl Aggregate for Board {
     type Error = BoardError;
 
     const KIND: AggregateType = KIND;
+
+    fn context(&self) -> AggregateContext {
+        AggregateContext::default().with(context::PROJECT, self.project.to_string())
+    }
 
     fn begin(command: BoardCommand, _agent: &Agent) -> Result<Vec<BoardEvent>, BoardError> {
         match command {

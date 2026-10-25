@@ -1,6 +1,7 @@
 use eventsourcing::{
     AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
 };
+use projects_contract::context::PROJECT;
 use time::{Duration, OffsetDateTime};
 
 use crate::board::{
@@ -802,4 +803,9 @@ fn a_snapshot_remembers_that_the_board_was_discarded() {
         board,
         "compaction must not resurrect a discarded board by forgetting it ever ended"
     );
+}
+
+#[test]
+fn a_board_is_in_the_context_of_its_project() {
+    assert_eq!(a_started_board().context().get(PROJECT), Some("project_1"));
 }

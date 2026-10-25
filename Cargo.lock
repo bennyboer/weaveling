@@ -3844,6 +3844,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-projects-contract",
  "weaveling-registry",
 ]
 
@@ -4047,6 +4048,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-projects-contract",
  "weaveling-words",
 ]
 
@@ -4345,6 +4347,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-projects-contract",
 ]
 
 [[package]]
@@ -4485,6 +4488,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-projects-contract",
  "weaveling-registry",
  "weaveling-words",
 ]
@@ -4610,6 +4614,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
+ "weaveling-projects-contract",
  "weaveling-quotation",
  "weaveling-words",
 ]

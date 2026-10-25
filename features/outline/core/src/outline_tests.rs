@@ -1,3 +1,4 @@
+use projects_contract::context::PROJECT;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
@@ -875,5 +876,13 @@ fn a_detachment_names_the_section_it_left() {
             from: a_section("Chapter 1"),
         }],
         "a listener keyed by section cannot forget a note without being told which section"
+    );
+}
+
+#[test]
+fn an_outline_is_in_the_context_of_its_project() {
+    assert_eq!(
+        Book::started().outline.context().get(PROJECT),
+        Some("project_1")
     );
 }

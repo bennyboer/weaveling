@@ -9,6 +9,7 @@ thiserror = { workspace = true }
 time = { workspace = true }
 
 ids = { version = "0.1.0", path = "../../../libraries/ids", package = "weaveling-ids" }
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }

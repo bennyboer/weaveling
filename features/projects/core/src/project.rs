@@ -1,8 +1,10 @@
 use std::iter;
 
 use eventsourcing::{
-    Agent, Aggregate, AggregateId, AggregateType, Event, EventMetadata, EventName, Version,
+    Agent, Aggregate, AggregateContext, AggregateId, AggregateType, Event, EventMetadata,
+    EventName, Version,
 };
+use projects_contract::context;
 use thiserror::Error;
 use time::OffsetDateTime;
 
@@ -51,6 +53,7 @@ pub enum ProjectEvent {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Project {
+    id: String,
     name: ProjectName,
     details: ProjectDetails,
     created_at: OffsetDateTime,
@@ -118,6 +121,10 @@ impl Aggregate for Project {
 
     const KIND: AggregateType = KIND;
 
+    fn context(&self) -> AggregateContext {
+        AggregateContext::default().with(context::PROJECT, self.id.clone())
+    }
+
     fn begin(command: ProjectCommand, _agent: &Agent) -> Result<Vec<ProjectEvent>, ProjectError> {
         match command {
             ProjectCommand::Start(name, details) => {
@@ -135,6 +142,7 @@ impl Aggregate for Project {
     fn from_first(event: &ProjectEvent, metadata: &EventMetadata) -> Option<Self> {
         match event {
             ProjectEvent::Started(name) => Some(Self {
+                id: metadata.aggregate.to_string(),
                 name: name.clone(),
                 details: ProjectDetails::default(),
                 created_at: metadata.occurred_at,
@@ -148,6 +156,7 @@ impl Aggregate for Project {
                 updated_at,
                 deleted,
             } => Some(Self {
+                id: metadata.aggregate.to_string(),
                 name: name.clone(),
                 details: details.clone(),
                 created_at: *created_at,

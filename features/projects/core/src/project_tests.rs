@@ -1,6 +1,7 @@
 use eventsourcing::{
     AccountId, Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, Version,
 };
+use projects_contract::context::PROJECT;
 use time::{Duration, OffsetDateTime};
 
 use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
@@ -343,4 +344,14 @@ fn a_project_s_details_survive_its_snapshot() {
         .expect("a snapshot gives birth");
 
     assert_eq!(restored.details(), &some_details());
+}
+
+#[test]
+fn a_project_is_its_own_context_and_stays_so_through_a_snapshot() {
+    let project = a_started_project();
+    let rebuilt = Project::from_first(&project.snapshot(), &stamped(9, at(5_000)))
+        .expect("a snapshot gives birth");
+
+    assert_eq!(project.context().get(PROJECT), Some("project_1"));
+    assert_eq!(rebuilt.context().get(PROJECT), Some("project_1"));
 }

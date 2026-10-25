@@ -77,6 +77,10 @@ pub enum ProjectEventDTO {
     Deleted,
 }
 
+pub mod context {
+    pub const PROJECT: &str = "project";
+}
+
 pub mod refused {
     pub const ID_INVALID: &str = "project-id-invalid";
     pub const NAME_BLANK: &str = "project-name-blank";
