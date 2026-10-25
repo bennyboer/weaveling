@@ -528,7 +528,11 @@ async fn a_tombstone_is_laid_when_what_it_marks_went() {
     wired.hears(&wired.outline, removed("section_1")).await;
     wired.hears(&wired.scenes, deleted("scene_1")).await;
 
-    let forgotten_before = |moment| wired.catalog.forget_tombstones_laid_before(moment);
+    let forgotten_before = |moment| {
+        wired
+            .catalog
+            .forget_tombstones_laid_before(moment, u64::MAX)
+    };
 
     assert_eq!(
         forgotten_before(at(1_000))

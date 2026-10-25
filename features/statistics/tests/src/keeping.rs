@@ -120,3 +120,29 @@ async fn a_deleted_scene_is_forgotten_for_good() {
 
     assert!(bench.in_project("project_1").await.is_empty());
 }
+
+#[tokio::test]
+async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
+    let bench = a_workbench();
+    bench.hears(deleted("scene_1")).await;
+
+    let forgotten_before = |moment| {
+        bench
+            .catalog
+            .forget_tombstones_laid_before(moment, u64::MAX)
+    };
+
+    assert_eq!(
+        forgotten_before(at(5_000))
+            .await
+            .expect("forgetting tombstones should succeed"),
+        0,
+        "laid when it happened, not when it was heard"
+    );
+    assert_eq!(
+        forgotten_before(at(5_001))
+            .await
+            .expect("forgetting tombstones should succeed"),
+        1
+    );
+}

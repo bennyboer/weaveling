@@ -1,13 +1,15 @@
 use boards_core::{BoardCatalog, BoardError, BoardId, BoardService, BoardServiceError, IdeaLink};
 use eventsourcing::{Agent, ServiceError};
 use messaging::Failure;
+use time::OffsetDateTime;
 
 pub async fn let_go_everywhere(
     boards: &BoardService,
     catalog: &dyn BoardCatalog,
     gone: &IdeaLink,
+    at: OffsetDateTime,
 ) -> Result<(), Failure> {
-    catalog.mark_gone(gone).await?;
+    catalog.mark_gone(gone, at).await?;
 
     for board in catalog.boards_holding(gone).await? {
         let_go(boards, board, gone).await?;

@@ -10,4 +10,6 @@ A board holds **placements** — an idea, a spot, a size — and nothing else ab
 
 **Two projectors and a listener.** `catalogue-board` keeps the board summaries; `index-pinned-ideas` keeps the index of which boards hold a given idea; `unpin-discarded-idea` hears `idea.discarded` and takes it off every board holding it.
 
+**A discarded idea leaves a tombstone.** `gone_ideas` keeps every idea heard discarded, so a pin indexed after the discard is still let go of, and keeps `gone_at`, the `occurred_at` of the discard. The chore `forget-old-board-tombstones`, a [`ForgetOldTombstones`](../../libraries/chores), forgets it once no message about the idea can still arrive, in batches. A pin of an idea discarded longer ago than that, from a stale or forged request, is no longer let go of; the board keeps it, and the client, which draws only ideas it knows, does not show it.
+
 **Crates:** `core` (aggregate, catalog port, service, `Spot`/`Size`) · `contract` · `adapters/store` · `adapters/catalog` · `adapters/messaging` (event publisher, catalog projector, discard listener) · `adapters/rest` · `wiring` · `tests`.

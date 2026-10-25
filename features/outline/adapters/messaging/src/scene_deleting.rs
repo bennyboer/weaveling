@@ -22,6 +22,7 @@ impl DetachOnSceneDeletedListener {
             &self.outlines,
             self.catalog.as_ref(),
             &Attachment::scene(&deleted.scene),
+            message.occurred_at,
         )
         .await?;
 

@@ -34,7 +34,17 @@ const NOTE_OPENING: &str = "
     WHERE scene_catalog.opened_at <= excluded.opened_at
 ";
 
-const GONE: &str = "INSERT INTO scene_catalog_gone (scene) VALUES ($1) ON CONFLICT DO NOTHING";
+const GONE: &str =
+    "INSERT INTO scene_catalog_gone (scene, gone_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+
+const FORGET_LONG_GONE: &str = "
+    DELETE FROM scene_catalog_gone WHERE scene IN (
+        SELECT scene FROM scene_catalog_gone
+        WHERE gone_at < $1
+        ORDER BY gone_at, scene
+        LIMIT $2
+    )
+";
 
 const SUMMARY_OF: &str = "
     SELECT scene, project, title, opening FROM scene_catalog WHERE scene = $1
@@ -168,18 +178,36 @@ impl SceneCatalog for PostgresSceneCatalog {
         Ok(())
     }
 
-    async fn forget(&self, id: SceneId) -> Result<(), CatalogError> {
+    async fn forget(&self, id: SceneId, at: OffsetDateTime) -> Result<(), CatalogError> {
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
-        for gone in [GONE, FORGET] {
-            sqlx::query(gone)
-                .bind(id.to_string())
-                .execute(&mut *transaction)
-                .await
-                .map_err(unreachable)?;
-        }
+        sqlx::query(GONE)
+            .bind(id.to_string())
+            .bind(in_microseconds(at))
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET)
+            .bind(id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
 
         transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_LONG_GONE)
+            .bind(in_microseconds(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError> {

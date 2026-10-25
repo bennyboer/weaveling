@@ -3,6 +3,7 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, IdeaLink, ProjectLink};
+use time::OffsetDateTime;
 
 type Listed = HashMap<BoardId, BoardSummary>;
 
@@ -10,7 +11,7 @@ type Listed = HashMap<BoardId, BoardSummary>;
 struct Pins {
     by_board: HashMap<BoardId, Vec<IdeaLink>>,
     by_idea: HashMap<IdeaLink, BTreeSet<BoardId>>,
-    gone: HashSet<IdeaLink>,
+    gone: HashMap<IdeaLink, OffsetDateTime>,
 }
 
 #[derive(Debug, Default)]
@@ -103,10 +104,36 @@ impl BoardCatalog for InMemoryBoardCatalog {
             .unwrap_or_default())
     }
 
-    async fn mark_gone(&self, idea: &IdeaLink) -> Result<(), CatalogError> {
-        self.write_pins().gone.insert(idea.clone());
+    async fn mark_gone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError> {
+        self.write_pins().gone.entry(idea.clone()).or_insert(at);
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut pins = self.write_pins();
+        let mut long_gone: Vec<(OffsetDateTime, IdeaLink)> = pins
+            .gone
+            .iter()
+            .filter(|(_, laid)| **laid < before)
+            .map(|(idea, laid)| (*laid, idea.clone()))
+            .collect();
+        long_gone.sort_by(|(one_laid, one), (other_laid, other)| {
+            one_laid
+                .cmp(other_laid)
+                .then_with(|| one.as_str().cmp(other.as_str()))
+        });
+        long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+
+        for (_, idea) in &long_gone {
+            pins.gone.remove(idea);
+        }
+
+        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
     }
 
     async fn gone_but_held(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {
@@ -116,7 +143,7 @@ impl BoardCatalog for InMemoryBoardCatalog {
             .get(&board)
             .into_iter()
             .flatten()
-            .filter(|held| pins.gone.contains(held))
+            .filter(|held| pins.gone.contains_key(held))
             .cloned()
             .collect();
         found.sort_by(|one, other| one.as_str().cmp(other.as_str()));

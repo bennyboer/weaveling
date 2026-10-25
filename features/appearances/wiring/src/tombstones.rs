@@ -21,7 +21,11 @@ impl Tombstones for AppearanceTombstones {
     async fn forget_laid_before(
         &self,
         before: OffsetDateTime,
+        at_most: u64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        Ok(self.catalog.forget_tombstones_laid_before(before).await?)
+        Ok(self
+            .catalog
+            .forget_tombstones_laid_before(before, at_most)
+            .await?)
     }
 }

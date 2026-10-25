@@ -14,7 +14,17 @@ const KEEP: &str = "
     WHERE word_counts.counted_at <= excluded.counted_at
 ";
 
-const GONE: &str = "INSERT INTO gone_scenes (scene) VALUES ($1) ON CONFLICT DO NOTHING";
+const GONE: &str =
+    "INSERT INTO gone_scenes (scene, gone_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+
+const FORGET_LONG_GONE: &str = "
+    DELETE FROM gone_scenes WHERE scene IN (
+        SELECT scene FROM gone_scenes
+        WHERE gone_at < $1
+        ORDER BY gone_at, scene
+        LIMIT $2
+    )
+";
 
 const COUNT_OF: &str = "SELECT words FROM word_counts WHERE scene = $1";
 
@@ -81,18 +91,40 @@ impl WordCountCatalog for PostgresWordCountCatalog {
             .transpose()
     }
 
-    async fn forget_scene(&self, scene: &SceneLink) -> Result<(), CatalogError> {
+    async fn forget_scene(
+        &self,
+        scene: &SceneLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
-        for gone in [GONE, FORGET] {
-            sqlx::query(gone)
-                .bind(scene.as_str())
-                .execute(&mut *transaction)
-                .await
-                .map_err(unreachable)?;
-        }
+        sqlx::query(GONE)
+            .bind(scene.as_str())
+            .bind(in_microseconds(at))
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET)
+            .bind(scene.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
 
         transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_LONG_GONE)
+            .bind(in_microseconds(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<WordCount>, CatalogError> {

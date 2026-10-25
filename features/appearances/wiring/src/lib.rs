@@ -100,7 +100,7 @@ mod tests {
 
     use appearances_core::{IdeaLink, Subject};
     use authorizing::AllowingEverything;
-    use chores::TOMBSTONES_KEPT_FOR;
+    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use time::{Duration, OffsetDateTime};
@@ -145,5 +145,23 @@ mod tests {
                 .expect("the chore should be carried out"),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        let catalog: Arc<dyn AppearanceCatalog> = Arc::new(InMemoryAppearanceCatalog::new());
+        for idea in ["idea_1", "idea_2"] {
+            catalog
+                .forget_subject(&Subject::Idea(IdeaLink::from(idea)), NOW)
+                .await
+                .expect("forgetting should succeed");
+        }
+
+        let forgotten = AppearanceTombstones::of(catalog)
+            .forget_laid_before(NOW + Duration::SECOND, 1)
+            .await
+            .expect("forgetting tombstones should succeed");
+
+        assert_eq!(forgotten, 1);
     }
 }

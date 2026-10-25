@@ -210,7 +210,7 @@ async fn forgetting_old_tombstones_reaches_the_catalog_and_tells_nobody() {
 
     let forgotten = followed
         .catalog
-        .forget_tombstones_laid_before(LAID + Duration::from_secs(1))
+        .forget_tombstones_laid_before(LAID + Duration::from_secs(1), u64::MAX)
         .await
         .expect("forgetting tombstones should succeed");
 

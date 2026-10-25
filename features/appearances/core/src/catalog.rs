@@ -44,6 +44,7 @@ pub trait AppearanceCatalog: Send + Sync {
     async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
+        at_most: u64,
     ) -> Result<u64, CatalogError>;
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError>;

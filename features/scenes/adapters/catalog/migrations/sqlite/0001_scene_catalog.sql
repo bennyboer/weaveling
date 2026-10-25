@@ -10,8 +10,11 @@ CREATE TABLE scene_catalog (
 CREATE INDEX scene_catalog_by_project ON scene_catalog (project, scene);
 
 CREATE TABLE scene_catalog_gone (
-    scene  TEXT PRIMARY KEY
+    scene    TEXT    PRIMARY KEY,
+    gone_at  INTEGER NOT NULL
 );
+
+CREATE INDEX scene_catalog_gone_by_gone_at ON scene_catalog_gone (gone_at);
 
 CREATE TABLE quotation_restyling_tasks (
     project        TEXT    PRIMARY KEY,

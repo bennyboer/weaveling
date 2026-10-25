@@ -65,7 +65,21 @@ async fn opened(catalog: &impl SceneCatalog, id: SceneId, opening: &str, seconds
 }
 
 async fn forgotten(catalog: &impl SceneCatalog, id: SceneId) {
-    catalog.forget(id).await.expect("forgetting should succeed");
+    forgotten_at(catalog, id, 10_000).await;
+}
+
+async fn forgotten_at(catalog: &impl SceneCatalog, id: SceneId, seconds: i64) {
+    catalog
+        .forget(id, at(seconds))
+        .await
+        .expect("forgetting should succeed");
+}
+
+async fn forget_long_gone(catalog: &impl SceneCatalog, before_seconds: i64, at_most: u64) -> u64 {
+    catalog
+        .forget_tombstones_laid_before(at(before_seconds), at_most)
+        .await
+        .expect("forgetting tombstones should succeed")
 }
 
 async fn listed(catalog: &impl SceneCatalog, project: &str) -> Vec<SceneSummary> {
@@ -388,6 +402,69 @@ pub async fn a_claim_nobody_began_counts_from_nothing(tasks: &impl QuotationRest
     assert_eq!(progress(tasks).await, so_far(5, 0, 0, false));
 }
 
+pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
+    catalog: &impl SceneCatalog,
+) {
+    let long_gone = a_scene(1_000);
+    let just_gone = a_scene(1_001);
+    forgotten_at(catalog, long_gone, 1_000).await;
+    forgotten_at(catalog, just_gone, 2_000).await;
+
+    assert_eq!(forget_long_gone(catalog, 2_000, u64::MAX).await, 1);
+
+    for scene in [long_gone, just_gone] {
+        opened(catalog, scene, "It was late.", 3_000).await;
+    }
+    assert_eq!(
+        listed(catalog, "project_1")
+            .await
+            .iter()
+            .map(|summary| summary.id)
+            .collect::<Vec<_>>(),
+        vec![long_gone],
+        "laid at the moment asked about is not before it"
+    );
+}
+
+pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl SceneCatalog) {
+    let scene = a_scene(1_000);
+    forgotten_at(catalog, scene, 1_000).await;
+    forgotten_at(catalog, scene, 5_000).await;
+
+    assert_eq!(
+        forget_long_gone(catalog, 2_000, u64::MAX).await,
+        1,
+        "a deletion heard again is the same deletion"
+    );
+}
+
+pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl SceneCatalog,
+) {
+    let newest = a_scene(1_000);
+    let oldest = a_scene(1_001);
+    let older = a_scene(1_002);
+    for (scene, seconds) in [(newest, 1_002), (oldest, 1_000), (older, 1_001)] {
+        forgotten_at(catalog, scene, seconds).await;
+    }
+
+    assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
+
+    for scene in [newest, oldest, older] {
+        opened(catalog, scene, "It was late.", 9_500).await;
+    }
+    let mut listed_now: Vec<SceneId> = listed(catalog, "project_1")
+        .await
+        .iter()
+        .map(|summary| summary.id)
+        .collect();
+    listed_now.sort();
+    let mut forgotten_first = vec![oldest, older];
+    forgotten_first.sort();
+    assert_eq!(listed_now, forgotten_first);
+    assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
+}
+
 macro_rules! restyling_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -440,6 +517,18 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!(
             $workbench,
             forgetting_what_was_never_remembered_is_harmless
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_scene_s_tombstone_is_laid_once_when_it_first_went
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            tombstones_are_forgotten_oldest_first_and_at_most_so_many
         );
         $crate::suite::restyling_case!($workbench, the_first_change_claims_the_book);
         $crate::suite::restyling_case!($workbench, a_newer_change_takes_the_book_from_an_older_one);

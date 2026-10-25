@@ -4,7 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
+time = { workspace = true }
+chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
 
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
@@ -18,3 +21,9 @@ statistics-rest = { version = "0.1.0", path = "../adapters/rest", package = "wea
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "statistics-catalog/postgres"]
 sqlite = ["dep:sqlx", "wiring/sqlite", "statistics-catalog/sqlite"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }

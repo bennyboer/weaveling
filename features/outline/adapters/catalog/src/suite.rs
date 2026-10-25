@@ -350,8 +350,12 @@ async fn gone_but_held_by(catalog: &impl OutlineCatalog, outline: OutlineId) -> 
 }
 
 async fn marked_gone(catalog: &impl OutlineCatalog, attachment: Attachment) {
+    marked_gone_at(catalog, attachment, 1_000).await;
+}
+
+async fn marked_gone_at(catalog: &impl OutlineCatalog, attachment: Attachment, seconds: i64) {
     catalog
-        .mark_gone(&attachment)
+        .mark_gone(&attachment, at(seconds))
         .await
         .expect("marking gone should succeed");
 }
@@ -444,6 +448,80 @@ pub async fn a_gone_idea_is_not_mistaken_for_a_scene_of_the_same_id(catalog: &im
     assert!(gone_but_held_by(catalog, outline).await.is_empty());
 }
 
+async fn forget_long_gone(catalog: &impl OutlineCatalog, before_seconds: i64, at_most: u64) -> u64 {
+    catalog
+        .forget_tombstones_laid_before(at(before_seconds), at_most)
+        .await
+        .expect("forgetting tombstones should succeed")
+}
+
+pub async fn a_forgotten_tombstone_names_nothing_and_a_later_one_still_does(
+    catalog: &impl OutlineCatalog,
+) {
+    let outline = OutlineId::generate(at(1_000));
+    catalog
+        .holds(
+            outline,
+            &[
+                Attachment::scene("scene_long_gone"),
+                Attachment::idea("idea_just_gone"),
+            ],
+        )
+        .await
+        .expect("indexing should succeed");
+    marked_gone_at(catalog, Attachment::scene("scene_long_gone"), 1_000).await;
+    marked_gone_at(catalog, Attachment::idea("idea_just_gone"), 2_000).await;
+
+    assert_eq!(forget_long_gone(catalog, 2_000, u64::MAX).await, 1);
+
+    assert_eq!(
+        gone_but_held_by(catalog, outline).await,
+        vec![Attachment::idea("idea_just_gone")],
+        "laid at the moment asked about is not before it"
+    );
+}
+
+pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(catalog: &impl OutlineCatalog) {
+    marked_gone_at(catalog, Attachment::scene("scene_1"), 1_000).await;
+    marked_gone_at(catalog, Attachment::scene("scene_1"), 5_000).await;
+
+    assert_eq!(
+        forget_long_gone(catalog, 2_000, u64::MAX).await,
+        1,
+        "a deletion heard again is the same deletion"
+    );
+}
+
+pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl OutlineCatalog,
+) {
+    let outline = OutlineId::generate(at(1_000));
+    let newest = Attachment::scene("scene_newest");
+    catalog
+        .holds(
+            outline,
+            &[
+                newest.clone(),
+                Attachment::scene("scene_oldest"),
+                Attachment::idea("idea_older"),
+            ],
+        )
+        .await
+        .expect("indexing should succeed");
+    for (gone, seconds) in [
+        (newest.clone(), 1_002),
+        (Attachment::scene("scene_oldest"), 1_000),
+        (Attachment::idea("idea_older"), 1_001),
+    ] {
+        marked_gone_at(catalog, gone, seconds).await;
+    }
+
+    assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
+
+    assert_eq!(gone_but_held_by(catalog, outline).await, vec![newest]);
+    assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -516,6 +594,18 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_gone_idea_is_not_mistaken_for_a_scene_of_the_same_id
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_forgotten_tombstone_names_nothing_and_a_later_one_still_does
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_tombstone_is_laid_once_when_what_it_marks_first_went
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            tombstones_are_forgotten_oldest_first_and_at_most_so_many
         );
     };
 }

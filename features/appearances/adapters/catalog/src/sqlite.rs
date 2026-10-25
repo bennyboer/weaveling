@@ -54,18 +54,31 @@ const REMEMBER_PROJECT: &str = "
 ";
 
 const FORGET_PROJECTS_OF_LONG_GONE: &str = "
-    DELETE FROM subject_projects
-    WHERE EXISTS (
-        SELECT 1 FROM gone_subjects
-        WHERE gone_subjects.subject_type = subject_projects.subject_type
-            AND gone_subjects.subject_id = subject_projects.subject_id
-            AND gone_subjects.gone_at < ?1
+    DELETE FROM subject_projects WHERE (subject_type, subject_id) IN (
+        SELECT subject_type, subject_id FROM gone_subjects
+        WHERE gone_at < ?1
+        ORDER BY gone_at, subject_type, subject_id
+        LIMIT ?2
     )
 ";
 
-const FORGET_LONG_GONE_SUBJECTS: &str = "DELETE FROM gone_subjects WHERE gone_at < ?1";
+const FORGET_LONG_GONE_SUBJECTS: &str = "
+    DELETE FROM gone_subjects WHERE (subject_type, subject_id) IN (
+        SELECT subject_type, subject_id FROM gone_subjects
+        WHERE gone_at < ?1
+        ORDER BY gone_at, subject_type, subject_id
+        LIMIT ?2
+    )
+";
 
-const FORGET_LONG_GONE_PLACES: &str = "DELETE FROM gone_places WHERE gone_at < ?1";
+const FORGET_LONG_GONE_PLACES: &str = "
+    DELETE FROM gone_places WHERE (place_type, place_id) IN (
+        SELECT place_type, place_id FROM gone_places
+        WHERE gone_at < ?1
+        ORDER BY gone_at
+        LIMIT ?2
+    )
+";
 
 const PROJECT_OF: &str =
     "SELECT project FROM subject_projects WHERE subject_type = ?1 AND subject_id = ?2";
@@ -246,7 +259,10 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
     async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
+        at_most: u64,
     ) -> Result<u64, CatalogError> {
+        let before = clock::text::written(before);
+        let at_most = i64::try_from(at_most).unwrap_or(i64::MAX);
         let mut transaction = self
             .pool
             .begin_with(BEGIN_WRITING)
@@ -255,13 +271,15 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
         let mut forgotten = 0;
 
         sqlx::query(FORGET_PROJECTS_OF_LONG_GONE)
-            .bind(clock::text::written(before))
+            .bind(&before)
+            .bind(at_most)
             .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
         for long_gone in [FORGET_LONG_GONE_SUBJECTS, FORGET_LONG_GONE_PLACES] {
             forgotten += sqlx::query(long_gone)
-                .bind(clock::text::written(before))
+                .bind(&before)
+                .bind(at_most)
                 .execute(&mut *transaction)
                 .await
                 .map_err(unreachable)?

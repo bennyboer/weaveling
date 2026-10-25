@@ -105,8 +105,18 @@ impl SceneCatalog for TellingScenes {
         Ok(())
     }
 
-    async fn forget(&self, id: SceneId) -> Result<(), CatalogError> {
-        self.kept.forget(id).await
+    async fn forget(&self, id: SceneId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        self.kept.forget(id, at).await
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.kept
+            .forget_tombstones_laid_before(before, at_most)
+            .await
     }
 
     async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError> {

@@ -29,6 +29,7 @@ impl Handler for DetachOnDiscardListener {
             &self.outlines,
             self.catalog.as_ref(),
             &Attachment::idea(&discarded.aggregate.id),
+            message.occurred_at,
         )
         .await?;
 

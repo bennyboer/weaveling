@@ -144,8 +144,11 @@ impl AppearanceCatalog for TellingAppearances {
     async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
+        at_most: u64,
     ) -> Result<u64, CatalogError> {
-        self.kept.forget_tombstones_laid_before(before).await
+        self.kept
+            .forget_tombstones_laid_before(before, at_most)
+            .await
     }
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {

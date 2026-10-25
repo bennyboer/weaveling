@@ -18,6 +18,9 @@ CREATE INDEX outline_attachments_by_attachment ON outline_attachments (attachmen
 CREATE TABLE gone_attachments (
     attachment_type TEXT COLLATE "C" NOT NULL,
     attachment_id   TEXT COLLATE "C" NOT NULL,
+    gone_at         TIMESTAMPTZ      NOT NULL,
 
     PRIMARY KEY (attachment_type, attachment_id)
 );
+
+CREATE INDEX gone_attachments_by_gone_at ON gone_attachments (gone_at);

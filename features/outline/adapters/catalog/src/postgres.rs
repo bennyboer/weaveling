@@ -4,6 +4,7 @@ use outline_core::{
 };
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
+use time::OffsetDateTime;
 
 use crate::rows;
 
@@ -39,9 +40,18 @@ const HOLDING: &str = "
 ";
 
 const GONE: &str = "
-    INSERT INTO gone_attachments (attachment_type, attachment_id)
-    VALUES ($1, $2)
+    INSERT INTO gone_attachments (attachment_type, attachment_id, gone_at)
+    VALUES ($1, $2, $3)
     ON CONFLICT DO NOTHING
+";
+
+const FORGET_LONG_GONE: &str = "
+    DELETE FROM gone_attachments WHERE (attachment_type, attachment_id) IN (
+        SELECT attachment_type, attachment_id FROM gone_attachments
+        WHERE gone_at < $1
+        ORDER BY gone_at, attachment_type, attachment_id
+        LIMIT $2
+    )
 ";
 
 const GONE_BUT_HELD: &str = "
@@ -172,15 +182,34 @@ impl OutlineCatalog for PostgresOutlineCatalog {
             .collect()
     }
 
-    async fn mark_gone(&self, attachment: &Attachment) -> Result<(), CatalogError> {
+    async fn mark_gone(
+        &self,
+        attachment: &Attachment,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         sqlx::query(GONE)
             .bind(rows::attachment_type_of(attachment))
             .bind(attachment.to_string())
+            .bind(at)
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_LONG_GONE)
+            .bind(before)
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError> {

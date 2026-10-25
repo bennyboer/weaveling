@@ -3842,6 +3842,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-boards-core",
+ "weaveling-clock",
  "weaveling-test-harness",
 ]
 
@@ -3935,16 +3936,22 @@ dependencies = [
 name = "weaveling-boards-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
+ "time",
+ "tokio",
+ "weaveling-authorizing",
  "weaveling-boards-catalog",
  "weaveling-boards-contract",
  "weaveling-boards-core",
  "weaveling-boards-messaging",
  "weaveling-boards-rest",
  "weaveling-boards-store",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-live",
+ "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-registry",
  "weaveling-wiring",
@@ -4488,6 +4495,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-outline-core",
  "weaveling-test-harness",
 ]
@@ -4588,10 +4596,16 @@ dependencies = [
 name = "weaveling-outline-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
+ "time",
+ "tokio",
+ "weaveling-authorizing",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-live",
+ "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-outline-catalog",
  "weaveling-outline-contract",
@@ -4872,8 +4886,13 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "sqlx",
+ "time",
+ "tokio",
+ "weaveling-authorizing",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-live",
+ "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-scenes-catalog",
  "weaveling-scenes-core",
@@ -5014,8 +5033,15 @@ dependencies = [
 name = "weaveling-statistics-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
+ "time",
+ "tokio",
+ "weaveling-authorizing",
+ "weaveling-chores",
+ "weaveling-clock",
  "weaveling-live",
+ "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-statistics-catalog",
  "weaveling-statistics-core",

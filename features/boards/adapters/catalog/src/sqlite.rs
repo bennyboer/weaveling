@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, IdeaLink, ProjectLink};
 use sqlx::migrate::Migrator;
 use sqlx::{Row, SqlitePool};
+use time::OffsetDateTime;
 
 const REMEMBER: &str = "
     INSERT INTO board_summaries (board, project)
@@ -28,7 +29,16 @@ const HOLD: &str = "
 
 const HOLDING: &str = "SELECT board FROM board_ideas WHERE idea = ?1 ORDER BY board";
 
-const GONE: &str = "INSERT INTO gone_ideas (idea) VALUES (?1) ON CONFLICT DO NOTHING";
+const GONE: &str = "INSERT INTO gone_ideas (idea, gone_at) VALUES (?1, ?2) ON CONFLICT DO NOTHING";
+
+const FORGET_LONG_GONE: &str = "
+    DELETE FROM gone_ideas WHERE idea IN (
+        SELECT idea FROM gone_ideas
+        WHERE gone_at < ?1
+        ORDER BY gone_at, idea
+        LIMIT ?2
+    )
+";
 
 const GONE_BUT_HELD: &str = "
     SELECT held.idea
@@ -146,14 +156,29 @@ impl BoardCatalog for SqliteBoardCatalog {
             .collect()
     }
 
-    async fn mark_gone(&self, idea: &IdeaLink) -> Result<(), CatalogError> {
+    async fn mark_gone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError> {
         sqlx::query(GONE)
             .bind(idea.to_string())
+            .bind(clock::text::written(at))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_LONG_GONE)
+            .bind(clock::text::written(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn gone_but_held(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {

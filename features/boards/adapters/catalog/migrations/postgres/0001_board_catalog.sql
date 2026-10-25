@@ -15,5 +15,8 @@ CREATE TABLE board_ideas (
 CREATE INDEX board_ideas_by_idea ON board_ideas (idea, board);
 
 CREATE TABLE gone_ideas (
-    idea        TEXT COLLATE "C" PRIMARY KEY
+    idea        TEXT COLLATE "C" PRIMARY KEY,
+    gone_at     TIMESTAMPTZ      NOT NULL
 );
+
+CREATE INDEX gone_ideas_by_gone_at ON gone_ideas (gone_at);

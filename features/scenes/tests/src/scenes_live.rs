@@ -114,7 +114,7 @@ async fn a_forgotten_scene_and_another_project_s_tell_nothing() {
     let gone = a_scene(1_000);
     followed
         .catalog
-        .forget(gone)
+        .forget(gone, OffsetDateTime::UNIX_EPOCH)
         .await
         .expect("forgetting should succeed");
     let theirs = a_scene(2_000);
@@ -133,4 +133,25 @@ async fn a_forgotten_scene_and_another_project_s_tell_nothing() {
         mine.to_string(),
         "the first thing told is the followed project's scene that is still there"
     );
+}
+
+#[tokio::test]
+async fn forgetting_old_tombstones_reaches_the_catalog() {
+    let followed = scenes_followed("project_1").await;
+    followed
+        .catalog
+        .forget(a_scene(1_000), OffsetDateTime::UNIX_EPOCH)
+        .await
+        .expect("forgetting should succeed");
+
+    let forgotten = followed
+        .catalog
+        .forget_tombstones_laid_before(
+            OffsetDateTime::UNIX_EPOCH + Duration::from_secs(1),
+            u64::MAX,
+        )
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    assert_eq!(forgotten, 1);
 }

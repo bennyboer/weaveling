@@ -14,6 +14,8 @@ A scene is a CRDT document (`yrs`, the Rust side of Yjs), because prose is edite
 
 **A scene counts its changes.** It has no event stream to number them, so it keeps a `version` that every change bumps in the same transaction — writing, retitling, linking, unlinking; compaction is not a change, it only rewrites storage. Link messages carry it, because a listener needs it to tell a link tried again late from the unlink that followed it. Bumping locks the scene's row, so two changes racing on one scene get their numbers in the order they commit. Deletion needs no number: nothing comes back from it.
 
+**A deleted scene stays out of the catalog.** The catalog keeps a tombstone of each deleted scene in `scene_catalog_gone`, so a title or an opening heard late does not bring it back, and `gone_at`, the deletion's `occurred_at`. The chore `forget-old-scene-tombstones`, a [`ForgetOldTombstones`](../../libraries/chores), forgets it once no message about the scene can still arrive, in batches.
+
 Awareness — cursors, selections, who is here — is relayed as opaque bytes and never decoded or stored. Presence is ephemeral by decision, expressed as a dependency arrow: it lives and dies inside `adapters/sync`.
 
 **Crates:** `core` (`Scene`, store port, service) · `contract` · `adapters/store` (in memory, PostgreSQL and SQLite; append-only plus compaction) · `adapters/sync` (the `y-websocket` server: sockets, peers, protocol, live scenes) · `adapters/rest` · `wiring` · `tests`.

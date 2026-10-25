@@ -556,3 +556,30 @@ async fn the_scene_deletion_listener_hears_only_deletions() {
         "linking an idea leaves a scene where it is in the book"
     );
 }
+
+#[tokio::test]
+async fn a_tombstone_is_laid_when_the_idea_was_discarded_or_the_scene_deleted() {
+    let wired = a_workbench();
+    wired
+        .on_idea_discarded
+        .handle(&discarded("idea_1"))
+        .await
+        .expect("the listener should take this message");
+    wired
+        .on_scene_deleted
+        .handle(&scene_deleted("scene_1"))
+        .await
+        .expect("the listener should take this message");
+
+    for (before, forgotten) in [(at(1_000), 0), (at(1_001), 2)] {
+        assert_eq!(
+            wired
+                .catalog
+                .forget_tombstones_laid_before(before, u64::MAX)
+                .await
+                .expect("forgetting tombstones should succeed"),
+            forgotten,
+            "laid when it happened"
+        );
+    }
+}

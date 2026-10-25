@@ -170,3 +170,30 @@ async fn a_message_naming_no_scene_is_refused() {
     );
     assert!(bench.listed().await.is_empty());
 }
+
+#[tokio::test]
+async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
+    let bench = a_workbench();
+    let scene = a_scene();
+    bench
+        .hears(
+            SceneChange::Deleted {
+                scene,
+                project: a_project(),
+            },
+            5_000,
+        )
+        .await;
+
+    for (before, forgotten) in [(at(5_000), 0), (at(5_001), 1)] {
+        assert_eq!(
+            bench
+                .catalog
+                .forget_tombstones_laid_before(before, u64::MAX)
+                .await
+                .expect("forgetting tombstones should succeed"),
+            forgotten,
+            "laid when it happened"
+        );
+    }
+}

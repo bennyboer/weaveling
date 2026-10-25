@@ -63,8 +63,22 @@ impl WordCountCatalog for TellingWordCounts {
         Ok(kept)
     }
 
-    async fn forget_scene(&self, scene: &SceneLink) -> Result<(), CatalogError> {
-        self.kept.forget_scene(scene).await
+    async fn forget_scene(
+        &self,
+        scene: &SceneLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.kept.forget_scene(scene, at).await
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.kept
+            .forget_tombstones_laid_before(before, at_most)
+            .await
     }
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<WordCount>, CatalogError> {

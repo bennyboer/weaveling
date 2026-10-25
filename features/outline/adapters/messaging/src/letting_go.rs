@@ -3,13 +3,15 @@ use messaging::Failure;
 use outline_core::{
     Attachment, OutlineCatalog, OutlineError, OutlineId, OutlineService, OutlineServiceError,
 };
+use time::OffsetDateTime;
 
 pub async fn let_go_everywhere(
     outlines: &OutlineService,
     catalog: &dyn OutlineCatalog,
     gone: &Attachment,
+    at: OffsetDateTime,
 ) -> Result<(), Failure> {
-    catalog.mark_gone(gone).await?;
+    catalog.mark_gone(gone, at).await?;
 
     for outline in catalog.outlines_holding(gone).await? {
         let_go(outlines, outline, gone).await?;

@@ -61,6 +61,25 @@ impl InMemoryAppearanceCatalog {
     }
 }
 
+fn oldest_laid_before<Gone: Clone + Ord>(
+    tombstones: &BTreeMap<Gone, OffsetDateTime>,
+    before: OffsetDateTime,
+    at_most: u64,
+) -> Vec<Gone> {
+    let mut long_gone: Vec<(OffsetDateTime, Gone)> = tombstones
+        .iter()
+        .filter(|(_, laid)| **laid < before)
+        .map(|(gone, laid)| (*laid, gone.clone()))
+        .collect();
+    long_gone.sort();
+
+    long_gone
+        .into_iter()
+        .take(usize::try_from(at_most).unwrap_or(usize::MAX))
+        .map(|(_, gone)| gone)
+        .collect()
+}
+
 #[async_trait]
 impl AppearanceCatalog for InMemoryAppearanceCatalog {
     async fn remember(
@@ -141,35 +160,24 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
     async fn forget_tombstones_laid_before(
         &self,
         before: OffsetDateTime,
+        at_most: u64,
     ) -> Result<u64, CatalogError> {
         let mut appearances = self.write();
-        let Appearances {
-            gone_subjects,
-            gone_places,
-            projects,
-            ..
-        } = &mut *appearances;
-        let mut forgotten = 0;
+        let long_gone_subjects = oldest_laid_before(&appearances.gone_subjects, before, at_most);
+        let long_gone_places = oldest_laid_before(&appearances.gone_places, before, at_most);
 
-        gone_subjects.retain(|subject, laid| {
-            if *laid >= before {
-                return true;
-            }
-            projects.remove(subject);
-            forgotten += 1;
+        for subject in &long_gone_subjects {
+            appearances.gone_subjects.remove(subject);
+            appearances.projects.remove(subject);
+        }
+        for place in &long_gone_places {
+            appearances.gone_places.remove(place);
+        }
 
-            false
-        });
-        gone_places.retain(|_, laid| {
-            if *laid >= before {
-                return true;
-            }
-            forgotten += 1;
-
-            false
-        });
-
-        Ok(forgotten)
+        Ok(
+            u64::try_from(long_gone_subjects.len() + long_gone_places.len())
+                .expect("a count of tombstones fits"),
+        )
     }
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {

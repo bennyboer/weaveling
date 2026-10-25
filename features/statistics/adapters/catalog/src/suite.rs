@@ -46,8 +46,12 @@ async fn in_project(catalog: &impl WordCountCatalog, project: &str) -> Vec<WordC
 }
 
 async fn forgotten(catalog: &impl WordCountCatalog, scene: &str) {
+    forgotten_at(catalog, scene, 10_000).await;
+}
+
+async fn forgotten_at(catalog: &impl WordCountCatalog, scene: &str, seconds: i64) {
     catalog
-        .forget_scene(&a_scene(scene))
+        .forget_scene(&a_scene(scene), at(seconds))
         .await
         .expect("forgetting should succeed");
 }
@@ -167,6 +171,68 @@ pub async fn forgetting_what_was_never_counted_is_harmless(catalog: &impl WordCo
     assert!(in_project(catalog, "project_1").await.is_empty());
 }
 
+async fn forget_long_gone(
+    catalog: &impl WordCountCatalog,
+    before_seconds: i64,
+    at_most: u64,
+) -> u64 {
+    catalog
+        .forget_tombstones_laid_before(at(before_seconds), at_most)
+        .await
+        .expect("forgetting tombstones should succeed")
+}
+
+pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
+    catalog: &impl WordCountCatalog,
+) {
+    forgotten_at(catalog, "scene_long_gone", 1_000).await;
+    forgotten_at(catalog, "scene_just_gone", 2_000).await;
+
+    assert_eq!(forget_long_gone(catalog, 2_000, u64::MAX).await, 1);
+
+    kept(catalog, "scene_long_gone", 5, 3_000).await;
+    kept(catalog, "scene_just_gone", 6, 3_000).await;
+    assert_eq!(
+        in_project(catalog, "project_1").await,
+        vec![counted("scene_long_gone", 5)],
+        "laid at the moment asked about is not before it"
+    );
+}
+
+pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl WordCountCatalog) {
+    forgotten_at(catalog, "scene_1", 1_000).await;
+    forgotten_at(catalog, "scene_1", 5_000).await;
+
+    assert_eq!(
+        forget_long_gone(catalog, 2_000, u64::MAX).await,
+        1,
+        "a deletion heard again is the same deletion"
+    );
+}
+
+pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl WordCountCatalog,
+) {
+    for (scene, seconds) in [
+        ("scene_newest", 1_002),
+        ("scene_oldest", 1_000),
+        ("scene_older", 1_001),
+    ] {
+        forgotten_at(catalog, scene, seconds).await;
+    }
+
+    assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
+
+    for scene in ["scene_newest", "scene_oldest", "scene_older"] {
+        kept(catalog, scene, 7, 9_500).await;
+    }
+    assert_eq!(
+        in_project(catalog, "project_1").await,
+        vec![counted("scene_older", 7), counted("scene_oldest", 7)]
+    );
+    assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -198,6 +264,18 @@ macro_rules! conformance_tests {
         );
         $crate::suite::conformance_case!($workbench, keeping_says_what_is_kept);
         $crate::suite::conformance_case!($workbench, forgetting_what_was_never_counted_is_harmless);
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_scene_s_tombstone_is_laid_once_when_it_first_went
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
     };
 }
 

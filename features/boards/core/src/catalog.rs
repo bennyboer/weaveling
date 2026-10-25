@@ -2,6 +2,7 @@ use std::error::Error;
 
 use async_trait::async_trait;
 use thiserror::Error;
+use time::OffsetDateTime;
 
 use crate::board::{Board, IdeaLink, ProjectLink};
 use crate::id::BoardId;
@@ -30,7 +31,13 @@ pub trait BoardCatalog: Send + Sync {
 
     async fn boards_holding(&self, idea: &IdeaLink) -> Result<Vec<BoardId>, CatalogError>;
 
-    async fn mark_gone(&self, idea: &IdeaLink) -> Result<(), CatalogError>;
+    async fn mark_gone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError>;
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     async fn gone_but_held(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError>;
 }

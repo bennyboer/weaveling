@@ -48,7 +48,9 @@ impl CatalogueScenesListener {
             }
             DELETED => {
                 let deleted: SceneDeletedDTO = message.payload_as()?;
-                self.catalog.forget(deleted.scene.parse()?).await?;
+                self.catalog
+                    .forget(deleted.scene.parse()?, message.occurred_at)
+                    .await?;
             }
             _ => {}
         }

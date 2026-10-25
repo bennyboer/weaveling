@@ -1,3 +1,5 @@
+mod tombstones;
+
 use std::sync::Arc;
 
 use boards_catalog::InMemoryBoardCatalog;
@@ -7,11 +9,14 @@ use boards_messaging::{
     CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, ProjectPinnedIdeasListener,
     UnpinOnDiscardListener,
 };
+use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, EventSourced, Feature, Wired};
+
+use crate::tombstones::BoardTombstones;
 
 pub const LIVE: &str = "broadcast-board-changes";
 
@@ -58,6 +63,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(unpin_discarded_ideas),
         Arc::new(sweep),
     ])
+    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+        "forget-old-board-tombstones",
+        Arc::new(BoardTombstones::of(ports.catalog.clone())),
+        context.clock.clone(),
+    ))])
 }
 
 pub struct BoardFeature;
@@ -139,5 +149,81 @@ impl Feature for BoardFeature {
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
         wire(ports, context)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use authorizing::AllowingEverything;
+    use boards_core::IdeaLink;
+    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
+    use clock::FixedClock;
+    use messaging::{InMemoryDeliveries, InProcessDispatcher};
+    use time::{Duration, OffsetDateTime};
+
+    use super::*;
+
+    const NOW: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
+
+    fn a_context() -> Context {
+        Context {
+            clock: Arc::new(FixedClock::new(
+                NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
+            )),
+            publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
+                InMemoryDeliveries::new(),
+            ))),
+            authorizer: Arc::new(AllowingEverything),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+        let context = a_context();
+        let ports = BoardFeature::in_memory(&context);
+        let wired = BoardFeature::wire(&ports, &context);
+        for (idea, laid) in [
+            ("idea_long_gone", NOW),
+            ("idea_just_gone", NOW + Duration::SECOND),
+        ] {
+            ports
+                .catalog
+                .mark_gone(&IdeaLink::from(idea), laid)
+                .await
+                .expect("marking gone should succeed");
+        }
+
+        let [chore] = wired.chores.as_slice() else {
+            panic!("the feature hands over one chore");
+        };
+
+        assert_eq!(chore.named(), "forget-old-board-tombstones");
+        assert_eq!(
+            chore
+                .carry_out()
+                .await
+                .expect("the chore should be carried out"),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        let catalog: Arc<dyn BoardCatalog> = Arc::new(InMemoryBoardCatalog::new());
+        for idea in ["idea_1", "idea_2"] {
+            catalog
+                .mark_gone(&IdeaLink::from(idea), NOW)
+                .await
+                .expect("marking gone should succeed");
+        }
+
+        let forgotten = BoardTombstones::of(catalog)
+            .forget_laid_before(NOW + Duration::SECOND, 1)
+            .await
+            .expect("forgetting tombstones should succeed");
+
+        assert_eq!(forgotten, 1);
     }
 }

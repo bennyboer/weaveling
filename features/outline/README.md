@@ -12,6 +12,8 @@ The linear view: the tree an author shapes a book into.
 
 Like a board it is started on first open, and like a board it carries two projectors and a listener: `catalogue-outline` for the tree itself, `index-attachments` for which outlines hold a given attachment, and `detach-discarded-idea` for a note whose idea has gone away. There is no equivalent for a scene — a scene is only ever removed with its project, and that takes the whole outline with it.
 
+**What went leaves a tombstone.** `detach-discarded-idea` and `detach-deleted-scene` mark the idea or the scene gone in `gone_attachments`, so an attachment indexed after it went is still taken out, and keep `gone_at`, the `occurred_at` of the message. The chore `forget-old-outline-tombstones`, a [`ForgetOldTombstones`](../../libraries/chores), forgets them once no message about them can still arrive, in batches; an attachment of something gone longer ago than that, from a stale or forged request, is no longer taken out.
+
 A section title may be blank — an author sketching structure should not be forced to name a chapter before they know what is in it.
 
 **Crates:** `core` (aggregate, catalog port, service, `SectionTitle`) · `contract` · `adapters/store` · `adapters/catalog` · `adapters/messaging` (event publisher, catalog projector, attach and discard listeners) · `adapters/rest` · `wiring` · `tests`.

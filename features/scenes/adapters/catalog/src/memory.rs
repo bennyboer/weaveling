@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
@@ -29,7 +29,7 @@ impl Kept {
 #[derive(Debug, Default)]
 struct Scenes {
     kept: BTreeMap<SceneId, Kept>,
-    gone: BTreeSet<SceneId>,
+    gone: BTreeMap<SceneId, OffsetDateTime>,
 }
 
 #[derive(Debug, Default)]
@@ -53,7 +53,7 @@ impl InMemorySceneCatalog {
     fn change(&self, id: SceneId, project: &ProjectLink, changing: impl FnOnce(&mut Kept)) {
         let mut scenes = self.write();
 
-        if scenes.gone.contains(&id) {
+        if scenes.gone.contains_key(&id) {
             return;
         }
 
@@ -112,13 +112,35 @@ impl SceneCatalog for InMemorySceneCatalog {
         Ok(())
     }
 
-    async fn forget(&self, id: SceneId) -> Result<(), CatalogError> {
+    async fn forget(&self, id: SceneId, at: OffsetDateTime) -> Result<(), CatalogError> {
         let mut scenes = self.write();
 
-        scenes.gone.insert(id);
+        scenes.gone.entry(id).or_insert(at);
         scenes.kept.remove(&id);
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut scenes = self.write();
+        let mut long_gone: Vec<(OffsetDateTime, SceneId)> = scenes
+            .gone
+            .iter()
+            .filter(|(_, laid)| **laid < before)
+            .map(|(scene, laid)| (*laid, *scene))
+            .collect();
+        long_gone.sort();
+        long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+
+        for (_, scene) in &long_gone {
+            scenes.gone.remove(scene);
+        }
+
+        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
     }
 
     async fn summary_of(&self, id: SceneId) -> Result<Option<SceneSummary>, CatalogError> {

@@ -340,3 +340,25 @@ async fn what_the_discard_message_says_matches_the_published_shape() {
         "if this stops parsing, the ideas contract moved and this listener is deaf"
     );
 }
+
+#[tokio::test]
+async fn a_discarded_idea_s_tombstone_is_laid_when_it_was_discarded() {
+    let wired = a_workbench();
+    wired
+        .on_idea_discarded
+        .handle(&discarded("idea_1"))
+        .await
+        .expect("the listener should take this message");
+
+    for (before, forgotten) in [(at(1_000), 0), (at(1_001), 1)] {
+        assert_eq!(
+            wired
+                .catalog
+                .forget_tombstones_laid_before(before, u64::MAX)
+                .await
+                .expect("forgetting tombstones should succeed"),
+            forgotten,
+            "laid when it happened"
+        );
+    }
+}

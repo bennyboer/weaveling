@@ -2,6 +2,7 @@ use std::error::Error;
 
 use async_trait::async_trait;
 use thiserror::Error;
+use time::OffsetDateTime;
 
 use crate::id::OutlineId;
 use crate::outline::{Attachment, Outline, ProjectLink};
@@ -37,7 +38,17 @@ pub trait OutlineCatalog: Send + Sync {
         attachment: &Attachment,
     ) -> Result<Vec<OutlineId>, CatalogError>;
 
-    async fn mark_gone(&self, attachment: &Attachment) -> Result<(), CatalogError>;
+    async fn mark_gone(
+        &self,
+        attachment: &Attachment,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError>;
 }

@@ -29,7 +29,7 @@ impl ProjectWordCountsListener {
             DELETED => {
                 let deleted: SceneDeletedDTO = message.payload_as()?;
                 self.catalog
-                    .forget_scene(&SceneLink::from(deleted.scene))
+                    .forget_scene(&SceneLink::from(deleted.scene), message.occurred_at)
                     .await?;
             }
             _ => {}

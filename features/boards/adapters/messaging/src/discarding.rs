@@ -30,6 +30,7 @@ impl Handler for UnpinOnDiscardListener {
             &self.boards,
             self.catalog.as_ref(),
             &IdeaLink::from(discarded.aggregate.id.as_str()),
+            message.occurred_at,
         )
         .await?;
 

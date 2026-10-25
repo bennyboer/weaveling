@@ -6,6 +6,8 @@ It owns no aggregate and takes no command. It is a read model only: **`keep-word
 
 **A feature of its own rather than a column in the scene catalog,** since a feature may not call another, and counting is a fact about text that the scenes feature already knows how to tell. Keeping it here leaves room for what else an author may want counted, words per day or per session, without the scenes feature learning about it.
 
+**A deleted scene stays gone.** Its count is forgotten and a tombstone kept in `gone_scenes`, so a count that arrives late, or is retried, does not bring it back; a count is kept only if it is not older than the one held, by when it was counted. The tombstone keeps `gone_at`, when the scene was deleted, the `occurred_at` of the message saying so, and the chore `forget-old-statistics-tombstones`, a [`ForgetOldTombstones`](../../libraries/chores), forgets it once no message about the scene can still arrive, in batches.
+
 The count itself is [`words::words_in`](../../libraries/words), the same rule the browser uses as an author types, so the two never disagree.
 
 **Crates:** `core` (word count, catalog port, links to projects and scenes) · `contract` · `adapters/catalog` (in memory, PostgreSQL and SQLite) · `adapters/messaging` (the listener) · `adapters/rest` · `wiring` · `tests`.

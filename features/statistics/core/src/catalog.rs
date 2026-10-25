@@ -23,7 +23,14 @@ pub trait WordCountCatalog: Send + Sync {
         counted_at: OffsetDateTime,
     ) -> Result<Option<u64>, CatalogError>;
 
-    async fn forget_scene(&self, scene: &SceneLink) -> Result<(), CatalogError>;
+    async fn forget_scene(&self, scene: &SceneLink, at: OffsetDateTime)
+    -> Result<(), CatalogError>;
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<WordCount>, CatalogError>;
 }

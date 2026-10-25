@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+time = { workspace = true }
 async-trait = { workspace = true }
 indexmap = { workspace = true }
 thiserror = { workspace = true }
@@ -16,4 +17,3 @@ eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", 
 words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }
 
 [dev-dependencies]
-time = { workspace = true }

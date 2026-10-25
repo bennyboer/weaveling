@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use outline_core::{
     Attachment, CatalogError, OutlineCatalog, OutlineId, OutlineSummary, ProjectLink,
 };
+use time::OffsetDateTime;
 
 type Listed = HashMap<OutlineId, OutlineSummary>;
 
@@ -12,7 +13,7 @@ type Listed = HashMap<OutlineId, OutlineSummary>;
 struct Attachments {
     by_outline: HashMap<OutlineId, Vec<Attachment>>,
     by_attachment: HashMap<Attachment, BTreeSet<OutlineId>>,
-    gone: HashSet<Attachment>,
+    gone: HashMap<Attachment, OffsetDateTime>,
 }
 
 #[derive(Debug, Default)]
@@ -121,10 +122,43 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             .unwrap_or_default())
     }
 
-    async fn mark_gone(&self, attachment: &Attachment) -> Result<(), CatalogError> {
-        self.write_attachments().gone.insert(attachment.clone());
+    async fn mark_gone(
+        &self,
+        attachment: &Attachment,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.write_attachments()
+            .gone
+            .entry(attachment.clone())
+            .or_insert(at);
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut attached = self.write_attachments();
+        let mut long_gone: Vec<(OffsetDateTime, Attachment)> = attached
+            .gone
+            .iter()
+            .filter(|(_, laid)| **laid < before)
+            .map(|(attachment, laid)| (*laid, attachment.clone()))
+            .collect();
+        long_gone.sort_by(|(one_laid, one), (other_laid, other)| {
+            one_laid
+                .cmp(other_laid)
+                .then_with(|| one.as_str().cmp(other.as_str()))
+        });
+        long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+
+        for (_, attachment) in &long_gone {
+            attached.gone.remove(attachment);
+        }
+
+        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
     }
 
     async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError> {
@@ -134,7 +168,7 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             .get(&outline)
             .into_iter()
             .flatten()
-            .filter(|held| attached.gone.contains(held))
+            .filter(|held| attached.gone.contains_key(held))
             .cloned()
             .collect();
         found.sort_by(|one, other| one.as_str().cmp(other.as_str()));

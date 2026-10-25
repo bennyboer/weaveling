@@ -1,5 +1,8 @@
+mod tombstones;
+
 use std::sync::Arc;
 
+use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
@@ -12,6 +15,8 @@ use outline_messaging::{
 };
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, EventSourced, Feature, Wired};
+
+use crate::tombstones::OutlineTombstones;
 
 pub const LIVE: &str = "broadcast-outline-changes";
 
@@ -62,6 +67,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(detach_deleted_scenes),
         Arc::new(sweep),
     ])
+    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+        "forget-old-outline-tombstones",
+        Arc::new(OutlineTombstones::of(ports.catalog.clone())),
+        context.clock.clone(),
+    ))])
 }
 
 pub struct OutlineFeature;
@@ -143,5 +153,81 @@ impl Feature for OutlineFeature {
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
         wire(ports, context)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use authorizing::AllowingEverything;
+    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
+    use clock::FixedClock;
+    use messaging::{InMemoryDeliveries, InProcessDispatcher};
+    use outline_core::Attachment;
+    use time::{Duration, OffsetDateTime};
+
+    use super::*;
+
+    const NOW: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
+
+    fn a_context() -> Context {
+        Context {
+            clock: Arc::new(FixedClock::new(
+                NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
+            )),
+            publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
+                InMemoryDeliveries::new(),
+            ))),
+            authorizer: Arc::new(AllowingEverything),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+        let context = a_context();
+        let ports = OutlineFeature::in_memory(&context);
+        let wired = OutlineFeature::wire(&ports, &context);
+        for (gone, laid) in [
+            (Attachment::scene("scene_long_gone"), NOW),
+            (Attachment::idea("idea_just_gone"), NOW + Duration::SECOND),
+        ] {
+            ports
+                .catalog
+                .mark_gone(&gone, laid)
+                .await
+                .expect("marking gone should succeed");
+        }
+
+        let [chore] = wired.chores.as_slice() else {
+            panic!("the feature hands over one chore");
+        };
+
+        assert_eq!(chore.named(), "forget-old-outline-tombstones");
+        assert_eq!(
+            chore
+                .carry_out()
+                .await
+                .expect("the chore should be carried out"),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        let catalog: Arc<dyn OutlineCatalog> = Arc::new(InMemoryOutlineCatalog::new());
+        for gone in [Attachment::scene("scene_1"), Attachment::idea("idea_1")] {
+            catalog
+                .mark_gone(&gone, NOW)
+                .await
+                .expect("marking gone should succeed");
+        }
+
+        let forgotten = OutlineTombstones::of(catalog)
+            .forget_laid_before(NOW + Duration::SECOND, 1)
+            .await
+            .expect("forgetting tombstones should succeed");
+
+        assert_eq!(forgotten, 1);
     }
 }

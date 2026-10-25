@@ -6,6 +6,8 @@ use time::{Duration, OffsetDateTime};
 
 const LAID: OffsetDateTime = datetime!(2026-10-25 12:00 UTC);
 
+const ALL_AT_ONCE: u64 = u64::MAX;
+
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
     type Catalog: AppearanceCatalog;
@@ -387,7 +389,7 @@ pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
         .expect("forgetting should succeed");
 
     let forgotten = catalog
-        .forget_tombstones_laid_before(before)
+        .forget_tombstones_laid_before(before, ALL_AT_ONCE)
         .await
         .expect("forgetting tombstones should succeed");
 
@@ -434,7 +436,7 @@ pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(
 
     assert_eq!(
         catalog
-            .forget_tombstones_laid_before(LAID + Duration::DAY)
+            .forget_tombstones_laid_before(LAID + Duration::DAY, ALL_AT_ONCE)
             .await
             .expect("forgetting tombstones should succeed"),
         2,
@@ -461,7 +463,7 @@ pub async fn a_long_gone_idea_s_project_is_forgotten_with_its_tombstone(
         .expect("forgetting should succeed");
 
     catalog
-        .forget_tombstones_laid_before(LAID + Duration::DAY)
+        .forget_tombstones_laid_before(LAID + Duration::DAY, ALL_AT_ONCE)
         .await
         .expect("forgetting tombstones should succeed");
 
@@ -477,6 +479,86 @@ pub async fn a_long_gone_idea_s_project_is_forgotten_with_its_tombstone(
                 .expect("asking should succeed"),
             project,
             "{idea}"
+        );
+    }
+}
+
+pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_kind(
+    catalog: &impl AppearanceCatalog,
+) {
+    for (idea, section, laid) in [
+        ("idea_newest", "section_newest", LAID + Duration::SECOND * 2),
+        ("idea_oldest", "section_oldest", LAID),
+        ("idea_older", "section_older", LAID + Duration::SECOND),
+    ] {
+        catalog
+            .remember_project(&an_idea(idea), &ProjectLink::from("project_1"))
+            .await
+            .expect("remembering should succeed");
+        catalog
+            .forget_subject(&an_idea(idea), laid)
+            .await
+            .expect("forgetting should succeed");
+        catalog
+            .forget_place(&a_section(section), laid)
+            .await
+            .expect("forgetting should succeed");
+    }
+    let before = LAID + Duration::DAY;
+
+    let forgotten = catalog
+        .forget_tombstones_laid_before(before, 2)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    assert_eq!(forgotten, 4, "two of each kind");
+    for (idea, project) in [
+        ("idea_newest", Some(ProjectLink::from("project_1"))),
+        ("idea_oldest", None),
+        ("idea_older", None),
+    ] {
+        assert_eq!(
+            catalog
+                .project_of(&an_idea(idea))
+                .await
+                .expect("asking should succeed"),
+            project,
+            "{idea}"
+        );
+    }
+    for idea in ["idea_newest", "idea_oldest", "idea_older"] {
+        remembered(catalog, idea, &[a_scene("scene_1")]).await;
+    }
+    remembered(
+        catalog,
+        "idea_here",
+        &[
+            a_section("section_newest"),
+            a_section("section_oldest"),
+            a_section("section_older"),
+        ],
+    )
+    .await;
+    assert!(places_of(catalog, "idea_newest").await.is_empty());
+    assert_eq!(
+        places_of(catalog, "idea_oldest").await,
+        vec![a_scene("scene_1")]
+    );
+    assert_eq!(
+        places_of(catalog, "idea_older").await,
+        vec![a_scene("scene_1")]
+    );
+    assert_eq!(
+        places_of(catalog, "idea_here").await,
+        vec![a_section("section_older"), a_section("section_oldest")]
+    );
+    for left in [2, 0] {
+        assert_eq!(
+            catalog
+                .forget_tombstones_laid_before(before, 2)
+                .await
+                .expect("forgetting tombstones should succeed"),
+            left
         );
     }
 }
@@ -554,6 +636,10 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!(
             $workbench,
             a_long_gone_idea_s_project_is_forgotten_with_its_tombstone
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_kind
         );
     };
 }

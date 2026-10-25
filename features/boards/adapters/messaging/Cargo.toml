@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+time = { workspace = true }
 async-trait = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
@@ -21,4 +22,3 @@ ideas-contract = { version = "0.1.0", path = "../../../ideas/contract", package 
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 
 [dev-dependencies]
-time = { workspace = true }

@@ -1,7 +1,10 @@
+mod tombstones;
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use chores::ForgetOldTombstones;
 use live::Broadcaster;
 use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
@@ -13,6 +16,8 @@ use scenes_messaging::{
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
 use wiring::{Context, Feature, Settling, Wired};
+
+use crate::tombstones::SceneTombstones;
 
 pub struct Ports {
     pub store: Arc<dyn SceneStore>,
@@ -63,6 +68,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(restyle),
     ])
     .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
+    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+        "forget-old-scene-tombstones",
+        Arc::new(SceneTombstones::of(ports.catalog.clone())),
+        context.clock.clone(),
+    ))])
 }
 
 struct SettlingLiveScenes(LiveScenes);
@@ -161,5 +171,78 @@ impl Feature for SceneFeature {
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
         wire(ports, context)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use authorizing::AllowingEverything;
+    use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
+    use clock::FixedClock;
+    use messaging::{InMemoryDeliveries, InProcessDispatcher};
+    use scenes_core::SceneId;
+    use time::{Duration, OffsetDateTime};
+
+    use super::*;
+
+    const NOW: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
+
+    fn a_context() -> Context {
+        Context {
+            clock: Arc::new(FixedClock::new(
+                NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
+            )),
+            publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
+                InMemoryDeliveries::new(),
+            ))),
+            authorizer: Arc::new(AllowingEverything),
+        }
+    }
+
+    #[tokio::test]
+    async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+        let context = a_context();
+        let ports = SceneFeature::in_memory(&context);
+        let wired = SceneFeature::wire(&ports, &context);
+        for (made, laid) in [(1, NOW), (2, NOW + Duration::SECOND)] {
+            ports
+                .catalog
+                .forget(SceneId::generate(NOW + Duration::seconds(made)), laid)
+                .await
+                .expect("forgetting should succeed");
+        }
+
+        let [chore] = wired.chores.as_slice() else {
+            panic!("the feature hands over one chore");
+        };
+
+        assert_eq!(chore.named(), "forget-old-scene-tombstones");
+        assert_eq!(
+            chore
+                .carry_out()
+                .await
+                .expect("the chore should be carried out"),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
+        let catalog: Arc<dyn SceneCatalog> = Arc::new(InMemorySceneCatalog::new());
+        for made in [1, 2] {
+            catalog
+                .forget(SceneId::generate(NOW + Duration::seconds(made)), NOW)
+                .await
+                .expect("forgetting should succeed");
+        }
+
+        let forgotten = SceneTombstones::of(catalog)
+            .forget_laid_before(NOW + Duration::SECOND, 1)
+            .await
+            .expect("forgetting tombstones should succeed");
+
+        assert_eq!(forgotten, 1);
     }
 }
