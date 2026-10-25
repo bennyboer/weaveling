@@ -317,6 +317,30 @@ pub async fn an_idea_s_project_is_kept_and_none_known_is_none(catalog: &impl App
     }
 }
 
+pub async fn a_discarded_idea_s_project_outlives_it_as_its_tombstone_does(
+    catalog: &impl AppearanceCatalog,
+) {
+    catalog
+        .remember_project(&an_idea("idea_1"), &ProjectLink::from("project_1"))
+        .await
+        .expect("remembering should succeed");
+
+    catalog
+        .forget_subject(&an_idea("idea_1"))
+        .await
+        .expect("forgetting should succeed");
+
+    assert_eq!(
+        catalog
+            .project_of(&an_idea("idea_1"))
+            .await
+            .expect("asking should succeed"),
+        Some(ProjectLink::from("project_1")),
+        "whoever followed the idea is told it appears nowhere now, which only who may read its \
+         project may hear"
+    );
+}
+
 pub async fn remembering_an_idea_s_project_again_keeps_one_the_last(
     catalog: &impl AppearanceCatalog,
 ) {
@@ -359,6 +383,10 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!(
             $workbench,
             remembering_an_idea_s_project_again_keeps_one_the_last
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_discarded_idea_s_project_outlives_it_as_its_tombstone_does
         );
         $crate::suite::conformance_case!($workbench, an_idea_appears_wherever_it_was_remembered);
         $crate::suite::conformance_case!(
