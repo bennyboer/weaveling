@@ -1,5 +1,5 @@
 use appearances_core::{
-    AppearanceCatalog, CatalogError, IdeaLink, Place, SceneLink, SectionLink, Subject,
+    AppearanceCatalog, CatalogError, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
 };
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
@@ -43,6 +43,15 @@ const FORGET_PLACE: &str = "
     DELETE FROM appearances WHERE place_type = $1 AND place_id = $2
     RETURNING subject_type, subject_id, present
 ";
+
+const REMEMBER_PROJECT: &str = "
+    INSERT INTO subject_projects (subject_type, subject_id, project)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (subject_type, subject_id) DO UPDATE SET project = excluded.project
+";
+
+const PROJECT_OF: &str =
+    "SELECT project FROM subject_projects WHERE subject_type = $1 AND subject_id = $2";
 
 const PLACES_OF: &str = "
     SELECT place_type, place_id
@@ -207,5 +216,36 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
             .iter()
             .map(place_from)
             .collect()
+    }
+
+    async fn remember_project(
+        &self,
+        subject: &Subject,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        let (subject_type, subject_id) = subject_type_and_id(subject);
+
+        sqlx::query(REMEMBER_PROJECT)
+            .bind(subject_type)
+            .bind(subject_id)
+            .bind(project.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn project_of(&self, subject: &Subject) -> Result<Option<ProjectLink>, CatalogError> {
+        let (subject_type, subject_id) = subject_type_and_id(subject);
+
+        let kept: Option<String> = sqlx::query_scalar(PROJECT_OF)
+            .bind(subject_type)
+            .bind(subject_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(kept.map(ProjectLink::from))
     }
 }

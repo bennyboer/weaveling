@@ -24,3 +24,11 @@ CREATE TABLE gone_places (
 
     PRIMARY KEY (place_type, place_id)
 );
+
+CREATE TABLE subject_projects (
+    subject_type  TEXT COLLATE "C" NOT NULL,
+    subject_id    TEXT COLLATE "C" NOT NULL,
+    project       TEXT COLLATE "C" NOT NULL,
+
+    PRIMARY KEY (subject_type, subject_id)
+);

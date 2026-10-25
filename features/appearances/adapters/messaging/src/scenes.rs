@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, Subject};
+
+use crate::projects::remember_project_of;
 use messaging::{Failure, Handler, Message};
 use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
 
@@ -17,8 +19,10 @@ impl ProjectSceneAppearancesListener {
         match message.routing.to_string().as_str() {
             IDEA_LINKED => {
                 let link: IdeaLinkDTO = message.payload_as()?;
+                let idea = an_idea(link.idea);
+                remember_project_of(self.catalog.as_ref(), &idea, message).await?;
                 self.catalog
-                    .remember(&an_idea(link.idea), &a_scene(link.scene), link.version)
+                    .remember(&idea, &a_scene(link.scene), link.version)
                     .await?;
             }
             IDEA_UNLINKED => {

@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+async-trait = { workspace = true }
+axum = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }
 serde_json = { workspace = true }
 time = { workspace = true }
@@ -11,6 +13,8 @@ tokio = { workspace = true, features = ["macros", "rt"] }
 
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 appearances-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-appearances-catalog" }
 appearances-contract = { version = "0.1.0", path = "../contract", package = "weaveling-appearances-contract" }

@@ -3754,6 +3754,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-outline-contract",
+ "weaveling-projects-contract",
  "weaveling-scenes-contract",
 ]
 
@@ -3766,7 +3767,10 @@ dependencies = [
  "serde",
  "weaveling-appearances-contract",
  "weaveling-appearances-core",
+ "weaveling-authorizing",
+ "weaveling-eventsourcing",
  "weaveling-live",
+ "weaveling-live-contract",
  "weaveling-serving",
 ]
 
@@ -3774,6 +3778,8 @@ dependencies = [
 name = "weaveling-appearances-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "axum",
  "axum-test",
  "serde_json",
  "time",
@@ -3783,6 +3789,8 @@ dependencies = [
  "weaveling-appearances-core",
  "weaveling-appearances-messaging",
  "weaveling-appearances-rest",
+ "weaveling-authorizing",
+ "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-live",
  "weaveling-messaging",

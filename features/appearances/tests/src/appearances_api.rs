@@ -3,17 +3,29 @@ use std::sync::Arc;
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
 use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, SectionLink, Subject};
+use appearances_rest::Readers;
+use authorizing::AllowingEverything;
+use axum::Extension;
 use axum_test::TestServer;
+use eventsourcing::Agent;
 
 fn an_idea(id: &str) -> Subject {
     Subject::Idea(IdeaLink::from(id))
 }
 
+fn served(catalog: Arc<InMemoryAppearanceCatalog>) -> TestServer {
+    TestServer::new(
+        appearances_rest::router(Readers {
+            catalog,
+            authorizer: Arc::new(AllowingEverything),
+        })
+        .layer(Extension(Agent::Local)),
+    )
+}
+
 #[tokio::test]
 async fn an_idea_nobody_placed_answers_with_nothing() {
-    let server = TestServer::new(appearances_rest::router(Arc::new(
-        InMemoryAppearanceCatalog::new(),
-    )));
+    let server = served(Arc::new(InMemoryAppearanceCatalog::new()));
 
     let response = server.get("/appearances?idea=idea_1").await;
 
@@ -33,7 +45,7 @@ async fn an_idea_answers_with_every_place_it_appears() {
             .await
             .expect("remembering should succeed");
     }
-    let server = TestServer::new(appearances_rest::router(catalog));
+    let server = served(catalog);
 
     let response = server.get("/appearances?idea=idea_1").await;
 

@@ -245,6 +245,32 @@ impl<B: Backend> Journey<B> {
         .await;
     }
 
+    pub async fn signed_in_as_another(&self, email: &str) {
+        let drop = self
+            .drop
+            .as_ref()
+            .expect("only a journey signed in has a mail drop");
+        self.server
+            .post("/api/accounts")
+            .json(
+                &json!({ "email": email, "name": "Another", "password": "another long password" }),
+            )
+            .await
+            .assert_status(StatusCode::ACCEPTED);
+        self.server
+            .post("/api/accounts/verification")
+            .json(
+                &json!({ "email": email, "code": crate::mail_drop::code_dropped_for(drop, email) }),
+            )
+            .await
+            .assert_status(StatusCode::NO_CONTENT);
+        self.server
+            .post("/api/sessions")
+            .json(&json!({ "email": email, "password": "another long password" }))
+            .await
+            .assert_status_ok();
+    }
+
     pub async fn link(&self, scene: &str, idea: &str) {
         self.posted(
             &format!("/api/scenes/{scene}/ideas"),
@@ -607,6 +633,32 @@ pub async fn whoever_starts_a_project_owns_it<B: Backend>() {
     journey.end().await;
 }
 
+pub async fn an_idea_s_appearances_are_there_only_for_whoever_may_read_its_project<B: Backend>() {
+    let journey = Journey::<B>::signed_in("appearing").await;
+    let project = journey.project("Appearing").await;
+    let server = &journey.server;
+    let at = format!("/api/projects/{project}");
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
+        "its owner may read the project once the members have heard of her"
+    );
+    let idea = journey.idea(&project, "A girl in a wood").await;
+    let scene = journey.scene(&project).await;
+
+    journey.link(&scene, &idea).await;
+
+    let asked = format!("/api/appearances?idea={idea}");
+    let placed = json!([{ "type": "scene", "id": scene }]);
+    let (asked, placed) = (&asked, &placed);
+    assert!(
+        until(|| async move { server.get(asked).await.json::<Value>() == *placed }).await,
+        "the link is relayed with its project, and the appearances keep both"
+    );
+    journey.signed_in_as_another("grace@example.com").await;
+    server.get(asked).await.assert_status(StatusCode::NOT_FOUND);
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -622,6 +674,7 @@ macro_rules! journeys {
             linking_an_idea_is_announced_and_relayed,
             an_idea_appears_wherever_it_was_noted_or_linked_until_discarded,
             whoever_starts_a_project_owns_it,
+            an_idea_s_appearances_are_there_only_for_whoever_may_read_its_project,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

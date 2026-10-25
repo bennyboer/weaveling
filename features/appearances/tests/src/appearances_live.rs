@@ -2,9 +2,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
-use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, SectionLink, Subject};
-use appearances_rest::TellingAppearances;
+use appearances_core::{
+    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+};
+use appearances_rest::{Readers, TellingAppearances};
+use authorizing::AllowingEverything;
+use axum::Extension;
 use axum_test::{TestServer, TestWebSocket};
+use eventsourcing::Agent;
 use live::Broadcaster;
 use serde_json::{Value, json};
 use tokio::time;
@@ -29,13 +34,23 @@ struct Followed {
 
 async fn followed(ideas: &[&str]) -> Followed {
     let broadcaster = Broadcaster::new();
-    let catalog = TellingAppearances::around(
-        Arc::new(InMemoryAppearanceCatalog::new()),
-        broadcaster.clone(),
+    let kept = Arc::new(InMemoryAppearanceCatalog::new());
+    for idea in ideas {
+        kept.remember_project(&an_idea(idea), &ProjectLink::from("project_1"))
+            .await
+            .expect("remembering should succeed");
+    }
+    let catalog = TellingAppearances::around(kept.clone(), broadcaster.clone());
+    let server = TestServer::builder().http_transport().build(
+        appearances_rest::live(
+            broadcaster,
+            Readers {
+                catalog: kept,
+                authorizer: Arc::new(AllowingEverything),
+            },
+        )
+        .layer(Extension(Agent::Local)),
     );
-    let server = TestServer::builder()
-        .http_transport()
-        .build(appearances_rest::live(broadcaster));
     let mut sockets = Vec::new();
     for idea in ideas {
         sockets.push(

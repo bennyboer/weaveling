@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use appearances_core::{AppearanceCatalog, CatalogError, Place, Subject};
+use appearances_core::{AppearanceCatalog, CatalogError, Place, ProjectLink, Subject};
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, Copy)]
@@ -15,6 +15,7 @@ struct Appearances {
     seen: BTreeMap<(Subject, Place), Seen>,
     gone_subjects: BTreeSet<Subject>,
     gone_places: BTreeSet<Place>,
+    projects: BTreeMap<Subject, ProjectLink>,
 }
 
 #[derive(Debug, Default)]
@@ -131,6 +132,22 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
             .filter(|((held, _), seen)| held == subject && seen.present)
             .map(|((_, place), _)| place.clone())
             .collect())
+    }
+
+    async fn remember_project(
+        &self,
+        subject: &Subject,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        self.write()
+            .projects
+            .insert(subject.clone(), project.clone());
+
+        Ok(())
+    }
+
+    async fn project_of(&self, subject: &Subject) -> Result<Option<ProjectLink>, CatalogError> {
+        Ok(self.read().projects.get(subject).cloned())
     }
 }
 

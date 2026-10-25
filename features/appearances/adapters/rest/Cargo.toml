@@ -10,5 +10,8 @@ serde = { workspace = true }
 
 appearances-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-appearances-contract" }
 appearances-core = { version = "0.1.0", path = "../../core", package = "weaveling-appearances-core" }
+authorizing = { version = "0.1.0", path = "../../../../libraries/authorizing", package = "weaveling-authorizing" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+live-contract = { version = "0.1.0", path = "../../../../libraries/live-contract", package = "weaveling-live-contract" }
 live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }
 serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }

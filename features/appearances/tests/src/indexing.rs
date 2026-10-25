@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
-use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, SectionLink, Subject};
+use appearances_core::{
+    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+};
 use appearances_messaging::{
     ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
@@ -460,4 +462,61 @@ async fn a_message_no_listener_can_read_is_refused() {
             .is_err(),
         "a message a listener cannot act on belongs in dead letters, not silently dropped"
     );
+}
+
+fn in_project(mut message: Message, project: &str) -> Message {
+    message.payload["context"] = json!({ "project": project });
+
+    message
+}
+
+impl Wired {
+    async fn project_of(&self, idea: &str) -> Option<ProjectLink> {
+        self.catalog
+            .project_of(&Subject::Idea(IdeaLink::from(idea)))
+            .await
+            .expect("asking should succeed")
+    }
+}
+
+#[tokio::test]
+async fn an_idea_noted_in_a_section_or_linked_to_a_scene_is_known_in_its_project() {
+    let wired = a_workbench();
+
+    wired
+        .hears(
+            &wired.outline,
+            in_project(noted("idea_1", "section_1"), "project_1"),
+        )
+        .await;
+    wired
+        .hears(
+            &wired.scenes,
+            in_project(linked("idea_2", "scene_1", 1), "project_2"),
+        )
+        .await;
+
+    assert_eq!(
+        wired.project_of("idea_1").await,
+        Some(ProjectLink::from("project_1"))
+    );
+    assert_eq!(
+        wired.project_of("idea_2").await,
+        Some(ProjectLink::from("project_2"))
+    );
+}
+
+#[tokio::test]
+async fn a_message_in_no_project_still_places_its_idea_and_names_no_project() {
+    let wired = a_workbench();
+
+    wired
+        .hears(&wired.outline, noted("idea_1", "section_1"))
+        .await;
+
+    assert_eq!(
+        wired.places_of("idea_1").await,
+        vec![a_section("section_1")]
+    );
+    assert_eq!(wired.project_of("idea_1").await, None);
 }

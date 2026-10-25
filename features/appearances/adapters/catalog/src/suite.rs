@@ -1,4 +1,6 @@
-use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, SectionLink, Subject};
+use appearances_core::{
+    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -289,6 +291,51 @@ pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &impl AppearanceCatalo
     );
 }
 
+pub async fn an_idea_s_project_is_kept_and_none_known_is_none(catalog: &impl AppearanceCatalog) {
+    catalog
+        .remember_project(&an_idea("idea_1"), &ProjectLink::from("project_1"))
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_project(&an_idea("idea_2"), &ProjectLink::from("project_2"))
+        .await
+        .expect("remembering should succeed");
+
+    for (idea, project) in [
+        ("idea_1", Some(ProjectLink::from("project_1"))),
+        ("idea_2", Some(ProjectLink::from("project_2"))),
+        ("idea_never", None),
+    ] {
+        assert_eq!(
+            catalog
+                .project_of(&an_idea(idea))
+                .await
+                .expect("asking should succeed"),
+            project,
+            "{idea}"
+        );
+    }
+}
+
+pub async fn remembering_an_idea_s_project_again_keeps_one_the_last(
+    catalog: &impl AppearanceCatalog,
+) {
+    for project in ["project_1", "project_1", "project_2"] {
+        catalog
+            .remember_project(&an_idea("idea_1"), &ProjectLink::from(project))
+            .await
+            .expect("remembering again is no failure");
+    }
+
+    assert_eq!(
+        catalog
+            .project_of(&an_idea("idea_1"))
+            .await
+            .expect("asking should succeed"),
+        Some(ProjectLink::from("project_2"))
+    );
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -305,6 +352,14 @@ macro_rules! conformance_case {
 macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::suite::conformance_case!($workbench, an_idea_nobody_placed_appears_nowhere);
+        $crate::suite::conformance_case!(
+            $workbench,
+            an_idea_s_project_is_kept_and_none_known_is_none
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            remembering_an_idea_s_project_again_keeps_one_the_last
+        );
         $crate::suite::conformance_case!($workbench, an_idea_appears_wherever_it_was_remembered);
         $crate::suite::conformance_case!(
             $workbench,

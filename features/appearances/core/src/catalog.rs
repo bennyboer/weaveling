@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 
 use crate::appearance::{Place, Subject};
+use crate::link::ProjectLink;
 
 #[derive(Debug, Error)]
 pub enum CatalogError {
@@ -32,4 +33,12 @@ pub trait AppearanceCatalog: Send + Sync {
     async fn forget_place(&self, place: &Place) -> Result<Vec<Subject>, CatalogError>;
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError>;
+
+    async fn remember_project(
+        &self,
+        subject: &Subject,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError>;
+
+    async fn project_of(&self, subject: &Subject) -> Result<Option<ProjectLink>, CatalogError>;
 }

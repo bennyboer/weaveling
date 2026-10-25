@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use appearances_core::{AppearanceCatalog, IdeaLink, Place, SectionLink, Subject};
+
+use crate::projects::remember_project_of;
 use messaging::{Failure, Handler, Message};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
 
@@ -38,8 +40,10 @@ impl Handler for ProjectOutlineAppearancesListener {
                 to,
                 ..
             } => {
+                let idea = an_idea(id);
+                remember_project_of(self.catalog.as_ref(), &idea, message).await?;
                 self.catalog
-                    .remember(&an_idea(id), &a_section(to), version)
+                    .remember(&idea, &a_section(to), version)
                     .await?
             }
             OutlineEventDTO::Detached {

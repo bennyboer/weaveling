@@ -1,25 +1,68 @@
 use std::sync::Arc;
 
 use appearances_contract::{IdeaPlacesDTO, PlaceDTO};
-use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, Subject};
+use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, ProjectLink, Subject};
 use async_trait::async_trait;
+use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Query, State};
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing;
-use axum::{Json, Router};
-use live::{Broadcaster, Teller};
+use axum::{Extension, Json, Router};
+use eventsourcing::Agent;
+use live::{Asked, Broadcaster, Teller};
+
+use crate::guarding::ReadableBy;
 use serde::Deserialize;
 use serving::Problem;
 
-pub fn router(catalog: Arc<dyn AppearanceCatalog>) -> Router {
+mod guarding;
+
+pub use guarding::Readers;
+
+pub fn router(readers: Readers) -> Router {
     Router::new()
         .route("/appearances", routing::get(places_of))
-        .with_state(catalog)
+        .with_state(readers)
 }
 
-pub fn live(broadcaster: Broadcaster) -> Router {
-    live::followed_at("/appearances/live", broadcaster, |asked| {
-        asked.get("idea").cloned()
-    })
+#[derive(Clone)]
+struct Following {
+    broadcaster: Broadcaster,
+    readers: Readers,
+}
+
+pub fn live(broadcaster: Broadcaster, readers: Readers) -> Router {
+    Router::new()
+        .route("/appearances/live", routing::get(follow))
+        .with_state(Following {
+            broadcaster,
+            readers,
+        })
+}
+
+async fn follow(
+    upgrade: WebSocketUpgrade,
+    State(following): State<Following>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<Asked>,
+) -> Response {
+    let Some(idea) = asked.get("idea") else {
+        return StatusCode::BAD_REQUEST.into_response();
+    };
+
+    match following.readers.may_read(&agent, idea).await {
+        Ok(Some(false)) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Ok(_) => live::streaming_sifted(
+            upgrade,
+            following.broadcaster.hear(idea),
+            Arc::new(ReadableBy {
+                agent,
+                readers: following.readers,
+            }),
+        ),
+    }
 }
 
 pub struct TellingAppearances {
@@ -92,6 +135,18 @@ impl AppearanceCatalog for TellingAppearances {
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {
         self.kept.places_of(subject).await
     }
+
+    async fn remember_project(
+        &self,
+        subject: &Subject,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        self.kept.remember_project(subject, project).await
+    }
+
+    async fn project_of(&self, subject: &Subject) -> Result<Option<ProjectLink>, CatalogError> {
+        self.kept.project_of(subject).await
+    }
 }
 
 #[derive(Deserialize)]
@@ -100,10 +155,23 @@ struct OfIdea {
 }
 
 async fn places_of(
-    State(catalog): State<Arc<dyn AppearanceCatalog>>,
+    State(readers): State<Readers>,
+    Extension(agent): Extension<Agent>,
     Query(asked): Query<OfIdea>,
 ) -> Result<Json<Vec<PlaceDTO>>, Problem> {
-    let places = catalog
+    if readers
+        .may_read(&agent, &asked.idea)
+        .await
+        .map_err(Problem::unexpected)?
+        == Some(false)
+    {
+        return Err(Problem::not_found(
+            serving::NOT_FOUND,
+            "there is no such idea",
+        ));
+    }
+    let places = readers
+        .catalog
         .places_of(&Subject::Idea(IdeaLink::from(asked.idea)))
         .await
         .map_err(Problem::unexpected)?;

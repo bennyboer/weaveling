@@ -32,5 +32,6 @@ macro_rules! link {
 }
 
 link!(IdeaLink);
+link!(ProjectLink);
 link!(SectionLink);
 link!(SceneLink);
