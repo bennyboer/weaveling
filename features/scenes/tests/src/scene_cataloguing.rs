@@ -137,7 +137,15 @@ async fn a_deleted_scene_stays_out_of_the_catalog() {
     let scene = a_scene();
     bench.hears(created(scene), 1_000).await;
 
-    bench.hears(SceneChange::Deleted { scene }, 2_000).await;
+    bench
+        .hears(
+            SceneChange::Deleted {
+                scene,
+                project: a_project(),
+            },
+            2_000,
+        )
+        .await;
     bench.hears(retitled(scene, "The loom", 9), 3_000).await;
 
     assert!(bench.listed().await.is_empty());

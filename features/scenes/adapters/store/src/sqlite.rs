@@ -30,7 +30,8 @@ const LINK: &str = "
 
 const UNLINK: &str = "DELETE FROM scene_ideas WHERE scene = ?1 AND idea = ?2";
 
-const BUMP: &str = "UPDATE scenes SET version = version + 1 WHERE scene = ?1 RETURNING version";
+const BUMP: &str =
+    "UPDATE scenes SET version = version + 1 WHERE scene = ?1 RETURNING version, project";
 
 const UNLINK_EVERYWHERE: &str = "DELETE FROM scene_ideas WHERE idea = ?1";
 
@@ -80,7 +81,7 @@ const READ_SINCE_SNAPSHOT: &str = "
 
 const FORGET_BEFORE: &str = "DELETE FROM scene_updates WHERE scene = ?1 AND seq < ?2";
 
-const FORGET: &str = "DELETE FROM scenes WHERE scene = ?1";
+const FORGET: &str = "DELETE FROM scenes WHERE scene = ?1 RETURNING project";
 
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/sqlite")
@@ -230,14 +231,20 @@ fn grown(id: SceneId, project: ProjectLink, parts: &[Vec<u8>]) -> Result<Scene, 
     Ok(scene)
 }
 
-async fn bumped(transaction: &mut Transaction<'_, Sqlite>, id: SceneId) -> Result<u64, StoreError> {
-    let version: i64 = sqlx::query_scalar(BUMP)
+async fn bumped(
+    transaction: &mut Transaction<'_, Sqlite>,
+    id: SceneId,
+) -> Result<(u64, ProjectLink), StoreError> {
+    let (version, project): (i64, String) = sqlx::query_as(BUMP)
         .bind(id.to_string())
         .fetch_one(&mut **transaction)
         .await
         .map_err(unreachable)?;
 
-    Ok(u64::try_from(version).expect("a version counts up from zero"))
+    Ok((
+        u64::try_from(version).expect("a version counts up from zero"),
+        ProjectLink::from(project),
+    ))
 }
 
 fn unreachable(failure: sqlx::Error) -> StoreError {
@@ -409,11 +416,12 @@ impl SceneStore for SqliteSceneStore {
             })?;
 
         if linked.rows_affected() > 0 {
-            let version = bumped(&mut transaction, id).await?;
+            let (version, project) = bumped(&mut transaction, id).await?;
             self.enqueue_change(
                 &mut transaction,
                 SceneChange::IdeaLinked {
                     scene: id,
+                    project,
                     idea: idea.clone(),
                     version,
                 },
@@ -444,11 +452,12 @@ impl SceneStore for SqliteSceneStore {
             .map_err(unreachable)?;
 
         if unlinked.rows_affected() > 0 {
-            let version = bumped(&mut transaction, id).await?;
+            let (version, project) = bumped(&mut transaction, id).await?;
             self.enqueue_change(
                 &mut transaction,
                 SceneChange::IdeaUnlinked {
                     scene: id,
+                    project,
                     idea: idea.clone(),
                     version,
                 },
@@ -496,17 +505,23 @@ impl SceneStore for SqliteSceneStore {
     async fn delete(&self, id: SceneId) -> Result<(), StoreError> {
         let mut transaction = self.begin_writing().await?;
 
-        let gone = sqlx::query(FORGET)
+        let gone: Option<String> = sqlx::query_scalar(FORGET)
             .bind(id.to_string())
-            .execute(&mut *transaction)
+            .fetch_optional(&mut *transaction)
             .await
             .map_err(unreachable)?;
-        if gone.rows_affected() == 0 {
+        let Some(project) = gone else {
             return Err(StoreError::NotFound(id));
-        }
+        };
 
-        self.enqueue_change(&mut transaction, SceneChange::Deleted { scene: id })
-            .await?;
+        self.enqueue_change(
+            &mut transaction,
+            SceneChange::Deleted {
+                scene: id,
+                project: ProjectLink::from(project),
+            },
+        )
+        .await?;
 
         transaction.commit().await.map_err(unreachable)
     }

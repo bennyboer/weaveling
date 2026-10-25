@@ -19,16 +19,19 @@ pub enum SceneChange {
     },
     IdeaLinked {
         scene: SceneId,
+        project: ProjectLink,
         idea: IdeaLink,
         version: u64,
     },
     IdeaUnlinked {
         scene: SceneId,
+        project: ProjectLink,
         idea: IdeaLink,
         version: u64,
     },
     Deleted {
         scene: SceneId,
+        project: ProjectLink,
     },
     WordsCounted {
         scene: SceneId,
@@ -42,11 +45,23 @@ impl SceneChange {
         match self {
             Self::IdeaLinked { scene, .. }
             | Self::IdeaUnlinked { scene, .. }
-            | Self::Deleted { scene }
+            | Self::Deleted { scene, .. }
             | Self::Created { scene, .. }
             | Self::Retitled { scene, .. }
             | Self::OpeningChanged { scene, .. }
             | Self::WordsCounted { scene, .. } => *scene,
+        }
+    }
+
+    pub fn project(&self) -> &ProjectLink {
+        match self {
+            Self::IdeaLinked { project, .. }
+            | Self::IdeaUnlinked { project, .. }
+            | Self::Deleted { project, .. }
+            | Self::Created { project, .. }
+            | Self::Retitled { project, .. }
+            | Self::OpeningChanged { project, .. }
+            | Self::WordsCounted { project, .. } => project,
         }
     }
 }

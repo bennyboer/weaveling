@@ -1,4 +1,6 @@
+use eventsourcing::AggregateContext;
 use messaging::{Message, RoutingKey};
+use projects_contract::context::PROJECT;
 use scenes_contract::{
     CREATED, DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, OPENING_CHANGED, OpeningChangedDTO,
     RETITLED, SceneCreatedDTO, SceneDeletedDTO, SceneRetitledDTO, WORDS_COUNTED, WordsCountedDTO,
@@ -13,6 +15,7 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
             scene,
             idea,
             version,
+            ..
         } => (
             IDEA_LINKED,
             to_payload(&IdeaLinkDTO {
@@ -25,6 +28,7 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
             scene,
             idea,
             version,
+            ..
         } => (
             IDEA_UNLINKED,
             to_payload(&IdeaLinkDTO {
@@ -33,7 +37,7 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
                 version: *version,
             }),
         ),
-        SceneChange::Deleted { scene } => (
+        SceneChange::Deleted { scene, .. } => (
             DELETED,
             to_payload(&SceneDeletedDTO {
                 scene: scene.to_string(),
@@ -86,6 +90,11 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
         ),
     };
 
+    let mut payload = payload;
+    payload["context"] = AggregateContext::default()
+        .with(PROJECT, change.project().to_string())
+        .written();
+
     Message::opening(
         RoutingKey::parse(routing).expect("a declared routing key holds no wildcards"),
         payload,
@@ -120,6 +129,7 @@ mod tests {
         let told = message_for(
             &SceneChange::IdeaLinked {
                 scene,
+                project: ProjectLink::from("project_1"),
                 idea: IdeaLink::from("idea_1"),
                 version: 3,
             },
@@ -129,7 +139,12 @@ mod tests {
         assert_eq!(told.routing.to_string(), IDEA_LINKED);
         assert_eq!(
             told.payload,
-            json!({ "scene": scene.to_string(), "idea": "idea_1", "version": 3 }),
+            json!({
+                "scene": scene.to_string(),
+                "idea": "idea_1",
+                "version": 3,
+                "context": { "project": "project_1" },
+            }),
             "a listener cannot ask scenes which idea it was, so both ends travel in the message,              and the version tells a late link from a newer unlink"
         );
         assert_eq!(told.occurred_at, at(2_000));
@@ -140,6 +155,7 @@ mod tests {
         let told = message_for(
             &SceneChange::IdeaUnlinked {
                 scene: a_scene(),
+                project: ProjectLink::from("project_1"),
                 idea: IdeaLink::from("idea_1"),
                 version: 4,
             },
@@ -153,10 +169,19 @@ mod tests {
     fn a_deletion_names_the_scene() {
         let scene = a_scene();
 
-        let told = message_for(&SceneChange::Deleted { scene }, at(2_000));
+        let told = message_for(
+            &SceneChange::Deleted {
+                scene,
+                project: ProjectLink::from("project_1"),
+            },
+            at(2_000),
+        );
 
         assert_eq!(told.routing.to_string(), DELETED);
-        assert_eq!(told.payload, json!({ "scene": scene.to_string() }));
+        assert_eq!(
+            told.payload,
+            json!({ "scene": scene.to_string(), "context": { "project": "project_1" } })
+        );
     }
 
     #[test]
@@ -253,6 +278,7 @@ mod tests {
             message_for(
                 &SceneChange::IdeaLinked {
                     scene,
+                    project: ProjectLink::from("project_1"),
                     idea: IdeaLink::from("idea_1"),
                     version: 3,
                 },
@@ -261,12 +287,75 @@ mod tests {
             .payload,
         )
         .expect("a link reads back as the contract says");
-        let deleted: SceneDeletedDTO =
-            serde_json::from_value(message_for(&SceneChange::Deleted { scene }, at(2_000)).payload)
-                .expect("a deletion reads back as the contract says");
+        let deleted: SceneDeletedDTO = serde_json::from_value(
+            message_for(
+                &SceneChange::Deleted {
+                    scene,
+                    project: ProjectLink::from("project_1"),
+                },
+                at(2_000),
+            )
+            .payload,
+        )
+        .expect("a deletion reads back as the contract says");
 
         assert_eq!(linked.idea, "idea_1");
         assert_eq!(linked.version, 3);
         assert_eq!(deleted.scene, scene.to_string());
+    }
+
+    #[test]
+    fn every_announcement_carries_its_scene_s_project_as_its_context() {
+        let scene = a_scene();
+        let project = ProjectLink::from("project_1");
+        let idea = IdeaLink::from("idea_1");
+
+        for change in [
+            SceneChange::Created {
+                scene,
+                project: project.clone(),
+            },
+            SceneChange::Retitled {
+                scene,
+                project: project.clone(),
+                title: SceneTitle::new("Chapter One").expect("a plain title"),
+                version: 2,
+            },
+            SceneChange::OpeningChanged {
+                scene,
+                project: project.clone(),
+                opening: "It was".to_owned(),
+            },
+            SceneChange::IdeaLinked {
+                scene,
+                project: project.clone(),
+                idea: idea.clone(),
+                version: 3,
+            },
+            SceneChange::IdeaUnlinked {
+                scene,
+                project: project.clone(),
+                idea: idea.clone(),
+                version: 4,
+            },
+            SceneChange::WordsCounted {
+                scene,
+                project: project.clone(),
+                words: 42,
+            },
+            SceneChange::Deleted {
+                scene,
+                project: project.clone(),
+            },
+        ] {
+            let told = message_for(&change, at(2_000));
+
+            assert_eq!(
+                eventpublishing::context_in(&told).get(PROJECT),
+                Some("project_1"),
+                "{}",
+                told.routing
+            );
+        }
     }
 }

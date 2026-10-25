@@ -2,7 +2,7 @@ use eventsourcing::{
     AccountId, Agent, AggregateContext, AggregateId, AggregateType, Event, EventMetadata,
     EventName, Recorded, Version,
 };
-use messaging::Message;
+use messaging::{Message, RoutingKey};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
@@ -289,4 +289,25 @@ fn an_aggregate_in_no_context_publishes_none() {
         "what belongs to the whole instance looks on the wire as it always did"
     );
     assert!(read(&published).context.is_empty());
+}
+
+#[test]
+fn the_context_of_any_message_is_read_the_same_way_and_none_is_an_empty_one() {
+    let mut happened = recorded(a_capture(), 7, an_author());
+    happened.metadata.context = AggregateContext::default().with("shelf", "shelf_1");
+    let enveloped = message_for(&happened, body).expect("a capture should be published");
+    let flat = Message::opening(
+        RoutingKey::parse("scene.deleted").expect("a plain key"),
+        json!({ "scene": "scene_1", "context": { "shelf": "shelf_2" } }),
+        at(1_000),
+    );
+    let bare = Message::opening(
+        RoutingKey::parse("scene.deleted").expect("a plain key"),
+        json!({ "scene": "scene_1" }),
+        at(1_000),
+    );
+
+    assert_eq!(context_in(&enveloped).get("shelf"), Some("shelf_1"));
+    assert_eq!(context_in(&flat).get("shelf"), Some("shelf_2"));
+    assert!(context_in(&bare).is_empty());
 }

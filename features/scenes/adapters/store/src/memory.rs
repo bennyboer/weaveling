@@ -180,6 +180,7 @@ impl SceneStore for InMemorySceneStore {
             stored.version += 1;
             self.enqueue_change(SceneChange::IdeaLinked {
                 scene: id,
+                project: stored.project.clone(),
                 idea: idea.clone(),
                 version: stored.version,
             });
@@ -198,6 +199,7 @@ impl SceneStore for InMemorySceneStore {
             stored.version += 1;
             self.enqueue_change(SceneChange::IdeaUnlinked {
                 scene: id,
+                project: stored.project.clone(),
                 idea: idea.clone(),
                 version: stored.version,
             });
@@ -235,8 +237,11 @@ impl SceneStore for InMemorySceneStore {
 
     async fn delete(&self, id: SceneId) -> Result<(), StoreError> {
         let mut scenes = self.write();
-        scenes.remove(&id).ok_or(StoreError::NotFound(id))?;
-        self.enqueue_change(SceneChange::Deleted { scene: id });
+        let gone = scenes.remove(&id).ok_or(StoreError::NotFound(id))?;
+        self.enqueue_change(SceneChange::Deleted {
+            scene: id,
+            project: gone.project,
+        });
 
         Ok(())
     }

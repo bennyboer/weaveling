@@ -42,21 +42,36 @@ pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
     let (routing, payload) = match change {
         SceneChange::IdeaLinked {
             scene,
+            project,
             idea,
             version,
         } => (
             "scene.idea.linked",
-            json!({ "scene": scene.to_string(), "idea": idea.to_string(), "version": version }),
+            json!({
+                "scene": scene.to_string(),
+                "project": project.to_string(),
+                "idea": idea.to_string(),
+                "version": version,
+            }),
         ),
         SceneChange::IdeaUnlinked {
             scene,
+            project,
             idea,
             version,
         } => (
             "scene.idea.unlinked",
-            json!({ "scene": scene.to_string(), "idea": idea.to_string(), "version": version }),
+            json!({
+                "scene": scene.to_string(),
+                "project": project.to_string(),
+                "idea": idea.to_string(),
+                "version": version,
+            }),
         ),
-        SceneChange::Deleted { scene } => ("scene.deleted", json!({ "scene": scene.to_string() })),
+        SceneChange::Deleted { scene, project } => (
+            "scene.deleted",
+            json!({ "scene": scene.to_string(), "project": project.to_string() }),
+        ),
         SceneChange::Created { scene, project } => (
             "scene.created",
             json!({ "scene": scene.to_string(), "project": project.to_string() }),
@@ -739,7 +754,7 @@ pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
         told_after_creating(bench.enqueued().await),
         vec![(
             "scene.idea.linked".to_owned(),
-            json!({ "scene": id.to_string(), "idea": "idea_1", "version": 1 })
+            json!({ "scene": id.to_string(), "project": "project_1", "idea": "idea_1", "version": 1 })
         )],
         "a link that was already there changes nothing, so a listener must not hear it twice"
     );
@@ -763,11 +778,18 @@ pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Work
         .await
         .expect("unlinking nothing should succeed");
 
-    let heard: Vec<String> = told_after_creating(bench.enqueued().await)
+    let heard: Vec<(String, Value)> = told_after_creating(bench.enqueued().await)
         .into_iter()
-        .map(|(routing, _)| routing)
+        .map(|(routing, payload)| (routing, payload["project"].clone()))
         .collect();
-    assert_eq!(heard, vec!["scene.idea.linked", "scene.idea.unlinked"]);
+    assert_eq!(
+        heard,
+        vec![
+            ("scene.idea.linked".to_owned(), json!("project_1")),
+            ("scene.idea.unlinked".to_owned(), json!("project_1")),
+        ],
+        "each names the scene's project, so a listener can tell where it happened"
+    );
 }
 
 pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
@@ -888,7 +910,7 @@ pub async fn deleting_a_scene_enqueues_a_message(bench: &impl Workbench) {
         told_after_creating(bench.enqueued().await),
         vec![(
             "scene.deleted".to_owned(),
-            json!({ "scene": id.to_string() })
+            json!({ "scene": id.to_string(), "project": "project_1" })
         )],
         "a scene leaving takes its links with it, and whoever indexed them has to hear so"
     );

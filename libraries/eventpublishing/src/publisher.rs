@@ -2,7 +2,7 @@ use std::error::Error as AnyError;
 use std::str::FromStr;
 
 use clock::text;
-use eventsourcing::{AggregateType, Event, EventName, Recorded};
+use eventsourcing::{AggregateContext, AggregateType, Event, EventName, Recorded};
 use messaging::{Message, RoutingKey};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
@@ -65,6 +65,14 @@ pub fn published_in<B: DeserializeOwned>(
     message: &Message,
 ) -> Result<PublishedEvent<B>, UnreadableMessage> {
     serde_json::from_value(message.payload.clone()).map_err(UnreadableMessage::NotAPublishedEvent)
+}
+
+pub fn context_in(message: &Message) -> AggregateContext {
+    message
+        .payload
+        .get("context")
+        .and_then(AggregateContext::read)
+        .unwrap_or_default()
 }
 
 pub fn aggregate_in<Id>(message: &Message) -> Result<Id, UnreadableMessage>

@@ -4762,6 +4762,7 @@ dependencies = [
  "time",
  "weaveling-clock",
  "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-messaging",
  "weaveling-projects-contract",
