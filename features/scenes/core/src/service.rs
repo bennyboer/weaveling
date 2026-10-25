@@ -26,6 +26,13 @@ pub enum SceneServiceError {
     NotAnAuthor,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Access {
+    Author,
+    Reader,
+    Stranger,
+}
+
 #[derive(Clone)]
 pub struct SceneService {
     store: Arc<dyn SceneStore>,
@@ -76,6 +83,28 @@ impl SceneService {
         .await?;
 
         Ok(scene)
+    }
+
+    pub async fn access(
+        &self,
+        project: &ProjectLink,
+        agent: &Agent,
+    ) -> Result<Access, SceneServiceError> {
+        if self
+            .authorizer
+            .may(agent, Act::Write, project.as_str())
+            .await?
+        {
+            Ok(Access::Author)
+        } else if self
+            .authorizer
+            .may(agent, Act::Read, project.as_str())
+            .await?
+        {
+            Ok(Access::Reader)
+        } else {
+            Ok(Access::Stranger)
+        }
     }
 
     async fn written_by(&self, id: SceneId, agent: &Agent) -> Result<(), SceneServiceError> {

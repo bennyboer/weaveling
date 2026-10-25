@@ -1,24 +1,28 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use scenes_core::SceneId;
+use eventsourcing::Agent;
+use scenes_core::{Access, SceneId};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::warn;
 
 use crate::envelope::Envelope;
 use crate::live_scenes::{LiveScenes, Presence};
 use crate::peer::Peer;
+use crate::protocol::Message;
 
 pub struct Connection {
     live: LiveScenes,
+    agent: Agent,
     to_client: UnboundedSender<Vec<u8>>,
-    joined: HashMap<String, (Peer, Presence)>,
+    joined: HashMap<String, (Peer, Presence, Access)>,
 }
 
 impl Connection {
-    pub fn new(live: LiveScenes, to_client: UnboundedSender<Vec<u8>>) -> Self {
+    pub fn new(live: LiveScenes, agent: Agent, to_client: UnboundedSender<Vec<u8>>) -> Self {
         Self {
             live,
+            agent,
             to_client,
             joined: HashMap::new(),
         }
@@ -47,7 +51,18 @@ impl Connection {
             Ok(id) => self.live.join(id).await.ok(),
             Err(_) => None,
         };
-        let Some(present) = present else {
+        let admitted = match present {
+            Some(present) => match present.access(&self.agent).await {
+                Ok(Access::Stranger) => None,
+                Ok(access) => Some((present, access)),
+                Err(problem) => {
+                    warn!(%scene, %problem, "who may join a scene could not be asked");
+                    None
+                }
+            },
+            None => None,
+        };
+        let Some((present, access)) = admitted else {
             let _ = self.to_client.send(Envelope::Refused(scene).encode());
             return;
         };
@@ -70,16 +85,26 @@ impl Connection {
             &present,
         );
         peer.deliver(&present.greet(), &present);
-        self.joined.insert(scene, (peer, present));
+        self.joined.insert(scene, (peer, present, access));
     }
 
     async fn carry(&mut self, scene: &str, frame: &[u8]) {
-        let Some((peer, present)) = self.joined.get(scene) else {
+        let Some((peer, present, access)) = self.joined.get(scene) else {
             warn!(%scene, "ignoring a frame for a scene this connection has not joined");
             return;
         };
+        let message = match Message::decode(frame) {
+            Ok(message) => message,
+            Err(problem) => {
+                warn!(peer = peer.id(), %problem, "ignoring a frame");
+                return;
+            }
+        };
+        if *access == Access::Reader && message.changes_the_text() {
+            return;
+        }
 
-        match present.react_to(frame) {
+        match present.receive(message) {
             Ok(reaction) => {
                 peer.deliver(&reaction, present);
 

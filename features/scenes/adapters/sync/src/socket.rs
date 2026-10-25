@@ -1,8 +1,9 @@
-use axum::Router;
 use axum::extract::State;
 use axum::extract::ws::{Message as Frame, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use axum::routing;
+use axum::{Extension, Router};
+use eventsourcing::Agent;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
@@ -16,8 +17,12 @@ pub fn router(live: LiveScenes) -> Router {
         .with_state(live)
 }
 
-async fn attach(upgrade: WebSocketUpgrade, State(live): State<LiveScenes>) -> Response {
-    upgrade.on_upgrade(move |socket| stay(socket, live))
+async fn attach(
+    upgrade: WebSocketUpgrade,
+    State(live): State<LiveScenes>,
+    Extension(agent): Extension<Agent>,
+) -> Response {
+    upgrade.on_upgrade(move |socket| stay(socket, live, agent))
 }
 
 async fn write_out(
@@ -31,11 +36,11 @@ async fn write_out(
     }
 }
 
-async fn stay(socket: WebSocket, live: LiveScenes) {
+async fn stay(socket: WebSocket, live: LiveScenes, agent: Agent) {
     let (sink, mut stream) = socket.split();
     let (to_client, outgoing) = mpsc::unbounded_channel();
     let writing = tokio::spawn(write_out(sink, outgoing));
-    let mut connection = Connection::new(live, to_client);
+    let mut connection = Connection::new(live, agent, to_client);
 
     while let Some(Ok(frame)) = stream.next().await {
         if let Frame::Binary(bytes) = frame {

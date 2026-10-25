@@ -20,6 +20,6 @@ pub use quotation_restyling_tasks::{
 };
 pub use restyler::SceneRestyler;
 pub use scene::{Scene, SceneError};
-pub use service::{SceneService, SceneServiceError};
+pub use service::{Access, SceneService, SceneServiceError};
 pub use store::{SceneStore, StoreError};
 pub use title::{InvalidSceneTitle, SceneTitle};

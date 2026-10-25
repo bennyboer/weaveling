@@ -50,6 +50,13 @@ impl Message {
         out
     }
 
+    pub fn changes_the_text(&self) -> bool {
+        matches!(
+            self,
+            Message::HereIsWhatYouMissed(_) | Message::JustHappened(_)
+        )
+    }
+
     pub fn decode(frame: &[u8]) -> Result<Message, Error> {
         let mut cursor = Cursor::new(frame);
 

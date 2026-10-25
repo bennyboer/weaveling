@@ -6,9 +6,10 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use eventsourcing::Agent;
 use quotation::QuotationMarks;
 use scenes_core::{
-    Scene, SceneError, SceneId, SceneRestyler, SceneService, SceneServiceError, StoreError,
+    Access, Scene, SceneError, SceneId, SceneRestyler, SceneService, SceneServiceError, StoreError,
 };
 use thiserror::Error;
 use tokio::sync::broadcast;
@@ -28,9 +29,6 @@ const RECOUNT_EVERY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Error)]
 pub enum LiveSceneError {
-    #[error("a peer sent a frame we could not read: {0}")]
-    Frame(#[from] yrs::encoding::read::Error),
-
     #[error(transparent)]
     Scene(#[from] SceneError),
 }
@@ -157,10 +155,6 @@ impl LiveScene {
         }
     }
 
-    pub fn react_to(&self, frame: &[u8]) -> Result<Reaction, LiveSceneError> {
-        self.receive(Message::decode(frame)?)
-    }
-
     pub fn receive(&self, message: Message) -> Result<Reaction, LiveSceneError> {
         match message {
             Message::WhatDoYouHave(state_vector) => Ok(Reaction {
@@ -198,6 +192,13 @@ pub struct Presence {
 impl Presence {
     pub fn scene(&self) -> &Arc<LiveScene> {
         &self.scene
+    }
+
+    pub async fn access(&self, agent: &Agent) -> Result<Access, SceneServiceError> {
+        self.shared
+            .service
+            .access(self.scene.scene.project(), agent)
+            .await
     }
 
     pub async fn persist(&self, update: &[u8]) -> Result<(), SceneServiceError> {

@@ -28,7 +28,10 @@ fn a_workbench() -> (SceneService, LiveScenes) {
 fn a_connection(live: &LiveScenes) -> (Connection, UnboundedReceiver<Vec<u8>>) {
     let (to_client, heard) = mpsc::unbounded_channel();
 
-    (Connection::new(live.clone(), to_client), heard)
+    (
+        Connection::new(live.clone(), Agent::Local, to_client),
+        heard,
+    )
 }
 
 async fn a_scene(service: &SceneService) -> String {

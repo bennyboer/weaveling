@@ -12,6 +12,7 @@ tokio = { workspace = true, features = ["rt", "sync", "time"] }
 tracing = { workspace = true }
 yrs = { workspace = true }
 
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 scenes-core = { version = "0.1.0", path = "../../core", package = "weaveling-scenes-core" }
 quotation = { version = "0.1.0", path = "../../../../libraries/quotation", package = "weaveling-quotation" }
 
