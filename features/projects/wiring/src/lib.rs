@@ -42,7 +42,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
 
     Wired::serving(
-        projects_rest::router(service(ports, context)).merge(projects_rest::live(broadcaster)),
+        projects_rest::router(service(ports, context))
+            .merge(projects_rest::live(broadcaster, context.authorizer.clone())),
     )
     .listening(vec![Arc::new(broadcast), Arc::new(projector)])
 }

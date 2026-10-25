@@ -1,15 +1,18 @@
 use std::sync::Arc;
 
 use authorizing::Authorizer;
-use axum::Router;
 use clock::Clock;
 use eventsourcing::EventStore;
+use live::{BroadcastChangesListener, Broadcaster};
 use members_catalog::InMemoryMembershipCatalog;
+use members_contract::EVERY_MEMBERS;
 use members_core::{MembersAuthorizer, MembersEvent, MembersService, MembershipCatalog};
 use members_messaging::{CatalogueMembersListener, FoundMembersOfStartedProjectListener};
 use messaging::Publisher;
 use outbox::Outbox;
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
+
+pub const LIVE: &str = "broadcast-membership-changes";
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<MembersEvent>>,
@@ -134,7 +137,9 @@ impl Feature for MembersFeature {
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
-        Wired::serving(Router::new()).listening(vec![
+        let broadcaster = Broadcaster::new();
+
+        Wired::serving(members_rest::live(broadcaster.clone())).listening(vec![
             Arc::new(FoundMembersOfStartedProjectListener::new(service(
                 ports, context,
             ))),
@@ -142,6 +147,12 @@ impl Feature for MembersFeature {
                 ports.events.clone(),
                 ports.catalog.clone(),
                 context.clock.clone(),
+            )),
+            Arc::new(BroadcastChangesListener::under(
+                LIVE,
+                EVERY_MEMBERS,
+                members_rest::FOLLOWED,
+                broadcaster,
             )),
         ])
     }
@@ -195,7 +206,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_founds_the_members_of_a_started_project_and_lists_every_change() {
+    fn the_feature_founds_the_members_of_a_started_project_lists_every_change_and_tells_it() {
         let context = a_context();
 
         let wired = MembersFeature::wire(&MembersFeature::in_memory(&context), &context);
@@ -207,7 +218,11 @@ mod tests {
             .collect();
         assert_eq!(
             named,
-            ["found-members-of-started-project", "catalogue-members"]
+            [
+                "found-members-of-started-project",
+                "catalogue-members",
+                "broadcast-membership-changes"
+            ]
         );
     }
 }

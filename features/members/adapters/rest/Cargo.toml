@@ -1,0 +1,18 @@
+[package]
+name = "weaveling-members-rest"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+axum = { workspace = true, features = ["ws"] }
+serde_json = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }
+
+members-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-members-contract" }
+
+[dev-dependencies]
+axum-test = { workspace = true, features = ["ws"] }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }

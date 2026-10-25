@@ -10,4 +10,6 @@ Unusually, the aggregate carries its own `created_at` and `updated_at`, because 
 
 **Each sees only their own projects.** The list asks the [`Authorizer`](../../libraries/authorizing) once what the one asking may read, `Everything` in local mode or `Only` the projects they are in on a server, and the catalog answers `among` those, newest first. Who is in which project the projects do not know; the members do.
 
+**The channel tells each their own.** `/projects/live` without a project is sifted per follower: a project's change passes if they may read it, asked of the `Authorizer` frame by frame. With `?project=` one project is followed only by whoever may read it, and is not found for anyone else. Being let into a project or out of it is the members' to tell, on [their own channel](../members).
+
 **Crates:** `core` (aggregate, catalog port, service) · `contract` (DTOs and routing keys, shared with the client) · `adapters/store` (stored-event codec) · `adapters/catalog` (in memory, PostgreSQL and SQLite listings) · `adapters/messaging` (event publisher and catalog projector) · `adapters/rest` · `wiring` · `tests`.

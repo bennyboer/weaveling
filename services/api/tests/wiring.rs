@@ -504,8 +504,10 @@ async fn an_operator_signed_in_on_a_server_signing_up(
         },
     );
     let authorizer = adapters.authorizer();
-    let mut server = TestServer::new(weaveling_service_api::app(adapters));
-    server.save_cookies();
+    let server = TestServer::builder()
+        .http_transport()
+        .save_cookies()
+        .build(weaveling_service_api::app(adapters));
     server
         .post("/api/accounts")
         .json(&json!({ "email": "ada@example.com", "name": "Ada", "password": "correct horse battery", "operator_code": operator_code.as_str() }))
@@ -894,6 +896,45 @@ async fn on_a_server_each_account_lists_only_the_projects_it_is_in() {
         theirs,
         json!([]),
         "Grace is in no project, so she sees none, Ada's least of all"
+    );
+
+    signed_in.end().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_whoever_starts_a_project_is_told_by_the_members_that_it_is_theirs() {
+    let signed_in = an_operator_signed_in_on_a_server("following").await;
+    let server = &signed_in.server;
+    let ada: Value = server.get("/api/sessions/current").await.json();
+    let mut socket = server
+        .get_websocket("/api/members/live")
+        .await
+        .into_websocket()
+        .await;
+
+    let started: Value = server
+        .post("/api/projects")
+        .json(&json!({ "name": "Followed" }))
+        .await
+        .json();
+
+    let mut founded = Value::Null;
+    for _ in 0..10 {
+        let frame: Value = serde_json::from_str(
+            &tokio::time::timeout(Duration::from_secs(5), socket.receive_text())
+                .await
+                .expect("the change is told while it is fresh"),
+        )
+        .expect("a frame is JSON");
+        if frame["event"]["name"] == "FOUNDED" {
+            founded = frame;
+            break;
+        }
+    }
+    assert_eq!(founded["of"], started["id"]);
+    assert_eq!(
+        founded["event"]["owner"], ada["account"],
+        "the members are founded by their own feature and told on their own channel, to her"
     );
 
     signed_in.end().await;

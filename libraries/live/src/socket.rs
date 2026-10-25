@@ -1,11 +1,28 @@
+use std::error::Error;
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use serde_json::json;
 
 use crate::Hearing;
 
+#[async_trait]
+pub trait Sieve: Send + Sync {
+    async fn lets_through(&self, frame: &str) -> Result<bool, Box<dyn Error + Send + Sync>>;
+}
+
 pub fn streaming(upgrade: WebSocketUpgrade, hearing: Hearing) -> Response {
-    upgrade.on_upgrade(move |socket| forward(socket, hearing))
+    upgrade.on_upgrade(move |socket| forward(socket, hearing, None))
+}
+
+pub fn streaming_sifted(
+    upgrade: WebSocketUpgrade,
+    hearing: Hearing,
+    sieve: Arc<dyn Sieve>,
+) -> Response {
+    upgrade.on_upgrade(move |socket| forward(socket, hearing, Some(sieve)))
 }
 
 pub fn streaming_from(upgrade: WebSocketUpgrade, version: u64, hearing: Hearing) -> Response {
@@ -13,18 +30,25 @@ pub fn streaming_from(upgrade: WebSocketUpgrade, version: u64, hearing: Hearing)
 
     upgrade.on_upgrade(move |mut socket| async move {
         if socket.send(Message::Text(standing.into())).await.is_ok() {
-            forward(socket, hearing).await;
+            forward(socket, hearing, None).await;
         }
     })
 }
 
-async fn forward(mut socket: WebSocket, mut hearing: Hearing) {
+async fn forward(mut socket: WebSocket, mut hearing: Hearing, sieve: Option<Arc<dyn Sieve>>) {
     loop {
         tokio::select! {
             told = hearing.next() => {
                 let Some(frame) = told else {
                     return;
                 };
+                if let Some(sieve) = &sieve {
+                    match sieve.lets_through(&frame).await {
+                        Ok(true) => {}
+                        Ok(false) => continue,
+                        Err(_) => return,
+                    }
+                }
                 if socket.send(Message::Text(frame.as_ref().into())).await.is_err() {
                     return;
                 }
@@ -63,13 +87,74 @@ mod tests {
         streaming_from(upgrade, 7, broadcaster.hear(&about))
     }
 
+    struct Mine;
+
+    #[async_trait]
+    impl Sieve for Mine {
+        async fn lets_through(&self, frame: &str) -> Result<bool, Box<dyn Error + Send + Sync>> {
+            match frame {
+                "broken" => Err("the sieve cannot tell".into()),
+                frame => Ok(frame.starts_with("mine")),
+            }
+        }
+    }
+
+    async fn following_mine(
+        upgrade: WebSocketUpgrade,
+        State(broadcaster): State<Broadcaster>,
+        Path(about): Path<String>,
+    ) -> Response {
+        streaming_sifted(upgrade, broadcaster.hear(&about), Arc::new(Mine))
+    }
+
     fn served(broadcaster: Broadcaster) -> TestServer {
         TestServer::builder().http_transport().build(
             Router::new()
                 .route("/live/{about}", routing::get(following))
                 .route("/standing/{about}", routing::get(following_from_seven))
+                .route("/mine/{about}", routing::get(following_mine))
                 .with_state(broadcaster),
         )
+    }
+
+    #[tokio::test]
+    async fn a_sifted_socket_passes_on_only_what_its_sieve_lets_through() {
+        let broadcaster = Broadcaster::new();
+        let server = served(broadcaster.clone());
+        let mut socket = server
+            .get_websocket("/mine/projects")
+            .await
+            .into_websocket()
+            .await;
+
+        broadcaster.tell("projects", "theirs".to_owned());
+        broadcaster.tell("projects", "mine, the first".to_owned());
+        broadcaster.tell("projects", "theirs again".to_owned());
+        broadcaster.tell("projects", "mine, the second".to_owned());
+
+        assert_eq!(socket.receive_text().await, "mine, the first");
+        assert_eq!(socket.receive_text().await, "mine, the second");
+    }
+
+    #[tokio::test]
+    async fn a_sieve_that_cannot_tell_ends_the_socket_so_its_client_reloads() {
+        let broadcaster = Broadcaster::new();
+        let server = served(broadcaster.clone());
+        let mut socket = server
+            .get_websocket("/mine/projects")
+            .await
+            .into_websocket()
+            .await;
+
+        broadcaster.tell("projects", "broken".to_owned());
+        broadcaster.tell("projects", "mine, after".to_owned());
+
+        assert!(
+            tokio::spawn(async move { socket.receive_text().await })
+                .await
+                .is_err(),
+            "a frame it cannot judge may be one the follower needed, so it is not skipped quietly"
+        );
     }
 
     #[tokio::test]

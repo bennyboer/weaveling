@@ -14,4 +14,7 @@ mod projects_api;
 mod projects_live;
 
 #[cfg(test)]
+mod projects_live_guarded;
+
+#[cfg(test)]
 mod wiring;

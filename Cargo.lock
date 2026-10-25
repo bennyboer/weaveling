@@ -4350,6 +4350,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-members-rest"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "axum-test",
+ "serde_json",
+ "tokio",
+ "weaveling-eventsourcing",
+ "weaveling-live",
+ "weaveling-members-contract",
+]
+
+[[package]]
 name = "weaveling-members-store"
 version = "0.1.0"
 dependencies = [
@@ -4363,15 +4377,17 @@ dependencies = [
 name = "weaveling-members-wiring"
 version = "0.1.0"
 dependencies = [
- "axum",
  "sqlx",
  "tokio",
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-members-catalog",
+ "weaveling-members-contract",
  "weaveling-members-core",
  "weaveling-members-messaging",
+ "weaveling-members-rest",
  "weaveling-members-store",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -4599,7 +4615,10 @@ dependencies = [
 name = "weaveling-projects-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
+ "serde_json",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-live",

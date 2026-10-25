@@ -8,7 +8,6 @@ use axum::response::{IntoResponse, Response};
 use axum::routing;
 use clock::text;
 use eventsourcing::{Agent, Standing};
-use live::Broadcaster;
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
     RenameProjectRequest, refused,
@@ -19,18 +18,9 @@ use projects_core::{
 };
 use serving::Problem;
 
-pub const FOLLOWED: &str = "projects";
+mod following;
 
-pub fn live(broadcaster: Broadcaster) -> Router {
-    live::followed_at("/projects/live", broadcaster, |asked| {
-        Some(
-            asked
-                .get("project")
-                .cloned()
-                .unwrap_or_else(|| FOLLOWED.to_owned()),
-        )
-    })
-}
+pub use following::{FOLLOWED, live};
 
 pub fn router(projects: ProjectService) -> Router {
     Router::new()

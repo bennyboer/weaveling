@@ -8,4 +8,6 @@ What lets an open browser hear that something changed, without asking again and 
 
 **`followed_at` and `followed_from` are the routes a browser opens,** a WebSocket upgraded on a path, the topic read from the query. `followed_from` first tells the version the follower stands at, read only after its hearing began, so a change made between loading the page and opening the socket is not lost. `Teller` numbers frames itself, for what has no published version to carry.
 
+**A socket may be sifted.** `streaming_sifted` passes each frame through a `Sieve` first, which lets it through or holds it back, so followers of one topic may each hear only their own part of it; a sieve that cannot tell ends the socket, as falling behind does, rather than skipping a frame the follower may have needed.
+
 A feature decides what its topics are and who may follow them; this only carries the frames.
