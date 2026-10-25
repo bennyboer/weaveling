@@ -1,26 +1,40 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use authorizing::{Act, Authorizer};
 use axum::extract::{Query, State};
 use axum::routing;
-use axum::{Json, Router};
-use live::{Broadcaster, Teller};
+use axum::{Extension, Json, Router};
+use eventsourcing::Agent;
+use live::{Broadcaster, ReadersOfTheProject, Teller};
 use serde::Deserialize;
 use serving::Problem;
 use statistics_contract::WordCountDTO;
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
 use time::OffsetDateTime;
 
-pub fn router(catalog: Arc<dyn WordCountCatalog>) -> Router {
-    Router::new()
-        .route("/statistics/word-counts", routing::get(word_counts))
-        .with_state(catalog)
+#[derive(Clone)]
+struct Counts {
+    catalog: Arc<dyn WordCountCatalog>,
+    authorizer: Arc<dyn Authorizer>,
 }
 
-pub fn live(broadcaster: Broadcaster) -> Router {
-    live::followed_at("/statistics/word-counts/live", broadcaster, |asked| {
-        asked.get("project").cloned()
-    })
+pub fn router(catalog: Arc<dyn WordCountCatalog>, authorizer: Arc<dyn Authorizer>) -> Router {
+    Router::new()
+        .route("/statistics/word-counts", routing::get(word_counts))
+        .with_state(Counts {
+            catalog,
+            authorizer,
+        })
+}
+
+pub fn live(broadcaster: Broadcaster, authorizer: Arc<dyn Authorizer>) -> Router {
+    live::followed_if(
+        "/statistics/word-counts/live",
+        broadcaster,
+        |asked| asked.get("project").cloned(),
+        Arc::new(ReadersOfTheProject(authorizer)),
+    )
 }
 
 pub struct TellingWordCounts {
@@ -92,10 +106,23 @@ struct InProject {
 }
 
 async fn word_counts(
-    State(catalog): State<Arc<dyn WordCountCatalog>>,
+    State(counts): State<Counts>,
+    Extension(agent): Extension<Agent>,
     Query(asked): Query<InProject>,
 ) -> Result<Json<Vec<WordCountDTO>>, Problem> {
-    let counts = catalog
+    if !counts
+        .authorizer
+        .may(&agent, Act::Read, &asked.project)
+        .await
+        .map_err(Problem::unexpected)?
+    {
+        return Err(Problem::not_found(
+            serving::NOT_FOUND,
+            "there is no such project",
+        ));
+    }
+    let counts = counts
+        .catalog
         .in_project(&ProjectLink::from(asked.project))
         .await
         .map_err(Problem::unexpected)?;

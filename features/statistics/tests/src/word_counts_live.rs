@@ -1,7 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use authorizing::AllowingEverything;
+use axum::Extension;
 use axum_test::{TestServer, TestWebSocket};
+use eventsourcing::Agent;
 use live::Broadcaster;
 use serde_json::{Value, json};
 use statistics_catalog::InMemoryWordCountCatalog;
@@ -21,9 +24,10 @@ async fn counts_followed(project: &str) -> CountsFollowed {
         Arc::new(InMemoryWordCountCatalog::new()),
         broadcaster.clone(),
     );
-    let server = TestServer::builder()
-        .http_transport()
-        .build(statistics_rest::live(broadcaster));
+    let server = TestServer::builder().http_transport().build(
+        statistics_rest::live(broadcaster, Arc::new(AllowingEverything))
+            .layer(Extension(Agent::Local)),
+    );
     let socket = server
         .get_websocket(&format!("/statistics/word-counts/live?project={project}"))
         .await

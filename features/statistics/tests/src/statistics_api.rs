@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
+use axum::Extension;
 use axum_test::TestServer;
+use eventsourcing::Agent;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_contract::WordCountDTO;
 use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
@@ -8,9 +11,13 @@ use time::OffsetDateTime;
 
 #[tokio::test]
 async fn a_project_nobody_counted_answers_with_nothing() {
-    let server = TestServer::new(statistics_rest::router(Arc::new(
-        InMemoryWordCountCatalog::new(),
-    )));
+    let server = TestServer::new(
+        statistics_rest::router(
+            Arc::new(InMemoryWordCountCatalog::new()),
+            Arc::new(AllowingEverything),
+        )
+        .layer(Extension(Agent::Local)),
+    );
 
     let response = server
         .get("/statistics/word-counts?project=project_1")
@@ -38,7 +45,10 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
             .await
             .expect("keeping should succeed");
     }
-    let server = TestServer::new(statistics_rest::router(catalog));
+    let server = TestServer::new(
+        statistics_rest::router(catalog, Arc::new(AllowingEverything))
+            .layer(Extension(Agent::Local)),
+    );
 
     let response = server
         .get("/statistics/word-counts?project=project_1")
@@ -62,9 +72,13 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
 
 #[tokio::test]
 async fn asking_without_a_project_is_a_bad_request() {
-    let server = TestServer::new(statistics_rest::router(Arc::new(
-        InMemoryWordCountCatalog::new(),
-    )));
+    let server = TestServer::new(
+        statistics_rest::router(
+            Arc::new(InMemoryWordCountCatalog::new()),
+            Arc::new(AllowingEverything),
+        )
+        .layer(Extension(Agent::Local)),
+    );
 
     let response = server.get("/statistics/word-counts").expect_failure().await;
 

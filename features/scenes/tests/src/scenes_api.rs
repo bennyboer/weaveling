@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
+use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_TYPE;
 use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
+use eventsourcing::Agent;
 use live::Broadcaster;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{
@@ -40,15 +43,20 @@ fn at(seconds: i64) -> OffsetDateTime {
 fn a_service() -> SceneService {
     SceneService::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(at(1_700_000_000))),
     )
 }
 
 fn new_server_with(service: SceneService) -> TestServer {
-    TestServer::new(scenes_rest::router(
-        service,
-        Arc::new(InMemorySceneCatalog::new()),
-    ))
+    TestServer::new(
+        scenes_rest::router(
+            service,
+            Arc::new(InMemorySceneCatalog::new()),
+            Arc::new(AllowingEverything),
+        )
+        .layer(Extension(Agent::Local)),
+    )
 }
 
 fn a_paragraph(saying: &str) -> Vec<u8> {
@@ -272,7 +280,10 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
         )
         .await
         .expect("noting an opening should succeed");
-    let server = TestServer::new(scenes_rest::router(a_service(), catalog));
+    let server = TestServer::new(
+        scenes_rest::router(a_service(), catalog, Arc::new(AllowingEverything))
+            .layer(Extension(Agent::Local)),
+    );
 
     let listed = page_after(&server, None).await;
 
@@ -293,10 +304,14 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
 
 #[tokio::test]
 async fn a_long_listing_comes_a_page_at_a_time() {
-    let server = TestServer::new(scenes_rest::router(
-        a_service(),
-        a_catalog_holding(PAGE as i64 + 1).await,
-    ));
+    let server = TestServer::new(
+        scenes_rest::router(
+            a_service(),
+            a_catalog_holding(PAGE as i64 + 1).await,
+            Arc::new(AllowingEverything),
+        )
+        .layer(Extension(Agent::Local)),
+    );
 
     let first = page_after(&server, None).await;
     let rest = page_after(&server, first.next.as_deref()).await;
@@ -313,10 +328,14 @@ async fn a_long_listing_comes_a_page_at_a_time() {
 
 #[tokio::test]
 async fn a_listing_exactly_one_page_long_says_there_is_no_more() {
-    let server = TestServer::new(scenes_rest::router(
-        a_service(),
-        a_catalog_holding(PAGE as i64).await,
-    ));
+    let server = TestServer::new(
+        scenes_rest::router(
+            a_service(),
+            a_catalog_holding(PAGE as i64).await,
+            Arc::new(AllowingEverything),
+        )
+        .layer(Extension(Agent::Local)),
+    );
 
     let listed = page_after(&server, None).await;
 
@@ -388,10 +407,14 @@ async fn linking_to_a_scene_nobody_created_is_not_found() {
 }
 
 async fn restyling(tasks: InMemoryQuotationRestylingTasks) -> axum_test::TestResponse {
-    TestServer::new(scenes_rest::quotation_restylings(
-        Arc::new(tasks),
-        Broadcaster::new(),
-    ))
+    TestServer::new(
+        scenes_rest::quotation_restylings(
+            Arc::new(tasks),
+            Broadcaster::new(),
+            Arc::new(AllowingEverything),
+        )
+        .layer(Extension(Agent::Local)),
+    )
     .get(&format!("/scenes/quotation-restylings/{A_PROJECT}"))
     .await
 }
@@ -408,12 +431,10 @@ async fn a_restyling_followed(project: &str) -> RestylingFollowed {
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         broadcaster.clone(),
     ));
-    let server = TestServer::builder()
-        .http_transport()
-        .build(scenes_rest::quotation_restylings(
-            tasks.clone(),
-            broadcaster,
-        ));
+    let server = TestServer::builder().http_transport().build(
+        scenes_rest::quotation_restylings(tasks.clone(), broadcaster, Arc::new(AllowingEverything))
+            .layer(Extension(Agent::Local)),
+    );
     let socket = server
         .get_websocket(&format!(
             "/scenes/quotation-restylings/live?project={project}"

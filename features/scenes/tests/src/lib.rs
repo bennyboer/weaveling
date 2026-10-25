@@ -17,6 +17,9 @@ mod scene_service;
 mod scenes_api;
 
 #[cfg(test)]
+mod scenes_api_guarded;
+
+#[cfg(test)]
 mod shared_kernel;
 
 #[cfg(test)]

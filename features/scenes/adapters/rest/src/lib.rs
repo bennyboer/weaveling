@@ -2,12 +2,15 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
+use authorizing::{Act, Authorizer};
+use axum::Extension;
 use axum::Json;
 use axum::Router;
 use axum::extract::{FromRef, Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing;
-use live::{Broadcaster, Teller};
+use eventsourcing::Agent;
+use live::{Broadcaster, ReadersOfTheProject, Teller};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO, SceneSummaryDTO, refused,
@@ -25,6 +28,7 @@ use time::OffsetDateTime;
 struct Scenes {
     service: SceneService,
     catalog: Arc<dyn SceneCatalog>,
+    authorizer: Arc<dyn Authorizer>,
 }
 
 impl FromRef<Scenes> for SceneService {
@@ -33,16 +37,29 @@ impl FromRef<Scenes> for SceneService {
     }
 }
 
-impl FromRef<Scenes> for Arc<dyn SceneCatalog> {
-    fn from_ref(scenes: &Scenes) -> Self {
-        scenes.catalog.clone()
-    }
+pub fn live_scenes(broadcaster: Broadcaster, authorizer: Arc<dyn Authorizer>) -> Router {
+    live::followed_if(
+        "/scenes/live",
+        broadcaster,
+        |asked| asked.get("project").cloned(),
+        Arc::new(ReadersOfTheProject(authorizer)),
+    )
 }
 
-pub fn live_scenes(broadcaster: Broadcaster) -> Router {
-    live::followed_at("/scenes/live", broadcaster, |asked| {
-        asked.get("project").cloned()
-    })
+async fn readable(
+    authorizer: &dyn Authorizer,
+    agent: &Agent,
+    project: &str,
+) -> Result<(), Problem> {
+    if authorizer
+        .may(agent, Act::Read, project)
+        .await
+        .map_err(Problem::unexpected)?
+    {
+        Ok(())
+    } else {
+        Err(Problem::not_found(NOT_FOUND, "there is no such project"))
+    }
 }
 
 pub struct TellingScenes {
@@ -133,7 +150,11 @@ impl SceneCatalog for TellingScenes {
     }
 }
 
-pub fn router(service: SceneService, catalog: Arc<dyn SceneCatalog>) -> Router {
+pub fn router(
+    service: SceneService,
+    catalog: Arc<dyn SceneCatalog>,
+    authorizer: Arc<dyn Authorizer>,
+) -> Router {
     Router::new()
         .route("/scenes", routing::get(list).post(create))
         .route(
@@ -142,23 +163,38 @@ pub fn router(service: SceneService, catalog: Arc<dyn SceneCatalog>) -> Router {
         )
         .route("/scenes/{id}/ideas", routing::post(link))
         .route("/scenes/{id}/ideas/{idea}", routing::delete(unlink))
-        .with_state(Scenes { service, catalog })
+        .with_state(Scenes {
+            service,
+            catalog,
+            authorizer,
+        })
+}
+
+#[derive(Clone)]
+struct Restylings {
+    tasks: Arc<dyn QuotationRestylingTasks>,
+    authorizer: Arc<dyn Authorizer>,
 }
 
 pub fn quotation_restylings(
     tasks: Arc<dyn QuotationRestylingTasks>,
     broadcaster: Broadcaster,
+    authorizer: Arc<dyn Authorizer>,
 ) -> Router {
     Router::new()
         .route(
             "/scenes/quotation-restylings/{project}",
             routing::get(progress),
         )
-        .with_state(tasks)
-        .merge(live::followed_at(
+        .with_state(Restylings {
+            tasks,
+            authorizer: authorizer.clone(),
+        })
+        .merge(live::followed_if(
             "/scenes/quotation-restylings/live",
             broadcaster,
             |asked| asked.get("project").cloned(),
+            Arc::new(ReadersOfTheProject(authorizer)),
         ))
 }
 
@@ -241,10 +277,13 @@ fn as_dto(progress: QuotationRestylingProgress) -> QuotationRestylingDTO {
 }
 
 async fn progress(
-    State(tasks): State<Arc<dyn QuotationRestylingTasks>>,
+    State(restylings): State<Restylings>,
+    Extension(agent): Extension<Agent>,
     Path(project): Path<String>,
 ) -> Result<Json<QuotationRestylingDTO>, Problem> {
-    let progress = tasks
+    readable(restylings.authorizer.as_ref(), &agent, &project).await?;
+    let progress = restylings
+        .tasks
         .progress(&ProjectLink::from(project.as_str()))
         .await
         .map_err(Problem::unexpected)?
@@ -267,16 +306,19 @@ struct InProject {
 }
 
 async fn list(
-    State(catalog): State<Arc<dyn SceneCatalog>>,
+    State(scenes): State<Scenes>,
+    Extension(agent): Extension<Agent>,
     Query(asked): Query<InProject>,
 ) -> Result<Json<ScenePageDTO>, Problem> {
+    readable(scenes.authorizer.as_ref(), &agent, &asked.project).await?;
     let after = asked
         .after
         .as_deref()
         .map(str::parse::<SceneId>)
         .transpose()
         .map_err(|reason| problem_of(SceneServiceError::from(reason)))?;
-    let mut found = catalog
+    let mut found = scenes
+        .catalog
         .in_project_after(&ProjectLink::from(asked.project), after, PAGE + 1)
         .await
         .map_err(Problem::unexpected)?;
@@ -302,29 +344,35 @@ fn to_summary_dto(summary: &SceneSummary) -> SceneSummaryDTO {
 
 async fn create(
     State(scenes): State<SceneService>,
+    Extension(acting): Extension<Agent>,
     Json(request): Json<CreateSceneRequest>,
 ) -> Result<(StatusCode, Json<SceneDTO>), Problem> {
-    let created = scenes.create(&request.project).await.map_err(problem_of)?;
+    let created = scenes
+        .create(&request.project, &acting)
+        .await
+        .map_err(problem_of)?;
 
     Ok((StatusCode::CREATED, Json(to_dto(&created))))
 }
 
 async fn find(
     State(scenes): State<SceneService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
 ) -> Result<Json<SceneDTO>, Problem> {
-    let found = scenes.open(&id).await.map_err(problem_of)?;
+    let found = scenes.read(&id, &acting).await.map_err(problem_of)?;
 
     Ok(Json(to_dto(&found)))
 }
 
 async fn retitle(
     State(scenes): State<SceneService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     Json(request): Json<RetitleSceneRequest>,
 ) -> Result<Json<SceneDTO>, Problem> {
     let retitled = scenes
-        .retitle(&id, &request.title)
+        .retitle(&id, &request.title, &acting)
         .await
         .map_err(problem_of)?;
 
@@ -333,28 +381,37 @@ async fn retitle(
 
 async fn link(
     State(scenes): State<SceneService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     Json(request): Json<LinkIdeaRequest>,
 ) -> Result<Json<SceneDTO>, Problem> {
-    let linked = scenes.link(&id, &request.idea).await.map_err(problem_of)?;
+    let linked = scenes
+        .link(&id, &request.idea, &acting)
+        .await
+        .map_err(problem_of)?;
 
     Ok(Json(to_dto(&linked)))
 }
 
 async fn unlink(
     State(scenes): State<SceneService>,
+    Extension(acting): Extension<Agent>,
     Path((id, idea)): Path<(String, String)>,
 ) -> Result<Json<SceneDTO>, Problem> {
-    let unlinked = scenes.unlink(&id, &idea).await.map_err(problem_of)?;
+    let unlinked = scenes
+        .unlink(&id, &idea, &acting)
+        .await
+        .map_err(problem_of)?;
 
     Ok(Json(to_dto(&unlinked)))
 }
 
 async fn remove(
     State(scenes): State<SceneService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, Problem> {
-    scenes.delete(&id).await.map_err(problem_of)?;
+    scenes.delete(&id, &acting).await.map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -385,6 +442,12 @@ fn problem_of(refusal: SceneServiceError) -> Problem {
         },
         SceneServiceError::Store(missing @ StoreError::NotFound(_)) => {
             Problem::not_found(NOT_FOUND, missing)
+        }
+        SceneServiceError::ProjectNotThere => {
+            Problem::not_found(NOT_FOUND, SceneServiceError::ProjectNotThere)
+        }
+        SceneServiceError::NotAnAuthor => {
+            Problem::forbidden(refused::NOT_AN_AUTHOR, SceneServiceError::NotAnAuthor)
         }
         beyond_reach => Problem::unexpected(beyond_reach),
     }

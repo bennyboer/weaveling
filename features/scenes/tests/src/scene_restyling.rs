@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use authorizing::AllowingEverything;
 use clock::FixedClock;
+use eventsourcing::Agent;
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::QUOTATION_CHANGED;
 use quotation::QuotationMarks;
@@ -60,6 +62,7 @@ struct Wired {
 fn a_workbench(at_most: usize) -> Wired {
     let scenes = SceneService::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(at(1_000))),
     );
     let live = LiveScenes::new(scenes.clone());
@@ -127,7 +130,7 @@ impl Wired {
         for _ in 0..scenes {
             let scene = self
                 .scenes
-                .create(project)
+                .create(project, &Agent::Local)
                 .await
                 .expect("creating a scene should succeed")
                 .id();

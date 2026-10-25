@@ -712,6 +712,33 @@ pub async fn a_project_s_outline_is_there_only_for_whoever_may_read_its_project<
     journey.end().await;
 }
 
+pub async fn a_project_s_scenes_are_there_only_for_whoever_may_read_its_project<B: Backend>() {
+    let journey = Journey::<B>::signed_in("writing").await;
+    let project = journey.project("Written").await;
+    let server = &journey.server;
+    let at = format!("/api/projects/{project}");
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
+        "its owner may read the project once the members have heard of her"
+    );
+    let scene = journey.scene(&project).await;
+
+    journey.signed_in_as_another("grace@example.com").await;
+
+    for path in [
+        format!("/api/scenes?project={project}"),
+        format!("/api/scenes/{scene}"),
+    ] {
+        server.get(&path).await.assert_status(StatusCode::NOT_FOUND);
+    }
+    server
+        .post("/api/scenes")
+        .json(&json!({ "project": project }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -730,6 +757,7 @@ macro_rules! journeys {
             an_idea_s_appearances_are_there_only_for_whoever_may_read_its_project,
             a_project_s_board_is_there_only_for_whoever_may_read_its_project,
             a_project_s_outline_is_there_only_for_whoever_may_read_its_project,
+            a_project_s_scenes_are_there_only_for_whoever_may_read_its_project,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

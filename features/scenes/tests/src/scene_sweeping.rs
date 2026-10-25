@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use clock::FixedClock;
+use eventsourcing::{AccountId, Agent};
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
@@ -17,6 +20,23 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
+struct TheSystemAndAda;
+
+fn ada() -> Agent {
+    Agent::Account(AccountId::from("account_ada"))
+}
+
+#[async_trait]
+impl Authorizer for TheSystemAndAda {
+    async fn may(&self, agent: &Agent, _act: Act, _project: &str) -> Result<bool, AuthorizerError> {
+        Ok(*agent == Agent::System || *agent == ada())
+    }
+
+    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
+        Ok(Readable::Everything)
+    }
+}
+
 struct Wired {
     sweep: DeleteOnProjectDeletedListener,
     scenes: SceneService,
@@ -26,7 +46,11 @@ struct Wired {
 fn a_workbench(at_most: usize) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_000)));
     let overheard = Arc::new(FakePublisher::default());
-    let scenes = SceneService::new(Arc::new(InMemorySceneStore::new()), clock.clone());
+    let scenes = SceneService::new(
+        Arc::new(InMemorySceneStore::new()),
+        Arc::new(TheSystemAndAda),
+        clock.clone(),
+    );
 
     Wired {
         sweep: DeleteOnProjectDeletedListener::new(scenes.clone(), overheard.clone(), clock)
@@ -43,7 +67,7 @@ impl Wired {
         for _ in 0..scenes {
             written.push(
                 self.scenes
-                    .create(project)
+                    .create(project, &ada())
                     .await
                     .expect("creating a scene should succeed")
                     .id(),

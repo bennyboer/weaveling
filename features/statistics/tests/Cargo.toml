@@ -4,6 +4,10 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+async-trait = { workspace = true }
+axum = { workspace = true }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 axum-test = { workspace = true, features = ["ws"] }
 serde_json = { workspace = true }
 time = { workspace = true }

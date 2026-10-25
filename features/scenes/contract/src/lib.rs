@@ -117,11 +117,13 @@ pub mod refused {
     pub const TITLE_CONTROL_CHARACTER: &str = "scene-title-control-character";
     pub const TITLE_TOO_LONG: &str = "scene-title-too-long";
     pub const NEVER_RESTYLED: &str = "quotation-never-restyled";
+    pub const NOT_AN_AUTHOR: &str = "not-an-author";
 
-    pub const EVERY: [&str; 4] = [
+    pub const EVERY: [&str; 5] = [
         ID_INVALID,
         TITLE_CONTROL_CHARACTER,
         TITLE_TOO_LONG,
         NEVER_RESTYLED,
+        NOT_AN_AUTHOR,
     ];
 }

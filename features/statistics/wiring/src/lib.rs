@@ -24,7 +24,9 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     ));
 
     Wired::serving(
-        statistics_rest::router(ports.catalog.clone()).merge(statistics_rest::live(broadcaster)),
+        statistics_rest::router(ports.catalog.clone(), context.authorizer.clone()).merge(
+            statistics_rest::live(broadcaster, context.authorizer.clone()),
+        ),
     )
     .listening(vec![Arc::new(ProjectWordCountsListener::new(telling))])
     .doing_chores(vec![Arc::new(ForgetOldTombstones::new(

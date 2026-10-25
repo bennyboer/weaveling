@@ -27,7 +27,11 @@ pub struct Ports {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    let scenes = SceneService::new(ports.store.clone(), context.clock.clone());
+    let scenes = SceneService::new(
+        ports.store.clone(),
+        context.authorizer.clone(),
+        context.clock.clone(),
+    );
     let unlink = UnlinkOnDiscardListener::new(scenes.clone());
     let sweep = DeleteOnProjectDeletedListener::new(
         scenes.clone(),
@@ -56,9 +60,16 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
 
     Wired::serving(
-        scenes_rest::router(scenes, ports.catalog.clone())
-            .merge(scenes_rest::quotation_restylings(tasks, restylings))
-            .merge(scenes_rest::live_scenes(scenes_told))
+        scenes_rest::router(scenes, ports.catalog.clone(), context.authorizer.clone())
+            .merge(scenes_rest::quotation_restylings(
+                tasks,
+                restylings,
+                context.authorizer.clone(),
+            ))
+            .merge(scenes_rest::live_scenes(
+                scenes_told,
+                context.authorizer.clone(),
+            ))
             .merge(scenes_sync::router(live.clone())),
     )
     .listening(vec![

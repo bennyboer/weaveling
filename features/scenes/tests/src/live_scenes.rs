@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use clock::FixedClock;
+use eventsourcing::Agent;
 use quotation::QuotationMarks;
 use scenes_core::{FRAGMENT, ProjectLink, Scene, SceneId, SceneRestyler, SceneService};
 use scenes_store::InMemorySceneStore;
@@ -21,6 +23,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 fn a_workbench() -> (SceneService, LiveScenes) {
     let service = SceneService::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(at(1_000))),
     );
 
@@ -43,7 +46,10 @@ fn a_paragraph(saying: &str) -> Vec<u8> {
 #[tokio::test]
 async fn joining_a_scene_brings_its_stored_prose_back() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     let id = scene.id().to_string();
     service
         .apply(&id, &a_paragraph("The loom stood silent."))
@@ -62,7 +68,10 @@ async fn joining_a_scene_brings_its_stored_prose_back() {
 #[tokio::test]
 async fn two_peers_joining_the_same_scene_share_one_document() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
 
     let ada = live.join(scene.id()).await.expect("ada should join");
     let bo = live.join(scene.id()).await.expect("bo should join");
@@ -79,7 +88,10 @@ async fn two_peers_joining_the_same_scene_share_one_document() {
 #[tokio::test]
 async fn joining_twice_returns_the_very_same_live_scene() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
 
     let first = live.join(scene.id()).await.expect("should join");
     let second = live.join(scene.id()).await.expect("should join");
@@ -93,7 +105,10 @@ async fn joining_twice_returns_the_very_same_live_scene() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn racing_joins_settle_on_one_live_scene() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     let id = scene.id();
 
     let racers: Vec<_> = (0..8)
@@ -125,8 +140,14 @@ async fn racing_joins_settle_on_one_live_scene() {
 #[tokio::test]
 async fn two_different_scenes_stay_separate() {
     let (service, live) = a_workbench();
-    let one = service.create(A_PROJECT).await.expect("should create");
-    let other = service.create(A_PROJECT).await.expect("should create");
+    let one = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
+    let other = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
 
     let first = live.join(one.id()).await.expect("should join");
     let second = live.join(other.id()).await.expect("should join");
@@ -166,7 +187,10 @@ async fn every_peer_gets_a_distinct_id() {
 #[tokio::test]
 async fn an_edit_made_in_a_live_scene_is_handed_to_the_store() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     let id = scene.id().to_string();
     let joined = live.join(scene.id()).await.expect("should join");
 
@@ -187,7 +211,10 @@ async fn an_edit_made_in_a_live_scene_is_handed_to_the_store() {
 #[tokio::test]
 async fn a_scene_rejoined_after_everyone_left_still_has_the_prose() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     let id = scene.id().to_string();
     {
         let joined = live.join(scene.id()).await.expect("should join");
@@ -235,7 +262,10 @@ fn a_dialogue() -> Vec<u8> {
 #[tokio::test]
 async fn a_scene_nobody_has_open_is_restyled_where_it_is_kept() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     service
         .apply(&scene.id().to_string(), &a_dialogue())
         .await
@@ -257,7 +287,10 @@ async fn a_scene_nobody_has_open_is_restyled_where_it_is_kept() {
 #[tokio::test]
 async fn whoever_has_the_scene_open_hears_it_restyled_as_it_happens() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     service
         .apply(&scene.id().to_string(), &a_dialogue())
         .await
@@ -297,7 +330,10 @@ async fn whoever_has_the_scene_open_hears_it_restyled_as_it_happens() {
 #[tokio::test]
 async fn a_scene_already_in_the_style_is_left_alone() {
     let (service, live) = a_workbench();
-    let scene = service.create(A_PROJECT).await.expect("should create");
+    let scene = service
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create");
     service
         .apply(&scene.id().to_string(), &a_dialogue())
         .await

@@ -1,7 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use authorizing::AllowingEverything;
+use axum::Extension;
 use axum_test::{TestServer, TestWebSocket};
+use eventsourcing::Agent;
 use live::Broadcaster;
 use scenes_catalog::InMemorySceneCatalog;
 use scenes_core::{ProjectLink, SceneCatalog, SceneId, SceneTitle};
@@ -18,9 +21,10 @@ struct ScenesFollowed {
 async fn scenes_followed(project: &str) -> ScenesFollowed {
     let broadcaster = Broadcaster::new();
     let catalog = TellingScenes::around(Arc::new(InMemorySceneCatalog::new()), broadcaster.clone());
-    let server = TestServer::builder()
-        .http_transport()
-        .build(scenes_rest::live_scenes(broadcaster));
+    let server = TestServer::builder().http_transport().build(
+        scenes_rest::live_scenes(broadcaster, Arc::new(AllowingEverything))
+            .layer(Extension(Agent::Local)),
+    );
     let socket = server
         .get_websocket(&format!("/scenes/live?project={project}"))
         .await

@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration as Wait;
 
+use authorizing::AllowingEverything;
 use clock::FixedClock;
+use eventsourcing::Agent;
 use scenes_core::{FRAGMENT, SceneService};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{Connection, Envelope, LiveScenes, Message};
@@ -14,6 +16,7 @@ const A_PROJECT: &str = "project_1";
 fn a_workbench() -> (SceneService, LiveScenes) {
     let service = SceneService::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(
             OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
         )),
@@ -30,7 +33,7 @@ fn a_connection(live: &LiveScenes) -> (Connection, UnboundedReceiver<Vec<u8>>) {
 
 async fn a_scene(service: &SceneService) -> String {
     service
-        .create(A_PROJECT)
+        .create(A_PROJECT, &Agent::Local)
         .await
         .expect("should create")
         .id()

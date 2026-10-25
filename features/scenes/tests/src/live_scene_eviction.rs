@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use async_trait::async_trait;
+use authorizing::AllowingEverything;
 use clock::FixedClock;
+use eventsourcing::Agent;
 use scenes_core::{
     FRAGMENT, IdeaLink, ProjectLink, Scene, SceneId, SceneService, SceneStore, SceneTitle,
     StoreError,
@@ -119,6 +121,7 @@ fn a_workbench() -> Workbench {
     });
     let service = SceneService::new(
         store.clone(),
+        Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(
             OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
         )),
@@ -134,7 +137,7 @@ fn a_workbench() -> Workbench {
 impl Workbench {
     async fn a_scene(&self) -> SceneId {
         self.service
-            .create(A_PROJECT)
+            .create(A_PROJECT, &Agent::Local)
             .await
             .expect("should create")
             .id()
@@ -338,7 +341,7 @@ async fn a_scene_deleted_while_live_is_let_go_even_with_an_unstored_edit() {
     drop(present);
     bench
         .service
-        .delete(&id.to_string())
+        .delete(&id.to_string(), &Agent::Local)
         .await
         .expect("should delete");
 

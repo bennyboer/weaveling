@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clock::Clock;
+use eventsourcing::Agent;
 use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
 use projects_contract::{DELETED, ProjectEventDTO};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
@@ -42,7 +43,7 @@ impl DeleteOnProjectDeletedListener {
         };
 
         for scene in &batch {
-            match self.scenes.delete(&scene.to_string()).await {
+            match self.scenes.delete(&scene.to_string(), &Agent::System).await {
                 Ok(()) => {}
                 Err(refused) if already_deleted(&refused) => {}
                 Err(refused) => return Err(refused.into()),
