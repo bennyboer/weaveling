@@ -9,7 +9,7 @@ use async_trait::async_trait;
 use eventsourcing::Agent;
 use quotation::QuotationMarks;
 use scenes_core::{
-    Access, Scene, SceneError, SceneId, SceneRestyler, SceneService, SceneServiceError, StoreError,
+    Access, Scene, SceneError, SceneId, SceneRestyler, ScenesCore, ScenesError, StoreError,
 };
 use thiserror::Error;
 use tokio::sync::broadcast;
@@ -78,7 +78,7 @@ impl LiveScene {
             })
     }
 
-    async fn recount(&self, service: &SceneService) {
+    async fn recount(&self, scenes: &ScenesCore) {
         if !self.uncounted.swap(false, Ordering::AcqRel) {
             return;
         }
@@ -88,12 +88,12 @@ impl LiveScene {
             .expect("live scene count lock poisoned") = Some(Moment::now());
 
         let id = self.id().to_string();
-        let counted = service.announce_word_count(&id, self.scene.words()).await;
-        let opened = self.tell_opening(service, &id).await;
+        let counted = scenes.announce_word_count(&id, self.scene.words()).await;
+        let opened = self.tell_opening(scenes, &id).await;
 
         for told in [counted, opened] {
             match told {
-                Ok(()) | Err(SceneServiceError::Store(StoreError::NotFound(_))) => {}
+                Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
                 Err(problem) => {
                     self.uncounted.store(true, Ordering::Release);
                     warn!(scene = %self.id(), %problem, "what a scene holds could not be told");
@@ -102,11 +102,7 @@ impl LiveScene {
         }
     }
 
-    async fn tell_opening(
-        &self,
-        service: &SceneService,
-        id: &str,
-    ) -> Result<(), SceneServiceError> {
+    async fn tell_opening(&self, scenes: &ScenesCore, id: &str) -> Result<(), ScenesError> {
         let opening = self.scene.opening();
         let unchanged = self
             .opening_told
@@ -118,7 +114,7 @@ impl LiveScene {
         if unchanged {
             return Ok(());
         }
-        service.announce_opening(id, &opening).await?;
+        scenes.announce_opening(id, &opening).await?;
         *self
             .opening_told
             .lock()
@@ -194,17 +190,14 @@ impl Presence {
         &self.scene
     }
 
-    pub async fn access(&self, agent: &Agent) -> Result<Access, SceneServiceError> {
-        self.shared
-            .service
-            .access(self.scene.scene.project(), agent)
-            .await
+    pub async fn access(&self, agent: &Agent) -> Result<Access, ScenesError> {
+        self.shared.scenes.access(&self.scene.scene, agent).await
     }
 
-    pub async fn persist(&self, update: &[u8]) -> Result<(), SceneServiceError> {
+    pub async fn persist(&self, update: &[u8]) -> Result<(), ScenesError> {
         let persisted = self
             .shared
-            .service
+            .scenes
             .apply(&self.scene.id().to_string(), update)
             .await;
         match persisted {
@@ -220,7 +213,7 @@ impl Presence {
         let wait = self.scene.next_count_in();
 
         if wait.is_zero() {
-            self.scene.recount(&self.shared.service).await;
+            self.scene.recount(&self.shared.scenes).await;
             return;
         }
         if self.scene.recount_waiting.swap(true, Ordering::AcqRel) {
@@ -228,11 +221,11 @@ impl Presence {
         }
 
         let scene = self.scene.clone();
-        let service = self.shared.service.clone();
+        let scenes = self.shared.scenes.clone();
         tokio::spawn(async move {
             tokio::time::sleep(wait).await;
             scene.recount_waiting.store(false, Ordering::Release);
-            scene.recount(&service).await;
+            scene.recount(&scenes).await;
         });
     }
 }
@@ -275,7 +268,7 @@ impl Room {
 struct Shared {
     rooms: RwLock<Rooms>,
     peers: AtomicUsize,
-    service: SceneService,
+    scenes: ScenesCore,
     sweeping: AtomicBool,
 }
 
@@ -295,25 +288,25 @@ pub struct LiveScenes {
 }
 
 impl LiveScenes {
-    pub fn new(service: SceneService) -> Self {
+    pub fn new(scenes: ScenesCore) -> Self {
         LiveScenes {
             shared: Arc::new(Shared {
                 rooms: RwLock::new(Rooms::new()),
                 peers: AtomicUsize::new(1),
-                service,
+                scenes,
                 sweeping: AtomicBool::new(false),
             }),
         }
     }
 
-    pub async fn join(&self, id: SceneId) -> Result<Presence, SceneServiceError> {
+    pub async fn join(&self, id: SceneId) -> Result<Presence, ScenesError> {
         self.start_sweeping();
 
         if let Some(entered) = self.enter(id, None) {
             return Ok(entered);
         }
 
-        let scene = self.shared.service.open(&id.to_string()).await?;
+        let scene = self.shared.scenes.open(&id.to_string()).await?;
 
         Ok(self
             .enter(id, Some(scene))
@@ -339,7 +332,7 @@ impl LiveScenes {
 
         for scene in idle {
             if self.flushed(&scene).await {
-                scene.recount(&self.shared.service).await;
+                scene.recount(&self.shared.scenes).await;
                 self.let_go(&scene, idle_before);
             }
         }
@@ -352,11 +345,11 @@ impl LiveScenes {
 
         match self
             .shared
-            .service
+            .scenes
             .apply(&scene.id().to_string(), &scene.scene.everything())
             .await
         {
-            Ok(()) | Err(SceneServiceError::Store(StoreError::NotFound(_))) => true,
+            Ok(()) | Err(ScenesError::Store(StoreError::NotFound(_))) => true,
             Err(problem) => {
                 scene.unsaved.store(true, Ordering::Release);
                 warn!(scene = %scene.id(), %problem, "a scene could not be flushed, so it stays live");
@@ -375,7 +368,7 @@ impl LiveScenes {
 
         for scene in live {
             self.flushed(&scene).await;
-            scene.recount(&self.shared.service).await;
+            scene.recount(&self.shared.scenes).await;
         }
     }
 
@@ -436,11 +429,7 @@ impl LiveScenes {
 
 #[async_trait]
 impl SceneRestyler for LiveScenes {
-    async fn restyle(
-        &self,
-        scene: SceneId,
-        style: QuotationMarks,
-    ) -> Result<bool, SceneServiceError> {
+    async fn restyle(&self, scene: SceneId, style: QuotationMarks) -> Result<bool, ScenesError> {
         let presence = self.join(scene).await?;
         let Some(update) = presence.restyled(style) else {
             return Ok(false);

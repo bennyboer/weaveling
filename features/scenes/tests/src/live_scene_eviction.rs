@@ -6,9 +6,9 @@ use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::Agent;
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{
-    FRAGMENT, IdeaLink, ProjectLink, Scene, SceneId, SceneService, SceneStore, SceneTitle,
-    StoreError,
+    FRAGMENT, IdeaLink, ProjectLink, Scene, SceneId, SceneStore, SceneTitle, ScenesCore, StoreError,
 };
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message, Presence};
@@ -108,7 +108,7 @@ impl SceneStore for FalteringStore {
 
 struct Workbench {
     store: Arc<FalteringStore>,
-    service: SceneService,
+    service: ScenesCore,
     live: LiveScenes,
 }
 
@@ -119,8 +119,10 @@ fn a_workbench() -> Workbench {
         announced: Mutex::new(Vec::new()),
         openings: Mutex::new(Vec::new()),
     });
-    let service = SceneService::new(
+    let service = ScenesCore::new(
         store.clone(),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(
             OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),

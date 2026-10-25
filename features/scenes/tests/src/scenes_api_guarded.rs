@@ -10,7 +10,7 @@ use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
 use live::Broadcaster;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
-use scenes_core::SceneService;
+use scenes_core::ScenesCore;
 use scenes_store::InMemorySceneStore;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -68,22 +68,19 @@ struct Guarded {
 async fn guarded() -> Guarded {
     let roles = Arc::new(Roles::default());
     roles.give("account_ada", &OWNER);
-    let service = SceneService::new(
+    let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
         roles.clone(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
-    let routes = scenes_rest::router(
-        service,
-        Arc::new(InMemorySceneCatalog::new()),
-        roles.clone(),
-    )
-    .merge(scenes_rest::quotation_restylings(
-        Arc::new(InMemoryQuotationRestylingTasks::new()),
-        Broadcaster::new(),
-        roles.clone(),
-    ))
-    .merge(scenes_rest::live_scenes(Broadcaster::new(), roles.clone()));
+    let routes = scenes_rest::router(scenes.clone())
+        .merge(scenes_rest::quotation_restylings(
+            scenes.clone(),
+            Broadcaster::new(),
+        ))
+        .merge(scenes_rest::live_scenes(scenes, Broadcaster::new()));
     let as_account = |account: &str| {
         TestServer::builder().http_transport().build(
             routes
@@ -239,5 +236,12 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
 
     for answered in reads_by(&guarded, &guarded.ada).await {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+    for followed in FOLLOWED {
+        guarded
+            .ada
+            .get_websocket(followed)
+            .await
+            .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

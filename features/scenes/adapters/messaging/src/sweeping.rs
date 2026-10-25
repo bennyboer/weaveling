@@ -1,23 +1,22 @@
 use std::sync::Arc;
 
 use clock::Clock;
-use eventsourcing::Agent;
 use messaging::{Failure, Handler, Message, Publisher, RoutingKey};
 use projects_contract::{DELETED, ProjectEventDTO};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
-use scenes_core::{SceneId, SceneService, SceneServiceError, StoreError};
+use scenes_core::{SceneId, ScenesCore};
 
 pub const AT_MOST: usize = 100;
 
 pub struct DeleteOnProjectDeletedListener {
-    scenes: SceneService,
+    scenes: ScenesCore,
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
     at_most: usize,
 }
 
 impl DeleteOnProjectDeletedListener {
-    pub fn new(scenes: SceneService, publisher: Arc<dyn Publisher>, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(scenes: ScenesCore, publisher: Arc<dyn Publisher>, clock: Arc<dyn Clock>) -> Self {
         Self {
             scenes,
             publisher,
@@ -35,21 +34,12 @@ impl DeleteOnProjectDeletedListener {
         let (project, after) = what_to_sweep(asked)?;
         let batch = self
             .scenes
-            .in_project(&project, after.as_deref(), self.at_most)
+            .sweep(&project, after.as_deref(), self.at_most)
             .await?;
 
         let Some(last) = batch.last().copied() else {
             return Ok(());
         };
-
-        for scene in &batch {
-            match self.scenes.delete(&scene.to_string(), &Agent::System).await {
-                Ok(()) => {}
-                Err(refused) if already_deleted(&refused) => {}
-                Err(refused) => return Err(refused.into()),
-            }
-        }
-
         if batch.len() < self.at_most {
             return Ok(());
         }
@@ -84,10 +74,6 @@ fn what_to_sweep(asked: &Message) -> Result<(String, Option<String>), Failure> {
     let deleted = eventpublishing::published_in::<ProjectEventDTO>(asked)?;
 
     Ok((deleted.aggregate.id, None))
-}
-
-fn already_deleted(refused: &SceneServiceError) -> bool {
-    matches!(refused, SceneServiceError::Store(StoreError::NotFound(_)))
 }
 
 #[async_trait::async_trait]

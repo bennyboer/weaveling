@@ -14,7 +14,7 @@ use scenes_contract::{
     SceneDTO, ScenePageDTO, SceneSummaryDTO, refused,
 };
 use scenes_core::{
-    ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneService, SceneTitle,
+    ProjectLink, QuotationRestylingTasks, SceneCatalog, SceneId, SceneStore, SceneTitle, ScenesCore,
 };
 use scenes_rest::{PAGE, TellingRestylingTasks};
 use scenes_store::InMemorySceneStore;
@@ -40,23 +40,34 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn a_service() -> SceneService {
-    SceneService::new(
-        Arc::new(InMemorySceneStore::new()),
+fn a_core_of(
+    store: Arc<dyn SceneStore>,
+    catalog: Arc<dyn SceneCatalog>,
+    tasks: Arc<dyn QuotationRestylingTasks>,
+) -> ScenesCore {
+    ScenesCore::new(
+        store,
+        catalog,
+        tasks,
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(at(1_700_000_000))),
     )
 }
 
-fn new_server_with(service: SceneService) -> TestServer {
-    TestServer::new(
-        scenes_rest::router(
-            service,
-            Arc::new(InMemorySceneCatalog::new()),
-            Arc::new(AllowingEverything),
-        )
-        .layer(Extension(Agent::Local)),
+fn a_core_listing(catalog: Arc<dyn SceneCatalog>) -> ScenesCore {
+    a_core_of(
+        Arc::new(InMemorySceneStore::new()),
+        catalog,
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
     )
+}
+
+fn a_core() -> ScenesCore {
+    a_core_listing(Arc::new(InMemorySceneCatalog::new()))
+}
+
+fn new_server_with(scenes: ScenesCore) -> TestServer {
+    TestServer::new(scenes_rest::router(scenes).layer(Extension(Agent::Local)))
 }
 
 fn a_paragraph(saying: &str) -> Vec<u8> {
@@ -86,7 +97,7 @@ async fn a_scene(server: &TestServer) -> SceneDTO {
 
 #[tokio::test]
 async fn a_created_scene_is_reported_with_an_id_and_no_prose() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let created = a_scene(&server).await;
 
@@ -96,7 +107,7 @@ async fn a_created_scene_is_reported_with_an_id_and_no_prose() {
 
 #[tokio::test]
 async fn two_created_scenes_are_distinct() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let one = a_scene(&server).await;
     let other = a_scene(&server).await;
@@ -106,7 +117,7 @@ async fn two_created_scenes_are_distinct() {
 
 #[tokio::test]
 async fn a_scene_can_be_read_back_by_its_id() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
     let created = a_scene(&server).await;
 
     let response = server.get(&format!("/scenes/{}", created.id)).await;
@@ -117,10 +128,10 @@ async fn a_scene_can_be_read_back_by_its_id() {
 
 #[tokio::test]
 async fn the_read_model_reports_the_prose_that_was_written() {
-    let service = a_service();
-    let server = new_server_with(service.clone());
+    let scenes = a_core();
+    let server = new_server_with(scenes.clone());
     let created = a_scene(&server).await;
-    service
+    scenes
         .apply(&created.id, &a_paragraph("The loom stood silent."))
         .await
         .expect("should apply");
@@ -137,7 +148,7 @@ async fn the_read_model_reports_the_prose_that_was_written() {
 
 #[tokio::test]
 async fn a_malformed_id_is_a_bad_request() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let response = server.get("/scenes/weaveling").await;
 
@@ -146,7 +157,7 @@ async fn a_malformed_id_is_a_bad_request() {
 
 #[tokio::test]
 async fn an_unknown_scene_is_not_found() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let response = server.get(&format!("/scenes/{UNKNOWN_ID}")).await;
 
@@ -155,7 +166,7 @@ async fn an_unknown_scene_is_not_found() {
 
 #[tokio::test]
 async fn a_deleted_scene_is_gone() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
     let created = a_scene(&server).await;
 
     server
@@ -172,7 +183,7 @@ async fn a_deleted_scene_is_gone() {
 
 #[tokio::test]
 async fn deleting_an_unknown_scene_is_not_found() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let response = server.delete(&format!("/scenes/{UNKNOWN_ID}")).await;
 
@@ -190,7 +201,7 @@ async fn retitled(server: &TestServer, id: &str, title: &str) -> TestResponse {
 
 #[tokio::test]
 async fn a_new_scene_is_reported_untitled() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let created = a_scene(&server).await;
 
@@ -202,7 +213,7 @@ async fn a_new_scene_is_reported_untitled() {
 
 #[tokio::test]
 async fn a_scene_can_be_retitled_and_read_back() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
     let created = a_scene(&server).await;
 
     let response = retitled(&server, &created.id, "  The loom  ").await;
@@ -215,7 +226,7 @@ async fn a_scene_can_be_retitled_and_read_back() {
 
 #[tokio::test]
 async fn a_title_the_domain_refuses_is_unprocessable() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
     let created = a_scene(&server).await;
 
     let response = retitled(&server, &created.id, "The\u{7}loom").await;
@@ -229,7 +240,7 @@ async fn a_title_the_domain_refuses_is_unprocessable() {
 
 #[tokio::test]
 async fn retitling_a_scene_nobody_created_is_not_found() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let response = retitled(&server, UNKNOWN_ID, "Nowhere").await;
 
@@ -280,10 +291,7 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
         )
         .await
         .expect("noting an opening should succeed");
-    let server = TestServer::new(
-        scenes_rest::router(a_service(), catalog, Arc::new(AllowingEverything))
-            .layer(Extension(Agent::Local)),
-    );
+    let server = new_server_with(a_core_listing(catalog));
 
     let listed = page_after(&server, None).await;
 
@@ -304,14 +312,7 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
 
 #[tokio::test]
 async fn a_long_listing_comes_a_page_at_a_time() {
-    let server = TestServer::new(
-        scenes_rest::router(
-            a_service(),
-            a_catalog_holding(PAGE as i64 + 1).await,
-            Arc::new(AllowingEverything),
-        )
-        .layer(Extension(Agent::Local)),
-    );
+    let server = new_server_with(a_core_listing(a_catalog_holding(PAGE as i64 + 1).await));
 
     let first = page_after(&server, None).await;
     let rest = page_after(&server, first.next.as_deref()).await;
@@ -328,14 +329,7 @@ async fn a_long_listing_comes_a_page_at_a_time() {
 
 #[tokio::test]
 async fn a_listing_exactly_one_page_long_says_there_is_no_more() {
-    let server = TestServer::new(
-        scenes_rest::router(
-            a_service(),
-            a_catalog_holding(PAGE as i64).await,
-            Arc::new(AllowingEverything),
-        )
-        .layer(Extension(Agent::Local)),
-    );
+    let server = new_server_with(a_core_listing(a_catalog_holding(PAGE as i64).await));
 
     let listed = page_after(&server, None).await;
 
@@ -345,7 +339,7 @@ async fn a_listing_exactly_one_page_long_says_there_is_no_more() {
 
 #[tokio::test]
 async fn a_listing_after_something_that_is_no_scene_is_a_bad_request() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let response = server
         .get(&format!("/scenes?project={A_PROJECT}&after=idea_1"))
@@ -365,7 +359,7 @@ async fn linked(server: &TestServer, id: &str, idea: &str) -> axum_test::TestRes
 
 #[tokio::test]
 async fn a_new_scene_has_no_linked_ideas() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     let created = a_scene(&server).await;
 
@@ -374,7 +368,7 @@ async fn a_new_scene_has_no_linked_ideas() {
 
 #[tokio::test]
 async fn an_idea_can_be_linked_and_unlinked() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
     let created = a_scene(&server).await;
 
     let after_linking = linked(&server, &created.id, "idea_1").await;
@@ -390,7 +384,7 @@ async fn an_idea_can_be_linked_and_unlinked() {
 
 #[tokio::test]
 async fn linking_to_a_scene_nobody_created_is_not_found() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
 
     refused_as(
         linked(&server, UNKNOWN_ID, "idea_1").await,
@@ -409,9 +403,12 @@ async fn linking_to_a_scene_nobody_created_is_not_found() {
 async fn restyling(tasks: InMemoryQuotationRestylingTasks) -> axum_test::TestResponse {
     TestServer::new(
         scenes_rest::quotation_restylings(
-            Arc::new(tasks),
+            a_core_of(
+                Arc::new(InMemorySceneStore::new()),
+                Arc::new(InMemorySceneCatalog::new()),
+                Arc::new(tasks),
+            ),
             Broadcaster::new(),
-            Arc::new(AllowingEverything),
         )
         .layer(Extension(Agent::Local)),
     )
@@ -432,8 +429,15 @@ async fn a_restyling_followed(project: &str) -> RestylingFollowed {
         broadcaster.clone(),
     ));
     let server = TestServer::builder().http_transport().build(
-        scenes_rest::quotation_restylings(tasks.clone(), broadcaster, Arc::new(AllowingEverything))
-            .layer(Extension(Agent::Local)),
+        scenes_rest::quotation_restylings(
+            a_core_of(
+                Arc::new(InMemorySceneStore::new()),
+                Arc::new(InMemorySceneCatalog::new()),
+                tasks.clone(),
+            ),
+            broadcaster,
+        )
+        .layer(Extension(Agent::Local)),
     );
     let socket = server
         .get_websocket(&format!(
@@ -590,7 +594,7 @@ async fn more_done_than_was_counted_is_told_as_all_of_it() {
 
 #[tokio::test]
 async fn a_title_too_long_is_refused_telling_how_long_it_may_be() {
-    let server = new_server_with(a_service());
+    let server = new_server_with(a_core());
     let created = a_scene(&server).await;
 
     let response = retitled(&server, &created.id, &"a".repeat(SceneTitle::MAX_CHARS + 1)).await;

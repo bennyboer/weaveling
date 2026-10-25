@@ -6,7 +6,7 @@ use projects_contract::{ProjectEventDTO, QUOTATION_CHANGED};
 use quotation::QuotationMarks;
 use scenes_contract::{MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
 use scenes_core::{
-    ProjectLink, QuotationRestylingTasks, SceneId, SceneRestyler, SceneService, SceneServiceError,
+    ProjectLink, QuotationRestylingTasks, SceneId, SceneRestyler, SceneService, ScenesError,
     StoreError,
 };
 
@@ -101,7 +101,7 @@ impl RestyleOnQuotationChangedListener {
         Ok(self.tasks.begin(project, task.change, total).await?)
     }
 
-    async fn scenes_in(&self, project: &str) -> Result<u64, SceneServiceError> {
+    async fn scenes_in(&self, project: &str) -> Result<u64, ScenesError> {
         let mut total = 0;
         let mut after: Option<String> = None;
 
@@ -163,8 +163,8 @@ fn in_count(scenes: usize) -> u64 {
     u64::try_from(scenes).expect("a number of scenes fits 64 bits")
 }
 
-fn deleted_meanwhile(refused: &SceneServiceError) -> bool {
-    matches!(refused, SceneServiceError::Store(StoreError::NotFound(_)))
+fn deleted_meanwhile(refused: &ScenesError) -> bool {
+    matches!(refused, ScenesError::Store(StoreError::NotFound(_)))
 }
 
 #[async_trait::async_trait]

@@ -5,7 +5,8 @@ use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use quotation::QuotationMarks;
-use scenes_core::{FRAGMENT, ProjectLink, Scene, SceneId, SceneRestyler, SceneService};
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
+use scenes_core::{FRAGMENT, ProjectLink, Scene, SceneId, SceneRestyler, ScenesCore};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message};
 use time::{Duration, OffsetDateTime};
@@ -20,9 +21,11 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn a_workbench() -> (SceneService, LiveScenes) {
-    let service = SceneService::new(
+fn a_workbench() -> (ScenesCore, LiveScenes) {
+    let service = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(at(1_000))),
     );

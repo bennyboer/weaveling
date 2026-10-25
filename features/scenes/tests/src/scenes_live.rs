@@ -4,11 +4,13 @@ use std::time::Duration;
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::{TestServer, TestWebSocket};
+use clock::FixedClock;
 use eventsourcing::Agent;
 use live::Broadcaster;
-use scenes_catalog::InMemorySceneCatalog;
-use scenes_core::{ProjectLink, SceneCatalog, SceneId, SceneTitle};
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
+use scenes_core::{ProjectLink, SceneCatalog, SceneId, SceneTitle, ScenesCore};
 use scenes_rest::TellingScenes;
+use scenes_store::InMemorySceneStore;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
@@ -21,10 +23,16 @@ struct ScenesFollowed {
 async fn scenes_followed(project: &str) -> ScenesFollowed {
     let broadcaster = Broadcaster::new();
     let catalog = TellingScenes::around(Arc::new(InMemorySceneCatalog::new()), broadcaster.clone());
-    let server = TestServer::builder().http_transport().build(
-        scenes_rest::live_scenes(broadcaster, Arc::new(AllowingEverything))
-            .layer(Extension(Agent::Local)),
+    let scenes = ScenesCore::new(
+        Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(AllowingEverything),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
+    let server = TestServer::builder()
+        .http_transport()
+        .build(scenes_rest::live_scenes(scenes, broadcaster).layer(Extension(Agent::Local)));
     let socket = server
         .get_websocket(&format!("/scenes/live?project={project}"))
         .await

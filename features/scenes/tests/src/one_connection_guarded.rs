@@ -8,7 +8,8 @@ use axum::Extension;
 use axum_test::{TestServer, WsMessage};
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
-use scenes_core::{FRAGMENT, SceneService};
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
+use scenes_core::{FRAGMENT, ScenesCore};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{Connection, Envelope, LiveScenes, Message};
 use time::OffsetDateTime;
@@ -64,7 +65,7 @@ fn account(name: &str) -> Agent {
 
 struct Guarded {
     roles: Arc<Roles>,
-    service: SceneService,
+    service: ScenesCore,
     live: LiveScenes,
     scene: String,
 }
@@ -73,8 +74,10 @@ async fn guarded() -> Guarded {
     let roles = Arc::new(Roles::default());
     roles.give("account_ada", &OWNER);
     roles.give("account_bo", &READER);
-    let service = SceneService::new(
+    let service = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
         roles.clone(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );

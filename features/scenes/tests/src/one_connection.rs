@@ -4,7 +4,8 @@ use std::time::Duration as Wait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::Agent;
-use scenes_core::{FRAGMENT, SceneService};
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
+use scenes_core::{FRAGMENT, ScenesCore};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{Connection, Envelope, LiveScenes, Message};
 use time::{Duration, OffsetDateTime};
@@ -13,9 +14,11 @@ use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, Xm
 
 const A_PROJECT: &str = "project_1";
 
-fn a_workbench() -> (SceneService, LiveScenes) {
-    let service = SceneService::new(
+fn a_workbench() -> (ScenesCore, LiveScenes) {
+    let service = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(
             OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
@@ -34,7 +37,7 @@ fn a_connection(live: &LiveScenes) -> (Connection, UnboundedReceiver<Vec<u8>>) {
     )
 }
 
-async fn a_scene(service: &SceneService) -> String {
+async fn a_scene(service: &ScenesCore) -> String {
     service
         .create(A_PROJECT, &Agent::Local)
         .await

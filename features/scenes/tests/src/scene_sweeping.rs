@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
@@ -6,8 +7,12 @@ use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
-use scenes_core::{SceneId, SceneService};
+use scenes_core::{
+    IdeaLink, ProjectLink, Scene, SceneId, SceneService, SceneStore, SceneTitle, ScenesCore,
+    StoreError,
+};
 use scenes_messaging::DeleteOnProjectDeletedListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
@@ -37,17 +42,93 @@ impl Authorizer for TheSystemAndAda {
     }
 }
 
+struct Wavering {
+    held: InMemorySceneStore,
+    gone_meanwhile: Mutex<Option<SceneId>>,
+    failing: AtomicBool,
+}
+
+#[async_trait]
+impl SceneStore for Wavering {
+    async fn create(&self, scene: &Scene) -> Result<(), StoreError> {
+        self.held.create(scene).await
+    }
+
+    async fn load(&self, id: SceneId) -> Result<Scene, StoreError> {
+        self.held.load(id).await
+    }
+
+    async fn apply(&self, id: SceneId, update: &[u8]) -> Result<(), StoreError> {
+        self.held.apply(id, update).await
+    }
+
+    async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError> {
+        self.held.retitle(id, title).await
+    }
+
+    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+        self.held.announce_word_count(id, words).await
+    }
+
+    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
+        self.held.announce_opening(id, opening).await
+    }
+
+    async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
+        self.held.link(id, idea).await
+    }
+
+    async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
+        self.held.unlink(id, idea).await
+    }
+
+    async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
+        self.held.unlink_everywhere(idea).await
+    }
+
+    async fn delete(&self, id: SceneId) -> Result<(), StoreError> {
+        if self.failing.load(Ordering::Acquire) {
+            return Err(StoreError::Backend("the store is down".into()));
+        }
+
+        self.held.delete(id).await
+    }
+
+    async fn in_project(
+        &self,
+        project: &ProjectLink,
+        after: Option<SceneId>,
+        at_most: usize,
+    ) -> Result<Vec<SceneId>, StoreError> {
+        let mut found = self.held.in_project(project, after, at_most).await?;
+        if let Some(gone) = *self.gone_meanwhile.lock().expect("never poisoned") {
+            found.insert(0, gone);
+        }
+
+        Ok(found)
+    }
+}
+
 struct Wired {
     sweep: DeleteOnProjectDeletedListener,
-    scenes: SceneService,
+    scenes: ScenesCore,
+    store: Arc<Wavering>,
+    kept: SceneService,
     overheard: Arc<FakePublisher>,
 }
 
 fn a_workbench(at_most: usize) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_000)));
     let overheard = Arc::new(FakePublisher::default());
-    let scenes = SceneService::new(
-        Arc::new(InMemorySceneStore::new()),
+    let store = Arc::new(Wavering {
+        held: InMemorySceneStore::new(),
+        gone_meanwhile: Mutex::new(None),
+        failing: AtomicBool::new(false),
+    });
+    let scenes = ScenesCore::new(
+        store.clone(),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(TheSystemAndAda),
         clock.clone(),
     );
@@ -56,6 +137,8 @@ fn a_workbench(at_most: usize) -> Wired {
         sweep: DeleteOnProjectDeletedListener::new(scenes.clone(), overheard.clone(), clock)
             .taking_at_most(at_most),
         scenes,
+        kept: SceneService::new(store.clone(), Arc::new(FixedClock::new(at(1_000)))),
+        store,
         overheard,
     }
 }
@@ -79,7 +162,7 @@ impl Wired {
     }
 
     async fn still_there(&self, project: &str) -> Vec<SceneId> {
-        self.scenes
+        self.kept
             .in_project(project, None, 1_000)
             .await
             .expect("listing should succeed")
@@ -138,6 +221,34 @@ async fn deleting_a_project_takes_its_prose_with_it() {
         wired.still_there(A_PROJECT).await.is_empty(),
         "the CRDT store is the only copy of the prose, so a deleted project has to reach it \
          or the words outlive everything that could ever find them again"
+    );
+}
+
+#[tokio::test]
+async fn a_scene_gone_before_the_sweep_reaches_it_is_passed_over() {
+    let wired = a_workbench(4);
+    wired.holding(A_PROJECT, 2).await;
+    *wired.store.gone_meanwhile.lock().expect("never poisoned") = Some(SceneId::generate(at(500)));
+
+    wired
+        .sweep
+        .handle(&deleted(A_PROJECT))
+        .await
+        .expect("a scene deleted by someone else meanwhile is no reason to fail");
+
+    *wired.store.gone_meanwhile.lock().expect("never poisoned") = None;
+    assert!(wired.still_there(A_PROJECT).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_store_failing_while_sweeping_fails_the_sweep_so_it_is_tried_again() {
+    let wired = a_workbench(4);
+    wired.holding(A_PROJECT, 2).await;
+    wired.store.failing.store(true, Ordering::Release);
+
+    assert!(
+        wired.sweep.handle(&deleted(A_PROJECT)).await.is_err(),
+        "a sweep that quietly skipped what it could not delete would leave prose behind for good"
     );
 }
 

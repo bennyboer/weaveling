@@ -8,7 +8,7 @@ use chores::ForgetOldTombstones;
 use live::Broadcaster;
 use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
-use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneService, SceneStore};
+use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneService, SceneStore, ScenesCore};
 use scenes_messaging::{
     CatalogueScenesListener, DeleteOnProjectDeletedListener, RestyleOnQuotationChangedListener,
     UnlinkOnDiscardListener,
@@ -27,49 +27,46 @@ pub struct Ports {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    let scenes = SceneService::new(
-        ports.store.clone(),
-        context.authorizer.clone(),
-        context.clock.clone(),
-    );
-    let unlink = UnlinkOnDiscardListener::new(scenes.clone());
-    let sweep = DeleteOnProjectDeletedListener::new(
-        scenes.clone(),
-        context.publisher.clone(),
-        context.clock.clone(),
-    );
     let scenes_told = Broadcaster::new();
-    let catalogue = CatalogueScenesListener::new(Arc::new(scenes_rest::TellingScenes::around(
+    let catalog: Arc<dyn SceneCatalog> = Arc::new(scenes_rest::TellingScenes::around(
         ports.catalog.clone(),
         scenes_told.clone(),
-    )));
-
-    let live = LiveScenes::new(scenes.clone());
+    ));
     let restylings = Broadcaster::new();
     let tasks: Arc<dyn QuotationRestylingTasks> =
         Arc::new(scenes_rest::TellingRestylingTasks::around(
             ports.quotation_restyling_tasks.clone(),
             restylings.clone(),
         ));
-    let restyle = RestyleOnQuotationChangedListener::new(
-        scenes.clone(),
-        Arc::new(live.clone()),
+    let core = ScenesCore::new(
+        ports.store.clone(),
+        catalog.clone(),
         tasks.clone(),
+        context.authorizer.clone(),
+        context.clock.clone(),
+    );
+    let scenes = SceneService::new(ports.store.clone(), context.clock.clone());
+
+    let unlink = UnlinkOnDiscardListener::new(scenes.clone());
+    let sweep = DeleteOnProjectDeletedListener::new(
+        core.clone(),
+        context.publisher.clone(),
+        context.clock.clone(),
+    );
+    let catalogue = CatalogueScenesListener::new(catalog);
+    let live = LiveScenes::new(core.clone());
+    let restyle = RestyleOnQuotationChangedListener::new(
+        scenes,
+        Arc::new(live.clone()),
+        tasks,
         context.publisher.clone(),
         context.clock.clone(),
     );
 
     Wired::serving(
-        scenes_rest::router(scenes, ports.catalog.clone(), context.authorizer.clone())
-            .merge(scenes_rest::quotation_restylings(
-                tasks,
-                restylings,
-                context.authorizer.clone(),
-            ))
-            .merge(scenes_rest::live_scenes(
-                scenes_told,
-                context.authorizer.clone(),
-            ))
+        scenes_rest::router(core.clone())
+            .merge(scenes_rest::quotation_restylings(core.clone(), restylings))
+            .merge(scenes_rest::live_scenes(core, scenes_told))
             .merge(scenes_sync::router(live.clone())),
     )
     .listening(vec![

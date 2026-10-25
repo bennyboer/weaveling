@@ -4,15 +4,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
-use eventsourcing::Agent;
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::QUOTATION_CHANGED;
 use quotation::QuotationMarks;
-use scenes_catalog::InMemoryQuotationRestylingTasks;
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{FRAGMENT, MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
 use scenes_core::{
     ProjectLink, QuotationRestylingProgress, QuotationRestylingTasks, SceneId, SceneRestyler,
-    SceneService, SceneServiceError, StoreError,
+    SceneService, SceneStore, ScenesCore, ScenesError, StoreError,
 };
 use scenes_messaging::RestyleOnQuotationChangedListener;
 use scenes_store::InMemorySceneStore;
@@ -38,13 +37,9 @@ struct Vanishing {
 
 #[async_trait]
 impl SceneRestyler for Vanishing {
-    async fn restyle(
-        &self,
-        scene: SceneId,
-        style: QuotationMarks,
-    ) -> Result<bool, SceneServiceError> {
+    async fn restyle(&self, scene: SceneId, style: QuotationMarks) -> Result<bool, ScenesError> {
         if scene == self.gone {
-            return Err(SceneServiceError::Store(StoreError::NotFound(scene)));
+            return Err(ScenesError::Store(StoreError::NotFound(scene)));
         }
 
         self.live.restyle(scene, style).await
@@ -60,12 +55,16 @@ struct Wired {
 }
 
 fn a_workbench(at_most: usize) -> Wired {
-    let scenes = SceneService::new(
-        Arc::new(InMemorySceneStore::new()),
+    let store: Arc<dyn SceneStore> = Arc::new(InMemorySceneStore::new());
+    let clock = Arc::new(FixedClock::new(at(1_000)));
+    let scenes = SceneService::new(store.clone(), clock.clone());
+    let live = LiveScenes::new(ScenesCore::new(
+        store,
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
-    );
-    let live = LiveScenes::new(scenes.clone());
+        clock,
+    ));
 
     restyling_with(scenes, live.clone(), Arc::new(live), at_most)
 }
@@ -130,7 +129,7 @@ impl Wired {
         for _ in 0..scenes {
             let scene = self
                 .scenes
-                .create(project, &Agent::Local)
+                .create(project)
                 .await
                 .expect("creating a scene should succeed")
                 .id();

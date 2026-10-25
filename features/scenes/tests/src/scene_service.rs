@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use authorizing::AllowingEverything;
 use clock::FixedClock;
-use eventsourcing::Agent;
-use scenes_core::{FRAGMENT, SceneService, SceneServiceError, StoreError};
+use scenes_core::{FRAGMENT, SceneService, ScenesError, StoreError};
 use scenes_store::InMemorySceneStore;
 use time::{Duration, OffsetDateTime};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
@@ -19,11 +17,7 @@ fn new_service() -> SceneService {
 }
 
 fn new_service_with(clock: Arc<FixedClock>) -> SceneService {
-    SceneService::new(
-        Arc::new(InMemorySceneStore::new()),
-        Arc::new(AllowingEverything),
-        clock,
-    )
+    SceneService::new(Arc::new(InMemorySceneStore::new()), clock)
 }
 
 fn a_paragraph(saying: &str) -> Vec<u8> {
@@ -43,10 +37,7 @@ fn a_paragraph(saying: &str) -> Vec<u8> {
 async fn a_new_scene_starts_empty_and_can_be_opened_again() {
     let service = new_service();
 
-    let created = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
+    let created = service.create(A_PROJECT).await.expect("should create");
     let opened = service
         .open(&created.id().to_string())
         .await
@@ -61,10 +52,7 @@ async fn a_scene_id_records_when_it_was_created() {
     let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
     let service = new_service_with(clock);
 
-    let scene = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
+    let scene = service.create(A_PROJECT).await.expect("should create");
 
     let (seconds, _) = scene
         .id()
@@ -79,14 +67,8 @@ async fn a_scene_id_records_when_it_was_created() {
 async fn two_scenes_created_at_the_same_moment_are_still_distinct() {
     let service = new_service();
 
-    let one = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
-    let other = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
+    let one = service.create(A_PROJECT).await.expect("should create");
+    let other = service.create(A_PROJECT).await.expect("should create");
 
     assert_ne!(one.id(), other.id());
 }
@@ -94,10 +76,7 @@ async fn two_scenes_created_at_the_same_moment_are_still_distinct() {
 #[tokio::test]
 async fn writing_prose_is_visible_when_the_scene_is_opened_again() {
     let service = new_service();
-    let scene = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
+    let scene = service.create(A_PROJECT).await.expect("should create");
     let id = scene.id().to_string();
 
     service
@@ -116,7 +95,7 @@ async fn a_malformed_id_is_rejected_before_the_store_is_touched() {
     let error = service.open("weaveling").await.expect_err("should reject");
 
     assert!(
-        matches!(error, SceneServiceError::InvalidId(_)),
+        matches!(error, ScenesError::InvalidId(_)),
         "expected InvalidId, got {error:?}"
     );
 }
@@ -124,12 +103,9 @@ async fn a_malformed_id_is_rejected_before_the_store_is_touched() {
 #[tokio::test]
 async fn opening_a_scene_that_was_never_created_is_not_found() {
     let service = new_service();
-    let never_created = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
+    let never_created = service.create(A_PROJECT).await.expect("should create");
     service
-        .delete(&never_created.id().to_string(), &Agent::Local)
+        .delete(&never_created.id().to_string())
         .await
         .expect("should delete");
 
@@ -139,7 +115,7 @@ async fn opening_a_scene_that_was_never_created_is_not_found() {
         .expect_err("should not find it");
 
     assert!(
-        matches!(error, SceneServiceError::Store(StoreError::NotFound(_))),
+        matches!(error, ScenesError::Store(StoreError::NotFound(_))),
         "expected NotFound, got {error:?}"
     );
 }
@@ -147,35 +123,23 @@ async fn opening_a_scene_that_was_never_created_is_not_found() {
 #[tokio::test]
 async fn a_deleted_scene_takes_its_prose_with_it() {
     let service = new_service();
-    let scene = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
+    let scene = service.create(A_PROJECT).await.expect("should create");
     let id = scene.id().to_string();
     service
         .apply(&id, &a_paragraph("The loom stood silent."))
         .await
         .expect("should apply");
 
-    service
-        .delete(&id, &Agent::Local)
-        .await
-        .expect("should delete");
+    service.delete(&id).await.expect("should delete");
 
     let error = service.open(&id).await.expect_err("should be gone");
-    assert!(matches!(
-        error,
-        SceneServiceError::Store(StoreError::NotFound(_))
-    ));
+    assert!(matches!(error, ScenesError::Store(StoreError::NotFound(_))));
 }
 
 #[tokio::test]
 async fn an_unusable_update_leaves_the_prose_as_it_was() {
     let service = new_service();
-    let scene = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
+    let scene = service.create(A_PROJECT).await.expect("should create");
     let id = scene.id().to_string();
     service
         .apply(&id, &a_paragraph("The loom stood silent."))
@@ -187,10 +151,7 @@ async fn an_unusable_update_leaves_the_prose_as_it_was() {
         .await
         .expect_err("garbage should be refused");
 
-    assert!(matches!(
-        error,
-        SceneServiceError::Store(StoreError::Unusable(_))
-    ));
+    assert!(matches!(error, ScenesError::Store(StoreError::Unusable(_))));
     let reopened = service.open(&id).await.expect("should still open");
     assert_eq!(reopened.text(), "The loom stood silent.");
 }
@@ -198,10 +159,7 @@ async fn an_unusable_update_leaves_the_prose_as_it_was() {
 #[tokio::test]
 async fn a_scene_written_by_two_authors_holds_both_contributions() {
     let service = new_service();
-    let scene = service
-        .create(A_PROJECT, &Agent::Local)
-        .await
-        .expect("should create");
+    let scene = service.create(A_PROJECT).await.expect("should create");
     let id = scene.id().to_string();
 
     service

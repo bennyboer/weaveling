@@ -1,16 +1,16 @@
+use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use authorizing::{Act, Authorizer};
 use axum::Extension;
 use axum::Json;
 use axum::Router;
-use axum::extract::{FromRef, Path, Query, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing;
 use eventsourcing::Agent;
-use live::{Broadcaster, ReadersOfTheProject, Teller};
+use live::{Broadcaster, Gate, Teller};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO, SceneSummaryDTO, refused,
@@ -18,48 +18,32 @@ use scenes_contract::{
 use scenes_core::{
     CatalogError, InvalidSceneTitle, ProjectLink, QuotationRestylingProgress,
     QuotationRestylingTaskError, QuotationRestylingTasks, Scene, SceneCatalog, SceneId,
-    SceneService, SceneServiceError, SceneSummary, SceneTitle, StoreError,
+    SceneSummary, SceneTitle, ScenesCore, ScenesError, StoreError,
 };
 use serde::Deserialize;
 use serving::{NOT_FOUND, Problem};
 use time::OffsetDateTime;
 
-#[derive(Clone)]
-struct Scenes {
-    service: SceneService,
-    catalog: Arc<dyn SceneCatalog>,
-    authorizer: Arc<dyn Authorizer>,
-}
+struct FollowersOf(ScenesCore);
 
-impl FromRef<Scenes> for SceneService {
-    fn from_ref(scenes: &Scenes) -> Self {
-        scenes.service.clone()
+#[async_trait]
+impl Gate for FollowersOf {
+    async fn admits(
+        &self,
+        agent: &Agent,
+        project: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(self.0.may_follow(project, agent).await?)
     }
 }
 
-pub fn live_scenes(broadcaster: Broadcaster, authorizer: Arc<dyn Authorizer>) -> Router {
+pub fn live_scenes(scenes: ScenesCore, broadcaster: Broadcaster) -> Router {
     live::followed_if(
         "/scenes/live",
         broadcaster,
         |asked| asked.get("project").cloned(),
-        Arc::new(ReadersOfTheProject(authorizer)),
+        Arc::new(FollowersOf(scenes)),
     )
-}
-
-async fn readable(
-    authorizer: &dyn Authorizer,
-    agent: &Agent,
-    project: &str,
-) -> Result<(), Problem> {
-    if authorizer
-        .may(agent, Act::Read, project)
-        .await
-        .map_err(Problem::unexpected)?
-    {
-        Ok(())
-    } else {
-        Err(Problem::not_found(NOT_FOUND, "there is no such project"))
-    }
 }
 
 pub struct TellingScenes {
@@ -150,11 +134,7 @@ impl SceneCatalog for TellingScenes {
     }
 }
 
-pub fn router(
-    service: SceneService,
-    catalog: Arc<dyn SceneCatalog>,
-    authorizer: Arc<dyn Authorizer>,
-) -> Router {
+pub fn router(scenes: ScenesCore) -> Router {
     Router::new()
         .route("/scenes", routing::get(list).post(create))
         .route(
@@ -163,38 +143,21 @@ pub fn router(
         )
         .route("/scenes/{id}/ideas", routing::post(link))
         .route("/scenes/{id}/ideas/{idea}", routing::delete(unlink))
-        .with_state(Scenes {
-            service,
-            catalog,
-            authorizer,
-        })
+        .with_state(scenes)
 }
 
-#[derive(Clone)]
-struct Restylings {
-    tasks: Arc<dyn QuotationRestylingTasks>,
-    authorizer: Arc<dyn Authorizer>,
-}
-
-pub fn quotation_restylings(
-    tasks: Arc<dyn QuotationRestylingTasks>,
-    broadcaster: Broadcaster,
-    authorizer: Arc<dyn Authorizer>,
-) -> Router {
+pub fn quotation_restylings(scenes: ScenesCore, broadcaster: Broadcaster) -> Router {
     Router::new()
         .route(
             "/scenes/quotation-restylings/{project}",
             routing::get(progress),
         )
-        .with_state(Restylings {
-            tasks,
-            authorizer: authorizer.clone(),
-        })
+        .with_state(scenes.clone())
         .merge(live::followed_if(
             "/scenes/quotation-restylings/live",
             broadcaster,
             |asked| asked.get("project").cloned(),
-            Arc::new(ReadersOfTheProject(authorizer)),
+            Arc::new(FollowersOf(scenes)),
         ))
 }
 
@@ -277,16 +240,14 @@ fn as_dto(progress: QuotationRestylingProgress) -> QuotationRestylingDTO {
 }
 
 async fn progress(
-    State(restylings): State<Restylings>,
+    State(scenes): State<ScenesCore>,
     Extension(agent): Extension<Agent>,
     Path(project): Path<String>,
 ) -> Result<Json<QuotationRestylingDTO>, Problem> {
-    readable(restylings.authorizer.as_ref(), &agent, &project).await?;
-    let progress = restylings
-        .tasks
-        .progress(&ProjectLink::from(project.as_str()))
+    let progress = scenes
+        .restyling_progress(&project, &agent)
         .await
-        .map_err(Problem::unexpected)?
+        .map_err(problem_of)?
         .ok_or_else(|| {
             Problem::not_found(
                 refused::NEVER_RESTYLED,
@@ -306,22 +267,14 @@ struct InProject {
 }
 
 async fn list(
-    State(scenes): State<Scenes>,
+    State(scenes): State<ScenesCore>,
     Extension(agent): Extension<Agent>,
     Query(asked): Query<InProject>,
 ) -> Result<Json<ScenePageDTO>, Problem> {
-    readable(scenes.authorizer.as_ref(), &agent, &asked.project).await?;
-    let after = asked
-        .after
-        .as_deref()
-        .map(str::parse::<SceneId>)
-        .transpose()
-        .map_err(|reason| problem_of(SceneServiceError::from(reason)))?;
     let mut found = scenes
-        .catalog
-        .in_project_after(&ProjectLink::from(asked.project), after, PAGE + 1)
+        .list(&asked.project, asked.after.as_deref(), PAGE + 1, &agent)
         .await
-        .map_err(Problem::unexpected)?;
+        .map_err(problem_of)?;
     let more = found.len() > PAGE;
     found.truncate(PAGE);
 
@@ -343,7 +296,7 @@ fn to_summary_dto(summary: &SceneSummary) -> SceneSummaryDTO {
 }
 
 async fn create(
-    State(scenes): State<SceneService>,
+    State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Json(request): Json<CreateSceneRequest>,
 ) -> Result<(StatusCode, Json<SceneDTO>), Problem> {
@@ -356,7 +309,7 @@ async fn create(
 }
 
 async fn find(
-    State(scenes): State<SceneService>,
+    State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
 ) -> Result<Json<SceneDTO>, Problem> {
@@ -366,7 +319,7 @@ async fn find(
 }
 
 async fn retitle(
-    State(scenes): State<SceneService>,
+    State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     Json(request): Json<RetitleSceneRequest>,
@@ -380,7 +333,7 @@ async fn retitle(
 }
 
 async fn link(
-    State(scenes): State<SceneService>,
+    State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     Json(request): Json<LinkIdeaRequest>,
@@ -394,7 +347,7 @@ async fn link(
 }
 
 async fn unlink(
-    State(scenes): State<SceneService>,
+    State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path((id, idea)): Path<(String, String)>,
 ) -> Result<Json<SceneDTO>, Problem> {
@@ -407,7 +360,7 @@ async fn unlink(
 }
 
 async fn remove(
-    State(scenes): State<SceneService>,
+    State(scenes): State<ScenesCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, Problem> {
@@ -426,10 +379,10 @@ fn to_dto(scene: &Scene) -> SceneDTO {
     }
 }
 
-fn problem_of(refusal: SceneServiceError) -> Problem {
+fn problem_of(refusal: ScenesError) -> Problem {
     match refusal {
-        SceneServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
-        SceneServiceError::Untitled(reason) => match reason {
+        ScenesError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        ScenesError::Untitled(reason) => match reason {
             InvalidSceneTitle::Blank => Problem::unexpected(reason),
             InvalidSceneTitle::ControlCharacter => {
                 Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
@@ -440,14 +393,12 @@ fn problem_of(refusal: SceneServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        SceneServiceError::Store(missing @ StoreError::NotFound(_)) => {
+        ScenesError::Store(missing @ StoreError::NotFound(_)) => {
             Problem::not_found(NOT_FOUND, missing)
         }
-        SceneServiceError::ProjectNotThere => {
-            Problem::not_found(NOT_FOUND, SceneServiceError::ProjectNotThere)
-        }
-        SceneServiceError::NotAnAuthor => {
-            Problem::forbidden(refused::NOT_AN_AUTHOR, SceneServiceError::NotAnAuthor)
+        ScenesError::ProjectNotThere => Problem::not_found(NOT_FOUND, ScenesError::ProjectNotThere),
+        ScenesError::NotAnAuthor => {
+            Problem::forbidden(refused::NOT_AN_AUTHOR, ScenesError::NotAnAuthor)
         }
         beyond_reach => Problem::unexpected(beyond_reach),
     }
