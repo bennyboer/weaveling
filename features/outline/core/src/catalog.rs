@@ -38,7 +38,7 @@ pub trait OutlineCatalog: Send + Sync {
         attachment: &Attachment,
     ) -> Result<Vec<OutlineId>, CatalogError>;
 
-    async fn mark_gone(
+    async fn lay_tombstone(
         &self,
         attachment: &Attachment,
         at: OffsetDateTime,
@@ -50,7 +50,10 @@ pub trait OutlineCatalog: Send + Sync {
         at_most: u64,
     ) -> Result<u64, CatalogError>;
 
-    async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError>;
+    async fn held_though_tombstoned(
+        &self,
+        outline: OutlineId,
+    ) -> Result<Vec<Attachment>, CatalogError>;
 }
 
 impl OutlineSummary {

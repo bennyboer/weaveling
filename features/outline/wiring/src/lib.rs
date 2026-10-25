@@ -195,9 +195,9 @@ mod tests {
         ] {
             ports
                 .catalog
-                .mark_gone(&gone, laid)
+                .lay_tombstone(&gone, laid)
                 .await
-                .expect("marking gone should succeed");
+                .expect("laying a tombstone should succeed");
         }
 
         let [chore] = wired.chores.as_slice() else {
@@ -219,9 +219,9 @@ mod tests {
         let catalog: Arc<dyn OutlineCatalog> = Arc::new(InMemoryOutlineCatalog::new());
         for gone in [Attachment::scene("scene_1"), Attachment::idea("idea_1")] {
             catalog
-                .mark_gone(&gone, NOW)
+                .lay_tombstone(&gone, NOW)
                 .await
-                .expect("marking gone should succeed");
+                .expect("laying a tombstone should succeed");
         }
 
         let forgotten = OutlineTombstones::of(catalog)

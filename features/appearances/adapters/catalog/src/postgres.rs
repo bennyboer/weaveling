@@ -16,26 +16,26 @@ const MARK: &str = "
     INSERT INTO appearances (subject_type, subject_id, place_type, place_id, version, present)
     SELECT $1, $2, $3, $4, $5, $6
     WHERE NOT EXISTS (
-            SELECT 1 FROM gone_subjects WHERE subject_type = $1 AND subject_id = $2
+            SELECT 1 FROM subject_tombstones WHERE subject_type = $1 AND subject_id = $2
         )
         AND NOT EXISTS (
-            SELECT 1 FROM gone_places WHERE place_type = $3 AND place_id = $4
+            SELECT 1 FROM place_tombstones WHERE place_type = $3 AND place_id = $4
         )
     ON CONFLICT (subject_type, subject_id, place_type, place_id) DO UPDATE
     SET version = excluded.version, present = excluded.present
     WHERE appearances.version <= excluded.version
 ";
 
-const GONE_SUBJECT: &str = "
-    INSERT INTO gone_subjects (subject_type, subject_id, gone_at)
+const LAY_SUBJECT_TOMBSTONE: &str = "
+    INSERT INTO subject_tombstones (subject_type, subject_id, laid_at)
     VALUES ($1, $2, $3)
     ON CONFLICT DO NOTHING
 ";
 
 const FORGET_SUBJECT: &str = "DELETE FROM appearances WHERE subject_type = $1 AND subject_id = $2";
 
-const GONE_PLACE: &str = "
-    INSERT INTO gone_places (place_type, place_id, gone_at)
+const LAY_PLACE_TOMBSTONE: &str = "
+    INSERT INTO place_tombstones (place_type, place_id, laid_at)
     VALUES ($1, $2, $3)
     ON CONFLICT DO NOTHING
 ";
@@ -51,13 +51,13 @@ const REMEMBER_PROJECT: &str = "
     ON CONFLICT (subject_type, subject_id) DO UPDATE SET project = excluded.project
 ";
 
-const FORGET_LONG_GONE_SUBJECTS: &str = "
+const FORGET_OLD_SUBJECT_TOMBSTONES: &str = "
     WITH long_gone AS (
-        DELETE FROM gone_subjects
+        DELETE FROM subject_tombstones
         WHERE (subject_type, subject_id) IN (
-            SELECT subject_type, subject_id FROM gone_subjects
-            WHERE gone_at < $1
-            ORDER BY gone_at
+            SELECT subject_type, subject_id FROM subject_tombstones
+            WHERE laid_at < $1
+            ORDER BY laid_at
             LIMIT $2
         )
         RETURNING subject_type, subject_id
@@ -70,12 +70,12 @@ const FORGET_LONG_GONE_SUBJECTS: &str = "
     SELECT COUNT(*) FROM long_gone
 ";
 
-const FORGET_LONG_GONE_PLACES: &str = "
-    DELETE FROM gone_places
+const FORGET_OLD_PLACE_TOMBSTONES: &str = "
+    DELETE FROM place_tombstones
     WHERE (place_type, place_id) IN (
-        SELECT place_type, place_id FROM gone_places
-        WHERE gone_at < $1
-        ORDER BY gone_at
+        SELECT place_type, place_id FROM place_tombstones
+        WHERE laid_at < $1
+        ORDER BY laid_at
         LIMIT $2
     )
 ";
@@ -199,7 +199,7 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
         let (subject_type, subject_id) = subject_type_and_id(subject);
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
-        sqlx::query(GONE_SUBJECT)
+        sqlx::query(LAY_SUBJECT_TOMBSTONE)
             .bind(subject_type)
             .bind(subject_id)
             .bind(at)
@@ -224,7 +224,7 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
         let (place_type, place_id) = place_type_and_id(place);
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
-        sqlx::query(GONE_PLACE)
+        sqlx::query(LAY_PLACE_TOMBSTONE)
             .bind(place_type)
             .bind(place_id)
             .bind(at)
@@ -255,13 +255,13 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
     ) -> Result<u64, CatalogError> {
         let at_most = i64::try_from(at_most).unwrap_or(i64::MAX);
 
-        let subjects: i64 = sqlx::query_scalar(FORGET_LONG_GONE_SUBJECTS)
+        let subjects: i64 = sqlx::query_scalar(FORGET_OLD_SUBJECT_TOMBSTONES)
             .bind(before)
             .bind(at_most)
             .fetch_one(&self.pool)
             .await
             .map_err(unreachable)?;
-        let places = sqlx::query(FORGET_LONG_GONE_PLACES)
+        let places = sqlx::query(FORGET_OLD_PLACE_TOMBSTONES)
             .bind(before)
             .bind(at_most)
             .execute(&self.pool)

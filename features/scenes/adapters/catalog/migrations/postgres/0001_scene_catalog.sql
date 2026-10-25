@@ -9,12 +9,12 @@ CREATE TABLE scene_catalog (
 
 CREATE INDEX scene_catalog_by_project ON scene_catalog (project, scene);
 
-CREATE TABLE scene_catalog_gone (
+CREATE TABLE scene_tombstones (
     scene    TEXT COLLATE "C" PRIMARY KEY,
-    gone_at  BIGINT           NOT NULL
+    laid_at  BIGINT           NOT NULL
 );
 
-CREATE INDEX scene_catalog_gone_by_gone_at ON scene_catalog_gone (gone_at);
+CREATE INDEX scene_catalog_gone_by_laid_at ON scene_tombstones (laid_at);
 
 CREATE TABLE quotation_restyling_tasks (
     project        TEXT COLLATE "C" PRIMARY KEY,

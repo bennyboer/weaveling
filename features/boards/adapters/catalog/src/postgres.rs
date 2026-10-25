@@ -30,21 +30,22 @@ const HOLD: &str = "
 
 const HOLDING: &str = "SELECT board FROM board_ideas WHERE idea = $1 ORDER BY board";
 
-const GONE: &str = "INSERT INTO gone_ideas (idea, gone_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+const LAY_TOMBSTONE: &str =
+    "INSERT INTO idea_tombstones (idea, laid_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
 
-const FORGET_LONG_GONE: &str = "
-    DELETE FROM gone_ideas WHERE idea IN (
-        SELECT idea FROM gone_ideas
-        WHERE gone_at < $1
-        ORDER BY gone_at, idea
+const FORGET_OLD_TOMBSTONES: &str = "
+    DELETE FROM idea_tombstones WHERE idea IN (
+        SELECT idea FROM idea_tombstones
+        WHERE laid_at < $1
+        ORDER BY laid_at, idea
         LIMIT $2
     )
 ";
 
-const GONE_BUT_HELD: &str = "
+const HELD_THOUGH_TOMBSTONED: &str = "
     SELECT held.idea
     FROM board_ideas held
-    JOIN gone_ideas gone ON gone.idea = held.idea
+    JOIN idea_tombstones tombstone ON tombstone.idea = held.idea
     WHERE held.board = $1
     ORDER BY held.idea
 ";
@@ -156,8 +157,8 @@ impl BoardCatalog for PostgresBoardCatalog {
             .collect()
     }
 
-    async fn mark_gone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError> {
-        sqlx::query(GONE)
+    async fn lay_tombstone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError> {
+        sqlx::query(LAY_TOMBSTONE)
             .bind(idea.to_string())
             .bind(at)
             .execute(&self.pool)
@@ -172,7 +173,7 @@ impl BoardCatalog for PostgresBoardCatalog {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        Ok(sqlx::query(FORGET_LONG_GONE)
+        Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(before)
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .execute(&self.pool)
@@ -181,8 +182,8 @@ impl BoardCatalog for PostgresBoardCatalog {
             .rows_affected())
     }
 
-    async fn gone_but_held(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {
-        let found = sqlx::query(GONE_BUT_HELD)
+    async fn held_though_tombstoned(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {
+        let found = sqlx::query(HELD_THOUGH_TOMBSTONED)
             .bind(board.to_string())
             .fetch_all(&self.pool)
             .await

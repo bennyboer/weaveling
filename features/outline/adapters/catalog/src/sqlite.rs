@@ -51,27 +51,27 @@ const HOLDING: &str = "
     ORDER BY outline
 ";
 
-const GONE: &str = "
-    INSERT INTO gone_attachments (attachment_type, attachment_id, gone_at)
+const LAY_TOMBSTONE: &str = "
+    INSERT INTO attachment_tombstones (attachment_type, attachment_id, laid_at)
     VALUES (?1, ?2, ?3)
     ON CONFLICT DO NOTHING
 ";
 
-const FORGET_LONG_GONE: &str = "
-    DELETE FROM gone_attachments WHERE (attachment_type, attachment_id) IN (
-        SELECT attachment_type, attachment_id FROM gone_attachments
-        WHERE gone_at < ?1
-        ORDER BY gone_at, attachment_type, attachment_id
+const FORGET_OLD_TOMBSTONES: &str = "
+    DELETE FROM attachment_tombstones WHERE (attachment_type, attachment_id) IN (
+        SELECT attachment_type, attachment_id FROM attachment_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, attachment_type, attachment_id
         LIMIT ?2
     )
 ";
 
-const GONE_BUT_HELD: &str = "
+const HELD_THOUGH_TOMBSTONED: &str = "
     SELECT held.attachment_type, held.attachment_id
     FROM outline_attachments held
-    JOIN gone_attachments gone
-        ON gone.attachment_type = held.attachment_type
-        AND gone.attachment_id = held.attachment_id
+    JOIN attachment_tombstones tombstone
+        ON tombstone.attachment_type = held.attachment_type
+        AND tombstone.attachment_id = held.attachment_id
     WHERE held.outline = ?1
     ORDER BY held.attachment_id, held.attachment_type
 ";
@@ -219,12 +219,12 @@ impl OutlineCatalog for SqliteOutlineCatalog {
             .collect()
     }
 
-    async fn mark_gone(
+    async fn lay_tombstone(
         &self,
         attachment: &Attachment,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        sqlx::query(GONE)
+        sqlx::query(LAY_TOMBSTONE)
             .bind(rows::attachment_type_of(attachment))
             .bind(attachment.to_string())
             .bind(clock::text::written(at))
@@ -240,7 +240,7 @@ impl OutlineCatalog for SqliteOutlineCatalog {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        Ok(sqlx::query(FORGET_LONG_GONE)
+        Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(clock::text::written(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .execute(&self.pool)
@@ -249,8 +249,11 @@ impl OutlineCatalog for SqliteOutlineCatalog {
             .rows_affected())
     }
 
-    async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError> {
-        let found = sqlx::query(GONE_BUT_HELD)
+    async fn held_though_tombstoned(
+        &self,
+        outline: OutlineId,
+    ) -> Result<Vec<Attachment>, CatalogError> {
+        let found = sqlx::query(HELD_THOUGH_TOMBSTONED)
             .bind(outline.to_string())
             .fetch_all(&self.pool)
             .await

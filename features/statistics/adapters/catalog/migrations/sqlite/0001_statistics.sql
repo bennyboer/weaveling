@@ -7,9 +7,9 @@ CREATE TABLE word_counts (
 
 CREATE INDEX word_counts_by_project ON word_counts (project, scene);
 
-CREATE TABLE gone_scenes (
+CREATE TABLE scene_tombstones (
     scene    TEXT    PRIMARY KEY,
-    gone_at  INTEGER NOT NULL
+    laid_at  INTEGER NOT NULL
 );
 
-CREATE INDEX gone_scenes_by_gone_at ON gone_scenes (gone_at);
+CREATE INDEX gone_scenes_by_laid_at ON scene_tombstones (laid_at);

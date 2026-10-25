@@ -11,7 +11,7 @@ type Listed = HashMap<BoardId, BoardSummary>;
 struct Pins {
     by_board: HashMap<BoardId, Vec<IdeaLink>>,
     by_idea: HashMap<IdeaLink, BTreeSet<BoardId>>,
-    gone: HashMap<IdeaLink, OffsetDateTime>,
+    tombstones: HashMap<IdeaLink, OffsetDateTime>,
 }
 
 #[derive(Debug, Default)]
@@ -104,8 +104,11 @@ impl BoardCatalog for InMemoryBoardCatalog {
             .unwrap_or_default())
     }
 
-    async fn mark_gone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError> {
-        self.write_pins().gone.entry(idea.clone()).or_insert(at);
+    async fn lay_tombstone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError> {
+        self.write_pins()
+            .tombstones
+            .entry(idea.clone())
+            .or_insert(at);
 
         Ok(())
     }
@@ -117,7 +120,7 @@ impl BoardCatalog for InMemoryBoardCatalog {
     ) -> Result<u64, CatalogError> {
         let mut pins = self.write_pins();
         let mut long_gone: Vec<(OffsetDateTime, IdeaLink)> = pins
-            .gone
+            .tombstones
             .iter()
             .filter(|(_, laid)| **laid < before)
             .map(|(idea, laid)| (*laid, idea.clone()))
@@ -130,20 +133,20 @@ impl BoardCatalog for InMemoryBoardCatalog {
         long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
 
         for (_, idea) in &long_gone {
-            pins.gone.remove(idea);
+            pins.tombstones.remove(idea);
         }
 
         Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
     }
 
-    async fn gone_but_held(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {
+    async fn held_though_tombstoned(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {
         let pins = self.read_pins();
         let mut found: Vec<IdeaLink> = pins
             .by_board
             .get(&board)
             .into_iter()
             .flatten()
-            .filter(|held| pins.gone.contains_key(held))
+            .filter(|held| pins.tombstones.contains_key(held))
             .cloned()
             .collect();
         found.sort_by(|one, other| one.as_str().cmp(other.as_str()));

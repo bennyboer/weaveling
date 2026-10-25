@@ -14,8 +14,8 @@ struct Seen {
 #[derive(Debug, Default)]
 struct Appearances {
     seen: BTreeMap<(Subject, Place), Seen>,
-    gone_subjects: BTreeMap<Subject, OffsetDateTime>,
-    gone_places: BTreeMap<Place, OffsetDateTime>,
+    subject_tombstones: BTreeMap<Subject, OffsetDateTime>,
+    place_tombstones: BTreeMap<Place, OffsetDateTime>,
     projects: BTreeMap<Subject, ProjectLink>,
 }
 
@@ -44,8 +44,8 @@ impl InMemoryAppearanceCatalog {
     fn mark(&self, subject: &Subject, place: &Place, now: Seen) {
         let mut appearances = self.write();
 
-        if appearances.gone_subjects.contains_key(subject)
-            || appearances.gone_places.contains_key(place)
+        if appearances.subject_tombstones.contains_key(subject)
+            || appearances.place_tombstones.contains_key(place)
         {
             return;
         }
@@ -126,7 +126,7 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
         let mut appearances = self.write();
 
         appearances
-            .gone_subjects
+            .subject_tombstones
             .entry(subject.clone())
             .or_insert(at);
         appearances.seen.retain(|(held, _), _| held != subject);
@@ -142,7 +142,10 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
         let mut appearances = self.write();
         let mut appeared = Vec::new();
 
-        appearances.gone_places.entry(place.clone()).or_insert(at);
+        appearances
+            .place_tombstones
+            .entry(place.clone())
+            .or_insert(at);
         appearances.seen.retain(|(subject, held), seen| {
             if held != place {
                 return true;
@@ -163,15 +166,16 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         let mut appearances = self.write();
-        let long_gone_subjects = oldest_laid_before(&appearances.gone_subjects, before, at_most);
-        let long_gone_places = oldest_laid_before(&appearances.gone_places, before, at_most);
+        let long_gone_subjects =
+            oldest_laid_before(&appearances.subject_tombstones, before, at_most);
+        let long_gone_places = oldest_laid_before(&appearances.place_tombstones, before, at_most);
 
         for subject in &long_gone_subjects {
-            appearances.gone_subjects.remove(subject);
+            appearances.subject_tombstones.remove(subject);
             appearances.projects.remove(subject);
         }
         for place in &long_gone_places {
-            appearances.gone_places.remove(place);
+            appearances.place_tombstones.remove(place);
         }
 
         Ok(

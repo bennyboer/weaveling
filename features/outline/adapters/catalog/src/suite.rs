@@ -342,22 +342,25 @@ pub async fn forgetting_an_outline_nobody_opened_is_harmless(catalog: &impl Outl
         .expect("forgetting an unknown outline should not fail");
 }
 
-async fn gone_but_held_by(catalog: &impl OutlineCatalog, outline: OutlineId) -> Vec<Attachment> {
+async fn held_though_tombstoned_by(
+    catalog: &impl OutlineCatalog,
+    outline: OutlineId,
+) -> Vec<Attachment> {
     catalog
-        .gone_but_held(outline)
+        .held_though_tombstoned(outline)
         .await
         .expect("looking for what is gone should succeed")
 }
 
-async fn marked_gone(catalog: &impl OutlineCatalog, attachment: Attachment) {
-    marked_gone_at(catalog, attachment, 1_000).await;
+async fn tombstoned(catalog: &impl OutlineCatalog, attachment: Attachment) {
+    tombstoned_at(catalog, attachment, 1_000).await;
 }
 
-async fn marked_gone_at(catalog: &impl OutlineCatalog, attachment: Attachment, seconds: i64) {
+async fn tombstoned_at(catalog: &impl OutlineCatalog, attachment: Attachment, seconds: i64) {
     catalog
-        .mark_gone(&attachment, at(seconds))
+        .lay_tombstone(&attachment, at(seconds))
         .await
-        .expect("marking gone should succeed");
+        .expect("laying a tombstone should succeed");
 }
 
 pub async fn nothing_held_is_gone_until_marked(catalog: &impl OutlineCatalog) {
@@ -367,7 +370,7 @@ pub async fn nothing_held_is_gone_until_marked(catalog: &impl OutlineCatalog) {
         .await
         .expect("indexing should succeed");
 
-    assert!(gone_but_held_by(catalog, outline).await.is_empty());
+    assert!(held_though_tombstoned_by(catalog, outline).await.is_empty());
 }
 
 pub async fn a_held_scene_marked_gone_is_named(catalog: &impl OutlineCatalog) {
@@ -380,17 +383,17 @@ pub async fn a_held_scene_marked_gone_is_named(catalog: &impl OutlineCatalog) {
         .await
         .expect("indexing should succeed");
 
-    marked_gone(catalog, Attachment::scene("scene_1")).await;
+    tombstoned(catalog, Attachment::scene("scene_1")).await;
 
     assert_eq!(
-        gone_but_held_by(catalog, outline).await,
+        held_though_tombstoned_by(catalog, outline).await,
         vec![Attachment::scene("scene_1")]
     );
 }
 
 pub async fn a_scene_marked_gone_before_it_was_held_is_named(catalog: &impl OutlineCatalog) {
     let outline = OutlineId::generate(at(1_000));
-    marked_gone(catalog, Attachment::scene("scene_1")).await;
+    tombstoned(catalog, Attachment::scene("scene_1")).await;
 
     catalog
         .holds(outline, &[Attachment::scene("scene_1")])
@@ -398,7 +401,7 @@ pub async fn a_scene_marked_gone_before_it_was_held_is_named(catalog: &impl Outl
         .expect("indexing should succeed");
 
     assert_eq!(
-        gone_but_held_by(catalog, outline).await,
+        held_though_tombstoned_by(catalog, outline).await,
         vec![Attachment::scene("scene_1")],
         "the deletion may be heard before the attachment is indexed"
     );
@@ -410,14 +413,14 @@ pub async fn a_gone_scene_let_go_is_no_longer_named(catalog: &impl OutlineCatalo
         .holds(outline, &[Attachment::scene("scene_1")])
         .await
         .expect("indexing should succeed");
-    marked_gone(catalog, Attachment::scene("scene_1")).await;
+    tombstoned(catalog, Attachment::scene("scene_1")).await;
 
     catalog
         .holds(outline, &[])
         .await
         .expect("indexing should succeed");
 
-    assert!(gone_but_held_by(catalog, outline).await.is_empty());
+    assert!(held_though_tombstoned_by(catalog, outline).await.is_empty());
 }
 
 pub async fn marking_the_same_scene_gone_twice_is_harmless(catalog: &impl OutlineCatalog) {
@@ -427,11 +430,11 @@ pub async fn marking_the_same_scene_gone_twice_is_harmless(catalog: &impl Outlin
         .await
         .expect("indexing should succeed");
 
-    marked_gone(catalog, Attachment::scene("scene_1")).await;
-    marked_gone(catalog, Attachment::scene("scene_1")).await;
+    tombstoned(catalog, Attachment::scene("scene_1")).await;
+    tombstoned(catalog, Attachment::scene("scene_1")).await;
 
     assert_eq!(
-        gone_but_held_by(catalog, outline).await,
+        held_though_tombstoned_by(catalog, outline).await,
         vec![Attachment::scene("scene_1")]
     );
 }
@@ -443,9 +446,9 @@ pub async fn a_gone_idea_is_not_mistaken_for_a_scene_of_the_same_id(catalog: &im
         .await
         .expect("indexing should succeed");
 
-    marked_gone(catalog, Attachment::idea("shared_1")).await;
+    tombstoned(catalog, Attachment::idea("shared_1")).await;
 
-    assert!(gone_but_held_by(catalog, outline).await.is_empty());
+    assert!(held_though_tombstoned_by(catalog, outline).await.is_empty());
 }
 
 async fn forget_long_gone(catalog: &impl OutlineCatalog, before_seconds: i64, at_most: u64) -> u64 {
@@ -469,21 +472,21 @@ pub async fn a_forgotten_tombstone_names_nothing_and_a_later_one_still_does(
         )
         .await
         .expect("indexing should succeed");
-    marked_gone_at(catalog, Attachment::scene("scene_long_gone"), 1_000).await;
-    marked_gone_at(catalog, Attachment::idea("idea_just_gone"), 2_000).await;
+    tombstoned_at(catalog, Attachment::scene("scene_long_gone"), 1_000).await;
+    tombstoned_at(catalog, Attachment::idea("idea_just_gone"), 2_000).await;
 
     assert_eq!(forget_long_gone(catalog, 2_000, u64::MAX).await, 1);
 
     assert_eq!(
-        gone_but_held_by(catalog, outline).await,
+        held_though_tombstoned_by(catalog, outline).await,
         vec![Attachment::idea("idea_just_gone")],
         "laid at the moment asked about is not before it"
     );
 }
 
 pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(catalog: &impl OutlineCatalog) {
-    marked_gone_at(catalog, Attachment::scene("scene_1"), 1_000).await;
-    marked_gone_at(catalog, Attachment::scene("scene_1"), 5_000).await;
+    tombstoned_at(catalog, Attachment::scene("scene_1"), 1_000).await;
+    tombstoned_at(catalog, Attachment::scene("scene_1"), 5_000).await;
 
     assert_eq!(
         forget_long_gone(catalog, 2_000, u64::MAX).await,
@@ -513,12 +516,15 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
         (Attachment::scene("scene_oldest"), 1_000),
         (Attachment::idea("idea_older"), 1_001),
     ] {
-        marked_gone_at(catalog, gone, seconds).await;
+        tombstoned_at(catalog, gone, seconds).await;
     }
 
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
 
-    assert_eq!(gone_but_held_by(catalog, outline).await, vec![newest]);
+    assert_eq!(
+        held_though_tombstoned_by(catalog, outline).await,
+        vec![newest]
+    );
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 

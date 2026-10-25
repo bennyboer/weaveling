@@ -293,22 +293,22 @@ fn an_idea(id: &str) -> IdeaLink {
     IdeaLink::from(id)
 }
 
-async fn gone_but_held_by(catalog: &impl BoardCatalog, board: BoardId) -> Vec<IdeaLink> {
+async fn held_though_tombstoned_by(catalog: &impl BoardCatalog, board: BoardId) -> Vec<IdeaLink> {
     catalog
-        .gone_but_held(board)
+        .held_though_tombstoned(board)
         .await
         .expect("looking for what is gone should succeed")
 }
 
-async fn marked_gone(catalog: &impl BoardCatalog, idea: &str) {
-    marked_gone_at(catalog, idea, 1_000).await;
+async fn tombstoned(catalog: &impl BoardCatalog, idea: &str) {
+    tombstoned_at(catalog, idea, 1_000).await;
 }
 
-async fn marked_gone_at(catalog: &impl BoardCatalog, idea: &str, seconds: i64) {
+async fn tombstoned_at(catalog: &impl BoardCatalog, idea: &str, seconds: i64) {
     catalog
-        .mark_gone(&an_idea(idea), at(seconds))
+        .lay_tombstone(&an_idea(idea), at(seconds))
         .await
-        .expect("marking gone should succeed");
+        .expect("laying a tombstone should succeed");
 }
 
 async fn pinned(catalog: &impl BoardCatalog, board: BoardId, ideas: &[&str]) {
@@ -323,29 +323,29 @@ pub async fn nothing_pinned_is_gone_until_marked(catalog: &impl BoardCatalog) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
 
-    assert!(gone_but_held_by(catalog, board).await.is_empty());
+    assert!(held_though_tombstoned_by(catalog, board).await.is_empty());
 }
 
 pub async fn a_pinned_idea_marked_gone_is_named(catalog: &impl BoardCatalog) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_1", "idea_2"]).await;
 
-    marked_gone(catalog, "idea_1").await;
+    tombstoned(catalog, "idea_1").await;
 
     assert_eq!(
-        gone_but_held_by(catalog, board).await,
+        held_though_tombstoned_by(catalog, board).await,
         vec![an_idea("idea_1")]
     );
 }
 
 pub async fn an_idea_marked_gone_before_it_was_pinned_is_named(catalog: &impl BoardCatalog) {
     let board = BoardId::generate(at(1_000));
-    marked_gone(catalog, "idea_1").await;
+    tombstoned(catalog, "idea_1").await;
 
     pinned(catalog, board, &["idea_1"]).await;
 
     assert_eq!(
-        gone_but_held_by(catalog, board).await,
+        held_though_tombstoned_by(catalog, board).await,
         vec![an_idea("idea_1")],
         "the discard may be heard before the pin is indexed"
     );
@@ -354,22 +354,22 @@ pub async fn an_idea_marked_gone_before_it_was_pinned_is_named(catalog: &impl Bo
 pub async fn a_gone_idea_let_go_is_no_longer_named(catalog: &impl BoardCatalog) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
-    marked_gone(catalog, "idea_1").await;
+    tombstoned(catalog, "idea_1").await;
 
     pinned(catalog, board, &[]).await;
 
-    assert!(gone_but_held_by(catalog, board).await.is_empty());
+    assert!(held_though_tombstoned_by(catalog, board).await.is_empty());
 }
 
 pub async fn marking_the_same_idea_gone_twice_is_harmless(catalog: &impl BoardCatalog) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
 
-    marked_gone(catalog, "idea_1").await;
-    marked_gone(catalog, "idea_1").await;
+    tombstoned(catalog, "idea_1").await;
+    tombstoned(catalog, "idea_1").await;
 
     assert_eq!(
-        gone_but_held_by(catalog, board).await,
+        held_though_tombstoned_by(catalog, board).await,
         vec![an_idea("idea_1")]
     );
 }
@@ -386,21 +386,21 @@ pub async fn a_forgotten_tombstone_names_nothing_and_a_later_one_still_does(
 ) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_long_gone", "idea_just_gone"]).await;
-    marked_gone_at(catalog, "idea_long_gone", 1_000).await;
-    marked_gone_at(catalog, "idea_just_gone", 2_000).await;
+    tombstoned_at(catalog, "idea_long_gone", 1_000).await;
+    tombstoned_at(catalog, "idea_just_gone", 2_000).await;
 
     assert_eq!(forget_long_gone(catalog, 2_000, u64::MAX).await, 1);
 
     assert_eq!(
-        gone_but_held_by(catalog, board).await,
+        held_though_tombstoned_by(catalog, board).await,
         vec![an_idea("idea_just_gone")],
         "laid at the moment asked about is not before it"
     );
 }
 
 pub async fn an_idea_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl BoardCatalog) {
-    marked_gone_at(catalog, "idea_1", 1_000).await;
-    marked_gone_at(catalog, "idea_1", 5_000).await;
+    tombstoned_at(catalog, "idea_1", 1_000).await;
+    tombstoned_at(catalog, "idea_1", 5_000).await;
 
     assert_eq!(
         forget_long_gone(catalog, 2_000, u64::MAX).await,
@@ -424,13 +424,13 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
         ("idea_oldest", 1_000),
         ("idea_older", 1_001),
     ] {
-        marked_gone_at(catalog, idea, seconds).await;
+        tombstoned_at(catalog, idea, seconds).await;
     }
 
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 2);
 
     assert_eq!(
-        gone_but_held_by(catalog, board).await,
+        held_though_tombstoned_by(catalog, board).await,
         vec![an_idea("idea_newest")]
     );
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);

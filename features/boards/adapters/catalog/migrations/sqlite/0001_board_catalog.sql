@@ -14,9 +14,9 @@ CREATE TABLE board_ideas (
 
 CREATE INDEX board_ideas_by_idea ON board_ideas (idea, board);
 
-CREATE TABLE gone_ideas (
+CREATE TABLE idea_tombstones (
     idea        TEXT PRIMARY KEY,
-    gone_at     TEXT NOT NULL
+    laid_at     TEXT NOT NULL
 );
 
-CREATE INDEX gone_ideas_by_gone_at ON gone_ideas (gone_at);
+CREATE INDEX gone_ideas_by_laid_at ON idea_tombstones (laid_at);

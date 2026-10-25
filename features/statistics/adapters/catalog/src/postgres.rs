@@ -8,20 +8,20 @@ use time::OffsetDateTime;
 const KEEP: &str = "
     INSERT INTO word_counts (scene, project, words, counted_at)
     SELECT $1, $2, $3, $4
-    WHERE NOT EXISTS (SELECT 1 FROM gone_scenes WHERE scene = $1)
+    WHERE NOT EXISTS (SELECT 1 FROM scene_tombstones WHERE scene = $1)
     ON CONFLICT (scene) DO UPDATE
     SET project = excluded.project, words = excluded.words, counted_at = excluded.counted_at
     WHERE word_counts.counted_at <= excluded.counted_at
 ";
 
-const GONE: &str =
-    "INSERT INTO gone_scenes (scene, gone_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+const LAY_TOMBSTONE: &str =
+    "INSERT INTO scene_tombstones (scene, laid_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
 
-const FORGET_LONG_GONE: &str = "
-    DELETE FROM gone_scenes WHERE scene IN (
-        SELECT scene FROM gone_scenes
-        WHERE gone_at < $1
-        ORDER BY gone_at, scene
+const FORGET_OLD_TOMBSTONES: &str = "
+    DELETE FROM scene_tombstones WHERE scene IN (
+        SELECT scene FROM scene_tombstones
+        WHERE laid_at < $1
+        ORDER BY laid_at, scene
         LIMIT $2
     )
 ";
@@ -98,7 +98,7 @@ impl WordCountCatalog for PostgresWordCountCatalog {
     ) -> Result<(), CatalogError> {
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
-        sqlx::query(GONE)
+        sqlx::query(LAY_TOMBSTONE)
             .bind(scene.as_str())
             .bind(in_microseconds(at))
             .execute(&mut *transaction)
@@ -118,7 +118,7 @@ impl WordCountCatalog for PostgresWordCountCatalog {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        Ok(sqlx::query(FORGET_LONG_GONE)
+        Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(in_microseconds(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .execute(&self.pool)

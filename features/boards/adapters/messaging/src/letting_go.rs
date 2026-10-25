@@ -9,7 +9,7 @@ pub async fn let_go_everywhere(
     gone: &IdeaLink,
     at: OffsetDateTime,
 ) -> Result<(), Failure> {
-    catalog.mark_gone(gone, at).await?;
+    catalog.lay_tombstone(gone, at).await?;
 
     for board in catalog.boards_holding(gone).await? {
         let_go(boards, board, gone).await?;
@@ -23,7 +23,7 @@ pub async fn let_go_of_what_is_gone(
     catalog: &dyn BoardCatalog,
     board: BoardId,
 ) -> Result<(), Failure> {
-    for gone in catalog.gone_but_held(board).await? {
+    for gone in catalog.held_though_tombstoned(board).await? {
         let_go(boards, board, &gone).await?;
     }
 

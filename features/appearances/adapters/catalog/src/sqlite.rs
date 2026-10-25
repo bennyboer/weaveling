@@ -16,26 +16,26 @@ const MARK: &str = "
     INSERT INTO appearances (subject_type, subject_id, place_type, place_id, version, present)
     SELECT ?1, ?2, ?3, ?4, ?5, ?6
     WHERE NOT EXISTS (
-            SELECT 1 FROM gone_subjects WHERE subject_type = ?1 AND subject_id = ?2
+            SELECT 1 FROM subject_tombstones WHERE subject_type = ?1 AND subject_id = ?2
         )
         AND NOT EXISTS (
-            SELECT 1 FROM gone_places WHERE place_type = ?3 AND place_id = ?4
+            SELECT 1 FROM place_tombstones WHERE place_type = ?3 AND place_id = ?4
         )
     ON CONFLICT (subject_type, subject_id, place_type, place_id) DO UPDATE
     SET version = excluded.version, present = excluded.present
     WHERE appearances.version <= excluded.version
 ";
 
-const GONE_SUBJECT: &str = "
-    INSERT INTO gone_subjects (subject_type, subject_id, gone_at)
+const LAY_SUBJECT_TOMBSTONE: &str = "
+    INSERT INTO subject_tombstones (subject_type, subject_id, laid_at)
     VALUES (?1, ?2, ?3)
     ON CONFLICT DO NOTHING
 ";
 
 const FORGET_SUBJECT: &str = "DELETE FROM appearances WHERE subject_type = ?1 AND subject_id = ?2";
 
-const GONE_PLACE: &str = "
-    INSERT INTO gone_places (place_type, place_id, gone_at)
+const LAY_PLACE_TOMBSTONE: &str = "
+    INSERT INTO place_tombstones (place_type, place_id, laid_at)
     VALUES (?1, ?2, ?3)
     ON CONFLICT DO NOTHING
 ";
@@ -53,29 +53,29 @@ const REMEMBER_PROJECT: &str = "
     ON CONFLICT (subject_type, subject_id) DO UPDATE SET project = excluded.project
 ";
 
-const FORGET_PROJECTS_OF_LONG_GONE: &str = "
+const FORGET_PROJECTS_OF_OLD_TOMBSTONES: &str = "
     DELETE FROM subject_projects WHERE (subject_type, subject_id) IN (
-        SELECT subject_type, subject_id FROM gone_subjects
-        WHERE gone_at < ?1
-        ORDER BY gone_at, subject_type, subject_id
+        SELECT subject_type, subject_id FROM subject_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, subject_type, subject_id
         LIMIT ?2
     )
 ";
 
-const FORGET_LONG_GONE_SUBJECTS: &str = "
-    DELETE FROM gone_subjects WHERE (subject_type, subject_id) IN (
-        SELECT subject_type, subject_id FROM gone_subjects
-        WHERE gone_at < ?1
-        ORDER BY gone_at, subject_type, subject_id
+const FORGET_OLD_SUBJECT_TOMBSTONES: &str = "
+    DELETE FROM subject_tombstones WHERE (subject_type, subject_id) IN (
+        SELECT subject_type, subject_id FROM subject_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, subject_type, subject_id
         LIMIT ?2
     )
 ";
 
-const FORGET_LONG_GONE_PLACES: &str = "
-    DELETE FROM gone_places WHERE (place_type, place_id) IN (
-        SELECT place_type, place_id FROM gone_places
-        WHERE gone_at < ?1
-        ORDER BY gone_at
+const FORGET_OLD_PLACE_TOMBSTONES: &str = "
+    DELETE FROM place_tombstones WHERE (place_type, place_id) IN (
+        SELECT place_type, place_id FROM place_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at
         LIMIT ?2
     )
 ";
@@ -203,7 +203,7 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
             .await
             .map_err(unreachable)?;
 
-        sqlx::query(GONE_SUBJECT)
+        sqlx::query(LAY_SUBJECT_TOMBSTONE)
             .bind(subject_type)
             .bind(subject_id)
             .bind(clock::text::written(at))
@@ -232,7 +232,7 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
             .await
             .map_err(unreachable)?;
 
-        sqlx::query(GONE_PLACE)
+        sqlx::query(LAY_PLACE_TOMBSTONE)
             .bind(place_type)
             .bind(place_id)
             .bind(clock::text::written(at))
@@ -270,13 +270,13 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
             .map_err(unreachable)?;
         let mut forgotten = 0;
 
-        sqlx::query(FORGET_PROJECTS_OF_LONG_GONE)
+        sqlx::query(FORGET_PROJECTS_OF_OLD_TOMBSTONES)
             .bind(&before)
             .bind(at_most)
             .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
-        for long_gone in [FORGET_LONG_GONE_SUBJECTS, FORGET_LONG_GONE_PLACES] {
+        for long_gone in [FORGET_OLD_SUBJECT_TOMBSTONES, FORGET_OLD_PLACE_TOMBSTONES] {
             forgotten += sqlx::query(long_gone)
                 .bind(&before)
                 .bind(at_most)

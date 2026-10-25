@@ -191,9 +191,9 @@ mod tests {
         ] {
             ports
                 .catalog
-                .mark_gone(&IdeaLink::from(idea), laid)
+                .lay_tombstone(&IdeaLink::from(idea), laid)
                 .await
-                .expect("marking gone should succeed");
+                .expect("laying a tombstone should succeed");
         }
 
         let [chore] = wired.chores.as_slice() else {
@@ -215,9 +215,9 @@ mod tests {
         let catalog: Arc<dyn BoardCatalog> = Arc::new(InMemoryBoardCatalog::new());
         for idea in ["idea_1", "idea_2"] {
             catalog
-                .mark_gone(&IdeaLink::from(idea), NOW)
+                .lay_tombstone(&IdeaLink::from(idea), NOW)
                 .await
-                .expect("marking gone should succeed");
+                .expect("laying a tombstone should succeed");
         }
 
         let forgotten = BoardTombstones::of(catalog)

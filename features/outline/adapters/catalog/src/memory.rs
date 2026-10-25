@@ -13,7 +13,7 @@ type Listed = HashMap<OutlineId, OutlineSummary>;
 struct Attachments {
     by_outline: HashMap<OutlineId, Vec<Attachment>>,
     by_attachment: HashMap<Attachment, BTreeSet<OutlineId>>,
-    gone: HashMap<Attachment, OffsetDateTime>,
+    tombstones: HashMap<Attachment, OffsetDateTime>,
 }
 
 #[derive(Debug, Default)]
@@ -122,13 +122,13 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             .unwrap_or_default())
     }
 
-    async fn mark_gone(
+    async fn lay_tombstone(
         &self,
         attachment: &Attachment,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         self.write_attachments()
-            .gone
+            .tombstones
             .entry(attachment.clone())
             .or_insert(at);
 
@@ -142,7 +142,7 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
     ) -> Result<u64, CatalogError> {
         let mut attached = self.write_attachments();
         let mut long_gone: Vec<(OffsetDateTime, Attachment)> = attached
-            .gone
+            .tombstones
             .iter()
             .filter(|(_, laid)| **laid < before)
             .map(|(attachment, laid)| (*laid, attachment.clone()))
@@ -155,20 +155,23 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
         long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
 
         for (_, attachment) in &long_gone {
-            attached.gone.remove(attachment);
+            attached.tombstones.remove(attachment);
         }
 
         Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
     }
 
-    async fn gone_but_held(&self, outline: OutlineId) -> Result<Vec<Attachment>, CatalogError> {
+    async fn held_though_tombstoned(
+        &self,
+        outline: OutlineId,
+    ) -> Result<Vec<Attachment>, CatalogError> {
         let attached = self.read_attachments();
         let mut found: Vec<Attachment> = attached
             .by_outline
             .get(&outline)
             .into_iter()
             .flatten()
-            .filter(|held| attached.gone.contains_key(held))
+            .filter(|held| attached.tombstones.contains_key(held))
             .cloned()
             .collect();
         found.sort_by(|one, other| one.as_str().cmp(other.as_str()));

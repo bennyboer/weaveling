@@ -15,7 +15,7 @@ struct Kept {
 #[derive(Debug, Default)]
 struct Counts {
     kept: BTreeMap<SceneLink, Kept>,
-    gone: BTreeMap<SceneLink, OffsetDateTime>,
+    tombstones: BTreeMap<SceneLink, OffsetDateTime>,
 }
 
 #[derive(Debug, Default)]
@@ -52,7 +52,7 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
     ) -> Result<Option<u64>, CatalogError> {
         let mut counts = self.write();
 
-        if counts.gone.contains_key(scene) {
+        if counts.tombstones.contains_key(scene) {
             return Ok(None);
         }
 
@@ -77,7 +77,7 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
     ) -> Result<(), CatalogError> {
         let mut counts = self.write();
 
-        counts.gone.entry(scene.clone()).or_insert(at);
+        counts.tombstones.entry(scene.clone()).or_insert(at);
         counts.kept.remove(scene);
 
         Ok(())
@@ -90,7 +90,7 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
     ) -> Result<u64, CatalogError> {
         let mut counts = self.write();
         let mut long_gone: Vec<(OffsetDateTime, SceneLink)> = counts
-            .gone
+            .tombstones
             .iter()
             .filter(|(_, laid)| **laid < before)
             .map(|(scene, laid)| (*laid, scene.clone()))
@@ -99,7 +99,7 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
         long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
 
         for (_, scene) in &long_gone {
-            counts.gone.remove(scene);
+            counts.tombstones.remove(scene);
         }
 
         Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))

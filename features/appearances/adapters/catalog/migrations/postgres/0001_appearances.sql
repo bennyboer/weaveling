@@ -11,25 +11,25 @@ CREATE TABLE appearances (
 
 CREATE INDEX appearances_by_place ON appearances (place_type, place_id);
 
-CREATE TABLE gone_subjects (
+CREATE TABLE subject_tombstones (
     subject_type  TEXT COLLATE "C" NOT NULL,
     subject_id    TEXT COLLATE "C" NOT NULL,
-    gone_at       TIMESTAMPTZ      NOT NULL,
+    laid_at       TIMESTAMPTZ      NOT NULL,
 
     PRIMARY KEY (subject_type, subject_id)
 );
 
-CREATE INDEX gone_subjects_by_gone_at ON gone_subjects (gone_at);
+CREATE INDEX gone_subjects_by_laid_at ON subject_tombstones (laid_at);
 
-CREATE TABLE gone_places (
+CREATE TABLE place_tombstones (
     place_type  TEXT COLLATE "C" NOT NULL,
     place_id    TEXT COLLATE "C" NOT NULL,
-    gone_at     TIMESTAMPTZ      NOT NULL,
+    laid_at     TIMESTAMPTZ      NOT NULL,
 
     PRIMARY KEY (place_type, place_id)
 );
 
-CREATE INDEX gone_places_by_gone_at ON gone_places (gone_at);
+CREATE INDEX gone_places_by_laid_at ON place_tombstones (laid_at);
 
 CREATE TABLE subject_projects (
     subject_type  TEXT COLLATE "C" NOT NULL,

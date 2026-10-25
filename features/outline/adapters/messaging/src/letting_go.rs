@@ -11,7 +11,7 @@ pub async fn let_go_everywhere(
     gone: &Attachment,
     at: OffsetDateTime,
 ) -> Result<(), Failure> {
-    catalog.mark_gone(gone, at).await?;
+    catalog.lay_tombstone(gone, at).await?;
 
     for outline in catalog.outlines_holding(gone).await? {
         let_go(outlines, outline, gone).await?;
@@ -25,7 +25,7 @@ pub async fn let_go_of_what_is_gone(
     catalog: &dyn OutlineCatalog,
     outline: OutlineId,
 ) -> Result<(), Failure> {
-    for gone in catalog.gone_but_held(outline).await? {
+    for gone in catalog.held_though_tombstoned(outline).await? {
         let_go(outlines, outline, &gone).await?;
     }
 

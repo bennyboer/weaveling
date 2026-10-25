@@ -29,7 +29,7 @@ impl Kept {
 #[derive(Debug, Default)]
 struct Scenes {
     kept: BTreeMap<SceneId, Kept>,
-    gone: BTreeMap<SceneId, OffsetDateTime>,
+    tombstones: BTreeMap<SceneId, OffsetDateTime>,
 }
 
 #[derive(Debug, Default)]
@@ -53,7 +53,7 @@ impl InMemorySceneCatalog {
     fn change(&self, id: SceneId, project: &ProjectLink, changing: impl FnOnce(&mut Kept)) {
         let mut scenes = self.write();
 
-        if scenes.gone.contains_key(&id) {
+        if scenes.tombstones.contains_key(&id) {
             return;
         }
 
@@ -115,7 +115,7 @@ impl SceneCatalog for InMemorySceneCatalog {
     async fn forget(&self, id: SceneId, at: OffsetDateTime) -> Result<(), CatalogError> {
         let mut scenes = self.write();
 
-        scenes.gone.entry(id).or_insert(at);
+        scenes.tombstones.entry(id).or_insert(at);
         scenes.kept.remove(&id);
 
         Ok(())
@@ -128,7 +128,7 @@ impl SceneCatalog for InMemorySceneCatalog {
     ) -> Result<u64, CatalogError> {
         let mut scenes = self.write();
         let mut long_gone: Vec<(OffsetDateTime, SceneId)> = scenes
-            .gone
+            .tombstones
             .iter()
             .filter(|(_, laid)| **laid < before)
             .map(|(scene, laid)| (*laid, *scene))
@@ -137,7 +137,7 @@ impl SceneCatalog for InMemorySceneCatalog {
         long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
 
         for (_, scene) in &long_gone {
-            scenes.gone.remove(scene);
+            scenes.tombstones.remove(scene);
         }
 
         Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
