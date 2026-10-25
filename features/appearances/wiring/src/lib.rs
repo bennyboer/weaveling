@@ -1,3 +1,5 @@
+mod tombstones;
+
 use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
@@ -6,9 +8,12 @@ use appearances_messaging::{
     ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
 use appearances_rest::Readers;
+use chores::ForgetOldTombstones;
 use live::Broadcaster;
 use outbox::Outbox;
 use wiring::{Context, Feature, Wired};
+
+use crate::tombstones::AppearanceTombstones;
 
 pub struct Ports {
     pub catalog: Arc<dyn AppearanceCatalog>,
@@ -29,6 +34,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(ProjectSceneAppearancesListener::new(telling.clone())),
         Arc::new(ForgetDiscardedIdeaListener::new(telling)),
     ])
+    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+        "forget-old-appearance-tombstones",
+        Arc::new(AppearanceTombstones::of(ports.catalog.clone())),
+        context.clock.clone(),
+    ))])
 }
 
 fn readers(ports: &Ports, context: &Context) -> Readers {
@@ -81,5 +91,59 @@ impl Feature for AppearanceFeature {
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
         wire(ports, context)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use appearances_core::{IdeaLink, Subject};
+    use authorizing::AllowingEverything;
+    use chores::TOMBSTONES_KEPT_FOR;
+    use clock::FixedClock;
+    use messaging::{InMemoryDeliveries, InProcessDispatcher};
+    use time::{Duration, OffsetDateTime};
+
+    use super::*;
+
+    const NOW: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
+
+    #[tokio::test]
+    async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+        let context = Context {
+            clock: Arc::new(FixedClock::new(
+                NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
+            )),
+            publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
+                InMemoryDeliveries::new(),
+            ))),
+            authorizer: Arc::new(AllowingEverything),
+        };
+        let ports = AppearanceFeature::in_memory(&context);
+        let wired = AppearanceFeature::wire(&ports, &context);
+        for (idea, laid) in [
+            ("idea_long_gone", NOW),
+            ("idea_just_gone", NOW + Duration::SECOND),
+        ] {
+            ports
+                .catalog
+                .forget_subject(&Subject::Idea(IdeaLink::from(idea)), laid)
+                .await
+                .expect("forgetting should succeed");
+        }
+
+        let [chore] = wired.chores.as_slice() else {
+            panic!("the feature hands over one chore");
+        };
+
+        assert_eq!(chore.named(), "forget-old-appearance-tombstones");
+        assert_eq!(
+            chore
+                .carry_out()
+                .await
+                .expect("the chore should be carried out"),
+            1
+        );
     }
 }

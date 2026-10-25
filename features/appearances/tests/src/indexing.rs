@@ -520,3 +520,27 @@ async fn a_message_in_no_project_still_places_its_idea_and_names_no_project() {
     );
     assert_eq!(wired.project_of("idea_1").await, None);
 }
+
+#[tokio::test]
+async fn a_tombstone_is_laid_when_what_it_marks_went() {
+    let wired = a_workbench();
+    wired.hears(&wired.ideas, discarded("idea_1")).await;
+    wired.hears(&wired.outline, removed("section_1")).await;
+    wired.hears(&wired.scenes, deleted("scene_1")).await;
+
+    let forgotten_before = |moment| wired.catalog.forget_tombstones_laid_before(moment);
+
+    assert_eq!(
+        forgotten_before(at(1_000))
+            .await
+            .expect("forgetting tombstones should succeed"),
+        0,
+        "laid when it happened, not when it was heard"
+    );
+    assert_eq!(
+        forgotten_before(at(1_001))
+            .await
+            .expect("forgetting tombstones should succeed"),
+        3
+    );
+}

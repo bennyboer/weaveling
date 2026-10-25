@@ -1,6 +1,10 @@
 use appearances_core::{
     AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
 };
+use time::macros::datetime;
+use time::{Duration, OffsetDateTime};
+
+const LAID: OffsetDateTime = datetime!(2026-10-25 12:00 UTC);
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -121,7 +125,7 @@ pub async fn forgetting_an_idea_leaves_every_other_idea(catalog: &impl Appearanc
     remembered(catalog, "idea_kept", &[a_section("section_1")]).await;
 
     catalog
-        .forget_subject(&an_idea("idea_gone"))
+        .forget_subject(&an_idea("idea_gone"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -143,7 +147,7 @@ pub async fn forgetting_a_place_reaches_every_idea_in_it(catalog: &impl Appearan
     remembered(catalog, "idea_2", &[a_section("section_gone")]).await;
 
     catalog
-        .forget_place(&a_section("section_gone"))
+        .forget_place(&a_section("section_gone"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -168,11 +172,11 @@ pub async fn forgetting_a_place_says_which_ideas_appeared_there(catalog: &impl A
     remembered(catalog, "idea_4", &[a_section("section_kept")]).await;
 
     let appeared = catalog
-        .forget_place(&a_section("section_gone"))
+        .forget_place(&a_section("section_gone"), LAID)
         .await
         .expect("forgetting should succeed");
     let nobody = catalog
-        .forget_place(&a_section("section_empty"))
+        .forget_place(&a_section("section_empty"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -190,7 +194,7 @@ pub async fn a_section_and_a_scene_sharing_an_id_are_different_places(
     remembered(catalog, "idea_1", &[a_section("same_1"), a_scene("same_1")]).await;
 
     catalog
-        .forget_place(&a_scene("same_1"))
+        .forget_place(&a_scene("same_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -207,11 +211,11 @@ pub async fn forgetting_what_was_never_remembered_is_harmless(catalog: &impl App
         .await
         .expect("forgetting nothing is not a failure");
     catalog
-        .forget_subject(&an_idea("idea_1"))
+        .forget_subject(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting nothing is not a failure");
     catalog
-        .forget_place(&a_section("section_1"))
+        .forget_place(&a_section("section_1"), LAID)
         .await
         .expect("forgetting nothing is not a failure");
 }
@@ -264,7 +268,7 @@ pub async fn a_late_forgetting_does_not_undo_a_later_remembering(catalog: &impl 
 pub async fn nothing_comes_back_to_a_forgotten_place(catalog: &impl AppearanceCatalog) {
     seen(catalog, &a_section("section_1"), &[(true, 1)]).await;
     catalog
-        .forget_place(&a_section("section_1"))
+        .forget_place(&a_section("section_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -279,7 +283,7 @@ pub async fn nothing_comes_back_to_a_forgotten_place(catalog: &impl AppearanceCa
 pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &impl AppearanceCatalog) {
     seen(catalog, &a_section("section_1"), &[(true, 1)]).await;
     catalog
-        .forget_subject(&an_idea("idea_1"))
+        .forget_subject(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -287,7 +291,8 @@ pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &impl AppearanceCatalo
 
     assert!(
         places_of(catalog, "idea_1").await.is_empty(),
-        "a discarded idea is gone for good, and its versions come from other streams, so only          remembering that it went can keep it out"
+        "a discarded idea is gone for good, and its versions come from other streams, so only \
+         remembering that it went can keep it out"
     );
 }
 
@@ -326,7 +331,7 @@ pub async fn a_discarded_idea_s_project_outlives_it_as_its_tombstone_does(
         .expect("remembering should succeed");
 
     catalog
-        .forget_subject(&an_idea("idea_1"))
+        .forget_subject(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -358,6 +363,122 @@ pub async fn remembering_an_idea_s_project_again_keeps_one_the_last(
             .expect("asking should succeed"),
         Some(ProjectLink::from("project_2"))
     );
+}
+
+pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
+    catalog: &impl AppearanceCatalog,
+) {
+    let before = LAID + Duration::DAY;
+    catalog
+        .forget_subject(&an_idea("idea_long_gone"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .forget_place(&a_section("section_long_gone"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .forget_subject(&an_idea("idea_just_gone"), before)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .forget_place(&a_section("section_just_gone"), before)
+        .await
+        .expect("forgetting should succeed");
+
+    let forgotten = catalog
+        .forget_tombstones_laid_before(before)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    assert_eq!(forgotten, 2);
+    for (idea, place) in [
+        ("idea_long_gone", a_scene("scene_1")),
+        ("idea_just_gone", a_scene("scene_1")),
+        ("idea_1", a_section("section_long_gone")),
+        ("idea_1", a_section("section_just_gone")),
+    ] {
+        remembered(catalog, idea, &[place]).await;
+    }
+    assert_eq!(
+        places_of(catalog, "idea_long_gone").await,
+        vec![a_scene("scene_1")],
+        "a tombstone forgotten keeps nothing out"
+    );
+    assert!(places_of(catalog, "idea_just_gone").await.is_empty());
+    assert_eq!(
+        places_of(catalog, "idea_1").await,
+        vec![a_section("section_long_gone")]
+    );
+}
+
+pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(
+    catalog: &impl AppearanceCatalog,
+) {
+    catalog
+        .forget_subject(&an_idea("idea_1"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .forget_place(&a_section("section_1"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .forget_subject(&an_idea("idea_1"), LAID + Duration::DAY * 2)
+        .await
+        .expect("hearing it again is no failure");
+    catalog
+        .forget_place(&a_section("section_1"), LAID + Duration::DAY * 2)
+        .await
+        .expect("hearing it again is no failure");
+
+    assert_eq!(
+        catalog
+            .forget_tombstones_laid_before(LAID + Duration::DAY)
+            .await
+            .expect("forgetting tombstones should succeed"),
+        2,
+        "a discard heard again is the same discard"
+    );
+}
+
+pub async fn a_long_gone_idea_s_project_is_forgotten_with_its_tombstone(
+    catalog: &impl AppearanceCatalog,
+) {
+    for idea in ["idea_long_gone", "idea_just_gone", "idea_here"] {
+        catalog
+            .remember_project(&an_idea(idea), &ProjectLink::from("project_1"))
+            .await
+            .expect("remembering should succeed");
+    }
+    catalog
+        .forget_subject(&an_idea("idea_long_gone"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    catalog
+        .forget_subject(&an_idea("idea_just_gone"), LAID + Duration::DAY)
+        .await
+        .expect("forgetting should succeed");
+
+    catalog
+        .forget_tombstones_laid_before(LAID + Duration::DAY)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    for (idea, project) in [
+        ("idea_long_gone", None),
+        ("idea_just_gone", Some(ProjectLink::from("project_1"))),
+        ("idea_here", Some(ProjectLink::from("project_1"))),
+    ] {
+        assert_eq!(
+            catalog
+                .project_of(&an_idea(idea))
+                .await
+                .expect("asking should succeed"),
+            project,
+            "{idea}"
+        );
+    }
 }
 
 macro_rules! conformance_case {
@@ -421,6 +542,18 @@ macro_rules! conformance_tests {
         $crate::suite::conformance_case!(
             $workbench,
             forgetting_what_was_never_remembered_is_harmless
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_tombstone_is_laid_once_when_what_it_marks_first_went
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            a_long_gone_idea_s_project_is_forgotten_with_its_tombstone
         );
     };
 }

@@ -3724,8 +3724,10 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "sqlx",
+ "time",
  "tokio",
  "weaveling-appearances-core",
+ "weaveling-clock",
  "weaveling-test-harness",
 ]
 
@@ -3742,6 +3744,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "thiserror",
+ "time",
 ]
 
 [[package]]
@@ -3765,6 +3768,7 @@ dependencies = [
  "async-trait",
  "axum",
  "serde",
+ "time",
  "weaveling-appearances-contract",
  "weaveling-appearances-core",
  "weaveling-authorizing",
@@ -3802,12 +3806,19 @@ dependencies = [
 name = "weaveling-appearances-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
+ "time",
+ "tokio",
  "weaveling-appearances-catalog",
  "weaveling-appearances-core",
  "weaveling-appearances-messaging",
  "weaveling-appearances-rest",
+ "weaveling-authorizing",
+ "weaveling-chores",
+ "weaveling-clock",
  "weaveling-live",
+ "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-wiring",
 ]

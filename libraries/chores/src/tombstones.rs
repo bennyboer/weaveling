@@ -9,7 +9,7 @@ use time::OffsetDateTime;
 
 use crate::Chore;
 
-pub const TOMBSTONES_KEPT_FOR: time::Duration = RETRIABLE_FOR;
+pub const TOMBSTONES_KEPT_FOR: time::Duration = RETRIABLE_FOR.saturating_add(time::Duration::DAY);
 
 #[async_trait]
 pub trait Tombstones: Send + Sync {
@@ -107,12 +107,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn tombstones_are_forgotten_once_a_change_about_them_may_no_longer_be_tried_again() {
-        let kept = NOW - RETRIABLE_FOR;
+    async fn tombstones_are_forgotten_a_day_after_a_change_about_them_may_no_longer_be_retried() {
+        let kept = NOW - RETRIABLE_FOR - time::Duration::DAY;
         let graveyard = Graveyard::laid_at(&[
             kept - time::Duration::seconds(1),
             kept,
-            NOW - time::Duration::days(1),
+            NOW - RETRIABLE_FOR - time::Duration::seconds(1),
         ]);
 
         let cleared = forgetting(&graveyard)
@@ -123,8 +123,9 @@ mod tests {
         assert_eq!(cleared, 1);
         assert_eq!(
             graveyard.left(),
-            vec![kept, NOW - time::Duration::days(1)],
-            "a late change still tried again must find what it is about gone"
+            vec![kept, NOW - RETRIABLE_FOR - time::Duration::seconds(1)],
+            "a change about it may have happened a little after it was laid, and is retried as long \
+             after that"
         );
     }
 

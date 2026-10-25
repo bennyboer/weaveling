@@ -25,7 +25,10 @@ impl Handler for ForgetDiscardedIdeaListener {
 
         Ok(self
             .catalog
-            .forget_subject(&Subject::Idea(IdeaLink::from(discarded.aggregate.id)))
+            .forget_subject(
+                &Subject::Idea(IdeaLink::from(discarded.aggregate.id)),
+                message.occurred_at,
+            )
             .await?)
     }
 }

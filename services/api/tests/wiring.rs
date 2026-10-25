@@ -776,19 +776,19 @@ async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_sign
 
 #[tokio::test]
 async fn the_server_does_the_invitations_chores_only_where_there_are_accounts() {
-    for (accounts, chores) in [
-        (Accounts::On, vec!["retire-due-invitations"]),
-        (Accounts::Off, vec![]),
-    ] {
+    for (accounts, retiring) in [(Accounts::On, true), (Accounts::Off, false)] {
         let adapters = Adapters::in_memory(accounts, Arc::new(SystemClock)).await;
 
-        assert_eq!(
-            adapters
-                .chores()
-                .iter()
-                .map(|chore| chore.named())
-                .collect::<Vec<_>>(),
-            chores
+        let named: Vec<&str> = adapters
+            .chores()
+            .iter()
+            .map(|chore| chore.named())
+            .collect();
+
+        assert_eq!(named.contains(&"retire-due-invitations"), retiring);
+        assert!(
+            named.contains(&"forget-old-appearance-tombstones"),
+            "tombstones are laid with or without accounts"
         );
     }
 }

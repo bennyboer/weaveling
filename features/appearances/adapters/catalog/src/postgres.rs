@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
+use time::OffsetDateTime;
 
 const IDEA: &str = "idea";
 
@@ -26,16 +27,16 @@ const MARK: &str = "
 ";
 
 const GONE_SUBJECT: &str = "
-    INSERT INTO gone_subjects (subject_type, subject_id)
-    VALUES ($1, $2)
+    INSERT INTO gone_subjects (subject_type, subject_id, gone_at)
+    VALUES ($1, $2, $3)
     ON CONFLICT DO NOTHING
 ";
 
 const FORGET_SUBJECT: &str = "DELETE FROM appearances WHERE subject_type = $1 AND subject_id = $2";
 
 const GONE_PLACE: &str = "
-    INSERT INTO gone_places (place_type, place_id)
-    VALUES ($1, $2)
+    INSERT INTO gone_places (place_type, place_id, gone_at)
+    VALUES ($1, $2, $3)
     ON CONFLICT DO NOTHING
 ";
 
@@ -49,6 +50,20 @@ const REMEMBER_PROJECT: &str = "
     VALUES ($1, $2, $3)
     ON CONFLICT (subject_type, subject_id) DO UPDATE SET project = excluded.project
 ";
+
+const FORGET_PROJECTS_OF_LONG_GONE: &str = "
+    DELETE FROM subject_projects
+    WHERE EXISTS (
+        SELECT 1 FROM gone_subjects
+        WHERE gone_subjects.subject_type = subject_projects.subject_type
+            AND gone_subjects.subject_id = subject_projects.subject_id
+            AND gone_subjects.gone_at < $1
+    )
+";
+
+const FORGET_LONG_GONE_SUBJECTS: &str = "DELETE FROM gone_subjects WHERE gone_at < $1";
+
+const FORGET_LONG_GONE_PLACES: &str = "DELETE FROM gone_places WHERE gone_at < $1";
 
 const PROJECT_OF: &str =
     "SELECT project FROM subject_projects WHERE subject_type = $1 AND subject_id = $2";
@@ -161,29 +176,43 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
         self.mark(subject, place, version, false).await
     }
 
-    async fn forget_subject(&self, subject: &Subject) -> Result<(), CatalogError> {
+    async fn forget_subject(
+        &self,
+        subject: &Subject,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         let (subject_type, subject_id) = subject_type_and_id(subject);
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
-        for gone in [GONE_SUBJECT, FORGET_SUBJECT] {
-            sqlx::query(gone)
-                .bind(subject_type)
-                .bind(subject_id)
-                .execute(&mut *transaction)
-                .await
-                .map_err(unreachable)?;
-        }
+        sqlx::query(GONE_SUBJECT)
+            .bind(subject_type)
+            .bind(subject_id)
+            .bind(at)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET_SUBJECT)
+            .bind(subject_type)
+            .bind(subject_id)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
 
         transaction.commit().await.map_err(unreachable)
     }
 
-    async fn forget_place(&self, place: &Place) -> Result<Vec<Subject>, CatalogError> {
+    async fn forget_place(
+        &self,
+        place: &Place,
+        at: OffsetDateTime,
+    ) -> Result<Vec<Subject>, CatalogError> {
         let (place_type, place_id) = place_type_and_id(place);
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(GONE_PLACE)
             .bind(place_type)
             .bind(place_id)
+            .bind(at)
             .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
@@ -202,6 +231,31 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
         appeared.sort();
 
         Ok(appeared)
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        let mut forgotten = 0;
+
+        sqlx::query(FORGET_PROJECTS_OF_LONG_GONE)
+            .bind(before)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        for long_gone in [FORGET_LONG_GONE_SUBJECTS, FORGET_LONG_GONE_PLACES] {
+            forgotten += sqlx::query(long_gone)
+                .bind(before)
+                .execute(&mut *transaction)
+                .await
+                .map_err(unreachable)?
+                .rows_affected();
+        }
+        transaction.commit().await.map_err(unreachable)?;
+
+        Ok(forgotten)
     }
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {

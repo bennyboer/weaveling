@@ -33,7 +33,9 @@ impl ProjectSceneAppearancesListener {
             }
             DELETED => {
                 let deleted: SceneDeletedDTO = message.payload_as()?;
-                self.catalog.forget_place(&a_scene(deleted.scene)).await?;
+                self.catalog
+                    .forget_place(&a_scene(deleted.scene), message.occurred_at)
+                    .await?;
             }
             _ => {}
         }

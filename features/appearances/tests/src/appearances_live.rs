@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use ::time::OffsetDateTime;
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{
     AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
@@ -13,6 +14,8 @@ use eventsourcing::Agent;
 use live::Broadcaster;
 use serde_json::{Value, json};
 use tokio::time;
+
+const LAID: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
 fn an_idea(id: &str) -> Subject {
     Subject::Idea(IdeaLink::from(id))
@@ -155,7 +158,7 @@ async fn a_place_forgotten_is_told_to_every_idea_that_appeared_there_and_no_othe
 
     followed
         .catalog
-        .forget_place(&a_section("section_gone"))
+        .forget_place(&a_section("section_gone"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -185,12 +188,35 @@ async fn a_discarded_idea_is_told_it_appears_nowhere() {
 
     followed
         .catalog
-        .forget_subject(&an_idea("idea_1"))
+        .forget_subject(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
     assert_eq!(
         told(&mut followed.sockets[0]).await["event"],
         json!({ "places": [] })
+    );
+}
+
+#[tokio::test]
+async fn forgetting_old_tombstones_reaches_the_catalog_and_tells_nobody() {
+    let mut followed = followed(&["idea_1"]).await;
+    followed
+        .catalog
+        .forget_subject(&an_idea("idea_1"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    told(&mut followed.sockets[0]).await;
+
+    let forgotten = followed
+        .catalog
+        .forget_tombstones_laid_before(LAID + Duration::from_secs(1))
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    assert_eq!(forgotten, 1);
+    assert!(
+        nothing_told(&mut followed.sockets[0]).await,
+        "where an idea appears does not change when its tombstone goes"
     );
 }

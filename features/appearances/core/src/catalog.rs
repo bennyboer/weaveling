@@ -2,6 +2,7 @@ use std::error::Error;
 
 use async_trait::async_trait;
 use thiserror::Error;
+use time::OffsetDateTime;
 
 use crate::appearance::{Place, Subject};
 use crate::link::ProjectLink;
@@ -28,9 +29,22 @@ pub trait AppearanceCatalog: Send + Sync {
         version: u64,
     ) -> Result<(), CatalogError>;
 
-    async fn forget_subject(&self, subject: &Subject) -> Result<(), CatalogError>;
+    async fn forget_subject(
+        &self,
+        subject: &Subject,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
 
-    async fn forget_place(&self, place: &Place) -> Result<Vec<Subject>, CatalogError>;
+    async fn forget_place(
+        &self,
+        place: &Place,
+        at: OffsetDateTime,
+    ) -> Result<Vec<Subject>, CatalogError>;
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+    ) -> Result<u64, CatalogError>;
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError>;
 

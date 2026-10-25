@@ -15,6 +15,7 @@ use live::{Asked, Broadcaster, Teller};
 use crate::guarding::ReadableBy;
 use serde::Deserialize;
 use serving::Problem;
+use time::OffsetDateTime;
 
 mod guarding;
 
@@ -116,20 +117,35 @@ impl AppearanceCatalog for TellingAppearances {
         Ok(())
     }
 
-    async fn forget_subject(&self, subject: &Subject) -> Result<(), CatalogError> {
-        self.kept.forget_subject(subject).await?;
+    async fn forget_subject(
+        &self,
+        subject: &Subject,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.kept.forget_subject(subject, at).await?;
         self.tell(subject).await;
 
         Ok(())
     }
 
-    async fn forget_place(&self, place: &Place) -> Result<Vec<Subject>, CatalogError> {
-        let appeared = self.kept.forget_place(place).await?;
+    async fn forget_place(
+        &self,
+        place: &Place,
+        at: OffsetDateTime,
+    ) -> Result<Vec<Subject>, CatalogError> {
+        let appeared = self.kept.forget_place(place, at).await?;
         for subject in &appeared {
             self.tell(subject).await;
         }
 
         Ok(appeared)
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+    ) -> Result<u64, CatalogError> {
+        self.kept.forget_tombstones_laid_before(before).await
     }
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {

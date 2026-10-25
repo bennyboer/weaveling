@@ -1,8 +1,9 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use appearances_core::{AppearanceCatalog, CatalogError, Place, ProjectLink, Subject};
 use async_trait::async_trait;
+use time::OffsetDateTime;
 
 #[derive(Debug, Clone, Copy)]
 struct Seen {
@@ -13,8 +14,8 @@ struct Seen {
 #[derive(Debug, Default)]
 struct Appearances {
     seen: BTreeMap<(Subject, Place), Seen>,
-    gone_subjects: BTreeSet<Subject>,
-    gone_places: BTreeSet<Place>,
+    gone_subjects: BTreeMap<Subject, OffsetDateTime>,
+    gone_places: BTreeMap<Place, OffsetDateTime>,
     projects: BTreeMap<Subject, ProjectLink>,
 }
 
@@ -43,7 +44,9 @@ impl InMemoryAppearanceCatalog {
     fn mark(&self, subject: &Subject, place: &Place, now: Seen) {
         let mut appearances = self.write();
 
-        if appearances.gone_subjects.contains(subject) || appearances.gone_places.contains(place) {
+        if appearances.gone_subjects.contains_key(subject)
+            || appearances.gone_places.contains_key(place)
+        {
             return;
         }
 
@@ -96,20 +99,31 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
         Ok(())
     }
 
-    async fn forget_subject(&self, subject: &Subject) -> Result<(), CatalogError> {
+    async fn forget_subject(
+        &self,
+        subject: &Subject,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         let mut appearances = self.write();
 
-        appearances.gone_subjects.insert(subject.clone());
+        appearances
+            .gone_subjects
+            .entry(subject.clone())
+            .or_insert(at);
         appearances.seen.retain(|(held, _), _| held != subject);
 
         Ok(())
     }
 
-    async fn forget_place(&self, place: &Place) -> Result<Vec<Subject>, CatalogError> {
+    async fn forget_place(
+        &self,
+        place: &Place,
+        at: OffsetDateTime,
+    ) -> Result<Vec<Subject>, CatalogError> {
         let mut appearances = self.write();
         let mut appeared = Vec::new();
 
-        appearances.gone_places.insert(place.clone());
+        appearances.gone_places.entry(place.clone()).or_insert(at);
         appearances.seen.retain(|(subject, held), seen| {
             if held != place {
                 return true;
@@ -122,6 +136,40 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
         });
 
         Ok(appeared)
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+    ) -> Result<u64, CatalogError> {
+        let mut appearances = self.write();
+        let Appearances {
+            gone_subjects,
+            gone_places,
+            projects,
+            ..
+        } = &mut *appearances;
+        let mut forgotten = 0;
+
+        gone_subjects.retain(|subject, laid| {
+            if *laid >= before {
+                return true;
+            }
+            projects.remove(subject);
+            forgotten += 1;
+
+            false
+        });
+        gone_places.retain(|_, laid| {
+            if *laid >= before {
+                return true;
+            }
+            forgotten += 1;
+
+            false
+        });
+
+        Ok(forgotten)
     }
 
     async fn places_of(&self, subject: &Subject) -> Result<Vec<Place>, CatalogError> {

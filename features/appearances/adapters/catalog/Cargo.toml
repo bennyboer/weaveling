@@ -6,6 +6,8 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
+time = { workspace = true }
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 
 appearances-core = { version = "0.1.0", path = "../../core", package = "weaveling-appearances-core" }
 
@@ -14,5 +16,6 @@ postgres = ["dep:sqlx"]
 sqlite = ["dep:sqlx", "sqlx/sqlite"]
 
 [dev-dependencies]
+time = { workspace = true, features = ["macros"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 test-harness = { version = "0.1.0", path = "../../../../libraries/test-harness", package = "weaveling-test-harness" }
