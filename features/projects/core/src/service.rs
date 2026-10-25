@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use authorizing::{Authorizer, AuthorizerError, Readable};
+use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
@@ -35,6 +35,8 @@ pub enum ProjectServiceError {
     Catalog(#[from] CatalogError),
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
+    #[error("only an owner of the project may do this")]
+    NotAnOwner,
 }
 
 #[derive(Clone)]
@@ -100,13 +102,37 @@ impl ProjectService {
         let standing = self.events.latest(&key).await?;
 
         if standing.state.is_deleted() {
-            return Err(ProjectServiceError::Events(ServiceError::NotFound {
-                aggregate: key,
-                kind: KIND,
-            }));
+            return Err(not_found(key));
         }
 
         Ok(standing)
+    }
+
+    pub async fn read(
+        &self,
+        id: &str,
+        agent: &Agent,
+    ) -> Result<Standing<Project>, ProjectServiceError> {
+        let project: ProjectId = id.parse()?;
+        self.admitted(agent, Act::Read, &project).await?;
+
+        self.get(id).await
+    }
+
+    async fn admitted(
+        &self,
+        agent: &Agent,
+        act: Act,
+        project: &ProjectId,
+    ) -> Result<(), ProjectServiceError> {
+        let named = project.to_string();
+        if self.authorizer.may(agent, act, &named).await? {
+            Ok(())
+        } else if self.authorizer.may(agent, Act::Read, &named).await? {
+            Err(ProjectServiceError::NotAnOwner)
+        } else {
+            Err(not_found(AggregateId::from(project)))
+        }
     }
 
     pub async fn rename(
@@ -159,6 +185,7 @@ impl ProjectService {
         agent: &Agent,
     ) -> Result<Version, ProjectServiceError> {
         let id: ProjectId = id.parse()?;
+        self.admitted(agent, Act::Manage, &id).await?;
         let key = AggregateId::from(&id);
 
         let landed = match expected {
@@ -172,6 +199,13 @@ impl ProjectService {
 
         Ok(landed.version)
     }
+}
+
+fn not_found(key: AggregateId) -> ProjectServiceError {
+    ProjectServiceError::Events(ServiceError::NotFound {
+        aggregate: key,
+        kind: KIND,
+    })
 }
 
 #[derive(Default)]

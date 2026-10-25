@@ -119,6 +119,7 @@ refused-quotation-marks-unknown = «{ $name }» no son comillas que Weaveling co
 refused-project-description-control-character = Una descripción no puede contener caracteres de control, salvo saltos de línea.
 refused-project-description-too-long = Una descripción puede tener como máximo { $max } caracteres; esta tiene { $actual }.
 refused-project-deleted = Este proyecto se eliminó mientras tanto.
+refused-not-an-owner = Solo quien es propietario de este proyecto puede hacer esto.
 refused-board-id-invalid = Eso no es un ID de tablero válido.
 refused-idea-already-pinned = Esta idea ya está en el tablero.
 refused-idea-not-pinned = Esta idea no está en el tablero.

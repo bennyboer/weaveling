@@ -4284,7 +4284,9 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-authorizing",
  "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
  "weaveling-live-contract",
  "weaveling-messaging",
 ]

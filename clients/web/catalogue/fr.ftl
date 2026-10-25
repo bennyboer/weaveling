@@ -119,6 +119,7 @@ refused-quotation-marks-unknown = « { $name } » ne sont pas des guillemets q
 refused-project-description-control-character = Une description ne peut pas contenir de caractères de contrôle, sauf des sauts de ligne.
 refused-project-description-too-long = Une description peut compter au plus { $max } caractères ; celle-ci en a { $actual }.
 refused-project-deleted = Ce projet a été supprimé entre-temps.
+refused-not-an-owner = Seul un propriétaire de ce projet peut faire cela.
 refused-board-id-invalid = Ce n’est pas un identifiant de tableau valide.
 refused-idea-already-pinned = Cette idée est déjà sur le tableau.
 refused-idea-not-pinned = Cette idée n’est pas sur le tableau.

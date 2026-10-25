@@ -5,12 +5,11 @@ use async_trait::async_trait;
 use authorizing::{Act, Authorizer};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::routing;
 use axum::{Extension, Router};
 use eventsourcing::Agent;
-use live::{Asked, Broadcaster, Sieve};
+use live::{Asked, Broadcaster, ReadersOfTheProject, Sieve};
 use live_contract::FrameDTO;
 
 pub const FOLLOWED: &str = "projects";
@@ -47,11 +46,14 @@ async fn follow(
         );
     };
 
-    match following.authorizer.may(&agent, Act::Read, project).await {
-        Ok(true) => live::streaming(upgrade, following.broadcaster.hear(project)),
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    }
+    live::streaming_if_admitted(
+        upgrade,
+        &following.broadcaster,
+        project,
+        &agent,
+        &ReadersOfTheProject(following.authorizer),
+    )
+    .await
 }
 
 struct ReadableBy {

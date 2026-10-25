@@ -12,4 +12,6 @@ What lets an open browser hear that something changed, without asking again and 
 
 **A socket may be sifted.** `streaming_sifted` reads each frame and passes it through a `Sieve` first, ending the socket on one it cannot read, which lets it through or holds it back, so followers of one topic may each hear only their own part of it; a sieve that cannot tell ends the socket, as falling behind does, rather than skipping a frame the follower may have needed.
 
+**A socket may be guarded.** `streaming_if_admitted` asks a `Gate` once on connecting whether the follower may hear the topic, answering 404 when not and 500 when it cannot tell, and `followed_if` is a route doing so; `ReadersOfTheProject` is the gate for a topic that is a project, asking the `Authorizer` for `Read`.
+
 A feature decides what its topics are and who may follow them; this only carries the frames.

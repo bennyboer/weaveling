@@ -87,8 +87,9 @@ pub mod refused {
     pub const DESCRIPTION_CONTROL_CHARACTER: &str = "project-description-control-character";
     pub const DESCRIPTION_TOO_LONG: &str = "project-description-too-long";
     pub const DELETED: &str = "project-deleted";
+    pub const NOT_AN_OWNER: &str = "not-an-owner";
 
-    pub const EVERY: [&str; 9] = [
+    pub const EVERY: [&str; 10] = [
         ID_INVALID,
         NAME_BLANK,
         NAME_CONTROL_CHARACTER,
@@ -98,5 +99,6 @@ pub mod refused {
         DESCRIPTION_CONTROL_CHARACTER,
         DESCRIPTION_TOO_LONG,
         DELETED,
+        NOT_AN_OWNER,
     ];
 }

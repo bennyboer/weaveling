@@ -77,9 +77,10 @@ async fn create(
 
 async fn find(
     State(projects): State<ProjectService>,
+    Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
 ) -> Result<Response, Problem> {
-    let found = projects.get(&id).await.map_err(problem_of)?;
+    let found = projects.read(&id, &acting).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::OK, &id, &found))
 }
@@ -204,6 +205,9 @@ fn problem_of(refusal: ProjectServiceError) -> Problem {
             ProjectError::Deleted => Problem::refused(refused::DELETED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
+        ProjectServiceError::NotAnOwner => {
+            Problem::forbidden(refused::NOT_AN_OWNER, ProjectServiceError::NotAnOwner)
+        }
         unserveable => Problem::unexpected(unserveable),
     }
 }

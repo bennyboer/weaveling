@@ -119,6 +119,7 @@ refused-quotation-marks-unknown = “{ $name }” não são aspas que o Weavelin
 refused-project-description-control-character = Uma descrição não pode conter caracteres de controle além de quebras de linha.
 refused-project-description-too-long = Uma descrição pode ter no máximo { $max } caracteres; esta tem { $actual }.
 refused-project-deleted = Este projeto foi excluído enquanto isso.
+refused-not-an-owner = Só quem é dono deste projeto pode fazer isso.
 refused-board-id-invalid = Isso não é um ID de quadro válido.
 refused-idea-already-pinned = Esta ideia já está no quadro.
 refused-idea-not-pinned = Esta ideia não está no quadro.

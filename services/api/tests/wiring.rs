@@ -939,3 +939,65 @@ async fn on_a_server_whoever_starts_a_project_is_told_by_the_members_that_it_is_
 
     signed_in.end().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
+    let signed_in = an_operator_signed_in_on_a_server("guarding").await;
+    let server = &signed_in.server;
+    let started: Value = server
+        .post("/api/projects")
+        .json(&json!({ "name": "Ada's own" }))
+        .await
+        .json();
+    let at = format!("/api/projects/{}", started["id"].as_str().expect("an id"));
+
+    let mut answered = StatusCode::NOT_FOUND;
+    for _ in 0..1_000 {
+        answered = server.get(&at).await.status_code();
+        if answered == StatusCode::OK {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        answered,
+        StatusCode::OK,
+        "its owner reads it once the members have heard of her"
+    );
+
+    server
+        .post("/api/accounts")
+        .json(&json!({ "email": "grace@example.com", "name": "Grace", "password": "another long password" }))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+    server
+        .post("/api/accounts/verification")
+        .json(&json!({ "email": "grace@example.com", "code": mail_drop::code_dropped_for(&signed_in.drop, "grace@example.com") }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .post("/api/sessions")
+        .json(&json!({ "email": "grace@example.com", "password": "another long password" }))
+        .await
+        .assert_status_ok();
+
+    server.get(&at).await.assert_status(StatusCode::NOT_FOUND);
+    server
+        .patch(&at)
+        .json(&json!({ "name": "Grace's now" }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .delete(&at)
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    server
+        .get_websocket(&format!(
+            "/api/projects/live?project={}",
+            started["id"].as_str().expect("an id")
+        ))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+
+    signed_in.end().await;
+}

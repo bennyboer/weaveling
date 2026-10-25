@@ -10,7 +10,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["sync", "macros"] }
 
+authorizing = { version = "0.1.0", path = "../authorizing", package = "weaveling-authorizing" }
 eventpublishing = { version = "0.1.0", path = "../eventpublishing", package = "weaveling-eventpublishing" }
+eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 live-contract = { version = "0.1.0", path = "../live-contract", package = "weaveling-live-contract" }
 
