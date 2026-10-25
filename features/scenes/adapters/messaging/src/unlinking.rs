@@ -1,13 +1,13 @@
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
-use scenes_core::SceneService;
+use scenes_core::ScenesCore;
 
 pub struct UnlinkOnDiscardListener {
-    scenes: SceneService,
+    scenes: ScenesCore,
 }
 
 impl UnlinkOnDiscardListener {
-    pub fn new(scenes: SceneService) -> Self {
+    pub fn new(scenes: ScenesCore) -> Self {
         Self { scenes }
     }
 }

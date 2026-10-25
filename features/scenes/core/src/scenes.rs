@@ -3,10 +3,12 @@ use std::sync::Arc;
 use authorizing::{Act, Authorizer};
 use clock::Clock;
 use eventsourcing::Agent;
+use time::OffsetDateTime;
 
 use crate::{
-    ProjectLink, QuotationRestylingProgress, QuotationRestylingTasks, Scene, SceneCatalog, SceneId,
-    SceneService, SceneStore, SceneSummary, ScenesError, StoreError,
+    ProjectLink, QuotationRestyling, QuotationRestylingProgress, QuotationRestylingTasks, Scene,
+    SceneCatalog, SceneId, SceneRestyler, SceneService, SceneStore, SceneSummary, SceneTitle,
+    ScenesError, StoreError,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -162,6 +164,132 @@ impl ScenesCore {
         Ok(batch)
     }
 
+    pub async fn unlink_everywhere(&self, idea: &str) -> Result<(), ScenesError> {
+        self.service.unlink_everywhere(idea).await
+    }
+
+    pub async fn restyle(
+        &self,
+        restyling: &QuotationRestyling,
+        at_most: usize,
+        restyler: &dyn SceneRestyler,
+    ) -> Result<Option<SceneId>, ScenesError> {
+        let project = ProjectLink::from(restyling.project.as_str());
+        if !self.claimed(&project, restyling, at_most).await? {
+            return Ok(None);
+        }
+        let batch = self
+            .service
+            .in_project(&restyling.project, restyling.after.as_deref(), at_most)
+            .await?;
+
+        for scene in &batch {
+            match restyler.restyle(*scene, restyling.style).await {
+                Ok(_) | Err(ScenesError::Store(StoreError::NotFound(_))) => {}
+                Err(refused) => return Err(refused),
+            }
+        }
+
+        let finished = batch.len() < at_most;
+        self.tasks
+            .progressed(&project, restyling.change, in_count(batch.len()), finished)
+            .await?;
+
+        Ok(if finished {
+            None
+        } else {
+            batch.last().copied()
+        })
+    }
+
+    pub async fn catalogue_created(&self, scene: &str, project: &str) -> Result<(), ScenesError> {
+        Ok(self
+            .catalog
+            .remember(scene.parse()?, &ProjectLink::from(project))
+            .await?)
+    }
+
+    pub async fn catalogue_retitled(
+        &self,
+        scene: &str,
+        project: &str,
+        title: &str,
+        version: u64,
+    ) -> Result<(), ScenesError> {
+        Ok(self
+            .catalog
+            .retitle(
+                scene.parse()?,
+                &ProjectLink::from(project),
+                &SceneTitle::new(title)?,
+                version,
+            )
+            .await?)
+    }
+
+    pub async fn catalogue_opening(
+        &self,
+        scene: &str,
+        project: &str,
+        opening: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), ScenesError> {
+        Ok(self
+            .catalog
+            .note_opening(scene.parse()?, &ProjectLink::from(project), opening, at)
+            .await?)
+    }
+
+    pub async fn catalogue_deleted(
+        &self,
+        scene: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), ScenesError> {
+        Ok(self.catalog.forget(scene.parse()?, at).await?)
+    }
+
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, ScenesError> {
+        Ok(self
+            .catalog
+            .forget_tombstones_laid_before(before, at_most)
+            .await?)
+    }
+
+    async fn claimed(
+        &self,
+        project: &ProjectLink,
+        restyling: &QuotationRestyling,
+        at_most: usize,
+    ) -> Result<bool, ScenesError> {
+        if restyling.after.is_some() {
+            return Ok(self.tasks.claim(project, restyling.change).await?);
+        }
+        let total = self.scenes_in(&restyling.project, at_most).await?;
+
+        Ok(self.tasks.begin(project, restyling.change, total).await?)
+    }
+
+    async fn scenes_in(&self, project: &str, at_most: usize) -> Result<u64, ScenesError> {
+        let mut total = 0;
+        let mut after: Option<String> = None;
+
+        loop {
+            let page = self
+                .service
+                .in_project(project, after.as_deref(), at_most)
+                .await?;
+            total += in_count(page.len());
+            match page.last() {
+                Some(last) if page.len() == at_most => after = Some(last.to_string()),
+                _ => return Ok(total),
+            }
+        }
+    }
+
     async fn authorized_to_read(
         &self,
         project: &str,
@@ -200,6 +328,10 @@ impl ScenesCore {
             Err(otherwise())
         }
     }
+}
+
+fn in_count(scenes: usize) -> u64 {
+    u64::try_from(scenes).expect("a number of scenes fits 64 bits")
 }
 
 fn not_there(scene: &Scene) -> ScenesError {

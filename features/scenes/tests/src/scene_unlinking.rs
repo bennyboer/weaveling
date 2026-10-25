@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use clock::FixedClock;
+use eventsourcing::Agent;
 use ideas_contract::DISCARDED;
 use messaging::{Listener, Message, RoutingKey, Subscription};
-use scenes_core::{IdeaLink, SceneId, SceneService};
+use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
+use scenes_core::{IdeaLink, SceneId, ScenesCore};
 use scenes_messaging::UnlinkOnDiscardListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
@@ -16,13 +19,16 @@ fn at(seconds: i64) -> OffsetDateTime {
 }
 
 struct Wired {
-    scenes: SceneService,
+    scenes: ScenesCore,
     unlink: UnlinkOnDiscardListener,
 }
 
 fn a_workbench() -> Wired {
-    let scenes = SceneService::new(
+    let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(at(1_000))),
     );
 
@@ -36,14 +42,14 @@ impl Wired {
     async fn a_scene_linked_to(&self, ideas: &[&str]) -> SceneId {
         let id = self
             .scenes
-            .create(A_PROJECT)
+            .create(A_PROJECT, &Agent::Local)
             .await
             .expect("creating a scene should succeed")
             .id();
 
         for idea in ideas {
             self.scenes
-                .link(&id.to_string(), idea)
+                .link(&id.to_string(), idea, &Agent::Local)
                 .await
                 .expect("linking should succeed");
         }

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
+use eventsourcing::Agent;
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::QUOTATION_CHANGED;
 use quotation::QuotationMarks;
@@ -11,7 +12,7 @@ use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{FRAGMENT, MORE_QUOTATION_MARKS_TO_RESTYLE, MoreQuotationMarksToRestyleDTO};
 use scenes_core::{
     ProjectLink, QuotationRestylingProgress, QuotationRestylingTasks, SceneId, SceneRestyler,
-    SceneService, SceneStore, ScenesCore, ScenesError, StoreError,
+    ScenesCore, ScenesError, StoreError,
 };
 use scenes_messaging::RestyleOnQuotationChangedListener;
 use scenes_store::InMemorySceneStore;
@@ -46,44 +47,53 @@ impl SceneRestyler for Vanishing {
     }
 }
 
+struct Broken;
+
+#[async_trait]
+impl SceneRestyler for Broken {
+    async fn restyle(&self, _scene: SceneId, _style: QuotationMarks) -> Result<bool, ScenesError> {
+        Err(ScenesError::Store(StoreError::Backend(
+            "the store is down".into(),
+        )))
+    }
+}
+
 struct Wired {
     restyle: RestyleOnQuotationChangedListener,
-    scenes: SceneService,
+    scenes: ScenesCore,
     live: LiveScenes,
     tasks: Arc<InMemoryQuotationRestylingTasks>,
     overheard: Arc<FakePublisher>,
 }
 
 fn a_workbench(at_most: usize) -> Wired {
-    let store: Arc<dyn SceneStore> = Arc::new(InMemorySceneStore::new());
-    let clock = Arc::new(FixedClock::new(at(1_000)));
-    let scenes = SceneService::new(store.clone(), clock.clone());
-    let live = LiveScenes::new(ScenesCore::new(
-        store,
+    let tasks = Arc::new(InMemoryQuotationRestylingTasks::new());
+    let scenes = ScenesCore::new(
+        Arc::new(InMemorySceneStore::new()),
         Arc::new(InMemorySceneCatalog::new()),
-        Arc::new(InMemoryQuotationRestylingTasks::new()),
+        tasks.clone(),
         Arc::new(AllowingEverything),
-        clock,
-    ));
+        Arc::new(FixedClock::new(at(1_000))),
+    );
+    let live = LiveScenes::new(scenes.clone());
 
-    restyling_with(scenes, live.clone(), Arc::new(live), at_most)
+    restyling_with(scenes, tasks, live.clone(), Arc::new(live), at_most)
 }
 
 fn restyling_with(
-    scenes: SceneService,
+    scenes: ScenesCore,
+    tasks: Arc<InMemoryQuotationRestylingTasks>,
     live: LiveScenes,
     restyler: Arc<dyn SceneRestyler>,
     at_most: usize,
 ) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_000)));
     let overheard = Arc::new(FakePublisher::default());
-    let tasks = Arc::new(InMemoryQuotationRestylingTasks::new());
 
     Wired {
         restyle: RestyleOnQuotationChangedListener::new(
             scenes.clone(),
             restyler,
-            tasks.clone(),
             overheard.clone(),
             clock,
         )
@@ -129,7 +139,7 @@ impl Wired {
         for _ in 0..scenes {
             let scene = self
                 .scenes
-                .create(project)
+                .create(project, &Agent::Local)
                 .await
                 .expect("creating a scene should succeed")
                 .id();
@@ -415,6 +425,7 @@ async fn a_scene_deleted_meanwhile_is_passed_over() {
     let book = plain.holding(A_PROJECT, 2).await;
     let wired = restyling_with(
         plain.scenes.clone(),
+        plain.tasks.clone(),
         plain.live.clone(),
         Arc::new(Vanishing {
             gone: book[0],
@@ -430,6 +441,28 @@ async fn a_scene_deleted_meanwhile_is_passed_over() {
         .expect("a scene deleted while the book is restyled is no failure");
 
     assert_eq!(wired.saying(&book[1..]).await, vec!["“Ja.”"]);
+}
+
+#[tokio::test]
+async fn a_scene_that_cannot_be_restyled_fails_the_batch_so_it_is_tried_again() {
+    let plain = a_workbench(4);
+    plain.holding(A_PROJECT, 2).await;
+    let wired = restyling_with(
+        plain.scenes.clone(),
+        plain.tasks.clone(),
+        plain.live.clone(),
+        Arc::new(Broken),
+        4,
+    );
+
+    assert!(
+        wired
+            .restyle
+            .handle(&restyled(A_PROJECT, "curly", 3))
+            .await
+            .is_err(),
+        "only a scene deleted meanwhile may be passed over; any other failure leaves the book half restyled"
+    );
 }
 
 #[tokio::test]

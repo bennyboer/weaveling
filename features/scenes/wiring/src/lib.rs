@@ -8,7 +8,7 @@ use chores::ForgetOldTombstones;
 use live::Broadcaster;
 use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
-use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneService, SceneStore, ScenesCore};
+use scenes_core::{QuotationRestylingTasks, SceneCatalog, SceneStore, ScenesCore};
 use scenes_messaging::{
     CatalogueScenesListener, DeleteOnProjectDeletedListener, RestyleOnQuotationChangedListener,
     UnlinkOnDiscardListener,
@@ -40,25 +40,23 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ));
     let core = ScenesCore::new(
         ports.store.clone(),
-        catalog.clone(),
-        tasks.clone(),
+        catalog,
+        tasks,
         context.authorizer.clone(),
         context.clock.clone(),
     );
-    let scenes = SceneService::new(ports.store.clone(), context.clock.clone());
 
-    let unlink = UnlinkOnDiscardListener::new(scenes.clone());
+    let unlink = UnlinkOnDiscardListener::new(core.clone());
     let sweep = DeleteOnProjectDeletedListener::new(
         core.clone(),
         context.publisher.clone(),
         context.clock.clone(),
     );
-    let catalogue = CatalogueScenesListener::new(catalog);
+    let catalogue = CatalogueScenesListener::new(core.clone());
     let live = LiveScenes::new(core.clone());
     let restyle = RestyleOnQuotationChangedListener::new(
-        scenes,
+        core.clone(),
         Arc::new(live.clone()),
-        tasks,
         context.publisher.clone(),
         context.clock.clone(),
     );
@@ -66,7 +64,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     Wired::serving(
         scenes_rest::router(core.clone())
             .merge(scenes_rest::quotation_restylings(core.clone(), restylings))
-            .merge(scenes_rest::live_scenes(core, scenes_told))
+            .merge(scenes_rest::live_scenes(core.clone(), scenes_told))
             .merge(scenes_sync::router(live.clone())),
     )
     .listening(vec![
@@ -78,7 +76,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
     .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
         "forget-old-scene-tombstones",
-        Arc::new(SceneTombstones::of(ports.catalog.clone())),
+        Arc::new(SceneTombstones::of(core)),
         context.clock.clone(),
     ))])
 }
@@ -238,15 +236,24 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        let catalog: Arc<dyn SceneCatalog> = Arc::new(InMemorySceneCatalog::new());
+        let context = a_context();
+        let ports = SceneFeature::in_memory(&context);
         for made in [1, 2] {
-            catalog
+            ports
+                .catalog
                 .forget(SceneId::generate(NOW + Duration::seconds(made)), NOW)
                 .await
                 .expect("forgetting should succeed");
         }
+        let scenes = ScenesCore::new(
+            ports.store.clone(),
+            ports.catalog.clone(),
+            ports.quotation_restyling_tasks.clone(),
+            context.authorizer.clone(),
+            context.clock.clone(),
+        );
 
-        let forgotten = SceneTombstones::of(catalog)
+        let forgotten = SceneTombstones::of(scenes)
             .forget_laid_before(NOW + Duration::SECOND, 1)
             .await
             .expect("forgetting tombstones should succeed");

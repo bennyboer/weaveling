@@ -1,6 +1,7 @@
 use std::error::Error;
 
 use async_trait::async_trait;
+use quotation::QuotationMarks;
 use thiserror::Error;
 
 use crate::ProjectLink;
@@ -9,6 +10,14 @@ use crate::ProjectLink;
 pub enum QuotationRestylingTaskError {
     #[error("the quotation restyling tasks could not be reached")]
     Backend(#[source] Box<dyn Error + Send + Sync>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct QuotationRestyling {
+    pub project: String,
+    pub style: QuotationMarks,
+    pub change: u64,
+    pub after: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
