@@ -1,4 +1,4 @@
-import type { Page, Route } from "@playwright/test";
+import type { Page, Route, WebSocketRoute } from "@playwright/test";
 
 export const ADA = {
   account: "account_1",
@@ -69,6 +69,7 @@ export type Server = {
   invitationRefused: { status: number; type: string } | null;
   signedInAs: typeof ADA | null;
   operatorWanted: boolean;
+  memberships: WebSocketRoute[];
 };
 
 const refusing = (
@@ -108,6 +109,7 @@ export async function aServerWithAccounts(
     invitationRefused: null,
     signedInAs: null,
     operatorWanted: false,
+    memberships: [],
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -369,6 +371,9 @@ export async function aServerWithAccounts(
       return route.fulfill({ status: 204 });
     },
   );
+  await page.routeWebSocket(at("/api/members/live"), (socket) => {
+    server.memberships.push(socket);
+  });
   await page.route(at("/api/projects"), async (route) => {
     server.projectsAsked += 1;
     return server.signedIn
@@ -383,4 +388,14 @@ export async function signIn(page: Page, email: string, password: string) {
   await page.getByLabel("Email address").fill(email);
   await page.getByLabel("Password").fill(password);
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+}
+
+export function toldOfMembers(
+  server: Server,
+  of: string,
+  event: Record<string, string>,
+) {
+  for (const socket of server.memberships) {
+    socket.send(JSON.stringify({ of, version: 2, event }));
+  }
 }

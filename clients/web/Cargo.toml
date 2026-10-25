@@ -61,6 +61,7 @@ boards-contract = { version = "0.1.0", path = "../../features/boards/contract", 
 outline-contract = { version = "0.1.0", path = "../../features/outline/contract", package = "weaveling-outline-contract" }
 ideas-contract = { version = "0.1.0", path = "../../features/ideas/contract", package = "weaveling-ideas-contract" }
 scenes-contract = { version = "0.1.0", path = "../../features/scenes/contract", package = "weaveling-scenes-contract" }
+members-contract = { version = "0.1.0", path = "../../features/members/contract", package = "weaveling-members-contract" }
 projects-contract = { version = "0.1.0", path = "../../features/projects/contract", package = "weaveling-projects-contract" }
 statistics-contract = { version = "0.1.0", path = "../../features/statistics/contract", package = "weaveling-statistics-contract" }
 

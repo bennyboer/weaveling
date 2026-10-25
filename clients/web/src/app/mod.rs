@@ -15,7 +15,7 @@ use leptos_router::path;
 use crate::accounts::invitation::InvitationPage;
 use crate::accounts::sign_in::SignInPage;
 use crate::accounts::unreachable::UnreachablePage;
-use crate::accounts::{CurrentSession, Screen};
+use crate::accounts::{CurrentSession, Screen, SignInState};
 use crate::app::board::BoardPage;
 use crate::app::idea::IdeaPage;
 use crate::app::ideas::IdeasPage;
@@ -53,15 +53,16 @@ pub fn App() -> impl IntoView {
                 Screen::Blank => ().into_any(),
                 Screen::Unreachable => view! { <UnreachablePage /> }.into_any(),
                 Screen::SignIn => view! { <SignInPage /> }.into_any(),
-                Screen::Work => work(overlays).into_any(),
+                Screen::Work => work(overlays, session).into_any(),
             }}
             {shell::status_bar()}
         </Router>
     }
 }
 
-fn work(overlays: Overlays) -> impl IntoView {
-    let workspace = Workspace::listing();
+fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
+    let with_accounts = untrack(|| matches!(session.state(), SignInState::SignedIn(_)));
+    let workspace = Workspace::listing(with_accounts);
 
     view! {
         <Routes fallback=MissingPage>

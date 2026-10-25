@@ -32,6 +32,12 @@ pub async fn create(name: &str, details: &ProjectDetails) -> Result<Project, Api
     as_project(http::parsed(response, SUBJECT).await?)
 }
 
+pub async fn one(id: &ProjectId) -> Result<Project, ApiError> {
+    let response = http::sent(Request::get(&format!("{PROJECTS}/{id}"))).await?;
+
+    as_listed(http::parsed(response, SUBJECT).await?)
+}
+
 pub async fn details(id: &ProjectId) -> Result<DescribedProject, ApiError> {
     let response = http::sent(Request::get(&format!("{PROJECTS}/{id}"))).await?;
 
@@ -82,6 +88,16 @@ fn as_project(dto: ProjectDTO) -> Result<Project, ApiError> {
         version: Version::from(dto.version),
         name: dto.name,
         updated_at,
+    })
+}
+
+fn as_listed(found: ProjectDetailsDTO) -> Result<Project, ApiError> {
+    as_project(ProjectDTO {
+        id: found.id,
+        version: found.version,
+        name: found.name,
+        created_at: found.created_at,
+        updated_at: found.updated_at,
     })
 }
 

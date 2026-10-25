@@ -1,5 +1,7 @@
 use std::fmt::{self, Display, Formatter};
+use std::time::Duration;
 
+use members_contract::MembersEventDTO;
 use projects_contract::ProjectEventDTO;
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
@@ -121,6 +123,34 @@ pub fn taken_in(mut held: Vec<Project>, told: FrameDTO) -> Option<Vec<Project>> 
     Some(held)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Membership {
+    Begun(ProjectId),
+    Ended(ProjectId),
+}
+
+const FIRST_WAIT: Duration = Duration::from_millis(100);
+const LONGEST_WAIT: Duration = Duration::from_secs(1);
+const GIVEN_UP_AFTER: Duration = Duration::from_secs(10);
+
+pub fn membership_in(frame: FrameDTO) -> Option<Membership> {
+    let project = ProjectId::from(frame.of?);
+
+    match serde_json::from_value::<MembersEventDTO>(frame.event).ok()? {
+        MembersEventDTO::Founded { .. } | MembersEventDTO::Joined { .. } => {
+            Some(Membership::Begun(project))
+        }
+        MembersEventDTO::Left { .. } | MembersEventDTO::Removed { .. } => {
+            Some(Membership::Ended(project))
+        }
+        MembersEventDTO::RoleChanged { .. } => None,
+    }
+}
+
+pub fn next_wait(waited: Duration) -> Option<Duration> {
+    (waited < GIVEN_UP_AFTER).then(|| waited.clamp(FIRST_WAIT, LONGEST_WAIT))
+}
+
 impl From<String> for ProjectId {
     fn from(given: String) -> Self {
         Self(given)
@@ -148,6 +178,89 @@ impl Display for ProjectId {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod membership_tests {
+        use serde_json::json;
+
+        use super::*;
+
+        fn told(of: Option<&str>, event: serde_json::Value) -> FrameDTO {
+            FrameDTO {
+                of: of.map(str::to_owned),
+                version: 2,
+                at: None,
+                event,
+            }
+        }
+
+        fn project_1() -> ProjectId {
+            ProjectId::from("project_1".to_owned())
+        }
+
+        #[test]
+        fn founding_or_joining_lets_one_into_the_project() {
+            for event in [
+                json!({ "name": "FOUNDED", "owner": "account_1" }),
+                json!({ "name": "JOINED", "account": "account_1", "role": "reader" }),
+            ] {
+                assert_eq!(
+                    membership_in(told(Some("project_1"), event)),
+                    Some(Membership::Begun(project_1()))
+                );
+            }
+        }
+
+        #[test]
+        fn leaving_or_being_removed_lets_one_out_of_the_project() {
+            for event in [
+                json!({ "name": "LEFT", "account": "account_1" }),
+                json!({ "name": "REMOVED", "account": "account_1" }),
+            ] {
+                assert_eq!(
+                    membership_in(told(Some("project_1"), event)),
+                    Some(Membership::Ended(project_1()))
+                );
+            }
+        }
+
+        #[test]
+        fn a_new_role_or_a_frame_about_nothing_known_changes_no_list() {
+            for frame in [
+                told(
+                    Some("project_1"),
+                    json!({ "name": "ROLE_CHANGED", "account": "account_1", "to": "author" }),
+                ),
+                told(
+                    Some("project_1"),
+                    json!({ "name": "RENAMED", "project_name": "Weft" }),
+                ),
+                told(
+                    None,
+                    json!({ "name": "JOINED", "account": "account_1", "role": "reader" }),
+                ),
+            ] {
+                assert_eq!(membership_in(frame), None);
+            }
+        }
+
+        #[test]
+        fn a_project_one_was_let_into_is_asked_for_again_ever_more_slowly_for_ten_seconds() {
+            let mut waited = Duration::ZERO;
+            let mut waits = Vec::new();
+            while let Some(wait) = next_wait(waited) {
+                waits.push(wait.as_millis());
+                waited += wait;
+            }
+
+            assert_eq!(
+                waits[..6],
+                [100, 100, 200, 400, 800, 1_000],
+                "quick at first, as the list is usually told within moments, then once a second"
+            );
+            assert_eq!(waited, Duration::from_millis(10_600));
+            assert!(waits[5..].iter().all(|wait| *wait == 1_000));
+        }
+    }
 
     mod taken_in_tests {
         use serde_json::json;

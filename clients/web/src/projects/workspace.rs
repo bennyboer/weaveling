@@ -1,9 +1,12 @@
+use std::time::Duration;
+
 use leptos::prelude::*;
+use leptos::task;
 
 use crate::http::ApiError;
 use crate::live::Following;
 use crate::projects::model;
-use crate::projects::model::{Project, ProjectDetails, ProjectId};
+use crate::projects::model::{Membership, Project, ProjectDetails, ProjectId};
 use crate::projects::service;
 use live_contract::FrameDTO;
 
@@ -21,7 +24,7 @@ pub struct Workspace {
 }
 
 impl Workspace {
-    pub fn listing() -> Self {
+    pub fn listing(with_accounts: bool) -> Self {
         let known = RwSignal::new(None::<Vec<Project>>);
         let problem = RwSignal::new(None);
 
@@ -59,6 +62,25 @@ impl Workspace {
             },
             move || _ = listing.dispatch(()),
         ));
+        if with_accounts {
+            StoredValue::new_local(Following::start(
+                "/api/members/live",
+                move |told: FrameDTO| match model::membership_in(told) {
+                    Some(Membership::Begun(project)) => {
+                        take_in_joined(known, project, Duration::ZERO)
+                    }
+                    Some(Membership::Ended(project)) => {
+                        _ = known.try_update(|held| {
+                            if let Some(held) = held {
+                                held.retain(|kept| kept.id != project);
+                            }
+                        })
+                    }
+                    None => {}
+                },
+                move || _ = listing.dispatch(()),
+            ));
+        }
 
         Self {
             known,
@@ -146,6 +168,26 @@ impl Workspace {
     pub fn delete(self, id: ProjectId) {
         self.deleting.dispatch(id);
     }
+}
+
+fn take_in_joined(known: RwSignal<Option<Vec<Project>>>, project: ProjectId, waited: Duration) {
+    task::spawn_local(async move {
+        match service::one(&project).await {
+            Ok(found) => {
+                _ = known.try_update(|held| {
+                    if let Some(held) = held {
+                        put(held, found);
+                    }
+                })
+            }
+            Err(ApiError::NotFound(_)) => {
+                if let Some(wait) = model::next_wait(waited) {
+                    _ = set_timeout(move || take_in_joined(known, project, waited + wait), wait);
+                }
+            }
+            Err(_) => {}
+        }
+    });
 }
 
 fn pending<I, O>(action: Action<I, O>) -> Signal<bool>

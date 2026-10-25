@@ -3961,6 +3961,7 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-invitations-contract",
  "weaveling-live-contract",
+ "weaveling-members-contract",
  "weaveling-messaging-contract",
  "weaveling-outline-contract",
  "weaveling-projects-contract",
