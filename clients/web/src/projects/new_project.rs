@@ -70,6 +70,7 @@ fn new_project_dialog(
     );
     let title: NodeRef<Input> = NodeRef::new();
     let creating = workspace.creating();
+    let setting_up = workspace.setting_up();
     let attempted = RwSignal::new(false);
     let refused = workspace.refused_creation();
 
@@ -89,6 +90,14 @@ fn new_project_dialog(
         move || asking.set(false),
         (
             details_form::details_fields(details, title, move || attempted.set(false), create),
+            move || {
+                setting_up.get().then(|| {
+                    html::p()
+                        .class("hint")
+                        .role("status")
+                        .child(speech::said("new-project-setting-up"))
+                })
+            },
             move || {
                 attempted
                     .get()

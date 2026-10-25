@@ -317,3 +317,76 @@ test("cancelling the new project's details creates nothing and keeps the title",
   await expect(titleField(page)).toHaveValue(title);
   await expect(rowFor(page, title)).toHaveCount(0);
 });
+
+async function notFoundAtFirst(page: Page, times: number) {
+  let missing = times;
+  await page.route(
+    (url) => /^\/api\/projects\/[^/]+$/.test(url.pathname),
+    (route) =>
+      route.request().method() === "GET" && missing-- > 0
+        ? route.fulfill({
+            status: 404,
+            contentType: "application/problem+json",
+            body: JSON.stringify({
+              type: "not-found",
+              status: 404,
+              detail: "not yet",
+            }),
+          })
+        : route.fallback(),
+  );
+}
+
+test("a new project that cannot be opened at once is waited for while it is set up", async ({
+  page,
+}) => {
+  await notFoundAtFirst(page, 5);
+  const title = aTitle();
+
+  await titleField(page).fill(title);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await expect(
+    newProject(page).getByRole("status"),
+    "nothing is set up before it is asked for",
+  ).toHaveCount(0);
+  await newProject(page)
+    .getByRole("button", { name: "Create project" })
+    .click();
+
+  await expect(newProject(page).getByRole("status")).toHaveText(
+    "Setting up your project…",
+  );
+  await expect(
+    newProject(page).getByRole("button", { name: "Create project" }),
+    "it is not made twice while it is waited for",
+  ).toBeDisabled();
+  await insideTheProject(page);
+});
+
+test("a new project that never opens says so, and is in the list all the same", async ({
+  page,
+}) => {
+  test.setTimeout(30_000);
+  await notFoundAtFirst(page, 1_000);
+  await page.routeWebSocket(/\/api\/projects\/live$/, () => {});
+  await page.goto("/");
+  const title = aTitle();
+
+  await titleField(page).fill(title);
+  await page.getByRole("button", { name: "Create", exact: true }).click();
+  await newProject(page)
+    .getByRole("button", { name: "Create project" })
+    .click();
+
+  await expect(newProject(page).getByRole("alert")).toContainText(
+    "cannot be opened yet",
+    { timeout: 15_000 },
+  );
+  await expect(newProject(page).getByRole("status")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/$/);
+  await newProject(page).getByRole("button", { name: "Cancel" }).click();
+  await expect(
+    rowFor(page, title),
+    "listed as soon as it is made, before any channel tells of it",
+  ).toBeVisible();
+});

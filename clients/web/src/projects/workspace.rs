@@ -3,21 +3,32 @@ use std::time::Duration;
 use leptos::prelude::*;
 use leptos::task;
 
-use crate::http::ApiError;
+use crate::http::{ApiError, Refusal};
 use crate::live::Following;
 use crate::projects::model;
 use crate::projects::model::{Membership, Project, ProjectDetails, ProjectId};
 use crate::projects::service;
 use live_contract::FrameDTO;
 
+const NOT_YET_OPEN: &str = "project-not-yet-open";
+
 type CreateAction = Action<(String, ProjectDetails), Result<Project, ApiError>>;
 type RenameAction = Action<(ProjectId, String), Result<Project, ApiError>>;
 type DeleteAction = Action<ProjectId, Result<(), ApiError>>;
+
+#[derive(Clone, Debug)]
+enum Opening {
+    Idle,
+    SettingUp,
+    Opened(Project),
+    Unopened(ApiError),
+}
 
 #[derive(Clone, Copy)]
 pub struct Workspace {
     known: RwSignal<Option<Vec<Project>>>,
     problem: RwSignal<Option<ApiError>>,
+    opening: RwSignal<Opening>,
     creating: CreateAction,
     renaming: RenameAction,
     deleting: DeleteAction,
@@ -27,6 +38,7 @@ impl Workspace {
     pub fn listing(with_accounts: bool) -> Self {
         let known = RwSignal::new(None::<Vec<Project>>);
         let problem = RwSignal::new(None);
+        let opening = RwSignal::new(Opening::Idle);
 
         let latest = StoredValue::new(0_u64);
         let listing = Action::new_local(move |_: &()| {
@@ -85,12 +97,16 @@ impl Workspace {
         Self {
             known,
             problem,
+            opening,
             creating: Action::new_local(move |(name, details): &(String, ProjectDetails)| {
                 let (name, details) = (name.clone(), details.clone());
+                opening.set(Opening::Idle);
                 async move {
                     let outcome = service::create(&name, &details).await;
                     if let Ok(created) = &outcome {
                         keep(known, |held| put(held, created.clone()));
+                        opening.set(Opening::SettingUp);
+                        open_once_it_answers(opening, created.clone(), Duration::ZERO);
                     }
 
                     outcome
@@ -134,19 +150,35 @@ impl Workspace {
     }
 
     pub fn creating(self) -> Signal<bool> {
-        pending(self.creating)
+        let (creating, opening) = (self.creating, self.opening);
+
+        Signal::derive(move || {
+            creating.pending().get() || matches!(opening.get(), Opening::SettingUp)
+        })
+    }
+
+    pub fn setting_up(self) -> Signal<bool> {
+        let opening = self.opening;
+
+        Signal::derive(move || matches!(opening.get(), Opening::SettingUp))
     }
 
     pub fn created(self) -> Signal<Option<Project>> {
-        let creating = self.creating;
+        let opening = self.opening;
 
-        Signal::derive(move || creating.value().get().and_then(Result::ok))
+        Signal::derive(move || match opening.get() {
+            Opening::Opened(project) => Some(project),
+            _ => None,
+        })
     }
 
     pub fn refused_creation(self) -> Signal<Option<ApiError>> {
-        let creating = self.creating;
+        let (creating, opening) = (self.creating, self.opening);
 
-        Signal::derive(move || creating.value().get().and_then(Result::err))
+        Signal::derive(move || match opening.get() {
+            Opening::Unopened(failure) => Some(failure),
+            _ => creating.value().get().and_then(Result::err),
+        })
     }
 
     pub fn create(self, name: String, details: ProjectDetails) {
@@ -168,6 +200,30 @@ impl Workspace {
     pub fn delete(self, id: ProjectId) {
         self.deleting.dispatch(id);
     }
+}
+
+fn open_once_it_answers(opening: RwSignal<Opening>, project: Project, waited: Duration) {
+    task::spawn_local(async move {
+        let next = match service::one(&project.id).await {
+            Ok(_) => Opening::Opened(project),
+            Err(ApiError::NotFound(_)) => match model::next_wait(waited) {
+                Some(wait) => {
+                    _ = set_timeout(
+                        move || open_once_it_answers(opening, project, waited + wait),
+                        wait,
+                    );
+                    return;
+                }
+                None => Opening::Unopened(ApiError::Rejected(Refusal {
+                    kind: Some(NOT_YET_OPEN.to_owned()),
+                    detail: String::new(),
+                    particulars: Vec::new(),
+                })),
+            },
+            Err(failure) => Opening::Unopened(failure),
+        };
+        _ = opening.try_set(next);
+    });
 }
 
 fn take_in_joined(known: RwSignal<Option<Vec<Project>>>, project: ProjectId, waited: Duration) {

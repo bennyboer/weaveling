@@ -24,6 +24,7 @@ new-project-working-title = Un titre provisoire…
 new-project-create = Créer
 new-project-dialog = Nouveau projet
 new-project-confirm = Créer le projet
+new-project-setting-up = Préparation de votre projet…
 
 project-more-actions = Plus d’actions
 project-rename = Renommer
@@ -112,6 +113,7 @@ refused-project-id-invalid = Ce n’est pas un identifiant de projet valide.
 refused-project-name-blank = Un projet a besoin d’un titre.
 refused-project-name-control-character = Un titre ne peut pas contenir de caractères de contrôle.
 refused-project-name-too-long = Un titre peut compter au plus { $max } caractères ; celui-ci en a { $actual }.
+refused-project-not-yet-open = Votre projet a été créé, mais ne peut pas encore être ouvert. Il apparaîtra dans votre liste dans un instant.
 refused-book-language-not-a-tag = « { $tag } » n’est pas une étiquette de langue comme « de », « en » ou « en-GB ».
 refused-quotation-marks-unknown = « { $name } » ne sont pas des guillemets que Weaveling connaît.
 refused-project-description-control-character = Une description ne peut pas contenir de caractères de contrôle, sauf des sauts de ligne.
