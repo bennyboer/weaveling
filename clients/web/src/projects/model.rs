@@ -6,7 +6,7 @@ use time::format_description::well_known::Rfc3339;
 
 use quotation::QuotationMarks;
 
-use crate::live::Told;
+use live_contract::FrameDTO;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct ProjectId(String);
@@ -37,7 +37,7 @@ pub struct DescribedProject {
 }
 
 impl DescribedProject {
-    pub fn taken_in(mut self, told: Told) -> Option<Self> {
+    pub fn taken_in(mut self, told: FrameDTO) -> Option<Self> {
         if told.version <= self.version.0 {
             return Some(self);
         }
@@ -75,7 +75,7 @@ impl ProjectDetails {
     }
 }
 
-pub fn taken_in(mut held: Vec<Project>, told: Told) -> Option<Vec<Project>> {
+pub fn taken_in(mut held: Vec<Project>, told: FrameDTO) -> Option<Vec<Project>> {
     let id = ProjectId::from(told.of?);
     let event = serde_json::from_value::<ProjectEventDTO>(told.event).ok()?;
     let version = Version::from(told.version);
@@ -166,8 +166,8 @@ mod tests {
             }
         }
 
-        fn told(of: &str, version: u64, event: serde_json::Value) -> Told {
-            Told {
+        fn told(of: &str, version: u64, event: serde_json::Value) -> FrameDTO {
+            FrameDTO {
                 of: Some(of.to_owned()),
                 version,
                 at: Some(AT.to_owned()),
@@ -272,7 +272,7 @@ mod tests {
 
         #[test]
         fn what_cannot_be_taken_in_asks_for_the_list_again() {
-            let undated = Told {
+            let undated = FrameDTO {
                 at: None,
                 ..told(
                     "project_1",
@@ -319,7 +319,7 @@ mod tests {
                 ),
                 (
                     "a frame about no project",
-                    Told {
+                    FrameDTO {
                         of: None,
                         ..told("project_1", 2, json!({ "name": "DELETED" }))
                     },
@@ -354,8 +354,8 @@ mod tests {
             }
         }
 
-        fn told(version: u64, event: serde_json::Value) -> Told {
-            Told {
+        fn told(version: u64, event: serde_json::Value) -> FrameDTO {
+            FrameDTO {
                 of: Some("project_1".to_owned()),
                 version,
                 at: None,

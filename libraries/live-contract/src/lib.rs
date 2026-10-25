@@ -1,0 +1,13 @@
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct FrameDTO {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub of: Option<String>,
+    pub version: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub at: Option<String>,
+    #[serde(default)]
+    pub event: Value,
+}

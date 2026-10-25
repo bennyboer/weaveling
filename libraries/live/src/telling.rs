@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use live_contract::FrameDTO;
 use serde::Serialize;
-use serde_json::json;
 
 use crate::Broadcaster;
 
@@ -23,7 +23,14 @@ impl Teller {
 
         self.broadcaster.tell(
             about,
-            json!({ "of": of, "version": version, "event": event }).to_string(),
+            serde_json::to_string(&FrameDTO {
+                of: Some(of.to_owned()),
+                version,
+                at: None,
+                event: serde_json::to_value(event)
+                    .expect("what is told is plain data and cannot fail to serialize"),
+            })
+            .expect("a frame is plain data and cannot fail to serialize"),
         );
     }
 }
@@ -32,7 +39,7 @@ impl Teller {
 mod tests {
     use std::time::Duration;
 
-    use serde_json::Value;
+    use serde_json::{Value, json};
     use tokio::time;
 
     use super::*;

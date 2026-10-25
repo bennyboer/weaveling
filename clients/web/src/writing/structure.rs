@@ -6,7 +6,7 @@ use leptos::task;
 
 use crate::http::ApiError;
 use crate::ideas::model::IdeaId;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::outline::model::{Attachment, Outline, OutlineChange, OutlineId, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -17,6 +17,7 @@ use crate::writing::problems::Problems;
 use crate::writing::rearranged;
 use crate::writing::rearranged::Removed;
 use crate::writing::saving::Saving;
+use live_contract::FrameDTO;
 use outline_contract::OutlineEventDTO;
 
 type Write = Pin<Box<dyn Future<Output = ()>>>;
@@ -89,7 +90,7 @@ impl Structure {
             .try_update_value(|held| *held = Some(following));
     }
 
-    fn heard_of(self, told: Told) {
+    fn heard_of(self, told: FrameDTO) {
         let Some(Some(held)) = self.outline.try_get_untracked() else {
             return;
         };

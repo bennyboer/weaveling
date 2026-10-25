@@ -9,8 +9,8 @@ use axum::routing;
 use axum::{Extension, Router};
 use eventsourcing::Agent;
 use live::{Broadcaster, Sieve};
+use live_contract::FrameDTO;
 use members_contract::MembersEventDTO;
-use serde_json::Value;
 
 pub const FOLLOWED: &str = "memberships";
 
@@ -36,12 +36,11 @@ struct NamingTheFollower(Agent);
 
 #[async_trait]
 impl Sieve for NamingTheFollower {
-    async fn lets_through(&self, frame: &str) -> Result<bool, Box<dyn Error + Send + Sync>> {
+    async fn lets_through(&self, frame: &FrameDTO) -> Result<bool, Box<dyn Error + Send + Sync>> {
         let Agent::Account(follower) = &self.0 else {
             return Ok(false);
         };
-        let frame: Value = serde_json::from_str(frame)?;
-        let named = match serde_json::from_value::<MembersEventDTO>(frame["event"].clone())? {
+        let named = match serde_json::from_value::<MembersEventDTO>(frame.event.clone())? {
             MembersEventDTO::Founded { owner } => owner,
             MembersEventDTO::Joined { account, .. }
             | MembersEventDTO::RoleChanged { account, .. }
@@ -58,7 +57,7 @@ mod tests {
     use std::time::Duration;
 
     use axum_test::{TestServer, TestWebSocket};
-    use serde_json::json;
+    use serde_json::{Value, json};
 
     use super::*;
 

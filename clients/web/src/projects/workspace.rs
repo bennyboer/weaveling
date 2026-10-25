@@ -1,10 +1,11 @@
 use leptos::prelude::*;
 
 use crate::http::ApiError;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::projects::model;
 use crate::projects::model::{Project, ProjectDetails, ProjectId};
 use crate::projects::service;
+use live_contract::FrameDTO;
 
 type CreateAction = Action<(String, ProjectDetails), Result<Project, ApiError>>;
 type RenameAction = Action<(ProjectId, String), Result<Project, ApiError>>;
@@ -47,7 +48,7 @@ impl Workspace {
         });
         StoredValue::new_local(Following::start(
             "/api/projects/live",
-            move |told: Told| {
+            move |told: FrameDTO| {
                 let Some(held) = known.try_get_untracked() else {
                     return;
                 };

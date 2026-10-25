@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos::task;
 use statistics_contract::WordCountDTO;
 
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::projects::model::ProjectId;
 use crate::scenes::followed as scenes_followed;
 use crate::scenes::prose::SyncConnection;
@@ -32,6 +32,7 @@ use crate::writing::viewport::Viewport;
 use crate::writing::walk::Walk;
 use crate::writing::word_count::WordCount;
 use crate::writing::writing_in::WritingIn;
+use live_contract::FrameDTO;
 
 #[derive(Clone, Copy)]
 pub struct WriteViewState {
@@ -139,7 +140,7 @@ impl WriteViewState {
         };
         StoredValue::new_local(Following::start(
             &format!("/api/statistics/word-counts/live?project={counting}"),
-            move |told: Told| {
+            move |told: FrameDTO| {
                 if let Ok(found) = serde_json::from_value::<WordCountDTO>(told.event) {
                     let count = SceneWordCount::from(found);
                     _ = counts_told_meanwhile.try_update_value(|told| told.push(count.clone()));

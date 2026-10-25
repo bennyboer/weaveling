@@ -1,5 +1,4 @@
-use serde::Deserialize;
-use serde_json::Value;
+use live_contract::FrameDTO;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::prelude::wasm_bindgen;
 
@@ -18,17 +17,6 @@ extern "C" {
     fn close(this: &LiveFollowing);
 }
 
-#[derive(Deserialize)]
-pub struct Told {
-    #[serde(default)]
-    pub of: Option<String>,
-    pub version: u64,
-    #[serde(default)]
-    pub at: Option<String>,
-    #[serde(default)]
-    pub event: Value,
-}
-
 pub struct Following {
     connection: LiveFollowing,
     _heard: Closure<dyn Fn(String)>,
@@ -36,9 +24,13 @@ pub struct Following {
 }
 
 impl Following {
-    pub fn start(path: &str, heard: impl Fn(Told) + 'static, opened: impl Fn() + 'static) -> Self {
+    pub fn start(
+        path: &str,
+        heard: impl Fn(FrameDTO) + 'static,
+        opened: impl Fn() + 'static,
+    ) -> Self {
         let heard = Closure::<dyn Fn(String)>::new(move |frame: String| {
-            if let Ok(told) = serde_json::from_str::<Told>(&frame) {
+            if let Ok(told) = serde_json::from_str::<FrameDTO>(&frame) {
                 heard(told);
             }
         });
@@ -67,7 +59,7 @@ mod tests {
 
     #[test]
     fn a_frame_as_the_server_sends_it_is_read_with_its_event() {
-        let told: Told = serde_json::from_str(r#"{"event":{"at":{"x":400,"y":200},"idea":"idea_1","name":"IDEA_PINNED","size":{"height":84,"width":168}},"version":2}"#).expect("a frame");
+        let told: FrameDTO = serde_json::from_str(r#"{"event":{"at":{"x":400,"y":200},"idea":"idea_1","name":"IDEA_PINNED","size":{"height":84,"width":168}},"version":2}"#).expect("a frame");
 
         assert_eq!(told.version, 2);
         assert!(serde_json::from_value::<BoardEventDTO>(told.event).is_ok());

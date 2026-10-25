@@ -4,7 +4,7 @@ use leptos_router::hooks;
 use crate::http::ApiError;
 use crate::ideas::followed;
 use crate::ideas::model::Idea;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::outline::model::{Attachment, Outline, OutlineChange, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -13,6 +13,7 @@ use crate::scenes::followed as scenes_followed;
 use crate::scenes::model;
 use crate::scenes::model::SceneSummary;
 use crate::scenes::service as scene_service;
+use live_contract::FrameDTO;
 use outline_contract::OutlineEventDTO;
 
 #[derive(Clone, Copy)]
@@ -303,7 +304,7 @@ impl OutlineViewState {
             }
             following.set_value(Some(Following::start(
                 &format!("/api/outlines/live?outline={id}"),
-                move |told: Told| {
+                move |told: FrameDTO| {
                     let Some(Some(held)) = confirmed.try_get_untracked() else {
                         return;
                     };

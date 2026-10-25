@@ -2,9 +2,9 @@ use std::fmt::{self, Display, Formatter};
 
 use ideas_contract::IdeaEventDTO;
 
-use crate::live::Told;
 use crate::projects::model::ProjectId;
 use crate::speech;
+use live_contract::FrameDTO;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct IdeaId(String);
@@ -47,7 +47,7 @@ pub fn hold(held: &mut Vec<Idea>, newer: Idea) {
     }
 }
 
-pub fn taken_in(mut held: Vec<Idea>, told: Told) -> Option<Vec<Idea>> {
+pub fn taken_in(mut held: Vec<Idea>, told: FrameDTO) -> Option<Vec<Idea>> {
     let id = IdeaId::from(told.of?);
     let event = serde_json::from_value::<IdeaEventDTO>(told.event).ok()?;
     let Some(at) = held.iter().position(|idea| idea.id == id) else {
@@ -166,8 +166,8 @@ mod tests {
             }]
         }
 
-        fn told(of: &str, version: u64, event: serde_json::Value) -> Told {
-            Told {
+        fn told(of: &str, version: u64, event: serde_json::Value) -> FrameDTO {
+            FrameDTO {
                 of: Some(of.to_owned()),
                 version,
                 at: None,
@@ -302,7 +302,7 @@ mod tests {
                 ),
                 (
                     "a frame about no idea",
-                    Told {
+                    FrameDTO {
                         of: None,
                         version: 2,
                         at: None,

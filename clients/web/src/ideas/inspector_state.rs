@@ -6,7 +6,7 @@ use crate::appearances::service as appearance_service;
 use crate::http::ApiError;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as idea_service;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::outline::model::{Section, SectionId};
 use crate::outline::service as outline_service;
 use crate::route;
@@ -14,6 +14,7 @@ use crate::scenes::followed as scenes_followed;
 use crate::scenes::model;
 use crate::scenes::model::{SceneId, SceneSummary};
 use crate::speech;
+use live_contract::FrameDTO;
 
 #[derive(Clone, Copy)]
 pub struct InspectorState {
@@ -101,7 +102,7 @@ impl InspectorState {
         let scenes_followed = StoredValue::new_local(None::<(Following, Box<dyn Fn()>)>);
         let asking_scenes =
             move || scenes_followed.with_value(|held| held.as_ref().map(|(_, ask)| ask()));
-        let heard = move |told: Told| {
+        let heard = move |told: FrameDTO| {
             let Ok(found) = serde_json::from_value::<IdeaPlacesDTO>(told.event) else {
                 return;
             };

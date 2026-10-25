@@ -49,6 +49,7 @@ time = { workspace = true, features = [
     "wasm-bindgen",
 ] }
 
+live-contract = { version = "0.1.0", path = "../../libraries/live-contract", package = "weaveling-live-contract" }
 messaging-contract = { version = "0.1.0", path = "../../libraries/messaging-contract", package = "weaveling-messaging-contract" }
 invitations-contract = { version = "0.1.0", path = "../../features/invitations/contract", package = "weaveling-invitations-contract" }
 quotation = { version = "0.1.0", path = "../../libraries/quotation", package = "weaveling-quotation" }

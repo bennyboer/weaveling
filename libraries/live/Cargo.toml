@@ -12,6 +12,7 @@ tokio = { workspace = true, features = ["sync", "macros"] }
 
 eventpublishing = { version = "0.1.0", path = "../eventpublishing", package = "weaveling-eventpublishing" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
+live-contract = { version = "0.1.0", path = "../live-contract", package = "weaveling-live-contract" }
 
 [dev-dependencies]
 axum-test = { workspace = true, features = ["ws"] }

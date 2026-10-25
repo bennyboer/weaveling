@@ -9,6 +9,7 @@ axum = { workspace = true, features = ["ws"] }
 serde_json = { workspace = true }
 
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+live-contract = { version = "0.1.0", path = "../../../../libraries/live-contract", package = "weaveling-live-contract" }
 live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }
 
 members-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-members-contract" }

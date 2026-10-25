@@ -2,9 +2,10 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::http::ApiError;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::projects::model::{DescribedProject, ProjectId};
 use crate::projects::service;
+use live_contract::FrameDTO;
 use quotation::QuotationMarks;
 
 #[derive(Clone, Copy)]
@@ -71,7 +72,7 @@ impl OpenProject {
         });
     }
 
-    fn heard(self, told: Told) {
+    fn heard(self, told: FrameDTO) {
         let Some(held) = self.described.get_untracked() else {
             return self.ask();
         };

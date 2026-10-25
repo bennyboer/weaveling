@@ -11,7 +11,7 @@ use axum::routing;
 use axum::{Extension, Router};
 use eventsourcing::Agent;
 use live::{Asked, Broadcaster, Sieve};
-use serde_json::Value;
+use live_contract::FrameDTO;
 
 pub const FOLLOWED: &str = "projects";
 
@@ -61,9 +61,8 @@ struct ReadableBy {
 
 #[async_trait]
 impl Sieve for ReadableBy {
-    async fn lets_through(&self, frame: &str) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        let frame: Value = serde_json::from_str(frame)?;
-        let Some(project) = frame["of"].as_str() else {
+    async fn lets_through(&self, frame: &FrameDTO) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        let Some(project) = frame.of.as_deref() else {
             return Ok(false);
         };
 

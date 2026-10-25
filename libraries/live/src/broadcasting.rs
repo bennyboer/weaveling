@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use eventpublishing::PublishedEvent;
+use live_contract::FrameDTO;
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::Broadcaster;
 
@@ -33,13 +34,13 @@ impl BroadcastChangesListener {
 }
 
 pub fn frame_of(published: &PublishedEvent<Value>) -> String {
-    json!({
-        "of": published.aggregate.id,
-        "version": published.aggregate.version,
-        "at": published.occurred_at,
-        "event": published.event.body,
+    serde_json::to_string(&FrameDTO {
+        of: Some(published.aggregate.id.clone()),
+        version: published.aggregate.version,
+        at: Some(published.occurred_at.clone()),
+        event: published.event.body.clone(),
     })
-    .to_string()
+    .expect("a frame is plain data and cannot fail to serialize")
 }
 
 #[async_trait]
@@ -78,6 +79,7 @@ mod tests {
     use std::time::Duration;
 
     use messaging::RoutingKey;
+    use serde_json::json;
     use time::OffsetDateTime;
 
     use super::*;

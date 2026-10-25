@@ -4,13 +4,14 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
+use live_contract::FrameDTO;
 use serde_json::json;
 
 use crate::Hearing;
 
 #[async_trait]
 pub trait Sieve: Send + Sync {
-    async fn lets_through(&self, frame: &str) -> Result<bool, Box<dyn Error + Send + Sync>>;
+    async fn lets_through(&self, frame: &FrameDTO) -> Result<bool, Box<dyn Error + Send + Sync>>;
 }
 
 pub fn streaming(upgrade: WebSocketUpgrade, hearing: Hearing) -> Response {
@@ -43,7 +44,10 @@ async fn forward(mut socket: WebSocket, mut hearing: Hearing, sieve: Option<Arc<
                     return;
                 };
                 if let Some(sieve) = &sieve {
-                    match sieve.lets_through(&frame).await {
+                    let Ok(read) = serde_json::from_str::<FrameDTO>(&frame) else {
+                        return;
+                    };
+                    match sieve.lets_through(&read).await {
                         Ok(true) => {}
                         Ok(false) => continue,
                         Err(_) => return,
@@ -91,12 +95,26 @@ mod tests {
 
     #[async_trait]
     impl Sieve for Mine {
-        async fn lets_through(&self, frame: &str) -> Result<bool, Box<dyn Error + Send + Sync>> {
-            match frame {
-                "broken" => Err("the sieve cannot tell".into()),
-                frame => Ok(frame.starts_with("mine")),
+        async fn lets_through(
+            &self,
+            frame: &FrameDTO,
+        ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+            match frame.of.as_deref() {
+                Some("broken") => Err("the sieve cannot tell".into()),
+                of => Ok(of.is_some_and(|of| of.starts_with("mine"))),
             }
         }
+    }
+
+    fn of(about: &str) -> String {
+        json!({ "of": about, "version": 1, "event": {} }).to_string()
+    }
+
+    fn of_in(heard: &str) -> String {
+        serde_json::from_str::<FrameDTO>(heard)
+            .expect("a frame")
+            .of
+            .expect("a frame says what it is of")
     }
 
     async fn following_mine(
@@ -127,13 +145,34 @@ mod tests {
             .into_websocket()
             .await;
 
-        broadcaster.tell("projects", "theirs".to_owned());
-        broadcaster.tell("projects", "mine, the first".to_owned());
-        broadcaster.tell("projects", "theirs again".to_owned());
-        broadcaster.tell("projects", "mine, the second".to_owned());
+        broadcaster.tell("projects", of("theirs"));
+        broadcaster.tell("projects", of("mine, the first"));
+        broadcaster.tell("projects", of("theirs again"));
+        broadcaster.tell("projects", of("mine, the second"));
 
-        assert_eq!(socket.receive_text().await, "mine, the first");
-        assert_eq!(socket.receive_text().await, "mine, the second");
+        assert_eq!(of_in(&socket.receive_text().await), "mine, the first");
+        assert_eq!(of_in(&socket.receive_text().await), "mine, the second");
+    }
+
+    #[tokio::test]
+    async fn a_frame_that_is_no_frame_ends_a_sifted_socket() {
+        let broadcaster = Broadcaster::new();
+        let server = served(broadcaster.clone());
+        let mut socket = server
+            .get_websocket("/mine/projects")
+            .await
+            .into_websocket()
+            .await;
+
+        broadcaster.tell("projects", "mine, but no frame".to_owned());
+        broadcaster.tell("projects", of("mine, after"));
+
+        assert!(
+            tokio::spawn(async move { socket.receive_text().await })
+                .await
+                .is_err(),
+            "what cannot be read cannot be judged"
+        );
     }
 
     #[tokio::test]
@@ -146,8 +185,8 @@ mod tests {
             .into_websocket()
             .await;
 
-        broadcaster.tell("projects", "broken".to_owned());
-        broadcaster.tell("projects", "mine, after".to_owned());
+        broadcaster.tell("projects", of("broken"));
+        broadcaster.tell("projects", of("mine, after"));
 
         assert!(
             tokio::spawn(async move { socket.receive_text().await })

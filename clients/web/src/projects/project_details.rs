@@ -10,7 +10,7 @@ use crate::dialog;
 use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::problem;
 use crate::projects::details_form;
 use crate::projects::details_form::DetailsDraft;
@@ -21,6 +21,7 @@ use crate::scenes::restyling::Restyled;
 use crate::scenes::service as scenes;
 use crate::speech;
 use crate::speech::Speech;
+use live_contract::FrameDTO;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Stage {
@@ -229,7 +230,7 @@ fn follow(project: ProjectId, saved_against: Version, restyled: RwSignal<Restyle
 
     Following::start(
         &format!("/api/scenes/quotation-restylings/live?project={project}"),
-        move |told: Told| {
+        move |told: FrameDTO| {
             if let Ok(found) = serde_json::from_value::<QuotationRestylingDTO>(told.event) {
                 _ = restyled.try_set(crate::scenes::restyling::standing(
                     Some(found.into()),

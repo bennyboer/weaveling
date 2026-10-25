@@ -3,10 +3,11 @@ use leptos::task;
 use scenes_contract::SceneSummaryDTO;
 
 use crate::http::ApiError;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneSummary;
 use crate::scenes::service;
+use live_contract::FrameDTO;
 
 pub fn follow(
     project: &ProjectId,
@@ -37,7 +38,7 @@ pub fn follow(
     };
     let following = Following::start(
         &format!("/api/scenes/live?project={project}"),
-        move |frame: Told| {
+        move |frame: FrameDTO| {
             if let Ok(found) = serde_json::from_value::<SceneSummaryDTO>(frame.event) {
                 let summary = SceneSummary::from(found);
                 _ = meanwhile.try_update_value(|held| held.push(summary.clone()));

@@ -3960,6 +3960,7 @@ dependencies = [
  "weaveling-boards-contract",
  "weaveling-ideas-contract",
  "weaveling-invitations-contract",
+ "weaveling-live-contract",
  "weaveling-messaging-contract",
  "weaveling-outline-contract",
  "weaveling-projects-contract",
@@ -4283,7 +4284,16 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-eventpublishing",
+ "weaveling-live-contract",
  "weaveling-messaging",
+]
+
+[[package]]
+name = "weaveling-live-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -4360,6 +4370,7 @@ dependencies = [
  "tokio",
  "weaveling-eventsourcing",
  "weaveling-live",
+ "weaveling-live-contract",
  "weaveling-members-contract",
 ]
 
@@ -4617,11 +4628,11 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "axum",
- "serde_json",
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-live",
+ "weaveling-live-contract",
  "weaveling-projects-contract",
  "weaveling-projects-core",
  "weaveling-serving",

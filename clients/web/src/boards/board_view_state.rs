@@ -10,9 +10,10 @@ use crate::ideas::followed;
 use crate::ideas::model;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as ideas;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::projects::model::ProjectId;
 use boards_contract::BoardEventDTO;
+use live_contract::FrameDTO;
 
 const STEP: i64 = 40;
 const COLUMNS: i64 = 3;
@@ -119,7 +120,7 @@ impl BoardViewState {
             }
             following.set_value(Some(Following::start(
                 &format!("/api/boards/live?board={id}"),
-                move |told: Told| {
+                move |told: FrameDTO| {
                     let Some(Some(held)) = confirmed.try_get_untracked() else {
                         return;
                     };

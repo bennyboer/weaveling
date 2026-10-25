@@ -4,8 +4,9 @@ use crate::http::ApiError;
 use crate::ideas::model;
 use crate::ideas::model::Idea;
 use crate::ideas::service;
-use crate::live::{Following, Told};
+use crate::live::Following;
 use crate::projects::model::ProjectId;
+use live_contract::FrameDTO;
 
 pub fn asking(
     project: &ProjectId,
@@ -41,7 +42,7 @@ pub fn following(
 ) -> Following {
     Following::start(
         &format!("/api/ideas/live?project={project}"),
-        move |told: Told| {
+        move |told: FrameDTO| {
             let Some(known) = held.try_get_untracked() else {
                 return;
             };
