@@ -1,11 +1,13 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use authorizing::AllowingEverything;
+use async_trait::async_trait;
+use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore, Version};
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
-use ideas_core::{IdeaCatalog, IdeaId, IdeaService, IdeaSummary, IdeaTitle, ProjectLink};
+use ideas_core::{IdeaCatalog, IdeaId, IdeaSummary, IdeaTitle, IdeasCore, ProjectLink};
 use ideas_messaging::{AT_MOST, DiscardOnProjectDeletedListener};
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
@@ -20,9 +22,30 @@ fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
+#[derive(Default)]
+struct TheSystemOnly {
+    down: AtomicBool,
+}
+
+#[async_trait]
+impl Authorizer for TheSystemOnly {
+    async fn may(&self, agent: &Agent, _act: Act, _project: &str) -> Result<bool, AuthorizerError> {
+        if self.down.load(Ordering::Acquire) {
+            return Err(AuthorizerError::Unreachable("the list is down".into()));
+        }
+
+        Ok(*agent == Agent::System)
+    }
+
+    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
+        Ok(Readable::Everything)
+    }
+}
+
 struct Wired {
     sweep: DiscardOnProjectDeletedListener,
-    ideas: IdeaService,
+    authorizer: Arc<TheSystemOnly>,
+    ideas: IdeasCore,
     catalog: Arc<InMemoryIdeaCatalog>,
     overheard: Arc<FakePublisher>,
 }
@@ -31,21 +54,18 @@ fn a_workbench(at_most: usize) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_000)));
     let catalog = Arc::new(InMemoryIdeaCatalog::new());
     let overheard = Arc::new(FakePublisher::default());
-    let ideas = IdeaService::new(
+    let authorizer = Arc::new(TheSystemOnly::default());
+    let ideas = IdeasCore::new(
         Arc::new(InMemoryEventStore::new()),
         catalog.clone(),
-        Arc::new(AllowingEverything),
+        authorizer.clone(),
         clock.clone(),
     );
 
     Wired {
-        sweep: DiscardOnProjectDeletedListener::new(
-            ideas.clone(),
-            catalog.clone(),
-            overheard.clone(),
-            clock,
-        )
-        .taking_at_most(at_most),
+        sweep: DiscardOnProjectDeletedListener::new(ideas.clone(), overheard.clone(), clock)
+            .taking_at_most(at_most),
+        authorizer,
         ideas,
         catalog,
         overheard,
@@ -121,7 +141,7 @@ impl Wired {
         {
             let standing = self
                 .ideas
-                .get(&summary.id.to_string())
+                .read(&summary.id.to_string(), &Agent::System)
                 .await
                 .expect("reading should succeed");
 
@@ -146,6 +166,38 @@ fn deleted() -> Message {
         }),
         at(1_000),
     )
+}
+
+#[tokio::test]
+async fn an_idea_discarded_before_the_sweep_reaches_it_is_passed_over() {
+    let wired = a_workbench(4);
+    let held = wired.holding(2).await;
+    wired
+        .ideas
+        .discard(&held[0].to_string(), None, &Agent::System)
+        .await
+        .expect("discarding should succeed");
+
+    wired
+        .sweep
+        .handle(&deleted())
+        .await
+        .expect("an idea discarded meanwhile is no reason to fail");
+    wired.forget_what_was_discarded().await;
+
+    assert_eq!(wired.still_listed().await, 0);
+}
+
+#[tokio::test]
+async fn whom_to_let_in_not_being_known_fails_the_sweep_so_it_is_tried_again() {
+    let wired = a_workbench(4);
+    wired.holding(2).await;
+    wired.authorizer.down.store(true, Ordering::Release);
+
+    assert!(
+        wired.sweep.handle(&deleted()).await.is_err(),
+        "a sweep that quietly skipped what it could not discard would leave the project's ideas behind"
+    );
 }
 
 #[tokio::test]

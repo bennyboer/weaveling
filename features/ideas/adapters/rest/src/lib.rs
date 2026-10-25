@@ -1,6 +1,7 @@
+use std::error::Error;
 use std::sync::Arc;
 
-use authorizing::Authorizer;
+use async_trait::async_trait;
 use axum::Extension;
 use axum::Json;
 use axum::Router;
@@ -11,21 +12,34 @@ use axum::response::{IntoResponse, Response};
 use axum::routing;
 use eventsourcing::{Agent, Standing};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
-use ideas_core::{Idea, IdeaError, IdeaService, IdeaServiceError, IdeaSummary, InvalidIdeaTitle};
-use live::{Broadcaster, ReadersOfTheProject};
+use ideas_core::{Idea, IdeaError, IdeaSummary, IdeasCore, IdeasError, InvalidIdeaTitle};
+use live::{Broadcaster, Gate};
 use serde::Deserialize;
 use serving::Problem;
 
-pub fn live(broadcaster: Broadcaster, authorizer: Arc<dyn Authorizer>) -> Router {
+struct FollowersOf(IdeasCore);
+
+#[async_trait]
+impl Gate for FollowersOf {
+    async fn admits(
+        &self,
+        agent: &Agent,
+        project: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(self.0.may_follow(project, agent).await?)
+    }
+}
+
+pub fn live(ideas: IdeasCore, broadcaster: Broadcaster) -> Router {
     live::followed_if(
         "/ideas/live",
         broadcaster,
         |asked| asked.get("project").cloned(),
-        Arc::new(ReadersOfTheProject(authorizer)),
+        Arc::new(FollowersOf(ideas)),
     )
 }
 
-pub fn router(ideas: IdeaService) -> Router {
+pub fn router(ideas: IdeasCore) -> Router {
     Router::new()
         .route("/ideas", routing::get(list).post(capture))
         .route(
@@ -41,7 +55,7 @@ struct InProject {
 }
 
 async fn list(
-    State(ideas): State<IdeaService>,
+    State(ideas): State<IdeasCore>,
     Extension(acting): Extension<Agent>,
     Query(asked): Query<InProject>,
 ) -> Result<Json<Vec<IdeaDTO>>, Problem> {
@@ -63,7 +77,7 @@ fn to_dto(summary: &IdeaSummary) -> IdeaDTO {
 }
 
 async fn capture(
-    State(ideas): State<IdeaService>,
+    State(ideas): State<IdeasCore>,
     Extension(acting): Extension<Agent>,
     Json(request): Json<CaptureIdeaRequest>,
 ) -> Result<Response, Problem> {
@@ -72,13 +86,13 @@ async fn capture(
         .await
         .map_err(problem_of)?
         .to_string();
-    let captured = ideas.get(&id).await.map_err(problem_of)?;
+    let captured = ideas.read(&id, &acting).await.map_err(problem_of)?;
 
     Ok(to_response(StatusCode::CREATED, &id, &captured))
 }
 
 async fn find(
-    State(ideas): State<IdeaService>,
+    State(ideas): State<IdeasCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
 ) -> Result<Response, Problem> {
@@ -88,7 +102,7 @@ async fn find(
 }
 
 async fn retitle(
-    State(ideas): State<IdeaService>,
+    State(ideas): State<IdeasCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
@@ -102,12 +116,12 @@ async fn retitle(
     Ok(to_response(
         StatusCode::OK,
         &id,
-        &ideas.get(&id).await.map_err(problem_of)?,
+        &ideas.read(&id, &acting).await.map_err(problem_of)?,
     ))
 }
 
 async fn discard(
-    State(ideas): State<IdeaService>,
+    State(ideas): State<IdeasCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
@@ -136,10 +150,10 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Idea>) -> Respo
         .into_response()
 }
 
-fn problem_of(refusal: IdeaServiceError) -> Problem {
+fn problem_of(refusal: IdeasError) -> Problem {
     match refusal {
-        IdeaServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
-        IdeaServiceError::InvalidTitle(reason) => match reason {
+        IdeasError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        IdeasError::InvalidTitle(reason) => match reason {
             InvalidIdeaTitle::Blank => Problem::unexpected(reason),
             InvalidIdeaTitle::ControlCharacter => {
                 Problem::unprocessable(refused::TITLE_CONTROL_CHARACTER, reason)
@@ -150,15 +164,15 @@ fn problem_of(refusal: IdeaServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        IdeaServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
+        IdeasError::Events(events) => Problem::of(&events, |refusal| match refusal {
             IdeaError::Discarded => Problem::refused(refused::DISCARDED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
-        IdeaServiceError::ProjectNotThere => {
-            Problem::not_found(serving::NOT_FOUND, IdeaServiceError::ProjectNotThere)
+        IdeasError::ProjectNotThere => {
+            Problem::not_found(serving::NOT_FOUND, IdeasError::ProjectNotThere)
         }
-        IdeaServiceError::NotAnAuthor => {
-            Problem::forbidden(refused::NOT_AN_AUTHOR, IdeaServiceError::NotAnAuthor)
+        IdeasError::NotAnAuthor => {
+            Problem::forbidden(refused::NOT_AN_AUTHOR, IdeasError::NotAnAuthor)
         }
         unserveable => Problem::unexpected(unserveable),
     }

@@ -221,4 +221,9 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     ] {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
+    guarded
+        .ada
+        .get_websocket(&format!("/ideas/live?project={PROJECT}"))
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
 }

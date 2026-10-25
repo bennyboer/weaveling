@@ -1,10 +1,6 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use clock::Clock;
-use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use ideas_contract::EVERY_IDEA;
-use ideas_core::{Idea, IdeaEvent, IdeaId};
+use ideas_core::{IdeasCore, IdeasError};
 use live::Broadcaster;
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use serde_json::Value;
@@ -12,20 +8,13 @@ use serde_json::Value;
 pub const LIVE: &str = "broadcast-idea-changes";
 
 pub struct BroadcastIdeaChangesListener {
-    events: EventSourcingService<Idea>,
+    ideas: IdeasCore,
     broadcaster: Broadcaster,
 }
 
 impl BroadcastIdeaChangesListener {
-    pub fn new(
-        store: Arc<dyn EventStore<IdeaEvent>>,
-        broadcaster: Broadcaster,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
-        Self {
-            events: EventSourcingService::new(store, clock),
-            broadcaster,
-        }
+    pub fn new(ideas: IdeasCore, broadcaster: Broadcaster) -> Self {
+        Self { ideas, broadcaster }
     }
 }
 
@@ -54,22 +43,19 @@ impl Listener for BroadcastIdeaChangesListener {
         let Ok(published) = eventpublishing::published_in::<Value>(message) else {
             return Ok(());
         };
-        let Ok(id) = published.aggregate.id.parse::<IdeaId>() else {
-            return Ok(());
+        let project = match self.ideas.project_of(&published.aggregate.id).await {
+            Ok(project) => project,
+            Err(IdeasError::InvalidId(_)) => return Ok(()),
+            Err(because) => {
+                return Err(NotHandled {
+                    listener: self.named(),
+                    routing: message.routing.clone(),
+                    because: Box::new(because),
+                });
+            }
         };
-        let standing = self
-            .events
-            .latest(&AggregateId::from(&id))
-            .await
-            .map_err(|because| NotHandled {
-                listener: self.named(),
-                routing: message.routing.clone(),
-                because: Box::new(because),
-            })?;
-        self.broadcaster.tell(
-            standing.state.project().as_str(),
-            live::frame_of(&published),
-        );
+        self.broadcaster
+            .tell(project.as_str(), live::frame_of(&published));
 
         Ok(())
     }

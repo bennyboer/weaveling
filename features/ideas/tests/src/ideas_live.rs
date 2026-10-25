@@ -6,7 +6,10 @@ use axum::http::StatusCode;
 use axum_test::{TestServer, TestWebSocket};
 use clock::FixedClock;
 use eventsourcing::Agent;
-use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
+use ideas_contract::{CAPTURED, CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
+use ideas_messaging::BroadcastIdeaChangesListener;
+use live::Broadcaster;
+use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
@@ -49,6 +52,27 @@ async fn told(socket: &mut TestWebSocket) -> Value {
         .expect("a change is told while it is fresh");
 
     serde_json::from_str(&frame).expect("a frame is JSON")
+}
+
+#[tokio::test]
+async fn a_change_naming_no_idea_is_passed_over_rather_than_retried() {
+    let (wired, _server) = served();
+    let broadcast = BroadcastIdeaChangesListener::new(wired.ideas.clone(), Broadcaster::new());
+    let naming_no_idea = Message::opening(
+        RoutingKey::parse(CAPTURED).expect("a declared routing key is fine"),
+        json!({
+            "event": { "version": 0, "name": "CAPTURED" },
+            "aggregate": { "id": "project_1", "kind": "idea", "version": 1 },
+            "agent": { "kind": "system", "id": null },
+            "occurred_at": "1970-01-01T00:00:00Z",
+        }),
+        OffsetDateTime::UNIX_EPOCH,
+    );
+
+    broadcast
+        .handle(&naming_no_idea)
+        .await
+        .expect("nobody follows what is not an idea, so there is nothing to retry");
 }
 
 #[tokio::test]

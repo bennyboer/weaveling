@@ -6,13 +6,13 @@ use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Version};
 use time::{Duration, OffsetDateTime};
 
-use ideas_core::{IdeaError, IdeaId, IdeaService, IdeaServiceError, IdeaTitle, KIND, ProjectLink};
+use ideas_core::{IdeaError, IdeaId, IdeaTitle, IdeasCore, IdeasError, KIND, ProjectLink};
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }
 
-fn a_workbench() -> (IdeaService, Arc<FixedClock>) {
+fn a_workbench() -> (IdeasCore, Arc<FixedClock>) {
     let clock = Arc::new(FixedClock::new(at(1_000)));
 
     (wiring::wired(clock.clone()).ideas, clock)
@@ -22,8 +22,8 @@ fn an_author() -> Agent {
     Agent::Account(AccountId::from("author-7"))
 }
 
-async fn a_captured_idea(service: &IdeaService) -> IdeaId {
-    service
+async fn a_captured_idea(ideas: &IdeasCore) -> IdeaId {
+    ideas
         .capture("project_1", "The Loom", &an_author())
         .await
         .expect("capturing should succeed")
@@ -31,10 +31,13 @@ async fn a_captured_idea(service: &IdeaService) -> IdeaId {
 
 #[tokio::test]
 async fn capturing_yields_an_id_the_idea_can_be_fetched_with() {
-    let (service, _) = a_workbench();
+    let (ideas, _) = a_workbench();
 
-    let id = a_captured_idea(&service).await;
-    let idea = service.get(&id.to_string()).await.expect("the idea exists");
+    let id = a_captured_idea(&ideas).await;
+    let idea = ideas
+        .read(&id.to_string(), &an_author())
+        .await
+        .expect("the idea exists");
 
     assert_eq!(idea.state.title().as_str(), "The Loom");
     assert_eq!(idea.state.project(), &ProjectLink::from("project_1"));
@@ -43,9 +46,9 @@ async fn capturing_yields_an_id_the_idea_can_be_fetched_with() {
 
 #[tokio::test]
 async fn the_client_never_computes_an_idea_id() {
-    let (service, _) = a_workbench();
+    let (ideas, _) = a_workbench();
 
-    let id = a_captured_idea(&service).await;
+    let id = a_captured_idea(&ideas).await;
 
     assert!(
         id.to_string().starts_with("idea_"),
@@ -55,26 +58,26 @@ async fn the_client_never_computes_an_idea_id() {
 
 #[tokio::test]
 async fn two_ideas_captured_in_the_same_instant_still_differ() {
-    let (service, _) = a_workbench();
+    let (ideas, _) = a_workbench();
 
-    let one = a_captured_idea(&service).await;
-    let other = a_captured_idea(&service).await;
+    let one = a_captured_idea(&ideas).await;
+    let other = a_captured_idea(&ideas).await;
 
     assert_ne!(one, other, "a fixed clock must not compact two ideas");
 }
 
 #[tokio::test]
 async fn an_idea_may_be_captured_with_no_title() {
-    let (service, _) = a_workbench();
+    let (ideas, _) = a_workbench();
 
-    let id = service
+    let id = ideas
         .capture("project_1", "", &an_author())
         .await
         .expect("an idea arrives before its name");
 
     assert!(
-        service
-            .get(&id.to_string())
+        ideas
+            .read(&id.to_string(), &an_author())
             .await
             .expect("it exists")
             .state
@@ -85,9 +88,9 @@ async fn an_idea_may_be_captured_with_no_title() {
 
 #[tokio::test]
 async fn a_title_the_domain_refuses_never_reaches_the_store() {
-    let (service, _) = a_workbench();
+    let (ideas, _) = a_workbench();
 
-    let refused = service
+    let refused = ideas
         .capture(
             "project_1",
             &"a".repeat(IdeaTitle::MAX_CHARS + 1),
@@ -96,23 +99,23 @@ async fn a_title_the_domain_refuses_never_reaches_the_store() {
         .await
         .expect_err("a sprawling title is not a title");
 
-    assert!(matches!(refused, IdeaServiceError::InvalidTitle(_)));
+    assert!(matches!(refused, IdeasError::InvalidTitle(_)));
 }
 
 #[tokio::test]
 async fn retitling_changes_what_the_idea_is_called() {
-    let (service, _) = a_workbench();
-    let id = a_captured_idea(&service).await;
+    let (ideas, _) = a_workbench();
+    let id = a_captured_idea(&ideas).await;
 
-    let landed = service
+    let landed = ideas
         .retitle(&id.to_string(), "The Silent Loom", None, &an_author())
         .await
         .expect("retitling should succeed");
 
     assert_eq!(landed, Version::of(2));
     assert_eq!(
-        service
-            .get(&id.to_string())
+        ideas
+            .read(&id.to_string(), &an_author())
             .await
             .expect("it exists")
             .state
@@ -124,10 +127,10 @@ async fn retitling_changes_what_the_idea_is_called() {
 
 #[tokio::test]
 async fn retitling_to_the_same_title_is_accepted_and_records_nothing() {
-    let (service, _) = a_workbench();
-    let id = a_captured_idea(&service).await;
+    let (ideas, _) = a_workbench();
+    let id = a_captured_idea(&ideas).await;
 
-    let landed = service
+    let landed = ideas
         .retitle(&id.to_string(), "The Loom", None, &an_author())
         .await
         .expect("an unchanged title is not an error");
@@ -141,65 +144,68 @@ async fn retitling_to_the_same_title_is_accepted_and_records_nothing() {
 
 #[tokio::test]
 async fn a_discarded_idea_refuses_further_changes() {
-    let (service, _) = a_workbench();
-    let id = a_captured_idea(&service).await;
-    service
+    let (ideas, _) = a_workbench();
+    let id = a_captured_idea(&ideas).await;
+    ideas
         .discard(&id.to_string(), None, &an_author())
         .await
         .expect("discarding should succeed");
 
-    let refused = service
+    let refused = ideas
         .retitle(&id.to_string(), "Too late", None, &an_author())
         .await
         .expect_err("a discarded idea accepts nothing");
 
     assert!(matches!(
         refused,
-        IdeaServiceError::Events(ServiceError::Refused(IdeaError::Discarded))
+        IdeasError::Events(ServiceError::Refused(IdeaError::Discarded))
     ));
 }
 
 #[tokio::test]
 async fn fetching_an_idea_that_was_never_captured_is_not_found() {
-    let (service, _) = a_workbench();
+    let (ideas, _) = a_workbench();
     let never = IdeaId::generate(at(2_000));
 
-    let missing = service
-        .get(&never.to_string())
+    let missing = ideas
+        .read(&never.to_string(), &an_author())
         .await
         .expect_err("nothing is there");
 
     assert!(matches!(
         missing,
-        IdeaServiceError::Events(ServiceError::NotFound { .. })
+        IdeasError::Events(ServiceError::NotFound { .. })
     ));
 }
 
 #[tokio::test]
 async fn an_id_of_another_kind_is_refused_before_the_store_is_touched() {
-    let (service, _) = a_workbench();
+    let (ideas, _) = a_workbench();
     let theirs = format!("scene_{}", IdeaId::generate(at(1_000)).as_uuid());
 
     assert!(matches!(
-        service.get(&theirs).await.expect_err("wrong kind of id"),
-        IdeaServiceError::InvalidId(_)
+        ideas
+            .read(&theirs, &an_author())
+            .await
+            .expect_err("wrong kind of id"),
+        IdeasError::InvalidId(_)
     ));
     assert!(matches!(
-        service
+        ideas
             .retitle(&theirs, "Nowhere", None, &an_author())
             .await
             .expect_err("wrong kind of id"),
-        IdeaServiceError::InvalidId(_)
+        IdeasError::InvalidId(_)
     ));
 }
 
 #[tokio::test]
 async fn an_idea_captured_later_sorts_after_one_captured_earlier() {
-    let (service, clock) = a_workbench();
+    let (ideas, clock) = a_workbench();
 
-    let earliest = a_captured_idea(&service).await;
+    let earliest = a_captured_idea(&ideas).await;
     clock.set(at(2_000));
-    let latest = a_captured_idea(&service).await;
+    let latest = a_captured_idea(&ideas).await;
 
     assert!(
         earliest < latest,
@@ -209,22 +215,18 @@ async fn an_idea_captured_later_sorts_after_one_captured_earlier() {
 
 #[tokio::test]
 async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
-    let Wired {
-        ideas: service,
-        store,
-        ..
-    } = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
-    let id = service
+    let Wired { ideas, store, .. } = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
+    let id = ideas
         .capture("project_1", "The Loom", &an_author())
         .await
         .expect("capturing should succeed");
-    service
+    ideas
         .retitle(&id.to_string(), "Title 2", None, &an_author())
         .await
         .expect("retitling should succeed");
 
     for counted in 3..100 {
-        service
+        ideas
             .retitle(
                 &id.to_string(),
                 &format!("Title {counted}"),
@@ -244,7 +246,7 @@ async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
         "ninety-nine events is not yet a hundred"
     );
 
-    let landed = service
+    let landed = ideas
         .retitle(&id.to_string(), "Title 100", None, &an_author())
         .await
         .expect("retitling should succeed");
@@ -258,22 +260,18 @@ async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
 
 #[tokio::test]
 async fn an_idea_survives_on_its_snapshot_alone() {
-    let Wired {
-        ideas: service,
-        store,
-        ..
-    } = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
-    let id = service
+    let Wired { ideas, store, .. } = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
+    let id = ideas
         .capture("project_1", "The Loom", &an_author())
         .await
         .expect("capturing should succeed");
-    service
+    ideas
         .retitle(&id.to_string(), "Title 2", None, &an_author())
         .await
         .expect("retitling should succeed");
 
     for counted in 3..=100 {
-        service
+        ideas
             .retitle(
                 &id.to_string(),
                 &format!("Title {counted}"),
@@ -313,8 +311,8 @@ async fn an_idea_survives_on_its_snapshot_alone() {
         "everything the snapshot replaced is gone, so what follows can only come from it"
     );
 
-    let idea = service
-        .get(&id.to_string())
+    let idea = ideas
+        .read(&id.to_string(), &an_author())
         .await
         .expect("the snapshot alone should be enough to rebuild the idea")
         .state;

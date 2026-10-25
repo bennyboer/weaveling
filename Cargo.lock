@@ -4105,9 +4105,9 @@ dependencies = [
 name = "weaveling-ideas-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "serde",
- "weaveling-authorizing",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-ideas-core",
@@ -4143,6 +4143,7 @@ dependencies = [
  "weaveling-ideas-core",
  "weaveling-ideas-messaging",
  "weaveling-ideas-wiring",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-projects-contract",

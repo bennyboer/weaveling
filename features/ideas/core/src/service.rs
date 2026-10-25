@@ -1,84 +1,33 @@
 use std::sync::Arc;
 
-use authorizing::{Act, Authorizer, AuthorizerError};
 use clock::Clock;
-use eventsourcing::{
-    Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
-};
-use ids::InvalidId;
-use thiserror::Error;
+use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standing, Version};
 
-use crate::catalog::{CatalogError, IdeaCatalog, IdeaSummary};
+use crate::error::IdeasError;
 use crate::id::IdeaId;
-use crate::idea::{Idea, IdeaCommand, IdeaError, IdeaEvent, KIND, ProjectLink};
-use crate::title::{IdeaTitle, InvalidIdeaTitle};
-
-#[derive(Debug, Error)]
-pub enum IdeaServiceError {
-    #[error(transparent)]
-    InvalidId(#[from] InvalidId),
-    #[error(transparent)]
-    InvalidTitle(#[from] InvalidIdeaTitle),
-    #[error(transparent)]
-    Events(#[from] ServiceError<IdeaError>),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Authorizer(#[from] AuthorizerError),
-    #[error("there is no such project")]
-    ProjectNotThere,
-    #[error("only an author of the project may do this")]
-    NotAnAuthor,
-}
+use crate::idea::{Idea, IdeaCommand, IdeaEvent, ProjectLink};
+use crate::title::IdeaTitle;
 
 #[derive(Clone)]
 pub struct IdeaService {
     events: Arc<EventSourcingService<Idea>>,
-    catalog: Arc<dyn IdeaCatalog>,
-    authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
 }
 
 impl IdeaService {
-    pub fn new(
-        store: Arc<dyn EventStore<IdeaEvent>>,
-        catalog: Arc<dyn IdeaCatalog>,
-        authorizer: Arc<dyn Authorizer>,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn EventStore<IdeaEvent>>, clock: Arc<dyn Clock>) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
-            catalog,
-            authorizer,
             clock,
         }
     }
 
-    pub async fn list(
-        &self,
-        project: &str,
-        agent: &Agent,
-    ) -> Result<Vec<IdeaSummary>, IdeaServiceError> {
-        let project = ProjectLink::from(project);
-        self.admitted(agent, Act::Read, &project, || {
-            IdeaServiceError::ProjectNotThere
-        })
-        .await?;
-
-        Ok(self.catalog.in_project(&project).await?)
-    }
-
     pub async fn capture(
         &self,
-        project: &str,
+        project: &ProjectLink,
         title: &str,
         agent: &Agent,
-    ) -> Result<IdeaId, IdeaServiceError> {
-        let project = ProjectLink::from(project);
-        self.admitted(agent, Act::Write, &project, || {
-            IdeaServiceError::ProjectNotThere
-        })
-        .await?;
+    ) -> Result<IdeaId, IdeasError> {
         let id = IdeaId::generate(self.clock.now());
 
         let _landed = self
@@ -86,7 +35,7 @@ impl IdeaService {
             .begin(
                 &AggregateId::from(&id),
                 IdeaCommand::Capture {
-                    project,
+                    project: project.clone(),
                     title: IdeaTitle::new(title)?,
                 },
                 agent,
@@ -96,51 +45,17 @@ impl IdeaService {
         Ok(id)
     }
 
-    pub async fn get(&self, id: &str) -> Result<Standing<Idea>, IdeaServiceError> {
-        let id: IdeaId = id.parse()?;
-
-        Ok(self.events.latest(&AggregateId::from(&id)).await?)
-    }
-
-    pub async fn read(&self, id: &str, agent: &Agent) -> Result<Standing<Idea>, IdeaServiceError> {
-        let idea: IdeaId = id.parse()?;
-        let key = AggregateId::from(&idea);
-        let standing = self.events.latest(&key).await?;
-        self.admitted(agent, Act::Read, standing.state.project(), || {
-            not_found(key)
-        })
-        .await?;
-
-        Ok(standing)
-    }
-
-    async fn admitted(
-        &self,
-        agent: &Agent,
-        act: Act,
-        project: &ProjectLink,
-        otherwise: impl FnOnce() -> IdeaServiceError,
-    ) -> Result<(), IdeaServiceError> {
-        if self.authorizer.may(agent, act, project.as_str()).await? {
-            Ok(())
-        } else if self
-            .authorizer
-            .may(agent, Act::Read, project.as_str())
-            .await?
-        {
-            Err(IdeaServiceError::NotAnAuthor)
-        } else {
-            Err(otherwise())
-        }
+    pub async fn latest(&self, id: &IdeaId) -> Result<Standing<Idea>, IdeasError> {
+        Ok(self.events.latest(&AggregateId::from(id)).await?)
     }
 
     pub async fn retitle(
         &self,
-        id: &str,
+        id: &IdeaId,
         title: &str,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, IdeaServiceError> {
+    ) -> Result<Version, IdeasError> {
         self.carry_out(
             id,
             IdeaCommand::Retitle(IdeaTitle::new(title)?),
@@ -152,28 +67,22 @@ impl IdeaService {
 
     pub async fn discard(
         &self,
-        id: &str,
+        id: &IdeaId,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, IdeaServiceError> {
+    ) -> Result<Version, IdeasError> {
         self.carry_out(id, IdeaCommand::Discard, expected, agent)
             .await
     }
 
     async fn carry_out(
         &self,
-        id: &str,
+        id: &IdeaId,
         command: IdeaCommand,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, IdeaServiceError> {
-        let id: IdeaId = id.parse()?;
-        let key = AggregateId::from(&id);
-        let standing = self.events.latest(&key).await?;
-        self.admitted(agent, Act::Write, standing.state.project(), || {
-            not_found(key.clone())
-        })
-        .await?;
+    ) -> Result<Version, IdeasError> {
+        let key = AggregateId::from(id);
 
         let landed = match expected {
             Some(expected) => {
@@ -186,11 +95,4 @@ impl IdeaService {
 
         Ok(landed.version)
     }
-}
-
-fn not_found(key: AggregateId) -> IdeaServiceError {
-    IdeaServiceError::Events(ServiceError::NotFound {
-        aggregate: key,
-        kind: KIND,
-    })
 }

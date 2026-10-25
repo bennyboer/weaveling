@@ -5,7 +5,7 @@ use axum::Router;
 use clock::Clock;
 use eventsourcing::InMemoryEventStore;
 use ideas_catalog::InMemoryIdeaCatalog;
-use ideas_core::{IdeaEvent, IdeaService};
+use ideas_core::{IdeaEvent, IdeasCore};
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use wiring::Context;
@@ -13,7 +13,7 @@ use wiring::Context;
 const CATALOGUING: &str = "catalogue-idea";
 
 pub struct Wired {
-    pub ideas: IdeaService,
+    pub ideas: IdeasCore,
     pub routes: Router,
     pub store: Arc<InMemoryEventStore<IdeaEvent>>,
     pub outbox: Arc<InMemoryOutbox>,
@@ -59,7 +59,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         .expect("the feature should wire a catalog projector");
 
     Wired {
-        ideas: ideas_wiring::service(&ports, &context),
+        ideas: ideas_wiring::core(&ports, &context),
         routes: wired.routes,
         store,
         outbox,
