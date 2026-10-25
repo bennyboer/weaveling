@@ -45,6 +45,19 @@ impl ProjectCatalog for InMemoryProjectCatalog {
 
         Ok(found)
     }
+
+    async fn among(&self, ids: &[ProjectId]) -> Result<Vec<ProjectSummary>, CatalogError> {
+        let listed = self.read();
+        let mut found: Vec<ProjectSummary> = ids
+            .iter()
+            .filter_map(|id| listed.get(id))
+            .cloned()
+            .collect();
+        found.sort_by_key(|summary| std::cmp::Reverse(summary.id));
+        found.dedup_by_key(|summary| summary.id);
+
+        Ok(found)
+    }
 }
 
 #[cfg(test)]

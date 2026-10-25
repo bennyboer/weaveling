@@ -157,6 +157,7 @@ impl Feature for InvitationFeature {
 #[cfg(test)]
 mod tests {
     use acting::Acting;
+    use authorizing::AllowingEverything;
     use clock::SystemClock;
     use email::EmailAddress;
     use eventsourcing::Version;
@@ -173,6 +174,7 @@ mod tests {
             publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
                 InMemoryDeliveries::new(),
             ))),
+            authorizer: Arc::new(AllowingEverything),
         }
     }
 

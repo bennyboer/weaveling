@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use axum::Router;
 use clock::Clock;
 use eventsourcing::InMemoryEventStore;
@@ -49,6 +50,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let context = Context {
         clock,
         publisher: dispatcher.clone(),
+        authorizer: Arc::new(AllowingEverything),
     };
     let wired = outline_wiring::wire(&ports, &context);
     let afresh = {
@@ -70,6 +72,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
                 &Context {
                     clock: clock.clone(),
                     publisher: publisher.clone(),
+                    authorizer: Arc::new(AllowingEverything),
                 },
             )
         }

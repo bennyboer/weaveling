@@ -10,6 +10,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 axum = { workspace = true }
 
+authorizing = { version = "0.1.0", path = "../authorizing", package = "weaveling-authorizing" }
 chores = { version = "0.1.0", path = "../chores", package = "weaveling-chores" }
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }

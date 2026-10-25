@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use authorizing::Authorizer;
 use axum::Router;
+use clock::Clock;
 use eventsourcing::EventStore;
 use members_catalog::InMemoryMembershipCatalog;
 use members_core::{MembersAuthorizer, MembersEvent, MembersService, MembershipCatalog};
 use members_messaging::{CatalogueMembersListener, FoundMembersOfStartedProjectListener};
+use messaging::Publisher;
 use outbox::Outbox;
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
@@ -26,10 +28,26 @@ pub struct AssembledMembers {
 
 pub async fn assembled_members(
     storage: &Storage,
-    context: &Context,
+    clock: Arc<dyn Clock>,
+    publisher: Arc<dyn Publisher>,
 ) -> Result<AssembledMembers, Unprepared> {
-    let ports = wiring::ports::<MembersFeature>(storage, context).await?;
-    let wired = MembersFeature::wire(&ports, context);
+    let knowing_nobody = Context {
+        clock: clock.clone(),
+        publisher: publisher.clone(),
+        authorizer: Arc::new(MembersAuthorizer::new(Arc::new(
+            InMemoryMembershipCatalog::new(),
+        ))),
+    };
+    let ports = wiring::ports::<MembersFeature>(storage, &knowing_nobody).await?;
+    let authorizer: Arc<dyn Authorizer> = Arc::new(MembersAuthorizer::new(ports.catalog.clone()));
+    let wired = MembersFeature::wire(
+        &ports,
+        &Context {
+            clock,
+            publisher,
+            authorizer: authorizer.clone(),
+        },
+    );
 
     Ok(AssembledMembers {
         assembled: Assembled {
@@ -39,7 +57,7 @@ pub async fn assembled_members(
             settling: wired.settling,
             chores: wired.chores,
         },
-        authorizer: Arc::new(MembersAuthorizer::new(ports.catalog.clone())),
+        authorizer,
     })
 }
 
@@ -131,6 +149,7 @@ impl Feature for MembersFeature {
 
 #[cfg(test)]
 mod tests {
+    use authorizing::AllowingEverything;
     use clock::SystemClock;
     use eventsourcing::{AccountId, Version};
     use members_core::{Member, ProjectLink, ProjectMembers, Role};
@@ -144,6 +163,7 @@ mod tests {
             publisher: Arc::new(InProcessDispatcher::queueing_to(Arc::new(
                 InMemoryDeliveries::new(),
             ))),
+            authorizer: Arc::new(AllowingEverything),
         }
     }
 

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use axum::Router;
 use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardEvent, BoardService};
@@ -46,6 +47,7 @@ pub fn wired(clock: Arc<dyn Clock>) -> Wired {
     let context = Context {
         clock,
         publisher: dispatcher.clone(),
+        authorizer: Arc::new(AllowingEverything),
     };
     let wired = boards_wiring::wire(&ports, &context);
 

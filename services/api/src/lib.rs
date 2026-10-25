@@ -70,9 +70,21 @@ impl Adapters {
             refusals.clone(),
         ));
         let dispatcher = Arc::new(InProcessDispatcher::queueing_to(deliveries.clone()));
+        let members = match accounts {
+            Accounts::On => Some(
+                members_wiring::assembled_members(&storage, clock.clone(), dispatcher.clone())
+                    .await?,
+            ),
+            Accounts::Off => None,
+        };
+        let authorizer: Arc<dyn Authorizer> = match &members {
+            Some(members) => members.authorizer.clone(),
+            None => Arc::new(AllowingEverything),
+        };
         let context = Context {
             clock: clock.clone(),
             publisher: dispatcher.clone(),
+            authorizer: authorizer.clone(),
         };
 
         let mut features = vec![
@@ -84,16 +96,15 @@ impl Adapters {
             wiring::assemble::<AppearanceFeature>(&storage, &context).await?,
             wiring::assemble::<StatisticsFeature>(&storage, &context).await?,
         ];
-        let mut authorizer: Arc<dyn Authorizer> = Arc::new(AllowingEverything);
+        if let Some(members) = members {
+            features.push(members.assembled);
+        }
         let accounts = match accounts {
             Accounts::On => {
                 features.push(
                     invitations_wiring::assembled_invitations(&storage, &context, mailer.clone())
                         .await?,
                 );
-                let members = members_wiring::assembled_members(&storage, &context).await?;
-                features.push(members.assembled);
-                authorizer = members.authorizer;
                 Some(accounts_wiring::assembled_accounts(&storage, &context, mailer).await?)
             }
             Accounts::Off => None,

@@ -21,6 +21,7 @@ pub fn service(ports: &Ports, context: &Context) -> ProjectService {
     ProjectService::new(
         ports.events.clone(),
         ports.catalog.clone(),
+        context.authorizer.clone(),
         context.clock.clone(),
     )
 }

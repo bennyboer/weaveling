@@ -43,8 +43,11 @@ pub fn router(projects: ProjectService) -> Router {
         .with_state(projects)
 }
 
-async fn list(State(projects): State<ProjectService>) -> Result<Json<Vec<ProjectDTO>>, Problem> {
-    let found = projects.list().await.map_err(problem_of)?;
+async fn list(
+    State(projects): State<ProjectService>,
+    Extension(acting): Extension<Agent>,
+) -> Result<Json<Vec<ProjectDTO>>, Problem> {
+    let found = projects.list(&acting).await.map_err(problem_of)?;
 
     Ok(Json(found.iter().map(to_dto).collect()))
 }

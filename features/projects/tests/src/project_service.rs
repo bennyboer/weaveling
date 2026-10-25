@@ -39,7 +39,11 @@ async fn a_project(wired: &Wired, named: &str) -> String {
 async fn listed(wired: &Wired) -> Vec<ProjectSummary> {
     wired.settle().await;
 
-    wired.projects.list().await.expect("listing should succeed")
+    wired
+        .projects
+        .list(&nobody())
+        .await
+        .expect("listing should succeed")
 }
 
 #[tokio::test]

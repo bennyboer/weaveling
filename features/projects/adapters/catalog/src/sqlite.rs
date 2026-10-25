@@ -24,6 +24,13 @@ const ALL: &str = "
     ORDER BY project DESC
 ";
 
+const AMONG: &str = "
+    SELECT project, version, name, created_at, updated_at
+    FROM project_summaries
+    WHERE project IN (SELECT value FROM json_each(?1))
+    ORDER BY project DESC
+";
+
 pub fn migrations() -> Migrator {
     sqlx::migrate!("./migrations/sqlite")
 }
@@ -90,6 +97,19 @@ impl ProjectCatalog for SqliteProjectCatalog {
 
     async fn all(&self) -> Result<Vec<ProjectSummary>, CatalogError> {
         let found = sqlx::query(ALL)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found.iter().map(to_summary).collect()
+    }
+
+    async fn among(&self, ids: &[ProjectId]) -> Result<Vec<ProjectSummary>, CatalogError> {
+        let asked =
+            serde_json::to_string(&ids.iter().map(ToString::to_string).collect::<Vec<String>>())
+                .expect("a list of ids is plain data and cannot fail to serialize");
+        let found = sqlx::query(AMONG)
+            .bind(asked)
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;

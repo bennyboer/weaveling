@@ -31,6 +31,8 @@ pub trait ProjectCatalog: Send + Sync {
     async fn forget(&self, id: &ProjectId) -> Result<(), CatalogError>;
 
     async fn all(&self) -> Result<Vec<ProjectSummary>, CatalogError>;
+
+    async fn among(&self, ids: &[ProjectId]) -> Result<Vec<ProjectSummary>, CatalogError>;
 }
 
 impl ProjectSummary {

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use authorizing::{Authorizer, AuthorizerError, Readable};
 use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
@@ -32,12 +33,15 @@ pub enum ProjectServiceError {
     Events(#[from] ServiceError<ProjectError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    Authorizer(#[from] AuthorizerError),
 }
 
 #[derive(Clone)]
 pub struct ProjectService {
     events: Arc<EventSourcingService<Project>>,
     catalog: Arc<dyn ProjectCatalog>,
+    authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
 }
 
@@ -45,17 +49,29 @@ impl ProjectService {
     pub fn new(
         store: Arc<dyn EventStore<ProjectEvent>>,
         catalog: Arc<dyn ProjectCatalog>,
+        authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             catalog,
+            authorizer,
             clock,
         }
     }
 
-    pub async fn list(&self) -> Result<Vec<ProjectSummary>, ProjectServiceError> {
-        Ok(self.catalog.all().await?)
+    pub async fn list(&self, agent: &Agent) -> Result<Vec<ProjectSummary>, ProjectServiceError> {
+        match self.authorizer.readable_by(agent).await? {
+            Readable::Everything => Ok(self.catalog.all().await?),
+            Readable::Only(projects) => {
+                let ids: Vec<ProjectId> = projects
+                    .iter()
+                    .filter_map(|project| project.parse().ok())
+                    .collect();
+
+                Ok(self.catalog.among(&ids).await?)
+            }
+        }
     }
 
     pub async fn start(

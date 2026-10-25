@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::error::Error;
 
 use async_trait::async_trait;
@@ -11,6 +12,12 @@ pub enum Act {
     Manage,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Readable {
+    Everything,
+    Only(BTreeSet<String>),
+}
+
 #[derive(Debug, Error)]
 pub enum AuthorizerError {
     #[error("who may do what could not be asked")]
@@ -20,6 +27,8 @@ pub enum AuthorizerError {
 #[async_trait]
 pub trait Authorizer: Send + Sync {
     async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError>;
+
+    async fn readable_by(&self, agent: &Agent) -> Result<Readable, AuthorizerError>;
 }
 
 #[derive(Debug, Default)]
@@ -34,6 +43,10 @@ impl Authorizer for AllowingEverything {
         _project: &str,
     ) -> Result<bool, AuthorizerError> {
         Ok(true)
+    }
+
+    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
+        Ok(Readable::Everything)
     }
 }
 
@@ -56,6 +69,13 @@ mod tests {
                         .expect("nothing to ask")
                 );
             }
+            assert_eq!(
+                AllowingEverything
+                    .readable_by(&agent)
+                    .await
+                    .expect("nothing to ask"),
+                Readable::Everything
+            );
         }
     }
 }

@@ -1,7 +1,8 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError};
+use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use eventsourcing::Agent;
 
 use crate::catalog::MembershipCatalog;
@@ -39,6 +40,22 @@ impl Authorizer for MembersAuthorizer {
                 .await
                 .map_err(|failure| AuthorizerError::Unreachable(Box::new(failure)))?
                 .is_some_and(|role| role.permits(act))),
+        }
+    }
+
+    async fn readable_by(&self, agent: &Agent) -> Result<Readable, AuthorizerError> {
+        match agent {
+            Agent::System => Ok(Readable::Everything),
+            Agent::Local => Ok(Readable::Only(BTreeSet::new())),
+            Agent::Account(account) => Ok(Readable::Only(
+                self.catalog
+                    .memberships_of(account)
+                    .await
+                    .map_err(|failure| AuthorizerError::Unreachable(Box::new(failure)))?
+                    .into_iter()
+                    .map(|membership| membership.project.to_string())
+                    .collect(),
+            )),
         }
     }
 }
@@ -83,9 +100,23 @@ mod tests {
 
         async fn memberships_of(
             &self,
-            _account: &AccountId,
+            account: &AccountId,
         ) -> Result<Vec<Membership>, CatalogError> {
-            Ok(vec![])
+            if self.down {
+                return Err(CatalogError::Backend("the list is down".into()));
+            }
+
+            Ok(self
+                .roles
+                .lock()
+                .expect("never poisoned")
+                .iter()
+                .filter(|(_, member, _)| member == account)
+                .map(|(project, _, role)| Membership {
+                    project: ProjectLink::from(project.as_str()),
+                    role: *role,
+                })
+                .collect())
         }
     }
 
@@ -180,6 +211,61 @@ mod tests {
         assert!(
             authorizer
                 .may(&Agent::Account(ada()), Act::Read, "project_1")
+                .await
+                .is_err()
+        );
+    }
+
+    #[tokio::test]
+    async fn an_account_reads_every_project_it_is_in_whatever_its_role_and_no_other() {
+        let authorizer = authorizer(vec![
+            ("project_1", ada(), Role::Reader),
+            ("project_2", ada(), Role::Owner),
+            ("project_3", AccountId::from("account_grace"), Role::Owner),
+        ]);
+
+        assert_eq!(
+            authorizer
+                .readable_by(&Agent::Account(ada()))
+                .await
+                .expect("asking should succeed"),
+            Readable::Only(BTreeSet::from([
+                "project_1".to_owned(),
+                "project_2".to_owned()
+            ]))
+        );
+    }
+
+    #[tokio::test]
+    async fn on_a_server_the_application_reads_everything_and_nobody_unsigned_anything() {
+        let authorizer = authorizer(vec![("project_1", ada(), Role::Owner)]);
+
+        assert_eq!(
+            authorizer
+                .readable_by(&Agent::System)
+                .await
+                .expect("nothing to ask"),
+            Readable::Everything
+        );
+        assert_eq!(
+            authorizer
+                .readable_by(&Agent::Local)
+                .await
+                .expect("nothing to ask"),
+            Readable::Only(BTreeSet::new())
+        );
+    }
+
+    #[tokio::test]
+    async fn a_list_that_cannot_be_asked_is_a_failure_not_nothing_to_read() {
+        let authorizer = MembersAuthorizer::new(Arc::new(Kept {
+            roles: Mutex::new(vec![]),
+            down: true,
+        }));
+
+        assert!(
+            authorizer
+                .readable_by(&Agent::Account(ada()))
                 .await
                 .is_err()
         );

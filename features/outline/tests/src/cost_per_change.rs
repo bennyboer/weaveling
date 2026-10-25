@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
 use clock::{Clock, SystemClock};
@@ -46,6 +47,7 @@ fn telling(heard: &Arc<FakePublisher>) -> Context {
     Context {
         clock: Arc::new(SystemClock) as Arc<dyn Clock>,
         publisher: heard.clone(),
+        authorizer: Arc::new(AllowingEverything),
     }
 }
 

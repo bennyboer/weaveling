@@ -4,6 +4,7 @@ use accounts_catalog::InMemoryAccountCatalog;
 use accounts_core::{AccountEvent, AccountService, SecretStores};
 use accounts_secrets::InMemorySecrets;
 use accounts_wiring::Ports;
+use authorizing::AllowingEverything;
 use axum::Router;
 use clock::FixedClock;
 use eventsourcing::InMemoryEventStore;
@@ -58,6 +59,7 @@ pub fn wired() -> Wired {
     let context = Context {
         clock: clock.clone(),
         publisher: dispatcher.clone(),
+        authorizer: Arc::new(AllowingEverything),
     };
     let wired = accounts_wiring::wire(&ports, &context);
     for listener in &wired.listeners {

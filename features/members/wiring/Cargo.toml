@@ -8,7 +8,9 @@ axum = { workspace = true }
 sqlx = { workspace = true, optional = true }
 
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
@@ -22,7 +24,5 @@ postgres = ["dep:sqlx", "members-catalog/postgres", "wiring/postgres", "eventsou
 sqlite = ["dep:sqlx", "members-catalog/sqlite", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite"]
 
 [dev-dependencies]
-clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
-messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 test-harness = { version = "0.1.0", path = "../../../libraries/test-harness", package = "weaveling-test-harness" }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

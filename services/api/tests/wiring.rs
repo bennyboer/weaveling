@@ -851,3 +851,50 @@ async fn on_a_server_whoever_starts_a_project_may_manage_it_and_nobody_else_may_
     );
     signed_in.end().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_each_account_lists_only_the_projects_it_is_in() {
+    let signed_in = an_operator_signed_in_on_a_server("listing").await;
+    let server = &signed_in.server;
+    let started: Value = server
+        .post("/api/projects")
+        .json(&json!({ "name": "Ada's own" }))
+        .await
+        .json();
+
+    let mut listed = Value::Null;
+    for _ in 0..1_000 {
+        listed = server.get("/api/projects").await.json();
+        if listed[0]["id"] == started["id"] {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(listed[0]["id"], started["id"]);
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+
+    server
+        .post("/api/accounts")
+        .json(&json!({ "email": "grace@example.com", "name": "Grace", "password": "another long password" }))
+        .await
+        .assert_status(StatusCode::ACCEPTED);
+    server
+        .post("/api/accounts/verification")
+        .json(&json!({ "email": "grace@example.com", "code": mail_drop::code_dropped_for(&signed_in.drop, "grace@example.com") }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .post("/api/sessions")
+        .json(&json!({ "email": "grace@example.com", "password": "another long password" }))
+        .await
+        .assert_status_ok();
+
+    let theirs: Value = server.get("/api/projects").await.json();
+    assert_eq!(
+        theirs,
+        json!([]),
+        "Grace is in no project, so she sees none, Ada's least of all"
+    );
+
+    signed_in.end().await;
+}

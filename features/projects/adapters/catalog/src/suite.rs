@@ -142,6 +142,48 @@ pub async fn the_moments_a_project_carries_survive_the_round_trip(catalog: &impl
     );
 }
 
+pub async fn among_some_ids_only_those_projects_are_listed_newest_first(
+    catalog: &impl ProjectCatalog,
+) {
+    let started: Vec<ProjectId> = (1..=4)
+        .map(|nth| ProjectId::generate(at(nth * 1_000)))
+        .collect();
+    for id in &started {
+        catalog
+            .remember(&a_summary(*id, "A project"))
+            .await
+            .expect("remembering should succeed");
+    }
+    let never_remembered = ProjectId::generate(at(9_000));
+
+    let found = catalog
+        .among(&[started[0], started[2], never_remembered, started[0]])
+        .await
+        .expect("listing should succeed");
+
+    assert_eq!(
+        found.iter().map(|summary| summary.id).collect::<Vec<_>>(),
+        vec![started[2], started[0]],
+        "an author sees the projects they are in, newest first, each once, and none that is gone"
+    );
+}
+
+pub async fn among_no_ids_nothing_is_listed(catalog: &impl ProjectCatalog) {
+    catalog
+        .remember(&a_summary(ProjectId::generate(at(1_000)), "A project"))
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        catalog
+            .among(&[])
+            .await
+            .expect("listing should succeed")
+            .is_empty(),
+        "an account in no project sees none"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -171,6 +213,11 @@ macro_rules! conformance_tests {
             forgetting_something_never_remembered_is_harmless
         );
         $crate::catalog_conformance_case!($workbench, the_newest_project_is_listed_first);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            among_some_ids_only_those_projects_are_listed_newest_first
+        );
+        $crate::catalog_conformance_case!($workbench, among_no_ids_nothing_is_listed);
         $crate::catalog_conformance_case!(
             $workbench,
             the_moments_a_project_carries_survive_the_round_trip
