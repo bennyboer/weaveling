@@ -117,17 +117,22 @@ impl MembersCore {
         account: &str,
         role: Role,
     ) -> Result<(), MembersCoreError> {
-        self.written(
-            &ProjectLink::from(project),
-            MembersCommand::Join {
-                account: AccountId::from(account),
-                role,
-            },
-            &Agent::System,
-        )
-        .await?;
-
-        Ok(())
+        match self
+            .written(
+                &ProjectLink::from(project),
+                MembersCommand::Join {
+                    account: AccountId::from(account),
+                    role,
+                },
+                &Agent::System,
+            )
+            .await
+        {
+            Err(MembersCoreError::Events(ServiceError::Refused(MembersError::AlreadyMember))) => {
+                Ok(())
+            }
+            joined => joined.map(|_| ()),
+        }
     }
 
     pub async fn found(&self, project: &str, owner: &str) -> Result<(), MembersCoreError> {

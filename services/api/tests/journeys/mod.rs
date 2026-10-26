@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::http::StatusCode;
+use axum::http::header::ORIGIN;
 use axum_test::TestServer;
 use clock::SystemClock;
 use mailing::LoggingMailer;
@@ -759,6 +760,57 @@ pub async fn a_project_s_members_are_listed_for_whoever_may_read_it<B: Backend>(
     journey.end().await;
 }
 
+pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation_up<B: Backend>() {
+    let journey = Journey::<B>::signed_in("joining").await;
+    let project = journey.project("Shared").await;
+    let server = &journey.server;
+    let at = format!("/api/members?project={project}");
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
+        "its owner may invite once the members have heard of her"
+    );
+    server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({
+            "email": "grace@example.com",
+            "scope": { "kind": "project", "project": project, "role": "author" },
+        }))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let drop = journey
+        .drop
+        .as_ref()
+        .expect("a journey signed in has a mail drop");
+    let token = crate::mail_drop::invitation_token_dropped_for(drop, "grace@example.com")
+        .expect("the link should have been mailed");
+    journey.signed_in_as_another("grace@example.com").await;
+
+    assert!(
+        until(|| async {
+            server
+                .post("/api/accounts/current/invitations")
+                .json(&json!({ "token": token }))
+                .await
+                .status_code()
+                == StatusCode::NO_CONTENT
+        })
+        .await,
+        "accounts hear of the invitation only through the outbox, its relay and their own listener"
+    );
+    assert!(
+        until(|| async {
+            let listed: Value = server.get(&at).await.json();
+            listed
+                .as_array()
+                .is_some_and(|members| members.iter().any(|member| member["role"] == "author"))
+        })
+        .await,
+        "invitations accept what accounts took up, and members let her join as she was invited"
+    );
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -779,6 +831,7 @@ macro_rules! journeys {
             a_project_s_outline_is_there_only_for_whoever_may_read_its_project,
             a_project_s_scenes_are_there_only_for_whoever_may_read_its_project,
             a_project_s_members_are_listed_for_whoever_may_read_it,
+            an_account_invited_into_a_project_joins_it_by_taking_the_invitation_up,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

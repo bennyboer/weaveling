@@ -619,17 +619,7 @@ async fn whoever_follows_an_invitations_link_signs_up_and_in_at_once() {
         .json(&json!({ "email": "grace@example.com" }))
         .await
         .assert_status(StatusCode::CREATED);
-    let token = fs::read_dir(&signed_in.drop)
-        .expect("the drop should have been made")
-        .map(|entry| fs::read_to_string(entry.expect("an entry").path()).expect("readable"))
-        .find(|mail| mail.contains("grace@example.com"))
-        .and_then(|mail| {
-            mail.split_once("/invitation#").map(|(_, rest)| {
-                rest.chars()
-                    .take_while(char::is_ascii_hexdigit)
-                    .collect::<String>()
-            })
-        })
+    let token = mail_drop::invitation_token_dropped_for(&signed_in.drop, "grace@example.com")
         .expect("the link should have been mailed");
 
     let mut status = StatusCode::IM_A_TEAPOT;
@@ -696,17 +686,7 @@ async fn an_invitation_is_listed_open_until_whoever_was_invited_signs_up() {
     assert_eq!(open["invitations"][0]["email"], "grace@example.com");
     assert_eq!(open["invitations"][0]["status"], "open");
 
-    let token = fs::read_dir(&signed_in.drop)
-        .expect("the drop should have been made")
-        .map(|entry| fs::read_to_string(entry.expect("an entry").path()).expect("readable"))
-        .find(|mail| mail.contains("grace@example.com"))
-        .and_then(|mail| {
-            mail.split_once("/invitation#").map(|(_, rest)| {
-                rest.chars()
-                    .take_while(char::is_ascii_hexdigit)
-                    .collect::<String>()
-            })
-        })
+    let token = mail_drop::invitation_token_dropped_for(&signed_in.drop, "grace@example.com")
         .expect("the link should have been mailed");
     signed_in
         .server
