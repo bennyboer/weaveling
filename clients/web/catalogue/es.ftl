@@ -520,6 +520,7 @@ refused-signing-up-by-invitation-only = En esta instancia de Weaveling solo se p
 refused-invitation-invalid = El enlace de esta invitación no permite crear ninguna cuenta, o ya no.
 refused-invitation-expired = Esta invitación ha caducado. Pide una nueva.
 refused-email-address-has-account = Este correo electrónico ya tiene una cuenta. Inicia sesión.
+refused-invitation-for-another-address = Esta invitación se envió a { $to }. Inicia sesión con esa dirección para aceptarla.
 instance-account-appoint = Hacer operador
 instance-account-dismiss = Quitar el rol de operador
 instance-appoint-dialog = Hacer de { $name } un operador

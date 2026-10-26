@@ -520,6 +520,7 @@ refused-signing-up-by-invitation-only = Bei dieser Weaveling-Instanz kann man si
 refused-invitation-invalid = Mit dem Link dieser Einladung kann sich niemand registrieren, oder nicht mehr.
 refused-invitation-expired = Diese Einladung ist abgelaufen. Bitte um eine neue.
 refused-email-address-has-account = Zu dieser E-Mail-Adresse gibt es schon ein Konto. Melde dich stattdessen an.
+refused-invitation-for-another-address = Diese Einladung ging an { $to }. Melde dich mit dieser Adresse an, um sie anzunehmen.
 instance-account-appoint = Zum Verwalter ernennen
 instance-account-dismiss = Als Verwalter abberufen
 instance-appoint-dialog = { $name } zum Verwalter ernennen

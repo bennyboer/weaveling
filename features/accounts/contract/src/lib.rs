@@ -17,6 +17,11 @@ pub struct SignUpByInvitationRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TakeUpInvitationRequest {
+    pub token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct VerifyEmailRequest {
     pub email: String,
     pub code: String,
@@ -185,8 +190,9 @@ pub mod refused {
     pub const INVITATION_INVALID: &str = "invitation-invalid";
     pub const INVITATION_EXPIRED: &str = "invitation-expired";
     pub const EMAIL_ADDRESS_HAS_ACCOUNT: &str = "email-address-has-account";
+    pub const INVITATION_FOR_ANOTHER_ADDRESS: &str = "invitation-for-another-address";
 
-    pub const EVERY: [&str; 30] = [
+    pub const EVERY: [&str; 31] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -217,5 +223,6 @@ pub mod refused {
         INVITATION_INVALID,
         INVITATION_EXPIRED,
         EMAIL_ADDRESS_HAS_ACCOUNT,
+        INVITATION_FOR_ANOTHER_ADDRESS,
     ];
 }

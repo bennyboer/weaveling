@@ -53,6 +53,9 @@ mod signing_up_by_invitation;
 mod taking_up_invitations;
 
 #[cfg(test)]
+mod taking_up_invitations_api;
+
+#[cfg(test)]
 mod throttling;
 
 #[cfg(test)]

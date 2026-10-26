@@ -520,6 +520,7 @@ refused-signing-up-by-invitation-only = Signing up to this Weaveling instance is
 refused-invitation-invalid = This invitation's link lets nobody sign up, or not any more.
 refused-invitation-expired = This invitation has run out. Ask for a new one.
 refused-email-address-has-account = This email address already has an account. Sign in instead.
+refused-invitation-for-another-address = This invitation was sent to { $to }. Sign in with that address to take it up.
 instance-account-appoint = Make operator
 instance-account-dismiss = Take away the operator role
 instance-appoint-dialog = Make { $name } an operator

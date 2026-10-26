@@ -1,8 +1,8 @@
 use accounts_contract::{
     AccountPageDTO, AccountSummaryDTO, BecomeOperatorRequest, LockDTO, LockRequest,
     NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE, SendCodeRequest, SignInRequest,
-    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, VerifyEmailRequest, lock_kind, refused,
-    stage,
+    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
+    VerifyEmailRequest, lock_kind, refused, stage,
 };
 use accounts_core::{
     AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, InvalidAccountName,
@@ -52,6 +52,10 @@ pub fn router(accounts: AccountsCore) -> Router {
 pub fn guarded_router(accounts: AccountsCore) -> Router {
     Router::new()
         .route("/operators", routing::post(become_operator))
+        .route(
+            "/accounts/current/invitations",
+            routing::post(take_up_invitation),
+        )
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
             "/instance/accounts/{account}/lock",
@@ -185,6 +189,19 @@ async fn begin_session(
         .map_err(problem_of)?;
 
     Ok(([(SET_COOKIE, holding(&token))], Json(to_dto(&signed_in))).into_response())
+}
+
+async fn take_up_invitation(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Json(request): Json<TakeUpInvitationRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .take_up_invitation(&account, &request.token)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn become_operator(
@@ -456,6 +473,10 @@ fn problem_of(refusal: AccountsError) -> Problem {
         }
         AccountsError::InvitationExpired => {
             Problem::unprocessable(refused::INVITATION_EXPIRED, refusal)
+        }
+        AccountsError::InvitationForAnotherAddress { ref to } => {
+            let to = to.to_string();
+            Problem::forbidden(refused::INVITATION_FOR_ANOTHER_ADDRESS, refusal).with("to", to)
         }
         AccountsError::EmailAddressHasAccount => {
             Problem::refused(refused::EMAIL_ADDRESS_HAS_ACCOUNT, refusal)
