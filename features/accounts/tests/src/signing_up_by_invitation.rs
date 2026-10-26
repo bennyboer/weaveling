@@ -240,37 +240,110 @@ async fn where_signing_up_is_by_invitation_only_an_invitation_lets_anyone_in() {
         .expect("an invitation is the way in");
 }
 
-#[tokio::test]
-async fn a_project_s_invitation_signs_nobody_up_for_now_and_is_left_for_its_address() {
-    let wired = wiring::wired();
-    let into_a_project = InvitationTicket {
+fn into_a_project(by_an_operator: bool) -> InvitationTicket {
+    InvitationTicket {
         invitation: "invitation_1".to_owned(),
         to: EmailAddress::new(ADA).expect("a plain address"),
         until: wiring::at(1_700_000_000) + Duration::days(7),
         scope: InvitationScope::Project {
             project: "project_loom".to_owned(),
         },
-        by_an_operator: true,
-    };
-    let digest = InvitationToken::presented(TOKEN).digest();
+        by_an_operator,
+    }
+}
+
+async fn invited_into_a_project(wired: &Wired, by_an_operator: bool) {
     wired
         .secrets
-        .keep_ticket(&digest, &into_a_project)
+        .keep_ticket(
+            &InvitationToken::presented(TOKEN).digest(),
+            &into_a_project(by_an_operator),
+        )
         .await
         .expect("keeping should succeed");
+}
+
+async fn still_there(wired: &Wired) -> Option<InvitationTicket> {
+    wired
+        .secrets
+        .find_ticket(&InvitationToken::presented(TOKEN).digest())
+        .await
+        .expect("finding should succeed")
+}
+
+#[tokio::test]
+async fn where_anyone_may_sign_up_a_project_s_invitation_signs_its_address_up_and_is_taken_up() {
+    let wired = wiring::wired();
+    invited_into_a_project(&wired, false).await;
+
+    signs_up(&wired, TOKEN)
+        .await
+        .expect("an owner may bring in whom anyone could bring in");
+
+    let id = holder(&wired, ADA).await.expect("the address is held");
+    let told = wired
+        .store
+        .read_from(&AggregateId::from(&id), KIND, Version::of(1))
+        .await
+        .expect("reading should succeed");
+    assert!(
+        matches!(
+            &told[1].event,
+            AccountEvent::InvitationTakenUp { invitation } if invitation == "invitation_1"
+        ),
+        "invitations accept it and members let her join from that"
+    );
+    assert_eq!(still_there(&wired).await, None);
+}
+
+#[tokio::test]
+async fn where_signing_up_is_by_invitation_only_an_operator_s_invitation_into_a_project_lets_in() {
+    let by_an_operator = wiring::wired();
+    invited_into_a_project(&by_an_operator, true).await;
+    let by_an_owner = wiring::wired();
+    invited_into_a_project(&by_an_owner, false).await;
+
+    by_an_operator
+        .accounts
+        .clone()
+        .signing_up(SigningUp::ByInvitation)
+        .sign_up_by_invitation(TOKEN, "Ada", HER_PASSWORD)
+        .await
+        .expect("an operator may bring in anyone");
+    assert!(matches!(
+        by_an_owner
+            .accounts
+            .clone()
+            .signing_up(SigningUp::ByInvitation)
+            .sign_up_by_invitation(TOKEN, "Ada", HER_PASSWORD)
+            .await,
+        Err(AccountsError::InvitationNotByAnOperator)
+    ));
+    assert_eq!(holder(&by_an_owner, ADA).await, None);
+    assert_eq!(
+        still_there(&by_an_owner).await,
+        Some(into_a_project(false)),
+        "she may still take it up once an operator lets her in"
+    );
+}
+
+#[tokio::test]
+async fn an_address_with_an_account_keeps_its_invitation_to_take_up_signed_in() {
+    let wired = wiring::wired();
+    wired
+        .accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    invited_into_a_project(&wired, false).await;
 
     assert!(matches!(
         signs_up(&wired, TOKEN).await,
-        Err(AccountsError::InvitationInvalid)
+        Err(AccountsError::EmailAddressHasAccount)
     ));
-    assert_eq!(holder(&wired, ADA).await, None);
     assert_eq!(
-        wired
-            .secrets
-            .find_ticket(&digest)
-            .await
-            .expect("finding should succeed"),
-        Some(into_a_project),
-        "the address may still take the invitation up signed in"
+        still_there(&wired).await,
+        Some(into_a_project(false)),
+        "signing in, she may take it up"
     );
 }

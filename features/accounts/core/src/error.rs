@@ -48,6 +48,10 @@ pub enum AccountsError {
     InvitationExpired,
     #[error("this invitation was sent to {to}; sign in with that address to take it up")]
     InvitationForAnotherAddress { to: EmailAddress },
+    #[error(
+        "signing up here takes an operator's invitation, and this one came from a project's owner; ask an operator to invite you"
+    )]
+    InvitationNotByAnOperator,
     #[error("this address already has an account; sign in instead")]
     EmailAddressHasAccount,
     #[error("too many tries; wait {wait} before trying again")]

@@ -172,15 +172,14 @@ impl AccountService {
         let name = AccountName::new(name)?;
         let hashed = Password::new(password)?.hashed();
         let digest = InvitationToken::presented(token).digest();
-        // TODO 5b-3: a project's ticket signs nobody up yet and is left for its address to take up signed in; it will sign an address up where sign-up is open or an operator invited
-        if !matches!(
-            self.invitation_tickets.find_ticket(&digest).await?,
-            Some(InvitationTicket {
-                scope: InvitationScope::Instance,
-                ..
-            })
-        ) {
+        let Some(found) = self.invitation_tickets.find_ticket(&digest).await? else {
             return Err(AccountsError::InvitationInvalid);
+        };
+        if self.whose(&found.to).await?.is_some() {
+            return Err(AccountsError::EmailAddressHasAccount);
+        }
+        if self.signing_up == SigningUp::ByInvitation && !found.by_an_operator {
+            return Err(AccountsError::InvitationNotByAnOperator);
         }
         let Some(ticket) = self.invitation_tickets.take_ticket(&digest).await? else {
             return Err(AccountsError::InvitationInvalid);

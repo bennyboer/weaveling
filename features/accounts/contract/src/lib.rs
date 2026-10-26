@@ -191,8 +191,9 @@ pub mod refused {
     pub const INVITATION_EXPIRED: &str = "invitation-expired";
     pub const EMAIL_ADDRESS_HAS_ACCOUNT: &str = "email-address-has-account";
     pub const INVITATION_FOR_ANOTHER_ADDRESS: &str = "invitation-for-another-address";
+    pub const INVITATION_NOT_BY_AN_OPERATOR: &str = "invitation-not-by-an-operator";
 
-    pub const EVERY: [&str; 31] = [
+    pub const EVERY: [&str; 32] = [
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
         NAME_BLANK,
@@ -224,5 +225,6 @@ pub mod refused {
         INVITATION_EXPIRED,
         EMAIL_ADDRESS_HAS_ACCOUNT,
         INVITATION_FOR_ANOTHER_ADDRESS,
+        INVITATION_NOT_BY_AN_OPERATOR,
     ];
 }

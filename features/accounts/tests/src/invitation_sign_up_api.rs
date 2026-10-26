@@ -182,3 +182,33 @@ async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_it
         refused::BY_INVITATION_ONLY,
     );
 }
+
+#[tokio::test]
+async fn an_owner_s_invitation_where_signing_up_is_by_invitation_only_is_refused_by_its_kind() {
+    let wired = wiring::wired();
+    wired
+        .secrets
+        .keep_ticket(
+            &InvitationToken::presented(TOKEN).digest(),
+            &InvitationTicket {
+                invitation: "invitation_1".to_owned(),
+                to: EmailAddress::new(ADA).expect("a plain address"),
+                until: wiring::at(1_700_000_000) + Duration::days(7),
+                scope: InvitationScope::Project {
+                    project: "project_loom".to_owned(),
+                },
+                by_an_operator: false,
+            },
+        )
+        .await
+        .expect("keeping should succeed");
+    let server = TestServer::new(accounts_rest::router(
+        wired.accounts.clone().signing_up(SigningUp::ByInvitation),
+    ));
+
+    refused_as(
+        signs_up(&server, TOKEN).await,
+        StatusCode::FORBIDDEN,
+        refused::INVITATION_NOT_BY_AN_OPERATOR,
+    );
+}

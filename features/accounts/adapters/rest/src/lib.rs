@@ -478,6 +478,9 @@ fn problem_of(refusal: AccountsError) -> Problem {
             let to = to.to_string();
             Problem::forbidden(refused::INVITATION_FOR_ANOTHER_ADDRESS, refusal).with("to", to)
         }
+        AccountsError::InvitationNotByAnOperator => {
+            Problem::forbidden(refused::INVITATION_NOT_BY_AN_OPERATOR, refusal)
+        }
         AccountsError::EmailAddressHasAccount => {
             Problem::refused(refused::EMAIL_ADDRESS_HAS_ACCOUNT, refusal)
         }
