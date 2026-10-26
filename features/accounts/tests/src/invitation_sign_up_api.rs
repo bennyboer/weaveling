@@ -1,7 +1,7 @@
 use accounts_contract::SignUpRequest;
 use accounts_contract::{SESSION_COOKIE, SignUpByInvitationRequest, SignedInDTO, refused, stage};
 use accounts_core::{
-    EmailAddress, InvitationTicket, InvitationTickets, InvitationToken, SigningUp,
+    EmailAddress, InvitationScope, InvitationTicket, InvitationTickets, InvitationToken, SigningUp,
 };
 use axum::http::StatusCode;
 use axum::http::header::{CONTENT_TYPE, SET_COOKIE};
@@ -24,6 +24,8 @@ async fn invited() -> (Wired, TestServer) {
                 invitation: "invitation_1".to_owned(),
                 to: EmailAddress::new(ADA).expect("a plain address"),
                 until: wiring::at(1_700_000_000) + Duration::days(7),
+                scope: InvitationScope::Instance,
+                by_an_operator: true,
             },
         )
         .await

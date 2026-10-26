@@ -22,7 +22,7 @@ use crate::secrets::{
 use crate::session::{Session, SessionToken, Stage, TokenDigest};
 use crate::signing_up::SigningUp;
 use crate::throttle::Guarded;
-use crate::ticket::{InvitationTicket, InvitationToken};
+use crate::ticket::{InvitationScope, InvitationTicket, InvitationToken};
 use email::EmailAddress;
 use throttling::Throttles;
 
@@ -171,11 +171,18 @@ impl AccountService {
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let name = AccountName::new(name)?;
         let hashed = Password::new(password)?.hashed();
-        let Some(ticket) = self
-            .invitation_tickets
-            .take_ticket(&InvitationToken::presented(token).digest())
-            .await?
-        else {
+        let digest = InvitationToken::presented(token).digest();
+        // TODO 5b-3: a project's ticket signs nobody up yet and is left for its address to take up signed in; it will sign an address up where sign-up is open or an operator invited
+        if !matches!(
+            self.invitation_tickets.find_ticket(&digest).await?,
+            Some(InvitationTicket {
+                scope: InvitationScope::Instance,
+                ..
+            })
+        ) {
+            return Err(AccountsError::InvitationInvalid);
+        }
+        let Some(ticket) = self.invitation_tickets.take_ticket(&digest).await? else {
             return Err(AccountsError::InvitationInvalid);
         };
         if self.clock.now() > ticket.until {
@@ -213,7 +220,9 @@ impl AccountService {
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<(), AccountsError> {
-        if !self.invitation_tickets.keep_ticket(digest, ticket).await? {
+        if !self.invitation_tickets.keep_ticket(digest, ticket).await?
+            || ticket.scope != InvitationScope::Instance
+        {
             return Ok(());
         }
         let Some((id, _)) = self.whose(&ticket.to).await? else {

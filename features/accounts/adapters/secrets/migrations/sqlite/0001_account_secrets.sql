@@ -40,5 +40,7 @@ CREATE TABLE account_invitation_tickets (
     digest      TEXT    UNIQUE,
     email       TEXT,
     until       TEXT,
+    project     TEXT,
+    by_an_operator BOOLEAN NOT NULL DEFAULT FALSE,
     ended       BOOLEAN NOT NULL DEFAULT FALSE
 );

@@ -1,7 +1,8 @@
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
-    InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification, SecretsError,
-    Session, SessionToken, Sessions, Stage, TokenDigest, VerificationCode, Verifications,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
+    InvitationTicket, InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification,
+    SecretsError, Session, SessionToken, Sessions, Stage, TokenDigest, VerificationCode,
+    Verifications,
 };
 use futures_util::future;
 use time::OffsetDateTime;
@@ -793,7 +794,101 @@ fn a_ticket(invitation: &str, to: &str) -> InvitationTicket {
         invitation: invitation.to_owned(),
         to: an_address(to),
         until: at(5_000),
+        scope: InvitationScope::Instance,
+        by_an_operator: true,
     }
+}
+
+pub async fn a_project_s_ticket_is_kept_with_its_project_and_who_issued_it<S: Secrets>(
+    secrets: &S,
+) {
+    let into_a_project = InvitationTicket {
+        scope: InvitationScope::Project {
+            project: "project_loom".to_owned(),
+        },
+        by_an_operator: false,
+        ..a_ticket("invitation_ada", "ada@example.com")
+    };
+    secrets
+        .keep_ticket(&a_digest("ada's"), &into_a_project)
+        .await
+        .expect("keeping should succeed");
+
+    assert_eq!(
+        secrets
+            .find_ticket(&a_digest("ada's"))
+            .await
+            .expect("finding should succeed"),
+        Some(into_a_project.clone())
+    );
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        Some(into_a_project),
+        "only an operator's invitation into a project may sign a new address up where sign-up is closed"
+    );
+}
+
+pub async fn a_found_ticket_is_left_to_be_taken<S: Secrets>(secrets: &S) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+    secrets
+        .keep_ticket(
+            &a_digest("bob's"),
+            &a_ticket("invitation_bob", "bob@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+    secrets
+        .forget_ticket("invitation_bob")
+        .await
+        .expect("forgetting should succeed");
+
+    for _ in 0..2 {
+        assert_eq!(
+            secrets
+                .find_ticket(&a_digest("ada's"))
+                .await
+                .expect("finding should succeed"),
+            Some(a_ticket("invitation_ada", "ada@example.com")),
+            "a link may be looked at before it is used"
+        );
+    }
+    assert_eq!(
+        secrets
+            .find_ticket(&a_digest("bob's"))
+            .await
+            .expect("finding should succeed"),
+        None,
+        "a withdrawn invitation's link leads nowhere"
+    );
+    assert_eq!(
+        secrets
+            .find_ticket(&a_digest("someone else's"))
+            .await
+            .expect("finding should succeed"),
+        None
+    );
+    secrets
+        .take_ticket(&a_digest("ada's"))
+        .await
+        .expect("taking should succeed")
+        .expect("the ticket is still there to be taken");
+    assert_eq!(
+        secrets
+            .find_ticket(&a_digest("ada's"))
+            .await
+            .expect("finding should succeed"),
+        None,
+        "a ticket taken is used up"
+    );
 }
 
 pub async fn a_kept_ticket_is_taken_once_and_whole<S: Secrets>(secrets: &S) {
@@ -1345,6 +1440,11 @@ macro_rules! conformance_tests {
             a_dropped_ticket_leaves_nothing_behind_open_ended_or_marked
         );
         $crate::secrets_conformance_case!($workbench, a_ticket_taken_is_not_kept_again);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_project_s_ticket_is_kept_with_its_project_and_who_issued_it
+        );
+        $crate::secrets_conformance_case!($workbench, a_found_ticket_is_left_to_be_taken);
         $crate::secrets_conformance_case!($workbench, a_ticket_forgotten_is_not_kept_again);
         $crate::secrets_conformance_case!(
             $workbench,

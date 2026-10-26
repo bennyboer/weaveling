@@ -1,6 +1,6 @@
 use accounts_core::{
-    AccountEvent, AccountId, AccountsError, EmailAddress, EmailAddresses, InvitationTicket,
-    InvitationTickets, InvitationToken, KIND, SigningUp,
+    AccountEvent, AccountId, AccountsError, EmailAddress, EmailAddresses, InvitationScope,
+    InvitationTicket, InvitationTickets, InvitationToken, KIND, SigningUp,
 };
 use eventsourcing::{AggregateId, EventStore, Version};
 use time::Duration;
@@ -19,6 +19,8 @@ async fn invited(wired: &Wired, address: &str, token: &str) {
                 invitation: "invitation_1".to_owned(),
                 to: EmailAddress::new(address).expect("a plain address"),
                 until: wiring::at(1_700_000_000) + Duration::days(7),
+                scope: InvitationScope::Instance,
+                by_an_operator: true,
             },
         )
         .await
@@ -227,4 +229,39 @@ async fn where_signing_up_is_by_invitation_only_an_invitation_lets_anyone_in() {
         .sign_up_by_invitation(TOKEN, "Ada", HER_PASSWORD)
         .await
         .expect("an invitation is the way in");
+}
+
+#[tokio::test]
+async fn a_project_s_invitation_signs_nobody_up_for_now_and_is_left_for_its_address() {
+    let wired = wiring::wired();
+    let into_a_project = InvitationTicket {
+        invitation: "invitation_1".to_owned(),
+        to: EmailAddress::new(ADA).expect("a plain address"),
+        until: wiring::at(1_700_000_000) + Duration::days(7),
+        scope: InvitationScope::Project {
+            project: "project_loom".to_owned(),
+        },
+        by_an_operator: true,
+    };
+    let digest = InvitationToken::presented(TOKEN).digest();
+    wired
+        .secrets
+        .keep_ticket(&digest, &into_a_project)
+        .await
+        .expect("keeping should succeed");
+
+    assert!(matches!(
+        signs_up(&wired, TOKEN).await,
+        Err(AccountsError::InvitationInvalid)
+    ));
+    assert_eq!(holder(&wired, ADA).await, None);
+    assert_eq!(
+        wired
+            .secrets
+            .find_ticket(&digest)
+            .await
+            .expect("finding should succeed"),
+        Some(into_a_project),
+        "the address may still take the invitation up signed in"
+    );
 }

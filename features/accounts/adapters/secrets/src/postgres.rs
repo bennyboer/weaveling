@@ -1,9 +1,9 @@
 use std::error::Error;
 
 use accounts_core::{
-    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
-    InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification, SecretsError,
-    Session, Sessions, Stage, TokenDigest, VerificationCode, Verifications,
+    AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
+    InvitationTicket, InvitationTickets, Operators, PasswordHash, Passwords, PendingVerification,
+    SecretsError, Session, Sessions, Stage, TokenDigest, VerificationCode, Verifications,
 };
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
@@ -92,16 +92,22 @@ const SECOND_FACTOR_OWED: &str = "second-factor-owed";
 const CLOSE: &str = "DELETE FROM account_codes WHERE account = $1 AND purpose = $2";
 
 const KEEP_TICKET: &str = "
-    INSERT INTO account_invitation_tickets (digest, invitation, email, until)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO account_invitation_tickets (digest, invitation, email, until, project, by_an_operator)
+    VALUES ($1, $2, $3, $4, $5, $6)
     ON CONFLICT DO NOTHING
+";
+
+const FIND_TICKET: &str = "
+    SELECT invitation, email, until, project, by_an_operator
+    FROM account_invitation_tickets
+    WHERE digest = $1 AND NOT ended
 ";
 
 const TAKE_TICKET: &str = "
     UPDATE account_invitation_tickets
     SET ended = TRUE
     WHERE digest = $1 AND NOT ended
-    RETURNING invitation, email, until
+    RETURNING invitation, email, until, project, by_an_operator
 ";
 
 const DROP_TICKET: &str = "DELETE FROM account_invitation_tickets WHERE invitation = $1";
@@ -167,6 +173,11 @@ fn to_ticket(row: &PgRow) -> Result<InvitationTicket, SecretsError> {
         invitation: row.try_get("invitation").map_err(unreachable)?,
         to: EmailAddress::new(&email).map_err(unreachable)?,
         until: row.try_get("until").map_err(unreachable)?,
+        scope: match row.try_get("project").map_err(unreachable)? {
+            None => InvitationScope::Instance,
+            Some(project) => InvitationScope::Project { project },
+        },
+        by_an_operator: row.try_get("by_an_operator").map_err(unreachable)?,
     })
 }
 
@@ -456,11 +467,30 @@ impl InvitationTickets for PostgresSecrets {
             .bind(&ticket.invitation)
             .bind(ticket.to.as_str())
             .bind(ticket.until)
+            .bind(match &ticket.scope {
+                InvitationScope::Instance => None,
+                InvitationScope::Project { project } => Some(project.as_str()),
+            })
+            .bind(ticket.by_an_operator)
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
 
         Ok(done.rows_affected() == 1)
+    }
+
+    async fn find_ticket(
+        &self,
+        digest: &TokenDigest,
+    ) -> Result<Option<InvitationTicket>, SecretsError> {
+        sqlx::query(FIND_TICKET)
+            .bind(digest.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .as_ref()
+            .map(to_ticket)
+            .transpose()
     }
 
     async fn take_ticket(

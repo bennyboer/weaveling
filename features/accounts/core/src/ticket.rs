@@ -10,6 +10,14 @@ pub struct InvitationTicket {
     pub invitation: String,
     pub to: EmailAddress,
     pub until: OffsetDateTime,
+    pub scope: InvitationScope,
+    pub by_an_operator: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InvitationScope {
+    Instance,
+    Project { project: String },
 }
 
 pub struct InvitationToken(String);

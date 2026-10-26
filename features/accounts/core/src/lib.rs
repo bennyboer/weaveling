@@ -39,4 +39,4 @@ pub use service::SignedIn;
 pub use session::{Session, SessionToken, Stage, TokenDigest};
 pub use signing_up::SigningUp;
 pub use throttle::Guarded;
-pub use ticket::{InvitationTicket, InvitationToken};
+pub use ticket::{InvitationScope, InvitationTicket, InvitationToken};

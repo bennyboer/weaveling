@@ -224,6 +224,21 @@ impl InvitationTickets for InMemorySecrets {
         Ok(fresh)
     }
 
+    async fn find_ticket(
+        &self,
+        digest: &TokenDigest,
+    ) -> Result<Option<InvitationTicket>, SecretsError> {
+        let kept = self.kept();
+
+        Ok(kept
+            .invitation_tickets
+            .iter()
+            .find(|(invitation, (held, _))| {
+                held == digest && !kept.ended_invitations.contains(*invitation)
+            })
+            .map(|(_, (_, ticket))| ticket.clone()))
+    }
+
     async fn take_ticket(
         &self,
         digest: &TokenDigest,

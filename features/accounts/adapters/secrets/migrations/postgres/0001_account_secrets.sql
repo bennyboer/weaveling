@@ -40,5 +40,7 @@ CREATE TABLE account_invitation_tickets (
     digest      TEXT COLLATE "C" UNIQUE,
     email       TEXT COLLATE "C",
     until       TIMESTAMPTZ,
+    project     TEXT COLLATE "C",
+    by_an_operator BOOLEAN       NOT NULL DEFAULT FALSE,
     ended       BOOLEAN          NOT NULL DEFAULT FALSE
 );

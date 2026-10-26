@@ -1,6 +1,6 @@
 use accounts_core::{
-    AccountEvent, DeclineReason, EmailAddress, EmailAddresses, InvitationTicket, InvitationTickets,
-    InvitationToken, KIND, TokenDigest,
+    AccountEvent, DeclineReason, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket,
+    InvitationTickets, InvitationToken, KIND, TokenDigest,
 };
 use accounts_messaging::KeepInvitationTicketsListener;
 use eventsourcing::{AggregateId, EventStore, Version};
@@ -35,6 +35,8 @@ fn issued(invitation: &str, to: &str, digest: &str) -> Message {
             "to": to,
             "digest": digest,
             "until": "2023-11-21T22:13:20Z",
+            "scope": { "kind": "instance" },
+            "by_an_operator": true,
         }),
     )
 }
@@ -76,6 +78,8 @@ async fn an_issued_invitation_leaves_a_ticket_for_its_address_until_it_ends() {
             invitation: "invitation_ada".to_owned(),
             to: EmailAddress::new(ADA).expect("a plain address"),
             until: wiring::at(1_700_000_000) + Duration::days(7),
+            scope: InvitationScope::Instance,
+            by_an_operator: true,
         }),
         "accounts keep the ticket themselves, so signing up asks invitations nothing"
     );
@@ -152,12 +156,13 @@ fn issued_into_a_project(invitation: &str, to: &str, digest: &str) -> Message {
             "digest": digest,
             "until": "2023-11-21T22:13:20Z",
             "scope": { "kind": "project", "project": "project_loom", "role": "author" },
+            "by_an_operator": false,
         }),
     )
 }
 
 #[tokio::test]
-async fn an_invitation_into_a_project_keeps_no_ticket_and_declines_nothing_for_now() {
+async fn an_invitation_into_a_project_keeps_its_ticket_even_for_an_address_with_an_account() {
     let wired = wiring::wired();
     wired
         .accounts
@@ -178,8 +183,24 @@ async fn an_invitation_into_a_project_keeps_no_ticket_and_declines_nothing_for_n
     )
     .await;
 
-    assert_eq!(ticket_for(&wired, "ab12").await, None);
-    assert_eq!(ticket_for(&wired, "cd34").await, None);
+    for (digest, invitation, to) in [
+        ("ab12", "invitation_ada", ADA),
+        ("cd34", "invitation_bo", "bo@example.com"),
+    ] {
+        assert_eq!(
+            ticket_for(&wired, digest).await,
+            Some(InvitationTicket {
+                invitation: invitation.to_owned(),
+                to: EmailAddress::new(to).expect("a plain address"),
+                until: wiring::at(1_700_000_000) + Duration::days(7),
+                scope: InvitationScope::Project {
+                    project: "project_loom".to_owned(),
+                },
+                by_an_operator: false,
+            }),
+            "an account takes a project's invitation up signed in, so its ticket waits for it"
+        );
+    }
     assert!(
         !wired
             .store
@@ -291,6 +312,8 @@ async fn a_retired_invitation_leaves_no_ticket_nor_mark_and_the_others_stay() {
                     invitation: "invitation_ada".to_owned(),
                     to: EmailAddress::new(ADA).expect("a plain address"),
                     until: wiring::at(1_700_000_000),
+                    scope: InvitationScope::Instance,
+                    by_an_operator: true,
                 },
             )
             .await

@@ -1,5 +1,6 @@
 use accounts_core::{
-    AccountId, EmailAddress, EmailAddresses, InvitationTicket, InvitationTickets, InvitationToken,
+    AccountId, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket, InvitationTickets,
+    InvitationToken,
 };
 use clock::Clock;
 use time::Duration;
@@ -102,6 +103,8 @@ async fn an_invitation_to_an_address_left_claimed_still_signs_it_up() {
                 invitation: "invitation_1".to_owned(),
                 to: address(),
                 until: wired.clock.now() + Duration::days(7),
+                scope: InvitationScope::Instance,
+                by_an_operator: true,
             },
         )
         .await
