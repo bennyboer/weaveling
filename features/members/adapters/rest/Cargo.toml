@@ -13,7 +13,11 @@ live-contract = { version = "0.1.0", path = "../../../../libraries/live-contract
 live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }
 
 members-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-members-contract" }
+members-core = { version = "0.1.0", path = "../../core", package = "weaveling-members-core" }
 
 [dev-dependencies]
 axum-test = { workspace = true, features = ["ws"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
+time = { workspace = true }
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+members-catalog = { version = "0.1.0", path = "../catalog", package = "weaveling-members-catalog" }

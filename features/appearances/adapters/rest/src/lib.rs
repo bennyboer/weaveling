@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use appearances_contract::{IdeaPlacesDTO, PlaceDTO};
-use appearances_core::{AppearanceCatalog, CatalogError, IdeaLink, Place, ProjectLink, Subject};
+use appearances_core::{
+    AppearanceCatalog, AppearancesCore, AppearancesError, CatalogError, Place, ProjectLink, Subject,
+};
 use async_trait::async_trait;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Query, State};
@@ -19,26 +21,24 @@ use time::OffsetDateTime;
 
 mod guarding;
 
-pub use guarding::Readers;
-
-pub fn router(readers: Readers) -> Router {
+pub fn router(appearances: AppearancesCore) -> Router {
     Router::new()
         .route("/appearances", routing::get(places_of))
-        .with_state(readers)
+        .with_state(appearances)
 }
 
 #[derive(Clone)]
 struct Following {
+    appearances: AppearancesCore,
     broadcaster: Broadcaster,
-    readers: Readers,
 }
 
-pub fn live(broadcaster: Broadcaster, readers: Readers) -> Router {
+pub fn live(appearances: AppearancesCore, broadcaster: Broadcaster) -> Router {
     Router::new()
         .route("/appearances/live", routing::get(follow))
         .with_state(Following {
+            appearances,
             broadcaster,
-            readers,
         })
 }
 
@@ -52,15 +52,15 @@ async fn follow(
         return StatusCode::BAD_REQUEST.into_response();
     };
 
-    match following.readers.may_read(&agent, idea).await {
-        Ok(Some(false)) => StatusCode::NOT_FOUND.into_response(),
+    match following.appearances.may_follow(idea, &agent).await {
+        Ok(false) => StatusCode::NOT_FOUND.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        Ok(_) => live::streaming_sifted(
+        Ok(true) => live::streaming_sifted(
             upgrade,
             following.broadcaster.hear(idea),
             Arc::new(ReadableBy {
                 agent,
-                readers: following.readers,
+                appearances: following.appearances,
             }),
         ),
     }
@@ -174,26 +174,18 @@ struct OfIdea {
 }
 
 async fn places_of(
-    State(readers): State<Readers>,
+    State(appearances): State<AppearancesCore>,
     Extension(agent): Extension<Agent>,
     Query(asked): Query<OfIdea>,
 ) -> Result<Json<Vec<PlaceDTO>>, Problem> {
-    if readers
-        .may_read(&agent, &asked.idea)
-        .await
-        .map_err(Problem::unexpected)?
-        == Some(false)
-    {
-        return Err(Problem::not_found(
-            serving::NOT_FOUND,
-            "there is no such idea",
-        ));
-    }
-    let places = readers
-        .catalog
-        .places_of(&Subject::Idea(IdeaLink::from(asked.idea)))
-        .await
-        .map_err(Problem::unexpected)?;
+    let places =
+        appearances
+            .places_of(&asked.idea, &agent)
+            .await
+            .map_err(|refusal| match refusal {
+                AppearancesError::IdeaNotThere => Problem::not_found(serving::NOT_FOUND, refusal),
+                beyond_reach => Problem::unexpected(beyond_reach),
+            })?;
 
     Ok(Json(places.iter().map(to_dto).collect()))
 }

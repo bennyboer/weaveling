@@ -3,8 +3,10 @@ use std::time::Duration;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, Subject};
-use appearances_rest::{Readers, TellingAppearances};
+use appearances_core::{
+    AppearanceCatalog, AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, Subject,
+};
+use appearances_rest::TellingAppearances;
 use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
@@ -52,13 +54,10 @@ async fn guarded() -> Guarded {
     let broadcaster = Broadcaster::new();
     let kept = Arc::new(InMemoryAppearanceCatalog::new());
     let authorizer = Arc::new(OneProject::default());
-    let readers = Readers {
-        catalog: kept.clone(),
-        authorizer: authorizer.clone(),
-    };
+    let appearances = AppearancesCore::new(kept.clone(), authorizer.clone());
     let server = TestServer::builder().http_transport().build(
-        appearances_rest::router(readers.clone())
-            .merge(appearances_rest::live(broadcaster.clone(), readers))
+        appearances_rest::router(appearances.clone())
+            .merge(appearances_rest::live(appearances, broadcaster.clone()))
             .layer(Extension(Agent::Account(AccountId::from("account_ada")))),
     );
     for (idea, project) in [("idea_ada", READABLE), ("idea_kept", UNREADABLE)] {
@@ -181,6 +180,30 @@ async fn an_idea_of_no_project_known_yet_appears_nowhere_and_is_told_only_once_i
     assert!(
         heard_soon(&mut orphaned).await.is_none(),
         "where an idea of no project known appears is told to nobody, as nobody can be let in to it"
+    );
+}
+
+#[tokio::test]
+async fn a_followed_idea_ends_once_whom_to_tell_cannot_be_known() {
+    let guarded = guarded().await;
+    let mut socket = following(&guarded.server, "idea_ada").await;
+
+    *guarded.authorizer.down.lock().expect("never poisoned") = true;
+    guarded
+        .telling
+        .remember(
+            &an_idea("idea_ada"),
+            &Place::Scene(SceneLink::from("scene_2")),
+            2,
+        )
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        tokio::spawn(async move { socket.receive_text().await })
+            .await
+            .is_err(),
+        "a change it cannot judge may be one the follower needed, so the socket ends and its client reloads"
     );
 }
 

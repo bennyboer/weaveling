@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{AppearanceCatalog, IdeaLink, Place, SceneLink, SectionLink, Subject};
-use appearances_rest::Readers;
+use appearances_core::{
+    AppearanceCatalog, AppearancesCore, IdeaLink, Place, SceneLink, SectionLink, Subject,
+};
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
@@ -15,11 +16,8 @@ fn an_idea(id: &str) -> Subject {
 
 fn served(catalog: Arc<InMemoryAppearanceCatalog>) -> TestServer {
     TestServer::new(
-        appearances_rest::router(Readers {
-            catalog,
-            authorizer: Arc::new(AllowingEverything),
-        })
-        .layer(Extension(Agent::Local)),
+        appearances_rest::router(AppearancesCore::new(catalog, Arc::new(AllowingEverything)))
+            .layer(Extension(Agent::Local)),
     )
 }
 

@@ -6,7 +6,7 @@ use chores::ForgetOldTombstones;
 use live::Broadcaster;
 use outbox::Outbox;
 use statistics_catalog::InMemoryWordCountCatalog;
-use statistics_core::WordCountCatalog;
+use statistics_core::{StatisticsCore, WordCountCatalog};
 use statistics_messaging::ProjectWordCountsListener;
 use wiring::{Context, Feature, Wired};
 
@@ -23,15 +23,18 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         broadcaster.clone(),
     ));
 
+    let statistics = StatisticsCore::new(telling, context.authorizer.clone());
+
     Wired::serving(
-        statistics_rest::router(ports.catalog.clone(), context.authorizer.clone()).merge(
-            statistics_rest::live(broadcaster, context.authorizer.clone()),
-        ),
+        statistics_rest::router(statistics.clone())
+            .merge(statistics_rest::live(statistics.clone(), broadcaster)),
     )
-    .listening(vec![Arc::new(ProjectWordCountsListener::new(telling))])
+    .listening(vec![Arc::new(ProjectWordCountsListener::new(
+        statistics.clone(),
+    ))])
     .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
         "forget-old-statistics-tombstones",
-        Arc::new(StatisticsTombstones::of(ports.catalog.clone())),
+        Arc::new(StatisticsTombstones::of(statistics)),
         context.clock.clone(),
     ))])
 }
@@ -145,10 +148,11 @@ mod tests {
                 .expect("forgetting should succeed");
         }
 
-        let forgotten = StatisticsTombstones::of(catalog)
-            .forget_laid_before(NOW + Duration::SECOND, 1)
-            .await
-            .expect("forgetting tombstones should succeed");
+        let forgotten =
+            StatisticsTombstones::of(StatisticsCore::new(catalog, Arc::new(AllowingEverything)))
+                .forget_laid_before(NOW + Duration::SECOND, 1)
+                .await
+                .expect("forgetting tombstones should succeed");
 
         assert_eq!(forgotten, 1);
     }

@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use accounts_core::{AccountId, AccountServiceError, EmailAddress, EmailAddresses, PasswordHash};
+use accounts_core::{AccountId, AccountsError, EmailAddress, EmailAddresses, PasswordHash};
 use clock::Clock;
 
 use crate::wiring;
@@ -35,8 +35,8 @@ async fn verified(wired: &Wired, email: &str, password: &str) -> AccountId {
     id
 }
 
-fn refused(signed_in: Result<AccountId, AccountServiceError>) -> bool {
-    matches!(signed_in, Err(AccountServiceError::SignInRefused))
+fn refused(signed_in: Result<AccountId, AccountsError>) -> bool {
+    matches!(signed_in, Err(AccountsError::SignInRefused))
 }
 
 #[tokio::test]
@@ -147,7 +147,7 @@ async fn an_unverified_account_is_told_so_only_with_the_right_password() {
 
     assert!(matches!(
         wired.accounts.sign_in(ADA, HER_PASSWORD).await,
-        Err(AccountServiceError::NotVerifiedYet)
+        Err(AccountsError::NotVerifiedYet)
     ));
     assert!(
         refused(wired.accounts.sign_in(ADA, "not her password at all").await),

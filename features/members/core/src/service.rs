@@ -2,17 +2,12 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{
-    AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, StoreError,
+    AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing,
+    StoreError,
 };
-use thiserror::Error;
 
-use crate::members::{Members, MembersCommand, MembersError, MembersEvent, ProjectLink};
-
-#[derive(Debug, Error)]
-pub enum MembersServiceError {
-    #[error(transparent)]
-    Events(#[from] ServiceError<MembersError>),
-}
+use crate::error::MembersCoreError;
+use crate::members::{Members, MembersCommand, MembersEvent, ProjectLink};
 
 #[derive(Clone)]
 pub struct MembersService {
@@ -31,7 +26,7 @@ impl MembersService {
         project: &ProjectLink,
         owner: AccountId,
         agent: &Agent,
-    ) -> Result<(), MembersServiceError> {
+    ) -> Result<(), MembersCoreError> {
         match self
             .events
             .begin(
@@ -44,6 +39,13 @@ impl MembersService {
             Ok(_) | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(()),
             Err(refused) => Err(refused.into()),
         }
+    }
+
+    pub async fn latest(
+        &self,
+        project: &ProjectLink,
+    ) -> Result<Standing<Members>, MembersCoreError> {
+        Ok(self.events.latest(&AggregateId::from(project)).await?)
     }
 }
 

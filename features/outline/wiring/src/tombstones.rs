@@ -1,18 +1,16 @@
-use std::error::Error;
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use chores::Tombstones;
-use outline_core::OutlineCatalog;
+use outline_core::OutlinesCore;
+use std::error::Error;
 use time::OffsetDateTime;
 
 pub struct OutlineTombstones {
-    catalog: Arc<dyn OutlineCatalog>,
+    outlines: OutlinesCore,
 }
 
 impl OutlineTombstones {
-    pub fn of(catalog: Arc<dyn OutlineCatalog>) -> Self {
-        Self { catalog }
+    pub fn of(outlines: OutlinesCore) -> Self {
+        Self { outlines }
     }
 }
 
@@ -24,7 +22,7 @@ impl Tombstones for OutlineTombstones {
         at_most: u64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
         Ok(self
-            .catalog
+            .outlines
             .forget_tombstones_laid_before(before, at_most)
             .await?)
     }

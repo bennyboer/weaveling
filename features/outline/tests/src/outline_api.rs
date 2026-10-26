@@ -10,7 +10,7 @@ use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, MoveSectionRequest,
     OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, RetitleSectionRequest, refused,
 };
-use outline_core::{OutlineService, SectionTitle};
+use outline_core::{OutlinesCore, SectionTitle};
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
 
@@ -38,7 +38,7 @@ fn a_server() -> TestServer {
     a_server_and_its_outlines().0
 }
 
-fn a_server_and_its_outlines() -> (TestServer, OutlineService) {
+fn a_server_and_its_outlines() -> (TestServer, OutlinesCore) {
     let wired = wiring::wired(Arc::new(FixedClock::new(at(1_700_000_000))));
 
     (
@@ -775,9 +775,9 @@ async fn an_outline_discarded_with_its_project_refuses_what_comes_after() {
     let (server, outlines) = a_server_and_its_outlines();
     let outline = an_open_outline(&server).await;
     outlines
-        .discard(&outline.id, None, &Agent::Local)
+        .sweep("project_1")
         .await
-        .expect("discarding should succeed");
+        .expect("sweeping should succeed");
 
     let response = server
         .post(&format!("/outlines/{}/sections", outline.id))

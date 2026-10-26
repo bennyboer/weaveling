@@ -1,4 +1,4 @@
-use accounts_core::{AccountService, AccountServiceError, EmailAddress, EmailAddresses, SigningUp};
+use accounts_core::{AccountsCore, AccountsError, EmailAddress, EmailAddresses, SigningUp};
 
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
@@ -16,7 +16,7 @@ async fn drawn(wired: &Wired) -> String {
         .to_owned()
 }
 
-fn by_invitation(wired: &Wired) -> AccountService {
+fn by_invitation(wired: &Wired) -> AccountsCore {
     wired.accounts.clone().signing_up(SigningUp::ByInvitation)
 }
 
@@ -69,7 +69,7 @@ async fn where_signing_up_is_by_invitation_the_code_from_the_log_lets_the_first_
         accounts
             .sign_up_to_operate(GRACE, "Grace", HER_PASSWORD, &code)
             .await,
-        Err(AccountServiceError::SigningUpByInvitationOnly)
+        Err(AccountsError::SigningUpByInvitationOnly)
     ));
     assert!(
         !held(&wired, GRACE).await,
@@ -86,7 +86,7 @@ async fn a_code_that_is_not_the_logged_one_lets_nobody_in() {
         by_invitation(&wired)
             .sign_up_to_operate(ADA, "Ada", HER_PASSWORD, "0123456789abcdef0123456789abcdef")
             .await,
-        Err(AccountServiceError::OperatorCodeWrong)
+        Err(AccountsError::OperatorCodeWrong)
     ));
     assert!(!held(&wired, ADA).await);
     assert!(wired.mailbox.sent_to(ADA).is_empty());

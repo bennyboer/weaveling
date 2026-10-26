@@ -1,32 +1,14 @@
-use std::sync::Arc;
-
 use messaging::{Failure, Handler, Message};
-use outline_core::{Attachment, OutlineCatalog, OutlineService};
+use outline_core::{Attachment, OutlinesCore};
 use scenes_contract::{DELETED, SceneDeletedDTO};
 
-use crate::letting_go;
-
 pub struct DetachOnSceneDeletedListener {
-    outlines: OutlineService,
-    catalog: Arc<dyn OutlineCatalog>,
+    outlines: OutlinesCore,
 }
 
 impl DetachOnSceneDeletedListener {
-    pub fn new(outlines: OutlineService, catalog: Arc<dyn OutlineCatalog>) -> Self {
-        Self { outlines, catalog }
-    }
-
-    async fn work_through(&self, message: &Message) -> Result<(), Failure> {
-        let deleted: SceneDeletedDTO = message.payload_as()?;
-        letting_go::let_go_everywhere(
-            &self.outlines,
-            self.catalog.as_ref(),
-            &Attachment::scene(&deleted.scene),
-            message.occurred_at,
-        )
-        .await?;
-
-        Ok(())
+    pub fn new(outlines: OutlinesCore) -> Self {
+        Self { outlines }
     }
 }
 
@@ -37,6 +19,11 @@ impl Handler for DetachOnSceneDeletedListener {
     const WHEN_REFUSED: &'static str = "A deleted scene could not be taken out of the outline.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.work_through(message).await
+        let deleted: SceneDeletedDTO = message.payload_as()?;
+
+        Ok(self
+            .outlines
+            .let_go_everywhere(&Attachment::scene(&deleted.scene), message.occurred_at)
+            .await?)
     }
 }

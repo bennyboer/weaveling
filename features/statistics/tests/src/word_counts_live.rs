@@ -8,7 +8,7 @@ use eventsourcing::Agent;
 use live::Broadcaster;
 use serde_json::{Value, json};
 use statistics_catalog::InMemoryWordCountCatalog;
-use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
+use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
 use statistics_rest::TellingWordCounts;
 use time::OffsetDateTime;
 
@@ -25,8 +25,14 @@ async fn counts_followed(project: &str) -> CountsFollowed {
         broadcaster.clone(),
     );
     let server = TestServer::builder().http_transport().build(
-        statistics_rest::live(broadcaster, Arc::new(AllowingEverything))
-            .layer(Extension(Agent::Local)),
+        statistics_rest::live(
+            StatisticsCore::new(
+                Arc::new(InMemoryWordCountCatalog::new()),
+                Arc::new(AllowingEverything),
+            ),
+            broadcaster,
+        )
+        .layer(Extension(Agent::Local)),
     );
     let socket = server
         .get_websocket(&format!("/statistics/word-counts/live?project={project}"))

@@ -1,16 +1,14 @@
-use std::sync::Arc;
-
-use appearances_core::{AppearanceCatalog, IdeaLink, Subject};
+use appearances_core::AppearancesCore;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
 
 pub struct ForgetDiscardedIdeaListener {
-    catalog: Arc<dyn AppearanceCatalog>,
+    appearances: AppearancesCore,
 }
 
 impl ForgetDiscardedIdeaListener {
-    pub fn new(catalog: Arc<dyn AppearanceCatalog>) -> Self {
-        Self { catalog }
+    pub fn new(appearances: AppearancesCore) -> Self {
+        Self { appearances }
     }
 }
 
@@ -24,11 +22,8 @@ impl Handler for ForgetDiscardedIdeaListener {
         let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
 
         Ok(self
-            .catalog
-            .forget_subject(
-                &Subject::Idea(IdeaLink::from(discarded.aggregate.id)),
-                message.occurred_at,
-            )
+            .appearances
+            .idea_discarded(&discarded.aggregate.id, message.occurred_at)
             .await?)
     }
 }

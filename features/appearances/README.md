@@ -26,4 +26,6 @@ The answer to *where does this appear?* — for an idea today: in which sections
 
 **Route:** `GET /api/appearances?idea={id}` → `[{ "type": "scene" | "section", "id" }]`, in one stable order.
 
-**Crates:** `core` (`Subject`, `Place`, the catalog port) · `contract` (`PlaceDTO`) · `adapters/catalog` (in memory, PostgreSQL and SQLite, one conformance suite for all three) · `adapters/messaging` (the three listeners) · `adapters/rest` · `wiring` · `tests`.
+**One way in: `AppearancesCore`.** The REST route, the live route and its sieve, the three listeners and the chore all go through one struct, which asks the `Authorizer` about the idea's project: where an idea appears is told to whoever may read its project. An idea whose project is not known yet may be followed, and answers with nothing, but a change about it is told to nobody until its project is known. Errors are one enum, `AppearancesError`.
+
+**Crates:** `core` (`AppearancesCore`, `Subject`, `Place`, the catalog port) · `contract` (`PlaceDTO`) · `adapters/catalog` (in memory, PostgreSQL and SQLite, one conformance suite for all three) · `adapters/messaging` (the three listeners) · `adapters/rest` · `wiring` · `tests`.

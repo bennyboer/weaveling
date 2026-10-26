@@ -4,9 +4,10 @@ use std::time::Duration;
 use ::time::OffsetDateTime;
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{
-    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+    AppearanceCatalog, AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, SectionLink,
+    Subject,
 };
-use appearances_rest::{Readers, TellingAppearances};
+use appearances_rest::TellingAppearances;
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::{TestServer, TestWebSocket};
@@ -46,11 +47,8 @@ async fn followed(ideas: &[&str]) -> Followed {
     let catalog = TellingAppearances::around(kept.clone(), broadcaster.clone());
     let server = TestServer::builder().http_transport().build(
         appearances_rest::live(
+            AppearancesCore::new(kept, Arc::new(AllowingEverything)),
             broadcaster,
-            Readers {
-                catalog: kept,
-                authorizer: Arc::new(AllowingEverything),
-            },
         )
         .layer(Extension(Agent::Local)),
     );

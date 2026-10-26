@@ -1,4 +1,4 @@
-use accounts_core::{AccountServiceError, Guarded};
+use accounts_core::{AccountsError, Guarded};
 use throttling::Throttles;
 use time::Duration;
 
@@ -26,14 +26,14 @@ async fn wrong_times(wired: &Wired, email: &str, times: usize) {
     for _ in 0..times {
         assert!(matches!(
             wired.accounts.sign_in(email, NOT_HERS).await,
-            Err(AccountServiceError::SignInRefused)
+            Err(AccountsError::SignInRefused)
         ));
     }
 }
 
-fn waits<T>(tried: Result<T, AccountServiceError>) -> Option<Duration> {
+fn waits<T>(tried: Result<T, AccountsError>) -> Option<Duration> {
     match tried {
-        Err(AccountServiceError::Throttled { wait }) => Some(wait),
+        Err(AccountsError::Throttled { wait }) => Some(wait),
         _ => None,
     }
 }
@@ -134,13 +134,13 @@ async fn the_right_password_clears_the_count_even_before_the_address_is_confirme
 
     assert!(matches!(
         wired.accounts.sign_in(ADA, HER_PASSWORD).await,
-        Err(AccountServiceError::NotVerifiedYet)
+        Err(AccountsError::NotVerifiedYet)
     ));
     wrong_times(&wired, ADA, 4).await;
 
     assert!(matches!(
         wired.accounts.sign_in(ADA, NOT_HERS).await,
-        Err(AccountServiceError::SignInRefused)
+        Err(AccountsError::SignInRefused)
     ));
 }
 
@@ -277,7 +277,7 @@ async fn a_sign_up_refused_for_what_it_asks_is_not_counted() {
     for _ in 0..3 {
         assert!(matches!(
             wired.accounts.sign_up(ADA, "Ada", "short").await,
-            Err(AccountServiceError::InvalidPassword(_))
+            Err(AccountsError::InvalidPassword(_))
         ));
     }
 

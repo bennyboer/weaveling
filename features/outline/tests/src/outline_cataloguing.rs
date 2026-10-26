@@ -173,7 +173,7 @@ fn shape(outline: &Outline) -> String {
 async fn standing(wired: &Wired, outline: &OutlineId) -> Standing<Outline> {
     wired
         .outlines
-        .get(&outline.to_string())
+        .read(&outline.to_string(), &an_author())
         .await
         .expect("reading should succeed")
 }
@@ -252,7 +252,7 @@ async fn a_service_that_never_saw_the_writes_reads_the_same_book_out_of_the_log(
     let (outline, _) = a_written_book(&wired).await;
 
     let replayed = (wired.reopened)()
-        .get(&outline.to_string())
+        .read(&outline.to_string(), &an_author())
         .await
         .expect("a fresh service should read the stream");
 

@@ -1,5 +1,5 @@
 use accounts_core::{
-    AccountError, AccountEvent, AccountId, AccountServiceError, EmailAddress, EmailAddresses, KIND,
+    AccountError, AccountEvent, AccountId, AccountsError, EmailAddress, EmailAddresses, KIND,
 };
 use eventsourcing::{AggregateId, EventStore, ServiceError, Version};
 
@@ -49,8 +49,7 @@ async fn ada_and_grace_the_operator(wired: &Wired) -> (AccountId, AccountId) {
 
 async fn is_locked(wired: &Wired, id: &AccountId) -> bool {
     wired
-        .accounts
-        .get(id)
+        .account(id)
         .await
         .expect("the account should exist")
         .state
@@ -119,12 +118,12 @@ async fn a_locked_account_is_refused_at_signing_in_only_once_its_password_is_rig
 
     assert!(matches!(
         wired.accounts.sign_in(ADA, HER_PASSWORD).await,
-        Err(AccountServiceError::Locked)
+        Err(AccountsError::Locked)
     ));
     assert!(
         matches!(
             wired.accounts.sign_in(ADA, "not her password at all").await,
-            Err(AccountServiceError::SignInRefused)
+            Err(AccountsError::SignInRefused)
         ),
         "whoever does not know the password learns nothing of the lock"
     );
@@ -138,7 +137,7 @@ async fn only_an_operator_locks_or_unlocks() {
 
     assert!(matches!(
         wired.accounts.lock(&ada, &hedy, "I do not like her.").await,
-        Err(AccountServiceError::NotAnOperator)
+        Err(AccountsError::NotAnOperator)
     ));
     assert!(!is_locked(&wired, &hedy).await);
 
@@ -149,7 +148,7 @@ async fn only_an_operator_locks_or_unlocks() {
         .expect("an operator may lock an account");
     assert!(matches!(
         wired.accounts.unlock(&ada, &hedy).await,
-        Err(AccountServiceError::NotAnOperator)
+        Err(AccountsError::NotAnOperator)
     ));
     assert!(is_locked(&wired, &hedy).await);
 }
@@ -184,7 +183,7 @@ async fn an_operator_cannot_lock_themselves() {
 
     assert!(matches!(
         wired.accounts.lock(&grace, &grace, "Testing.").await,
-        Err(AccountServiceError::Events(ServiceError::Refused(
+        Err(AccountsError::Events(ServiceError::Refused(
             AccountError::OperatorCannotBeLocked
         )))
     ));
@@ -197,7 +196,7 @@ async fn an_account_is_locked_only_with_a_reason() {
 
     assert!(matches!(
         wired.accounts.lock(&grace, &ada, "   ").await,
-        Err(AccountServiceError::InvalidLockReason(_))
+        Err(AccountsError::InvalidLockReason(_))
     ));
     assert!(!is_locked(&wired, &ada).await);
 }
@@ -226,7 +225,7 @@ async fn a_locked_account_may_set_a_new_password_but_stays_locked() {
     assert!(
         matches!(
             wired.accounts.sign_in(ADA, "a new password at last").await,
-            Err(AccountServiceError::Locked)
+            Err(AccountsError::Locked)
         ),
         "a reset never unlocks"
     );

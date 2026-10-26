@@ -2,30 +2,30 @@ use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer};
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Query, State};
 use axum::response::Response;
 use axum::routing;
 use axum::{Extension, Router};
 use eventsourcing::Agent;
-use live::{Asked, Broadcaster, ReadersOfTheProject, Sieve};
+use live::{Asked, Broadcaster, Gate, Sieve};
 use live_contract::FrameDTO;
+use projects_core::ProjectsCore;
 
 pub const FOLLOWED: &str = "projects";
 
 #[derive(Clone)]
 struct Following {
+    projects: ProjectsCore,
     broadcaster: Broadcaster,
-    authorizer: Arc<dyn Authorizer>,
 }
 
-pub fn live(broadcaster: Broadcaster, authorizer: Arc<dyn Authorizer>) -> Router {
+pub fn live(projects: ProjectsCore, broadcaster: Broadcaster) -> Router {
     Router::new()
         .route("/projects/live", routing::get(follow))
         .with_state(Following {
+            projects,
             broadcaster,
-            authorizer,
         })
 }
 
@@ -41,7 +41,7 @@ async fn follow(
             following.broadcaster.hear(FOLLOWED),
             Arc::new(ReadableBy {
                 agent,
-                authorizer: following.authorizer,
+                projects: following.projects,
             }),
         );
     };
@@ -51,14 +51,27 @@ async fn follow(
         &following.broadcaster,
         project,
         &agent,
-        &ReadersOfTheProject(following.authorizer),
+        &FollowersOf(following.projects),
     )
     .await
 }
 
+struct FollowersOf(ProjectsCore);
+
+#[async_trait]
+impl Gate for FollowersOf {
+    async fn admits(
+        &self,
+        agent: &Agent,
+        project: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(self.0.may_follow(project, agent).await?)
+    }
+}
+
 struct ReadableBy {
     agent: Agent,
-    authorizer: Arc<dyn Authorizer>,
+    projects: ProjectsCore,
 }
 
 #[async_trait]
@@ -68,6 +81,6 @@ impl Sieve for ReadableBy {
             return Ok(false);
         };
 
-        Ok(self.authorizer.may(&self.agent, Act::Read, project).await?)
+        Ok(self.projects.may_follow(project, &self.agent).await?)
     }
 }

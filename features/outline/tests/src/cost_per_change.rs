@@ -10,7 +10,7 @@ use messaging::{FakePublisher, Listener};
 use outbox::Outbox;
 use outline_contract::{AttachRequest, AttachmentDTO};
 use outline_core::{
-    Attachment, OutlineCatalog, OutlineEvent, OutlineId, OutlineService, SceneLink, SectionTitle,
+    Attachment, OutlineCatalog, OutlineEvent, OutlineId, OutlinesCore, SceneLink, SectionTitle,
 };
 use outline_wiring::{OutlineFeature, Ports};
 use test_harness::SqliteFixture;
@@ -22,7 +22,7 @@ const SPAN: usize = 100;
 const CHAPTER: usize = 50;
 
 struct Bench {
-    outlines: OutlineService,
+    outlines: OutlinesCore,
     events: Arc<dyn EventStore<OutlineEvent>>,
     catalog: Arc<dyn OutlineCatalog>,
     outbox: Arc<dyn Outbox>,
@@ -62,7 +62,7 @@ impl Bench {
     async fn on(ports: Ports, heard: Arc<FakePublisher>) -> Self {
         let context = telling(&heard);
         let wired = outline_wiring::wire(&ports, &context);
-        let outlines = outline_wiring::service(&ports, &context);
+        let outlines = outline_wiring::core(&ports, &context);
         let indexer = wired
             .listeners
             .iter()
@@ -149,7 +149,11 @@ impl Bench {
         let mut loading = Vec::new();
         let mut snapshot_reading = Vec::new();
         for _ in 0..SAMPLES {
-            loading.push(timed(self.outlines.get(&self.outline.to_string())).await.1);
+            loading.push(
+                timed(self.outlines.read(&self.outline.to_string(), &Agent::Local))
+                    .await
+                    .1,
+            );
             snapshot_reading.push(
                 timed(self.events.latest_snapshot(&key, outline_core::KIND))
                     .await
@@ -165,7 +169,7 @@ impl Bench {
 
         let held = self
             .outlines
-            .get(&self.outline.to_string())
+            .read(&self.outline.to_string(), &Agent::Local)
             .await
             .expect("the outline loads")
             .state

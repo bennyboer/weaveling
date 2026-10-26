@@ -7,13 +7,13 @@ use eventsourcing::InMemoryEventStore;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use projects_catalog::InMemoryProjectCatalog;
-use projects_core::ProjectService;
+use projects_core::ProjectsCore;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-project";
 
 pub struct Wired {
-    pub projects: ProjectService,
+    pub projects: ProjectsCore,
     pub routes: Router,
     pub outbox: Arc<InMemoryOutbox>,
     pub consuming: DeliveryConsumer,
@@ -58,7 +58,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         .expect("the feature should wire a catalog projector");
 
     Wired {
-        projects: projects_wiring::service(&ports, &context),
+        projects: projects_wiring::core(&ports, &context),
         routes: wired.routes,
         outbox,
         consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, context.clock.clone()),

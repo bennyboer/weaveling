@@ -1,5 +1,5 @@
 use eventsourcing::{AggregateId, EventStore, ServiceError, Version};
-use invitations_core::{InvitationEvent, InvitationId, InvitationServiceError, KIND};
+use invitations_core::{InvitationEvent, InvitationId, InvitationsError, KIND};
 use time::Duration;
 
 use crate::wiring;
@@ -79,7 +79,7 @@ async fn only_an_operator_invites_or_withdraws() {
             .invitations
             .issue(&wiring::no_operator(), ADA, ORIGIN)
             .await,
-        Err(InvitationServiceError::NotAnOperator)
+        Err(InvitationsError::NotAnOperator)
     ));
     assert!(wired.mailbox.sent_to(ADA).is_empty());
 
@@ -94,7 +94,7 @@ async fn only_an_operator_invites_or_withdraws() {
             .invitations
             .withdraw(&wiring::no_operator(), &id)
             .await,
-        Err(InvitationServiceError::NotAnOperator)
+        Err(InvitationsError::NotAnOperator)
     ));
     assert_eq!(told(&wired, &id).await.len(), 1);
 }
@@ -108,7 +108,7 @@ async fn an_address_that_could_never_be_mailed_is_refused() {
             .invitations
             .issue(&wiring::an_operator(), "ada", ORIGIN)
             .await,
-        Err(InvitationServiceError::InvalidEmail(_))
+        Err(InvitationsError::InvalidEmail(_))
     ));
 }
 
@@ -125,7 +125,7 @@ async fn an_address_invited_three_times_must_wait_before_the_fourth_while_anothe
 
     assert!(matches!(
         wired.invitations.issue(&wiring::an_operator(), ADA, ORIGIN).await,
-        Err(InvitationServiceError::Throttled { wait }) if wait == Duration::minutes(1)
+        Err(InvitationsError::Throttled { wait }) if wait == Duration::minutes(1)
     ));
     assert_eq!(
         wired.mailbox.sent_to(ADA).len(),
@@ -184,8 +184,6 @@ async fn an_invitation_that_is_not_there_is_not_withdrawn() {
                 &InvitationId::generate(wiring::at(1_000))
             )
             .await,
-        Err(InvitationServiceError::Events(
-            ServiceError::NotFound { .. }
-        ))
+        Err(InvitationsError::Events(ServiceError::NotFound { .. }))
     ));
 }

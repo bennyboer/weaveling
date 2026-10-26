@@ -1,16 +1,16 @@
 use std::sync::Arc;
 
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use messaging::{Listener, Message, RoutingKey};
-use outline_core::OutlineCatalog;
+use outline_core::{KIND, OutlineCatalog};
 use outline_messaging::DiscardOutlinesOnProjectDeletedListener;
 use projects_contract::DELETED;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
 use crate::wiring;
-use crate::wiring::Wired;
+use crate::wiring::{TheSystemAndTheAuthor, Wired};
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -21,7 +21,10 @@ fn an_author() -> Agent {
 }
 
 fn a_workbench() -> (Wired, DiscardOutlinesOnProjectDeletedListener) {
-    let wired = wiring::wired(Arc::new(FixedClock::new(at(1_000))));
+    let wired = wiring::wired_guarded_by(
+        Arc::new(FixedClock::new(at(1_000))),
+        Arc::new(TheSystemAndTheAuthor::default()),
+    );
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(wired.outlines.clone());
 
     (wired, sweep)
@@ -38,6 +41,37 @@ fn deleted(project: &str) -> Message {
         }),
         at(1_000),
     )
+}
+
+#[tokio::test]
+async fn an_outline_is_discarded_in_the_system_s_name() {
+    let (wired, sweep) = a_workbench();
+    let opened = wired
+        .outlines
+        .open("project_1", &an_author())
+        .await
+        .expect("opening should succeed")
+        .id;
+
+    sweep
+        .handle(&deleted("project_1"))
+        .await
+        .expect("sweeping should succeed");
+
+    let recorded = wired
+        .store
+        .read_from(&AggregateId::from(&opened), KIND, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(
+        recorded
+            .last()
+            .expect("the discard is recorded")
+            .metadata
+            .agent,
+        Agent::System,
+        "the system carries out what the deletion decided, and says so"
+    );
 }
 
 #[tokio::test]
@@ -66,7 +100,7 @@ async fn a_outline_the_catalog_has_not_heard_of_yet_is_still_swept() {
 
     let standing = wired
         .outlines
-        .get(&opened.to_string())
+        .read(&opened.to_string(), &an_author())
         .await
         .expect("the outline is still there to read");
     assert!(
@@ -120,7 +154,7 @@ async fn only_the_deleted_project_loses_its_outline() {
     assert!(
         !wired
             .outlines
-            .get(&kept.to_string())
+            .read(&kept.to_string(), &an_author())
             .await
             .expect("the other outline is there to read")
             .state

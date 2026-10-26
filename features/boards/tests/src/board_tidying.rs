@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 
@@ -11,7 +12,7 @@ use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
 use crate::wiring;
-use crate::wiring::Wired;
+use crate::wiring::{TheSystemAndTheAuthor, Wired};
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -22,7 +23,11 @@ fn an_author() -> Agent {
 }
 
 fn a_workbench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
+    a_workbench_guarded_by(Arc::new(TheSystemAndTheAuthor::default()))
+}
+
+fn a_workbench_guarded_by(authorizer: Arc<TheSystemAndTheAuthor>) -> Wired {
+    wiring::wired_guarded_by(Arc::new(FixedClock::new(at(1_000))), authorizer)
 }
 
 fn an_idea(named: &str) -> IdeaLink {
@@ -73,7 +78,7 @@ async fn a_board_holding(wired: &Wired, ideas: &[&str]) -> BoardId {
 async fn pinned_on(wired: &Wired, board: &BoardId) -> Vec<String> {
     wired
         .boards
-        .get(&board.to_string())
+        .read(&board.to_string(), &an_author())
         .await
         .expect("reading should succeed")
         .state
@@ -222,15 +227,58 @@ async fn pinned_as_published(wired: &Wired, board: &BoardId) -> Message {
 }
 
 #[tokio::test]
+async fn a_discarded_idea_is_let_go_of_in_the_system_s_name() {
+    let wired = a_workbench();
+    let board = a_board_holding(&wired, &["idea_1"]).await;
+
+    wired
+        .on_idea_discarded
+        .handle(&discarded("idea_1"))
+        .await
+        .expect("tidying should succeed");
+
+    let recorded = wired
+        .store
+        .read_from(&AggregateId::from(&board), KIND, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(
+        recorded
+            .last()
+            .expect("the unpin is recorded")
+            .metadata
+            .agent,
+        Agent::System
+    );
+}
+
+#[tokio::test]
+async fn whom_to_let_in_not_being_known_fails_letting_go_so_it_is_tried_again() {
+    let authorizer = Arc::new(TheSystemAndTheAuthor::default());
+    let wired = a_workbench_guarded_by(authorizer.clone());
+    a_board_holding(&wired, &["idea_1"]).await;
+    authorizer.down.store(true, Ordering::Release);
+
+    assert!(
+        wired
+            .on_idea_discarded
+            .handle(&discarded("idea_1"))
+            .await
+            .is_err(),
+        "a discarded idea left pinned for good is worse than a message tried again"
+    );
+}
+
+#[tokio::test]
 async fn a_late_pin_does_not_bring_back_the_ideas_of_a_discarded_board() {
     let wired = a_workbench();
     let board = a_board_holding(&wired, &["idea_1"]).await;
     let late = pinned_as_published(&wired, &board).await;
     wired
         .boards
-        .discard(&board.to_string(), None, &an_author())
+        .sweep("project_1")
         .await
-        .expect("discarding should succeed");
+        .expect("sweeping should succeed");
     wired.settle().await;
 
     wired
@@ -256,9 +304,9 @@ async fn discarding_an_idea_still_indexed_on_a_discarded_board_is_harmless() {
     let board = a_board_holding(&wired, &["idea_1"]).await;
     wired
         .boards
-        .discard(&board.to_string(), None, &an_author())
+        .sweep("project_1")
         .await
-        .expect("discarding should succeed");
+        .expect("sweeping should succeed");
     wired.settle().await;
     wired
         .catalog

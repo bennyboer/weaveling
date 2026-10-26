@@ -1,39 +1,46 @@
+use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer};
 use axum::extract::{Query, State};
 use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
-use live::{Broadcaster, ReadersOfTheProject, Teller};
+use live::{Broadcaster, Gate, Teller};
 use serde::Deserialize;
 use serving::Problem;
 use statistics_contract::WordCountDTO;
-use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
+use statistics_core::{
+    CatalogError, ProjectLink, SceneLink, StatisticsCore, StatisticsError, WordCount,
+    WordCountCatalog,
+};
 use time::OffsetDateTime;
 
-#[derive(Clone)]
-struct Counts {
-    catalog: Arc<dyn WordCountCatalog>,
-    authorizer: Arc<dyn Authorizer>,
-}
-
-pub fn router(catalog: Arc<dyn WordCountCatalog>, authorizer: Arc<dyn Authorizer>) -> Router {
+pub fn router(statistics: StatisticsCore) -> Router {
     Router::new()
         .route("/statistics/word-counts", routing::get(word_counts))
-        .with_state(Counts {
-            catalog,
-            authorizer,
-        })
+        .with_state(statistics)
 }
 
-pub fn live(broadcaster: Broadcaster, authorizer: Arc<dyn Authorizer>) -> Router {
+struct FollowersOf(StatisticsCore);
+
+#[async_trait]
+impl Gate for FollowersOf {
+    async fn admits(
+        &self,
+        agent: &Agent,
+        project: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(self.0.may_follow(project, agent).await?)
+    }
+}
+
+pub fn live(statistics: StatisticsCore, broadcaster: Broadcaster) -> Router {
     live::followed_if(
         "/statistics/word-counts/live",
         broadcaster,
         |asked| asked.get("project").cloned(),
-        Arc::new(ReadersOfTheProject(authorizer)),
+        Arc::new(FollowersOf(statistics)),
     )
 }
 
@@ -106,26 +113,17 @@ struct InProject {
 }
 
 async fn word_counts(
-    State(counts): State<Counts>,
+    State(statistics): State<StatisticsCore>,
     Extension(agent): Extension<Agent>,
     Query(asked): Query<InProject>,
 ) -> Result<Json<Vec<WordCountDTO>>, Problem> {
-    if !counts
-        .authorizer
-        .may(&agent, Act::Read, &asked.project)
+    let counts = statistics
+        .word_counts(&asked.project, &agent)
         .await
-        .map_err(Problem::unexpected)?
-    {
-        return Err(Problem::not_found(
-            serving::NOT_FOUND,
-            "there is no such project",
-        ));
-    }
-    let counts = counts
-        .catalog
-        .in_project(&ProjectLink::from(asked.project))
-        .await
-        .map_err(Problem::unexpected)?;
+        .map_err(|refusal| match refusal {
+            StatisticsError::ProjectNotThere => Problem::not_found(serving::NOT_FOUND, refusal),
+            beyond_reach => Problem::unexpected(beyond_reach),
+        })?;
 
     Ok(Json(counts.iter().map(to_dto).collect()))
 }

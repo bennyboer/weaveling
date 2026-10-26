@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use accounts_core::{
-    AccountId, AccountService, AccountServiceError, EmailAddress, EmailAddresses, PasswordHash,
-    Passwords, PendingVerification, SecretStores, SecretsError, SessionToken, Sessions,
+    AccountId, AccountsCore, AccountsError, EmailAddress, EmailAddresses, PasswordHash, Passwords,
+    PendingVerification, SecretStores, SecretsError, SessionToken, Sessions,
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
@@ -130,7 +130,7 @@ async fn the_code_sent_sets_the_new_password_and_the_old_one_no_longer_signs_in(
     assert!(wired.accounts.sign_in(ADA, HER_NEW_PASSWORD).await.is_ok());
     assert!(matches!(
         wired.accounts.sign_in(ADA, HER_PASSWORD).await,
-        Err(AccountServiceError::SignInRefused)
+        Err(AccountsError::SignInRefused)
     ));
 }
 
@@ -148,8 +148,7 @@ async fn resetting_confirms_an_address_not_yet_confirmed() {
 
     assert!(
         wired
-            .accounts
-            .get(&id)
+            .account(&id)
             .await
             .expect("the account should exist")
             .state
@@ -169,7 +168,7 @@ async fn a_wrong_code_resets_nothing() {
             .accounts
             .reset_password(ADA, wrong(&code), HER_NEW_PASSWORD)
             .await,
-        Err(AccountServiceError::CodeWrong)
+        Err(AccountsError::CodeWrong)
     ));
     assert!(wired.accounts.sign_in(ADA, HER_PASSWORD).await.is_ok());
 }
@@ -184,7 +183,7 @@ async fn a_code_to_confirm_the_address_resets_no_password() {
             .accounts
             .reset_password(ADA, &wired.last_code_sent_to(ADA), HER_NEW_PASSWORD)
             .await,
-        Err(AccountServiceError::CodeWrong)
+        Err(AccountsError::CodeWrong)
     ));
 }
 
@@ -204,7 +203,7 @@ async fn a_used_reset_code_is_used_up() {
             .accounts
             .reset_password(ADA, &code, HER_PASSWORD)
             .await,
-        Err(AccountServiceError::CodeWrong)
+        Err(AccountsError::CodeWrong)
     ));
 }
 
@@ -225,7 +224,7 @@ async fn guesses_at_a_reset_code_are_counted_like_any_others() {
             .accounts
             .reset_password(ADA, &code, HER_NEW_PASSWORD)
             .await,
-        Err(AccountServiceError::CodeExhausted)
+        Err(AccountsError::CodeExhausted)
     ));
 }
 
@@ -237,7 +236,7 @@ async fn a_new_password_must_be_one_that_would_be_taken_at_signing_up() {
 
     assert!(matches!(
         wired.accounts.reset_password(ADA, &code, "short").await,
-        Err(AccountServiceError::InvalidPassword(_))
+        Err(AccountsError::InvalidPassword(_))
     ));
     wired
         .accounts
@@ -273,7 +272,7 @@ async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
         kept: wired.secrets.clone(),
         armed: AtomicBool::new(false),
     });
-    let accounts = AccountService::new(
+    let accounts = AccountsCore::new(
         wired.store.clone(),
         SecretStores {
             passwords: passwords.clone(),
@@ -317,7 +316,7 @@ async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
     assert!(accounts.sign_in(ADA, HER_PASSWORD).await.is_err());
 }
 
-async fn a_session(accounts: &AccountService) -> SessionToken {
+async fn a_session(accounts: &AccountsCore) -> SessionToken {
     accounts
         .begin_session(ADA, HER_PASSWORD)
         .await
@@ -325,7 +324,7 @@ async fn a_session(accounts: &AccountService) -> SessionToken {
         .0
 }
 
-async fn still_signed_in(accounts: &AccountService, token: &SessionToken) -> bool {
+async fn still_signed_in(accounts: &AccountsCore, token: &SessionToken) -> bool {
     accounts
         .signed_in(token)
         .await
@@ -394,7 +393,7 @@ async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
         kept: wired.secrets.clone(),
         armed: AtomicBool::new(false),
     });
-    let accounts = AccountService::new(
+    let accounts = AccountsCore::new(
         wired.store.clone(),
         SecretStores {
             passwords: passwords.clone(),

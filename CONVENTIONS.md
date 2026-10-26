@@ -44,7 +44,8 @@ The shapes each feature repeats:
 - `<Thing>Catalog`, `<Thing>Summary`, `<Thing>CatalogProjector`
 - `<Thing>Event`, `<Thing>Command`, `<Thing>Error`, `<Thing>EventDTO`, `Stored<Thing>Event`
 - `Unreadable<Thing>Event`
-- `<Thing>Service`, `<Thing>ServiceError`
+- `<Things>Core`, the feature's one way in, and `<Things>Error`, its errors — `ProjectsCore`, `ProjectsError`; plural, as the feature is, and `MembersCoreError` only where the aggregate's `<Thing>Error` already has the name
+- `<Thing>Service`, behind the core and not exported
 - `InMemory<Thing>Catalog`, `Postgres<Thing>Catalog`
 
 In the client, a component is named for its role. A **`<Thing>Page`** is what a route mounts: it reads the address, puts the masthead above and hands plain values down — `BoardPage`, `IdeasPage`, `WritePage`, each in `app/`, in a file named for it. A **`<Thing>View`** is what a page shows, taking plain values rather than the router, so it can be mounted elsewhere too — `BoardView`, `OutlineView`, `WriteView`, in its feature's module. Not `OneBoard` / `TheBoard`: an article says nothing about which of the two a component is.

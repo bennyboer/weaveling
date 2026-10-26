@@ -1,6 +1,5 @@
 use accounts_core::{
-    AccountError, AccountId, AccountServiceError, Dismissal, EmailAddress, EmailAddresses,
-    Operators,
+    AccountError, AccountId, AccountsError, Dismissal, EmailAddress, EmailAddresses, Operators,
 };
 use eventsourcing::ServiceError;
 
@@ -52,8 +51,7 @@ async fn grace_the_operator_and_ada(wired: &Wired, ada_verified: bool) -> (Accou
 
 async fn is_operator(wired: &Wired, id: &AccountId) -> bool {
     wired
-        .accounts
-        .get(id)
+        .account(id)
         .await
         .expect("the account should exist")
         .state
@@ -107,7 +105,7 @@ async fn an_operator_takes_the_role_away_and_it_counts_at_once() {
     assert!(!is_operator(&wired, &ada).await);
     assert!(matches!(
         wired.accounts.list(&ada, None, 10).await,
-        Err(AccountServiceError::NotAnOperator)
+        Err(AccountsError::NotAnOperator)
     ));
 }
 
@@ -118,7 +116,7 @@ async fn an_operator_may_give_up_the_role_but_not_as_the_last() {
 
     assert!(matches!(
         wired.accounts.dismiss_operator(&grace, &grace).await,
-        Err(AccountServiceError::LastOperator)
+        Err(AccountsError::LastOperator)
     ));
     assert!(
         is_operator(&wired, &grace).await,
@@ -145,11 +143,11 @@ async fn only_an_operator_makes_or_unmakes_one() {
 
     assert!(matches!(
         wired.accounts.appoint_operator(&ada, &ada).await,
-        Err(AccountServiceError::NotAnOperator)
+        Err(AccountsError::NotAnOperator)
     ));
     assert!(matches!(
         wired.accounts.dismiss_operator(&ada, &grace).await,
-        Err(AccountServiceError::NotAnOperator)
+        Err(AccountsError::NotAnOperator)
     ));
     assert!(is_operator(&wired, &grace).await);
     assert!(!is_operator(&wired, &ada).await);
@@ -162,7 +160,7 @@ async fn an_account_refusing_the_role_is_not_appointed() {
 
     assert!(matches!(
         wired.accounts.appoint_operator(&grace, &ada).await,
-        Err(AccountServiceError::Events(ServiceError::Refused(
+        Err(AccountsError::Events(ServiceError::Refused(
             AccountError::NotVerifiedYet
         )))
     ));
@@ -189,7 +187,7 @@ async fn a_locked_account_is_not_made_an_operator() {
 
     assert!(matches!(
         wired.accounts.appoint_operator(&grace, &ada).await,
-        Err(AccountServiceError::Events(ServiceError::Refused(
+        Err(AccountsError::Events(ServiceError::Refused(
             AccountError::LockedCannotBecomeOperator
         )))
     ));

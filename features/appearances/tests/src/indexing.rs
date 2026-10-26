@@ -2,11 +2,13 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_core::{
-    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+    AppearanceCatalog, AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, SectionLink,
+    Subject,
 };
 use appearances_messaging::{
     ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
+use authorizing::AllowingEverything;
 use messaging::{Listener, Message, RoutingKey};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
 use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
@@ -26,11 +28,12 @@ struct Wired {
 
 fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemoryAppearanceCatalog::new());
+    let appearances = AppearancesCore::new(catalog.clone(), Arc::new(AllowingEverything));
 
     Wired {
-        outline: ProjectOutlineAppearancesListener::new(catalog.clone()),
-        scenes: ProjectSceneAppearancesListener::new(catalog.clone()),
-        ideas: ForgetDiscardedIdeaListener::new(catalog.clone()),
+        outline: ProjectOutlineAppearancesListener::new(appearances.clone()),
+        scenes: ProjectSceneAppearancesListener::new(appearances.clone()),
+        ideas: ForgetDiscardedIdeaListener::new(appearances),
         catalog,
     }
 }

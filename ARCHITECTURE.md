@@ -43,7 +43,7 @@ Each feature is a slice of the domain (project management, ideas, scenes, board,
 features/
 └── projects/
     ├── contract/          weaveling-projects-contract   → —      (shared kernel, WASM-safe)
-    ├── core/              weaveling-projects-core       → —      (domain, ports, ProjectService)
+    ├── core/              weaveling-projects-core       → —      (domain, ports, ProjectsCore)
     ├── adapters/
     │   ├── rest/          weaveling-projects-rest       → core, contract   (inbound)
     │   └── store/         weaveling-projects-store      → core             (outbound)
@@ -58,10 +58,10 @@ features/
                └─── service ──┘
 ```
 
-- **`core`** — domain types, business logic, the **ports** (traits) it needs, and the application facade (`ProjectService`). Plain Rust, no frameworks, no magic. **Depends on no other crate in its own feature** — in particular not on `contract`, so the wire format can never leak inward. Cross-cutting library ports are the one exception (see [cross-cutting ports](#dependency-rules)); `libraries/clock` is why `core` is a near-leaf rather than a strict one.
+- **`core`** — domain types, business logic, the **ports** (traits) it needs, and the application facade (`ProjectsCore`). Plain Rust, no frameworks, no magic. **Depends on no other crate in its own feature** — in particular not on `contract`, so the wire format can never leak inward. Cross-cutting library ports are the one exception (see [cross-cutting ports](#dependency-rules)); `libraries/clock` is why `core` is a near-leaf rather than a strict one.
 - **`adapters/*`** — **one crate per adapter**, named for the foreign system it talks to. All arrows point inward at `core`.
   - *Outbound (driven)* adapters implement a port declared by core. Named after the port: `ProjectStore` → `store`. A port with several **interchangeable backends** stays **one** crate — `memory` and later `postgres` are modules inside `store`, not sibling crates. They are backends of one adapter, not two adapters. Heavy optional backends go behind a cargo feature (`postgres = ["dep:sqlx"]` with `sqlx` marked `optional`), so a build that never enables it never compiles it. Two consequences: the swap is one feature flag rather than one dependency line, and **CI must run `--all-features`**, because feature-gated code is not type-checked otherwise.
-  - *Inbound (driving)* adapters call core's public API. Named after the transport: `rest`, later `graphql`, `cli`, `messaging`. No inbound port trait — `ProjectService` is already the interface.
+  - *Inbound (driving)* adapters call core's public API. Named after the transport: `rest`, later `graphql`, `cli`, `messaging`. No inbound port trait — `ProjectsCore` is already the interface.
 - **`contract`** — the wire types. Deliberately **not** part of the onion: it is a shared kernel between two *processes*, and it exists as its own crate for a hard technical reason — the WASM client cannot depend on `rest`, because `axum` doesn't compile to WASM. The constraint is **`serde` and nothing else**. Values travel in their primitive wire representations — ids and timestamps as strings — while the rich domain types (`ProjectId`, time types) stay in `core` and the adapter maps between them. This keeps the crate trivially WASM-safe and gives the domain vocabulary exactly one owner. Note that ids arriving *inbound* come through the URL path, which `rest` parses with its own extractor, so contract is almost entirely an outbound-shape concern.
 
 **A constant both processes must agree on lives in *both*, pinned by a test.** The fragment name a scene's prose lives under (`"prose"`) is needed by `core` to project plain text and by the client to write into the same document — and `core` must not reach into `contract` to get it. So each defines its own, and the feature's tests crate, which can see both, asserts they match:
@@ -71,6 +71,8 @@ assert_eq!(scenes_core::FRAGMENT, scenes_contract::FRAGMENT);
 ```
 
 A duplicated literal justified by a test is normally a smell. It wins here because the alternative is worse: one `core → contract` arrow "just for a constant" is the crack DTOs leak through later, and the invariant is only worth having while it is absolute. The failure this test prevents is a silent one — mismatched fragment names mean prose that vanishes with no error anywhere.
+
+**One way into a feature: its core.** Every feature's `core` exports one struct named for the feature, `ProjectsCore`, `IdeasCore`, `ScenesCore`, whose methods are everything the feature does: what someone does (reading, writing, following), what the feature does itself on hearing a message (cataloguing, sweeping, letting go), and its chores. Every adapter, inbound and the chores alike, goes through it; nothing else of the core is callable. That makes it the one place permissions are asked: the core asks the `Authorizer`, or whether the agent is an operator, and only then hands on to a service, which carries out commands and records who acted but asks nobody and is not exported. A bigger feature may keep several services behind one core. The system's own work, consequences of a message, is done and recorded as `Agent::System`. Errors are one enum per core, `ProjectsError`. A write answers with what it wrote, so no adapter needs to read back unasked. Live stays out of the core: it answers whether an agent may follow, and `libraries/live` keeps the socket. *Decided 2026-10-25, the user's: a reader sees in the struct everything the feature is about, and a check missing from one adapter cannot hide in another.*
 
 There is deliberately **no `boundary` crate**. Once every adapter has its own crate, "boundary" names whatever is left over — which is nothing. Mapping belongs to the adapter that owns the DTOs, the facade lives in core, and wiring is the service's job.
 
@@ -665,7 +667,7 @@ So the in-process dispatcher dead-letters a refused `Kept` message and merely lo
 
 ### The first consumer: the idea catalog as a projection
 
-`IdeaService` does not write the catalog. It appends events, each is **published** through the outbox, and an `CatalogueIdeasListener` keeps the listing. (Built in M8, when ideas were still pieces.) The vocabulary is deliberately plain — we publish events, we do not announce things — and the names say so: `message_for`, `IdeaEventDTO`.
+Capturing an idea does not write the catalog. The core appends events, each is **published** through the outbox, and `CatalogueIdeasListener`, through `IdeasCore::catalogue`, keeps the listing. (Built in M8, when ideas were still pieces.) The vocabulary is deliberately plain — we publish events, we do not announce things — and the names say so: `message_for`, `IdeaEventDTO`.
 
 **The message carries the whole event and its metadata**, not a curated summary. The first cut published only the id, on the reasoning that the only subscriber re-read state anyway — and that was wrong on a principle worth stating plainly: **a publisher must not know what its subscribers need.** Curate the payload and every new subscriber becomes a change to the publisher, which is the coupling messaging exists to remove. Worse, it does not even work: **features may not depend on features**, so a subscriber outside `ideas` cannot read our event store, and an id-only message is usable only from inside the feature that sent it. The outline wanting titles had no legal way to get them.
 

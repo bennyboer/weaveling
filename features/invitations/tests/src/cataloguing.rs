@@ -4,11 +4,12 @@ use eventsourcing::Agent;
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
 use invitations_core::{
-    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome,
+    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, InvitationsCore, Outcome,
 };
 use invitations_messaging::CatalogueInvitationsListener;
 use messaging::{Handler, Listener, Message, RoutingKey};
 use serde_json::json;
+use throttling::InMemoryThrottles;
 use time::Duration;
 
 use crate::wiring;
@@ -32,22 +33,26 @@ fn told(routing: &str, invitation: &InvitationId) -> Message {
 struct Listing {
     wired: Wired,
     catalog: Arc<InMemoryInvitationCatalog>,
+    invitations: InvitationsCore,
     listener: CatalogueInvitationsListener,
 }
 
 fn listing() -> Listing {
     let wired = wiring::wired();
     let catalog = Arc::new(InMemoryInvitationCatalog::new());
-    let listener = CatalogueInvitationsListener::new(
+    let invitations = InvitationsCore::new(
         wired.store.clone(),
+        Arc::new(InMemoryThrottles::default()),
         catalog.clone(),
+        wired.mailbox.clone(),
         wired.clock.clone(),
     );
 
     Listing {
+        listener: CatalogueInvitationsListener::new(invitations.clone()),
         wired,
         catalog,
-        listener,
+        invitations,
     }
 }
 
@@ -99,7 +104,7 @@ async fn an_issue_heard_after_its_invitation_was_taken_up_lists_nothing() {
     listing
         .wired
         .invitations
-        .accept(
+        .taken_up(
             &id,
             wiring::at(1_700_000_100),
             &Agent::Account("account_ada".into()),
@@ -126,7 +131,7 @@ async fn a_declined_invitation_stays_listed_and_says_why() {
     listing
         .wired
         .invitations
-        .decline(&id, DeclineReason::AddressHasAccount, &Agent::System)
+        .declined(&id, DeclineReason::AddressHasAccount)
         .await
         .expect("an open invitation is declined");
 
@@ -184,12 +189,20 @@ async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_
         .take_in(&told(ISSUED, &id))
         .await
         .expect("cataloguing should succeed");
-    listing
-        .wired
-        .invitations
-        .retire(&id)
-        .await
-        .expect("an invitation retires");
+    listing.wired.clock.set(
+        wiring::at(1_700_000_000)
+            + Duration::days(7)
+            + InvitationSummary::EXPIRED_LISTED_FOR
+            + Duration::SECOND,
+    );
+    assert_eq!(
+        listing
+            .invitations
+            .retire_due(100)
+            .await
+            .expect("an invitation retires"),
+        1
+    );
 
     for routing in [RETIRED, ISSUED] {
         listing

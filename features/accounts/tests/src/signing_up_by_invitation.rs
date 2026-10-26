@@ -1,5 +1,5 @@
 use accounts_core::{
-    AccountEvent, AccountId, AccountServiceError, EmailAddress, EmailAddresses, InvitationTicket,
+    AccountEvent, AccountId, AccountsError, EmailAddress, EmailAddresses, InvitationTicket,
     InvitationTickets, InvitationToken, KIND, SigningUp,
 };
 use eventsourcing::{AggregateId, EventStore, Version};
@@ -25,7 +25,7 @@ async fn invited(wired: &Wired, address: &str, token: &str) {
         .expect("keeping should succeed");
 }
 
-async fn signs_up(wired: &Wired, token: &str) -> Result<(), AccountServiceError> {
+async fn signs_up(wired: &Wired, token: &str) -> Result<(), AccountsError> {
     wired
         .accounts
         .sign_up_by_invitation(token, "Ada", HER_PASSWORD)
@@ -108,7 +108,7 @@ async fn an_invitation_lets_one_account_in() {
 
     assert!(matches!(
         signs_up(&wired, TOKEN).await,
-        Err(AccountServiceError::InvitationInvalid)
+        Err(AccountsError::InvitationInvalid)
     ));
 }
 
@@ -125,7 +125,7 @@ async fn a_token_nobody_was_given_or_one_withdrawn_signs_nobody_up() {
     for token in [TOKEN, "a token nobody was given"] {
         assert!(matches!(
             signs_up(&wired, token).await,
-            Err(AccountServiceError::InvitationInvalid)
+            Err(AccountsError::InvitationInvalid)
         ));
     }
     assert_eq!(holder(&wired, ADA).await, None);
@@ -146,7 +146,7 @@ async fn an_invitation_holds_to_its_last_moment_and_no_longer() {
         .expect("an invitation still holds at its last moment");
     assert!(matches!(
         signs_up(&late, TOKEN).await,
-        Err(AccountServiceError::InvitationExpired)
+        Err(AccountsError::InvitationExpired)
     ));
     assert_eq!(holder(&late, ADA).await, None);
 }
@@ -161,14 +161,14 @@ async fn a_name_or_password_refused_leaves_the_invitation_to_be_used() {
             .accounts
             .sign_up_by_invitation(TOKEN, "  ", HER_PASSWORD)
             .await,
-        Err(AccountServiceError::InvalidName(_))
+        Err(AccountsError::InvalidName(_))
     ));
     assert!(matches!(
         wired
             .accounts
             .sign_up_by_invitation(TOKEN, "Ada", "short")
             .await,
-        Err(AccountServiceError::InvalidPassword(_))
+        Err(AccountsError::InvalidPassword(_))
     ));
 
     signs_up(&wired, TOKEN)
@@ -189,7 +189,7 @@ async fn an_address_with_an_account_already_is_told_to_sign_in() {
 
     assert!(matches!(
         signs_up(&wired, TOKEN).await,
-        Err(AccountServiceError::EmailAddressHasAccount)
+        Err(AccountsError::EmailAddressHasAccount)
     ));
     assert_eq!(
         holder(&wired, ADA).await,
@@ -208,7 +208,7 @@ async fn where_signing_up_is_by_invitation_only_an_invitation_lets_anyone_in() {
         accounts
             .sign_up("bob@example.com", "Bob", HER_PASSWORD)
             .await,
-        Err(AccountServiceError::SigningUpByInvitationOnly)
+        Err(AccountsError::SigningUpByInvitationOnly)
     ));
     assert_eq!(holder(&wired, "bob@example.com").await, None);
     assert!(
@@ -218,7 +218,7 @@ async fn where_signing_up_is_by_invitation_only_an_invitation_lets_anyone_in() {
     assert!(
         matches!(
             accounts.sign_up(ADA, "Ada", HER_PASSWORD).await,
-            Err(AccountServiceError::SigningUpByInvitationOnly)
+            Err(AccountsError::SigningUpByInvitationOnly)
         ),
         "even an invited address comes in by its link, not around it"
     );

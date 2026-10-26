@@ -1,27 +1,15 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use clock::Clock;
-use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use members_contract::EVERY_MEMBERS;
-use members_core::{Members, MembersEvent, MembershipCatalog, ProjectLink, ProjectMembers};
+use members_core::{MembersCore, ProjectLink};
 use messaging::{Failure, Handler, Message};
 
 pub struct CatalogueMembersListener {
-    events: EventSourcingService<Members>,
-    catalog: Arc<dyn MembershipCatalog>,
+    members: MembersCore,
 }
 
 impl CatalogueMembersListener {
-    pub fn new(
-        store: Arc<dyn EventStore<MembersEvent>>,
-        catalog: Arc<dyn MembershipCatalog>,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
-        Self {
-            events: EventSourcingService::new(store, clock),
-            catalog,
-        }
+    pub fn new(members: MembersCore) -> Self {
+        Self { members }
     }
 }
 
@@ -33,26 +21,23 @@ impl Handler for CatalogueMembersListener {
         "A change to a project's members did not reach the list of who may work where.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        let project = eventpublishing::aggregate_in::<ProjectLink>(message)?;
-        let standing = self.events.latest(&AggregateId::from(&project)).await?;
-
         Ok(self
-            .catalog
-            .remember(&ProjectMembers::of(
-                project,
-                standing.version,
-                &standing.state,
-            ))
+            .members
+            .catalogue(&eventpublishing::aggregate_in::<ProjectLink>(message)?)
             .await?)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use clock::FixedClock;
-    use eventsourcing::{AccountId, Agent, Recorded};
+    use std::sync::Arc;
+
+    use clock::{Clock, FixedClock};
+    use eventsourcing::{
+        AccountId, Agent, AggregateId, EventSourcingService, EventStore, Recorded,
+    };
     use members_catalog::InMemoryMembershipCatalog;
-    use members_core::{MembersCommand, Role};
+    use members_core::{Members, MembersCommand, MembersEvent, MembershipCatalog, Role};
     use messaging::{Listener, RoutingKey};
     use serde_json::json;
     use time::OffsetDateTime;
@@ -73,7 +58,11 @@ mod tests {
 
         Bench {
             events: EventSourcingService::new(store.clone(), clock.clone()),
-            listener: CatalogueMembersListener::new(store, catalog.clone(), clock),
+            listener: CatalogueMembersListener::new(MembersCore::new(
+                store,
+                catalog.clone(),
+                clock,
+            )),
             catalog,
         }
     }

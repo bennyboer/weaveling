@@ -1,15 +1,15 @@
-use accounts_core::{AccountService, EmailAddress, InvitationTicket, TokenDigest};
+use accounts_core::{AccountsCore, EmailAddress, InvitationTicket, TokenDigest};
 use async_trait::async_trait;
 use clock::text;
 use invitations_contract::{ISSUED, InvitationEventDTO, RETIRED, WITHDRAWN};
 use messaging::{Failure, Handler, Message};
 
 pub struct KeepInvitationTicketsListener {
-    accounts: AccountService,
+    accounts: AccountsCore,
 }
 
 impl KeepInvitationTicketsListener {
-    pub fn new(accounts: AccountService) -> Self {
+    pub fn new(accounts: AccountsCore) -> Self {
         Self { accounts }
     }
 }

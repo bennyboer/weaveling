@@ -1,11 +1,13 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use authorizing::{AllowingEverything, Authorizer};
+use async_trait::async_trait;
+use authorizing::{Act, AllowingEverything, Authorizer, AuthorizerError, Readable};
 use axum::Router;
 use boards_catalog::InMemoryBoardCatalog;
-use boards_core::{BoardEvent, BoardService};
+use boards_core::{BoardEvent, BoardsCore};
 use clock::Clock;
-use eventsourcing::InMemoryEventStore;
+use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use registry::InMemoryRegistry;
@@ -15,8 +17,28 @@ const CATALOGUING: &str = "catalogue-board";
 const INDEXING: &str = "index-pinned-ideas";
 const UNPINNING_DISCARDED_IDEAS: &str = "unpin-discarded-idea";
 
+#[derive(Default)]
+pub struct TheSystemAndTheAuthor {
+    pub down: AtomicBool,
+}
+
+#[async_trait]
+impl Authorizer for TheSystemAndTheAuthor {
+    async fn may(&self, agent: &Agent, _act: Act, _project: &str) -> Result<bool, AuthorizerError> {
+        if self.down.load(Ordering::Acquire) {
+            return Err(AuthorizerError::Unreachable("the list is down".into()));
+        }
+
+        Ok(*agent == Agent::System || *agent == Agent::Account(AccountId::from("author-7")))
+    }
+
+    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
+        Ok(Readable::Everything)
+    }
+}
+
 pub struct Wired {
-    pub boards: BoardService,
+    pub boards: BoardsCore,
     pub routes: Router,
     pub store: Arc<InMemoryEventStore<BoardEvent>>,
     pub outbox: Arc<InMemoryOutbox>,
@@ -72,7 +94,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let on_idea_discarded = named(UNPINNING_DISCARDED_IDEAS);
 
     Wired {
-        boards: boards_wiring::service(&ports, &context),
+        boards: boards_wiring::core(&ports, &context),
         routes: wired.routes,
         store,
         outbox,

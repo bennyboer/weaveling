@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use accounts_core::{
-    AccountEvent, AccountId, AccountService, AccountServiceError, EmailAddress, EmailAddresses,
-    KIND, Passwords, PendingVerification, SecretStores,
+    AccountEvent, AccountId, AccountsCore, AccountsError, EmailAddress, EmailAddresses, KIND,
+    Passwords, PendingVerification, SecretStores,
 };
 use async_trait::async_trait;
 use eventsourcing::{AggregateId, AggregateType, EventStore, Recorded, StoreError, Version};
@@ -28,8 +28,7 @@ async fn ada_signed_up(wired: &Wired) -> AccountId {
 
 async fn is_verified(wired: &Wired, id: &AccountId) -> bool {
     wired
-        .accounts
-        .get(id)
+        .account(id)
         .await
         .expect("the account should exist")
         .state
@@ -104,7 +103,7 @@ async fn a_used_code_is_used_up() {
 
     assert!(matches!(
         wired.accounts.verify(ADA, &code).await,
-        Err(AccountServiceError::CodeWrong)
+        Err(AccountsError::CodeWrong)
     ));
 }
 
@@ -134,7 +133,7 @@ async fn a_wrong_code_is_refused_and_leaves_the_address_unverified() {
 
     assert!(matches!(
         wired.accounts.verify(ADA, wrong).await,
-        Err(AccountServiceError::CodeWrong)
+        Err(AccountsError::CodeWrong)
     ));
     assert!(!is_verified(&wired, &id).await);
 }
@@ -178,7 +177,7 @@ async fn after_too_many_wrong_codes_not_even_the_right_one_counts() {
 
     assert!(matches!(
         wired.accounts.verify(ADA, &right).await,
-        Err(AccountServiceError::CodeExhausted)
+        Err(AccountsError::CodeExhausted)
     ));
     assert!(
         !is_verified(&wired, &id).await,
@@ -197,7 +196,7 @@ async fn a_code_lasts_a_quarter_of_an_hour() {
         .set(wiring::at(1_700_000_000) + Duration::minutes(15) + Duration::seconds(1));
     assert!(matches!(
         wired.accounts.verify(ADA, &code).await,
-        Err(AccountServiceError::CodeExpired)
+        Err(AccountsError::CodeExpired)
     ));
     assert!(!is_verified(&wired, &id).await);
 
@@ -228,7 +227,7 @@ async fn asking_again_sends_a_new_code_and_the_old_one_no_longer_counts() {
     if old != new {
         assert!(matches!(
             wired.accounts.verify(ADA, &old).await,
-            Err(AccountServiceError::CodeWrong)
+            Err(AccountsError::CodeWrong)
         ));
     }
     wired
@@ -311,7 +310,7 @@ async fn verifying_an_address_nobody_signed_up_with_is_just_a_wrong_code() {
 
     assert!(matches!(
         wired.accounts.verify("nobody@example.com", "123456").await,
-        Err(AccountServiceError::CodeWrong)
+        Err(AccountsError::CodeWrong)
     ));
 }
 
@@ -405,7 +404,7 @@ impl EventStore<AccountEvent> for Refusing {
 #[tokio::test]
 async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
     let wired = wiring::wired();
-    let accounts = AccountService::new(
+    let accounts = AccountsCore::new(
         Arc::new(Refusing),
         SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone()),
         wired.catalog.clone(),

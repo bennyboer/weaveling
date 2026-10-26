@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use accounts_catalog::InMemoryAccountCatalog;
-use accounts_core::{AccountCatalog, AccountEvent, AccountService, SecretStores, SigningUp};
+use accounts_core::{AccountCatalog, AccountEvent, AccountsCore, SecretStores, SigningUp};
 use accounts_messaging::{CatalogueAccountsListener, KeepInvitationTicketsListener};
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
@@ -20,8 +20,8 @@ pub struct Ports {
     pub outbox: Arc<dyn Outbox>,
 }
 
-pub fn service(ports: &Ports, context: &Context) -> AccountService {
-    AccountService::new(
+pub fn core(ports: &Ports, context: &Context) -> AccountsCore {
+    AccountsCore::new(
         ports.events.clone(),
         ports.secrets.clone(),
         ports.catalog.clone(),
@@ -31,25 +31,20 @@ pub fn service(ports: &Ports, context: &Context) -> AccountService {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    Wired::serving(accounts_rest::router(service(ports, context)))
-        .listening(listeners(ports, context))
+    Wired::serving(accounts_rest::router(core(ports, context))).listening(listeners(ports, context))
 }
 
 fn listeners(ports: &Ports, context: &Context) -> Vec<Arc<dyn Listener>> {
     vec![
-        Arc::new(CatalogueAccountsListener::new(
-            ports.events.clone(),
-            ports.catalog.clone(),
-            context.clock.clone(),
-        )),
-        Arc::new(KeepInvitationTicketsListener::new(service(ports, context))),
+        Arc::new(CatalogueAccountsListener::new(core(ports, context))),
+        Arc::new(KeepInvitationTicketsListener::new(core(ports, context))),
     ]
 }
 
 pub struct AssembledAccounts {
     pub open_routes: Router,
     pub guarded_routes: Router,
-    pub service: AccountService,
+    pub core: AccountsCore,
     pub outbox: Arc<dyn Outbox>,
     pub listeners: Vec<Arc<dyn Listener>>,
 }
@@ -65,7 +60,7 @@ pub async fn assembled_accounts(
     };
 
     Ok(AssembledAccounts::serving(
-        service(&ports, context),
+        core(&ports, context),
         ports.outbox.clone(),
         listeners(&ports, context),
     ))
@@ -73,14 +68,14 @@ pub async fn assembled_accounts(
 
 impl AssembledAccounts {
     fn serving(
-        service: AccountService,
+        core: AccountsCore,
         outbox: Arc<dyn Outbox>,
         listeners: Vec<Arc<dyn Listener>>,
     ) -> Self {
         Self {
-            open_routes: accounts_rest::router(service.clone()),
-            guarded_routes: accounts_rest::guarded_router(service.clone()),
-            service,
+            open_routes: accounts_rest::router(core.clone()),
+            guarded_routes: accounts_rest::guarded_router(core.clone()),
+            core,
             outbox,
             listeners,
         }
@@ -88,7 +83,7 @@ impl AssembledAccounts {
 
     pub fn signing_up(self, signing_up: SigningUp) -> Self {
         Self::serving(
-            self.service.signing_up(signing_up),
+            self.core.signing_up(signing_up),
             self.outbox,
             self.listeners,
         )

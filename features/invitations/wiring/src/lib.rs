@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use eventsourcing::EventStore;
 use invitations_catalog::InMemoryInvitationCatalog;
-use invitations_core::{InvitationCatalog, InvitationEvent, InvitationService};
+use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore};
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
 };
@@ -23,8 +23,8 @@ pub struct Ports {
     pub outbox: Arc<dyn Outbox>,
 }
 
-pub fn service(ports: &Ports, context: &Context) -> InvitationService {
-    InvitationService::new(
+pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
+    InvitationsCore::new(
         ports.events.clone(),
         ports.throttles.clone(),
         ports.catalog.clone(),
@@ -134,23 +134,15 @@ impl Feature for InvitationFeature {
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
-        Wired::serving(invitations_rest::router(service(ports, context)))
+        let invitations = core(ports, context);
+
+        Wired::serving(invitations_rest::router(invitations.clone()))
             .listening(vec![
-                Arc::new(AcceptTakenUpInvitationListener::new(service(
-                    ports, context,
-                ))),
-                Arc::new(DeclineInvitationListener::new(service(ports, context))),
-                Arc::new(CatalogueInvitationsListener::new(
-                    ports.events.clone(),
-                    ports.catalog.clone(),
-                    context.clock.clone(),
-                )),
+                Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
+                Arc::new(DeclineInvitationListener::new(invitations.clone())),
+                Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
             ])
-            .doing_chores(vec![Arc::new(RetireDueInvitations::new(
-                ports.catalog.clone(),
-                service(ports, context),
-                context.clock.clone(),
-            ))])
+            .doing_chores(vec![Arc::new(RetireDueInvitations::new(invitations))])
     }
 }
 
@@ -210,7 +202,7 @@ mod tests {
         let context = a_context();
         let ports = InvitationFeature::in_memory(&context);
         let wired = InvitationFeature::wire(&ports, &context);
-        let issued = service(&ports, &context)
+        let issued = core(&ports, &context)
             .issue(
                 &Acting {
                     agent: Agent::Account("account_grace".into()),
@@ -250,6 +242,11 @@ mod tests {
             told.last().map(|recorded| &recorded.event),
             Some(InvitationEvent::Retired)
         ));
+        assert_eq!(
+            told.last().map(|recorded| &recorded.metadata.agent),
+            Some(&Agent::System),
+            "retiring is the system keeping the list tidy, nobody's act"
+        );
     }
 
     #[test]

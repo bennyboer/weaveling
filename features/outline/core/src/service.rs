@@ -1,45 +1,20 @@
 use std::sync::Arc;
 
-use authorizing::{Act, Authorizer, AuthorizerError};
 use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing,
     StoreError, Version,
 };
-use ids::InvalidId;
-use registry::{Registry, RegistryError};
-use thiserror::Error;
+use registry::Registry;
 
-use crate::catalog::CatalogError;
+use crate::error::OutlinesError;
 use crate::id::{OutlineId, SectionId};
-use crate::outline::{
-    Attachment, KIND, Outline, OutlineCommand, OutlineError, OutlineEvent, ProjectLink,
-};
-use crate::title::SectionTitle;
-
-#[derive(Debug, Error)]
-pub enum OutlineServiceError {
-    #[error(transparent)]
-    InvalidId(#[from] InvalidId),
-    #[error(transparent)]
-    Events(#[from] ServiceError<OutlineError>),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Registry(#[from] RegistryError),
-    #[error(transparent)]
-    Authorizer(#[from] AuthorizerError),
-    #[error("there is no such project")]
-    ProjectNotThere,
-    #[error("only an author of the project may do this")]
-    NotAnAuthor,
-}
+use crate::outline::{KIND, Outline, OutlineCommand, OutlineEvent, ProjectLink};
 
 #[derive(Clone)]
 pub struct OutlineService {
     events: Arc<EventSourcingService<Outline>>,
     registry: Arc<dyn Registry>,
-    authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
 }
 
@@ -51,55 +26,46 @@ pub struct Open {
 pub struct Added {
     pub section: SectionId,
     pub version: Version,
+    pub standing: Standing<Outline>,
 }
 
 pub struct Changed {
     pub version: Version,
     pub attachments_changed_in: Vec<SectionId>,
+    pub standing: Standing<Outline>,
 }
 
-impl Changed {
-    fn by(landed: Appended<OutlineEvent>) -> Self {
-        let mut attachments_changed_in = Vec::new();
+fn attachments_changed_in(landed: &Appended<OutlineEvent>) -> Vec<SectionId> {
+    let mut changed_in = Vec::new();
 
-        for happened in &landed.events {
-            let section = match &happened.event {
-                OutlineEvent::Attached { to, .. } => to,
-                OutlineEvent::Detached { from, .. } => from,
-                _ => continue,
-            };
-            if !attachments_changed_in.contains(section) {
-                attachments_changed_in.push(*section);
-            }
-        }
-
-        Self {
-            version: landed.version,
-            attachments_changed_in,
+    for happened in &landed.events {
+        let section = match &happened.event {
+            OutlineEvent::Attached { to, .. } => to,
+            OutlineEvent::Detached { from, .. } => from,
+            _ => continue,
+        };
+        if !changed_in.contains(section) {
+            changed_in.push(*section);
         }
     }
+
+    changed_in
 }
 
 impl OutlineService {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
         registry: Arc<dyn Registry>,
-        authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
             registry,
-            authorizer,
             clock,
         }
     }
 
-    pub async fn open(&self, project: &str, agent: &Agent) -> Result<Open, OutlineServiceError> {
-        self.admitted(agent, Act::Read, &ProjectLink::from(project), || {
-            OutlineServiceError::ProjectNotThere
-        })
-        .await?;
+    pub async fn open(&self, project: &ProjectLink, agent: &Agent) -> Result<Open, OutlinesError> {
         let id = self.claimed_by(project).await?;
         let key = AggregateId::from(&id);
 
@@ -116,258 +82,22 @@ impl OutlineService {
         Ok(Open { id, standing })
     }
 
-    pub async fn get(&self, outline: &str) -> Result<Standing<Outline>, OutlineServiceError> {
-        let outline: OutlineId = outline.parse()?;
-
-        Ok(self.events.latest(&AggregateId::from(&outline)).await?)
+    pub async fn latest(&self, outline: &OutlineId) -> Result<Standing<Outline>, OutlinesError> {
+        Ok(self.events.latest(&AggregateId::from(outline)).await?)
     }
 
-    pub async fn read(
+    pub fn new_section(&self) -> SectionId {
+        SectionId::generate(self.clock.now())
+    }
+
+    pub async fn carry_out(
         &self,
-        outline: &str,
-        agent: &Agent,
-    ) -> Result<Standing<Outline>, OutlineServiceError> {
-        let outline: OutlineId = outline.parse()?;
-        let key = AggregateId::from(&outline);
-        let standing = self.events.latest(&key).await?;
-        self.admitted(agent, Act::Read, standing.state.project(), || {
-            not_found(key)
-        })
-        .await?;
-
-        Ok(standing)
-    }
-
-    async fn admitted(
-        &self,
-        agent: &Agent,
-        act: Act,
-        project: &ProjectLink,
-        otherwise: impl FnOnce() -> OutlineServiceError,
-    ) -> Result<(), OutlineServiceError> {
-        if self.authorizer.may(agent, act, project.as_str()).await? {
-            Ok(())
-        } else if self
-            .authorizer
-            .may(agent, Act::Read, project.as_str())
-            .await?
-        {
-            Err(OutlineServiceError::NotAnAuthor)
-        } else {
-            Err(otherwise())
-        }
-    }
-
-    pub async fn add(
-        &self,
-        outline: &str,
-        under: Option<SectionId>,
-        after: Option<SectionId>,
-        title: SectionTitle,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Added, OutlineServiceError> {
-        let section = SectionId::generate(self.clock.now());
-        let changed = self
-            .carry_out(
-                outline,
-                OutlineCommand::Add {
-                    section,
-                    under,
-                    after,
-                    title,
-                },
-                expected,
-                agent,
-            )
-            .await?;
-
-        Ok(Added {
-            section,
-            version: changed.version,
-        })
-    }
-
-    pub async fn retitle(
-        &self,
-        outline: &str,
-        section: SectionId,
-        title: SectionTitle,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        self.carry_out(
-            outline,
-            OutlineCommand::Retitle { section, title },
-            expected,
-            agent,
-        )
-        .await
-    }
-
-    pub async fn place(
-        &self,
-        outline: &str,
-        section: SectionId,
-        under: Option<SectionId>,
-        after: Option<SectionId>,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        self.carry_out(
-            outline,
-            OutlineCommand::Move {
-                section,
-                under,
-                after,
-            },
-            expected,
-            agent,
-        )
-        .await
-    }
-
-    pub async fn promote(
-        &self,
-        outline: &str,
-        section: SectionId,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        self.carry_out(
-            outline,
-            OutlineCommand::Promote { section },
-            expected,
-            agent,
-        )
-        .await
-    }
-
-    pub async fn demote(
-        &self,
-        outline: &str,
-        section: SectionId,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        self.carry_out(outline, OutlineCommand::Demote { section }, expected, agent)
-            .await
-    }
-
-    pub async fn remove(
-        &self,
-        outline: &str,
-        section: SectionId,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        self.carry_out(outline, OutlineCommand::Remove { section }, expected, agent)
-            .await
-    }
-
-    pub async fn attach(
-        &self,
-        outline: &str,
-        attachment: Attachment,
-        to: SectionId,
-        after: Option<Attachment>,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        self.carry_out(
-            outline,
-            OutlineCommand::Attach {
-                attachment,
-                to,
-                after,
-            },
-            expected,
-            agent,
-        )
-        .await
-    }
-
-    pub async fn detach(
-        &self,
-        outline: &str,
-        attachment: Attachment,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        self.carry_out(
-            outline,
-            OutlineCommand::Detach { attachment },
-            expected,
-            agent,
-        )
-        .await
-    }
-
-    pub async fn discard(
-        &self,
-        outline: &str,
-        expected: Option<Version>,
-        agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        self.carry_out(outline, OutlineCommand::Discard, expected, agent)
-            .await
-    }
-
-    pub async fn outline_of(
-        &self,
-        project: &str,
-    ) -> Result<Option<OutlineId>, OutlineServiceError> {
-        let held = self.registry.holder(KIND.as_str(), project).await?;
-
-        Ok(held.map(|held| held.parse()).transpose()?)
-    }
-
-    async fn claimed_by(&self, project: &str) -> Result<OutlineId, OutlineServiceError> {
-        let mine = OutlineId::generate(self.clock.now());
-        let held = self
-            .registry
-            .claim(KIND.as_str(), project, &mine.to_string())
-            .await?;
-
-        Ok(held.parse()?)
-    }
-
-    async fn start(
-        &self,
-        key: &AggregateId,
-        project: &str,
-        agent: &Agent,
-    ) -> Result<(), OutlineServiceError> {
-        match self
-            .events
-            .begin(
-                key,
-                OutlineCommand::Start {
-                    project: ProjectLink::from(project),
-                },
-                agent,
-            )
-            .await
-        {
-            Ok(_) | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(()),
-            Err(refused) => Err(refused.into()),
-        }
-    }
-
-    async fn carry_out(
-        &self,
-        outline: &str,
+        outline: &OutlineId,
         command: OutlineCommand,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Changed, OutlineServiceError> {
-        let outline: OutlineId = outline.parse()?;
-        let key = AggregateId::from(&outline);
-        let standing = self.events.latest(&key).await?;
-        self.admitted(agent, Act::Write, standing.state.project(), || {
-            not_found(key.clone())
-        })
-        .await?;
+    ) -> Result<Changed, OutlinesError> {
+        let key = AggregateId::from(outline);
 
         let landed = match expected {
             Some(expected) => {
@@ -378,13 +108,61 @@ impl OutlineService {
             None => self.events.execute(&key, command, agent).await?,
         };
 
-        Ok(Changed::by(landed))
+        Ok(Changed {
+            version: landed.version,
+            attachments_changed_in: attachments_changed_in(&landed),
+            standing: self.latest(outline).await?,
+        })
+    }
+
+    pub async fn outline_of(
+        &self,
+        project: &ProjectLink,
+    ) -> Result<Option<OutlineId>, OutlinesError> {
+        let held = self
+            .registry
+            .holder(KIND.as_str(), project.as_str())
+            .await?;
+
+        Ok(held.map(|held| held.parse()).transpose()?)
+    }
+
+    async fn claimed_by(&self, project: &ProjectLink) -> Result<OutlineId, OutlinesError> {
+        let mine = OutlineId::generate(self.clock.now());
+        let held = self
+            .registry
+            .claim(KIND.as_str(), project.as_str(), &mine.to_string())
+            .await?;
+
+        Ok(held.parse()?)
+    }
+
+    async fn start(
+        &self,
+        key: &AggregateId,
+        project: &ProjectLink,
+        agent: &Agent,
+    ) -> Result<(), OutlinesError> {
+        match self
+            .events
+            .begin(
+                key,
+                OutlineCommand::Start {
+                    project: project.clone(),
+                },
+                agent,
+            )
+            .await
+        {
+            Ok(_) | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(()),
+            Err(refused) => Err(refused.into()),
+        }
     }
 }
 
-fn not_found(key: AggregateId) -> OutlineServiceError {
-    OutlineServiceError::Events(ServiceError::NotFound {
-        aggregate: key,
+pub fn not_found(outline: &OutlineId) -> OutlinesError {
+    OutlinesError::Events(ServiceError::NotFound {
+        aggregate: AggregateId::from(outline),
         kind: KIND,
     })
 }

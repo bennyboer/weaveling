@@ -1,18 +1,16 @@
-use std::error::Error;
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use boards_core::BoardCatalog;
+use boards_core::BoardsCore;
 use chores::Tombstones;
+use std::error::Error;
 use time::OffsetDateTime;
 
 pub struct BoardTombstones {
-    catalog: Arc<dyn BoardCatalog>,
+    boards: BoardsCore,
 }
 
 impl BoardTombstones {
-    pub fn of(catalog: Arc<dyn BoardCatalog>) -> Self {
-        Self { catalog }
+    pub fn of(boards: BoardsCore) -> Self {
+        Self { boards }
     }
 }
 
@@ -24,7 +22,7 @@ impl Tombstones for BoardTombstones {
         at_most: u64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
         Ok(self
-            .catalog
+            .boards
             .forget_tombstones_laid_before(before, at_most)
             .await?)
     }

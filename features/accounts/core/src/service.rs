@@ -2,19 +2,19 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
-use mailing::{Mail, Mailer, Unsent};
-use thiserror::Error;
+use mailing::{Mail, Mailer};
 use time::Duration;
 
-use crate::account::{Account, AccountCommand, AccountError, AccountEvent};
-use crate::catalog::{AccountCatalog, AccountSummary, CatalogError};
+use crate::account::{Account, AccountCommand, AccountEvent};
+use crate::catalog::{AccountCatalog, AccountSummary};
 use crate::code::{CodePurpose, PendingVerification};
 use crate::decline::DeclineReason;
+use crate::error::AccountsError;
 use crate::id::AccountId;
-use crate::lock::{InvalidLockReason, LockKind, LockReason};
-use crate::name::{AccountName, InvalidAccountName};
+use crate::lock::{LockKind, LockReason};
+use crate::name::AccountName;
 use crate::operator::OperatorCode;
-use crate::password::{InvalidPassword, Password, PasswordHash};
+use crate::password::{Password, PasswordHash};
 use crate::secrets::{
     Attempt, Dismissal, EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores,
     SecretsError, Sessions, Verifications,
@@ -23,60 +23,10 @@ use crate::session::{Session, SessionToken, Stage, TokenDigest};
 use crate::signing_up::SigningUp;
 use crate::throttle::Guarded;
 use crate::ticket::{InvitationTicket, InvitationToken};
-use email::{EmailAddress, InvalidEmailAddress};
-use throttling::{Throttles, ThrottlesError};
+use email::EmailAddress;
+use throttling::Throttles;
 
 const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
-
-#[derive(Debug, Error)]
-pub enum AccountServiceError {
-    #[error(transparent)]
-    InvalidEmail(#[from] InvalidEmailAddress),
-    #[error(transparent)]
-    InvalidName(#[from] InvalidAccountName),
-    #[error(transparent)]
-    InvalidPassword(#[from] InvalidPassword),
-    #[error("{0}")]
-    InvalidLockReason(InvalidLockReason),
-    #[error("this is not the code that was sent")]
-    CodeWrong,
-    #[error("this code has run out; ask for a new one")]
-    CodeExpired,
-    #[error("this code was tried too often; ask for a new one")]
-    CodeExhausted,
-    #[error("this address and password do not sign in")]
-    SignInRefused,
-    #[error("this address is not verified yet")]
-    NotVerifiedYet,
-    #[error("this account is locked")]
-    Locked,
-    #[error("only an operator may do this")]
-    NotAnOperator,
-    #[error("the last operator keeps the role")]
-    LastOperator,
-    #[error("this is not the code that makes an operator")]
-    OperatorCodeWrong,
-    #[error("signing up here is by invitation only")]
-    SigningUpByInvitationOnly,
-    #[error("this invitation's link lets nobody sign up, or not any more")]
-    InvitationInvalid,
-    #[error("this invitation has run out; ask for a new one")]
-    InvitationExpired,
-    #[error("this address already has an account; sign in instead")]
-    EmailAddressHasAccount,
-    #[error("too many tries; wait {wait} before trying again")]
-    Throttled { wait: Duration },
-    #[error(transparent)]
-    Events(#[from] ServiceError<AccountError>),
-    #[error(transparent)]
-    Secrets(#[from] SecretsError),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Throttles(#[from] ThrottlesError),
-    #[error(transparent)]
-    Unsent(#[from] Unsent),
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedIn {
@@ -143,9 +93,9 @@ impl AccountService {
         email: &str,
         name: &str,
         password: &str,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(), AccountsError> {
         if self.signing_up == SigningUp::ByInvitation {
-            return Err(AccountServiceError::SigningUpByInvitationOnly);
+            return Err(AccountsError::SigningUpByInvitationOnly);
         }
 
         self.signed_up(email, name, password).await
@@ -157,24 +107,24 @@ impl AccountService {
         name: &str,
         password: &str,
         code: &str,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(), AccountsError> {
         if self.signing_up == SigningUp::ByInvitation {
             if !self.operator_wanted().await? {
-                return Err(AccountServiceError::SigningUpByInvitationOnly);
+                return Err(AccountsError::SigningUpByInvitationOnly);
             }
             if !self
                 .operators
                 .holds_code(&OperatorCode::presented(code).digest())
                 .await?
             {
-                return Err(AccountServiceError::OperatorCodeWrong);
+                return Err(AccountsError::OperatorCodeWrong);
             }
         }
 
         self.signed_up(email, name, password).await
     }
 
-    pub async fn operator_wanted(&self) -> Result<bool, AccountServiceError> {
+    pub async fn operator_wanted(&self) -> Result<bool, AccountsError> {
         Ok(!self.operators.any_appointed().await?)
     }
 
@@ -183,7 +133,7 @@ impl AccountService {
         email: &str,
         name: &str,
         password: &str,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
         let name = AccountName::new(name)?;
         let password = Password::new(password)?;
@@ -218,7 +168,7 @@ impl AccountService {
         token: &str,
         name: &str,
         password: &str,
-    ) -> Result<(SessionToken, SignedIn), AccountServiceError> {
+    ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let name = AccountName::new(name)?;
         let hashed = Password::new(password)?.hashed();
         let Some(ticket) = self
@@ -226,15 +176,15 @@ impl AccountService {
             .take_ticket(&InvitationToken::presented(token).digest())
             .await?
         else {
-            return Err(AccountServiceError::InvitationInvalid);
+            return Err(AccountsError::InvitationInvalid);
         };
         if self.clock.now() > ticket.until {
-            return Err(AccountServiceError::InvitationExpired);
+            return Err(AccountsError::InvitationExpired);
         }
 
         let id = AccountId::generate(self.clock.now());
         if !self.claimed(&ticket.to, &id).await? {
-            return Err(AccountServiceError::EmailAddressHasAccount);
+            return Err(AccountsError::EmailAddressHasAccount);
         }
         if let Err(refused) = self
             .events
@@ -262,7 +212,7 @@ impl AccountService {
         &self,
         digest: &TokenDigest,
         ticket: &InvitationTicket,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(), AccountsError> {
         if !self.invitation_tickets.keep_ticket(digest, ticket).await? {
             return Ok(());
         }
@@ -288,21 +238,15 @@ impl AccountService {
         Ok(())
     }
 
-    pub async fn forget_invitation_ticket(
-        &self,
-        invitation: &str,
-    ) -> Result<(), AccountServiceError> {
+    pub async fn forget_invitation_ticket(&self, invitation: &str) -> Result<(), AccountsError> {
         Ok(self.invitation_tickets.forget_ticket(invitation).await?)
     }
 
-    pub async fn drop_invitation_ticket(
-        &self,
-        invitation: &str,
-    ) -> Result<(), AccountServiceError> {
+    pub async fn drop_invitation_ticket(&self, invitation: &str) -> Result<(), AccountsError> {
         Ok(self.invitation_tickets.drop_ticket(invitation).await?)
     }
 
-    pub async fn send_code_again(&self, email: &str) -> Result<(), AccountServiceError> {
+    pub async fn send_code_again(&self, email: &str) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
         self.counted_mail_to(&email).await?;
         let Some((id, account)) = self.whose(&email).await? else {
@@ -316,10 +260,10 @@ impl AccountService {
             .await
     }
 
-    pub async fn verify(&self, email: &str, code: &str) -> Result<(), AccountServiceError> {
+    pub async fn verify(&self, email: &str, code: &str) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
         let Some(id) = self.email_addresses.holder(&email).await? else {
-            return Err(AccountServiceError::CodeWrong);
+            return Err(AccountsError::CodeWrong);
         };
         self.checked_code(&id, CodePurpose::ConfirmAddress, code)
             .await?;
@@ -339,7 +283,7 @@ impl AccountService {
         Ok(())
     }
 
-    pub async fn ask_to_reset_password(&self, email: &str) -> Result<(), AccountServiceError> {
+    pub async fn ask_to_reset_password(&self, email: &str) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
         self.counted_mail_to(&email).await?;
         let Some((id, _account)) = self.whose(&email).await? else {
@@ -355,11 +299,11 @@ impl AccountService {
         email: &str,
         code: &str,
         password: &str,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(), AccountsError> {
         let email = EmailAddress::new(email)?;
         let hashed = Password::new(password)?.hashed();
         let Some((id, _account)) = self.whose(&email).await? else {
-            return Err(AccountServiceError::CodeWrong);
+            return Err(AccountsError::CodeWrong);
         };
         self.checked_code(&id, CodePurpose::ResetPassword, code)
             .await?;
@@ -385,32 +329,28 @@ impl AccountService {
         id: &AccountId,
         purpose: CodePurpose,
         code: &str,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(), AccountsError> {
         let pending = match self
             .verifications
             .attempt(id, purpose, PendingVerification::MAX_TRIES)
             .await?
         {
-            Attempt::Nothing => return Err(AccountServiceError::CodeWrong),
-            Attempt::Exhausted => return Err(AccountServiceError::CodeExhausted),
+            Attempt::Nothing => return Err(AccountsError::CodeWrong),
+            Attempt::Exhausted => return Err(AccountsError::CodeExhausted),
             Attempt::Counted(pending) => pending,
         };
 
         if self.clock.now() > pending.until {
-            return Err(AccountServiceError::CodeExpired);
+            return Err(AccountsError::CodeExpired);
         }
         if !pending.code.is(code) {
-            return Err(AccountServiceError::CodeWrong);
+            return Err(AccountsError::CodeWrong);
         }
 
         Ok(())
     }
 
-    pub async fn sign_in(
-        &self,
-        email: &str,
-        password: &str,
-    ) -> Result<AccountId, AccountServiceError> {
+    pub async fn sign_in(&self, email: &str, password: &str) -> Result<AccountId, AccountsError> {
         Ok(self.signed_in_as(email, password).await?.0)
     }
 
@@ -418,27 +358,27 @@ impl AccountService {
         &self,
         email: &str,
         password: &str,
-    ) -> Result<(AccountId, Account), AccountServiceError> {
+    ) -> Result<(AccountId, Account), AccountsError> {
         let email = EmailAddress::new(email)?;
         self.not_throttled(Guarded::SigningIn, &email).await?;
 
         let Some((id, account, kept)) = self.signing_in_as(&email).await? else {
             let _same_work = PasswordHash::stand_in().admits(password);
             self.count_try(Guarded::SigningIn, &email).await?;
-            return Err(AccountServiceError::SignInRefused);
+            return Err(AccountsError::SignInRefused);
         };
         if !kept.admits(password) {
             self.count_try(Guarded::SigningIn, &email).await?;
-            return Err(AccountServiceError::SignInRefused);
+            return Err(AccountsError::SignInRefused);
         }
         self.throttles
             .clear(Guarded::SigningIn.as_str(), email.as_str())
             .await?;
         if account.is_locked() {
-            return Err(AccountServiceError::Locked);
+            return Err(AccountsError::Locked);
         }
         if !account.is_verified() {
-            return Err(AccountServiceError::NotVerifiedYet);
+            return Err(AccountsError::NotVerifiedYet);
         }
 
         Ok((id, account))
@@ -448,7 +388,7 @@ impl AccountService {
         &self,
         email: &str,
         password: &str,
-    ) -> Result<(SessionToken, SignedIn), AccountServiceError> {
+    ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let (id, account) = self.signed_in_as(email, password).await?;
 
         self.opened(id, account).await
@@ -458,7 +398,7 @@ impl AccountService {
         &self,
         id: AccountId,
         account: Account,
-    ) -> Result<(SessionToken, SignedIn), AccountServiceError> {
+    ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let token = SessionToken::drawn();
         // TODO second factors: a session owes one, Stage::SecondFactorOwed, where the account has one
         let session = Session::begun(id, Stage::SignedIn, self.clock.now());
@@ -467,10 +407,7 @@ impl AccountService {
         Ok((token, SignedIn { session, account }))
     }
 
-    pub async fn signed_in(
-        &self,
-        token: &SessionToken,
-    ) -> Result<Option<SignedIn>, AccountServiceError> {
+    pub async fn signed_in(&self, token: &SessionToken) -> Result<Option<SignedIn>, AccountsError> {
         let digest = token.digest();
         let Some(session) = self.sessions.find(&digest).await? else {
             return Ok(None);
@@ -488,11 +425,11 @@ impl AccountService {
         Ok(Some(SignedIn { session, account }))
     }
 
-    pub async fn end_session(&self, token: &SessionToken) -> Result<(), AccountServiceError> {
+    pub async fn end_session(&self, token: &SessionToken) -> Result<(), AccountsError> {
         Ok(self.sessions.end(&token.digest()).await?)
     }
 
-    pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountServiceError> {
+    pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountsError> {
         if self.operators.any_appointed().await? {
             return Ok(None);
         }
@@ -502,20 +439,16 @@ impl AccountService {
         Ok(Some(code))
     }
 
-    pub async fn become_operator(
-        &self,
-        id: &AccountId,
-        code: &str,
-    ) -> Result<(), AccountServiceError> {
+    pub async fn become_operator(&self, id: &AccountId, code: &str) -> Result<(), AccountsError> {
         if !self.get(id).await?.state.is_verified() {
-            return Err(AccountServiceError::NotVerifiedYet);
+            return Err(AccountsError::NotVerifiedYet);
         }
         if !self
             .operators
             .take_code(&OperatorCode::presented(code).digest())
             .await?
         {
-            return Err(AccountServiceError::OperatorCodeWrong);
+            return Err(AccountsError::OperatorCodeWrong);
         }
 
         let _landed = self
@@ -536,9 +469,8 @@ impl AccountService {
         by: &AccountId,
         account: &AccountId,
         reason: &str,
-    ) -> Result<(), AccountServiceError> {
-        let reason = LockReason::new(reason).map_err(AccountServiceError::InvalidLockReason)?;
-        self.operating(by).await?;
+    ) -> Result<(), AccountsError> {
+        let reason = LockReason::new(reason).map_err(AccountsError::InvalidLockReason)?;
 
         let _landed = self
             .events
@@ -552,13 +484,7 @@ impl AccountService {
         Ok(())
     }
 
-    pub async fn unlock(
-        &self,
-        by: &AccountId,
-        account: &AccountId,
-    ) -> Result<(), AccountServiceError> {
-        self.operating(by).await?;
-
+    pub async fn unlock(&self, by: &AccountId, account: &AccountId) -> Result<(), AccountsError> {
         let _landed = self
             .events
             .execute(
@@ -573,12 +499,9 @@ impl AccountService {
 
     pub async fn list(
         &self,
-        by: &AccountId,
         after: Option<&AccountId>,
         at_most: usize,
-    ) -> Result<Vec<AccountSummary>, AccountServiceError> {
-        self.operating(by).await?;
-
+    ) -> Result<Vec<AccountSummary>, AccountsError> {
         Ok(self.catalog.listed_after(after, at_most).await?)
     }
 
@@ -586,9 +509,7 @@ impl AccountService {
         &self,
         by: &AccountId,
         account: &AccountId,
-    ) -> Result<(), AccountServiceError> {
-        self.operating(by).await?;
-
+    ) -> Result<(), AccountsError> {
         let _landed = self
             .events
             .execute(
@@ -606,10 +527,9 @@ impl AccountService {
         &self,
         by: &AccountId,
         account: &AccountId,
-    ) -> Result<(), AccountServiceError> {
-        self.operating(by).await?;
+    ) -> Result<(), AccountsError> {
         if self.operators.dismiss(account).await? == Dismissal::LastOne {
-            return Err(AccountServiceError::LastOperator);
+            return Err(AccountsError::LastOperator);
         }
 
         let _landed = self
@@ -624,18 +544,10 @@ impl AccountService {
         Ok(())
     }
 
-    async fn operating(&self, by: &AccountId) -> Result<(), AccountServiceError> {
-        if self.get(by).await?.state.is_operator() {
-            Ok(())
-        } else {
-            Err(AccountServiceError::NotAnOperator)
-        }
-    }
-
     async fn signing_in_as(
         &self,
         email: &EmailAddress,
-    ) -> Result<Option<(AccountId, Account, PasswordHash)>, AccountServiceError> {
+    ) -> Result<Option<(AccountId, Account, PasswordHash)>, AccountsError> {
         let Some((id, account)) = self.whose(email).await? else {
             return Ok(None);
         };
@@ -650,7 +562,7 @@ impl AccountService {
         &self,
         guarded: Guarded,
         email: &EmailAddress,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(), AccountsError> {
         let now = self.clock.now();
         let Some(tries) = self
             .throttles
@@ -667,21 +579,17 @@ impl AccountService {
         }
 
         match tries.wait_before_next(guarded.rule(), now) {
-            Some(wait) => Err(AccountServiceError::Throttled { wait }),
+            Some(wait) => Err(AccountsError::Throttled { wait }),
             None => Ok(()),
         }
     }
 
-    async fn counted_mail_to(&self, email: &EmailAddress) -> Result<(), AccountServiceError> {
+    async fn counted_mail_to(&self, email: &EmailAddress) -> Result<(), AccountsError> {
         self.not_throttled(Guarded::SendingCodes, email).await?;
         self.count_try(Guarded::SendingCodes, email).await
     }
 
-    async fn count_try(
-        &self,
-        guarded: Guarded,
-        email: &EmailAddress,
-    ) -> Result<(), AccountServiceError> {
+    async fn count_try(&self, guarded: Guarded, email: &EmailAddress) -> Result<(), AccountsError> {
         self.throttles
             .count(guarded.as_str(), email.as_str(), self.clock.now())
             .await?;
@@ -689,11 +597,7 @@ impl AccountService {
         Ok(())
     }
 
-    async fn claimed(
-        &self,
-        email: &EmailAddress,
-        id: &AccountId,
-    ) -> Result<bool, AccountServiceError> {
+    async fn claimed(&self, email: &EmailAddress, id: &AccountId) -> Result<bool, AccountsError> {
         let now = self.clock.now();
         match self.email_addresses.claim(email, id, now).await {
             Err(SecretsError::Taken) => {}
@@ -707,7 +611,7 @@ impl AccountService {
         };
 
         match self.get(&holder).await {
-            Err(AccountServiceError::Events(ServiceError::NotFound { .. })) => Ok(self
+            Err(AccountsError::Events(ServiceError::NotFound { .. })) => Ok(self
                 .email_addresses
                 .take_over(email, &holder, id, now - CLAIM_ABANDONED_AFTER, now)
                 .await?),
@@ -719,20 +623,20 @@ impl AccountService {
     async fn whose(
         &self,
         email: &EmailAddress,
-    ) -> Result<Option<(AccountId, Account)>, AccountServiceError> {
+    ) -> Result<Option<(AccountId, Account)>, AccountsError> {
         let Some(id) = self.email_addresses.holder(email).await? else {
             return Ok(None);
         };
         let account = match self.get(&id).await {
             Ok(standing) => standing.state,
-            Err(AccountServiceError::Events(ServiceError::NotFound { .. })) => return Ok(None),
+            Err(AccountsError::Events(ServiceError::NotFound { .. })) => return Ok(None),
             Err(failed) => return Err(failed),
         };
 
         Ok((account.email() == email).then_some((id, account)))
     }
 
-    pub async fn get(&self, id: &AccountId) -> Result<Standing<Account>, AccountServiceError> {
+    pub async fn get(&self, id: &AccountId) -> Result<Standing<Account>, AccountsError> {
         Ok(self.events.latest(&AggregateId::from(id)).await?)
     }
 
@@ -741,7 +645,7 @@ impl AccountService {
         id: &AccountId,
         email: &EmailAddress,
         purpose: CodePurpose,
-    ) -> Result<(), AccountServiceError> {
+    ) -> Result<(), AccountsError> {
         let pending = PendingVerification::issued(self.clock.now());
         self.verifications.issue(id, purpose, &pending).await?;
         let code = pending.code.as_str();
@@ -770,10 +674,7 @@ impl AccountService {
             .await?)
     }
 
-    async fn tell_already_signed_up(
-        &self,
-        email: &EmailAddress,
-    ) -> Result<(), AccountServiceError> {
+    async fn tell_already_signed_up(&self, email: &EmailAddress) -> Result<(), AccountsError> {
         Ok(self
             .mailer
             .send(Mail {

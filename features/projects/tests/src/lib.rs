@@ -5,13 +5,13 @@ mod project_cataloguing;
 mod listing;
 
 #[cfg(test)]
-mod project_service;
-
-#[cfg(test)]
 mod projects_api;
 
 #[cfg(test)]
 mod projects_api_guarded;
+
+#[cfg(test)]
+mod projects_core;
 
 #[cfg(test)]
 mod projects_live;

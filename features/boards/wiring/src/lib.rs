@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use boards_catalog::InMemoryBoardCatalog;
 use boards_contract::EVERY_BOARD;
-use boards_core::{BoardCatalog, BoardEvent, BoardService};
+use boards_core::{BoardCatalog, BoardEvent, BoardsCore};
 use boards_messaging::{
     CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, ProjectPinnedIdeasListener,
     UnpinOnDiscardListener,
@@ -27,9 +27,10 @@ pub struct Ports {
     pub outbox: Arc<dyn Outbox>,
 }
 
-pub fn service(ports: &Ports, context: &Context) -> BoardService {
-    BoardService::new(
+pub fn core(ports: &Ports, context: &Context) -> BoardsCore {
+    BoardsCore::new(
         ports.events.clone(),
+        ports.catalog.clone(),
         ports.registry.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
@@ -37,25 +38,16 @@ pub fn service(ports: &Ports, context: &Context) -> BoardService {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    let boards = service(ports, context);
-    let catalogue = CatalogueBoardsListener::new(
-        ports.events.clone(),
-        ports.catalog.clone(),
-        context.clock.clone(),
-    );
-    let index = ProjectPinnedIdeasListener::new(
-        ports.events.clone(),
-        ports.catalog.clone(),
-        boards.clone(),
-        context.clock.clone(),
-    );
-    let unpin_discarded_ideas = UnpinOnDiscardListener::new(boards.clone(), ports.catalog.clone());
+    let boards = core(ports, context);
+    let catalogue = CatalogueBoardsListener::new(boards.clone());
+    let index = ProjectPinnedIdeasListener::new(boards.clone());
+    let unpin_discarded_ideas = UnpinOnDiscardListener::new(boards.clone());
     let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
     let broadcaster = Broadcaster::new();
     let broadcast = BroadcastChangesListener::new(LIVE, EVERY_BOARD, broadcaster.clone());
 
     Wired::serving(
-        boards_rest::router(boards.clone()).merge(boards_rest::live(broadcaster, boards)),
+        boards_rest::router(boards.clone()).merge(boards_rest::live(boards.clone(), broadcaster)),
     )
     .listening(vec![
         Arc::new(broadcast),
@@ -66,7 +58,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     ])
     .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
         "forget-old-board-tombstones",
-        Arc::new(BoardTombstones::of(ports.catalog.clone())),
+        Arc::new(BoardTombstones::of(boards)),
         context.clock.clone(),
     ))])
 }
@@ -212,15 +204,17 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        let catalog: Arc<dyn BoardCatalog> = Arc::new(InMemoryBoardCatalog::new());
+        let context = a_context();
+        let ports = BoardFeature::in_memory(&context);
         for idea in ["idea_1", "idea_2"] {
-            catalog
+            ports
+                .catalog
                 .lay_tombstone(&IdeaLink::from(idea), NOW)
                 .await
                 .expect("laying a tombstone should succeed");
         }
 
-        let forgotten = BoardTombstones::of(catalog)
+        let forgotten = BoardTombstones::of(core(&ports, &context))
             .forget_laid_before(NOW + Duration::SECOND, 1)
             .await
             .expect("forgetting tombstones should succeed");

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
 use boards_core::{
-    BoardError, BoardEvent, BoardId, BoardServiceError, IdeaLink, KIND, ProjectLink, Size, Spot,
+    BoardError, BoardEvent, BoardId, BoardsError, IdeaLink, KIND, ProjectLink, Size, Spot,
 };
 use clock::FixedClock;
 use eventsourcing::{
@@ -169,7 +169,7 @@ async fn a_pinned_idea_is_there_when_the_board_is_read_again() {
 
     let standing = wired
         .boards
-        .get(&id.to_string())
+        .read(&id.to_string(), &an_author())
         .await
         .expect("reading should succeed");
 
@@ -211,7 +211,7 @@ async fn a_moved_idea_keeps_its_new_spot() {
 
     let standing = wired
         .boards
-        .get(&id.to_string())
+        .read(&id.to_string(), &an_author())
         .await
         .expect("reading should succeed");
     assert_eq!(
@@ -245,7 +245,7 @@ async fn an_unpinned_idea_leaves_the_board() {
 
     let standing = wired
         .boards
-        .get(&id.to_string())
+        .read(&id.to_string(), &an_author())
         .await
         .expect("reading should succeed");
     assert!(standing.state.ideas().is_empty());
@@ -282,7 +282,7 @@ async fn pinning_the_same_idea_twice_is_refused() {
 
     assert!(matches!(
         refused,
-        Err(BoardServiceError::Events(ServiceError::Refused(
+        Err(BoardsError::Events(ServiceError::Refused(
             BoardError::AlreadyPinned
         )))
     ));
@@ -320,7 +320,7 @@ async fn a_move_against_a_stale_version_is_refused() {
     assert!(
         matches!(
             refused,
-            Err(BoardServiceError::Events(ServiceError::Store(
+            Err(BoardsError::Events(ServiceError::Store(
                 StoreError::Outdated { .. }
             )))
         ),
@@ -350,11 +350,14 @@ async fn a_board_nobody_started_is_not_found() {
     let (wired, _) = a_workbench();
     let never_started = BoardId::generate(at(1_000));
 
-    let refused = wired.boards.get(&never_started.to_string()).await;
+    let refused = wired
+        .boards
+        .read(&never_started.to_string(), &an_author())
+        .await;
 
     assert!(matches!(
         refused,
-        Err(BoardServiceError::Events(ServiceError::NotFound { .. }))
+        Err(BoardsError::Events(ServiceError::NotFound { .. }))
     ));
 }
 
@@ -362,7 +365,10 @@ async fn a_board_nobody_started_is_not_found() {
 async fn an_id_that_is_not_a_board_is_refused() {
     let (wired, _) = a_workbench();
 
-    let refused = wired.boards.get("idea_031VkO0hnpeQZUiAB7nDma").await;
+    let refused = wired
+        .boards
+        .read("idea_031VkO0hnpeQZUiAB7nDma", &an_author())
+        .await;
 
-    assert!(matches!(refused, Err(BoardServiceError::InvalidId(_))));
+    assert!(matches!(refused, Err(BoardsError::InvalidId(_))));
 }

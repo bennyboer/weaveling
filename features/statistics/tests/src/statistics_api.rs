@@ -6,16 +6,16 @@ use axum_test::TestServer;
 use eventsourcing::Agent;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_contract::WordCountDTO;
-use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
+use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
 use time::OffsetDateTime;
 
 #[tokio::test]
 async fn a_project_nobody_counted_answers_with_nothing() {
     let server = TestServer::new(
-        statistics_rest::router(
+        statistics_rest::router(StatisticsCore::new(
             Arc::new(InMemoryWordCountCatalog::new()),
             Arc::new(AllowingEverything),
-        )
+        ))
         .layer(Extension(Agent::Local)),
     );
 
@@ -46,7 +46,7 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
             .expect("keeping should succeed");
     }
     let server = TestServer::new(
-        statistics_rest::router(catalog, Arc::new(AllowingEverything))
+        statistics_rest::router(StatisticsCore::new(catalog, Arc::new(AllowingEverything)))
             .layer(Extension(Agent::Local)),
     );
 
@@ -73,10 +73,10 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
 #[tokio::test]
 async fn asking_without_a_project_is_a_bad_request() {
     let server = TestServer::new(
-        statistics_rest::router(
+        statistics_rest::router(StatisticsCore::new(
             Arc::new(InMemoryWordCountCatalog::new()),
             Arc::new(AllowingEverything),
-        )
+        ))
         .layer(Extension(Agent::Local)),
     );
 

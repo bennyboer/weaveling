@@ -2,8 +2,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use accounts_core::{
-    AccountId, AccountService, AccountServiceError, Dismissal, EmailAddress, EmailAddresses,
-    Operators, SecretStores, SecretsError, TokenDigest,
+    AccountId, AccountsCore, AccountsError, Dismissal, EmailAddress, EmailAddresses, Operators,
+    SecretStores, SecretsError, TokenDigest,
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
@@ -46,8 +46,7 @@ async fn drawn(wired: &Wired) -> String {
 
 async fn is_operator(wired: &Wired, id: &AccountId) -> bool {
     wired
-        .accounts
-        .get(id)
+        .account(id)
         .await
         .expect("the account should exist")
         .state
@@ -112,7 +111,7 @@ async fn a_code_makes_one_operator_only() {
 
     assert!(matches!(
         wired.accounts.become_operator(&grace, &code).await,
-        Err(AccountServiceError::OperatorCodeWrong)
+        Err(AccountsError::OperatorCodeWrong)
     ));
     assert!(!is_operator(&wired, &grace).await);
 }
@@ -126,7 +125,7 @@ async fn a_code_drawn_at_an_earlier_start_is_good_no_longer() {
 
     assert!(matches!(
         wired.accounts.become_operator(&ada, &earlier).await,
-        Err(AccountServiceError::OperatorCodeWrong)
+        Err(AccountsError::OperatorCodeWrong)
     ));
 }
 
@@ -141,7 +140,7 @@ async fn a_wrong_code_makes_no_operator() {
             .accounts
             .become_operator(&ada, "not the code at all")
             .await,
-        Err(AccountServiceError::OperatorCodeWrong)
+        Err(AccountsError::OperatorCodeWrong)
     ));
     assert!(!is_operator(&wired, &ada).await);
 }
@@ -154,7 +153,7 @@ async fn an_unverified_address_is_refused_and_leaves_the_code_for_after_it_is_ve
 
     assert!(matches!(
         wired.accounts.become_operator(&ada, &code).await,
-        Err(AccountServiceError::NotVerifiedYet)
+        Err(AccountsError::NotVerifiedYet)
     ));
 
     wired
@@ -213,7 +212,7 @@ impl Operators for FailingToAppointOnce {
 async fn an_operator_broken_off_before_being_appointed_is_appointed_by_the_next_code() {
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
-    let accounts = AccountService::new(
+    let accounts = AccountsCore::new(
         wired.store.clone(),
         SecretStores {
             operators: Arc::new(FailingToAppointOnce {

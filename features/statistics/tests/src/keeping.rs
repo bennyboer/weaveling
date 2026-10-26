@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use messaging::{Listener, Message, RoutingKey};
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
 use statistics_catalog::InMemoryWordCountCatalog;
-use statistics_core::{ProjectLink, SceneLink, WordCount, WordCountCatalog};
+use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCount, WordCountCatalog};
 use statistics_messaging::ProjectWordCountsListener;
 use time::{Duration, OffsetDateTime};
 
@@ -20,7 +21,10 @@ fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemoryWordCountCatalog::new());
 
     Wired {
-        projector: ProjectWordCountsListener::new(catalog.clone()),
+        projector: ProjectWordCountsListener::new(StatisticsCore::new(
+            catalog.clone(),
+            Arc::new(AllowingEverything),
+        )),
         catalog,
     }
 }

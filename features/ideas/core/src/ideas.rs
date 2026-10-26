@@ -44,12 +44,13 @@ impl IdeasCore {
         project: &str,
         title: &str,
         agent: &Agent,
-    ) -> Result<IdeaId, IdeasError> {
+    ) -> Result<(IdeaId, Standing<Idea>), IdeasError> {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Write, &project, || IdeasError::ProjectNotThere)
             .await?;
+        let id = self.service.capture(&project, title, agent).await?;
 
-        self.service.capture(&project, title, agent).await
+        Ok((id, self.service.latest(&id).await?))
     }
 
     pub async fn read(&self, id: &str, agent: &Agent) -> Result<Standing<Idea>, IdeasError> {
@@ -69,10 +70,11 @@ impl IdeasCore {
         title: &str,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, IdeasError> {
+    ) -> Result<Standing<Idea>, IdeasError> {
         let id = self.authorized_to_write(id, agent).await?;
+        self.service.retitle(&id, title, expected, agent).await?;
 
-        self.service.retitle(&id, title, expected, agent).await
+        self.service.latest(&id).await
     }
 
     pub async fn discard(

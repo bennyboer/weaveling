@@ -1,29 +1,15 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
-use clock::Clock;
-use eventsourcing::{AggregateId, EventSourcingService, EventStore};
 use invitations_contract::EVERY_INVITATION;
-use invitations_core::{
-    Invitation, InvitationCatalog, InvitationEvent, InvitationId, InvitationSummary,
-};
+use invitations_core::{InvitationId, InvitationsCore};
 use messaging::{Failure, Handler, Message};
 
 pub struct CatalogueInvitationsListener {
-    events: EventSourcingService<Invitation>,
-    catalog: Arc<dyn InvitationCatalog>,
+    invitations: InvitationsCore,
 }
 
 impl CatalogueInvitationsListener {
-    pub fn new(
-        store: Arc<dyn EventStore<InvitationEvent>>,
-        catalog: Arc<dyn InvitationCatalog>,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
-        Self {
-            events: EventSourcingService::new(store, clock),
-            catalog,
-        }
+    pub fn new(invitations: InvitationsCore) -> Self {
+        Self { invitations }
     }
 }
 
@@ -35,19 +21,9 @@ impl Handler for CatalogueInvitationsListener {
         "A change to an invitation did not reach the operators' list.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        let id = eventpublishing::aggregate_in::<InvitationId>(message)?;
-        let standing = self.events.latest(&AggregateId::from(&id)).await?;
-        if standing.state.is_retired() {
-            return Ok(self.catalog.forget(&id).await?);
-        }
-
         Ok(self
-            .catalog
-            .remember(&InvitationSummary::of(
-                id,
-                standing.version,
-                &standing.state,
-            ))
+            .invitations
+            .catalogue(&eventpublishing::aggregate_in::<InvitationId>(message)?)
             .await?)
     }
 }

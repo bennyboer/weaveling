@@ -1,13 +1,15 @@
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
-use authorizing::{AllowingEverything, Authorizer};
+use async_trait::async_trait;
+use authorizing::{Act, AllowingEverything, Authorizer, AuthorizerError, Readable};
 use axum::Router;
 use clock::Clock;
-use eventsourcing::InMemoryEventStore;
+use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use outline_catalog::InMemoryOutlineCatalog;
-use outline_core::{OutlineEvent, OutlineService};
+use outline_core::{OutlineEvent, OutlinesCore};
 use registry::InMemoryRegistry;
 use wiring::Context;
 
@@ -16,9 +18,29 @@ const INDEXING: &str = "index-attachments";
 const DETACHING_DISCARDED_IDEAS: &str = "detach-discarded-idea";
 const DETACHING_DELETED_SCENES: &str = "detach-deleted-scene";
 
+#[derive(Default)]
+pub struct TheSystemAndTheAuthor {
+    pub down: AtomicBool,
+}
+
+#[async_trait]
+impl Authorizer for TheSystemAndTheAuthor {
+    async fn may(&self, agent: &Agent, _act: Act, _project: &str) -> Result<bool, AuthorizerError> {
+        if self.down.load(Ordering::Acquire) {
+            return Err(AuthorizerError::Unreachable("the list is down".into()));
+        }
+
+        Ok(*agent == Agent::System || *agent == Agent::Account(AccountId::from("author-7")))
+    }
+
+    async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
+        Ok(Readable::Everything)
+    }
+}
+
 pub struct Wired {
-    pub outlines: OutlineService,
-    pub reopened: Box<dyn Fn() -> OutlineService + Send + Sync>,
+    pub outlines: OutlinesCore,
+    pub reopened: Box<dyn Fn() -> OutlinesCore + Send + Sync>,
     pub routes: Router,
     pub store: Arc<InMemoryEventStore<OutlineEvent>>,
     pub outbox: Arc<InMemoryOutbox>,
@@ -67,7 +89,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         let authorizer = authorizer.clone();
 
         move || {
-            outline_wiring::service(
+            outline_wiring::core(
                 &outline_wiring::Ports {
                     events: store.clone(),
                     catalog: catalog.clone(),
@@ -101,7 +123,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let on_scene_deleted = named(DETACHING_DELETED_SCENES);
 
     Wired {
-        outlines: outline_wiring::service(&ports, &context),
+        outlines: outline_wiring::core(&ports, &context),
         reopened: Box::new(afresh),
         routes: wired.routes,
         store,

@@ -6,7 +6,7 @@ use eventsourcing::EventStore;
 use live::{BroadcastChangesListener, Broadcaster};
 use members_catalog::InMemoryMembershipCatalog;
 use members_contract::EVERY_MEMBERS;
-use members_core::{MembersAuthorizer, MembersEvent, MembersService, MembershipCatalog};
+use members_core::{MembersAuthorizer, MembersCore, MembersEvent, MembershipCatalog};
 use members_messaging::{CatalogueMembersListener, FoundMembersOfStartedProjectListener};
 use messaging::Publisher;
 use outbox::Outbox;
@@ -20,8 +20,12 @@ pub struct Ports {
     pub outbox: Arc<dyn Outbox>,
 }
 
-pub fn service(ports: &Ports, context: &Context) -> MembersService {
-    MembersService::new(ports.events.clone(), context.clock.clone())
+pub fn core(ports: &Ports, context: &Context) -> MembersCore {
+    MembersCore::new(
+        ports.events.clone(),
+        ports.catalog.clone(),
+        context.clock.clone(),
+    )
 }
 
 pub struct AssembledMembers {
@@ -138,16 +142,11 @@ impl Feature for MembersFeature {
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
         let broadcaster = Broadcaster::new();
+        let members = core(ports, context);
 
-        Wired::serving(members_rest::live(broadcaster.clone())).listening(vec![
-            Arc::new(FoundMembersOfStartedProjectListener::new(service(
-                ports, context,
-            ))),
-            Arc::new(CatalogueMembersListener::new(
-                ports.events.clone(),
-                ports.catalog.clone(),
-                context.clock.clone(),
-            )),
+        Wired::serving(members_rest::live(members.clone(), broadcaster.clone())).listening(vec![
+            Arc::new(FoundMembersOfStartedProjectListener::new(members.clone())),
+            Arc::new(CatalogueMembersListener::new(members)),
             Arc::new(BroadcastChangesListener::under(
                 LIVE,
                 EVERY_MEMBERS,

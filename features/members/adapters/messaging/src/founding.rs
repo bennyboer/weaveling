@@ -1,17 +1,16 @@
 use async_trait::async_trait;
-use eventsourcing::{AccountId, Agent};
-use members_core::{MembersService, ProjectLink};
+use members_core::MembersCore;
 use messaging::{Failure, Handler, Message};
 use projects_contract::{ProjectEventDTO, STARTED};
 
 const AN_ACCOUNT: &str = "account";
 
 pub struct FoundMembersOfStartedProjectListener {
-    members: MembersService,
+    members: MembersCore,
 }
 
 impl FoundMembersOfStartedProjectListener {
-    pub fn new(members: MembersService) -> Self {
+    pub fn new(members: MembersCore) -> Self {
         Self { members }
     }
 }
@@ -29,14 +28,7 @@ impl Handler for FoundMembersOfStartedProjectListener {
             return Ok(());
         };
 
-        Ok(self
-            .members
-            .found(
-                &ProjectLink::from(started.aggregate.id),
-                AccountId::from(owner),
-                &Agent::System,
-            )
-            .await?)
+        Ok(self.members.found(&started.aggregate.id, &owner).await?)
     }
 }
 
@@ -45,8 +37,9 @@ mod tests {
     use std::sync::Arc;
 
     use clock::FixedClock;
-    use eventsourcing::{AggregateId, EventStore, InMemoryEventStore, Version};
-    use members_core::{KIND, MembersEvent};
+    use eventsourcing::{AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, Version};
+    use members_catalog::InMemoryMembershipCatalog;
+    use members_core::{KIND, MembersEvent, ProjectLink};
     use messaging::{Listener, RoutingKey};
     use serde_json::{Value, json};
     use time::OffsetDateTime;
@@ -62,8 +55,9 @@ mod tests {
         let store = Arc::new(InMemoryEventStore::new());
 
         Bench {
-            listener: FoundMembersOfStartedProjectListener::new(MembersService::new(
+            listener: FoundMembersOfStartedProjectListener::new(MembersCore::new(
                 store.clone(),
+                Arc::new(InMemoryMembershipCatalog::new()),
                 Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
             )),
             store,
@@ -117,6 +111,36 @@ mod tests {
             vec![MembersEvent::Founded {
                 owner: AccountId::from("account_ada")
             }]
+        );
+    }
+
+    #[tokio::test]
+    async fn the_founding_is_the_system_s_carrying_out_what_the_start_decided() {
+        let bench = bench();
+
+        bench
+            .listener
+            .take_in(&started_by(
+                json!({ "kind": "account", "id": "account_ada" }),
+            ))
+            .await
+            .expect("founding should succeed");
+
+        let recorded = bench
+            .store
+            .read_from(
+                &AggregateId::from(&ProjectLink::from("project_1")),
+                KIND,
+                Version::of(1),
+            )
+            .await
+            .expect("reading should succeed");
+        assert_eq!(
+            recorded
+                .into_iter()
+                .map(|recorded| recorded.metadata.agent)
+                .collect::<Vec<_>>(),
+            vec![Agent::System]
         );
     }
 

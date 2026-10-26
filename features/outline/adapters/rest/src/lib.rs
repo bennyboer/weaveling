@@ -15,12 +15,12 @@ use outline_contract::{
     RetitleSectionRequest, refused,
 };
 use outline_core::{
-    Attachment, Changed, InvalidSectionTitle, Outline, OutlineError, OutlineService,
-    OutlineServiceError, PlacedSection, SectionId, SectionTitle,
+    Attachment, Changed, InvalidSectionTitle, Outline, OutlineError, OutlinesCore, OutlinesError,
+    PlacedSection, SectionId, SectionTitle,
 };
 use serving::Problem;
 
-pub fn router(outlines: OutlineService) -> Router {
+pub fn router(outlines: OutlinesCore) -> Router {
     Router::new()
         .route("/outlines", routing::post(open))
         .route("/outlines/{outline}", routing::get(find))
@@ -50,7 +50,7 @@ pub fn router(outlines: OutlineService) -> Router {
 }
 
 async fn open(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Json(request): Json<OpenOutlineRequest>,
 ) -> Result<Response, Problem> {
@@ -69,10 +69,10 @@ async fn open(
 #[derive(Clone)]
 struct Following {
     broadcaster: Broadcaster,
-    outlines: OutlineService,
+    outlines: OutlinesCore,
 }
 
-pub fn live(broadcaster: Broadcaster, outlines: OutlineService) -> Router {
+pub fn live(outlines: OutlinesCore, broadcaster: Broadcaster) -> Router {
     Router::new()
         .route("/outlines/live", routing::get(follow))
         .with_state(Following {
@@ -99,7 +99,7 @@ async fn follow(
 }
 
 async fn find(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path(outline): Path<String>,
 ) -> Result<Response, Problem> {
@@ -109,7 +109,7 @@ async fn find(
 }
 
 async fn add(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path(outline): Path<String>,
     headers: HeaderMap,
@@ -126,25 +126,25 @@ async fn add(
         )
         .await
         .map_err(problem_of)?;
-    let standing = outlines.get(&outline).await.map_err(problem_of)?;
     let unchanged = Changed {
         version: added.version,
         attachments_changed_in: Vec::new(),
+        standing: added.standing,
     };
 
     Ok((
         StatusCode::CREATED,
-        [(ETAG, serving::tag(standing.version))],
+        [(ETAG, serving::tag(unchanged.standing.version))],
         Json(AddedSectionResponse {
             section: added.section.to_string(),
-            outline: to_change_dto(&outline, &standing, &unchanged),
+            outline: to_change_dto(&outline, &unchanged),
         }),
     )
         .into_response())
 }
 
 async fn retitle(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
@@ -161,15 +161,11 @@ async fn retitle(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_change_response(
-        &outline,
-        &outlines.get(&outline).await.map_err(problem_of)?,
-        &changed,
-    ))
+    Ok(to_change_response(&outline, &changed))
 }
 
 async fn place(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
@@ -187,15 +183,11 @@ async fn place(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_change_response(
-        &outline,
-        &outlines.get(&outline).await.map_err(problem_of)?,
-        &changed,
-    ))
+    Ok(to_change_response(&outline, &changed))
 }
 
 async fn promote(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
@@ -210,15 +202,11 @@ async fn promote(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_change_response(
-        &outline,
-        &outlines.get(&outline).await.map_err(problem_of)?,
-        &changed,
-    ))
+    Ok(to_change_response(&outline, &changed))
 }
 
 async fn demote(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
@@ -233,15 +221,11 @@ async fn demote(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_change_response(
-        &outline,
-        &outlines.get(&outline).await.map_err(problem_of)?,
-        &changed,
-    ))
+    Ok(to_change_response(&outline, &changed))
 }
 
 async fn remove(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path((outline, section)): Path<(String, String)>,
     headers: HeaderMap,
@@ -256,15 +240,11 @@ async fn remove(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_change_response(
-        &outline,
-        &outlines.get(&outline).await.map_err(problem_of)?,
-        &changed,
-    ))
+    Ok(to_change_response(&outline, &changed))
 }
 
 async fn attach(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path(outline): Path<String>,
     headers: HeaderMap,
@@ -282,15 +262,11 @@ async fn attach(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_change_response(
-        &outline,
-        &outlines.get(&outline).await.map_err(problem_of)?,
-        &changed,
-    ))
+    Ok(to_change_response(&outline, &changed))
 }
 
 async fn detach(
-    State(outlines): State<OutlineService>,
+    State(outlines): State<OutlinesCore>,
     Extension(acting): Extension<Agent>,
     Path((outline, kind, attached)): Path<(String, String, String)>,
     headers: HeaderMap,
@@ -333,20 +309,17 @@ fn to_response(status: StatusCode, outline: &str, standing: &Standing<Outline>) 
         .into_response()
 }
 
-fn to_change_response(outline: &str, standing: &Standing<Outline>, changed: &Changed) -> Response {
+fn to_change_response(outline: &str, changed: &Changed) -> Response {
     (
         StatusCode::OK,
-        [(ETAG, serving::tag(standing.version))],
-        Json(to_change_dto(outline, standing, changed)),
+        [(ETAG, serving::tag(changed.standing.version))],
+        Json(to_change_dto(outline, changed)),
     )
         .into_response()
 }
 
-fn to_change_dto(
-    outline: &str,
-    standing: &Standing<Outline>,
-    changed: &Changed,
-) -> OutlineChangeDTO {
+fn to_change_dto(outline: &str, changed: &Changed) -> OutlineChangeDTO {
+    let standing = &changed.standing;
     let nothing_else_landed = standing.version == changed.version;
 
     OutlineChangeDTO {
@@ -420,13 +393,13 @@ fn untitled(reason: InvalidSectionTitle) -> Problem {
 }
 
 fn invalid_id(reason: ids::InvalidId) -> Problem {
-    problem_of(OutlineServiceError::InvalidId(reason))
+    problem_of(OutlinesError::InvalidId(reason))
 }
 
-fn problem_of(refusal: OutlineServiceError) -> Problem {
+fn problem_of(refusal: OutlinesError) -> Problem {
     match refusal {
-        OutlineServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
-        OutlineServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
+        OutlinesError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        OutlinesError::Events(events) => Problem::of(&events, |refusal| match refusal {
             OutlineError::NoSuchSection => Problem::not_found(refused::NO_SUCH_SECTION, refusal),
             OutlineError::WouldContainItself => {
                 Problem::unprocessable(refused::WOULD_CONTAIN_ITSELF, refusal)
@@ -438,11 +411,11 @@ fn problem_of(refusal: OutlineServiceError) -> Problem {
             OutlineError::Discarded => Problem::refused(refused::DISCARDED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
-        OutlineServiceError::ProjectNotThere => {
-            Problem::not_found(serving::NOT_FOUND, OutlineServiceError::ProjectNotThere)
+        OutlinesError::ProjectNotThere => {
+            Problem::not_found(serving::NOT_FOUND, OutlinesError::ProjectNotThere)
         }
-        OutlineServiceError::NotAnAuthor => {
-            Problem::forbidden(refused::NOT_AN_AUTHOR, OutlineServiceError::NotAnAuthor)
+        OutlinesError::NotAnAuthor => {
+            Problem::forbidden(refused::NOT_AN_AUTHOR, OutlinesError::NotAnAuthor)
         }
         unserveable => Problem::unexpected(unserveable),
     }

@@ -1,78 +1,27 @@
 use std::sync::Arc;
 
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
-use ids::InvalidId;
-use thiserror::Error;
 
-use crate::catalog::{CatalogError, ProjectCatalog, ProjectSummary};
-use crate::details::{
-    BookLanguage, InvalidBookLanguage, InvalidProjectDescription, InvalidQuotationMarks,
-    ProjectDescription, ProjectDetails, QuotationMarks,
-};
+use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
+use crate::error::ProjectsError;
 use crate::id::ProjectId;
-use crate::name::{InvalidProjectName, ProjectName};
-use crate::project::{KIND, Project, ProjectCommand, ProjectError, ProjectEvent};
-
-#[derive(Debug, Error)]
-pub enum ProjectServiceError {
-    #[error(transparent)]
-    InvalidId(#[from] InvalidId),
-    #[error(transparent)]
-    InvalidName(#[from] InvalidProjectName),
-    #[error(transparent)]
-    InvalidLanguage(#[from] InvalidBookLanguage),
-    #[error(transparent)]
-    InvalidQuotation(#[from] InvalidQuotationMarks),
-    #[error(transparent)]
-    InvalidDescription(InvalidProjectDescription),
-    #[error(transparent)]
-    Events(#[from] ServiceError<ProjectError>),
-    #[error(transparent)]
-    Catalog(#[from] CatalogError),
-    #[error(transparent)]
-    Authorizer(#[from] AuthorizerError),
-    #[error("only an owner of the project may do this")]
-    NotAnOwner,
-}
+use crate::name::ProjectName;
+use crate::project::{KIND, Project, ProjectCommand, ProjectEvent};
 
 #[derive(Clone)]
 pub struct ProjectService {
     events: Arc<EventSourcingService<Project>>,
-    catalog: Arc<dyn ProjectCatalog>,
-    authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
 }
 
 impl ProjectService {
-    pub fn new(
-        store: Arc<dyn EventStore<ProjectEvent>>,
-        catalog: Arc<dyn ProjectCatalog>,
-        authorizer: Arc<dyn Authorizer>,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn EventStore<ProjectEvent>>, clock: Arc<dyn Clock>) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
-            catalog,
-            authorizer,
             clock,
-        }
-    }
-
-    pub async fn list(&self, agent: &Agent) -> Result<Vec<ProjectSummary>, ProjectServiceError> {
-        match self.authorizer.readable_by(agent).await? {
-            Readable::Everything => Ok(self.catalog.all().await?),
-            Readable::Only(projects) => {
-                let ids: Vec<ProjectId> = projects
-                    .iter()
-                    .filter_map(|project| project.parse().ok())
-                    .collect();
-
-                Ok(self.catalog.among(&ids).await?)
-            }
         }
     }
 
@@ -81,7 +30,7 @@ impl ProjectService {
         name: &str,
         details: &RawDetails<'_>,
         agent: &Agent,
-    ) -> Result<ProjectId, ProjectServiceError> {
+    ) -> Result<ProjectId, ProjectsError> {
         let id = ProjectId::generate(self.clock.now());
 
         let _landed = self
@@ -96,52 +45,31 @@ impl ProjectService {
         Ok(id)
     }
 
-    pub async fn get(&self, id: &str) -> Result<Standing<Project>, ProjectServiceError> {
-        let id: ProjectId = id.parse()?;
-        let key = AggregateId::from(&id);
+    pub async fn latest(&self, id: &ProjectId) -> Result<Standing<Project>, ProjectsError> {
+        let key = AggregateId::from(id);
         let standing = self.events.latest(&key).await?;
 
         if standing.state.is_deleted() {
-            return Err(not_found(key));
+            return Err(not_found(id));
         }
 
         Ok(standing)
     }
 
-    pub async fn read(
+    pub async fn latest_even_deleted(
         &self,
-        id: &str,
-        agent: &Agent,
-    ) -> Result<Standing<Project>, ProjectServiceError> {
-        let project: ProjectId = id.parse()?;
-        self.admitted(agent, Act::Read, &project).await?;
-
-        self.get(id).await
-    }
-
-    async fn admitted(
-        &self,
-        agent: &Agent,
-        act: Act,
-        project: &ProjectId,
-    ) -> Result<(), ProjectServiceError> {
-        let named = project.to_string();
-        if self.authorizer.may(agent, act, &named).await? {
-            Ok(())
-        } else if self.authorizer.may(agent, Act::Read, &named).await? {
-            Err(ProjectServiceError::NotAnOwner)
-        } else {
-            Err(not_found(AggregateId::from(project)))
-        }
+        id: &ProjectId,
+    ) -> Result<Standing<Project>, ProjectsError> {
+        Ok(self.events.latest(&AggregateId::from(id)).await?)
     }
 
     pub async fn rename(
         &self,
-        id: &str,
+        id: &ProjectId,
         name: &str,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, ProjectServiceError> {
+    ) -> Result<Version, ProjectsError> {
         self.carry_out(
             id,
             ProjectCommand::Rename(ProjectName::new(name)?),
@@ -153,11 +81,11 @@ impl ProjectService {
 
     pub async fn change_details(
         &self,
-        id: &str,
+        id: &ProjectId,
         details: &RawDetails<'_>,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, ProjectServiceError> {
+    ) -> Result<Version, ProjectsError> {
         self.carry_out(
             id,
             ProjectCommand::ChangeDetails(details.checked()?),
@@ -169,24 +97,22 @@ impl ProjectService {
 
     pub async fn delete(
         &self,
-        id: &str,
+        id: &ProjectId,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, ProjectServiceError> {
+    ) -> Result<Version, ProjectsError> {
         self.carry_out(id, ProjectCommand::Delete, expected, agent)
             .await
     }
 
     async fn carry_out(
         &self,
-        id: &str,
+        id: &ProjectId,
         command: ProjectCommand,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, ProjectServiceError> {
-        let id: ProjectId = id.parse()?;
-        self.admitted(agent, Act::Manage, &id).await?;
-        let key = AggregateId::from(&id);
+    ) -> Result<Version, ProjectsError> {
+        let key = AggregateId::from(id);
 
         let landed = match expected {
             Some(expected) => {
@@ -201,9 +127,9 @@ impl ProjectService {
     }
 }
 
-fn not_found(key: AggregateId) -> ProjectServiceError {
-    ProjectServiceError::Events(ServiceError::NotFound {
-        aggregate: key,
+pub fn not_found(id: &ProjectId) -> ProjectsError {
+    ProjectsError::Events(ServiceError::NotFound {
+        aggregate: AggregateId::from(id),
         kind: KIND,
     })
 }
@@ -216,14 +142,14 @@ pub struct RawDetails<'a> {
 }
 
 impl RawDetails<'_> {
-    fn checked(&self) -> Result<ProjectDetails, ProjectServiceError> {
+    fn checked(&self) -> Result<ProjectDetails, ProjectsError> {
         Ok(ProjectDetails {
             language: chosen(self.language).map(BookLanguage::new).transpose()?,
             quotation: chosen(self.quotation)
                 .map(QuotationMarks::new)
                 .transpose()?,
             description: ProjectDescription::new(self.description)
-                .map_err(ProjectServiceError::InvalidDescription)?,
+                .map_err(ProjectsError::InvalidDescription)?,
         })
     }
 }

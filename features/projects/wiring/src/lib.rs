@@ -5,7 +5,7 @@ use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use projects_catalog::InMemoryProjectCatalog;
 use projects_contract::EVERY_PROJECT;
-use projects_core::{ProjectCatalog, ProjectEvent, ProjectService};
+use projects_core::{ProjectCatalog, ProjectEvent, ProjectsCore};
 use projects_messaging::CatalogueProjectsListener;
 use wiring::{Context, EventSourced, Feature, Wired};
 
@@ -17,8 +17,8 @@ pub struct Ports {
     pub outbox: Arc<dyn Outbox>,
 }
 
-pub fn service(ports: &Ports, context: &Context) -> ProjectService {
-    ProjectService::new(
+pub fn core(ports: &Ports, context: &Context) -> ProjectsCore {
+    ProjectsCore::new(
         ports.events.clone(),
         ports.catalog.clone(),
         context.authorizer.clone(),
@@ -27,11 +27,8 @@ pub fn service(ports: &Ports, context: &Context) -> ProjectService {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    let projector = CatalogueProjectsListener::new(
-        ports.events.clone(),
-        ports.catalog.clone(),
-        context.clock.clone(),
-    );
+    let projects = core(ports, context);
+    let projector = CatalogueProjectsListener::new(projects.clone());
 
     let broadcaster = Broadcaster::new();
     let broadcast = BroadcastChangesListener::under(
@@ -42,8 +39,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
 
     Wired::serving(
-        projects_rest::router(service(ports, context))
-            .merge(projects_rest::live(broadcaster, context.authorizer.clone())),
+        projects_rest::router(projects.clone()).merge(projects_rest::live(projects, broadcaster)),
     )
     .listening(vec![Arc::new(broadcast), Arc::new(projector)])
 }

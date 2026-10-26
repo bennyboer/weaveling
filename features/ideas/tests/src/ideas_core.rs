@@ -27,6 +27,7 @@ async fn a_captured_idea(ideas: &IdeasCore) -> IdeaId {
         .capture("project_1", "The Loom", &an_author())
         .await
         .expect("capturing should succeed")
+        .0
 }
 
 #[tokio::test]
@@ -73,7 +74,8 @@ async fn an_idea_may_be_captured_with_no_title() {
     let id = ideas
         .capture("project_1", "", &an_author())
         .await
-        .expect("an idea arrives before its name");
+        .expect("an idea arrives before its name")
+        .0;
 
     assert!(
         ideas
@@ -110,7 +112,8 @@ async fn retitling_changes_what_the_idea_is_called() {
     let landed = ideas
         .retitle(&id.to_string(), "The Silent Loom", None, &an_author())
         .await
-        .expect("retitling should succeed");
+        .expect("retitling should succeed")
+        .version;
 
     assert_eq!(landed, Version::of(2));
     assert_eq!(
@@ -133,7 +136,8 @@ async fn retitling_to_the_same_title_is_accepted_and_records_nothing() {
     let landed = ideas
         .retitle(&id.to_string(), "The Loom", None, &an_author())
         .await
-        .expect("an unchanged title is not an error");
+        .expect("an unchanged title is not an error")
+        .version;
 
     assert_eq!(
         landed,
@@ -219,7 +223,8 @@ async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
     let id = ideas
         .capture("project_1", "The Loom", &an_author())
         .await
-        .expect("capturing should succeed");
+        .expect("capturing should succeed")
+        .0;
     ideas
         .retitle(&id.to_string(), "Title 2", None, &an_author())
         .await
@@ -249,7 +254,8 @@ async fn an_idea_is_snapshotted_once_the_threshold_is_reached() {
     let landed = ideas
         .retitle(&id.to_string(), "Title 100", None, &an_author())
         .await
-        .expect("retitling should succeed");
+        .expect("retitling should succeed")
+        .version;
 
     assert_eq!(
         landed,
@@ -264,7 +270,8 @@ async fn an_idea_survives_on_its_snapshot_alone() {
     let id = ideas
         .capture("project_1", "The Loom", &an_author())
         .await
-        .expect("capturing should succeed");
+        .expect("capturing should succeed")
+        .0;
     ideas
         .retitle(&id.to_string(), "Title 2", None, &an_author())
         .await

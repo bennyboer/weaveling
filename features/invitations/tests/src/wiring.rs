@@ -4,7 +4,7 @@ use acting::Acting;
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore};
 use invitations_catalog::InMemoryInvitationCatalog;
-use invitations_core::{InvitationEvent, InvitationService, InvitationToken};
+use invitations_core::{InvitationEvent, InvitationToken, InvitationsCore};
 use mailing::FakeMailbox;
 use throttling::InMemoryThrottles;
 use time::{Duration, OffsetDateTime};
@@ -16,7 +16,7 @@ pub fn at(seconds: i64) -> OffsetDateTime {
 }
 
 pub struct Wired {
-    pub invitations: InvitationService,
+    pub invitations: InvitationsCore,
     pub store: Arc<InMemoryEventStore<InvitationEvent>>,
     pub catalog: Arc<InMemoryInvitationCatalog>,
     pub mailbox: Arc<FakeMailbox>,
@@ -30,7 +30,7 @@ pub fn wired() -> Wired {
     let catalog = Arc::new(InMemoryInvitationCatalog::new());
 
     Wired {
-        invitations: InvitationService::new(
+        invitations: InvitationsCore::new(
             store.clone(),
             Arc::new(InMemoryThrottles::default()),
             catalog.clone(),

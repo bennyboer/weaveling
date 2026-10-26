@@ -1,19 +1,14 @@
-use std::sync::Arc;
-
-use boards_core::{BoardCatalog, BoardService, IdeaLink};
+use boards_core::BoardsCore;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
 
-use crate::letting_go;
-
 pub struct UnpinOnDiscardListener {
-    boards: BoardService,
-    catalog: Arc<dyn BoardCatalog>,
+    boards: BoardsCore,
 }
 
 impl UnpinOnDiscardListener {
-    pub fn new(boards: BoardService, catalog: Arc<dyn BoardCatalog>) -> Self {
-        Self { boards, catalog }
+    pub fn new(boards: BoardsCore) -> Self {
+        Self { boards }
     }
 }
 
@@ -26,14 +21,9 @@ impl Handler for UnpinOnDiscardListener {
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
 
-        letting_go::let_go_everywhere(
-            &self.boards,
-            self.catalog.as_ref(),
-            &IdeaLink::from(discarded.aggregate.id.as_str()),
-            message.occurred_at,
-        )
-        .await?;
-
-        Ok(())
+        Ok(self
+            .boards
+            .let_go_everywhere(&discarded.aggregate.id, message.occurred_at)
+            .await?)
     }
 }

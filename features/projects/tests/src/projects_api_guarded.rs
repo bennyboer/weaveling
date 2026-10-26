@@ -54,6 +54,7 @@ impl Authorizer for Roles {
 
 const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
 const AUTHOR: [Act; 2] = [Act::Read, Act::Write];
+const READER: [Act; 1] = [Act::Read];
 
 struct Guarded {
     _wired: Wired,
@@ -164,6 +165,18 @@ async fn whoever_may_read_but_not_manage_reads_and_is_told_only_an_owner_may_cha
         assert_eq!(refused.json::<Value>()["type"], "not-an-owner");
     }
     assert_eq!(named(&guarded.ada, &project).await, "The Loom");
+}
+
+#[tokio::test]
+async fn whoever_may_only_read_reads_the_project() {
+    let (guarded, project) = guarded().await;
+    guarded.roles.give("account_grace", &project, &READER);
+
+    guarded
+        .grace
+        .get(&format!("/projects/{project}"))
+        .await
+        .assert_status_ok();
 }
 
 #[tokio::test]

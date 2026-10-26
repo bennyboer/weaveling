@@ -1,43 +1,15 @@
-use eventsourcing::{Agent, ServiceError};
 use messaging::{Failure, Handler, Message};
-use outline_core::{OutlineError, OutlineService, OutlineServiceError, ProjectLink};
+use outline_core::OutlinesCore;
 use projects_contract::{DELETED, ProjectEventDTO};
 
 pub struct DiscardOutlinesOnProjectDeletedListener {
-    outlines: OutlineService,
+    outlines: OutlinesCore,
 }
 
 impl DiscardOutlinesOnProjectDeletedListener {
-    pub fn new(outlines: OutlineService) -> Self {
+    pub fn new(outlines: OutlinesCore) -> Self {
         Self { outlines }
     }
-
-    async fn discard_everything(&self, project: &ProjectLink) -> Result<(), Failure> {
-        let Some(outline) = self.outlines.outline_of(project.as_str()).await? else {
-            return Ok(());
-        };
-
-        match self
-            .outlines
-            .discard(&outline.to_string(), None, &nobody())
-            .await
-        {
-            Ok(_) => Ok(()),
-            Err(refused) if already_discarded(&refused) => Ok(()),
-            Err(refused) => Err(refused.into()),
-        }
-    }
-}
-
-fn already_discarded(refused: &OutlineServiceError) -> bool {
-    matches!(
-        refused,
-        OutlineServiceError::Events(ServiceError::Refused(OutlineError::Discarded))
-    )
-}
-
-fn nobody() -> Agent {
-    Agent::System
 }
 
 #[async_trait::async_trait]
@@ -49,7 +21,6 @@ impl Handler for DiscardOutlinesOnProjectDeletedListener {
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let deleted = eventpublishing::published_in::<ProjectEventDTO>(message)?;
 
-        self.discard_everything(&ProjectLink::from(deleted.aggregate.id.as_str()))
-            .await
+        Ok(self.outlines.sweep(&deleted.aggregate.id).await?)
     }
 }

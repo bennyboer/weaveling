@@ -10,13 +10,13 @@ use invitations_contract::{
     InvitationPageDTO, InvitationSummaryDTO, InviteRequest, decline_reason, refused, status,
 };
 use invitations_core::{
-    DeclineReason, InvitationError, InvitationId, InvitationService, InvitationServiceError,
+    DeclineReason, InvitationError, InvitationId, InvitationsCore, InvitationsError,
     ListedInvitation, Status,
 };
 use serde::Deserialize;
 use serving::Problem;
 
-pub fn router(invitations: InvitationService) -> Router {
+pub fn router(invitations: InvitationsCore) -> Router {
     Router::new()
         .route("/invitations", routing::post(invite).get(list))
         .route("/invitations/{invitation}", routing::delete(withdraw))
@@ -24,7 +24,7 @@ pub fn router(invitations: InvitationService) -> Router {
 }
 
 async fn invite(
-    State(invitations): State<InvitationService>,
+    State(invitations): State<InvitationsCore>,
     Extension(acting): Extension<Acting>,
     headers: HeaderMap,
     Json(request): Json<InviteRequest>,
@@ -61,7 +61,7 @@ struct Paging {
 }
 
 async fn list(
-    State(invitations): State<InvitationService>,
+    State(invitations): State<InvitationsCore>,
     Extension(acting): Extension<Acting>,
     Query(paging): Query<Paging>,
 ) -> Result<Json<InvitationPageDTO>, Problem> {
@@ -108,7 +108,7 @@ fn invitation_named(raw: &str) -> Result<InvitationId, Problem> {
 }
 
 async fn withdraw(
-    State(invitations): State<InvitationService>,
+    State(invitations): State<InvitationsCore>,
     Extension(acting): Extension<Acting>,
     Path(invitation): Path<String>,
 ) -> Result<StatusCode, Problem> {
@@ -122,12 +122,10 @@ async fn withdraw(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn problem_of(refusal: InvitationServiceError) -> Problem {
+fn problem_of(refusal: InvitationsError) -> Problem {
     match refusal {
-        InvitationServiceError::NotAnOperator => {
-            Problem::forbidden(refused::NOT_AN_OPERATOR, refusal)
-        }
-        InvitationServiceError::InvalidEmail(reason) => match reason {
+        InvitationsError::NotAnOperator => Problem::forbidden(refused::NOT_AN_OPERATOR, refusal),
+        InvitationsError::InvalidEmail(reason) => match reason {
             InvalidEmailAddress::Malformed => {
                 Problem::unprocessable(refused::EMAIL_MALFORMED, reason)
             }
@@ -137,13 +135,11 @@ fn problem_of(refusal: InvitationServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        InvitationServiceError::Throttled { wait } => {
-            Problem::waiting(refused::THROTTLED, refusal, wait)
-        }
-        InvitationServiceError::Events(ServiceError::NotFound { .. }) => {
+        InvitationsError::Throttled { wait } => Problem::waiting(refused::THROTTLED, refusal, wait),
+        InvitationsError::Events(ServiceError::NotFound { .. }) => {
             Problem::not_found(refused::INVITATION_NOT_FOUND, "there is no such invitation")
         }
-        InvitationServiceError::Events(ServiceError::Refused(InvitationError::AlreadyAccepted)) => {
+        InvitationsError::Events(ServiceError::Refused(InvitationError::AlreadyAccepted)) => {
             Problem::refused(refused::INVITATION_ALREADY_ACCEPTED, refusal)
         }
         unserveable => Problem::unexpected(unserveable),

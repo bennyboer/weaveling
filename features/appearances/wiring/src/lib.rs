@@ -3,11 +3,10 @@ mod tombstones;
 use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
-use appearances_core::AppearanceCatalog;
+use appearances_core::{AppearanceCatalog, AppearancesCore};
 use appearances_messaging::{
     ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
-use appearances_rest::Readers;
 use chores::ForgetOldTombstones;
 use live::Broadcaster;
 use outbox::Outbox;
@@ -25,27 +24,22 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         appearances_rest::TellingAppearances::around(ports.catalog.clone(), broadcaster.clone()),
     );
 
+    let appearances = AppearancesCore::new(telling, context.authorizer.clone());
+
     Wired::serving(
-        appearances_rest::router(readers(ports, context))
-            .merge(appearances_rest::live(broadcaster, readers(ports, context))),
+        appearances_rest::router(appearances.clone())
+            .merge(appearances_rest::live(appearances.clone(), broadcaster)),
     )
     .listening(vec![
-        Arc::new(ProjectOutlineAppearancesListener::new(telling.clone())),
-        Arc::new(ProjectSceneAppearancesListener::new(telling.clone())),
-        Arc::new(ForgetDiscardedIdeaListener::new(telling)),
+        Arc::new(ProjectOutlineAppearancesListener::new(appearances.clone())),
+        Arc::new(ProjectSceneAppearancesListener::new(appearances.clone())),
+        Arc::new(ForgetDiscardedIdeaListener::new(appearances.clone())),
     ])
     .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
         "forget-old-appearance-tombstones",
-        Arc::new(AppearanceTombstones::of(ports.catalog.clone())),
+        Arc::new(AppearanceTombstones::of(appearances)),
         context.clock.clone(),
     ))])
-}
-
-fn readers(ports: &Ports, context: &Context) -> Readers {
-    Readers {
-        catalog: ports.catalog.clone(),
-        authorizer: context.authorizer.clone(),
-    }
 }
 
 pub struct AppearanceFeature;
@@ -157,10 +151,11 @@ mod tests {
                 .expect("forgetting should succeed");
         }
 
-        let forgotten = AppearanceTombstones::of(catalog)
-            .forget_laid_before(NOW + Duration::SECOND, 1)
-            .await
-            .expect("forgetting tombstones should succeed");
+        let forgotten =
+            AppearanceTombstones::of(AppearancesCore::new(catalog, Arc::new(AllowingEverything)))
+                .forget_laid_before(NOW + Duration::SECOND, 1)
+                .await
+                .expect("forgetting tombstones should succeed");
 
         assert_eq!(forgotten, 1);
     }

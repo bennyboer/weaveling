@@ -146,6 +146,23 @@ async fn whoever_follows_the_projects_is_told_only_of_those_they_may_read() {
 }
 
 #[tokio::test]
+async fn the_list_followed_ends_once_whom_to_tell_cannot_be_known() {
+    let guarded = guarded();
+    let mut socket = following(&guarded.server, "/projects/live").await;
+    started(&guarded.server, "The Loom").await;
+
+    guarded.readers.go_down();
+    guarded.wired.settle().await;
+
+    assert!(
+        tokio::spawn(async move { socket.receive_text().await })
+            .await
+            .is_err(),
+        "a project it cannot tell about may be one the follower needed, so the socket ends and its client reloads"
+    );
+}
+
+#[tokio::test]
 async fn whoever_follows_one_project_hears_it_but_only_if_they_may_read_it() {
     let guarded = guarded();
     let loom = started(&guarded.server, "The Loom").await;

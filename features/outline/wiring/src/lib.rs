@@ -8,7 +8,7 @@ use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_contract::EVERY_OUTLINE;
-use outline_core::{OutlineCatalog, OutlineEvent, OutlineService};
+use outline_core::{OutlineCatalog, OutlineEvent, OutlinesCore};
 use outline_messaging::{
     CatalogueOutlinesListener, DetachOnDiscardListener, DetachOnSceneDeletedListener,
     DiscardOutlinesOnProjectDeletedListener, IndexAttachmentsListener,
@@ -27,9 +27,10 @@ pub struct Ports {
     pub outbox: Arc<dyn Outbox>,
 }
 
-pub fn service(ports: &Ports, context: &Context) -> OutlineService {
-    OutlineService::new(
+pub fn core(ports: &Ports, context: &Context) -> OutlinesCore {
+    OutlinesCore::new(
         ports.events.clone(),
+        ports.catalog.clone(),
         ports.registry.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
@@ -37,28 +38,18 @@ pub fn service(ports: &Ports, context: &Context) -> OutlineService {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    let outlines = service(ports, context);
-    let catalogue = CatalogueOutlinesListener::new(
-        ports.events.clone(),
-        ports.catalog.clone(),
-        context.clock.clone(),
-    );
-    let index = IndexAttachmentsListener::new(
-        ports.events.clone(),
-        ports.catalog.clone(),
-        outlines.clone(),
-        context.clock.clone(),
-    );
-    let detach_discarded_ideas =
-        DetachOnDiscardListener::new(outlines.clone(), ports.catalog.clone());
-    let detach_deleted_scenes =
-        DetachOnSceneDeletedListener::new(outlines.clone(), ports.catalog.clone());
+    let outlines = core(ports, context);
+    let catalogue = CatalogueOutlinesListener::new(outlines.clone());
+    let index = IndexAttachmentsListener::new(outlines.clone());
+    let detach_discarded_ideas = DetachOnDiscardListener::new(outlines.clone());
+    let detach_deleted_scenes = DetachOnSceneDeletedListener::new(outlines.clone());
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
     let broadcaster = Broadcaster::new();
     let broadcast = BroadcastChangesListener::new(LIVE, EVERY_OUTLINE, broadcaster.clone());
 
     Wired::serving(
-        outline_rest::router(outlines.clone()).merge(outline_rest::live(broadcaster, outlines)),
+        outline_rest::router(outlines.clone())
+            .merge(outline_rest::live(outlines.clone(), broadcaster)),
     )
     .listening(vec![
         Arc::new(broadcast),
@@ -70,7 +61,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     ])
     .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
         "forget-old-outline-tombstones",
-        Arc::new(OutlineTombstones::of(ports.catalog.clone())),
+        Arc::new(OutlineTombstones::of(outlines)),
         context.clock.clone(),
     ))])
 }
@@ -216,15 +207,17 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        let catalog: Arc<dyn OutlineCatalog> = Arc::new(InMemoryOutlineCatalog::new());
+        let context = a_context();
+        let ports = OutlineFeature::in_memory(&context);
         for gone in [Attachment::scene("scene_1"), Attachment::idea("idea_1")] {
-            catalog
+            ports
+                .catalog
                 .lay_tombstone(&gone, NOW)
                 .await
                 .expect("laying a tombstone should succeed");
         }
 
-        let forgotten = OutlineTombstones::of(catalog)
+        let forgotten = OutlineTombstones::of(core(&ports, &context))
             .forget_laid_before(NOW + Duration::SECOND, 1)
             .await
             .expect("forgetting tombstones should succeed");

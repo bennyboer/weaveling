@@ -1,18 +1,14 @@
 use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Failure, Handler, Message};
-use outline_core::{Attachment, OutlineCatalog, OutlineService};
-use std::sync::Arc;
-
-use crate::letting_go;
+use outline_core::{Attachment, OutlinesCore};
 
 pub struct DetachOnDiscardListener {
-    outlines: OutlineService,
-    catalog: Arc<dyn OutlineCatalog>,
+    outlines: OutlinesCore,
 }
 
 impl DetachOnDiscardListener {
-    pub fn new(outlines: OutlineService, catalog: Arc<dyn OutlineCatalog>) -> Self {
-        Self { outlines, catalog }
+    pub fn new(outlines: OutlinesCore) -> Self {
+        Self { outlines }
     }
 }
 
@@ -25,14 +21,12 @@ impl Handler for DetachOnDiscardListener {
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
 
-        letting_go::let_go_everywhere(
-            &self.outlines,
-            self.catalog.as_ref(),
-            &Attachment::idea(&discarded.aggregate.id),
-            message.occurred_at,
-        )
-        .await?;
-
-        Ok(())
+        Ok(self
+            .outlines
+            .let_go_everywhere(
+                &Attachment::idea(&discarded.aggregate.id),
+                message.occurred_at,
+            )
+            .await?)
     }
 }

@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use accounts_catalog::InMemoryAccountCatalog;
-use accounts_core::{AccountEvent, AccountService, SecretStores};
+use accounts_core::{Account, AccountError, AccountEvent, AccountId, AccountsCore, SecretStores};
 use accounts_secrets::InMemorySecrets;
 use accounts_wiring::Ports;
 use authorizing::AllowingEverything;
 use axum::Router;
 use clock::FixedClock;
-use eventsourcing::InMemoryEventStore;
+use eventsourcing::{
+    AggregateId, EventSourcingService, InMemoryEventStore, ServiceError, Standing,
+};
 use mailing::FakeMailbox;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
@@ -23,7 +25,7 @@ pub fn at(seconds: i64) -> OffsetDateTime {
 }
 
 pub struct Wired {
-    pub accounts: AccountService,
+    pub accounts: AccountsCore,
     pub routes: Router,
     pub store: Arc<InMemoryEventStore<AccountEvent>>,
     pub secrets: Arc<InMemorySecrets>,
@@ -34,6 +36,17 @@ pub struct Wired {
     pub catalog: Arc<InMemoryAccountCatalog>,
     pub consuming: DeliveryConsumer,
     pub publisher: Arc<InProcessDispatcher>,
+}
+
+impl Wired {
+    pub async fn account(
+        &self,
+        id: &AccountId,
+    ) -> Result<Standing<Account>, ServiceError<AccountError>> {
+        EventSourcingService::new(self.store.clone(), self.clock.clone())
+            .latest(&AggregateId::from(id))
+            .await
+    }
 }
 
 pub fn wired() -> Wired {
@@ -67,7 +80,7 @@ pub fn wired() -> Wired {
     }
 
     Wired {
-        accounts: accounts_wiring::service(&ports, &context),
+        accounts: accounts_wiring::core(&ports, &context),
         routes: wired.routes,
         store,
         secrets,

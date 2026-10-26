@@ -11,35 +11,48 @@ use eventsourcing::Agent;
 use live::{Broadcaster, Sieve};
 use live_contract::FrameDTO;
 use members_contract::MembersEventDTO;
+use members_core::MembersCore;
 
 pub const FOLLOWED: &str = "memberships";
 
-pub fn live(broadcaster: Broadcaster) -> Router {
+#[derive(Clone)]
+struct Following {
+    members: MembersCore,
+    broadcaster: Broadcaster,
+}
+
+pub fn live(members: MembersCore, broadcaster: Broadcaster) -> Router {
     Router::new()
         .route("/members/live", routing::get(follow))
-        .with_state(broadcaster)
+        .with_state(Following {
+            members,
+            broadcaster,
+        })
 }
 
 async fn follow(
     upgrade: WebSocketUpgrade,
-    State(broadcaster): State<Broadcaster>,
+    State(following): State<Following>,
     Extension(agent): Extension<Agent>,
 ) -> Response {
     live::streaming_sifted(
         upgrade,
-        broadcaster.hear(FOLLOWED),
-        Arc::new(NamingTheFollower(agent)),
+        following.broadcaster.hear(FOLLOWED),
+        Arc::new(NamingTheFollower {
+            agent,
+            members: following.members,
+        }),
     )
 }
 
-struct NamingTheFollower(Agent);
+struct NamingTheFollower {
+    agent: Agent,
+    members: MembersCore,
+}
 
 #[async_trait]
 impl Sieve for NamingTheFollower {
     async fn lets_through(&self, frame: &FrameDTO) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        let Agent::Account(follower) = &self.0 else {
-            return Ok(false);
-        };
         let named = match serde_json::from_value::<MembersEventDTO>(frame.event.clone())? {
             MembersEventDTO::Founded { owner } => owner,
             MembersEventDTO::Joined { account, .. }
@@ -48,7 +61,7 @@ impl Sieve for NamingTheFollower {
             | MembersEventDTO::Removed { account } => account,
         };
 
-        Ok(named == follower.as_str())
+        Ok(self.members.may_hear(&self.agent, &named))
     }
 }
 
@@ -57,14 +70,24 @@ mod tests {
     use std::time::Duration;
 
     use axum_test::{TestServer, TestWebSocket};
+    use clock::FixedClock;
+    use eventsourcing::InMemoryEventStore;
+    use members_catalog::InMemoryMembershipCatalog;
     use serde_json::{Value, json};
+    use time::OffsetDateTime;
 
     use super::*;
 
     fn served(broadcaster: &Broadcaster, agent: Agent) -> TestServer {
+        let members = MembersCore::new(
+            Arc::new(InMemoryEventStore::new()),
+            Arc::new(InMemoryMembershipCatalog::new()),
+            Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+        );
+
         TestServer::builder()
             .http_transport()
-            .build(live(broadcaster.clone()).layer(Extension(agent)))
+            .build(live(members, broadcaster.clone()).layer(Extension(agent)))
     }
 
     fn ada() -> Agent {

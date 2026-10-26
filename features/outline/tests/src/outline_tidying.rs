@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
@@ -15,7 +16,7 @@ use serde_json::json;
 use time::{Duration, OffsetDateTime};
 
 use crate::wiring;
-use crate::wiring::Wired;
+use crate::wiring::{TheSystemAndTheAuthor, Wired};
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -26,7 +27,11 @@ fn an_author() -> Agent {
 }
 
 fn a_workbench() -> Wired {
-    wiring::wired(Arc::new(FixedClock::new(at(1_000))))
+    a_workbench_guarded_by(Arc::new(TheSystemAndTheAuthor::default()))
+}
+
+fn a_workbench_guarded_by(authorizer: Arc<TheSystemAndTheAuthor>) -> Wired {
+    wiring::wired_guarded_by(Arc::new(FixedClock::new(at(1_000))), authorizer)
 }
 
 fn a_scene(named: &str) -> Attachment {
@@ -255,7 +260,7 @@ async fn a_discarded_idea_leaves_the_book() {
 
     let standing = wired
         .outlines
-        .get(&outline.to_string())
+        .read(&outline.to_string(), &an_author())
         .await
         .expect("reading should succeed");
     assert_eq!(
@@ -278,7 +283,7 @@ async fn discarding_an_idea_leaves_the_scenes_alone() {
 
     let standing = wired
         .outlines
-        .get(&outline.to_string())
+        .read(&outline.to_string(), &an_author())
         .await
         .expect("reading should succeed");
     assert_eq!(
@@ -330,15 +335,58 @@ async fn attached_as_published(wired: &Wired, outline: &OutlineId) -> Message {
 }
 
 #[tokio::test]
+async fn a_deleted_scene_is_let_go_of_in_the_system_s_name() {
+    let wired = a_workbench();
+    let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
+
+    wired
+        .on_scene_deleted
+        .handle(&scene_deleted("scene_1"))
+        .await
+        .expect("tidying should succeed");
+
+    let recorded = wired
+        .store
+        .read_from(&AggregateId::from(&outline), KIND, Version::ZERO)
+        .await
+        .expect("reading should succeed");
+    assert_eq!(
+        recorded
+            .last()
+            .expect("the detach is recorded")
+            .metadata
+            .agent,
+        Agent::System
+    );
+}
+
+#[tokio::test]
+async fn whom_to_let_in_not_being_known_fails_letting_go_so_it_is_tried_again() {
+    let authorizer = Arc::new(TheSystemAndTheAuthor::default());
+    let wired = a_workbench_guarded_by(authorizer.clone());
+    a_book_holding(&wired, &["scene_1"]).await;
+    authorizer.down.store(true, Ordering::Release);
+
+    assert!(
+        wired
+            .on_scene_deleted
+            .handle(&scene_deleted("scene_1"))
+            .await
+            .is_err(),
+        "a deleted scene left in the outline for good is worse than a message tried again"
+    );
+}
+
+#[tokio::test]
 async fn a_late_attachment_does_not_bring_back_what_a_discarded_book_held() {
     let wired = a_workbench();
     let (outline, _) = a_book_holding(&wired, &["scene_1"]).await;
     let late = attached_as_published(&wired, &outline).await;
     wired
         .outlines
-        .discard(&outline.to_string(), None, &an_author())
+        .sweep("project_1")
         .await
-        .expect("discarding should succeed");
+        .expect("sweeping should succeed");
     wired.settle().await;
 
     wired
@@ -364,9 +412,9 @@ async fn discarding_an_idea_still_indexed_in_a_discarded_book_is_harmless() {
     let (outline, _) = a_book_holding(&wired, &[]).await;
     wired
         .outlines
-        .discard(&outline.to_string(), None, &an_author())
+        .sweep("project_1")
         .await
-        .expect("discarding should succeed");
+        .expect("sweeping should succeed");
     wired.settle().await;
     wired
         .catalog
@@ -422,7 +470,7 @@ async fn a_deleted_scene_is_taken_out_of_the_book() {
 
     let standing = wired
         .outlines
-        .get(&outline.to_string())
+        .read(&outline.to_string(), &an_author())
         .await
         .expect("reading should succeed");
     assert_eq!(
@@ -470,7 +518,7 @@ async fn a_scene_deleted_before_its_placement_was_indexed_still_leaves_the_book(
 
     let standing = wired
         .outlines
-        .get(&outline.to_string())
+        .read(&outline.to_string(), &an_author())
         .await
         .expect("reading should succeed");
     assert!(
@@ -493,7 +541,7 @@ async fn an_idea_discarded_before_its_placement_was_indexed_still_leaves_the_boo
 
     let standing = wired
         .outlines
-        .get(&outline.to_string())
+        .read(&outline.to_string(), &an_author())
         .await
         .expect("reading should succeed");
     assert!(

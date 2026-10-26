@@ -1,7 +1,6 @@
 mod attaching;
 mod cataloguing;
 mod discarding;
-mod letting_go;
 mod publishing;
 mod scene_deleting;
 mod sweeping;

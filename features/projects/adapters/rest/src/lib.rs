@@ -14,7 +14,7 @@ use projects_contract::{
 };
 use projects_core::{
     InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName, InvalidQuotationMarks,
-    Project, ProjectError, ProjectService, ProjectServiceError, ProjectSummary, RawDetails,
+    Project, ProjectError, ProjectSummary, ProjectsCore, ProjectsError, RawDetails,
 };
 use serving::Problem;
 
@@ -22,7 +22,7 @@ mod following;
 
 pub use following::{FOLLOWED, live};
 
-pub fn router(projects: ProjectService) -> Router {
+pub fn router(projects: ProjectsCore) -> Router {
     Router::new()
         .route("/projects", routing::get(list).post(create))
         .route(
@@ -34,7 +34,7 @@ pub fn router(projects: ProjectService) -> Router {
 }
 
 async fn list(
-    State(projects): State<ProjectService>,
+    State(projects): State<ProjectsCore>,
     Extension(acting): Extension<Agent>,
 ) -> Result<Json<Vec<ProjectDTO>>, Problem> {
     let found = projects.list(&acting).await.map_err(problem_of)?;
@@ -53,11 +53,11 @@ fn to_dto(summary: &ProjectSummary) -> ProjectDTO {
 }
 
 async fn create(
-    State(projects): State<ProjectService>,
+    State(projects): State<ProjectsCore>,
     Extension(acting): Extension<Agent>,
     Json(request): Json<CreateProjectRequest>,
 ) -> Result<Response, Problem> {
-    let id = projects
+    let (id, started) = projects
         .start(
             &request.name,
             &RawDetails {
@@ -68,15 +68,13 @@ async fn create(
             &acting,
         )
         .await
-        .map_err(problem_of)?
-        .to_string();
-    let started = projects.get(&id).await.map_err(problem_of)?;
+        .map_err(problem_of)?;
 
-    Ok(to_response(StatusCode::CREATED, &id, &started))
+    Ok(to_response(StatusCode::CREATED, &id.to_string(), &started))
 }
 
 async fn find(
-    State(projects): State<ProjectService>,
+    State(projects): State<ProjectsCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
 ) -> Result<Response, Problem> {
@@ -86,32 +84,28 @@ async fn find(
 }
 
 async fn rename(
-    State(projects): State<ProjectService>,
+    State(projects): State<ProjectsCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<RenameProjectRequest>,
 ) -> Result<Response, Problem> {
-    projects
+    let renamed = projects
         .rename(&id, &request.name, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
-    Ok(to_response(
-        StatusCode::OK,
-        &id,
-        &projects.get(&id).await.map_err(problem_of)?,
-    ))
+    Ok(to_response(StatusCode::OK, &id, &renamed))
 }
 
 async fn change_details(
-    State(projects): State<ProjectService>,
+    State(projects): State<ProjectsCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
     Json(request): Json<ChangeDetailsRequest>,
 ) -> Result<Response, Problem> {
-    projects
+    let changed = projects
         .change_details(
             &id,
             &RawDetails {
@@ -125,15 +119,11 @@ async fn change_details(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_response(
-        StatusCode::OK,
-        &id,
-        &projects.get(&id).await.map_err(problem_of)?,
-    ))
+    Ok(to_response(StatusCode::OK, &id, &changed))
 }
 
 async fn remove(
-    State(projects): State<ProjectService>,
+    State(projects): State<ProjectsCore>,
     Extension(acting): Extension<Agent>,
     Path(id): Path<String>,
     headers: HeaderMap,
@@ -166,10 +156,10 @@ fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Re
         .into_response()
 }
 
-fn problem_of(refusal: ProjectServiceError) -> Problem {
+fn problem_of(refusal: ProjectsError) -> Problem {
     match refusal {
-        ProjectServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
-        ProjectServiceError::InvalidName(reason) => match reason {
+        ProjectsError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        ProjectsError::InvalidName(reason) => match reason {
             InvalidProjectName::Blank => Problem::rejected(refused::NAME_BLANK, reason),
             InvalidProjectName::ControlCharacter => {
                 Problem::rejected(refused::NAME_CONTROL_CHARACTER, reason)
@@ -180,17 +170,17 @@ fn problem_of(refusal: ProjectServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        ProjectServiceError::InvalidLanguage(reason) => match &reason {
+        ProjectsError::InvalidLanguage(reason) => match &reason {
             InvalidBookLanguage::NotATag(tag) => {
                 Problem::rejected(refused::LANGUAGE_NOT_A_TAG, &reason).with("tag", tag.as_str())
             }
         },
-        ProjectServiceError::InvalidQuotation(reason) => match &reason {
+        ProjectsError::InvalidQuotation(reason) => match &reason {
             InvalidQuotationMarks::Unknown(name) => {
                 Problem::rejected(refused::QUOTATION_UNKNOWN, &reason).with("name", name.as_str())
             }
         },
-        ProjectServiceError::InvalidDescription(reason) => match reason {
+        ProjectsError::InvalidDescription(reason) => match reason {
             InvalidProjectDescription::Blank => Problem::unexpected(reason),
             InvalidProjectDescription::ControlCharacter => {
                 Problem::rejected(refused::DESCRIPTION_CONTROL_CHARACTER, reason)
@@ -201,12 +191,12 @@ fn problem_of(refusal: ProjectServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        ProjectServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
+        ProjectsError::Events(events) => Problem::of(&events, |refusal| match refusal {
             ProjectError::Deleted => Problem::refused(refused::DELETED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
-        ProjectServiceError::NotAnOwner => {
-            Problem::forbidden(refused::NOT_AN_OWNER, ProjectServiceError::NotAnOwner)
+        ProjectsError::NotAnOwner => {
+            Problem::forbidden(refused::NOT_AN_OWNER, ProjectsError::NotAnOwner)
         }
         unserveable => Problem::unexpected(unserveable),
     }

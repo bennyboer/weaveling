@@ -1,18 +1,16 @@
-use std::error::Error;
-use std::sync::Arc;
-
-use appearances_core::AppearanceCatalog;
+use appearances_core::AppearancesCore;
 use async_trait::async_trait;
 use chores::Tombstones;
+use std::error::Error;
 use time::OffsetDateTime;
 
 pub struct AppearanceTombstones {
-    catalog: Arc<dyn AppearanceCatalog>,
+    appearances: AppearancesCore,
 }
 
 impl AppearanceTombstones {
-    pub fn of(catalog: Arc<dyn AppearanceCatalog>) -> Self {
-        Self { catalog }
+    pub fn of(appearances: AppearancesCore) -> Self {
+        Self { appearances }
     }
 }
 
@@ -24,7 +22,7 @@ impl Tombstones for AppearanceTombstones {
         at_most: u64,
     ) -> Result<u64, Box<dyn Error + Send + Sync>> {
         Ok(self
-            .catalog
+            .appearances
             .forget_tombstones_laid_before(before, at_most)
             .await?)
     }

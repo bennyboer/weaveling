@@ -38,7 +38,8 @@ async fn a_captured_idea(wired: &Wired) -> IdeaId {
         .ideas
         .capture("project_1", "The Loom", &an_author())
         .await
-        .expect("capturing should succeed");
+        .expect("capturing should succeed")
+        .0;
     wired.settle().await;
 
     id

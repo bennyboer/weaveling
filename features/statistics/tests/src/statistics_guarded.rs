@@ -9,7 +9,7 @@ use eventsourcing::{AccountId, Agent};
 use live::Broadcaster;
 use serde_json::Value;
 use statistics_catalog::InMemoryWordCountCatalog;
-use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
+use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
 use time::OffsetDateTime;
 
 const PROJECT: &str = "project_1";
@@ -54,10 +54,9 @@ async fn guarded() -> Guarded {
         )
         .await
         .expect("keeping should succeed");
-    let routes = statistics_rest::router(catalog, authorizer.clone()).merge(statistics_rest::live(
-        Broadcaster::new(),
-        authorizer.clone(),
-    ));
+    let statistics = StatisticsCore::new(catalog, authorizer.clone());
+    let routes = statistics_rest::router(statistics.clone())
+        .merge(statistics_rest::live(statistics, Broadcaster::new()));
     let as_account = |account: &str| {
         TestServer::builder().http_transport().build(
             routes
@@ -117,6 +116,11 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     guarded
         .ada
         .get(&format!("/statistics/word-counts?project={PROJECT}"))
+        .await
+        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    guarded
+        .ada
+        .get_websocket(&format!("/statistics/word-counts/live?project={PROJECT}"))
         .await
         .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
 }

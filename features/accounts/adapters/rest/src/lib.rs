@@ -5,9 +5,9 @@ use accounts_contract::{
     stage,
 };
 use accounts_core::{
-    AccountError, AccountId, AccountService, AccountServiceError, AccountSummary,
-    InvalidAccountName, InvalidEmailAddress, InvalidLockReason, InvalidPassword, LockKind, Session,
-    SessionToken, SignedIn, Stage,
+    AccountError, AccountId, AccountSummary, AccountsCore, AccountsError, InvalidAccountName,
+    InvalidEmailAddress, InvalidLockReason, InvalidPassword, LockKind, Session, SessionToken,
+    SignedIn, Stage,
 };
 use acting::Acting;
 use axum::Router;
@@ -24,7 +24,7 @@ use eventsourcing::ServiceError;
 use serde::Deserialize;
 use serving::Problem;
 
-pub fn router(accounts: AccountService) -> Router {
+pub fn router(accounts: AccountsCore) -> Router {
     Router::new()
         .route("/accounts", routing::post(sign_up))
         .route(
@@ -49,7 +49,7 @@ pub fn router(accounts: AccountService) -> Router {
         .with_state(accounts)
 }
 
-pub fn guarded_router(accounts: AccountService) -> Router {
+pub fn guarded_router(accounts: AccountsCore) -> Router {
     Router::new()
         .route("/operators", routing::post(become_operator))
         .route("/instance/accounts", routing::get(list_accounts))
@@ -64,15 +64,11 @@ pub fn guarded_router(accounts: AccountService) -> Router {
         .with_state(accounts)
 }
 
-pub fn admitting_only_the_signed_in(accounts: AccountService, routes: Router) -> Router {
+pub fn admitting_only_the_signed_in(accounts: AccountsCore, routes: Router) -> Router {
     routes.layer(middleware::from_fn_with_state(accounts, admit))
 }
 
-async fn admit(
-    State(accounts): State<AccountService>,
-    mut request: Request,
-    next: Next,
-) -> Response {
+async fn admit(State(accounts): State<AccountsCore>, mut request: Request, next: Next) -> Response {
     let Some(token) = presented(request.headers()) else {
         return not_signed_in().into_response();
     };
@@ -94,7 +90,7 @@ async fn admit(
 }
 
 async fn sign_up(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Json(request): Json<SignUpRequest>,
 ) -> Result<StatusCode, Problem> {
     match &request.operator_code {
@@ -115,7 +111,7 @@ async fn sign_up(
 }
 
 async fn sign_up_by_invitation(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Json(request): Json<SignUpByInvitationRequest>,
 ) -> Result<Response, Problem> {
     let (token, signed_in) = accounts
@@ -132,7 +128,7 @@ async fn sign_up_by_invitation(
 }
 
 async fn verify(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Json(request): Json<VerifyEmailRequest>,
 ) -> Result<StatusCode, Problem> {
     accounts
@@ -144,7 +140,7 @@ async fn verify(
 }
 
 async fn send_code_again(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Json(request): Json<SendCodeRequest>,
 ) -> Result<StatusCode, Problem> {
     accounts
@@ -156,7 +152,7 @@ async fn send_code_again(
 }
 
 async fn ask_to_reset_password(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Json(request): Json<PasswordResetRequest>,
 ) -> Result<StatusCode, Problem> {
     accounts
@@ -168,7 +164,7 @@ async fn ask_to_reset_password(
 }
 
 async fn reset_password(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Json(request): Json<NewPasswordRequest>,
 ) -> Result<StatusCode, Problem> {
     accounts
@@ -180,7 +176,7 @@ async fn reset_password(
 }
 
 async fn begin_session(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Json(request): Json<SignInRequest>,
 ) -> Result<Response, Problem> {
     let (token, signed_in) = accounts
@@ -192,7 +188,7 @@ async fn begin_session(
 }
 
 async fn become_operator(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Extension(account): Extension<AccountId>,
     Json(request): Json<BecomeOperatorRequest>,
 ) -> Result<StatusCode, Problem> {
@@ -212,7 +208,7 @@ struct Paging {
 }
 
 async fn list_accounts(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Query(paging): Query<Paging>,
 ) -> Result<Json<AccountPageDTO>, Problem> {
@@ -233,7 +229,7 @@ async fn list_accounts(
 }
 
 async fn lock(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
     Json(request): Json<LockRequest>,
@@ -247,7 +243,7 @@ async fn lock(
 }
 
 async fn unlock(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
 ) -> Result<StatusCode, Problem> {
@@ -260,7 +256,7 @@ async fn unlock(
 }
 
 async fn appoint_operator(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
 ) -> Result<StatusCode, Problem> {
@@ -273,7 +269,7 @@ async fn appoint_operator(
 }
 
 async fn dismiss_operator(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     Extension(by): Extension<AccountId>,
     Path(account): Path<String>,
 ) -> Result<StatusCode, Problem> {
@@ -315,7 +311,7 @@ fn to_summary_dto(summary: &AccountSummary) -> AccountSummaryDTO {
 }
 
 async fn current(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     headers: HeaderMap,
 ) -> Result<Json<SignedInDTO>, Problem> {
     let Some(token) = presented(&headers) else {
@@ -331,7 +327,7 @@ async fn current(
 }
 
 async fn end_session(
-    State(accounts): State<AccountService>,
+    State(accounts): State<AccountsCore>,
     headers: HeaderMap,
 ) -> Result<Response, Problem> {
     if let Some(token) = presented(&headers) {
@@ -382,9 +378,9 @@ fn not_signed_in() -> Problem {
     Problem::unauthorized(refused::NOT_SIGNED_IN, "sign in first")
 }
 
-fn problem_of(refusal: AccountServiceError) -> Problem {
+fn problem_of(refusal: AccountsError) -> Problem {
     match refusal {
-        AccountServiceError::InvalidEmail(reason) => match reason {
+        AccountsError::InvalidEmail(reason) => match reason {
             InvalidEmailAddress::Malformed => {
                 Problem::unprocessable(refused::EMAIL_MALFORMED, reason)
             }
@@ -394,7 +390,7 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        AccountServiceError::InvalidName(reason) => match reason {
+        AccountsError::InvalidName(reason) => match reason {
             InvalidAccountName::Blank => Problem::unprocessable(refused::NAME_BLANK, reason),
             InvalidAccountName::ControlCharacter => {
                 Problem::unprocessable(refused::NAME_CONTROL_CHARACTER, reason)
@@ -405,7 +401,7 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        AccountServiceError::InvalidPassword(reason) => match reason {
+        AccountsError::InvalidPassword(reason) => match reason {
             InvalidPassword::TooShort { min, actual } => {
                 Problem::unprocessable(refused::PASSWORD_TOO_SHORT, reason)
                     .with("min", min)
@@ -417,25 +413,21 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        AccountServiceError::CodeWrong => Problem::unprocessable(refused::CODE_WRONG, refusal),
-        AccountServiceError::CodeExpired => Problem::unprocessable(refused::CODE_EXPIRED, refusal),
-        AccountServiceError::CodeExhausted => {
-            Problem::unprocessable(refused::CODE_EXHAUSTED, refusal)
-        }
-        AccountServiceError::SignInRefused => {
-            Problem::unauthorized(refused::SIGN_IN_REFUSED, refusal)
-        }
-        AccountServiceError::NotVerifiedYet => Problem::forbidden(refused::NOT_VERIFIED, refusal),
-        AccountServiceError::Locked => Problem::forbidden(refused::ACCOUNT_LOCKED, refusal),
-        AccountServiceError::NotAnOperator => Problem::forbidden(refused::NOT_AN_OPERATOR, refusal),
-        AccountServiceError::LastOperator => Problem::refused(refused::LAST_OPERATOR, refusal),
-        AccountServiceError::Events(ServiceError::Refused(AccountError::NotVerifiedYet)) => {
+        AccountsError::CodeWrong => Problem::unprocessable(refused::CODE_WRONG, refusal),
+        AccountsError::CodeExpired => Problem::unprocessable(refused::CODE_EXPIRED, refusal),
+        AccountsError::CodeExhausted => Problem::unprocessable(refused::CODE_EXHAUSTED, refusal),
+        AccountsError::SignInRefused => Problem::unauthorized(refused::SIGN_IN_REFUSED, refusal),
+        AccountsError::NotVerifiedYet => Problem::forbidden(refused::NOT_VERIFIED, refusal),
+        AccountsError::Locked => Problem::forbidden(refused::ACCOUNT_LOCKED, refusal),
+        AccountsError::NotAnOperator => Problem::forbidden(refused::NOT_AN_OPERATOR, refusal),
+        AccountsError::LastOperator => Problem::refused(refused::LAST_OPERATOR, refusal),
+        AccountsError::Events(ServiceError::Refused(AccountError::NotVerifiedYet)) => {
             Problem::refused(refused::OPERATOR_ADDRESS_NOT_VERIFIED, refusal)
         }
-        AccountServiceError::Events(ServiceError::Refused(
-            AccountError::LockedCannotBecomeOperator,
-        )) => Problem::refused(refused::LOCKED_CANNOT_BECOME_OPERATOR, refusal),
-        AccountServiceError::InvalidLockReason(reason) => match reason {
+        AccountsError::Events(ServiceError::Refused(AccountError::LockedCannotBecomeOperator)) => {
+            Problem::refused(refused::LOCKED_CANNOT_BECOME_OPERATOR, refusal)
+        }
+        AccountsError::InvalidLockReason(reason) => match reason {
             InvalidLockReason::Blank => Problem::unprocessable(refused::LOCK_REASON_BLANK, reason),
             InvalidLockReason::ControlCharacter => {
                 Problem::unprocessable(refused::LOCK_REASON_CONTROL_CHARACTER, reason)
@@ -446,28 +438,26 @@ fn problem_of(refusal: AccountServiceError) -> Problem {
                     .with("actual", actual)
             }
         },
-        AccountServiceError::Events(ServiceError::Refused(
-            AccountError::OperatorCannotBeLocked,
-        )) => Problem::refused(refused::OPERATOR_CANNOT_BE_LOCKED, refusal),
-        AccountServiceError::Events(ServiceError::NotFound { .. }) => {
+        AccountsError::Events(ServiceError::Refused(AccountError::OperatorCannotBeLocked)) => {
+            Problem::refused(refused::OPERATOR_CANNOT_BE_LOCKED, refusal)
+        }
+        AccountsError::Events(ServiceError::NotFound { .. }) => {
             Problem::not_found(refused::ACCOUNT_NOT_FOUND, "there is no such account")
         }
-        AccountServiceError::OperatorCodeWrong => {
+        AccountsError::OperatorCodeWrong => {
             Problem::unprocessable(refused::OPERATOR_CODE_WRONG, refusal)
         }
-        AccountServiceError::Throttled { wait } => {
-            Problem::waiting(refused::THROTTLED, refusal, wait)
-        }
-        AccountServiceError::SigningUpByInvitationOnly => {
+        AccountsError::Throttled { wait } => Problem::waiting(refused::THROTTLED, refusal, wait),
+        AccountsError::SigningUpByInvitationOnly => {
             Problem::forbidden(refused::BY_INVITATION_ONLY, refusal)
         }
-        AccountServiceError::InvitationInvalid => {
+        AccountsError::InvitationInvalid => {
             Problem::unprocessable(refused::INVITATION_INVALID, refusal)
         }
-        AccountServiceError::InvitationExpired => {
+        AccountsError::InvitationExpired => {
             Problem::unprocessable(refused::INVITATION_EXPIRED, refusal)
         }
-        AccountServiceError::EmailAddressHasAccount => {
+        AccountsError::EmailAddressHasAccount => {
             Problem::refused(refused::EMAIL_ADDRESS_HAS_ACCOUNT, refusal)
         }
         unserveable => Problem::unexpected(unserveable),

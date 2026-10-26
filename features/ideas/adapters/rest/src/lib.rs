@@ -81,14 +81,12 @@ async fn capture(
     Extension(acting): Extension<Agent>,
     Json(request): Json<CaptureIdeaRequest>,
 ) -> Result<Response, Problem> {
-    let id = ideas
+    let (id, captured) = ideas
         .capture(&request.project, &request.title, &acting)
         .await
-        .map_err(problem_of)?
-        .to_string();
-    let captured = ideas.read(&id, &acting).await.map_err(problem_of)?;
+        .map_err(problem_of)?;
 
-    Ok(to_response(StatusCode::CREATED, &id, &captured))
+    Ok(to_response(StatusCode::CREATED, &id.to_string(), &captured))
 }
 
 async fn find(
@@ -108,16 +106,12 @@ async fn retitle(
     headers: HeaderMap,
     Json(request): Json<RetitleIdeaRequest>,
 ) -> Result<Response, Problem> {
-    ideas
+    let retitled = ideas
         .retitle(&id, &request.title, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
-    Ok(to_response(
-        StatusCode::OK,
-        &id,
-        &ideas.read(&id, &acting).await.map_err(problem_of)?,
-    ))
+    Ok(to_response(StatusCode::OK, &id, &retitled))
 }
 
 async fn discard(

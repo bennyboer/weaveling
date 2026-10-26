@@ -12,7 +12,7 @@ use boards_contract::{
     SpotDTO, refused,
 };
 use boards_core::{
-    Board, BoardError, BoardService, BoardServiceError, IdeaLink, PositionedIdea, Size, Spot,
+    Board, BoardError, BoardsCore, BoardsError, IdeaLink, PositionedIdea, Size, Spot,
 };
 use eventsourcing::{Agent, Standing, Version};
 use live::{Asked, Broadcaster};
@@ -21,10 +21,10 @@ use serving::Problem;
 #[derive(Clone)]
 struct Following {
     broadcaster: Broadcaster,
-    boards: BoardService,
+    boards: BoardsCore,
 }
 
-pub fn live(broadcaster: Broadcaster, boards: BoardService) -> Router {
+pub fn live(boards: BoardsCore, broadcaster: Broadcaster) -> Router {
     Router::new()
         .route("/boards/live", routing::get(follow))
         .with_state(Following {
@@ -50,7 +50,7 @@ async fn follow(
     }
 }
 
-pub fn router(boards: BoardService) -> Router {
+pub fn router(boards: BoardsCore) -> Router {
     Router::new()
         .route("/boards", routing::post(open))
         .route("/boards/{board}", routing::get(find))
@@ -63,7 +63,7 @@ pub fn router(boards: BoardService) -> Router {
 }
 
 async fn open(
-    State(boards): State<BoardService>,
+    State(boards): State<BoardsCore>,
     Extension(acting): Extension<Agent>,
     Json(request): Json<OpenBoardRequest>,
 ) -> Result<Response, Problem> {
@@ -80,7 +80,7 @@ async fn open(
 }
 
 async fn find(
-    State(boards): State<BoardService>,
+    State(boards): State<BoardsCore>,
     Extension(acting): Extension<Agent>,
     Path(board): Path<String>,
 ) -> Result<Response, Problem> {
@@ -90,13 +90,13 @@ async fn find(
 }
 
 async fn pin(
-    State(boards): State<BoardService>,
+    State(boards): State<BoardsCore>,
     Extension(acting): Extension<Agent>,
     Path(board): Path<String>,
     headers: HeaderMap,
     Json(request): Json<PinIdeaRequest>,
 ) -> Result<Response, Problem> {
-    boards
+    let written = boards
         .pin(
             &board,
             IdeaLink::from(request.idea.as_str()),
@@ -108,21 +108,17 @@ async fn pin(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_response(
-        StatusCode::OK,
-        &board,
-        &boards.get(&board).await.map_err(problem_of)?,
-    ))
+    Ok(to_response(StatusCode::OK, &board, &written))
 }
 
 async fn reshape(
-    State(boards): State<BoardService>,
+    State(boards): State<BoardsCore>,
     Extension(acting): Extension<Agent>,
     Path((board, idea)): Path<(String, String)>,
     headers: HeaderMap,
     Json(request): Json<ReshapeIdeaRequest>,
 ) -> Result<Response, Problem> {
-    boards
+    let written = boards
         .reshape(
             &board,
             IdeaLink::from(idea.as_str()),
@@ -134,15 +130,11 @@ async fn reshape(
         .await
         .map_err(problem_of)?;
 
-    Ok(to_response(
-        StatusCode::OK,
-        &board,
-        &boards.get(&board).await.map_err(problem_of)?,
-    ))
+    Ok(to_response(StatusCode::OK, &board, &written))
 }
 
 async fn unpin(
-    State(boards): State<BoardService>,
+    State(boards): State<BoardsCore>,
     Extension(acting): Extension<Agent>,
     Path((board, idea)): Path<(String, String)>,
     headers: HeaderMap,
@@ -200,21 +192,21 @@ fn to_positioned_dto(held: &PositionedIdea) -> PositionedIdeaDTO {
     }
 }
 
-fn problem_of(refusal: BoardServiceError) -> Problem {
+fn problem_of(refusal: BoardsError) -> Problem {
     match refusal {
-        BoardServiceError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
-        BoardServiceError::Events(events) => Problem::of(&events, |refusal| match refusal {
+        BoardsError::InvalidId(reason) => Problem::rejected(refused::ID_INVALID, reason),
+        BoardsError::Events(events) => Problem::of(&events, |refusal| match refusal {
             BoardError::AlreadyPinned => Problem::refused(refused::ALREADY_PINNED, refusal),
             BoardError::NotPinned => Problem::not_found(refused::NOT_PINNED, refusal),
             BoardError::Shapeless => Problem::unprocessable(refused::SHAPELESS, refusal),
             BoardError::Discarded => Problem::refused(refused::DISCARDED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
-        BoardServiceError::ProjectNotThere => {
-            Problem::not_found(serving::NOT_FOUND, BoardServiceError::ProjectNotThere)
+        BoardsError::ProjectNotThere => {
+            Problem::not_found(serving::NOT_FOUND, BoardsError::ProjectNotThere)
         }
-        BoardServiceError::NotAnAuthor => {
-            Problem::forbidden(refused::NOT_AN_AUTHOR, BoardServiceError::NotAnAuthor)
+        BoardsError::NotAnAuthor => {
+            Problem::forbidden(refused::NOT_AN_AUTHOR, BoardsError::NotAnAuthor)
         }
         unserveable => Problem::unexpected(unserveable),
     }

@@ -1,31 +1,19 @@
 use std::error::Error;
-use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use chores::Chore;
-use clock::Clock;
-use invitations_core::{InvitationCatalog, InvitationService};
+use invitations_core::InvitationsCore;
 
 const AT_MOST_EACH_ROUND: usize = 100;
 
 pub struct RetireDueInvitations {
-    catalog: Arc<dyn InvitationCatalog>,
-    invitations: InvitationService,
-    clock: Arc<dyn Clock>,
+    invitations: InvitationsCore,
 }
 
 impl RetireDueInvitations {
-    pub fn new(
-        catalog: Arc<dyn InvitationCatalog>,
-        invitations: InvitationService,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
-        Self {
-            catalog,
-            invitations,
-            clock,
-        }
+    pub fn new(invitations: InvitationsCore) -> Self {
+        Self { invitations }
     }
 }
 
@@ -40,14 +28,8 @@ impl Chore for RetireDueInvitations {
     }
 
     async fn carry_out(&self) -> Result<u64, Box<dyn Error + Send + Sync>> {
-        let due = self
-            .catalog
-            .due_for_retiring(self.clock.now(), AT_MOST_EACH_ROUND)
-            .await?;
-        for invitation in &due {
-            self.invitations.retire(invitation).await?;
-        }
+        let retired = self.invitations.retire_due(AT_MOST_EACH_ROUND).await?;
 
-        Ok(u64::try_from(due.len())?)
+        Ok(u64::try_from(retired)?)
     }
 }

@@ -9,7 +9,7 @@ mod sign_up;
 use std::sync::Arc;
 
 use accounts_contract::ServiceModeDTO;
-use accounts_core::{AccountService, AccountServiceError, OperatorCode};
+use accounts_core::{AccountsCore, AccountsError, OperatorCode};
 use accounts_wiring::AssembledAccounts;
 use appearances_wiring::AppearanceFeature;
 use authorizing::{AllowingEverything, Authorizer};
@@ -133,9 +133,9 @@ impl Adapters {
         self.authorizer.clone()
     }
 
-    pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountServiceError> {
+    pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountsError> {
         match &self.accounts {
-            Some(accounts) => accounts.service.draw_operator_code().await,
+            Some(accounts) => accounts.core.draw_operator_code().await,
             None => Ok(None),
         }
     }
@@ -220,7 +220,7 @@ pub fn app(adapters: Adapters) -> Router {
     let operating = adapters
         .accounts
         .as_ref()
-        .map(|accounts| accounts.service.clone());
+        .map(|accounts| accounts.core.clone());
     let service = Router::new()
         .route("/health", routing::get(health))
         .route(
@@ -255,7 +255,7 @@ pub fn app(adapters: Adapters) -> Router {
     let api = match adapters.accounts {
         Some(accounts) => {
             let guarded_routes = accounts_rest::admitting_only_the_signed_in(
-                accounts.service,
+                accounts.core,
                 guarded_routes.merge(accounts.guarded_routes),
             );
 
@@ -277,7 +277,7 @@ async fn health() -> &'static str {
 
 async fn mode(
     told: ServiceModeDTO,
-    operating: Option<AccountService>,
+    operating: Option<AccountsCore>,
 ) -> Result<Json<ServiceModeDTO>, Problem> {
     let operator_wanted = match operating {
         Some(accounts) => accounts

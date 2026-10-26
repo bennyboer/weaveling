@@ -54,6 +54,27 @@ fn listener(wired: &Wired) -> DeclineInvitationListener {
 }
 
 #[tokio::test]
+async fn an_invitation_is_declined_in_the_system_s_name() {
+    let wired = wiring::wired();
+    let id = invited(&wired).await;
+
+    listener(&wired)
+        .take_in(&declined(&id))
+        .await
+        .expect("declining should succeed");
+
+    let recorded = wired
+        .store
+        .read_from(&AggregateId::from(&id), KIND, Version::of(1))
+        .await
+        .expect("reading should succeed");
+    assert_eq!(
+        recorded.last().map(|recorded| &recorded.metadata.agent),
+        Some(&Agent::System)
+    );
+}
+
+#[tokio::test]
 async fn an_invitation_declined_by_an_account_is_declined_once() {
     let wired = wiring::wired();
     let id = invited(&wired).await;
@@ -89,7 +110,7 @@ async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
         .expect("an operator may withdraw");
     wired
         .invitations
-        .accept(
+        .taken_up(
             &accepted,
             wiring::at(1_700_000_050),
             &Agent::Account("account_ada".into()),

@@ -30,6 +30,7 @@ async fn a_project(wired: &Wired, named: &str) -> String {
         .start(named, &RawDetails::default(), &nobody())
         .await
         .expect("starting should succeed")
+        .0
         .to_string();
     wired.settle().await;
 
@@ -52,7 +53,11 @@ async fn a_started_project_records_when_it_began() {
 
     let id = a_project(&wired, "Tapestry").await;
 
-    let standing = wired.projects.get(&id).await.expect("it should be there");
+    let standing = wired
+        .projects
+        .read(&id, &nobody())
+        .await
+        .expect("it should be there");
     assert_eq!(standing.state.created_at(), at(1_000));
     assert_eq!(standing.state.updated_at(), at(1_000));
     assert_eq!(standing.version, Version::of(1));
@@ -64,7 +69,11 @@ async fn surrounding_whitespace_is_trimmed_from_a_new_name() {
 
     let id = a_project(&wired, "  Tapestry  ").await;
 
-    let standing = wired.projects.get(&id).await.expect("it should be there");
+    let standing = wired
+        .projects
+        .read(&id, &nobody())
+        .await
+        .expect("it should be there");
     assert_eq!(standing.state.name().as_str(), "Tapestry");
 }
 
@@ -81,7 +90,7 @@ async fn starting_a_project_with_a_blank_name_is_refused_and_writes_nothing() {
     assert!(
         matches!(
             &refused,
-            projects_core::ProjectServiceError::InvalidName(InvalidProjectName::Blank)
+            projects_core::ProjectsError::InvalidName(InvalidProjectName::Blank)
         ),
         "expected a blank-name error, got {refused:?}"
     );
@@ -116,7 +125,11 @@ async fn renaming_moves_the_moment_the_project_was_last_touched() {
         .await
         .expect("renaming should succeed");
 
-    let standing = wired.projects.get(&id).await.expect("it should be there");
+    let standing = wired
+        .projects
+        .read(&id, &nobody())
+        .await
+        .expect("it should be there");
     assert_eq!(standing.state.name().as_str(), "The Weaver's Apprentice");
     assert_eq!(standing.state.created_at(), at(1_000));
     assert_eq!(standing.state.updated_at(), at(2_000));
@@ -133,7 +146,7 @@ async fn renaming_with_a_malformed_id_is_refused() {
         .expect_err("a malformed id should be refused");
 
     assert!(
-        matches!(&refused, projects_core::ProjectServiceError::InvalidId(_)),
+        matches!(&refused, projects_core::ProjectsError::InvalidId(_)),
         "expected an invalid-id error, got {refused:?}"
     );
 }
@@ -152,11 +165,15 @@ async fn renaming_to_a_blank_name_leaves_the_project_as_it_was() {
     assert!(
         matches!(
             &refused,
-            projects_core::ProjectServiceError::InvalidName(InvalidProjectName::Blank)
+            projects_core::ProjectsError::InvalidName(InvalidProjectName::Blank)
         ),
         "expected a blank-name error, got {refused:?}"
     );
-    let standing = wired.projects.get(&id).await.expect("it should be there");
+    let standing = wired
+        .projects
+        .read(&id, &nobody())
+        .await
+        .expect("it should be there");
     assert_eq!(standing.state.name().as_str(), "Working Title");
     assert_eq!(standing.version, Version::of(1));
 }
@@ -175,7 +192,7 @@ async fn renaming_a_project_nobody_started_is_not_found() {
     assert!(
         matches!(
             &refused,
-            projects_core::ProjectServiceError::Events(ServiceError::NotFound { .. })
+            projects_core::ProjectsError::Events(ServiceError::NotFound { .. })
         ),
         "expected NotFound, got {refused:?}"
     );
@@ -196,10 +213,10 @@ async fn a_deleted_project_is_gone_from_the_authors_point_of_view() {
         matches!(
             wired
                 .projects
-                .get(&id)
+                .read(&id, &nobody())
                 .await
                 .expect_err("it should be gone"),
-            projects_core::ProjectServiceError::Events(ServiceError::NotFound { .. })
+            projects_core::ProjectsError::Events(ServiceError::NotFound { .. })
         ),
         "the stream survives as the audit log, but the project itself is no longer served"
     );
@@ -225,9 +242,7 @@ async fn a_deleted_project_cannot_be_renamed_afterwards() {
     assert!(
         matches!(
             &refused,
-            projects_core::ProjectServiceError::Events(ServiceError::Refused(
-                ProjectError::Deleted
-            ))
+            projects_core::ProjectsError::Events(ServiceError::Refused(ProjectError::Deleted))
         ),
         "expected a refusal that says the project is deleted, got {refused:?}"
     );
@@ -247,7 +262,7 @@ async fn deleting_a_project_nobody_started_is_not_found() {
     assert!(
         matches!(
             &refused,
-            projects_core::ProjectServiceError::Events(ServiceError::NotFound { .. })
+            projects_core::ProjectsError::Events(ServiceError::NotFound { .. })
         ),
         "expected NotFound, got {refused:?}"
     );
@@ -292,7 +307,7 @@ async fn renaming_from_a_stale_version_is_refused() {
     assert!(
         matches!(
             &refused,
-            projects_core::ProjectServiceError::Events(ServiceError::Store(
+            projects_core::ProjectsError::Events(ServiceError::Store(
                 eventsourcing::StoreError::Outdated { .. }
             ))
         ),

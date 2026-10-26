@@ -18,4 +18,6 @@ Like a board it is started on first open, and like a board it carries two projec
 
 A section title may be blank — an author sketching structure should not be forced to name a chapter before they know what is in it.
 
-**Crates:** `core` (aggregate, catalog port, service, `SectionTitle`) · `contract` · `adapters/store` · `adapters/catalog` · `adapters/messaging` (event publisher, catalog projector, attach and discard listeners) · `adapters/rest` · `wiring` · `tests`.
+**One way in: `OutlinesCore`.** Opening, reading, following and every change to the sections and what they hold, and what the feature does itself, cataloguing, keeping the record of what each outline holds, letting go of a discarded idea or a deleted scene and the sweep after a project is deleted, all go through one struct. It asks `Read` or `Write` of the outline's project, and the system's own work is done, and recorded, as `Agent::System`. Only the sweep discards an outline. A change answers with the outline as written. `OutlineService` only carries out the commands, and nothing outside the core reaches it. Errors are one enum, `OutlinesError`.
+
+**Crates:** `core` (`OutlinesCore`, aggregate, catalog port, service, `SectionTitle`) · `contract` · `adapters/store` · `adapters/catalog` · `adapters/messaging` (event publisher, catalog projector, attach and discard listeners) · `adapters/rest` · `wiring` · `tests`.

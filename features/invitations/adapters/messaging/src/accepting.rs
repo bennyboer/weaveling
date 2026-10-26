@@ -1,15 +1,15 @@
 use accounts_contract::{AccountEventDTO, SIGNED_UP_BY_INVITATION};
 use async_trait::async_trait;
-use eventsourcing::{Agent, ServiceError};
-use invitations_core::{InvitationError, InvitationId, InvitationService, InvitationServiceError};
+use eventsourcing::Agent;
+use invitations_core::{InvitationId, InvitationsCore};
 use messaging::{Failure, Handler, Message};
 
 pub struct AcceptTakenUpInvitationListener {
-    invitations: InvitationService,
+    invitations: InvitationsCore,
 }
 
 impl AcceptTakenUpInvitationListener {
-    pub fn new(invitations: InvitationService) -> Self {
+    pub fn new(invitations: InvitationsCore) -> Self {
         Self { invitations }
     }
 }
@@ -27,17 +27,14 @@ impl Handler for AcceptTakenUpInvitationListener {
             return Err("a sign-up by invitation names no invitation".into());
         };
         let invitation: InvitationId = invitation.parse()?;
-        let by = Agent::Account(told.aggregate.id.into());
 
-        match self
+        Ok(self
             .invitations
-            .accept(&invitation, message.occurred_at, &by)
-            .await
-        {
-            Err(InvitationServiceError::Events(ServiceError::Refused(
-                InvitationError::AlreadyAccepted | InvitationError::Withdrawn,
-            ))) => Ok(()),
-            accepted => Ok(accepted?),
-        }
+            .taken_up(
+                &invitation,
+                message.occurred_at,
+                &Agent::Account(told.aggregate.id.into()),
+            )
+            .await?)
     }
 }

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
-use projects_core::{ProjectServiceError, RawDetails};
+use projects_core::{ProjectsError, RawDetails};
 use time::{Duration, OffsetDateTime};
 
 use crate::wiring;
@@ -76,6 +76,7 @@ async fn started(guarded: &Guarded, count: i64) -> Vec<String> {
                 .start("A project", &RawDetails::default(), &ada())
                 .await
                 .expect("starting should succeed")
+                .0
                 .to_string(),
         );
     }
@@ -148,6 +149,6 @@ async fn whom_to_show_what_not_being_known_is_a_failure_not_an_empty_list() {
 
     assert!(matches!(
         guarded.wired.projects.list(&ada()).await,
-        Err(ProjectServiceError::Authorizer(_))
+        Err(ProjectsError::Authorizer(_))
     ));
 }

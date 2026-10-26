@@ -34,7 +34,7 @@ async fn listed(wired: &Wired) -> Vec<String> {
 }
 
 async fn a_started_project(wired: &Wired) -> ProjectId {
-    let id = wired
+    let (id, _) = wired
         .projects
         .start(
             "The Weaver's Apprentice",

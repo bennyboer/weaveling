@@ -81,7 +81,8 @@ impl Wired {
                 .ideas
                 .capture(A_PROJECT, &format!("Idea {nth}"), &Agent::System)
                 .await
-                .expect("capturing should succeed");
+                .expect("capturing should succeed")
+                .0;
 
             self.catalog
                 .remember(&IdeaSummary {

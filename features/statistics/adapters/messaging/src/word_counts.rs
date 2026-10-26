@@ -1,26 +1,24 @@
-use std::sync::Arc;
-
 use messaging::{Failure, Handler, Message};
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
-use statistics_core::{ProjectLink, SceneLink, WordCountCatalog};
+use statistics_core::StatisticsCore;
 
 pub struct ProjectWordCountsListener {
-    catalog: Arc<dyn WordCountCatalog>,
+    statistics: StatisticsCore,
 }
 
 impl ProjectWordCountsListener {
-    pub fn new(catalog: Arc<dyn WordCountCatalog>) -> Self {
-        Self { catalog }
+    pub fn new(statistics: StatisticsCore) -> Self {
+        Self { statistics }
     }
 
     async fn keep(&self, message: &Message) -> Result<(), Failure> {
         match message.routing.to_string().as_str() {
             WORDS_COUNTED => {
                 let counted: WordsCountedDTO = message.payload_as()?;
-                self.catalog
-                    .keep(
-                        &SceneLink::from(counted.scene),
-                        &ProjectLink::from(counted.project),
+                self.statistics
+                    .counted(
+                        &counted.scene,
+                        &counted.project,
                         counted.words,
                         message.occurred_at,
                     )
@@ -28,8 +26,8 @@ impl ProjectWordCountsListener {
             }
             DELETED => {
                 let deleted: SceneDeletedDTO = message.payload_as()?;
-                self.catalog
-                    .forget_scene(&SceneLink::from(deleted.scene), message.occurred_at)
+                self.statistics
+                    .scene_deleted(&deleted.scene, message.occurred_at)
                     .await?;
             }
             _ => {}

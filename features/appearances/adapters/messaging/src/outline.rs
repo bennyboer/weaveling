@@ -1,23 +1,17 @@
-use std::sync::Arc;
+use appearances_core::{AppearancesCore, Place, SectionLink};
 
-use appearances_core::{AppearanceCatalog, IdeaLink, Place, SectionLink, Subject};
-
-use crate::projects::remember_project_of;
+use crate::projects::project_of;
 use messaging::{Failure, Handler, Message};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
 
 pub struct ProjectOutlineAppearancesListener {
-    catalog: Arc<dyn AppearanceCatalog>,
+    appearances: AppearancesCore,
 }
 
 impl ProjectOutlineAppearancesListener {
-    pub fn new(catalog: Arc<dyn AppearanceCatalog>) -> Self {
-        Self { catalog }
+    pub fn new(appearances: AppearancesCore) -> Self {
+        Self { appearances }
     }
-}
-
-fn an_idea(id: String) -> Subject {
-    Subject::Idea(IdeaLink::from(id))
 }
 
 fn a_section(id: String) -> Place {
@@ -40,23 +34,21 @@ impl Handler for ProjectOutlineAppearancesListener {
                 to,
                 ..
             } => {
-                let idea = an_idea(id);
-                remember_project_of(self.catalog.as_ref(), &idea, message).await?;
-                self.catalog
-                    .remember(&idea, &a_section(to), version)
+                self.appearances
+                    .appeared(&id, &a_section(to), version, project_of(message).as_deref())
                     .await?
             }
             OutlineEventDTO::Detached {
                 attachment: AttachmentDTO::Idea { id },
                 from,
             } => {
-                self.catalog
-                    .forget(&an_idea(id), &a_section(from), version)
+                self.appearances
+                    .disappeared(&id, &a_section(from), version)
                     .await?
             }
             OutlineEventDTO::SectionRemoved { section } => {
-                self.catalog
-                    .forget_place(&a_section(section), message.occurred_at)
+                self.appearances
+                    .place_gone(&a_section(section), message.occurred_at)
                     .await?;
             }
             _ => {}

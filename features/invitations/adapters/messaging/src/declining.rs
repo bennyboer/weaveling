@@ -1,17 +1,14 @@
 use accounts_contract::{AccountEventDTO, INVITATION_DECLINED, decline_reason};
 use async_trait::async_trait;
-use eventsourcing::{Agent, ServiceError};
-use invitations_core::{
-    DeclineReason, InvitationError, InvitationId, InvitationService, InvitationServiceError,
-};
+use invitations_core::{DeclineReason, InvitationId, InvitationsCore};
 use messaging::{Failure, Handler, Message};
 
 pub struct DeclineInvitationListener {
-    invitations: InvitationService,
+    invitations: InvitationsCore,
 }
 
 impl DeclineInvitationListener {
-    pub fn new(invitations: InvitationService) -> Self {
+    pub fn new(invitations: InvitationsCore) -> Self {
         Self { invitations }
     }
 }
@@ -33,15 +30,6 @@ impl Handler for DeclineInvitationListener {
             _ => return Err(format!("{reason} is no reason for declining").into()),
         };
 
-        match self
-            .invitations
-            .decline(&invitation, reason, &Agent::System)
-            .await
-        {
-            Err(InvitationServiceError::Events(ServiceError::Refused(
-                InvitationError::AlreadyAccepted | InvitationError::Withdrawn,
-            ))) => Ok(()),
-            declined => Ok(declined?),
-        }
+        Ok(self.invitations.declined(&invitation, reason).await?)
     }
 }

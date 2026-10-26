@@ -12,4 +12,6 @@ It owns no aggregate and takes no command. It is a read model only: **`keep-word
 
 The count itself is [`words::words_in`](../../libraries/words), the same rule the browser uses as an author types, so the two never disagree.
 
-**Crates:** `core` (word count, catalog port, links to projects and scenes) · `contract` · `adapters/catalog` (in memory, PostgreSQL and SQLite) · `adapters/messaging` (the listener) · `adapters/rest` · `wiring` · `tests`.
+**One way in: `StatisticsCore`.** The word counts, their live route, the listener keeping them and the chore all go through one struct, which asks `Read` of the project. Errors are one enum, `StatisticsError`.
+
+**Crates:** `core` (`StatisticsCore`, word count, catalog port, links to projects and scenes) · `contract` · `adapters/catalog` (in memory, PostgreSQL and SQLite) · `adapters/messaging` (the listener) · `adapters/rest` · `wiring` · `tests`.

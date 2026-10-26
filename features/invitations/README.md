@@ -24,4 +24,6 @@ Being built in [3d](../../ROADMAP.md#milestone-17--accounts-members-and-roles): 
 
 **Messages tell what happened to which invitation, never to whom it was sent:** they are kept, and refused ones shown, so the address stays in the events alone.
 
-**Crates:** `core` (aggregate, token, service) · `contract` (routing keys, event DTO) · `adapters/store` (stored-event codec) · `adapters/catalog` (the list in memory, on PostgreSQL and on SQLite) · `adapters/messaging` (event publisher and listeners) · `adapters/rest` · `wiring` · `tests`.
+**One way in: `InvitationsCore`.** Issuing, withdrawing and listing ask whether the agent is an operator, there and nowhere else; an invitation taken up or declined, cataloguing and retiring what is due all go through the same struct, declining and retiring as `Agent::System`. `InvitationService` only carries out the commands, throttles and mails, and nothing outside the core reaches it. Errors are one enum, `InvitationsError`.
+
+**Crates:** `core` (`InvitationsCore`, aggregate, token, service) · `contract` (routing keys, event DTO) · `adapters/store` (stored-event codec) · `adapters/catalog` (the list in memory, on PostgreSQL and on SQLite) · `adapters/messaging` (event publisher and listeners) · `adapters/rest` · `wiring` · `tests`.
