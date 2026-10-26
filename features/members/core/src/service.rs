@@ -41,6 +41,20 @@ impl MembersService {
         }
     }
 
+    pub async fn carry_out(
+        &self,
+        project: &ProjectLink,
+        command: MembersCommand,
+        agent: &Agent,
+    ) -> Result<(), MembersCoreError> {
+        let _landed = self
+            .events
+            .execute(&AggregateId::from(project), command, agent)
+            .await?;
+
+        Ok(())
+    }
+
     pub async fn latest(
         &self,
         project: &ProjectLink,

@@ -22,6 +22,26 @@ pub enum MembersEventDTO {
     Removed { account: String },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MemberDTO {
+    pub account: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ChangeRoleRequest {
+    pub role: String,
+}
+
+pub mod refused {
+    pub const NOT_AN_OWNER: &str = "not-an-owner";
+    pub const LAST_OWNER: &str = "last-owner";
+    pub const NOT_A_MEMBER: &str = "not-a-member";
+    pub const ROLE_UNKNOWN: &str = "role-unknown";
+
+    pub const EVERY: [&str; 4] = [NOT_AN_OWNER, LAST_OWNER, NOT_A_MEMBER, ROLE_UNKNOWN];
+}
+
 pub mod role {
     pub const OWNER: &str = "owner";
     pub const AUTHOR: &str = "author";

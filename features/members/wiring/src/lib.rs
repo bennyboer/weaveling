@@ -24,6 +24,7 @@ pub fn core(ports: &Ports, context: &Context) -> MembersCore {
     MembersCore::new(
         ports.events.clone(),
         ports.catalog.clone(),
+        context.authorizer.clone(),
         context.clock.clone(),
     )
 }
@@ -144,7 +145,11 @@ impl Feature for MembersFeature {
         let broadcaster = Broadcaster::new();
         let members = core(ports, context);
 
-        Wired::serving(members_rest::live(members.clone(), broadcaster.clone())).listening(vec![
+        Wired::serving(
+            members_rest::router(members.clone())
+                .merge(members_rest::live(members.clone(), broadcaster.clone())),
+        )
+        .listening(vec![
             Arc::new(FoundMembersOfStartedProjectListener::new(members.clone())),
             Arc::new(CatalogueMembersListener::new(members)),
             Arc::new(BroadcastChangesListener::under(

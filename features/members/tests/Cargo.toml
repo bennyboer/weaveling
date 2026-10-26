@@ -1,0 +1,20 @@
+[package]
+name = "weaveling-members-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+
+members-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-members-catalog" }
+members-contract = { version = "0.1.0", path = "../contract", package = "weaveling-members-contract" }
+members-core = { version = "0.1.0", path = "../core", package = "weaveling-members-core" }
+members-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-members-rest" }

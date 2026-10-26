@@ -739,6 +739,26 @@ pub async fn a_project_s_scenes_are_there_only_for_whoever_may_read_its_project<
     journey.end().await;
 }
 
+pub async fn a_project_s_members_are_listed_for_whoever_may_read_it<B: Backend>() {
+    let journey = Journey::<B>::signed_in("members").await;
+    let project = journey.project("Shared").await;
+    let server = &journey.server;
+    let at = format!("/api/members?project={project}");
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
+        "its owner may list the members once they have heard of her"
+    );
+
+    let listed: Value = server.get(&at).await.json();
+    assert_eq!(listed.as_array().map(Vec::len), Some(1));
+    assert_eq!(listed[0]["role"], "owner");
+
+    journey.signed_in_as_another("grace@example.com").await;
+
+    server.get(&at).await.assert_status(StatusCode::NOT_FOUND);
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -758,6 +778,7 @@ macro_rules! journeys {
             a_project_s_board_is_there_only_for_whoever_may_read_its_project,
             a_project_s_outline_is_there_only_for_whoever_may_read_its_project,
             a_project_s_scenes_are_there_only_for_whoever_may_read_its_project,
+            a_project_s_members_are_listed_for_whoever_may_read_it,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

@@ -32,6 +32,7 @@ impl Handler for CatalogueMembersListener {
 mod tests {
     use std::sync::Arc;
 
+    use authorizing::AllowingEverything;
     use clock::{Clock, FixedClock};
     use eventsourcing::{
         AccountId, Agent, AggregateId, EventSourcingService, EventStore, Recorded,
@@ -61,6 +62,7 @@ mod tests {
             listener: CatalogueMembersListener::new(MembersCore::new(
                 store,
                 catalog.clone(),
+                Arc::new(AllowingEverything),
                 clock,
             )),
             catalog,

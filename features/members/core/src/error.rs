@@ -1,3 +1,4 @@
+use authorizing::AuthorizerError;
 use eventsourcing::ServiceError;
 use thiserror::Error;
 
@@ -10,4 +11,10 @@ pub enum MembersCoreError {
     Events(#[from] ServiceError<MembersError>),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
+    #[error(transparent)]
+    Authorizer(#[from] AuthorizerError),
+    #[error("there is no such project")]
+    ProjectNotThere,
+    #[error("only an owner of the project may do this")]
+    NotAnOwner,
 }

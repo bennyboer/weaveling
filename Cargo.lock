@@ -4391,6 +4391,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
@@ -4408,9 +4409,11 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-test",
+ "serde",
  "serde_json",
  "time",
  "tokio",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-live",
@@ -4418,6 +4421,7 @@ dependencies = [
  "weaveling-members-catalog",
  "weaveling-members-contract",
  "weaveling-members-core",
+ "weaveling-serving",
 ]
 
 [[package]]
@@ -4428,6 +4432,24 @@ dependencies = [
  "serde_json",
  "weaveling-eventsourcing",
  "weaveling-members-core",
+]
+
+[[package]]
+name = "weaveling-members-tests"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "axum-test",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-authorizing",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-members-catalog",
+ "weaveling-members-contract",
+ "weaveling-members-core",
+ "weaveling-members-rest",
 ]
 
 [[package]]

@@ -2,18 +2,132 @@ use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::extract::State;
 use axum::extract::ws::WebSocketUpgrade;
+use axum::extract::{Path, Query, State};
+use axum::http::StatusCode;
 use axum::response::Response;
 use axum::routing;
-use axum::{Extension, Router};
-use eventsourcing::Agent;
+use axum::{Extension, Json, Router};
+use eventsourcing::{Agent, ServiceError};
 use live::{Broadcaster, Sieve};
 use live_contract::FrameDTO;
-use members_contract::MembersEventDTO;
-use members_core::MembersCore;
+use members_contract::{ChangeRoleRequest, MemberDTO, MembersEventDTO, refused, role};
+use members_core::{Member, MembersCore, MembersCoreError, MembersError, Role};
+use serde::Deserialize;
+use serving::Problem;
 
 pub const FOLLOWED: &str = "memberships";
+
+pub fn router(members: MembersCore) -> Router {
+    Router::new()
+        .route("/members", routing::get(list))
+        .route(
+            "/members/{project}/accounts/{account}",
+            routing::patch(change_role).delete(remove),
+        )
+        .with_state(members)
+}
+
+#[derive(Deserialize)]
+struct InProject {
+    project: String,
+}
+
+async fn list(
+    State(members): State<MembersCore>,
+    Extension(agent): Extension<Agent>,
+    Query(asked): Query<InProject>,
+) -> Result<Json<Vec<MemberDTO>>, Problem> {
+    let listed = members
+        .members(&asked.project, &agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(listed.iter().map(to_dto).collect()))
+}
+
+async fn change_role(
+    State(members): State<MembersCore>,
+    Extension(agent): Extension<Agent>,
+    Path((project, account)): Path<(String, String)>,
+    Json(request): Json<ChangeRoleRequest>,
+) -> Result<Json<Vec<MemberDTO>>, Problem> {
+    let to = to_role(&request.role).ok_or_else(|| {
+        Problem::unprocessable(
+            refused::ROLE_UNKNOWN,
+            format!("{} is no role in a project", request.role),
+        )
+    })?;
+    let changed = members
+        .change_role(&project, &account, to, &agent)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(changed.iter().map(to_dto).collect()))
+}
+
+async fn remove(
+    State(members): State<MembersCore>,
+    Extension(agent): Extension<Agent>,
+    Path((project, account)): Path<(String, String)>,
+) -> Result<StatusCode, Problem> {
+    let leaving = matches!(&agent, Agent::Account(acting) if acting.as_str() == account);
+    if leaving {
+        members.leave(&project, &agent).await.map_err(problem_of)?;
+    } else {
+        members
+            .remove(&project, &account, &agent)
+            .await
+            .map_err(problem_of)?;
+    }
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+fn to_dto(member: &Member) -> MemberDTO {
+    MemberDTO {
+        account: member.account.to_string(),
+        role: named(member.role).to_owned(),
+    }
+}
+
+fn named(given: Role) -> &'static str {
+    match given {
+        Role::Owner => role::OWNER,
+        Role::Author => role::AUTHOR,
+        Role::Reader => role::READER,
+    }
+}
+
+fn to_role(named: &str) -> Option<Role> {
+    match named {
+        role::OWNER => Some(Role::Owner),
+        role::AUTHOR => Some(Role::Author),
+        role::READER => Some(Role::Reader),
+        _ => None,
+    }
+}
+
+fn problem_of(refusal: MembersCoreError) -> Problem {
+    match refusal {
+        MembersCoreError::ProjectNotThere => {
+            Problem::not_found(serving::NOT_FOUND, MembersCoreError::ProjectNotThere)
+        }
+        MembersCoreError::NotAnOwner => {
+            Problem::forbidden(refused::NOT_AN_OWNER, MembersCoreError::NotAnOwner)
+        }
+        MembersCoreError::Events(ServiceError::Refused(MembersError::LastOwner)) => {
+            Problem::refused(refused::LAST_OWNER, MembersError::LastOwner)
+        }
+        MembersCoreError::Events(ServiceError::Refused(MembersError::NotMember)) => {
+            Problem::not_found(refused::NOT_A_MEMBER, MembersError::NotMember)
+        }
+        MembersCoreError::Events(ServiceError::NotFound { .. }) => {
+            Problem::not_found(serving::NOT_FOUND, "there is no such project")
+        }
+        beyond_reach => Problem::unexpected(beyond_reach),
+    }
+}
 
 #[derive(Clone)]
 struct Following {
@@ -69,6 +183,7 @@ impl Sieve for NamingTheFollower {
 mod tests {
     use std::time::Duration;
 
+    use authorizing::AllowingEverything;
     use axum_test::{TestServer, TestWebSocket};
     use clock::FixedClock;
     use eventsourcing::InMemoryEventStore;
@@ -82,6 +197,7 @@ mod tests {
         let members = MembersCore::new(
             Arc::new(InMemoryEventStore::new()),
             Arc::new(InMemoryMembershipCatalog::new()),
+            Arc::new(AllowingEverything),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         );
 

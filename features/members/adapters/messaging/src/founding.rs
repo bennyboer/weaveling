@@ -36,6 +36,7 @@ impl Handler for FoundMembersOfStartedProjectListener {
 mod tests {
     use std::sync::Arc;
 
+    use authorizing::AllowingEverything;
     use clock::FixedClock;
     use eventsourcing::{AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, Version};
     use members_catalog::InMemoryMembershipCatalog;
@@ -58,6 +59,7 @@ mod tests {
             listener: FoundMembersOfStartedProjectListener::new(MembersCore::new(
                 store.clone(),
                 Arc::new(InMemoryMembershipCatalog::new()),
+                Arc::new(AllowingEverything),
                 Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
             )),
             store,
