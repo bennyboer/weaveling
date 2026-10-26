@@ -1,8 +1,9 @@
 use std::sync::Arc;
 
 use acting::Acting;
+use authorizing::{Act, Authorizer};
 use clock::Clock;
-use eventsourcing::{Agent, EventStore, ServiceError};
+use eventsourcing::{Agent, AggregateId, EventStore, ServiceError};
 use mailing::Mailer;
 use throttling::Throttles;
 use time::OffsetDateTime;
@@ -10,13 +11,15 @@ use time::OffsetDateTime;
 use crate::catalog::{InvitationCatalog, InvitationSummary, ListedInvitation};
 use crate::error::InvitationsError;
 use crate::id::InvitationId;
-use crate::invitation::{DeclineReason, InvitationError, InvitationEvent};
+use crate::invitation::{DeclineReason, InvitationError, InvitationEvent, KIND};
+use crate::scope::{ProjectLink, Role, Scope};
 use crate::service::InvitationService;
 
 #[derive(Clone)]
 pub struct InvitationsCore {
     service: InvitationService,
     catalog: Arc<dyn InvitationCatalog>,
+    authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
 }
 
@@ -26,16 +29,18 @@ impl InvitationsCore {
         throttles: Arc<dyn Throttles>,
         catalog: Arc<dyn InvitationCatalog>,
         mailer: Arc<dyn Mailer>,
+        authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             service: InvitationService::new(store, throttles, mailer, clock.clone()),
             catalog,
+            authorizer,
             clock,
         }
     }
 
-    pub async fn issue(
+    pub async fn invite_to_instance(
         &self,
         by: &Acting,
         to: &str,
@@ -43,7 +48,31 @@ impl InvitationsCore {
     ) -> Result<InvitationSummary, InvitationsError> {
         operating(by)?;
 
-        self.service.issue(to, origin, &by.agent).await
+        self.service
+            .issue(to, origin, Scope::Instance, true, &by.agent)
+            .await
+    }
+
+    pub async fn invite_to_project(
+        &self,
+        by: &Acting,
+        project: &str,
+        role: Role,
+        to: &str,
+        origin: &str,
+    ) -> Result<InvitationSummary, InvitationsError> {
+        let project = ProjectLink::from(project);
+        self.owning(by, &project).await?;
+
+        self.service
+            .issue(
+                to,
+                origin,
+                Scope::Project { project, role },
+                by.operator,
+                &by.agent,
+            )
+            .await
     }
 
     pub async fn withdraw(
@@ -51,31 +80,78 @@ impl InvitationsCore {
         by: &Acting,
         invitation: &InvitationId,
     ) -> Result<(), InvitationsError> {
-        operating(by)?;
+        match self.service.latest(invitation).await?.state.scope() {
+            Scope::Instance => operating(by)?,
+            Scope::Project { project, .. } => {
+                self.owning(by, project)
+                    .await
+                    .map_err(|refused| match refused {
+                        InvitationsError::ProjectNotThere => not_found(invitation),
+                        refused => refused,
+                    })?
+            }
+        }
 
         self.service.withdraw(invitation, &by.agent).await
     }
 
-    pub async fn list(
+    pub async fn instance_invitations(
         &self,
         by: &Acting,
         after: Option<&InvitationId>,
         at_most: usize,
     ) -> Result<Vec<ListedInvitation>, InvitationsError> {
         operating(by)?;
+
+        Ok(self.listed(self.catalog.listed_after(after, at_most).await?))
+    }
+
+    pub async fn project_invitations(
+        &self,
+        by: &Acting,
+        project: &str,
+        after: Option<&InvitationId>,
+        at_most: usize,
+    ) -> Result<Vec<ListedInvitation>, InvitationsError> {
+        let project = ProjectLink::from(project);
+        self.owning(by, &project).await?;
+
+        Ok(self.listed(
+            self.catalog
+                .in_project_after(&project, after, at_most)
+                .await?,
+        ))
+    }
+
+    fn listed(&self, summaries: Vec<InvitationSummary>) -> Vec<ListedInvitation> {
         let now = self.clock.now();
 
-        Ok(self
-            .catalog
-            .listed_after(after, at_most)
-            .await?
+        summaries
             .into_iter()
             .filter_map(|summary| {
                 summary
                     .status(now)
                     .map(|status| ListedInvitation { summary, status })
             })
-            .collect())
+            .collect()
+    }
+
+    async fn owning(&self, by: &Acting, project: &ProjectLink) -> Result<(), InvitationsError> {
+        if self
+            .authorizer
+            .may(&by.agent, Act::Manage, project.as_str())
+            .await?
+        {
+            Ok(())
+        } else if self
+            .authorizer
+            .may(&by.agent, Act::Read, project.as_str())
+            .await?
+        {
+            Err(InvitationsError::NotAnOwner)
+        } else {
+            Err(InvitationsError::ProjectNotThere)
+        }
     }
 
     pub async fn taken_up(
@@ -126,6 +202,13 @@ impl InvitationsCore {
 
         Ok(due.len())
     }
+}
+
+fn not_found(invitation: &InvitationId) -> InvitationsError {
+    InvitationsError::Events(ServiceError::NotFound {
+        aggregate: AggregateId::from(invitation),
+        kind: KIND,
+    })
 }
 
 fn operating(by: &Acting) -> Result<(), InvitationsError> {

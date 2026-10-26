@@ -141,6 +141,57 @@ async fn an_issue_to_no_address_or_until_no_time_is_refused() {
     assert_eq!(ticket_for(&wired, "ab12").await, None);
 }
 
+fn issued_into_a_project(invitation: &str, to: &str, digest: &str) -> Message {
+    told(
+        ISSUED,
+        invitation,
+        json!({
+            "version": 1,
+            "name": "ISSUED",
+            "to": to,
+            "digest": digest,
+            "until": "2023-11-21T22:13:20Z",
+            "scope": { "kind": "project", "project": "project_loom", "role": "author" },
+        }),
+    )
+}
+
+#[tokio::test]
+async fn an_invitation_into_a_project_keeps_no_ticket_and_declines_nothing_for_now() {
+    let wired = wiring::wired();
+    wired
+        .accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    let holder = wired
+        .secrets
+        .holder(&EmailAddress::new(ADA).expect("a plain address"))
+        .await
+        .expect("reading should succeed")
+        .expect("the address is held");
+
+    tell(&wired, issued_into_a_project("invitation_ada", ADA, "ab12")).await;
+    tell(
+        &wired,
+        issued_into_a_project("invitation_bo", "bo@example.com", "cd34"),
+    )
+    .await;
+
+    assert_eq!(ticket_for(&wired, "ab12").await, None);
+    assert_eq!(ticket_for(&wired, "cd34").await, None);
+    assert!(
+        !wired
+            .store
+            .read_from(&AggregateId::from(&holder), KIND, Version::of(1))
+            .await
+            .expect("reading should succeed")
+            .iter()
+            .any(|recorded| matches!(recorded.event, AccountEvent::InvitationDeclined { .. })),
+        "an account is the usual case for a project's invitation, and its owner is never told whether there is one"
+    );
+}
+
 #[tokio::test]
 async fn an_issue_to_an_address_with_an_account_already_is_declined_by_that_account() {
     let wired = wiring::wired();

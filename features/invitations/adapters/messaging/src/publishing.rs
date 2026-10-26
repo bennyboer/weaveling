@@ -1,7 +1,7 @@
 use clock::text;
 use eventsourcing::Recorded;
-use invitations_contract::{InvitationEventDTO, decline_reason};
-use invitations_core::{DeclineReason, InvitationEvent};
+use invitations_contract::{InvitationEventDTO, ScopeDTO, decline_reason, role};
+use invitations_core::{DeclineReason, InvitationEvent, Role, Scope};
 use messaging::Message;
 
 pub fn message_for(happened: &Recorded<InvitationEvent>) -> Option<Message> {
@@ -10,10 +10,18 @@ pub fn message_for(happened: &Recorded<InvitationEvent>) -> Option<Message> {
 
 fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
     Some(match event {
-        InvitationEvent::Issued { to, digest, until } => InvitationEventDTO::Issued {
+        InvitationEvent::Issued {
+            to,
+            digest,
+            until,
+            scope,
+            by_an_operator,
+        } => InvitationEventDTO::Issued {
             to: to.to_string(),
             digest: digest.as_str().to_owned(),
             until: text::serialize(*until),
+            scope: to_scope_dto(scope),
+            by_an_operator: *by_an_operator,
         },
         InvitationEvent::Accepted => InvitationEventDTO::Accepted,
         InvitationEvent::Withdrawn => InvitationEventDTO::Withdrawn,
@@ -23,6 +31,24 @@ fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
         InvitationEvent::Retired => InvitationEventDTO::Retired,
         InvitationEvent::Snapshotted { .. } => return None,
     })
+}
+
+fn to_scope_dto(scope: &Scope) -> ScopeDTO {
+    match scope {
+        Scope::Instance => ScopeDTO::Instance,
+        Scope::Project { project, role } => ScopeDTO::Project {
+            project: project.to_string(),
+            role: named(*role).to_owned(),
+        },
+    }
+}
+
+fn named(given: Role) -> &'static str {
+    match given {
+        Role::Owner => role::OWNER,
+        Role::Author => role::AUTHOR,
+        Role::Reader => role::READER,
+    }
 }
 
 fn declined_for(reason: DeclineReason) -> &'static str {
@@ -36,7 +62,7 @@ mod tests {
     use email::EmailAddress;
     use eventsourcing::{Agent, AggregateContext, AggregateId, Event, EventMetadata, Version};
     use invitations_contract::{ACCEPTED, DECLINED, EVERY_INVITATION, ISSUED, RETIRED, WITHDRAWN};
-    use invitations_core::{InvitationId, InvitationTokenDigest, KIND, Outcome};
+    use invitations_core::{InvitationId, InvitationTokenDigest, KIND, Outcome, ProjectLink};
     use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
 
@@ -70,6 +96,8 @@ mod tests {
             to: ada(),
             digest: InvitationTokenDigest::kept("ab12".to_owned()),
             until: at(1_000) + Duration::days(7),
+            scope: Scope::Instance,
+            by_an_operator: true,
         }
     }
 
@@ -119,6 +147,8 @@ mod tests {
                 to: "ada@example.com".to_owned(),
                 digest: "ab12".to_owned(),
                 until: "1970-01-08T00:16:40Z".to_owned(),
+                scope: ScopeDTO::Instance,
+                by_an_operator: true,
             },
             "accounts keep their tickets from it, the token's digest being harmless and the address judged so"
         );
@@ -134,6 +164,45 @@ mod tests {
                 .payload
                 .to_string();
             assert!(!told.contains("ada@example.com"), "{told}");
+        }
+    }
+
+    #[test]
+    fn an_issue_into_a_project_tells_which_as_what_and_whether_an_operator_issued_it() {
+        let id = InvitationId::generate(at(1_000));
+
+        for (role, named) in [
+            (Role::Owner, "owner"),
+            (Role::Author, "author"),
+            (Role::Reader, "reader"),
+        ] {
+            let issued = eventsourcing_body(&recorded(
+                &id,
+                InvitationEvent::Issued {
+                    to: ada(),
+                    digest: InvitationTokenDigest::kept("ab12".to_owned()),
+                    until: at(1_000),
+                    scope: Scope::Project {
+                        project: ProjectLink::from("project_1"),
+                        role,
+                    },
+                    by_an_operator: false,
+                },
+            ));
+
+            assert_eq!(
+                issued,
+                InvitationEventDTO::Issued {
+                    to: "ada@example.com".to_owned(),
+                    digest: "ab12".to_owned(),
+                    until: "1970-01-01T00:16:40Z".to_owned(),
+                    scope: ScopeDTO::Project {
+                        project: "project_1".to_owned(),
+                        role: named.to_owned(),
+                    },
+                    by_an_operator: false,
+                }
+            );
         }
     }
 
@@ -188,6 +257,8 @@ mod tests {
                 &id,
                 InvitationEvent::Snapshotted {
                     to: ada(),
+                    scope: Scope::Instance,
+                    by_an_operator: true,
                     issued_at: at(1_000),
                     until: at(1_000) + Duration::days(7),
                     outcome: Outcome::Open,

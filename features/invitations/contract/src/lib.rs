@@ -3,6 +3,19 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct InviteRequest {
     pub email: String,
+    #[serde(default)]
+    pub scope: ScopeDTO,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ScopeDTO {
+    #[default]
+    Instance,
+    Project {
+        project: String,
+        role: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -14,6 +27,8 @@ pub struct InvitationSummaryDTO {
     pub status: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub declined_for: Option<String>,
+    #[serde(default)]
+    pub scope: ScopeDTO,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -43,6 +58,10 @@ pub enum InvitationEventDTO {
         to: String,
         digest: String,
         until: String,
+        #[serde(default)]
+        scope: ScopeDTO,
+        #[serde(default)]
+        by_an_operator: bool,
     },
     #[serde(rename = "ACCEPTED")]
     Accepted,
@@ -52,6 +71,12 @@ pub enum InvitationEventDTO {
     Declined { reason: String },
     #[serde(rename = "RETIRED")]
     Retired,
+}
+
+pub mod role {
+    pub const OWNER: &str = "owner";
+    pub const AUTHOR: &str = "author";
+    pub const READER: &str = "reader";
 }
 
 pub mod decline_reason {
@@ -67,8 +92,10 @@ pub mod refused {
     pub const INVITATION_ID_INVALID: &str = "invitation-id-invalid";
     pub const INVITATION_NOT_FOUND: &str = "invitation-not-found";
     pub const INVITATION_ALREADY_ACCEPTED: &str = "invitation-already-accepted";
+    pub const NOT_AN_OWNER: &str = "not-an-owner";
+    pub const ROLE_UNKNOWN: &str = "role-unknown";
 
-    pub const EVERY: [&str; 8] = [
+    pub const EVERY: [&str; 10] = [
         NOT_AN_OPERATOR,
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
@@ -77,5 +104,7 @@ pub mod refused {
         INVITATION_ID_INVALID,
         INVITATION_NOT_FOUND,
         INVITATION_ALREADY_ACCEPTED,
+        NOT_AN_OWNER,
+        ROLE_UNKNOWN,
     ];
 }

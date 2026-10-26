@@ -1,6 +1,8 @@
 use email::EmailAddress;
 use eventsourcing::Codec;
-use invitations_core::{DeclineReason, InvitationEvent, InvitationTokenDigest, Outcome};
+use invitations_core::{
+    DeclineReason, InvitationEvent, InvitationTokenDigest, Outcome, ProjectLink, Role, Scope,
+};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 
@@ -11,6 +13,10 @@ enum StoredInvitationEvent {
         digest: String,
         #[serde(with = "time::serde::rfc3339")]
         until: OffsetDateTime,
+        #[serde(default)]
+        scope: StoredScope,
+        #[serde(default)]
+        by_an_operator: bool,
     },
     Accepted,
     Withdrawn,
@@ -20,6 +26,10 @@ enum StoredInvitationEvent {
     Retired,
     Snapshotted {
         to: String,
+        #[serde(default)]
+        scope: StoredScope,
+        #[serde(default)]
+        by_an_operator: bool,
         #[serde(with = "time::serde::rfc3339")]
         issued_at: OffsetDateTime,
         #[serde(with = "time::serde::rfc3339")]
@@ -39,6 +49,69 @@ enum StoredOutcome {
     Accepted,
     Withdrawn,
     Declined(StoredDeclineReason),
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy)]
+#[serde(rename_all = "kebab-case")]
+enum StoredRole {
+    Owner,
+    Author,
+    Reader,
+}
+
+impl From<Role> for StoredRole {
+    fn from(role: Role) -> Self {
+        match role {
+            Role::Owner => Self::Owner,
+            Role::Author => Self::Author,
+            Role::Reader => Self::Reader,
+        }
+    }
+}
+
+impl From<StoredRole> for Role {
+    fn from(role: StoredRole) -> Self {
+        match role {
+            StoredRole::Owner => Self::Owner,
+            StoredRole::Author => Self::Author,
+            StoredRole::Reader => Self::Reader,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Default)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+enum StoredScope {
+    #[default]
+    Instance,
+    Project {
+        project: String,
+        role: StoredRole,
+    },
+}
+
+impl From<&Scope> for StoredScope {
+    fn from(scope: &Scope) -> Self {
+        match scope {
+            Scope::Instance => Self::Instance,
+            Scope::Project { project, role } => Self::Project {
+                project: project.to_string(),
+                role: (*role).into(),
+            },
+        }
+    }
+}
+
+impl From<StoredScope> for Scope {
+    fn from(scope: StoredScope) -> Self {
+        match scope {
+            StoredScope::Instance => Self::Instance,
+            StoredScope::Project { project, role } => Self::Project {
+                project: ProjectLink::from(project),
+                role: role.into(),
+            },
+        }
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy)]
@@ -102,10 +175,18 @@ impl From<StoredOutcome> for Outcome {
 impl From<&InvitationEvent> for StoredInvitationEvent {
     fn from(event: &InvitationEvent) -> Self {
         match event {
-            InvitationEvent::Issued { to, digest, until } => Self::Issued {
+            InvitationEvent::Issued {
+                to,
+                digest,
+                until,
+                scope,
+                by_an_operator,
+            } => Self::Issued {
                 to: to.to_string(),
                 digest: digest.as_str().to_owned(),
                 until: *until,
+                scope: scope.into(),
+                by_an_operator: *by_an_operator,
             },
             InvitationEvent::Accepted => Self::Accepted,
             InvitationEvent::Withdrawn => Self::Withdrawn,
@@ -115,6 +196,8 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
             InvitationEvent::Retired => Self::Retired,
             InvitationEvent::Snapshotted {
                 to,
+                scope,
+                by_an_operator,
                 issued_at,
                 until,
                 outcome,
@@ -122,6 +205,8 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 retired,
             } => Self::Snapshotted {
                 to: to.to_string(),
+                scope: scope.into(),
+                by_an_operator: *by_an_operator,
                 issued_at: *issued_at,
                 until: *until,
                 outcome: (*outcome).into(),
@@ -144,10 +229,18 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
 
     fn try_from(stored: StoredInvitationEvent) -> Result<Self, Self::Error> {
         Ok(match stored {
-            StoredInvitationEvent::Issued { to, digest, until } => Self::Issued {
+            StoredInvitationEvent::Issued {
+                to,
+                digest,
+                until,
+                scope,
+                by_an_operator,
+            } => Self::Issued {
                 to: readable(&to)?,
                 digest: InvitationTokenDigest::kept(digest),
                 until,
+                scope: scope.into(),
+                by_an_operator,
             },
             StoredInvitationEvent::Accepted => Self::Accepted,
             StoredInvitationEvent::Withdrawn => Self::Withdrawn,
@@ -157,6 +250,8 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
             StoredInvitationEvent::Retired => Self::Retired,
             StoredInvitationEvent::Snapshotted {
                 to,
+                scope,
+                by_an_operator,
                 issued_at,
                 until,
                 outcome,
@@ -164,6 +259,8 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 retired,
             } => Self::Snapshotted {
                 to: readable(&to)?,
+                scope: scope.into(),
+                by_an_operator,
                 issued_at,
                 until,
                 outcome: outcome.into(),
@@ -185,6 +282,13 @@ mod tests {
         EmailAddress::new("ada@example.com").expect("a plain address")
     }
 
+    fn a_project_s(role: Role) -> Scope {
+        Scope::Project {
+            project: ProjectLink::from("project_1"),
+            role,
+        }
+    }
+
     fn round_trip(event: InvitationEvent) -> InvitationEvent {
         let codec = codec();
 
@@ -204,6 +308,15 @@ mod tests {
                     to: ada(),
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
+                    scope: Scope::Instance,
+                    by_an_operator: true,
+                },
+                InvitationEvent::Issued {
+                    to: ada(),
+                    digest: InvitationTokenDigest::kept("ab12".to_owned()),
+                    until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
+                    scope: a_project_s(Role::Reader),
+                    by_an_operator: false,
                 },
                 InvitationEvent::Accepted,
                 InvitationEvent::Withdrawn,
@@ -212,16 +325,65 @@ mod tests {
                 },
                 InvitationEvent::Snapshotted {
                     to: ada(),
+                    scope: a_project_s(Role::Author),
+                    by_an_operator: true,
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                     outcome,
                     settled_at: Some(OffsetDateTime::UNIX_EPOCH + Duration::seconds(3_000)),
                     retired: true,
                 },
+                InvitationEvent::Snapshotted {
+                    to: ada(),
+                    scope: Scope::Instance,
+                    by_an_operator: false,
+                    issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
+                    until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
+                    outcome,
+                    settled_at: None,
+                    retired: false,
+                },
                 InvitationEvent::Retired,
             ] {
                 assert_eq!(round_trip(event.clone()), event);
             }
+        }
+    }
+
+    #[test]
+    fn every_role_survives_and_an_invitation_stored_before_scopes_is_the_instance_s() {
+        for role in [Role::Owner, Role::Author, Role::Reader] {
+            let issued = InvitationEvent::Issued {
+                to: ada(),
+                digest: InvitationTokenDigest::kept("ab12".to_owned()),
+                until: OffsetDateTime::UNIX_EPOCH,
+                scope: a_project_s(role),
+                by_an_operator: true,
+            };
+            assert_eq!(round_trip(issued.clone()), issued);
+        }
+
+        assert_eq!(
+            (codec().event)(
+                json!({ "Issued": { "to": "ada@example.com", "digest": "ab12", "until": "1970-01-01T00:33:20Z" } })
+            ),
+            Some(InvitationEvent::Issued {
+                to: ada(),
+                digest: InvitationTokenDigest::kept("ab12".to_owned()),
+                until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
+                scope: Scope::Instance,
+                by_an_operator: false,
+            })
+        );
+    }
+
+    #[test]
+    fn a_project_without_its_role_or_a_scope_of_no_known_kind_reads_as_nothing() {
+        for refused in [
+            json!({ "Issued": { "to": "ada@example.com", "digest": "ab12", "until": "1970-01-01T00:33:20Z", "scope": { "kind": "project", "project": "project_1" } } }),
+            json!({ "Issued": { "to": "ada@example.com", "digest": "ab12", "until": "1970-01-01T00:33:20Z", "scope": { "kind": "shelf" } } }),
+        ] {
+            assert!((codec().event)(refused.clone()).is_none(), "{refused}");
         }
     }
 

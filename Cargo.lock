@@ -4209,6 +4209,7 @@ dependencies = [
  "thiserror",
  "time",
  "weaveling-acting",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
@@ -4264,6 +4265,7 @@ dependencies = [
 name = "weaveling-invitations-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
  "serde_json",
@@ -4271,6 +4273,7 @@ dependencies = [
  "tokio",
  "weaveling-accounts-contract",
  "weaveling-acting",
+ "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",

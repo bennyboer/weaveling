@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
-use invitations_core::{CatalogError, InvitationCatalog, InvitationId, InvitationSummary};
+use invitations_core::{
+    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, ProjectLink,
+};
 use time::OffsetDateTime;
 
 type Kept = BTreeMap<InvitationId, InvitationSummary>;
@@ -23,6 +25,23 @@ impl InMemoryInvitationCatalog {
 
     fn write(&self) -> RwLockWriteGuard<'_, Kept> {
         self.kept.write().expect("invitation catalog lock poisoned")
+    }
+
+    fn listed(
+        &self,
+        project: Option<&ProjectLink>,
+        after: Option<&InvitationId>,
+        at_most: usize,
+    ) -> Vec<InvitationSummary> {
+        self.read()
+            .values()
+            .rev()
+            .filter(|summary| summary.stays_listed())
+            .filter(|summary| summary.scope.project() == project)
+            .filter(|summary| after.is_none_or(|after| summary.id < *after))
+            .take(at_most)
+            .cloned()
+            .collect()
     }
 }
 
@@ -45,15 +64,16 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
         after: Option<&InvitationId>,
         at_most: usize,
     ) -> Result<Vec<InvitationSummary>, CatalogError> {
-        Ok(self
-            .read()
-            .values()
-            .rev()
-            .filter(|summary| summary.stays_listed())
-            .filter(|summary| after.is_none_or(|after| summary.id < *after))
-            .take(at_most)
-            .cloned()
-            .collect())
+        Ok(self.listed(None, after, at_most))
+    }
+
+    async fn in_project_after(
+        &self,
+        project: &ProjectLink,
+        after: Option<&InvitationId>,
+        at_most: usize,
+    ) -> Result<Vec<InvitationSummary>, CatalogError> {
+        Ok(self.listed(Some(project), after, at_most))
     }
 
     async fn due_for_retiring(

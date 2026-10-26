@@ -71,6 +71,7 @@ impl InvitationPage {
 
 #[cfg(test)]
 mod tests {
+    use invitations_contract::ScopeDTO;
     use time::macros::datetime;
 
     use super::*;
@@ -83,6 +84,7 @@ mod tests {
             until: "2026-10-30T08:00:00Z".to_owned(),
             status: status.to_owned(),
             declined_for: declined_for.map(str::to_owned),
+            scope: ScopeDTO::Instance,
         }
     }
 

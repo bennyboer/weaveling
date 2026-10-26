@@ -34,7 +34,7 @@ fn told(event: Value, at: OffsetDateTime) -> Message {
 async fn invited(wired: &Wired) -> InvitationId {
     wired
         .invitations
-        .issue(&wiring::an_operator(), ADA, ORIGIN)
+        .invite_to_instance(&wiring::an_operator(), ADA, ORIGIN)
         .await
         .expect("an operator may invite")
         .id

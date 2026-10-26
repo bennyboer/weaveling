@@ -3,6 +3,7 @@ use eventsourcing::{Agent, Aggregate, AggregateType, Event, EventMetadata, Event
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
+use crate::scope::Scope;
 use crate::token::InvitationTokenDigest;
 
 pub const KIND: AggregateType = AggregateType::of("invitation");
@@ -20,6 +21,8 @@ pub enum InvitationCommand {
         to: EmailAddress,
         digest: InvitationTokenDigest,
         until: OffsetDateTime,
+        scope: Scope,
+        by_an_operator: bool,
     },
     Accept {
         at: OffsetDateTime,
@@ -37,6 +40,8 @@ pub enum InvitationEvent {
         to: EmailAddress,
         digest: InvitationTokenDigest,
         until: OffsetDateTime,
+        scope: Scope,
+        by_an_operator: bool,
     },
     Accepted,
     Withdrawn,
@@ -46,6 +51,8 @@ pub enum InvitationEvent {
     Retired,
     Snapshotted {
         to: EmailAddress,
+        scope: Scope,
+        by_an_operator: bool,
         issued_at: OffsetDateTime,
         until: OffsetDateTime,
         outcome: Outcome,
@@ -70,6 +77,8 @@ pub enum DeclineReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invitation {
     to: EmailAddress,
+    scope: Scope,
+    by_an_operator: bool,
     issued_at: OffsetDateTime,
     until: OffsetDateTime,
     outcome: Outcome,
@@ -98,6 +107,14 @@ impl Invitation {
 
     pub fn to(&self) -> &EmailAddress {
         &self.to
+    }
+
+    pub fn scope(&self) -> &Scope {
+        &self.scope
+    }
+
+    pub fn is_by_an_operator(&self) -> bool {
+        self.by_an_operator
     }
 
     pub fn issued_at(&self) -> OffsetDateTime {
@@ -163,9 +180,19 @@ impl Aggregate for Invitation {
         _agent: &Agent,
     ) -> Result<Vec<InvitationEvent>, InvitationError> {
         match command {
-            InvitationCommand::Issue { to, digest, until } => {
-                Ok(vec![InvitationEvent::Issued { to, digest, until }])
-            }
+            InvitationCommand::Issue {
+                to,
+                digest,
+                until,
+                scope,
+                by_an_operator,
+            } => Ok(vec![InvitationEvent::Issued {
+                to,
+                digest,
+                until,
+                scope,
+                by_an_operator,
+            }]),
             InvitationCommand::Accept { .. }
             | InvitationCommand::Withdraw
             | InvitationCommand::Decline { .. }
@@ -175,8 +202,16 @@ impl Aggregate for Invitation {
 
     fn from_first(event: &InvitationEvent, metadata: &EventMetadata) -> Option<Self> {
         match event {
-            InvitationEvent::Issued { to, until, .. } => Some(Self {
+            InvitationEvent::Issued {
+                to,
+                until,
+                scope,
+                by_an_operator,
+                ..
+            } => Some(Self {
                 to: to.clone(),
+                scope: scope.clone(),
+                by_an_operator: *by_an_operator,
                 issued_at: metadata.occurred_at,
                 until: *until,
                 outcome: Outcome::Open,
@@ -185,6 +220,8 @@ impl Aggregate for Invitation {
             }),
             InvitationEvent::Snapshotted {
                 to,
+                scope,
+                by_an_operator,
                 issued_at,
                 until,
                 outcome,
@@ -192,6 +229,8 @@ impl Aggregate for Invitation {
                 retired,
             } => Some(Self {
                 to: to.clone(),
+                scope: scope.clone(),
+                by_an_operator: *by_an_operator,
                 issued_at: *issued_at,
                 until: *until,
                 outcome: *outcome,
@@ -250,6 +289,8 @@ impl Aggregate for Invitation {
             InvitationEvent::Retired => self.retired = true,
             InvitationEvent::Snapshotted {
                 to,
+                scope,
+                by_an_operator,
                 issued_at,
                 until,
                 outcome,
@@ -257,6 +298,8 @@ impl Aggregate for Invitation {
                 retired,
             } => {
                 self.to = to.clone();
+                self.scope = scope.clone();
+                self.by_an_operator = *by_an_operator;
                 self.issued_at = *issued_at;
                 self.until = *until;
                 self.outcome = *outcome;
@@ -269,6 +312,8 @@ impl Aggregate for Invitation {
     fn snapshot(&self) -> InvitationEvent {
         InvitationEvent::Snapshotted {
             to: self.to.clone(),
+            scope: self.scope.clone(),
+            by_an_operator: self.by_an_operator,
             issued_at: self.issued_at,
             until: self.until,
             outcome: self.outcome,

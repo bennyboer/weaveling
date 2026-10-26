@@ -6,5 +6,9 @@ CREATE TABLE invitation_summaries (
     until            TIMESTAMPTZ      NOT NULL,
     outcome          TEXT             NOT NULL,
     declined_for     TEXT,
+    project          TEXT COLLATE "C",
+    project_role     TEXT,
     retire_after     TIMESTAMPTZ      NOT NULL
 );
+
+CREATE INDEX invitation_summaries_by_project ON invitation_summaries (project, invitation);

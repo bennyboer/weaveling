@@ -7,6 +7,7 @@ use time::{Duration, OffsetDateTime};
 
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, Invitation, Outcome};
+use crate::scope::{ProjectLink, Scope};
 use email::EmailAddress;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,6 +15,7 @@ pub struct InvitationSummary {
     pub id: InvitationId,
     pub version: Version,
     pub to: EmailAddress,
+    pub scope: Scope,
     pub issued_at: OffsetDateTime,
     pub until: OffsetDateTime,
     pub outcome: Outcome,
@@ -49,6 +51,13 @@ pub trait InvitationCatalog: Send + Sync {
         at_most: usize,
     ) -> Result<Vec<InvitationSummary>, CatalogError>;
 
+    async fn in_project_after(
+        &self,
+        project: &ProjectLink,
+        after: Option<&InvitationId>,
+        at_most: usize,
+    ) -> Result<Vec<InvitationSummary>, CatalogError>;
+
     async fn due_for_retiring(
         &self,
         now: OffsetDateTime,
@@ -68,6 +77,7 @@ impl InvitationSummary {
             id,
             version,
             to: invitation.to().clone(),
+            scope: invitation.scope().clone(),
             issued_at: invitation.issued_at(),
             until: invitation.until(),
             outcome: invitation.outcome(),
@@ -135,6 +145,8 @@ mod tests {
                 to: ada(),
                 digest: InvitationTokenDigest::kept("ab12".to_owned()),
                 until: at(5_000),
+                scope: Scope::Instance,
+                by_an_operator: true,
             },
             &stamped(1, 1_000),
         )
@@ -151,6 +163,7 @@ mod tests {
                 until: at(5_000),
                 outcome: Outcome::Open,
                 retire_after: at(5_000) + Duration::days(30),
+                scope: Scope::Instance,
             }
         );
 
@@ -177,6 +190,7 @@ mod tests {
             until: at(5_000),
             outcome,
             retire_after: at(5_000),
+            scope: Scope::Instance,
         };
 
         assert!(summary(Outcome::Open).stays_listed());
@@ -195,6 +209,7 @@ mod tests {
             until: at(5_000),
             outcome: Outcome::Open,
             retire_after: at(5_000),
+            scope: Scope::Instance,
         };
 
         assert_eq!(summary.status(at(5_000)), Some(Status::Open));
@@ -211,6 +226,7 @@ mod tests {
             until: at(5_000),
             outcome,
             retire_after: at(5_000),
+            scope: Scope::Instance,
         };
         let declined = Outcome::Declined(DeclineReason::AddressHasAccount);
 
@@ -234,6 +250,8 @@ mod tests {
                     to: ada(),
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     until: at(5_000),
+                    scope: Scope::Instance,
+                    by_an_operator: true,
                 },
                 &stamped(1, 1_000),
             )
@@ -269,6 +287,8 @@ mod tests {
                     to: ada(),
                     digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     until: at(500_000),
+                    scope: Scope::Instance,
+                    by_an_operator: true,
                 },
                 &stamped(1, 1_000),
             )

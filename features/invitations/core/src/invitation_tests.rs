@@ -3,6 +3,7 @@ use eventsourcing::{Agent, Aggregate, AggregateContext, AggregateId, EventMetada
 use time::{Duration, OffsetDateTime};
 
 use crate::invitation::*;
+use crate::scope::{ProjectLink, Role, Scope};
 use crate::token::InvitationTokenDigest;
 
 fn at(seconds: i64) -> OffsetDateTime {
@@ -34,6 +35,8 @@ fn an_issue(seconds: i64) -> InvitationEvent {
         to: ada(),
         digest: InvitationTokenDigest::kept("ab12".to_owned()),
         until: at(seconds) + Invitation::LASTS,
+        scope: Scope::Instance,
+        by_an_operator: true,
     }
 }
 
@@ -54,6 +57,8 @@ fn an_invitation_is_issued_to_an_address_and_stands_open_for_seven_days() {
                 to: ada(),
                 digest: InvitationTokenDigest::kept("ab12".to_owned()),
                 until: at(1_000) + Invitation::LASTS,
+                scope: Scope::Instance,
+                by_an_operator: true,
             },
             &an_operator()
         ),
@@ -73,6 +78,8 @@ fn an_invitation_holds_until_its_issue_says_however_late_it_was_told() {
         to: ada(),
         digest: InvitationTokenDigest::kept("ab12".to_owned()),
         until: at(5_000),
+        scope: Scope::Instance,
+        by_an_operator: true,
     };
 
     let invitation =
@@ -172,6 +179,8 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
                 to: ada(),
                 digest: InvitationTokenDigest::kept("cd34".to_owned()),
                 until: at(2_000),
+                scope: Scope::Instance,
+                by_an_operator: true,
             },
             &an_operator()
         ),
@@ -201,6 +210,34 @@ fn a_snapshot_holds_everything_the_invitation_is() {
 
     assert_eq!(restored, invitation);
     assert_eq!(behind, invitation);
+}
+
+#[test]
+fn a_snapshot_keeps_its_scope_and_whether_an_operator_issued_it() {
+    let into_a_project = InvitationEvent::Issued {
+        to: ada(),
+        digest: InvitationTokenDigest::kept("ab12".to_owned()),
+        until: at(1_000) + Invitation::LASTS,
+        scope: Scope::Project {
+            project: ProjectLink::from("project_1"),
+            role: Role::Reader,
+        },
+        by_an_operator: false,
+    };
+    let invitation = Invitation::from_first(&into_a_project, &stamped(1, at(1_000)))
+        .expect("issuing gives birth");
+    assert!(!invitation.is_by_an_operator());
+
+    let restored = Invitation::from_first(&invitation.snapshot(), &stamped(2, at(2_000)))
+        .expect("a snapshot gives birth");
+    let mut issued_otherwise = issued_at(500);
+    assert!(issued_otherwise.is_by_an_operator());
+    issued_otherwise.apply(&invitation.snapshot(), &stamped(2, at(2_000)));
+
+    for told in [restored, issued_otherwise] {
+        assert!(!told.is_by_an_operator());
+        assert_eq!(told.scope(), invitation.scope());
+    }
 }
 
 fn declined_at(seconds: i64) -> Invitation {

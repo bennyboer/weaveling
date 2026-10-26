@@ -1,7 +1,8 @@
 use email::EmailAddress;
 use eventsourcing::Version;
 use invitations_core::{
-    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome,
+    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome, ProjectLink, Role,
+    Scope,
 };
 use time::OffsetDateTime;
 
@@ -25,11 +26,97 @@ pub fn a_summary(id: InvitationId, to: &str) -> InvitationSummary {
         id,
         version: Version::of(1),
         to: EmailAddress::new(to).expect("a plain address"),
+        scope: Scope::Instance,
         issued_at: at(1_000),
         until: at(605_800),
         outcome: Outcome::Open,
         retire_after: at(605_800),
     }
+}
+
+fn into(project: &str, role: Role, id: InvitationId) -> InvitationSummary {
+    InvitationSummary {
+        scope: Scope::Project {
+            project: ProjectLink::from(project),
+            role,
+        },
+        ..a_summary(id, "grace@example.com")
+    }
+}
+
+async fn in_project(
+    catalog: &impl InvitationCatalog,
+    project: &str,
+    after: Option<&InvitationId>,
+    at_most: usize,
+) -> Vec<InvitationSummary> {
+    catalog
+        .in_project_after(&ProjectLink::from(project), after, at_most)
+        .await
+        .expect("listing should succeed")
+}
+
+pub async fn an_invitation_into_a_project_is_listed_with_that_project_alone(
+    catalog: &impl InvitationCatalog,
+) {
+    let to_the_instance = a_summary(issued(1_000), "ada@example.com");
+    let into_the_loom = into("project_loom", Role::Reader, issued(2_000));
+    let into_the_weft = into("project_weft", Role::Owner, issued(3_000));
+    for summary in [&to_the_instance, &into_the_loom, &into_the_weft] {
+        remembered(catalog, summary).await;
+    }
+
+    assert_eq!(
+        listed(catalog).await,
+        vec![to_the_instance],
+        "the operators' list holds the instance's invitations, not those into projects"
+    );
+    assert_eq!(
+        in_project(catalog, "project_loom", None, 100).await,
+        vec![into_the_loom]
+    );
+    assert_eq!(
+        in_project(catalog, "project_weft", None, 100).await,
+        vec![into_the_weft]
+    );
+    assert!(
+        in_project(catalog, "project_none", None, 100)
+            .await
+            .is_empty()
+    );
+}
+
+pub async fn a_project_s_page_holds_at_most_what_was_asked_newest_first_and_goes_on_after_it(
+    catalog: &impl InvitationCatalog,
+) {
+    let ids: Vec<InvitationId> = (1..=3).map(|nth| issued(nth * 1_000)).collect();
+    for (id, role) in ids.iter().zip([Role::Owner, Role::Author, Role::Reader]) {
+        remembered(catalog, &into("project_loom", role, *id)).await;
+    }
+    let mut taken_up = into("project_loom", Role::Author, issued(4_000));
+    taken_up.outcome = Outcome::Accepted;
+    remembered(catalog, &taken_up).await;
+
+    let first = in_project(catalog, "project_loom", None, 2).await;
+    let rest = in_project(catalog, "project_loom", Some(&first[1].id), 2).await;
+
+    assert_eq!(
+        first.iter().map(|summary| summary.id).collect::<Vec<_>>(),
+        vec![ids[2], ids[1]],
+        "newest first, and one taken up no longer listed"
+    );
+    assert_eq!(
+        rest.iter().map(|summary| summary.id).collect::<Vec<_>>(),
+        vec![ids[0]]
+    );
+    assert_eq!(
+        first[0].scope,
+        Scope::Project {
+            project: ProjectLink::from("project_loom"),
+            role: Role::Reader
+        },
+        "the role it invites as reads back"
+    );
 }
 
 fn issued(seconds: i64) -> InvitationId {
@@ -303,6 +390,14 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_page_holds_at_most_what_was_asked_newest_first_and_the_next_goes_on_after_it
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_invitation_into_a_project_is_listed_with_that_project_alone
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_s_page_holds_at_most_what_was_asked_newest_first_and_goes_on_after_it
         );
     };
 }

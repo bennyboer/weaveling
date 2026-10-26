@@ -5,6 +5,8 @@ pub use memory::InMemoryInvitationCatalog;
 
 #[cfg(any(feature = "postgres", feature = "sqlite"))]
 mod outcome;
+#[cfg(any(feature = "postgres", feature = "sqlite"))]
+mod scope;
 
 #[cfg(feature = "postgres")]
 pub mod postgres;

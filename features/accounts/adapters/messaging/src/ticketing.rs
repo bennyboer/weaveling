@@ -1,7 +1,7 @@
 use accounts_core::{AccountsCore, EmailAddress, InvitationTicket, TokenDigest};
 use async_trait::async_trait;
 use clock::text;
-use invitations_contract::{ISSUED, InvitationEventDTO, RETIRED, WITHDRAWN};
+use invitations_contract::{ISSUED, InvitationEventDTO, RETIRED, ScopeDTO, WITHDRAWN};
 use messaging::{Failure, Handler, Message};
 
 pub struct KeepInvitationTicketsListener {
@@ -25,7 +25,14 @@ impl Handler for KeepInvitationTicketsListener {
         let invitation = told.aggregate.id;
 
         match told.event.body {
-            InvitationEventDTO::Issued { to, digest, until } => {
+            // TODO 5b-2: project invitations keep no ticket yet, so an account is never declined for one; accounts will keep their tickets with the scope, decline for the instance alone, and let an account take a project's up
+            InvitationEventDTO::Issued {
+                scope: ScopeDTO::Project { .. },
+                ..
+            } => Ok(()),
+            InvitationEventDTO::Issued {
+                to, digest, until, ..
+            } => {
                 let ticket = InvitationTicket {
                     invitation,
                     to: EmailAddress::new(&to)?,

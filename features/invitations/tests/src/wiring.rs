@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use acting::Acting;
+use authorizing::{AllowingEverything, Authorizer};
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore};
 use invitations_catalog::InMemoryInvitationCatalog;
@@ -24,6 +25,10 @@ pub struct Wired {
 }
 
 pub fn wired() -> Wired {
+    wired_guarded_by(Arc::new(AllowingEverything))
+}
+
+pub fn wired_guarded_by(authorizer: Arc<dyn Authorizer>) -> Wired {
     let clock = Arc::new(FixedClock::new(at(1_700_000_000)));
     let store = Arc::new(InMemoryEventStore::new());
     let mailbox = Arc::new(FakeMailbox::default());
@@ -35,6 +40,7 @@ pub fn wired() -> Wired {
             Arc::new(InMemoryThrottles::default()),
             catalog.clone(),
             mailbox.clone(),
+            authorizer,
             clock.clone(),
         ),
         store,

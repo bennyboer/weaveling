@@ -1,3 +1,4 @@
+use authorizing::AuthorizerError;
 use email::InvalidEmailAddress;
 use eventsourcing::ServiceError;
 use mailing::Unsent;
@@ -12,6 +13,12 @@ use crate::invitation::InvitationError;
 pub enum InvitationsError {
     #[error("only an operator may do this")]
     NotAnOperator,
+    #[error("only an owner of the project may do this")]
+    NotAnOwner,
+    #[error("there is no such project")]
+    ProjectNotThere,
+    #[error(transparent)]
+    Authorizer(#[from] AuthorizerError),
     #[error(transparent)]
     InvalidEmail(#[from] InvalidEmailAddress),
     #[error("too many invitations to this address; wait {wait} before inviting it again")]

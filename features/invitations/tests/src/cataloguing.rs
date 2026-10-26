@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use eventsourcing::Agent;
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
@@ -45,6 +46,7 @@ fn listing() -> Listing {
         Arc::new(InMemoryThrottles::default()),
         catalog.clone(),
         wired.mailbox.clone(),
+        Arc::new(AllowingEverything),
         wired.clock.clone(),
     );
 
@@ -60,7 +62,7 @@ impl Listing {
     async fn invited(&self, to: &str) -> InvitationId {
         self.wired
             .invitations
-            .issue(&wiring::an_operator(), to, ORIGIN)
+            .invite_to_instance(&wiring::an_operator(), to, ORIGIN)
             .await
             .expect("an operator may invite")
             .id

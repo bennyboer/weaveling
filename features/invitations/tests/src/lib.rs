@@ -14,6 +14,9 @@ mod invitations_api;
 mod issuing;
 
 #[cfg(test)]
+mod inviting_into_a_project;
+
+#[cfg(test)]
 mod listing_api;
 
 #[cfg(test)]

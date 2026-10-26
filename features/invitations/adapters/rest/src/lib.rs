@@ -7,11 +7,12 @@ use clock::text;
 use email::InvalidEmailAddress;
 use eventsourcing::ServiceError;
 use invitations_contract::{
-    InvitationPageDTO, InvitationSummaryDTO, InviteRequest, decline_reason, refused, status,
+    InvitationPageDTO, InvitationSummaryDTO, InviteRequest, ScopeDTO, decline_reason, refused,
+    role, status,
 };
 use invitations_core::{
     DeclineReason, InvitationError, InvitationId, InvitationsCore, InvitationsError,
-    ListedInvitation, Status,
+    ListedInvitation, Role, Scope, Status,
 };
 use serde::Deserialize;
 use serving::Problem;
@@ -39,10 +40,26 @@ async fn invite(
             )
         })?;
 
-    let summary = invitations
-        .issue(&acting, &request.email, origin)
-        .await
-        .map_err(problem_of)?;
+    let summary = match &request.scope {
+        ScopeDTO::Instance => {
+            invitations
+                .invite_to_instance(&acting, &request.email, origin)
+                .await
+        }
+        ScopeDTO::Project { project, role } => {
+            let as_whom = to_role(role).ok_or_else(|| {
+                Problem::unprocessable(
+                    refused::ROLE_UNKNOWN,
+                    "an invitation into a project invites as an owner, an author or a reader",
+                )
+            })?;
+
+            invitations
+                .invite_to_project(&acting, project, as_whom, &request.email, origin)
+                .await
+        }
+    }
+    .map_err(problem_of)?;
 
     Ok((
         StatusCode::CREATED,
@@ -57,6 +74,7 @@ pub const PAGE: usize = 100;
 
 #[derive(Deserialize)]
 struct Paging {
+    project: Option<String>,
     after: Option<String>,
 }
 
@@ -66,10 +84,19 @@ async fn list(
     Query(paging): Query<Paging>,
 ) -> Result<Json<InvitationPageDTO>, Problem> {
     let after = paging.after.as_deref().map(invitation_named).transpose()?;
-    let mut found = invitations
-        .list(&acting, after.as_ref(), PAGE + 1)
-        .await
-        .map_err(problem_of)?;
+    let mut found = match paging.project.as_deref() {
+        None => {
+            invitations
+                .instance_invitations(&acting, after.as_ref(), PAGE + 1)
+                .await
+        }
+        Some(project) => {
+            invitations
+                .project_invitations(&acting, project, after.as_ref(), PAGE + 1)
+                .await
+        }
+    }
+    .map_err(problem_of)?;
     let more = found.len() > PAGE;
     found.truncate(PAGE);
 
@@ -98,6 +125,30 @@ fn to_summary_dto(listed: &ListedInvitation) -> InvitationSummaryDTO {
         until: text::serialize(listed.summary.until),
         status: told.to_owned(),
         declined_for,
+        scope: match &listed.summary.scope {
+            Scope::Instance => ScopeDTO::Instance,
+            Scope::Project { project, role } => ScopeDTO::Project {
+                project: project.to_string(),
+                role: named(*role).to_owned(),
+            },
+        },
+    }
+}
+
+fn named(given: Role) -> &'static str {
+    match given {
+        Role::Owner => role::OWNER,
+        Role::Author => role::AUTHOR,
+        Role::Reader => role::READER,
+    }
+}
+
+fn to_role(named: &str) -> Option<Role> {
+    match named {
+        role::OWNER => Some(Role::Owner),
+        role::AUTHOR => Some(Role::Author),
+        role::READER => Some(Role::Reader),
+        _ => None,
     }
 }
 
@@ -125,6 +176,8 @@ async fn withdraw(
 fn problem_of(refusal: InvitationsError) -> Problem {
     match refusal {
         InvitationsError::NotAnOperator => Problem::forbidden(refused::NOT_AN_OPERATOR, refusal),
+        InvitationsError::NotAnOwner => Problem::forbidden(refused::NOT_AN_OWNER, refusal),
+        InvitationsError::ProjectNotThere => Problem::not_found(serving::NOT_FOUND, refusal),
         InvitationsError::InvalidEmail(reason) => match reason {
             InvalidEmailAddress::Malformed => {
                 Problem::unprocessable(refused::EMAIL_MALFORMED, reason)

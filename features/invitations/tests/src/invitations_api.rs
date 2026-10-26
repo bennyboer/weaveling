@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use axum::http::header::{ORIGIN, RETRY_AFTER};
 use axum_test::{TestResponse, TestServer};
 use eventsourcing::{Agent, AggregateId, EventStore, Version};
-use invitations_contract::{InvitationSummaryDTO, InviteRequest, refused};
+use invitations_contract::{InvitationSummaryDTO, InviteRequest, ScopeDTO, refused};
 use invitations_core::{InvitationEvent, InvitationId, KIND};
 use serde_json::Value;
 
@@ -20,6 +20,7 @@ fn served_to(wired: &Wired, acting: Acting) -> TestServer {
 fn inviting(email: &str) -> InviteRequest {
     InviteRequest {
         email: email.to_owned(),
+        scope: ScopeDTO::Instance,
     }
 }
 
@@ -96,7 +97,7 @@ async fn anyone_but_an_operator_is_refused() {
     let wired = wiring::wired();
     let id = wired
         .invitations
-        .issue(&wiring::an_operator(), ADA, INSTANCE)
+        .invite_to_instance(&wiring::an_operator(), ADA, INSTANCE)
         .await
         .expect("an operator may invite")
         .id;
@@ -154,7 +155,7 @@ async fn an_operator_withdraws_and_an_invitation_missing_or_no_invitation_at_all
     let wired = wiring::wired();
     let id = wired
         .invitations
-        .issue(&wiring::an_operator(), ADA, INSTANCE)
+        .invite_to_instance(&wiring::an_operator(), ADA, INSTANCE)
         .await
         .expect("an operator may invite")
         .id;
@@ -186,7 +187,7 @@ async fn an_invitation_taken_up_is_not_withdrawn() {
     let wired = wiring::wired();
     let id = wired
         .invitations
-        .issue(&wiring::an_operator(), ADA, INSTANCE)
+        .invite_to_instance(&wiring::an_operator(), ADA, INSTANCE)
         .await
         .expect("an operator may invite")
         .id;

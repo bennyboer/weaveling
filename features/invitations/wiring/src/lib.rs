@@ -29,6 +29,7 @@ pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
         ports.throttles.clone(),
         ports.catalog.clone(),
         ports.mailer.clone(),
+        context.authorizer.clone(),
         context.clock.clone(),
     )
 }
@@ -154,7 +155,7 @@ mod tests {
     use email::EmailAddress;
     use eventsourcing::Version;
     use eventsourcing::{Agent, AggregateId};
-    use invitations_core::{InvitationId, InvitationSummary, KIND, Outcome};
+    use invitations_core::{InvitationId, InvitationSummary, KIND, Outcome, Scope};
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use time::OffsetDateTime;
 
@@ -179,6 +180,7 @@ mod tests {
             until: OffsetDateTime::UNIX_EPOCH,
             outcome: Outcome::Open,
             retire_after: OffsetDateTime::UNIX_EPOCH,
+            scope: Scope::Instance,
         };
 
         ports
@@ -203,7 +205,7 @@ mod tests {
         let ports = InvitationFeature::in_memory(&context);
         let wired = InvitationFeature::wire(&ports, &context);
         let issued = core(&ports, &context)
-            .issue(
+            .invite_to_instance(
                 &Acting {
                     agent: Agent::Account("account_grace".into()),
                     operator: true,

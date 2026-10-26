@@ -11,6 +11,7 @@ use crate::catalog::InvitationSummary;
 use crate::error::InvitationsError;
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, Invitation, InvitationCommand, InvitationEvent, Outcome};
+use crate::scope::{Role, Scope};
 use crate::token::InvitationToken;
 
 const INVITING: &str = "inviting";
@@ -43,6 +44,8 @@ impl InvitationService {
         &self,
         to: &str,
         origin: &str,
+        scope: Scope,
+        by_an_operator: bool,
         agent: &Agent,
     ) -> Result<InvitationSummary, InvitationsError> {
         let to = EmailAddress::new(to)?;
@@ -63,18 +66,21 @@ impl InvitationService {
                     to: to.clone(),
                     digest: token.digest(),
                     until,
+                    scope: scope.clone(),
+                    by_an_operator,
                 },
                 agent,
             )
             .await?;
         self.mailer
-            .send(invitation_mail(&to, origin, &token))
+            .send(invitation_mail(&to, origin, &scope, &token))
             .await?;
 
         Ok(InvitationSummary {
             id,
             version: Version::of(1),
             to,
+            scope,
             issued_at: now,
             until,
             outcome: Outcome::Open,
@@ -157,15 +163,43 @@ impl InvitationService {
     }
 }
 
-fn invitation_mail(to: &EmailAddress, origin: &str, token: &InvitationToken) -> Mail {
+fn invitation_mail(
+    to: &EmailAddress,
+    origin: &str,
+    scope: &Scope,
+    token: &InvitationToken,
+) -> Mail {
     let origin = origin.trim().trim_end_matches('/');
+    let (subject, invited) = match scope {
+        Scope::Instance => (
+            "You are invited to Weaveling".to_owned(),
+            format!(
+                "You are invited to sign up to the Weaveling instance at {origin}. Follow this link within seven days to do so"
+            ),
+        ),
+        Scope::Project { role, .. } => (
+            "You are invited to a project on Weaveling".to_owned(),
+            format!(
+                "You are invited to work on a project as {} on the Weaveling instance at {origin}. Follow this link within seven days to join it",
+                as_whom(*role)
+            ),
+        ),
+    };
 
     Mail {
         to: to.to_string(),
-        subject: "You are invited to Weaveling".to_owned(),
+        subject,
         body: format!(
-            "You are invited to sign up to the Weaveling instance at {origin}. Follow this link within seven days to do so: {origin}/invitation#{}\n\nIf you did not expect this, you can ignore this mail.",
+            "{invited}: {origin}/invitation#{}\n\nIf you did not expect this, you can ignore this mail.",
             token.as_str()
         ),
+    }
+}
+
+fn as_whom(role: Role) -> &'static str {
+    match role {
+        Role::Owner => "an owner",
+        Role::Author => "an author",
+        Role::Reader => "a reader",
     }
 }

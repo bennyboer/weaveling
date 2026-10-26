@@ -3,18 +3,20 @@ use std::error::Error;
 use async_trait::async_trait;
 use email::EmailAddress;
 use eventsourcing::Version;
-use invitations_core::{CatalogError, InvitationCatalog, InvitationId, InvitationSummary};
+use invitations_core::{
+    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, ProjectLink,
+};
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
 
-use crate::outcome;
+use crate::{outcome, scope};
 
 const REMEMBER: &str = "
     INSERT INTO invitation_summaries
-        (invitation, version, email, issued_at, until, outcome, declined_for, retire_after)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        (invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
     ON CONFLICT (invitation) DO UPDATE
     SET version      = EXCLUDED.version,
         email        = EXCLUDED.email,
@@ -22,17 +24,30 @@ const REMEMBER: &str = "
         until        = EXCLUDED.until,
         outcome      = EXCLUDED.outcome,
         declined_for = EXCLUDED.declined_for,
-        retire_after = EXCLUDED.retire_after
+        retire_after = EXCLUDED.retire_after,
+        project      = EXCLUDED.project,
+        project_role = EXCLUDED.project_role
     WHERE invitation_summaries.version < EXCLUDED.version
 ";
 
 const LISTED_AFTER: &str = "
-    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role
     FROM invitation_summaries
     WHERE outcome IN ('open', 'declined')
+      AND project IS NULL
       AND ($1::TEXT IS NULL OR invitation < $1)
     ORDER BY invitation DESC
     LIMIT $2
+";
+
+const IN_PROJECT_AFTER: &str = "
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role
+    FROM invitation_summaries
+    WHERE outcome IN ('open', 'declined')
+      AND project = $1
+      AND ($2::TEXT IS NULL OR invitation < $2)
+    ORDER BY invitation DESC
+    LIMIT $3
 ";
 
 const DUE_FOR_RETIRING: &str = "
@@ -76,12 +91,15 @@ fn to_summary(row: &PgRow) -> Result<InvitationSummary, CatalogError> {
     let until: OffsetDateTime = row.try_get("until").map_err(unreachable)?;
     let kept: String = row.try_get("outcome").map_err(unreachable)?;
     let declined_for: Option<String> = row.try_get("declined_for").map_err(unreachable)?;
+    let project: Option<String> = row.try_get("project").map_err(unreachable)?;
+    let project_role: Option<String> = row.try_get("project_role").map_err(unreachable)?;
     let retire_after: OffsetDateTime = row.try_get("retire_after").map_err(unreachable)?;
 
     Ok(InvitationSummary {
         id: invitation.parse().map_err(unreachable)?,
         version: Version::of(u64::try_from(version).map_err(unreachable)?),
         to: EmailAddress::new(&email).map_err(unreachable)?,
+        scope: scope::read(project, project_role.as_deref())?,
         issued_at,
         until,
         outcome: outcome::read(&kept, declined_for.as_deref())?,
@@ -93,6 +111,7 @@ fn to_summary(row: &PgRow) -> Result<InvitationSummary, CatalogError> {
 impl InvitationCatalog for PostgresInvitationCatalog {
     async fn remember(&self, summary: &InvitationSummary) -> Result<(), CatalogError> {
         let (kept, declined_for) = outcome::written(summary.outcome);
+        let (project, project_role) = scope::written(&summary.scope);
 
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
@@ -103,6 +122,8 @@ impl InvitationCatalog for PostgresInvitationCatalog {
             .bind(kept)
             .bind(declined_for)
             .bind(summary.retire_after)
+            .bind(project)
+            .bind(project_role)
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -116,6 +137,23 @@ impl InvitationCatalog for PostgresInvitationCatalog {
         at_most: usize,
     ) -> Result<Vec<InvitationSummary>, CatalogError> {
         let found = sqlx::query(LISTED_AFTER)
+            .bind(after.map(ToString::to_string))
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found.iter().map(to_summary).collect()
+    }
+
+    async fn in_project_after(
+        &self,
+        project: &ProjectLink,
+        after: Option<&InvitationId>,
+        at_most: usize,
+    ) -> Result<Vec<InvitationSummary>, CatalogError> {
+        let found = sqlx::query(IN_PROJECT_AFTER)
+            .bind(project.as_str())
             .bind(after.map(ToString::to_string))
             .bind(i64::try_from(at_most).map_err(unreachable)?)
             .fetch_all(&self.pool)

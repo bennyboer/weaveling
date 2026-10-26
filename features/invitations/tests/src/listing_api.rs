@@ -4,9 +4,9 @@ use axum::http::StatusCode;
 use axum_test::{TestResponse, TestServer};
 use email::EmailAddress;
 use eventsourcing::Version;
-use invitations_contract::{InvitationPageDTO, InvitationSummaryDTO, refused};
+use invitations_contract::{InvitationPageDTO, InvitationSummaryDTO, ScopeDTO, refused};
 use invitations_core::{
-    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome,
+    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome, Scope,
 };
 use invitations_rest::PAGE;
 use serde_json::Value;
@@ -28,6 +28,7 @@ fn a_summary(seconds: i64, to: &str, outcome: Outcome) -> InvitationSummary {
         until: wiring::at(seconds) + Duration::days(7),
         outcome,
         retire_after: wiring::at(seconds) + Duration::days(7),
+        scope: Scope::Instance,
     }
 }
 
@@ -80,6 +81,7 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
                     until: "2023-11-21T22:12:20Z".to_owned(),
                     status: "open".to_owned(),
                     declined_for: None,
+                    scope: ScopeDTO::Instance,
                 },
                 InvitationSummaryDTO {
                     id: declined.id.to_string(),
@@ -88,6 +90,7 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
                     until: "2023-11-21T21:13:20Z".to_owned(),
                     status: "declined".to_owned(),
                     declined_for: Some("address-has-account".to_owned()),
+                    scope: ScopeDTO::Instance,
                 },
                 InvitationSummaryDTO {
                     id: expired.id.to_string(),
@@ -96,6 +99,7 @@ async fn an_operator_sees_the_open_the_expired_and_the_declined_newest_first() {
                     until: "2023-11-13T22:13:20Z".to_owned(),
                     status: "expired".to_owned(),
                     declined_for: None,
+                    scope: ScopeDTO::Instance,
                 },
             ],
             next: None,

@@ -1,5 +1,5 @@
 use gloo_net::http::Request;
-use invitations_contract::{InvitationPageDTO, InvitationSummaryDTO, InviteRequest};
+use invitations_contract::{InvitationPageDTO, InvitationSummaryDTO, InviteRequest, ScopeDTO};
 
 use crate::http;
 use crate::http::ApiError;
@@ -23,6 +23,7 @@ pub async fn list_invitations(after: Option<&str>) -> Result<InvitationPage, Api
 pub async fn invite(email: &str) -> Result<ListedInvitation, ApiError> {
     let payload = InviteRequest {
         email: email.to_owned(),
+        scope: ScopeDTO::Instance,
     };
     let invited: InvitationSummaryDTO = http::parsed(
         http::sent_with(Request::post(INVITATIONS), &payload).await?,

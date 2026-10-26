@@ -98,6 +98,15 @@ assert!(
 
 Say why the expectation holds or what breaks if it does not — never restate the assertion in prose.
 
+**The other exception is a `// TODO`, and a stopgap owes one.** When a slice leaves something deliberately short of where it is going, because a later slice finishes it, the place says so where the next reader will stumble on it: what is missing, why it stands so for now, and which slice replaces it.
+
+```rust
+// TODO 5b-2: project invitations keep no ticket yet, so an account is never declined for one; accounts will keep their tickets with the scope and decline for the instance alone
+InvitationEventDTO::Issued { scope: ScopeDTO::Project { .. }, .. } => Ok(()),
+```
+
+The ROADMAP says the same in its notes, but a note is not read where the code is. A `// TODO` goes away in the slice it names.
+
 ## Tests
 
 - The name is the claim, as a sentence: `a_deleted_project_refuses_everything`, `a_batch_that_collides_halfway_writes_none_of_itself`.

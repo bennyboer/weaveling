@@ -3,6 +3,7 @@ mod error;
 mod id;
 mod invitation;
 mod invitations;
+mod scope;
 mod service;
 mod token;
 
@@ -16,4 +17,5 @@ pub use invitation::{
     DeclineReason, Invitation, InvitationCommand, InvitationError, InvitationEvent, KIND, Outcome,
 };
 pub use invitations::InvitationsCore;
+pub use scope::{ProjectLink, Role, Scope};
 pub use token::{InvitationToken, InvitationTokenDigest};

@@ -11,6 +11,7 @@ thiserror = { workspace = true }
 time = { workspace = true }
 
 acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 email = { version = "0.1.0", path = "../../../libraries/email", package = "weaveling-email" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
