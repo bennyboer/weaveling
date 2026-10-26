@@ -43,7 +43,9 @@ pub enum InvitationEvent {
         scope: Scope,
         by_an_operator: bool,
     },
-    Accepted,
+    Accepted {
+        scope: Scope,
+    },
     Withdrawn,
     Declined {
         reason: DeclineReason,
@@ -151,7 +153,7 @@ impl Event for InvitationEvent {
     fn name(&self) -> EventName {
         match self {
             Self::Issued { .. } => ISSUED,
-            Self::Accepted => ACCEPTED,
+            Self::Accepted { .. } => ACCEPTED,
             Self::Withdrawn => WITHDRAWN,
             Self::Declined { .. } => DECLINED,
             Self::Retired => RETIRED,
@@ -237,7 +239,7 @@ impl Aggregate for Invitation {
                 settled_at: *settled_at,
                 retired: *retired,
             }),
-            InvitationEvent::Accepted
+            InvitationEvent::Accepted { .. }
             | InvitationEvent::Withdrawn
             | InvitationEvent::Declined { .. }
             | InvitationEvent::Retired => None,
@@ -273,7 +275,9 @@ impl Aggregate for Invitation {
                 Err(InvitationError::Expired)
             }
             (InvitationCommand::Accept { .. }, Outcome::Open) => {
-                Ok(vec![InvitationEvent::Accepted])
+                Ok(vec![InvitationEvent::Accepted {
+                    scope: self.scope.clone(),
+                }])
             }
         }
     }
@@ -281,7 +285,7 @@ impl Aggregate for Invitation {
     fn apply(&mut self, event: &InvitationEvent, metadata: &EventMetadata) {
         match event {
             InvitationEvent::Issued { .. } => {}
-            InvitationEvent::Accepted => self.settle(Outcome::Accepted, metadata),
+            InvitationEvent::Accepted { .. } => self.settle(Outcome::Accepted, metadata),
             InvitationEvent::Withdrawn => self.settle(Outcome::Withdrawn, metadata),
             InvitationEvent::Declined { reason } => {
                 self.settle(Outcome::Declined(*reason), metadata)

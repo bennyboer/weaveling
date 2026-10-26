@@ -94,9 +94,16 @@ fn an_open_invitation_is_taken_up_once() {
 
     assert_eq!(
         invitation.decide(accepting(2_000), &an_operator()),
-        Ok(vec![InvitationEvent::Accepted])
+        Ok(vec![InvitationEvent::Accepted {
+            scope: Scope::Instance,
+        }])
     );
-    invitation.apply(&InvitationEvent::Accepted, &stamped(2, at(2_000)));
+    invitation.apply(
+        &InvitationEvent::Accepted {
+            scope: Scope::Instance,
+        },
+        &stamped(2, at(2_000)),
+    );
 
     assert_eq!(invitation.outcome(), Outcome::Accepted);
     assert_eq!(
@@ -112,7 +119,9 @@ fn an_invitation_holds_to_its_last_moment_and_no_longer() {
 
     assert_eq!(
         issued_at(1_000).decide(accepting(last), &an_operator()),
-        Ok(vec![InvitationEvent::Accepted])
+        Ok(vec![InvitationEvent::Accepted {
+            scope: Scope::Instance,
+        }])
     );
     assert_eq!(
         issued_at(1_000).decide(accepting(last + 1), &an_operator()),
@@ -144,7 +153,12 @@ fn a_withdrawn_invitation_is_not_taken_up_and_withdrawing_twice_changes_nothing(
 #[test]
 fn an_invitation_taken_up_is_not_withdrawn() {
     let mut invitation = issued_at(1_000);
-    invitation.apply(&InvitationEvent::Accepted, &stamped(2, at(2_000)));
+    invitation.apply(
+        &InvitationEvent::Accepted {
+            scope: Scope::Instance,
+        },
+        &stamped(2, at(2_000)),
+    );
 
     assert_eq!(
         invitation.decide(InvitationCommand::Withdraw, &an_operator()),
@@ -188,7 +202,9 @@ fn nothing_but_issuing_comes_first_and_issuing_comes_once() {
     );
     for event in [
         InvitationEvent::Retired,
-        InvitationEvent::Accepted,
+        InvitationEvent::Accepted {
+            scope: Scope::Instance,
+        },
         InvitationEvent::Withdrawn,
         InvitationEvent::Declined {
             reason: DeclineReason::AddressHasAccount,
@@ -295,7 +311,12 @@ fn an_invitation_withdrawn_or_taken_up_is_not_declined() {
     let mut withdrawn = issued_at(1_000);
     withdrawn.apply(&InvitationEvent::Withdrawn, &stamped(2, at(1_010)));
     let mut accepted = issued_at(1_000);
-    accepted.apply(&InvitationEvent::Accepted, &stamped(2, at(1_010)));
+    accepted.apply(
+        &InvitationEvent::Accepted {
+            scope: Scope::Instance,
+        },
+        &stamped(2, at(1_010)),
+    );
 
     assert_eq!(
         withdrawn.decide(
@@ -367,5 +388,32 @@ fn an_invitation_retires_once_however_it_stands() {
     assert_eq!(
         Invitation::begin(InvitationCommand::Retire, &Agent::System),
         Err(InvitationError::NotIssuedYet)
+    );
+}
+
+#[test]
+fn an_acceptance_tells_the_scope_it_was_into() {
+    let into_a_project = Scope::Project {
+        project: ProjectLink::from("project_1"),
+        role: Role::Author,
+    };
+    let invitation = Invitation::from_first(
+        &InvitationEvent::Issued {
+            to: ada(),
+            digest: InvitationTokenDigest::kept("ab12".to_owned()),
+            until: at(1_000) + Invitation::LASTS,
+            scope: into_a_project.clone(),
+            by_an_operator: false,
+        },
+        &stamped(1, at(1_000)),
+    )
+    .expect("issuing gives birth");
+
+    assert_eq!(
+        invitation.decide(InvitationCommand::Accept { at: at(1_100) }, &Agent::System),
+        Ok(vec![InvitationEvent::Accepted {
+            scope: into_a_project
+        }]),
+        "members hear from the acceptance alone where to let the account join"
     );
 }

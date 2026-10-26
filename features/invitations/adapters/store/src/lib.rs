@@ -18,7 +18,10 @@ enum StoredInvitationEvent {
         #[serde(default)]
         by_an_operator: bool,
     },
-    Accepted,
+    Accepted {
+        #[serde(default)]
+        scope: StoredScope,
+    },
     Withdrawn,
     Declined {
         reason: StoredDeclineReason,
@@ -188,7 +191,9 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 scope: scope.into(),
                 by_an_operator: *by_an_operator,
             },
-            InvitationEvent::Accepted => Self::Accepted,
+            InvitationEvent::Accepted { scope } => Self::Accepted {
+                scope: scope.into(),
+            },
             InvitationEvent::Withdrawn => Self::Withdrawn,
             InvitationEvent::Declined { reason } => Self::Declined {
                 reason: (*reason).into(),
@@ -242,7 +247,9 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 scope: scope.into(),
                 by_an_operator,
             },
-            StoredInvitationEvent::Accepted => Self::Accepted,
+            StoredInvitationEvent::Accepted { scope } => Self::Accepted {
+                scope: scope.into(),
+            },
             StoredInvitationEvent::Withdrawn => Self::Withdrawn,
             StoredInvitationEvent::Declined { reason } => Self::Declined {
                 reason: reason.into(),
@@ -318,7 +325,12 @@ mod tests {
                     scope: a_project_s(Role::Reader),
                     by_an_operator: false,
                 },
-                InvitationEvent::Accepted,
+                InvitationEvent::Accepted {
+                    scope: Scope::Instance,
+                },
+                InvitationEvent::Accepted {
+                    scope: a_project_s(Role::Owner),
+                },
                 InvitationEvent::Withdrawn,
                 InvitationEvent::Declined {
                     reason: DeclineReason::AddressHasAccount,

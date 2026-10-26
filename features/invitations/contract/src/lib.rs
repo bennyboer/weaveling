@@ -64,7 +64,10 @@ pub enum InvitationEventDTO {
         by_an_operator: bool,
     },
     #[serde(rename = "ACCEPTED")]
-    Accepted,
+    Accepted {
+        #[serde(default)]
+        scope: ScopeDTO,
+    },
     #[serde(rename = "WITHDRAWN")]
     Withdrawn,
     #[serde(rename = "DECLINED")]

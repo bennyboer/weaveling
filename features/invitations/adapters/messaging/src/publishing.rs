@@ -23,7 +23,9 @@ fn body(event: &InvitationEvent) -> Option<InvitationEventDTO> {
             scope: to_scope_dto(scope),
             by_an_operator: *by_an_operator,
         },
-        InvitationEvent::Accepted => InvitationEventDTO::Accepted,
+        InvitationEvent::Accepted { scope } => InvitationEventDTO::Accepted {
+            scope: to_scope_dto(scope),
+        },
         InvitationEvent::Withdrawn => InvitationEventDTO::Withdrawn,
         InvitationEvent::Declined { reason } => InvitationEventDTO::Declined {
             reason: declined_for(*reason).to_owned(),
@@ -104,7 +106,12 @@ mod tests {
     fn everything_worth_publishing() -> Vec<(InvitationEvent, &'static str)> {
         vec![
             (an_issue(), ISSUED),
-            (InvitationEvent::Accepted, ACCEPTED),
+            (
+                InvitationEvent::Accepted {
+                    scope: Scope::Instance,
+                },
+                ACCEPTED,
+            ),
             (InvitationEvent::Withdrawn, WITHDRAWN),
             (
                 InvitationEvent::Declined {
@@ -153,7 +160,9 @@ mod tests {
             "accounts keep their tickets from it, the token's digest being harmless and the address judged so"
         );
         for event in [
-            InvitationEvent::Accepted,
+            InvitationEvent::Accepted {
+                scope: Scope::Instance,
+            },
             InvitationEvent::Withdrawn,
             InvitationEvent::Declined {
                 reason: DeclineReason::AddressHasAccount,
@@ -165,6 +174,32 @@ mod tests {
                 .to_string();
             assert!(!told.contains("ada@example.com"), "{told}");
         }
+    }
+
+    #[test]
+    fn an_acceptance_tells_into_which_project_as_what() {
+        let id = InvitationId::generate(at(1_000));
+
+        let accepted = eventsourcing_body(&recorded(
+            &id,
+            InvitationEvent::Accepted {
+                scope: Scope::Project {
+                    project: ProjectLink::from("project_1"),
+                    role: Role::Author,
+                },
+            },
+        ));
+
+        assert_eq!(
+            accepted,
+            InvitationEventDTO::Accepted {
+                scope: ScopeDTO::Project {
+                    project: "project_1".to_owned(),
+                    role: "author".to_owned(),
+                },
+            },
+            "members let whoever accepted join from it alone, the account being its agent"
+        );
     }
 
     #[test]

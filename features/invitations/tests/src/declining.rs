@@ -132,7 +132,7 @@ async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
     ));
     assert!(matches!(
         happened(&wired, &accepted).await.as_slice(),
-        [_, InvitationEvent::Accepted]
+        [_, InvitationEvent::Accepted { .. }]
     ));
 }
 

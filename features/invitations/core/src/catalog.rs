@@ -281,7 +281,12 @@ mod tests {
             at(2_000) + Duration::days(30),
             "and for a month why one was declined"
         );
-        for gone in [InvitationEvent::Accepted, InvitationEvent::Withdrawn] {
+        for gone in [
+            InvitationEvent::Accepted {
+                scope: Scope::Instance,
+            },
+            InvitationEvent::Withdrawn,
+        ] {
             let mut holding_long = Invitation::from_first(
                 &InvitationEvent::Issued {
                     to: ada(),

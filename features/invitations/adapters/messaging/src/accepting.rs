@@ -1,4 +1,4 @@
-use accounts_contract::{AccountEventDTO, SIGNED_UP_BY_INVITATION};
+use accounts_contract::{AccountEventDTO, INVITATION_TAKEN_UP};
 use async_trait::async_trait;
 use eventsourcing::Agent;
 use invitations_core::{InvitationId, InvitationsCore};
@@ -17,14 +17,13 @@ impl AcceptTakenUpInvitationListener {
 #[async_trait]
 impl Handler for AcceptTakenUpInvitationListener {
     const NAME: &'static str = "accept-taken-up-invitation";
-    const LISTENS_TO: &'static [&'static str] = &[SIGNED_UP_BY_INVITATION];
-    const WHEN_REFUSED: &'static str =
-        "An invitation an account was made by still shows as open to the operators.";
+    const LISTENS_TO: &'static [&'static str] = &[INVITATION_TAKEN_UP];
+    const WHEN_REFUSED: &'static str = "An invitation an account took up still shows as open, and nobody joins the project it was into.";
 
     async fn take_in(&self, message: &Message) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<AccountEventDTO>(message)?;
-        let AccountEventDTO::SignedUpByInvitation { invitation } = told.event.body else {
-            return Err("a sign-up by invitation names no invitation".into());
+        let AccountEventDTO::InvitationTakenUp { invitation } = told.event.body else {
+            return Err("an invitation taken up names no invitation".into());
         };
         let invitation: InvitationId = invitation.parse()?;
 
