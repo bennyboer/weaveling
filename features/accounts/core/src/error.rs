@@ -10,7 +10,7 @@ use crate::lock::InvalidLockReason;
 use crate::name::InvalidAccountName;
 use crate::password::InvalidPassword;
 use crate::secrets::SecretsError;
-use email::InvalidEmailAddress;
+use email::{EmailAddress, InvalidEmailAddress};
 
 #[derive(Debug, Error)]
 pub enum AccountsError {
@@ -46,6 +46,8 @@ pub enum AccountsError {
     InvitationInvalid,
     #[error("this invitation has run out; ask for a new one")]
     InvitationExpired,
+    #[error("this invitation was sent to {to}; sign in with that address to take it up")]
+    InvitationForAnotherAddress { to: EmailAddress },
     #[error("this address already has an account; sign in instead")]
     EmailAddressHasAccount,
     #[error("too many tries; wait {wait} before trying again")]

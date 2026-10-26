@@ -1,4 +1,6 @@
-use eventsourcing::{Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, Version};
+use eventsourcing::{
+    Agent, Aggregate, AggregateContext, AggregateId, Event, EventMetadata, EventName, Version,
+};
 use time::{Duration, OffsetDateTime};
 
 use crate::account::*;
@@ -85,11 +87,17 @@ fn an_account_signed_up_by_invitation_has_its_address_confirmed_from_the_start()
 
     assert_eq!(
         signed_up,
-        vec![AccountEvent::SignedUpByInvitation {
-            email,
-            name,
-            invitation: "invitation_1".to_owned(),
-        }]
+        vec![
+            AccountEvent::SignedUpByInvitation {
+                email,
+                name,
+                invitation: "invitation_1".to_owned(),
+            },
+            AccountEvent::InvitationTakenUp {
+                invitation: "invitation_1".to_owned(),
+            },
+        ],
+        "an invitation is taken up alike whether it signed its address up or not"
     );
     let account =
         Account::from_first(&signed_up[0], &stamped(1, at(1_000))).expect("signing up gives birth");
@@ -487,6 +495,41 @@ fn an_account_declines_an_invitation_to_its_address_and_stays_as_it_was() {
     );
     assert_eq!(
         Account::from_first(&declined[0], &stamped(1, at(1_000))),
+        None
+    );
+}
+
+#[test]
+fn an_account_takes_an_invitation_up_and_stays_as_it_was() {
+    let account = a_signed_up_account();
+    let taking_up = AccountCommand::TakeUpInvitation {
+        invitation: "invitation_1".to_owned(),
+    };
+
+    let taken_up = account
+        .decide(taking_up.clone(), &Agent::System)
+        .expect("an account takes up what was sent to its address");
+    let mut after = account.clone();
+    after.apply(&taken_up[0], &stamped(2, at(2_000)));
+
+    assert_eq!(
+        taken_up,
+        vec![AccountEvent::InvitationTakenUp {
+            invitation: "invitation_1".to_owned(),
+        }]
+    );
+    assert_eq!(
+        taken_up[0].name(),
+        EventName::of("INVITATION_TAKEN_UP"),
+        "the name is how the event is kept and told"
+    );
+    assert_eq!(after, account);
+    assert_eq!(
+        Account::begin(taking_up, &Agent::System),
+        Err(AccountError::NotSignedUpYet)
+    );
+    assert_eq!(
+        Account::from_first(&taken_up[0], &stamped(1, at(1_000))),
         None
     );
 }

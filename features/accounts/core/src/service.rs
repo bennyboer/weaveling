@@ -215,6 +215,45 @@ impl AccountService {
         self.opened(id, account).await
     }
 
+    pub async fn take_up_invitation(
+        &self,
+        id: &AccountId,
+        token: &str,
+    ) -> Result<InvitationTicket, AccountsError> {
+        let digest = InvitationToken::presented(token).digest();
+        let Some(
+            found @ InvitationTicket {
+                scope: InvitationScope::Project { .. },
+                ..
+            },
+        ) = self.invitation_tickets.find_ticket(&digest).await?
+        else {
+            return Err(AccountsError::InvitationInvalid);
+        };
+        if found.to != *self.get(id).await?.state.email() {
+            return Err(AccountsError::InvitationForAnotherAddress { to: found.to });
+        }
+        if self.clock.now() > found.until {
+            return Err(AccountsError::InvitationExpired);
+        }
+        let Some(ticket) = self.invitation_tickets.take_ticket(&digest).await? else {
+            return Err(AccountsError::InvitationInvalid);
+        };
+
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(id),
+                AccountCommand::TakeUpInvitation {
+                    invitation: ticket.invitation.clone(),
+                },
+                &id.acting(),
+            )
+            .await?;
+
+        Ok(ticket)
+    }
+
     pub async fn keep_invitation_ticket(
         &self,
         digest: &TokenDigest,

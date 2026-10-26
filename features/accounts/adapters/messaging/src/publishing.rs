@@ -31,6 +31,9 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
                 reason: declined_for(*reason).to_owned(),
             }
         }
+        AccountEvent::InvitationTakenUp { invitation } => AccountEventDTO::InvitationTakenUp {
+            invitation: invitation.clone(),
+        },
         AccountEvent::Snapshotted { .. } => return None,
     })
 }
@@ -52,8 +55,9 @@ mod tests {
     use std::collections::BTreeMap;
 
     use accounts_contract::{
-        BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, INVITATION_DECLINED, LOCKED,
-        PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR, UNLOCKED,
+        BECAME_OPERATOR, EMAIL_VERIFIED, EVERY_ACCOUNT, INVITATION_DECLINED, INVITATION_TAKEN_UP,
+        LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR,
+        UNLOCKED,
     };
     use accounts_core::{AccountId, AccountName, EmailAddress, KIND, LockReason};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
@@ -136,6 +140,12 @@ mod tests {
                     reason: DeclineReason::AddressHasAccount,
                 },
                 INVITATION_DECLINED,
+            ),
+            (
+                AccountEvent::InvitationTakenUp {
+                    invitation: "invitation_1".to_owned(),
+                },
+                INVITATION_TAKEN_UP,
             ),
         ]
     }
@@ -261,6 +271,25 @@ mod tests {
                 reason: "address-has-account".to_owned(),
             },
             "invitations hear from it whom to tell the operator about and why, and nothing personal"
+        );
+    }
+
+    #[test]
+    fn an_invitation_taken_up_says_which_invitation_it_was() {
+        let told = eventpublishing::published_in::<AccountEventDTO>(&published(
+            &an_account(),
+            AccountEvent::InvitationTakenUp {
+                invitation: "invitation_1".to_owned(),
+            },
+        ))
+        .expect("what we wrote must be readable");
+
+        assert_eq!(
+            told.event.body,
+            AccountEventDTO::InvitationTakenUp {
+                invitation: "invitation_1".to_owned()
+            },
+            "invitations hear from it that the invitation was accepted, and the account is the agent"
         );
     }
 

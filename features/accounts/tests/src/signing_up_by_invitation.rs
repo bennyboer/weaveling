@@ -88,6 +88,15 @@ async fn an_invitation_signs_its_address_up_confirmed_and_ready_to_sign_in() {
         &told[0].event,
         AccountEvent::SignedUpByInvitation { invitation, .. } if invitation == "invitation_1"
     ));
+    assert!(matches!(
+        &told[1].event,
+        AccountEvent::InvitationTakenUp { invitation } if invitation == "invitation_1"
+    ));
+    assert_eq!(
+        told[1].metadata.agent,
+        id.acting(),
+        "the new account takes it up itself"
+    );
 }
 
 #[tokio::test]

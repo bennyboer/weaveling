@@ -33,6 +33,9 @@ enum StoredAccountEvent {
         invitation: String,
         reason: StoredDeclineReason,
     },
+    InvitationTakenUp {
+        invitation: String,
+    },
     Snapshotted {
         email: String,
         name: String,
@@ -143,6 +146,9 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 invitation: invitation.clone(),
                 reason: (*reason).into(),
             },
+            AccountEvent::InvitationTakenUp { invitation } => Self::InvitationTakenUp {
+                invitation: invitation.clone(),
+            },
             AccountEvent::Snapshotted {
                 email,
                 name,
@@ -223,6 +229,9 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                     invitation,
                     reason: reason.into(),
                 }
+            }
+            StoredAccountEvent::InvitationTakenUp { invitation } => {
+                Self::InvitationTakenUp { invitation }
             }
             StoredAccountEvent::Snapshotted {
                 email,
@@ -314,6 +323,9 @@ mod tests {
             AccountEvent::InvitationDeclined {
                 invitation: "invitation_1".to_owned(),
                 reason: DeclineReason::AddressHasAccount,
+            },
+            AccountEvent::InvitationTakenUp {
+                invitation: "invitation_1".to_owned(),
             },
             AccountEvent::Snapshotted {
                 email,

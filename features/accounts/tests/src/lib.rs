@@ -50,6 +50,9 @@ mod signing_in;
 mod signing_up_by_invitation;
 
 #[cfg(test)]
+mod taking_up_invitations;
+
+#[cfg(test)]
 mod throttling;
 
 #[cfg(test)]

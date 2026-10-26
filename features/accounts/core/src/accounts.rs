@@ -78,6 +78,14 @@ impl AccountsCore {
             .await
     }
 
+    pub async fn take_up_invitation(
+        &self,
+        account: &AccountId,
+        token: &str,
+    ) -> Result<InvitationTicket, AccountsError> {
+        self.service.take_up_invitation(account, token).await
+    }
+
     pub async fn keep_invitation_ticket(
         &self,
         digest: &TokenDigest,

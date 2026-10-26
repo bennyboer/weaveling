@@ -108,6 +108,7 @@ pub const STOPPED_BEING_OPERATOR: &str = "account.stopped.being.operator";
 pub const LOCKED: &str = "account.locked";
 pub const UNLOCKED: &str = "account.unlocked";
 pub const INVITATION_DECLINED: &str = "account.invitation.declined";
+pub const INVITATION_TAKEN_UP: &str = "account.invitation.taken.up";
 pub const EVERY_ACCOUNT: &str = "account.#";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -131,6 +132,8 @@ pub enum AccountEventDTO {
     Unlocked { kind: String },
     #[serde(rename = "INVITATION_DECLINED")]
     InvitationDeclined { invitation: String, reason: String },
+    #[serde(rename = "INVITATION_TAKEN_UP")]
+    InvitationTakenUp { invitation: String },
 }
 
 pub mod sign_up {
