@@ -55,7 +55,6 @@ pub enum AccountEvent {
     SignedUpByInvitation {
         email: EmailAddress,
         name: AccountName,
-        invitation: String,
     },
     EmailVerified,
     PasswordReset,
@@ -186,11 +185,7 @@ impl Aggregate for Account {
                 name,
                 invitation,
             } => Ok(vec![
-                AccountEvent::SignedUpByInvitation {
-                    email,
-                    name,
-                    invitation: invitation.clone(),
-                },
+                AccountEvent::SignedUpByInvitation { email, name },
                 AccountEvent::InvitationTakenUp { invitation },
             ]),
             AccountCommand::Verify
@@ -215,7 +210,7 @@ impl Aggregate for Account {
                 operator: false,
                 locks: BTreeMap::new(),
             }),
-            AccountEvent::SignedUpByInvitation { email, name, .. } => Some(Self {
+            AccountEvent::SignedUpByInvitation { email, name } => Some(Self {
                 email: email.clone(),
                 name: name.clone(),
                 verified: true,

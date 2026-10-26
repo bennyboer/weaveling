@@ -10,11 +10,7 @@ pub fn message_for(happened: &Recorded<AccountEvent>) -> Option<Message> {
 fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
     Some(match event {
         AccountEvent::SignedUp { .. } => AccountEventDTO::SignedUp,
-        AccountEvent::SignedUpByInvitation { invitation, .. } => {
-            AccountEventDTO::SignedUpByInvitation {
-                invitation: invitation.clone(),
-            }
-        }
+        AccountEvent::SignedUpByInvitation { .. } => AccountEventDTO::SignedUpByInvitation,
         AccountEvent::EmailVerified => AccountEventDTO::EmailVerified,
         AccountEvent::PasswordReset => AccountEventDTO::PasswordReset,
         AccountEvent::BecameOperator => AccountEventDTO::BecameOperator,
@@ -105,11 +101,7 @@ mod tests {
     fn a_sign_up_by_invitation() -> AccountEvent {
         let (email, name) = ada();
 
-        AccountEvent::SignedUpByInvitation {
-            email,
-            name,
-            invitation: "invitation_1".to_owned(),
-        }
+        AccountEvent::SignedUpByInvitation { email, name }
     }
 
     fn a_lock() -> AccountEvent {
@@ -237,7 +229,7 @@ mod tests {
     }
 
     #[test]
-    fn a_sign_up_by_invitation_says_which_invitation_was_taken_up() {
+    fn a_sign_up_by_invitation_says_only_that_it_was() {
         let told = eventpublishing::published_in::<AccountEventDTO>(&published(
             &an_account(),
             a_sign_up_by_invitation(),
@@ -246,10 +238,8 @@ mod tests {
 
         assert_eq!(
             told.event.body,
-            AccountEventDTO::SignedUpByInvitation {
-                invitation: "invitation_1".to_owned()
-            },
-            "invitations hear from it that the invitation was accepted"
+            AccountEventDTO::SignedUpByInvitation,
+            "which invitation was taken up is told once, as taken up"
         );
     }
 

@@ -86,7 +86,7 @@ async fn an_invitation_signs_its_address_up_confirmed_and_ready_to_sign_in() {
         .expect("reading should succeed");
     assert!(matches!(
         &told[0].event,
-        AccountEvent::SignedUpByInvitation { invitation, .. } if invitation == "invitation_1"
+        AccountEvent::SignedUpByInvitation { email, .. } if email.as_str() == ADA
     ));
     assert!(matches!(
         &told[1].event,

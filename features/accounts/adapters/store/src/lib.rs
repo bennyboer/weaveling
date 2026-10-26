@@ -16,7 +16,6 @@ enum StoredAccountEvent {
     SignedUpByInvitation {
         email: String,
         name: String,
-        invitation: String,
     },
     EmailVerified,
     PasswordReset,
@@ -122,14 +121,9 @@ impl From<&AccountEvent> for StoredAccountEvent {
                 email: email.to_string(),
                 name: name.to_string(),
             },
-            AccountEvent::SignedUpByInvitation {
-                email,
-                name,
-                invitation,
-            } => Self::SignedUpByInvitation {
+            AccountEvent::SignedUpByInvitation { email, name } => Self::SignedUpByInvitation {
                 email: email.to_string(),
                 name: name.to_string(),
-                invitation: invitation.clone(),
             },
             AccountEvent::EmailVerified => Self::EmailVerified,
             AccountEvent::PasswordReset => Self::PasswordReset,
@@ -203,17 +197,9 @@ impl TryFrom<StoredAccountEvent> for AccountEvent {
                 let (email, name) = readable(&email, &name)?;
                 Self::SignedUp { email, name }
             }
-            StoredAccountEvent::SignedUpByInvitation {
-                email,
-                name,
-                invitation,
-            } => {
+            StoredAccountEvent::SignedUpByInvitation { email, name } => {
                 let (email, name) = readable(&email, &name)?;
-                Self::SignedUpByInvitation {
-                    email,
-                    name,
-                    invitation,
-                }
+                Self::SignedUpByInvitation { email, name }
             }
             StoredAccountEvent::EmailVerified => Self::EmailVerified,
             StoredAccountEvent::PasswordReset => Self::PasswordReset,
@@ -307,7 +293,6 @@ mod tests {
             AccountEvent::SignedUpByInvitation {
                 email: email.clone(),
                 name: name.clone(),
-                invitation: "invitation_1".to_owned(),
             },
             AccountEvent::EmailVerified,
             AccountEvent::PasswordReset,
@@ -352,8 +337,8 @@ mod tests {
         for refused in [
             json!({ "SignedUp": { "email": "ada", "name": "Ada" } }),
             json!({ "SignedUp": { "email": "ada@example.com", "name": "  " } }),
-            json!({ "SignedUpByInvitation": { "email": "ada", "name": "Ada", "invitation": "invitation_1" } }),
-            json!({ "SignedUpByInvitation": { "email": "ada@example.com", "name": "  ", "invitation": "invitation_1" } }),
+            json!({ "SignedUpByInvitation": { "email": "ada", "name": "Ada" } }),
+            json!({ "SignedUpByInvitation": { "email": "ada@example.com", "name": "  " } }),
             json!({ "Locked": { "kind": "operator", "reason": " " } }),
             json!({ "Snapshotted": { "email": "ada@example.com", "name": "Ada", "verified": true, "signed_up_at": "1970-01-01T00:16:40Z", "operator": false, "locks": [{ "kind": "operator", "reason": " ", "since": "1970-01-01T00:16:40Z" }] } }),
             json!({ "Snapshotted": { "email": "ada", "name": "Ada", "verified": true, "signed_up_at": "1970-01-01T00:16:40Z" } }),

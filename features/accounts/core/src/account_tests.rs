@@ -88,11 +88,7 @@ fn an_account_signed_up_by_invitation_has_its_address_confirmed_from_the_start()
     assert_eq!(
         signed_up,
         vec![
-            AccountEvent::SignedUpByInvitation {
-                email,
-                name,
-                invitation: "invitation_1".to_owned(),
-            },
+            AccountEvent::SignedUpByInvitation { email, name },
             AccountEvent::InvitationTakenUp {
                 invitation: "invitation_1".to_owned(),
             },

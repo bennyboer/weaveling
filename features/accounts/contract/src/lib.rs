@@ -122,7 +122,7 @@ pub enum AccountEventDTO {
     #[serde(rename = "SIGNED_UP")]
     SignedUp,
     #[serde(rename = "SIGNED_UP_BY_INVITATION")]
-    SignedUpByInvitation { invitation: String },
+    SignedUpByInvitation,
     #[serde(rename = "EMAIL_VERIFIED")]
     EmailVerified,
     #[serde(rename = "PASSWORD_RESET")]

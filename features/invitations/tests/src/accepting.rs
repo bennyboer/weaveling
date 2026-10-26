@@ -149,7 +149,7 @@ async fn a_taking_up_naming_no_invitation_is_refused() {
             wiring::at(1_700_000_100),
         ),
         told(
-            json!({ "version": 0, "name": "SIGNED_UP_BY_INVITATION", "invitation": "not-an-id" }),
+            json!({ "version": 0, "name": "SIGNED_UP_BY_INVITATION" }),
             wiring::at(1_700_000_100),
         ),
         taken_up(
