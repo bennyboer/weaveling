@@ -211,6 +211,7 @@ pub async fn sign_out() -> Result<(), ApiError> {
 
 fn as_signed_in_account(signed_in: SignedInDTO) -> SignedInAccount {
     SignedInAccount {
+        account: signed_in.account,
         name: signed_in.name,
         email: signed_in.email,
         operator: signed_in.operator,

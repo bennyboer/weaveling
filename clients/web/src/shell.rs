@@ -4,6 +4,9 @@ use leptos::{IntoView, view};
 use leptos_router::components::A;
 
 use crate::accounts;
+use crate::accounts::{CurrentSession, SignInState};
+use crate::icons;
+use crate::icons::Icon;
 use crate::projects::open_project::OpenProject;
 use crate::projects::project_details;
 use crate::refusals::alarm;
@@ -101,6 +104,7 @@ fn whereabouts(inside: Inside) -> impl IntoView {
                 .attr("title", shown)
                 .child(html::span().child(shown)),
             project_details::project_details(id),
+            members_link(project.clone()),
         )),
         html::nav()
             .class("views")
@@ -117,6 +121,25 @@ fn whereabouts(inside: Inside) -> impl IntoView {
                 .collect::<Vec<_>>(),
             ),
     )
+}
+
+fn members_link(project: String) -> impl IntoView {
+    let session = expect_context::<CurrentSession>();
+
+    move || {
+        matches!(session.state(), SignInState::SignedIn(_)).then(|| {
+            view! {
+                <A
+                    href=route::members(&project)
+                    attr:class="members-link"
+                    attr:aria-label=speech::said("members-link")
+                    attr:title=speech::said("members-link")
+                >
+                    {icons::mark(Icon::People)}
+                </A>
+            }
+        })
+    }
 }
 
 fn tab(view: Viewing, project: String, here: Option<Viewing>) -> impl IntoView {

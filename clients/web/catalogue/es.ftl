@@ -537,3 +537,13 @@ refused-invitation-id-invalid = Este no es el identificador de una invitación.
 refused-invitation-not-found = Esa invitación no existe.
 refused-invitation-already-accepted = Esta invitación ya fue aceptada.
 refused-too-late-to-try-again = Este cambio es demasiado antiguo para volver a intentarlo.
+
+members-link = Miembros
+members-heading = Miembros
+members-hint = Quién puede leer y escribir en este proyecto.
+members-you = (tú)
+members-unnamed = Nombre aún desconocido
+members-role-owner = Propietario/a
+members-role-author = Autor/a
+members-role-reader = Lector/a
+members-roles = Quien es propietario/a invita, cambia los roles y borra el proyecto. Quien es autor/a lee y escribe. Quien es lector/a solo lee.

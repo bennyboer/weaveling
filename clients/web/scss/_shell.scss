@@ -52,7 +52,7 @@
     min-width: 0;
   }
 
-  .project-details-button {
+  :is(.project-details-button, .members-link) {
     display: grid;
     place-items: center;
     width: 1.9rem;

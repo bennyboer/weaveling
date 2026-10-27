@@ -19,6 +19,7 @@ use crate::http;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedInAccount {
+    pub account: String,
     pub name: String,
     pub email: String,
     pub operator: bool,
@@ -174,6 +175,7 @@ mod tests {
         assert_eq!(screen_for(&SignInState::NoAccounts), Screen::Work);
         assert_eq!(
             screen_for(&SignInState::SignedIn(SignedInAccount {
+                account: "account_1".to_owned(),
                 name: "Ada".to_owned(),
                 email: "ada@example.com".to_owned(),
                 operator: false,

@@ -11,6 +11,7 @@ mod instance;
 mod invitations;
 mod kept;
 mod live;
+mod members;
 mod moment;
 mod nearness;
 mod outline;

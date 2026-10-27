@@ -1,6 +1,7 @@
 mod board;
 mod idea;
 mod ideas;
+mod members;
 mod missing;
 mod outline;
 mod project_page;
@@ -19,6 +20,7 @@ use crate::accounts::{CurrentSession, Screen, SignInState};
 use crate::app::board::BoardPage;
 use crate::app::idea::IdeaPage;
 use crate::app::ideas::IdeasPage;
+use crate::app::members::MembersPage;
 use crate::app::missing::MissingPage;
 use crate::app::outline::OutlinePage;
 use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
@@ -83,6 +85,7 @@ fn work(overlays: Overlays, session: CurrentSession) -> impl IntoView {
             <Route path=path!("/projects/:project/board") view=BoardPage />
             <Route path=path!("/projects/:project/outline") view=OutlinePage />
             <Route path=path!("/projects/:project/ideas") view=IdeasPage />
+            <Route path=path!("/projects/:project/members") view=MembersPage />
             <Route path=path!("/projects/:project/write") view=WritePage />
             <Route path=path!("/projects/:project/write/loose") view=LooseScenesPage />
             <Route path=path!("/projects/:project/ideas/:idea") view=IdeaPage />
