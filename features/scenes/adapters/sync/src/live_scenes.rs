@@ -6,6 +6,7 @@ use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use authorizing::AccessWatch;
 use eventsourcing::Agent;
 use quotation::QuotationMarks;
 use scenes_core::{
@@ -192,6 +193,12 @@ impl Presence {
 
     pub async fn access(&self, agent: &Agent) -> Result<Access, ScenesError> {
         self.shared.scenes.access(&self.scene.scene, agent).await
+    }
+
+    pub fn watch_access(&self) -> AccessWatch {
+        self.shared
+            .scenes
+            .watch_access(self.scene.scene.project().as_str())
     }
 
     pub async fn persist(&self, update: &[u8]) -> Result<(), ScenesError> {

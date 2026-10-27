@@ -42,9 +42,14 @@ async fn stay(socket: WebSocket, live: LiveScenes, agent: Agent) {
     let writing = tokio::spawn(write_out(sink, outgoing));
     let mut connection = Connection::new(live, agent, to_client);
 
-    while let Some(Ok(frame)) = stream.next().await {
-        if let Frame::Binary(bytes) = frame {
-            connection.hear(&bytes).await;
+    loop {
+        tokio::select! {
+            heard = stream.next() => match heard {
+                Some(Ok(Frame::Binary(bytes))) => connection.hear(&bytes).await,
+                Some(Ok(_)) => {}
+                Some(Err(_)) | None => break,
+            },
+            scene = connection.access_changed() => connection.ask_again(scene).await,
         }
     }
 

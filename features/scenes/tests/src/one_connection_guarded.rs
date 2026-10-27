@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration as Wait;
 
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
+use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum_test::{TestServer, WsMessage};
 use clock::FixedClock;
@@ -24,6 +24,7 @@ const READER: [Act; 1] = [Act::Read];
 struct Roles {
     held: Mutex<HashMap<String, Vec<Act>>>,
     down: Mutex<bool>,
+    changes: AccessChanges,
 }
 
 impl Roles {
@@ -32,6 +33,11 @@ impl Roles {
             .lock()
             .expect("never poisoned")
             .insert(account.to_owned(), acts.to_vec());
+    }
+
+    fn change(&self, account: &str, acts: &[Act]) {
+        self.give(account, acts);
+        self.access_changed(PROJECT);
     }
 }
 
@@ -56,6 +62,14 @@ impl Authorizer for Roles {
 
     async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
         Ok(Readable::Everything)
+    }
+
+    fn access_changed(&self, project: &str) {
+        self.changes.tell(project);
+    }
+
+    fn watch_access(&self, project: &str) -> AccessWatch {
+        self.changes.watch(project)
     }
 }
 
@@ -298,5 +312,125 @@ async fn a_reader_is_seen_by_the_others_and_asks_who_is_there() {
         everything(&mut heard_by_ada).await,
         vec![Message::Awareness(vec![1, 2, 3]), Message::WhoIsHere],
         "where a reader's cursor is shows for everyone in the scene"
+    );
+}
+
+async fn asked_again(connection: &mut Connection) {
+    let scene = tokio::time::timeout(Wait::from_secs(1), connection.access_changed())
+        .await
+        .expect("a change to the members is heard");
+    connection.ask_again(scene).await;
+}
+
+#[tokio::test]
+async fn a_member_removed_is_refused_the_scene_they_had_joined_and_heard_no_more() {
+    let guarded = guarded().await;
+    let (mut ada, mut heard_by_ada) = guarded.joined_as("account_ada").await;
+    let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
+    everything(&mut heard_by_ada).await;
+    everything(&mut heard_by_bo).await;
+
+    guarded.roles.change("account_bo", &[]);
+    asked_again(&mut bo).await;
+    asked_again(&mut ada).await;
+
+    let bytes = tokio::time::timeout(Wait::from_secs(1), heard_by_bo.recv())
+        .await
+        .expect("told while it is fresh")
+        .expect("an answer");
+    assert_eq!(
+        Envelope::decode(&bytes).expect("a whole envelope"),
+        Envelope::Refused(guarded.scene.clone())
+    );
+    send(&mut bo, &guarded.scene, Message::Awareness(vec![1, 2, 3])).await;
+    send(
+        &mut ada,
+        &guarded.scene,
+        Message::JustHappened(a_paragraph("Not for Bo.")),
+    )
+    .await;
+    assert!(everything(&mut heard_by_ada).await.is_empty());
+    assert!(
+        everything(&mut heard_by_bo).await.is_empty(),
+        "nothing more of the scene reaches whoever left it"
+    );
+    assert_eq!(guarded.text().await, "Not for Bo.", "the owner writes on");
+}
+
+#[tokio::test]
+async fn a_reader_made_an_author_writes_and_an_author_made_a_reader_no_longer_does() {
+    let guarded = guarded().await;
+    let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
+    everything(&mut heard_by_bo).await;
+
+    guarded.roles.change("account_bo", &[Act::Read, Act::Write]);
+    asked_again(&mut bo).await;
+    send(
+        &mut bo,
+        &guarded.scene,
+        Message::JustHappened(a_paragraph("Bo writes now.")),
+    )
+    .await;
+    assert_eq!(guarded.text().await, "Bo writes now.");
+
+    guarded.roles.change("account_bo", &READER);
+    asked_again(&mut bo).await;
+    send(
+        &mut bo,
+        &guarded.scene,
+        Message::JustHappened(a_paragraph("And no more.")),
+    )
+    .await;
+    assert_eq!(guarded.text().await, "Bo writes now.");
+}
+
+#[tokio::test]
+async fn when_who_may_stay_cannot_be_asked_the_scene_is_refused() {
+    let guarded = guarded().await;
+    let (mut bo, mut heard_by_bo) = guarded.joined_as("account_bo").await;
+    everything(&mut heard_by_bo).await;
+
+    *guarded.roles.down.lock().expect("never poisoned") = true;
+    guarded.roles.access_changed(PROJECT);
+    asked_again(&mut bo).await;
+
+    let bytes = tokio::time::timeout(Wait::from_secs(1), heard_by_bo.recv())
+        .await
+        .expect("told while it is fresh")
+        .expect("an answer");
+    assert_eq!(
+        Envelope::decode(&bytes).expect("a whole envelope"),
+        Envelope::Refused(guarded.scene.clone())
+    );
+}
+
+#[tokio::test]
+async fn the_socket_asks_again_when_the_members_change() {
+    let guarded = guarded().await;
+    let server = TestServer::builder()
+        .http_transport()
+        .build(scenes_sync::router(guarded.live.clone()).layer(Extension(account("account_bo"))));
+    let mut socket = server
+        .get_websocket("/scenes/sync")
+        .await
+        .into_websocket()
+        .await;
+    socket
+        .send_message(WsMessage::Binary(
+            Envelope::Join(guarded.scene.clone()).encode().into(),
+        ))
+        .await;
+    _ = tokio::time::timeout(Wait::from_secs(1), socket.receive_bytes())
+        .await
+        .expect("greeted while it is fresh");
+
+    guarded.roles.change("account_bo", &[]);
+
+    let bytes = tokio::time::timeout(Wait::from_secs(1), socket.receive_bytes())
+        .await
+        .expect("told while it is fresh");
+    assert_eq!(
+        Envelope::decode(&bytes).expect("a whole envelope"),
+        Envelope::Refused(guarded.scene.clone())
     );
 }

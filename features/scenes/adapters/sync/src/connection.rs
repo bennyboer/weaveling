@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+use std::future;
 use std::sync::Arc;
 
+use authorizing::AccessWatch;
 use eventsourcing::Agent;
+use futures_util::future::select_all;
 use scenes_core::{Access, SceneId};
 use tokio::sync::mpsc::UnboundedSender;
 use tracing::warn;
@@ -15,7 +18,14 @@ pub struct Connection {
     live: LiveScenes,
     agent: Agent,
     to_client: UnboundedSender<Vec<u8>>,
-    joined: HashMap<String, (Peer, Presence, Access)>,
+    joined: HashMap<String, Joined>,
+}
+
+struct Joined {
+    peer: Peer,
+    present: Presence,
+    access: Access,
+    watch: AccessWatch,
 }
 
 impl Connection {
@@ -52,17 +62,17 @@ impl Connection {
             Err(_) => None,
         };
         let admitted = match present {
-            Some(present) => match present.access(&self.agent).await {
-                Ok(Access::Stranger) => None,
-                Ok(access) => Some((present, access)),
-                Err(problem) => {
+            Some(present) => match (present.watch_access(), present.access(&self.agent).await) {
+                (_, Ok(Access::Stranger)) => None,
+                (watch, Ok(access)) => Some((present, access, watch)),
+                (_, Err(problem)) => {
                     warn!(%scene, %problem, "who may join a scene could not be asked");
                     None
                 }
             },
             None => None,
         };
-        let Some((present, access)) = admitted else {
+        let Some((present, access, watch)) = admitted else {
             let _ = self.to_client.send(Envelope::Refused(scene).encode());
             return;
         };
@@ -85,11 +95,56 @@ impl Connection {
             &present,
         );
         peer.deliver(&present.greet(), &present);
-        self.joined.insert(scene, (peer, present, access));
+        self.joined.insert(
+            scene,
+            Joined {
+                peer,
+                present,
+                access,
+                watch,
+            },
+        );
+    }
+
+    pub async fn access_changed(&mut self) -> String {
+        if self.joined.is_empty() {
+            return future::pending().await;
+        }
+        let watching = self.joined.iter_mut().map(|(scene, joined)| {
+            Box::pin(async move {
+                joined.watch.changed().await;
+                scene.clone()
+            })
+        });
+
+        select_all(watching).await.0
+    }
+
+    pub async fn ask_again(&mut self, scene: String) {
+        let Some(joined) = self.joined.get_mut(&scene) else {
+            return;
+        };
+
+        match joined.present.access(&self.agent).await {
+            Ok(Access::Stranger) => {}
+            Ok(access) => {
+                joined.access = access;
+                return;
+            }
+            Err(problem) => warn!(%scene, %problem, "who may stay in a scene could not be asked"),
+        }
+        self.joined.remove(&scene);
+        let _ = self.to_client.send(Envelope::Refused(scene).encode());
     }
 
     async fn carry(&mut self, scene: &str, frame: &[u8]) {
-        let Some((peer, present, access)) = self.joined.get(scene) else {
+        let Some(Joined {
+            peer,
+            present,
+            access,
+            ..
+        }) = self.joined.get(scene)
+        else {
             warn!(%scene, "ignoring a frame for a scene this connection has not joined");
             return;
         };
