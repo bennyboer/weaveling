@@ -547,3 +547,6 @@ members-role-owner = Eigentümer:in
 members-role-author = Autor:in
 members-role-reader = Leser:in
 members-roles = Eigentümer:innen laden ein, ändern Rollen und löschen das Projekt. Autor:innen lesen und schreiben. Leser:innen lesen nur.
+members-role-of = Rolle von { $name }
+members-remove = Entfernen
+members-leave = Verlassen

@@ -547,3 +547,6 @@ members-role-owner = Owner
 members-role-author = Author
 members-role-reader = Reader
 members-roles = Owners invite, change roles and delete the project. Authors read and write. Readers only read.
+members-role-of = Role of { $name }
+members-remove = Remove
+members-leave = Leave

@@ -18,6 +18,20 @@ pub struct Member {
 }
 
 impl Role {
+    pub const ALL: [Role; 3] = [Role::Owner, Role::Author, Role::Reader];
+
+    pub fn named(self) -> &'static str {
+        match self {
+            Self::Owner => role::OWNER,
+            Self::Author => role::AUTHOR,
+            Self::Reader => role::READER,
+        }
+    }
+
+    pub fn of(named: &str) -> Option<Role> {
+        role_of(named).ok()
+    }
+
     pub fn message(self) -> &'static str {
         match self {
             Self::Owner => "members-role-owner",
@@ -75,6 +89,18 @@ mod tests {
                 })
             );
         }
+    }
+
+    #[test]
+    fn every_role_goes_by_the_name_the_contract_gives_it() {
+        for chosen in Role::ALL {
+            assert_eq!(Role::of(chosen.named()), Some(chosen));
+        }
+        assert_eq!(
+            Role::ALL.map(Role::named),
+            [role::OWNER, role::AUTHOR, role::READER]
+        );
+        assert_eq!(Role::of("editor"), None);
     }
 
     #[test]

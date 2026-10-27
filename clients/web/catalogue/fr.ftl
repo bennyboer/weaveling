@@ -547,3 +547,6 @@ members-role-owner = Propriétaire
 members-role-author = Auteur·rice
 members-role-reader = Lecteur·rice
 members-roles = Les propriétaires invitent, changent les rôles et suppriment le projet. Les auteur·rices lisent et écrivent. Les lecteur·rices lisent seulement.
+members-role-of = Rôle de { $name }
+members-remove = Retirer
+members-leave = Quitter

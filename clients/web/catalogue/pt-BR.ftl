@@ -547,3 +547,6 @@ members-role-owner = Dono(a)
 members-role-author = Autor(a)
 members-role-reader = Leitor(a)
 members-roles = Quem é dono(a) convida, muda os papéis e exclui o projeto. Quem é autor(a) lê e escreve. Quem é leitor(a) só lê.
+members-role-of = Papel de { $name }
+members-remove = Remover
+members-leave = Sair
