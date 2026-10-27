@@ -4,6 +4,7 @@ use leptos_router::components::{A, Redirect};
 
 use crate::accounts::{CurrentSession, SignInState, listing};
 use crate::invitations;
+use crate::invitations::service::InvitedInto;
 use crate::route;
 use crate::setup;
 use crate::shell;
@@ -56,7 +57,9 @@ fn operating(section: Section) -> impl IntoView {
         sections(),
         match section {
             Section::Accounts => listing::accounts_listing().into_any(),
-            Section::Invitations => invitations::listing::invitations_listing().into_any(),
+            Section::Invitations => {
+                invitations::listing::invitations_listing(InvitedInto::Instance).into_any()
+            }
         },
     )
 }

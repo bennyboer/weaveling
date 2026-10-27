@@ -3,7 +3,8 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, html};
 
 use crate::invitations::invited::Invited;
-use crate::invitations::listed::{DeclineReason, ListedInvitation, Status};
+use crate::invitations::listed::{DeclineReason, ListedInvitation, Scope, Status};
+use crate::invitations::service::InvitedInto;
 use crate::moment;
 use crate::problem;
 use crate::speech;
@@ -17,8 +18,8 @@ fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
     speech::say_with(key, &told)
 }
 
-pub fn invitations_listing() -> impl IntoView {
-    let invited = Invited::asked();
+pub fn invitations_listing(into: InvitedInto) -> impl IntoView {
+    let invited = Invited::asked(into);
 
     (
         inviting(invited),
@@ -59,7 +60,9 @@ fn inviting(invited: Invited) -> impl IntoView {
         .class("invite")
         .on(ev::submit, move |event| {
             event.prevent_default();
-            invited.invite(email.get_untracked(), move || email.set(String::new()));
+            invited.invite(email.get_untracked(), Scope::Instance, move || {
+                email.set(String::new())
+            });
         })
         .child((
             html::label().class("field").child((
@@ -89,7 +92,8 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
     let until = moment::human_time(invitation.until);
     let withdrawable = invitation.status == Status::Open;
     let id = invitation.id.clone();
-    let again = (invitation.status == Status::Expired).then(|| invitation.email.clone());
+    let again = (invitation.status == Status::Expired)
+        .then(|| (invitation.email.clone(), invitation.scope.clone()));
     let (mark, told) = match invitation.status {
         Status::Open => (
             "mark",
@@ -114,11 +118,13 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
             .class("marks")
             .child(html::span().class(mark).child(told)),
         html::div().class("actions").child((
-            again.map(|email| {
+            again.map(|(email, scope)| {
                 html::button()
                     .r#type("button")
                     .disabled(move || invited.inviting.get())
-                    .on(ev::click, move |_| invited.invite(email.clone(), || {}))
+                    .on(ev::click, move |_| {
+                        invited.invite(email.clone(), scope.clone(), || {})
+                    })
                     .child(speech::said("instance-invitation-invite-again"))
             }),
             withdrawable.then(|| {

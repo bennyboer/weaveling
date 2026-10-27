@@ -1,8 +1,11 @@
-use invitations_contract::{InvitationPageDTO, InvitationSummaryDTO, decline_reason, status};
+use invitations_contract::{
+    InvitationPageDTO, InvitationSummaryDTO, ScopeDTO, decline_reason, status,
+};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
 use crate::http::ApiError;
+use crate::members::listed::Role;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
@@ -17,12 +20,41 @@ pub enum DeclineReason {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Scope {
+    Instance,
+    Project { project: String, role: Role },
+}
+
+impl Scope {
+    pub fn told(&self) -> ScopeDTO {
+        match self {
+            Self::Instance => ScopeDTO::Instance,
+            Self::Project { project, role } => ScopeDTO::Project {
+                project: project.clone(),
+                role: role.named().to_owned(),
+            },
+        }
+    }
+
+    fn read(told: ScopeDTO) -> Result<Self, ApiError> {
+        match told {
+            ScopeDTO::Instance => Ok(Self::Instance),
+            ScopeDTO::Project { project, role } => Ok(Self::Project {
+                role: Role::of(&role).ok_or(ApiError::Unexpected)?,
+                project,
+            }),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListedInvitation {
     pub id: String,
     pub email: String,
     pub issued_at: OffsetDateTime,
     pub until: OffsetDateTime,
     pub status: Status,
+    pub scope: Scope,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +80,7 @@ fn status_of(told: &str, declined_for: Option<&str>) -> Result<Status, ApiError>
 
 pub fn listed(summary: InvitationSummaryDTO) -> Result<ListedInvitation, ApiError> {
     Ok(ListedInvitation {
+        scope: Scope::read(summary.scope)?,
         status: status_of(&summary.status, summary.declined_for.as_deref())?,
         issued_at: moment(&summary.issued_at)?,
         until: moment(&summary.until)?,
@@ -71,7 +104,6 @@ impl InvitationPage {
 
 #[cfg(test)]
 mod tests {
-    use invitations_contract::ScopeDTO;
     use time::macros::datetime;
 
     use super::*;
@@ -113,6 +145,7 @@ mod tests {
                     issued_at: datetime!(2026-10-23 08:00 UTC),
                     until: datetime!(2026-10-30 08:00 UTC),
                     status: Status::Open,
+                    scope: Scope::Instance,
                 }],
                 next: Some("invitation_1".to_owned()),
             }
@@ -129,6 +162,57 @@ mod tests {
     }
 
     #[test]
+    fn a_scope_sent_is_read_back_as_it_was() {
+        for scope in [
+            Scope::Instance,
+            Scope::Project {
+                project: "project_1".to_owned(),
+                role: Role::Owner,
+            },
+            Scope::Project {
+                project: "project_1".to_owned(),
+                role: Role::Reader,
+            },
+        ] {
+            assert_eq!(Scope::read(scope.told()), Ok(scope));
+        }
+        assert_eq!(
+            Scope::Project {
+                project: "project_1".to_owned(),
+                role: Role::Author,
+            }
+            .told(),
+            ScopeDTO::Project {
+                project: "project_1".to_owned(),
+                role: "author".to_owned(),
+            }
+        );
+    }
+
+    #[test]
+    fn a_project_s_invitation_tells_the_project_and_the_role_it_invites_as() {
+        for (named, told) in [
+            ("owner", Role::Owner),
+            ("author", Role::Author),
+            ("reader", Role::Reader),
+        ] {
+            let mut summary = grace("open", None);
+            summary.scope = ScopeDTO::Project {
+                project: "project_1".to_owned(),
+                role: named.to_owned(),
+            };
+
+            assert_eq!(
+                listed(summary).map(|invitation| invitation.scope),
+                Ok(Scope::Project {
+                    project: "project_1".to_owned(),
+                    role: told,
+                })
+            );
+        }
+    }
+
+    #[test]
     fn a_status_or_a_moment_nobody_declared_is_unexpected() {
         let mut broken = grace("open", None);
         broken.until = "next week".to_owned();
@@ -139,6 +223,13 @@ mod tests {
             grace("declined", Some("had a bad day")),
             grace("open", Some("address-has-account")),
             broken,
+            InvitationSummaryDTO {
+                scope: ScopeDTO::Project {
+                    project: "project_1".to_owned(),
+                    role: "editor".to_owned(),
+                },
+                ..grace("open", None)
+            },
         ] {
             assert_eq!(the_status(unreadable), Err(ApiError::Unexpected));
         }

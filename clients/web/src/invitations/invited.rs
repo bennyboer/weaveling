@@ -2,11 +2,13 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::http::ApiError;
-use crate::invitations::listed::ListedInvitation;
+use crate::invitations::listed::{ListedInvitation, Scope};
 use crate::invitations::service;
+use crate::invitations::service::InvitedInto;
 
 #[derive(Clone, Copy)]
 pub(super) struct Invited {
+    pub(super) into: StoredValue<InvitedInto>,
     pub(super) invitations: RwSignal<Vec<ListedInvitation>>,
     pub(super) next: RwSignal<Option<String>>,
     pub(super) loading: RwSignal<bool>,
@@ -17,8 +19,9 @@ pub(super) struct Invited {
 }
 
 impl Invited {
-    pub(super) fn asked() -> Self {
+    pub(super) fn asked(into: InvitedInto) -> Self {
         let invited = Self {
+            into: StoredValue::new(into),
             invitations: RwSignal::new(Vec::new()),
             next: RwSignal::new(None),
             loading: RwSignal::new(false),
@@ -37,8 +40,9 @@ impl Invited {
             return;
         }
         self.loading.set(true);
+        let into = self.into.get_value();
         task::spawn_local(async move {
-            match service::list_invitations(after.as_deref()).await {
+            match service::list_invitations(&into, after.as_deref()).await {
                 Ok(page) => {
                     self.invitations
                         .update(|listed| listed.extend(page.invitations));
@@ -51,14 +55,14 @@ impl Invited {
         });
     }
 
-    pub(super) fn invite(self, email: String, done: impl Fn() + 'static) {
+    pub(super) fn invite(self, email: String, scope: Scope, done: impl Fn() + 'static) {
         if self.inviting.get_untracked() {
             return;
         }
         self.inviting.set(true);
         self.invite_refused.set(None);
         task::spawn_local(async move {
-            match service::invite(&email).await {
+            match service::invite(&email, &scope).await {
                 Ok(invitation) => {
                     self.invitations
                         .update(|listed| listed.insert(0, invitation));
