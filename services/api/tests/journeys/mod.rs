@@ -808,6 +808,15 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
         .await,
         "invitations accept what accounts took up, and members let her join as she was invited"
     );
+    let listed: Value = server.get(&at).await.json();
+    assert_eq!(
+        listed,
+        json!([
+            { "account": listed[0]["account"], "role": "owner", "name": "Ada" },
+            { "account": listed[1]["account"], "role": "author", "name": "Another" },
+        ]),
+        "members heard both sign-ups, so she sees whom she writes with by name, but no address"
+    );
     journey.end().await;
 }
 

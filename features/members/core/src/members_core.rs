@@ -9,6 +9,14 @@ use crate::error::MembersCoreError;
 use crate::members::{Member, MembersCommand, MembersError, MembersEvent, ProjectLink, Role};
 use crate::service::MembersService;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ListedMember {
+    pub account: AccountId,
+    pub role: Role,
+    pub name: Option<String>,
+    pub email: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct MembersCore {
     service: MembersService,
@@ -34,11 +42,12 @@ impl MembersCore {
         &self,
         project: &str,
         agent: &Agent,
-    ) -> Result<Vec<Member>, MembersCoreError> {
+    ) -> Result<Vec<ListedMember>, MembersCoreError> {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Read, &project).await?;
+        let members = self.service.latest(&project).await?.state.members();
 
-        Ok(self.service.latest(&project).await?.state.members())
+        self.listed(&project, members, agent).await
     }
 
     pub async fn change_role(
@@ -47,19 +56,21 @@ impl MembersCore {
         account: &str,
         to: Role,
         agent: &Agent,
-    ) -> Result<Vec<Member>, MembersCoreError> {
+    ) -> Result<Vec<ListedMember>, MembersCoreError> {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Manage, &project).await?;
+        let members = self
+            .written(
+                &project,
+                MembersCommand::ChangeRole {
+                    account: AccountId::from(account),
+                    to,
+                },
+                agent,
+            )
+            .await?;
 
-        self.written(
-            &project,
-            MembersCommand::ChangeRole {
-                account: AccountId::from(account),
-                to,
-            },
-            agent,
-        )
-        .await
+        self.listed(&project, members, agent).await
     }
 
     pub async fn remove(
@@ -177,6 +188,39 @@ impl MembersCore {
         self.service.carry_out(project, command, agent).await?;
 
         Ok(self.service.latest(project).await?.state.members())
+    }
+
+    async fn listed(
+        &self,
+        project: &ProjectLink,
+        members: Vec<Member>,
+        agent: &Agent,
+    ) -> Result<Vec<ListedMember>, MembersCoreError> {
+        let accounts: Vec<AccountId> = members
+            .iter()
+            .map(|member| member.account.clone())
+            .collect();
+        let people = self.catalog.people(&accounts).await?;
+        let owning = self
+            .authorizer
+            .may(agent, Act::Manage, project.as_str())
+            .await?;
+
+        Ok(members
+            .into_iter()
+            .map(|member| {
+                let person = people
+                    .iter()
+                    .find(|person| person.account == member.account);
+
+                ListedMember {
+                    name: person.map(|person| person.name.clone()),
+                    email: person.filter(|_| owning).map(|person| person.email.clone()),
+                    account: member.account,
+                    role: member.role,
+                }
+            })
+            .collect())
     }
 
     async fn authorized(

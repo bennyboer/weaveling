@@ -12,7 +12,7 @@ use eventsourcing::{Agent, ServiceError};
 use live::{Broadcaster, Sieve};
 use live_contract::FrameDTO;
 use members_contract::{ChangeRoleRequest, MemberDTO, MembersEventDTO, refused, role};
-use members_core::{Member, MembersCore, MembersCoreError, MembersError, Role};
+use members_core::{ListedMember, MembersCore, MembersCoreError, MembersError, Role};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -84,10 +84,12 @@ async fn remove(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn to_dto(member: &Member) -> MemberDTO {
+fn to_dto(member: &ListedMember) -> MemberDTO {
     MemberDTO {
         account: member.account.to_string(),
         role: named(member.role).to_owned(),
+        name: member.name.clone(),
+        email: member.email.clone(),
     }
 }
 

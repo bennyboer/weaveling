@@ -11,7 +11,7 @@ use eventsourcing::{
 use members_catalog::InMemoryMembershipCatalog;
 use members_contract::{ChangeRoleRequest, MemberDTO, refused, role};
 use members_core::{
-    KIND, MembersAuthorizer, MembersCore, MembersCoreError, MembersError, MembersEvent,
+    KIND, MembersAuthorizer, MembersCore, MembersCoreError, MembersError, MembersEvent, Person,
     ProjectLink, Role,
 };
 use serde_json::Value;
@@ -70,16 +70,43 @@ async fn a_project_of_three() -> Members {
             .await
             .expect("joining should succeed");
     }
+    for account in ["account_ada", "account_grace"] {
+        let (name, email) = person_of(account).expect("ada and grace signed up");
+        core.remember_person(&Person {
+            account: AccountId::from(account),
+            name: name.to_owned(),
+            email: email.to_owned(),
+        })
+        .await
+        .expect("remembering should succeed");
+    }
     let members = Members { core, store };
     members.told().await;
 
     members
 }
 
+fn person_of(account: &str) -> Option<(&'static str, &'static str)> {
+    match account {
+        "account_ada" => Some(("Ada Lovelace", "ada@example.com")),
+        "account_grace" => Some(("Grace Hopper", "grace@example.com")),
+        _ => None,
+    }
+}
+
 fn a_member(account: &str, named: &str) -> MemberDTO {
     MemberDTO {
         account: account.to_owned(),
         role: named.to_owned(),
+        name: person_of(account).map(|(name, _)| name.to_owned()),
+        email: person_of(account).map(|(_, email)| email.to_owned()),
+    }
+}
+
+fn as_a_member_sees(member: MemberDTO) -> MemberDTO {
+    MemberDTO {
+        email: None,
+        ..member
     }
 }
 
@@ -110,10 +137,11 @@ async fn whoever_may_read_the_project_lists_its_members_and_nobody_else_finds_it
     assert_eq!(
         listed.json::<Vec<MemberDTO>>(),
         vec![
-            a_member("account_ada", role::OWNER),
-            a_member("account_grace", role::AUTHOR),
-            a_member("account_bo", role::READER),
-        ]
+            as_a_member_sees(a_member("account_ada", role::OWNER)),
+            as_a_member_sees(a_member("account_grace", role::AUTHOR)),
+            as_a_member_sees(a_member("account_bo", role::READER)),
+        ],
+        "a reader sees who is in it by name, but learns no address"
     );
     refused_as(
         members
@@ -122,6 +150,36 @@ async fn whoever_may_read_the_project_lists_its_members_and_nobody_else_finds_it
             .await,
         StatusCode::NOT_FOUND,
         "not-found",
+    );
+}
+
+#[tokio::test]
+async fn an_owner_sees_the_members_addresses_and_whoever_never_signed_up_is_listed_unnamed() {
+    let members = a_project_of_three().await;
+
+    assert_eq!(
+        members.listed().await,
+        vec![
+            MemberDTO {
+                account: "account_ada".to_owned(),
+                role: role::OWNER.to_owned(),
+                name: Some("Ada Lovelace".to_owned()),
+                email: Some("ada@example.com".to_owned()),
+            },
+            MemberDTO {
+                account: "account_grace".to_owned(),
+                role: role::AUTHOR.to_owned(),
+                name: Some("Grace Hopper".to_owned()),
+                email: Some("grace@example.com".to_owned()),
+            },
+            MemberDTO {
+                account: "account_bo".to_owned(),
+                role: role::READER.to_owned(),
+                name: None,
+                email: None,
+            },
+        ],
+        "owners invite and manage, so they see whom they deal with"
     );
 }
 

@@ -14,4 +14,4 @@ pub use error::MembersCoreError;
 pub use members::{
     KIND, Member, Members, MembersCommand, MembersError, MembersEvent, ProjectLink, Role,
 };
-pub use members_core::MembersCore;
+pub use members_core::{ListedMember, MembersCore};
