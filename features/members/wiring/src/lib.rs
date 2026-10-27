@@ -9,7 +9,7 @@ use members_contract::EVERY_MEMBERS;
 use members_core::{MembersAuthorizer, MembersCore, MembersEvent, MembershipCatalog};
 use members_messaging::{
     CatalogueMembersListener, FoundMembersOfStartedProjectListener,
-    JoinByAcceptedInvitationListener,
+    JoinByAcceptedInvitationListener, RememberWhoSignedUpListener,
 };
 use messaging::Publisher;
 use outbox::Outbox;
@@ -155,6 +155,7 @@ impl Feature for MembersFeature {
         .listening(vec![
             Arc::new(FoundMembersOfStartedProjectListener::new(members.clone())),
             Arc::new(JoinByAcceptedInvitationListener::new(members.clone())),
+            Arc::new(RememberWhoSignedUpListener::new(members.clone())),
             Arc::new(CatalogueMembersListener::new(members)),
             Arc::new(BroadcastChangesListener::under(
                 LIVE,
@@ -214,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_founds_the_members_of_a_started_project_lets_the_invited_join_lists_every_change_and_tells_it()
+    fn the_feature_founds_the_members_of_a_started_project_lets_the_invited_join_remembers_who_signed_up_lists_every_change_and_tells_it()
      {
         let context = a_context();
 
@@ -230,6 +231,7 @@ mod tests {
             [
                 "found-members-of-started-project",
                 "join-by-accepted-invitation",
+                "remember-who-signed-up",
                 "catalogue-members",
                 "broadcast-membership-changes"
             ]

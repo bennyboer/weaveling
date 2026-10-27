@@ -79,7 +79,7 @@ mod tests {
     use eventsourcing::AccountId;
 
     use super::*;
-    use crate::catalog::{CatalogError, Membership, ProjectMembers};
+    use crate::catalog::{CatalogError, Membership, Person, ProjectMembers};
 
     struct Kept {
         roles: Mutex<Vec<(String, AccountId, Role)>>,
@@ -90,6 +90,14 @@ mod tests {
     impl MembershipCatalog for Kept {
         async fn remember(&self, _members: &ProjectMembers) -> Result<(), CatalogError> {
             Ok(())
+        }
+
+        async fn remember_person(&self, _person: &Person) -> Result<(), CatalogError> {
+            Ok(())
+        }
+
+        async fn people(&self, _accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
+            Ok(Vec::new())
         }
 
         async fn role_of(

@@ -62,6 +62,7 @@ async fn the_id_columns_sort_bytewise_whatever_the_database_locale_is() {
         vec![
             ("memberships.account".to_owned(), Some("C".to_owned())),
             ("memberships.project".to_owned(), Some("C".to_owned())),
+            ("people.account".to_owned(), Some("C".to_owned())),
             (
                 "project_member_lists.project".to_owned(),
                 Some("C".to_owned())

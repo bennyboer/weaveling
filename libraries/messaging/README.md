@@ -21,6 +21,8 @@ A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscrip
 
 **`FakePublisher` stands in for a transport in tests.** It keeps what it is handed, and refuses everything once told to, so a test can read what was published or make a relay retry. It is plain `pub` for the reason `clock::FixedClock` is, since `cfg(test)` does not cross crate boundaries, and tests in seven crates had each written their own.
 
+**A refusal says how a message was misshapen, never what it held.** Messages are kept and a refusal's cause is shown, and serde quotes the value it choked on, so `payload_as` and `eventpublishing::published_in` give their cause as a `Misshapen`: serde's sentence with every quoted value blanked to `"…"`, field and variant names, which serde writes in backticks, kept. Personal data may travel in a message only under a `personal` field, and only what the receiving feature needs.
+
 **A listener's name is its queue name**, so two listeners may not share one — `listen` asserts against it, because a duplicate would quietly eat the other's messages and that is a wiring fault worth failing at startup.
 
 **The consumer is woken, not polled.** `enqueue` notifies — a `tokio::sync::Notify` in memory and on SQLite, `pg_notify` on PostgreSQL — so a new message is taken at once and the 200ms look is a backstop for deliveries that became due again on their own. Without it the retry curve would be decorative: a delivery re-due in 200ms would still wait for the next tick.

@@ -161,7 +161,9 @@ async fn a_decline_naming_no_invitation_or_no_reason_is_refused() {
         told(
             json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": open.to_string() }),
         ),
-        told(json!({ "version": 0, "name": "SIGNED_UP" })),
+        told(
+            json!({ "version": 0, "name": "SIGNED_UP", "personal": { "name": "Ada", "email": "ada@example.com" } }),
+        ),
         declined(&InvitationId::generate(wiring::at(1_000))),
     ] {
         assert!(

@@ -71,14 +71,46 @@ impl Display for Conversation {
 pub struct Unshaped {
     routing: RoutingKey,
     #[source]
-    because: serde_json::Error,
+    because: Misshapen,
+}
+
+#[derive(Debug, Error)]
+#[error("{0}")]
+pub struct Misshapen(String);
+
+impl From<serde_json::Error> for Misshapen {
+    fn from(read: serde_json::Error) -> Self {
+        Self(without_values(&read.to_string()))
+    }
+}
+
+fn without_values(said: &str) -> String {
+    let mut kept = String::with_capacity(said.len());
+    let mut quoting = false;
+    let mut escaping = false;
+
+    for letter in said.chars() {
+        if !quoting {
+            kept.push(letter);
+            quoting = letter == '"';
+        } else if escaping {
+            escaping = false;
+        } else if letter == '\\' {
+            escaping = true;
+        } else if letter == '"' {
+            kept.push_str("…\"");
+            quoting = false;
+        }
+    }
+
+    kept
 }
 
 impl Message {
     pub fn payload_as<T: DeserializeOwned>(&self) -> Result<T, Unshaped> {
         serde_json::from_value(self.payload.clone()).map_err(|because| Unshaped {
             routing: self.routing.clone(),
-            because,
+            because: because.into(),
         })
     }
 
@@ -230,6 +262,45 @@ mod tests {
             Captured {
                 idea: "idea_1".to_owned()
             }
+        );
+    }
+
+    #[derive(Debug, serde::Deserialize)]
+    struct Counted {
+        #[serde(rename = "idea")]
+        _words: u32,
+    }
+
+    #[test]
+    fn a_message_of_another_shape_says_how_but_never_what_it_held() {
+        let unshaped = Message::opening(
+            a_key("account.signed.up"),
+            json!({ "idea": "Ada \"the first\" Lovelace" }),
+            at(1_000),
+        )
+        .payload_as::<Counted>()
+        .expect_err("a name is no count");
+
+        let told = format!("{unshaped}: {}", unshaped.because);
+        assert!(
+            !told.contains("Ada") && !told.contains("first") && !told.contains("Lovelace"),
+            "a refusal is shown and kept, so what a message held stays out of it: {told}"
+        );
+        assert!(
+            told.contains("invalid type: string \"…\", expected u32"),
+            "{told}"
+        );
+    }
+
+    #[test]
+    fn what_was_missing_is_still_named() {
+        let unshaped = Message::opening(a_key("idea.captured"), json!({}), at(1_000))
+            .payload_as::<Counted>()
+            .expect_err("nothing is no count");
+
+        assert!(
+            unshaped.to_string().contains("missing field `idea`"),
+            "{unshaped}"
         );
     }
 

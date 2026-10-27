@@ -1,5 +1,7 @@
 use eventsourcing::{AccountId, Version};
-use members_core::{Member, Membership, MembershipCatalog, ProjectLink, ProjectMembers, Role};
+use members_core::{
+    Member, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -67,9 +69,72 @@ async fn memberships(catalog: &impl MembershipCatalog, account: &AccountId) -> V
         .expect("listing memberships should succeed")
 }
 
+fn person(account: AccountId, name: &str, email: &str) -> Person {
+    Person {
+        account,
+        name: name.to_owned(),
+        email: email.to_owned(),
+    }
+}
+
+async fn known(catalog: &impl MembershipCatalog, person: &Person) {
+    catalog
+        .remember_person(person)
+        .await
+        .expect("remembering a person should succeed");
+}
+
+async fn people(catalog: &impl MembershipCatalog, accounts: &[AccountId]) -> Vec<Person> {
+    catalog
+        .people(accounts)
+        .await
+        .expect("asking for people should succeed")
+}
+
 pub async fn an_empty_catalog_knows_nobody_in_any_project(catalog: &impl MembershipCatalog) {
     assert_eq!(role(catalog, "project_1", &ada()).await, None);
     assert!(memberships(catalog, &ada()).await.is_empty());
+    assert!(people(catalog, &[ada()]).await.is_empty());
+}
+
+pub async fn the_people_asked_for_are_told_by_account_and_no_others(
+    catalog: &impl MembershipCatalog,
+) {
+    known(catalog, &person(hedy(), "Hedy Lamarr", "hedy@example.com")).await;
+    known(
+        catalog,
+        &person(grace(), "Grace Hopper", "grace@example.com"),
+    )
+    .await;
+    known(catalog, &person(ada(), "Ada Lovelace", "ada@example.com")).await;
+
+    assert_eq!(
+        people(
+            catalog,
+            &[grace(), AccountId::from("account_nobody"), ada()]
+        )
+        .await,
+        vec![
+            person(ada(), "Ada Lovelace", "ada@example.com"),
+            person(grace(), "Grace Hopper", "grace@example.com"),
+        ]
+    );
+    assert!(people(catalog, &[]).await.is_empty());
+}
+
+pub async fn a_person_told_again_is_known_as_last_told(catalog: &impl MembershipCatalog) {
+    known(catalog, &person(ada(), "Ada", "ada@example.com")).await;
+
+    known(
+        catalog,
+        &person(ada(), "Ada Lovelace", "lovelace@example.com"),
+    )
+    .await;
+
+    assert_eq!(
+        people(catalog, &[ada()]).await,
+        vec![person(ada(), "Ada Lovelace", "lovelace@example.com")]
+    );
 }
 
 pub async fn each_member_has_their_role_in_their_project_and_nowhere_else(
@@ -228,5 +293,10 @@ macro_rules! conformance_tests {
             newer_members_replace_the_older_whoever_is_gone_with_them
         );
         $crate::catalog_conformance_case!($workbench, older_members_arriving_late_change_nothing);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            the_people_asked_for_are_told_by_account_and_no_others
+        );
+        $crate::catalog_conformance_case!($workbench, a_person_told_again_is_known_as_last_told);
     };
 }

@@ -11,3 +11,10 @@ CREATE TABLE memberships (
 );
 
 CREATE INDEX memberships_by_account ON memberships (account, project);
+
+
+CREATE TABLE people (
+    account          TEXT COLLATE "C" PRIMARY KEY,
+    name             TEXT             NOT NULL,
+    email            TEXT             NOT NULL
+);

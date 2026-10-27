@@ -117,12 +117,18 @@ pub const INVITATION_TAKEN_UP: &str = "account.invitation.taken.up";
 pub const EVERY_ACCOUNT: &str = "account.#";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct PersonalDTO {
+    pub name: String,
+    pub email: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "name")]
 pub enum AccountEventDTO {
     #[serde(rename = "SIGNED_UP")]
-    SignedUp,
+    SignedUp { personal: PersonalDTO },
     #[serde(rename = "SIGNED_UP_BY_INVITATION")]
-    SignedUpByInvitation,
+    SignedUpByInvitation { personal: PersonalDTO },
     #[serde(rename = "EMAIL_VERIFIED")]
     EmailVerified,
     #[serde(rename = "PASSWORD_RESET")]

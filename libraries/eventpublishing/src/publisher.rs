@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use clock::text;
 use eventsourcing::{AggregateContext, AggregateType, Event, EventName, Recorded};
-use messaging::{Message, RoutingKey};
+use messaging::{Message, Misshapen, RoutingKey};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -16,7 +16,7 @@ const SEPARATOR: &str = ".";
 #[derive(Debug, Error)]
 pub enum UnreadableMessage {
     #[error("this message does not carry a published event")]
-    NotAPublishedEvent(#[source] serde_json::Error),
+    NotAPublishedEvent(#[source] Misshapen),
     #[error("this message names its aggregate by something that is not its id")]
     NotItsId(#[source] Box<dyn AnyError + Send + Sync>),
 }
@@ -64,7 +64,8 @@ where
 pub fn published_in<B: DeserializeOwned>(
     message: &Message,
 ) -> Result<PublishedEvent<B>, UnreadableMessage> {
-    serde_json::from_value(message.payload.clone()).map_err(UnreadableMessage::NotAPublishedEvent)
+    serde_json::from_value(message.payload.clone())
+        .map_err(|unread| UnreadableMessage::NotAPublishedEvent(unread.into()))
 }
 
 pub fn context_in(message: &Message) -> AggregateContext {

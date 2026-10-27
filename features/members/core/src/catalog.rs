@@ -19,6 +19,13 @@ pub struct Membership {
     pub role: Role,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Person {
+    pub account: AccountId,
+    pub name: String,
+    pub email: String,
+}
+
 #[derive(Debug, Error)]
 pub enum CatalogError {
     #[error("the list of members could not be reached")]
@@ -36,6 +43,10 @@ pub trait MembershipCatalog: Send + Sync {
     ) -> Result<Option<Role>, CatalogError>;
 
     async fn memberships_of(&self, account: &AccountId) -> Result<Vec<Membership>, CatalogError>;
+
+    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError>;
+
+    async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
 }
 
 impl ProjectMembers {

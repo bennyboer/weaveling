@@ -4,7 +4,7 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use async_trait::async_trait;
 use eventsourcing::AccountId;
 use members_core::{
-    CatalogError, Membership, MembershipCatalog, ProjectLink, ProjectMembers, Role,
+    CatalogError, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
 
 type Kept = BTreeMap<String, ProjectMembers>;
@@ -12,6 +12,7 @@ type Kept = BTreeMap<String, ProjectMembers>;
 #[derive(Debug, Default)]
 pub struct InMemoryMembershipCatalog {
     kept: RwLock<Kept>,
+    people: RwLock<BTreeMap<String, Person>>,
 }
 
 impl InMemoryMembershipCatalog {
@@ -71,6 +72,28 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
                     role,
                 })
             })
+            .collect())
+    }
+
+    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+        self.people
+            .write()
+            .expect("membership catalog lock poisoned")
+            .insert(person.account.to_string(), person.clone());
+
+        Ok(())
+    }
+
+    async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
+        let known = self
+            .people
+            .read()
+            .expect("membership catalog lock poisoned");
+
+        Ok(known
+            .values()
+            .filter(|person| accounts.contains(&person.account))
+            .cloned()
             .collect())
     }
 }

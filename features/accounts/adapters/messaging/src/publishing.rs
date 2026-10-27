@@ -1,5 +1,5 @@
-use accounts_contract::{AccountEventDTO, decline_reason, lock_kind};
-use accounts_core::{AccountEvent, DeclineReason, LockKind};
+use accounts_contract::{AccountEventDTO, PersonalDTO, decline_reason, lock_kind};
+use accounts_core::{AccountEvent, AccountName, DeclineReason, EmailAddress, LockKind};
 use eventsourcing::Recorded;
 use messaging::Message;
 
@@ -9,8 +9,14 @@ pub fn message_for(happened: &Recorded<AccountEvent>) -> Option<Message> {
 
 fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
     Some(match event {
-        AccountEvent::SignedUp { .. } => AccountEventDTO::SignedUp,
-        AccountEvent::SignedUpByInvitation { .. } => AccountEventDTO::SignedUpByInvitation,
+        AccountEvent::SignedUp { email, name } => AccountEventDTO::SignedUp {
+            personal: personal(email, name),
+        },
+        AccountEvent::SignedUpByInvitation { email, name } => {
+            AccountEventDTO::SignedUpByInvitation {
+                personal: personal(email, name),
+            }
+        }
         AccountEvent::EmailVerified => AccountEventDTO::EmailVerified,
         AccountEvent::PasswordReset => AccountEventDTO::PasswordReset,
         AccountEvent::BecameOperator => AccountEventDTO::BecameOperator,
@@ -34,6 +40,13 @@ fn body(event: &AccountEvent) -> Option<AccountEventDTO> {
     })
 }
 
+fn personal(email: &EmailAddress, name: &AccountName) -> PersonalDTO {
+    PersonalDTO {
+        name: name.as_str().to_owned(),
+        email: email.as_str().to_owned(),
+    }
+}
+
 fn declined_for(reason: DeclineReason) -> &'static str {
     match reason {
         DeclineReason::AddressHasAccount => decline_reason::ADDRESS_HAS_ACCOUNT,
@@ -55,7 +68,7 @@ mod tests {
         LOCKED, PASSWORD_RESET, SIGNED_UP, SIGNED_UP_BY_INVITATION, STOPPED_BEING_OPERATOR,
         UNLOCKED,
     };
-    use accounts_core::{AccountId, AccountName, EmailAddress, KIND, LockReason};
+    use accounts_core::{AccountId, KIND, LockReason};
     use eventsourcing::{AggregateContext, AggregateId, Event, EventMetadata, Version};
     use messaging::Subscription;
     use time::{Duration, OffsetDateTime};
@@ -185,11 +198,15 @@ mod tests {
     }
 
     #[test]
-    fn nothing_personal_travels_with_a_message() {
+    fn nothing_personal_travels_outside_what_is_marked_personal() {
         let id = an_account();
 
         for (event, _) in everything_worth_publishing() {
-            let told = published(&id, event).payload.to_string();
+            let mut payload = published(&id, event).payload;
+            if let Some(body) = payload["event"].as_object_mut() {
+                body.remove("personal");
+            }
+            let told = payload.to_string();
 
             for personal in ["ada@example.com", "Ada Lovelace", "Sent spam"] {
                 assert!(
@@ -229,18 +246,35 @@ mod tests {
     }
 
     #[test]
-    fn a_sign_up_by_invitation_says_only_that_it_was() {
-        let told = eventpublishing::published_in::<AccountEventDTO>(&published(
-            &an_account(),
-            a_sign_up_by_invitation(),
-        ))
-        .expect("what we wrote must be readable");
+    fn a_sign_up_tells_the_name_and_address_as_personal() {
+        let ada = PersonalDTO {
+            name: "Ada Lovelace".to_owned(),
+            email: "ada@example.com".to_owned(),
+        };
 
-        assert_eq!(
-            told.event.body,
-            AccountEventDTO::SignedUpByInvitation,
-            "which invitation was taken up is told once, as taken up"
-        );
+        for (event, told) in [
+            (
+                a_sign_up(),
+                AccountEventDTO::SignedUp {
+                    personal: ada.clone(),
+                },
+            ),
+            (
+                a_sign_up_by_invitation(),
+                AccountEventDTO::SignedUpByInvitation {
+                    personal: ada.clone(),
+                },
+            ),
+        ] {
+            assert_eq!(
+                eventpublishing::published_in::<AccountEventDTO>(&published(&an_account(), event))
+                    .expect("what we wrote must be readable")
+                    .event
+                    .body,
+                told,
+                "members show whom they list by name, and which invitation was taken up is told once, as taken up"
+            );
+        }
     }
 
     #[test]

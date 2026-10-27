@@ -4,7 +4,7 @@ use authorizing::{Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, EventStore, ServiceError};
 
-use crate::catalog::{MembershipCatalog, ProjectMembers};
+use crate::catalog::{MembershipCatalog, Person, ProjectMembers};
 use crate::error::MembersCoreError;
 use crate::members::{Member, MembersCommand, MembersError, MembersEvent, ProjectLink, Role};
 use crate::service::MembersService;
@@ -143,6 +143,10 @@ impl MembersCore {
                 &Agent::System,
             )
             .await
+    }
+
+    pub async fn remember_person(&self, person: &Person) -> Result<(), MembersCoreError> {
+        Ok(self.catalog.remember_person(person).await?)
     }
 
     pub async fn catalogue(&self, project: &ProjectLink) -> Result<(), MembersCoreError> {
