@@ -13,20 +13,24 @@ use axum::routing;
 use eventsourcing::{Agent, Standing};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
 use ideas_core::{Idea, IdeaError, IdeaSummary, IdeasCore, IdeasError, InvalidIdeaTitle};
-use live::{Broadcaster, Gate};
+use live::{AccessWatch, Broadcaster, Gate};
 use serde::Deserialize;
 use serving::Problem;
 
-struct FollowersOf(IdeasCore);
+struct IdeasGate(IdeasCore);
 
 #[async_trait]
-impl Gate for FollowersOf {
+impl Gate for IdeasGate {
     async fn admits(
         &self,
         agent: &Agent,
         project: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
         Ok(self.0.may_follow(project, agent).await?)
+    }
+
+    fn watch(&self, project: &str) -> AccessWatch {
+        self.0.watch_access(project)
     }
 }
 
@@ -35,7 +39,7 @@ pub fn live(ideas: IdeasCore, broadcaster: Broadcaster) -> Router {
         "/ideas/live",
         broadcaster,
         |asked| asked.get("project").cloned(),
-        Arc::new(FollowersOf(ideas)),
+        Arc::new(IdeasGate(ideas)),
     )
 }
 

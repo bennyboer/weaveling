@@ -1,13 +1,52 @@
 use std::error::Error;
+use std::future;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use authorizing::AccessWatch;
+use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
-use live_contract::FrameDTO;
+use eventsourcing::Agent;
+use live_contract::{ACCESS_CHANGED, FrameDTO, NO_LONGER_ADMITTED, NoticeDTO};
 use serde_json::json;
 
-use crate::Hearing;
+use crate::{Gate, Hearing};
+
+pub(crate) struct Admission {
+    pub(crate) watch: AccessWatch,
+    pub(crate) gate: Arc<dyn Gate>,
+    pub(crate) agent: Agent,
+    pub(crate) about: String,
+}
+
+enum Access {
+    Kept,
+    Lost,
+}
+
+impl Admission {
+    async fn rechecked(&mut self) -> Access {
+        self.watch.changed().await;
+        match self.gate.admits(&self.agent, &self.about).await {
+            Ok(true) => Access::Kept,
+            _ => Access::Lost,
+        }
+    }
+}
+
+async fn rechecked(admission: &mut Option<Admission>) -> Access {
+    match admission {
+        Some(admission) => admission.rechecked().await,
+        None => future::pending().await,
+    }
+}
+
+fn access_changed() -> String {
+    serde_json::to_string(&NoticeDTO {
+        notice: ACCESS_CHANGED.to_owned(),
+    })
+    .expect("a notice is plain data")
+}
 
 #[async_trait]
 pub trait Sieve: Send + Sync {
@@ -15,7 +54,15 @@ pub trait Sieve: Send + Sync {
 }
 
 pub fn streaming(upgrade: WebSocketUpgrade, hearing: Hearing) -> Response {
-    upgrade.on_upgrade(move |socket| forward(socket, hearing, None))
+    upgrade.on_upgrade(move |socket| forward(socket, hearing, None, None))
+}
+
+pub(crate) fn streaming_while(
+    upgrade: WebSocketUpgrade,
+    hearing: Hearing,
+    admission: Admission,
+) -> Response {
+    upgrade.on_upgrade(move |socket| forward(socket, hearing, None, Some(admission)))
 }
 
 pub fn streaming_sifted(
@@ -23,7 +70,7 @@ pub fn streaming_sifted(
     hearing: Hearing,
     sieve: Arc<dyn Sieve>,
 ) -> Response {
-    upgrade.on_upgrade(move |socket| forward(socket, hearing, Some(sieve)))
+    upgrade.on_upgrade(move |socket| forward(socket, hearing, Some(sieve), None))
 }
 
 pub fn streaming_from(upgrade: WebSocketUpgrade, version: u64, hearing: Hearing) -> Response {
@@ -31,14 +78,35 @@ pub fn streaming_from(upgrade: WebSocketUpgrade, version: u64, hearing: Hearing)
 
     upgrade.on_upgrade(move |mut socket| async move {
         if socket.send(Message::Text(standing.into())).await.is_ok() {
-            forward(socket, hearing, None).await;
+            forward(socket, hearing, None, None).await;
         }
     })
 }
 
-async fn forward(mut socket: WebSocket, mut hearing: Hearing, sieve: Option<Arc<dyn Sieve>>) {
+async fn forward(
+    mut socket: WebSocket,
+    mut hearing: Hearing,
+    sieve: Option<Arc<dyn Sieve>>,
+    mut admission: Option<Admission>,
+) {
     loop {
         tokio::select! {
+            access = rechecked(&mut admission) => match access {
+                Access::Kept => {
+                    if socket.send(Message::Text(access_changed().into())).await.is_err() {
+                        return;
+                    }
+                }
+                Access::Lost => {
+                    _ = socket
+                        .send(Message::Close(Some(CloseFrame {
+                            code: NO_LONGER_ADMITTED,
+                            reason: "no-longer-admitted".into(),
+                        })))
+                        .await;
+                    return;
+                }
+            },
             told = hearing.next() => {
                 let Some(frame) = told else {
                     return;

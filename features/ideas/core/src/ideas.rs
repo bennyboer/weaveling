@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use authorizing::{Act, Authorizer};
+use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventStore, ServiceError, Standing, Version};
 
@@ -90,6 +90,10 @@ impl IdeasCore {
 
     pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, IdeasError> {
         Ok(self.authorizer.may(agent, Act::Read, project).await?)
+    }
+
+    pub fn watch_access(&self, project: &str) -> AccessWatch {
+        self.authorizer.watch_access(project)
     }
 
     pub async fn project_of(&self, id: &str) -> Result<ProjectLink, IdeasError> {

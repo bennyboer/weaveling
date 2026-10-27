@@ -24,10 +24,10 @@ use serde::Deserialize;
 use serving::{NOT_FOUND, Problem};
 use time::OffsetDateTime;
 
-struct FollowersOf(ScenesCore);
+struct ScenesGate(ScenesCore);
 
 #[async_trait]
-impl Gate for FollowersOf {
+impl Gate for ScenesGate {
     async fn admits(
         &self,
         agent: &Agent,
@@ -42,7 +42,7 @@ pub fn live_scenes(scenes: ScenesCore, broadcaster: Broadcaster) -> Router {
         "/scenes/live",
         broadcaster,
         |asked| asked.get("project").cloned(),
-        Arc::new(FollowersOf(scenes)),
+        Arc::new(ScenesGate(scenes)),
     )
 }
 
@@ -157,7 +157,7 @@ pub fn quotation_restylings(scenes: ScenesCore, broadcaster: Broadcaster) -> Rou
             "/scenes/quotation-restylings/live",
             broadcaster,
             |asked| asked.get("project").cloned(),
-            Arc::new(FollowersOf(scenes)),
+            Arc::new(ScenesGate(scenes)),
         ))
 }
 

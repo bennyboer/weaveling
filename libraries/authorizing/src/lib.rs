@@ -1,9 +1,13 @@
+mod access;
+
 use std::collections::BTreeSet;
 use std::error::Error;
 
 use async_trait::async_trait;
 use eventsourcing::Agent;
 use thiserror::Error;
+
+pub use access::{AccessChanges, AccessWatch};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Act {
@@ -29,6 +33,12 @@ pub trait Authorizer: Send + Sync {
     async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError>;
 
     async fn readable_by(&self, agent: &Agent) -> Result<Readable, AuthorizerError>;
+
+    fn access_changed(&self, _project: &str) {}
+
+    fn watch_access(&self, _project: &str) -> AccessWatch {
+        AccessWatch::still()
+    }
 }
 
 #[derive(Debug, Default)]

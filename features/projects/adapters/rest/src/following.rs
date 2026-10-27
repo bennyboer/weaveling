@@ -51,15 +51,15 @@ async fn follow(
         &following.broadcaster,
         project,
         &agent,
-        &FollowersOf(following.projects),
+        &ProjectsGate(following.projects),
     )
     .await
 }
 
-struct FollowersOf(ProjectsCore);
+struct ProjectsGate(ProjectsCore);
 
 #[async_trait]
-impl Gate for FollowersOf {
+impl Gate for ProjectsGate {
     async fn admits(
         &self,
         agent: &Agent,

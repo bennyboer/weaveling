@@ -11,3 +11,5 @@ Who may do what in a project.
 **In local mode one person does everything**, so `AllowingEverything` answers yes to anyone. On a server with accounts the members feature answers instead.
 
 **A failure to ask is no answer.** `may` fails rather than guessing, so a route answers that something went wrong rather than letting anyone in or locking the owner out.
+
+**Who may follow can change while they follow.** `access_changed(project)` says the answers about a project may have changed, and `watch_access(project)` gives an `AccessWatch` whose `changed()` wakes when they did, or when it fell behind and cannot tell. Both are in-process, through `AccessChanges`; an authorizer whose answers never change, as `AllowingEverything`, keeps the defaults, a watch that never wakes. The members feature tells it once its list shows the change, so whoever asks again on waking is answered by the list as it is now.

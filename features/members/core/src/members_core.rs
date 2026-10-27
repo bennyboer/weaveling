@@ -148,14 +148,16 @@ impl MembersCore {
     pub async fn catalogue(&self, project: &ProjectLink) -> Result<(), MembersCoreError> {
         let standing = self.service.latest(project).await?;
 
-        Ok(self
-            .catalog
+        self.catalog
             .remember(&ProjectMembers::of(
                 project.clone(),
                 standing.version,
                 &standing.state,
             ))
-            .await?)
+            .await?;
+        self.authorizer.access_changed(project.as_str());
+
+        Ok(())
     }
 
     pub fn may_hear(&self, agent: &Agent, about: &str) -> bool {

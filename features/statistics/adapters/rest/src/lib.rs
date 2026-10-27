@@ -22,10 +22,10 @@ pub fn router(statistics: StatisticsCore) -> Router {
         .with_state(statistics)
 }
 
-struct FollowersOf(StatisticsCore);
+struct StatisticsGate(StatisticsCore);
 
 #[async_trait]
-impl Gate for FollowersOf {
+impl Gate for StatisticsGate {
     async fn admits(
         &self,
         agent: &Agent,
@@ -40,7 +40,7 @@ pub fn live(statistics: StatisticsCore, broadcaster: Broadcaster) -> Router {
         "/statistics/word-counts/live",
         broadcaster,
         |asked| asked.get("project").cloned(),
-        Arc::new(FollowersOf(statistics)),
+        Arc::new(StatisticsGate(statistics)),
     )
 }
 

@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
+use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use eventsourcing::Agent;
 
 use crate::catalog::MembershipCatalog;
@@ -10,11 +10,15 @@ use crate::members::{ProjectLink, Role};
 
 pub struct MembersAuthorizer {
     catalog: Arc<dyn MembershipCatalog>,
+    changes: AccessChanges,
 }
 
 impl MembersAuthorizer {
     pub fn new(catalog: Arc<dyn MembershipCatalog>) -> Self {
-        Self { catalog }
+        Self {
+            catalog,
+            changes: AccessChanges::new(),
+        }
     }
 }
 
@@ -57,6 +61,14 @@ impl Authorizer for MembersAuthorizer {
                     .collect(),
             )),
         }
+    }
+
+    fn access_changed(&self, project: &str) {
+        self.changes.tell(project);
+    }
+
+    fn watch_access(&self, project: &str) -> AccessWatch {
+        self.changes.watch(project)
     }
 }
 

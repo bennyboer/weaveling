@@ -6,8 +6,9 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
 
 eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt"] }
+tokio = { workspace = true, features = ["macros", "rt", "time"] }
