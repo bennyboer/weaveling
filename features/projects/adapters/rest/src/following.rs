@@ -46,7 +46,7 @@ async fn follow(
         );
     };
 
-    live::streaming_if_admitted(
+    live::streaming_while_admitted(
         upgrade,
         &following.broadcaster,
         project.clone(),

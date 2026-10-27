@@ -1,3 +1,7 @@
+use std::error::Error;
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use axum::Extension;
 use axum::Json;
 use axum::Router;
@@ -15,7 +19,7 @@ use boards_core::{
     Board, BoardError, BoardsCore, BoardsError, IdeaLink, PositionedIdea, Size, Spot,
 };
 use eventsourcing::{Agent, Standing, Version};
-use live::{Asked, Broadcaster};
+use live::{Admission, Asked, Broadcaster, Gate};
 use serving::Problem;
 
 #[derive(Clone)]
@@ -44,9 +48,32 @@ async fn follow(
     };
     let hearing = following.broadcaster.hear(board);
 
-    match following.boards.read(board, &acting).await {
-        Ok(standing) => live::streaming_from(upgrade, standing.version.count(), hearing),
+    match following.boards.follow(board, &acting).await {
+        Ok((standing, watch)) => live::streaming_with_version(
+            upgrade,
+            standing.version.count(),
+            hearing,
+            Admission::new(
+                watch,
+                Arc::new(BoardsGate(following.boards)),
+                acting,
+                board.clone(),
+            ),
+        ),
         Err(refused) => problem_of(refused).into_response(),
+    }
+}
+
+struct BoardsGate(BoardsCore);
+
+#[async_trait]
+impl Gate for BoardsGate {
+    async fn admits(
+        &self,
+        agent: &Agent,
+        board: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(self.0.read(board, agent).await.is_ok())
     }
 }
 

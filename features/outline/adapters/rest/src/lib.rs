@@ -1,3 +1,7 @@
+use std::error::Error;
+use std::sync::Arc;
+
+use async_trait::async_trait;
 use axum::Extension;
 use axum::Json;
 use axum::Router;
@@ -8,7 +12,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
 use eventsourcing::{Agent, Standing, Version};
-use live::{Asked, Broadcaster};
+use live::{Admission, Asked, Broadcaster, Gate};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -92,9 +96,32 @@ async fn follow(
     };
     let hearing = following.broadcaster.hear(outline);
 
-    match following.outlines.read(outline, &acting).await {
-        Ok(standing) => live::streaming_from(upgrade, standing.version.count(), hearing),
+    match following.outlines.follow(outline, &acting).await {
+        Ok((standing, watch)) => live::streaming_with_version(
+            upgrade,
+            standing.version.count(),
+            hearing,
+            Admission::new(
+                watch,
+                Arc::new(OutlinesGate(following.outlines)),
+                acting,
+                outline.clone(),
+            ),
+        ),
         Err(refused) => problem_of(refused).into_response(),
+    }
+}
+
+struct OutlinesGate(OutlinesCore);
+
+#[async_trait]
+impl Gate for OutlinesGate {
+    async fn admits(
+        &self,
+        agent: &Agent,
+        outline: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(self.0.read(outline, agent).await.is_ok())
     }
 }
 

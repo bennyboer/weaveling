@@ -31,3 +31,4 @@ outline-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-o
 ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
 scenes-contract = { version = "0.1.0", path = "../../scenes/contract", package = "weaveling-scenes-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
+live-contract = { version = "0.1.0", path = "../../../libraries/live-contract", package = "weaveling-live-contract" }

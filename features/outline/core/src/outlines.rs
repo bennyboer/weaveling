@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use authorizing::{Act, Authorizer};
+use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{Agent, EventStore, ServiceError, Standing, Version};
 use registry::Registry;
@@ -60,6 +60,24 @@ impl OutlinesCore {
         .await?;
 
         Ok(standing)
+    }
+
+    pub async fn follow(
+        &self,
+        outline: &str,
+        agent: &Agent,
+    ) -> Result<(Standing<Outline>, AccessWatch), OutlinesError> {
+        let outline: OutlineId = outline.parse()?;
+        let standing = self.service.latest(&outline).await?;
+        let watch = self
+            .authorizer
+            .watch_access(standing.state.project().as_str());
+        self.authorized(agent, Act::Read, standing.state.project(), || {
+            service::not_found(&outline)
+        })
+        .await?;
+
+        Ok((standing, watch))
     }
 
     pub async fn add(

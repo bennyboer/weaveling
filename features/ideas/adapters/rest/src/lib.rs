@@ -35,7 +35,7 @@ impl Gate for IdeasGate {
 }
 
 pub fn live(ideas: IdeasCore, broadcaster: Broadcaster) -> Router {
-    live::followed_if(
+    live::followed_while(
         "/ideas/live",
         broadcaster,
         |asked| asked.get("project").cloned(),

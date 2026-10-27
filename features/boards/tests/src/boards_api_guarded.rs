@@ -2,12 +2,13 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
+use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestResponse, TestServer};
+use axum_test::{TestResponse, TestServer, WsMessage};
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
+use live_contract::NO_LONGER_ADMITTED;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
@@ -22,6 +23,7 @@ const READER: [Act; 1] = [Act::Read];
 struct Roles {
     held: Mutex<HashMap<String, Vec<Act>>>,
     down: Mutex<bool>,
+    changes: AccessChanges,
 }
 
 impl Roles {
@@ -54,6 +56,14 @@ impl Authorizer for Roles {
 
     async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
         Ok(Readable::Everything)
+    }
+
+    fn access_changed(&self, project: &str) {
+        self.changes.tell(project);
+    }
+
+    fn watch_access(&self, project: &str) -> AccessWatch {
+        self.changes.watch(project)
     }
 }
 
@@ -227,4 +237,25 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     ] {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
+}
+
+#[tokio::test]
+async fn a_follower_whose_role_is_taken_away_is_closed_out() {
+    let guarded = guarded().await;
+    guarded.roles.give("account_grace", &READER);
+    let mut hers = guarded
+        .grace
+        .get_websocket(&format!("/boards/live?board={}", guarded.board))
+        .await
+        .into_websocket()
+        .await;
+    _ = hers.receive_text().await;
+
+    guarded.roles.give("account_grace", &[]);
+    guarded.roles.access_changed(PROJECT);
+
+    assert!(matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(1), hers.receive_message()).await,
+        Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == NO_LONGER_ADMITTED
+    ));
 }

@@ -12,7 +12,7 @@ use serde_json::json;
 
 use crate::{Gate, Hearing};
 
-pub(crate) struct Admission {
+pub struct Admission {
     pub(crate) watch: AccessWatch,
     pub(crate) gate: Arc<dyn Gate>,
     pub(crate) agent: Agent,
@@ -25,6 +25,15 @@ enum Access {
 }
 
 impl Admission {
+    pub fn new(watch: AccessWatch, gate: Arc<dyn Gate>, agent: Agent, about: String) -> Self {
+        Self {
+            watch,
+            gate,
+            agent,
+            about,
+        }
+    }
+
     async fn rechecked(&mut self) -> Access {
         self.watch.changed().await;
         match self.gate.admits(&self.agent, &self.about).await {
@@ -73,12 +82,17 @@ pub fn streaming_sifted(
     upgrade.on_upgrade(move |socket| forward(socket, hearing, Some(sieve), None))
 }
 
-pub fn streaming_from(upgrade: WebSocketUpgrade, version: u64, hearing: Hearing) -> Response {
+pub fn streaming_with_version(
+    upgrade: WebSocketUpgrade,
+    version: u64,
+    hearing: Hearing,
+    admission: Admission,
+) -> Response {
     let standing = json!({ "version": version }).to_string();
 
     upgrade.on_upgrade(move |mut socket| async move {
         if socket.send(Message::Text(standing.into())).await.is_ok() {
-            forward(socket, hearing, None, None).await;
+            forward(socket, hearing, None, Some(admission)).await;
         }
     })
 }
@@ -156,7 +170,25 @@ mod tests {
         State(broadcaster): State<Broadcaster>,
         Path(about): Path<String>,
     ) -> Response {
-        streaming_from(upgrade, 7, broadcaster.hear(&about))
+        streaming_with_version(
+            upgrade,
+            7,
+            broadcaster.hear(&about),
+            Admission::new(AccessWatch::still(), Arc::new(Open), Agent::Local, about),
+        )
+    }
+
+    struct Open;
+
+    #[async_trait]
+    impl Gate for Open {
+        async fn admits(
+            &self,
+            _agent: &Agent,
+            _about: &str,
+        ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+            Ok(true)
+        }
     }
 
     struct Mine;

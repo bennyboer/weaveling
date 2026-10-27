@@ -29,7 +29,7 @@ pub trait Gate: Send + Sync {
     }
 }
 
-pub async fn streaming_if_admitted(
+pub async fn streaming_while_admitted(
     upgrade: WebSocketUpgrade,
     broadcaster: &Broadcaster,
     about: String,
@@ -54,7 +54,7 @@ pub async fn streaming_if_admitted(
     }
 }
 
-pub fn followed_if(
+pub fn followed_while(
     path: &str,
     broadcaster: Broadcaster,
     about: fn(&Asked) -> Option<String>,
@@ -68,7 +68,7 @@ pub fn followed_if(
                   Query(asked): Query<Asked>| async move {
                 match about(&asked) {
                     Some(about) => {
-                        streaming_if_admitted(upgrade, &broadcaster, about, agent, gate.clone())
+                        streaming_while_admitted(upgrade, &broadcaster, about, agent, gate.clone())
                             .await
                     }
                     None => StatusCode::BAD_REQUEST.into_response(),
@@ -108,7 +108,7 @@ mod tests {
 
     fn served(broadcaster: &Broadcaster) -> TestServer {
         TestServer::builder().http_transport().build(
-            followed_if(
+            followed_while(
                 "/live",
                 broadcaster.clone(),
                 |asked| asked.get("of").cloned(),
@@ -191,7 +191,7 @@ mod tests {
         });
         let broadcaster = Broadcaster::new();
         let server = TestServer::builder().http_transport().build(
-            followed_if(
+            followed_while(
                 "/live",
                 broadcaster.clone(),
                 |asked| asked.get("of").cloned(),

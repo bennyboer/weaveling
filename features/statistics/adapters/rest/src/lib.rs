@@ -40,7 +40,7 @@ impl Gate for StatisticsGate {
 }
 
 pub fn live(statistics: StatisticsCore, broadcaster: Broadcaster) -> Router {
-    live::followed_if(
+    live::followed_while(
         "/statistics/word-counts/live",
         broadcaster,
         |asked| asked.get("project").cloned(),

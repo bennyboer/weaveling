@@ -42,7 +42,7 @@ impl Gate for ScenesGate {
 }
 
 pub fn live_scenes(scenes: ScenesCore, broadcaster: Broadcaster) -> Router {
-    live::followed_if(
+    live::followed_while(
         "/scenes/live",
         broadcaster,
         |asked| asked.get("project").cloned(),
@@ -157,7 +157,7 @@ pub fn quotation_restylings(scenes: ScenesCore, broadcaster: Broadcaster) -> Rou
             routing::get(progress),
         )
         .with_state(scenes.clone())
-        .merge(live::followed_if(
+        .merge(live::followed_while(
             "/scenes/quotation-restylings/live",
             broadcaster,
             |asked| asked.get("project").cloned(),
