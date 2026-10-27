@@ -30,3 +30,4 @@ scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveli
 ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
+live-contract = { version = "0.1.0", path = "../../../libraries/live-contract", package = "weaveling-live-contract" }

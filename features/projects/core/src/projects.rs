@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use authorizing::{Act, Authorizer, Readable};
+use authorizing::{AccessWatch, Act, Authorizer, Readable};
 use clock::Clock;
 use eventsourcing::{Agent, EventStore, Standing, Version};
 
@@ -104,6 +104,10 @@ impl ProjectsCore {
 
     pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, ProjectsError> {
         Ok(self.authorizer.may(agent, Act::Read, project).await?)
+    }
+
+    pub fn watch_access(&self, project: &str) -> AccessWatch {
+        self.authorizer.watch_access(project)
     }
 
     pub async fn catalogue(&self, id: &ProjectId) -> Result<(), ProjectsError> {

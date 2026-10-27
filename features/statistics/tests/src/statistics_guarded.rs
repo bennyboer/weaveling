@@ -1,12 +1,13 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
+use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::TestServer;
+use axum_test::{TestServer, WsMessage};
 use eventsourcing::{AccountId, Agent};
 use live::Broadcaster;
+use live_contract::NO_LONGER_ADMITTED;
 use serde_json::Value;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
@@ -17,6 +18,8 @@ const PROJECT: &str = "project_1";
 #[derive(Default)]
 struct OnlyAda {
     down: Mutex<bool>,
+    ada_left: Mutex<bool>,
+    changes: AccessChanges,
 }
 
 #[async_trait]
@@ -28,11 +31,20 @@ impl Authorizer for OnlyAda {
 
         Ok(act == Act::Read
             && project == PROJECT
-            && *agent == Agent::Account(AccountId::from("account_ada")))
+            && *agent == Agent::Account(AccountId::from("account_ada"))
+            && !*self.ada_left.lock().expect("never poisoned"))
     }
 
     async fn readable_by(&self, _agent: &Agent) -> Result<Readable, AuthorizerError> {
         Ok(Readable::Everything)
+    }
+
+    fn access_changed(&self, project: &str) {
+        self.changes.tell(project);
+    }
+
+    fn watch_access(&self, project: &str) -> AccessWatch {
+        self.changes.watch(project)
     }
 }
 
@@ -123,4 +135,23 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
         .get_websocket(&format!("/statistics/word-counts/live?project={PROJECT}"))
         .await
         .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn a_follower_who_may_no_longer_read_the_project_is_closed_out() {
+    let guarded = guarded().await;
+    let mut socket = guarded
+        .ada
+        .get_websocket(&format!("/statistics/word-counts/live?project={PROJECT}"))
+        .await
+        .into_websocket()
+        .await;
+
+    *guarded.authorizer.ada_left.lock().expect("never poisoned") = true;
+    guarded.authorizer.access_changed(PROJECT);
+
+    assert!(matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(1), socket.receive_message()).await,
+        Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == NO_LONGER_ADMITTED
+    ));
 }

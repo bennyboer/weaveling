@@ -10,7 +10,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing;
 use eventsourcing::Agent;
-use live::{Broadcaster, Gate, Teller};
+use live::{AccessWatch, Broadcaster, Gate, Teller};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO, SceneSummaryDTO, refused,
@@ -34,6 +34,10 @@ impl Gate for ScenesGate {
         project: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
         Ok(self.0.may_follow(project, agent).await?)
+    }
+
+    fn watch(&self, project: &str) -> AccessWatch {
+        self.0.watch_access(project)
     }
 }
 

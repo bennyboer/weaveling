@@ -32,20 +32,6 @@ pub trait Gate: Send + Sync {
 pub async fn streaming_if_admitted(
     upgrade: WebSocketUpgrade,
     broadcaster: &Broadcaster,
-    about: &str,
-    agent: &Agent,
-    gate: &dyn Gate,
-) -> Response {
-    match gate.admits(agent, about).await {
-        Ok(true) => socket::streaming(upgrade, broadcaster.hear(about)),
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    }
-}
-
-async fn streaming_while_admitted(
-    upgrade: WebSocketUpgrade,
-    broadcaster: &Broadcaster,
     about: String,
     agent: Agent,
     gate: Arc<dyn Gate>,
@@ -82,7 +68,7 @@ pub fn followed_if(
                   Query(asked): Query<Asked>| async move {
                 match about(&asked) {
                     Some(about) => {
-                        streaming_while_admitted(upgrade, &broadcaster, about, agent, gate.clone())
+                        streaming_if_admitted(upgrade, &broadcaster, about, agent, gate.clone())
                             .await
                     }
                     None => StatusCode::BAD_REQUEST.into_response(),

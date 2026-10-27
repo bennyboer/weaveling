@@ -6,7 +6,7 @@ use axum::extract::{Query, State};
 use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
-use live::{Broadcaster, Gate, Teller};
+use live::{AccessWatch, Broadcaster, Gate, Teller};
 use serde::Deserialize;
 use serving::Problem;
 use statistics_contract::WordCountDTO;
@@ -32,6 +32,10 @@ impl Gate for StatisticsGate {
         project: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
         Ok(self.0.may_follow(project, agent).await?)
+    }
+
+    fn watch(&self, project: &str) -> AccessWatch {
+        self.0.watch_access(project)
     }
 }
 

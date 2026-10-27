@@ -8,7 +8,7 @@ use axum::response::Response;
 use axum::routing;
 use axum::{Extension, Router};
 use eventsourcing::Agent;
-use live::{Asked, Broadcaster, Gate, Sieve};
+use live::{AccessWatch, Asked, Broadcaster, Gate, Sieve};
 use live_contract::FrameDTO;
 use projects_core::ProjectsCore;
 
@@ -49,9 +49,9 @@ async fn follow(
     live::streaming_if_admitted(
         upgrade,
         &following.broadcaster,
-        project,
-        &agent,
-        &ProjectsGate(following.projects),
+        project.clone(),
+        agent,
+        Arc::new(ProjectsGate(following.projects)),
     )
     .await
 }
@@ -66,6 +66,10 @@ impl Gate for ProjectsGate {
         project: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
         Ok(self.0.may_follow(project, agent).await?)
+    }
+
+    fn watch(&self, project: &str) -> AccessWatch {
+        self.0.watch_access(project)
     }
 }
 

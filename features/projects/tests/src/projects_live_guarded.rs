@@ -3,12 +3,13 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use authorizing::{Act, Authorizer, AuthorizerError, Readable};
+use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::{TestServer, TestWebSocket, WsMessage};
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
+use live_contract::NO_LONGER_ADMITTED;
 use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -20,6 +21,7 @@ use crate::wiring::Wired;
 struct Readers {
     readable: Mutex<BTreeSet<String>>,
     down: Mutex<bool>,
+    changes: AccessChanges,
 }
 
 impl Readers {
@@ -28,6 +30,14 @@ impl Readers {
             .lock()
             .expect("never poisoned")
             .insert(project.to_owned());
+    }
+
+    fn stop_reading(&self, project: &str) {
+        self.readable
+            .lock()
+            .expect("never poisoned")
+            .remove(project);
+        self.access_changed(project);
     }
 
     fn go_down(&self) {
@@ -54,6 +64,14 @@ impl Authorizer for Readers {
         Ok(Readable::Only(
             self.readable.lock().expect("never poisoned").clone(),
         ))
+    }
+
+    fn access_changed(&self, project: &str) {
+        self.changes.tell(project);
+    }
+
+    fn watch_access(&self, project: &str) -> AccessWatch {
+        self.changes.watch(project)
     }
 }
 
@@ -198,4 +216,23 @@ async fn whether_one_may_follow_a_project_not_being_known_is_a_failure() {
         .get_websocket(&format!("/projects/live?project={}", loom.id))
         .await
         .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+}
+
+#[tokio::test]
+async fn whoever_may_no_longer_read_the_project_they_follow_is_closed_out() {
+    let guarded = guarded();
+    let loom = started(&guarded.server, "The Loom").await;
+    guarded.readers.let_read(&loom.id);
+    let mut socket = following(
+        &guarded.server,
+        &format!("/projects/live?project={}", loom.id),
+    )
+    .await;
+
+    guarded.readers.stop_reading(&loom.id);
+
+    assert!(matches!(
+        tokio::time::timeout(Duration::from_secs(1), socket.receive_message()).await,
+        Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == NO_LONGER_ADMITTED
+    ));
 }

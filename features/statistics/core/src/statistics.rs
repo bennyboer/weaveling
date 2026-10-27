@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use authorizing::{Act, Authorizer};
+use authorizing::{AccessWatch, Act, Authorizer};
 use eventsourcing::Agent;
 use time::OffsetDateTime;
 
@@ -37,6 +37,10 @@ impl StatisticsCore {
 
     pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, StatisticsError> {
         Ok(self.authorizer.may(agent, Act::Read, project).await?)
+    }
+
+    pub fn watch_access(&self, project: &str) -> AccessWatch {
+        self.authorizer.watch_access(project)
     }
 
     pub async fn counted(

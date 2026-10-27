@@ -23,3 +23,4 @@ projects-contract = { version = "0.1.0", path = "../contract", package = "weavel
 projects-core = { version = "0.1.0", path = "../core", package = "weaveling-projects-core" }
 projects-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-projects-messaging" }
 projects-wiring = { version = "0.1.0", path = "../wiring", package = "weaveling-projects-wiring" }
+live-contract = { version = "0.1.0", path = "../../../libraries/live-contract", package = "weaveling-live-contract" }
