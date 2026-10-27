@@ -16,6 +16,7 @@ mod nearness;
 mod outline;
 mod problem;
 mod projects;
+mod quiet_note;
 mod refusals;
 mod route;
 mod scenes;

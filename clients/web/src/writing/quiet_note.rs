@@ -1,38 +1,10 @@
 use leptos::prelude::*;
-use leptos::{IntoView, ev, html};
 
-use crate::icons;
-use crate::icons::Icon;
 use crate::speech;
 use crate::writing::asking::Asking;
 use crate::writing::write_view_state::WriteViewState;
 
-#[derive(Clone, Copy)]
-pub struct QuietNote {
-    told: RwSignal<Option<String>>,
-}
-
-impl QuietNote {
-    pub fn none() -> Self {
-        Self {
-            told: RwSignal::new(None),
-        }
-    }
-
-    pub fn tell(self, saying: String) {
-        self.told.set(Some(saying));
-    }
-
-    pub fn dismiss(self) {
-        self.told.set(None);
-    }
-
-    pub fn told(self) -> Option<String> {
-        self.told.get()
-    }
-}
-
-pub fn quiet_note(state: WriteViewState) -> impl IntoView {
+pub fn told_quietly(state: WriteViewState) {
     Effect::new(move || {
         let rearranged = state.structure.rearranged_by_others();
         if rearranged.is_empty() {
@@ -81,18 +53,4 @@ pub fn quiet_note(state: WriteViewState) -> impl IntoView {
         }
         times
     });
-
-    move || {
-        state.quiet_note.told().map(|saying| {
-            html::div().class("quiet-note").role("status").child((
-                html::span().child(saying),
-                html::button()
-                    .r#type("button")
-                    .attr("aria-label", speech::said("problem-dismiss"))
-                    .attr("title", speech::said("problem-dismiss"))
-                    .on(ev::click, move |_| state.quiet_note.dismiss())
-                    .child(icons::mark(Icon::Remove)),
-            ))
-        })
-    }
 }

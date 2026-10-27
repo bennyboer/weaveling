@@ -4,6 +4,7 @@ use statistics_contract::WordCountDTO;
 
 use crate::live::Following;
 use crate::projects::model::ProjectId;
+use crate::quiet_note::QuietNote;
 use crate::scenes::followed as scenes_followed;
 use crate::scenes::prose::SyncConnection;
 use crate::statistics::model::SceneWordCount;
@@ -22,7 +23,6 @@ use crate::writing::loose_scenes::LooseScenes;
 use crate::writing::margin::Margin;
 use crate::writing::moving::Moving;
 use crate::writing::problems::Problems;
-use crate::writing::quiet_note::QuietNote;
 use crate::writing::saving::Saving;
 use crate::writing::scene_ideas::SceneIdeas;
 use crate::writing::settings::Settings;
@@ -98,7 +98,7 @@ impl WriteViewState {
             side,
             loose,
             connection: StoredValue::new_local(SyncConnection::new()),
-            quiet_note: QuietNote::none(),
+            quiet_note: expect_context::<QuietNote>(),
         };
         drawers::keep_apart(state.book_rail.drawer(), state.inspector.drawer());
         let listing = project.clone();

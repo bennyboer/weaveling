@@ -235,6 +235,8 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
             },
         ));
 
+    quiet_note::told_quietly(state);
+
     (
         focus::focus_line(state),
         book_view,
@@ -245,7 +247,6 @@ pub fn WriteView(project: String, following: Option<SceneId>, side: Side) -> imp
         (side == Side::Book).then(|| contents::contents(state)),
         drawers::drawer_toggles(state),
         going_back::going_back(state),
-        quiet_note::quiet_note(state),
         inspecting::ideas_to_choose(state),
         settings_dialog::settings_dialog(state),
         typewriter::typewriter_scrolling(state),

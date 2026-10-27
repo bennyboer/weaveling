@@ -27,6 +27,8 @@ use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePag
 use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
+use crate::quiet_note;
+use crate::quiet_note::QuietNote;
 use crate::setup::SetUpPage;
 use crate::shell;
 use crate::speech::Speech;
@@ -38,6 +40,7 @@ pub fn App() -> impl IntoView {
     let screen = session.screen();
     provide_context(OpenProject::none());
     provide_context(Speech::heard());
+    provide_context(QuietNote::none());
     provide_context(session);
 
     window_event_listener(ev::click, move |_| overlays.close_menu());
@@ -56,6 +59,7 @@ pub fn App() -> impl IntoView {
                 Screen::Work => work(overlays, session).into_any(),
             }}
             {shell::status_bar()}
+            {quiet_note::quiet_note()}
         </Router>
     }
 }
