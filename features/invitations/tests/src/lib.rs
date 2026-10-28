@@ -20,4 +20,7 @@ mod inviting_into_a_project;
 mod listing_api;
 
 #[cfg(test)]
+mod remembering;
+
+#[cfg(test)]
 mod wiring;

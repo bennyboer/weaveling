@@ -7,6 +7,7 @@ use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore};
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
+    RememberWhoSignedUpListener,
 };
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
@@ -142,6 +143,7 @@ impl Feature for InvitationFeature {
                 Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
                 Arc::new(DeclineInvitationListener::new(invitations.clone())),
                 Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
+                Arc::new(RememberWhoSignedUpListener::new(invitations.clone())),
             ])
             .doing_chores(vec![Arc::new(RetireDueInvitations::new(invitations))])
     }
@@ -252,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_hears_its_invitations_taken_up_declined_and_listed() {
+    fn the_feature_hears_its_invitations_taken_up_declined_and_listed_and_who_signed_up() {
         let context = a_context();
 
         let wired = InvitationFeature::wire(&InvitationFeature::in_memory(&context), &context);
@@ -261,6 +263,7 @@ mod tests {
             "accept-taken-up-invitation",
             "decline-invitation",
             "catalogue-invitation",
+            "invitations-remember-who-signed-up",
         ] {
             assert!(
                 wired

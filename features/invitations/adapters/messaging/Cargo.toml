@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 accounts-contract = { version = "0.1.0", path = "../../../accounts/contract", package = "weaveling-accounts-contract" }
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+email = { version = "0.1.0", path = "../../../../libraries/email", package = "weaveling-email" }
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
@@ -15,5 +16,4 @@ invitations-contract = { version = "0.1.0", path = "../../contract", package = "
 invitations-core = { version = "0.1.0", path = "../../core", package = "weaveling-invitations-core" }
 
 [dev-dependencies]
-email = { version = "0.1.0", path = "../../../../libraries/email", package = "weaveling-email" }
 time = { workspace = true }

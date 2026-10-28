@@ -8,7 +8,7 @@ use mailing::Mailer;
 use throttling::Throttles;
 use time::OffsetDateTime;
 
-use crate::catalog::{InvitationCatalog, InvitationSummary, ListedInvitation};
+use crate::catalog::{InvitationCatalog, InvitationSummary, ListedInvitation, Person};
 use crate::error::InvitationsError;
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, InvitationError, InvitationEvent, KIND};
@@ -173,6 +173,10 @@ impl InvitationsCore {
                 .decline(invitation, reason, &Agent::System)
                 .await,
         )
+    }
+
+    pub async fn remember_person(&self, person: &Person) -> Result<(), InvitationsError> {
+        Ok(self.catalog.remember_person(person).await?)
     }
 
     pub async fn catalogue(&self, invitation: &InvitationId) -> Result<(), InvitationsError> {
