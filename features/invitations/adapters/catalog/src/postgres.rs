@@ -2,9 +2,9 @@ use std::error::Error;
 
 use async_trait::async_trait;
 use email::EmailAddress;
-use eventsourcing::Version;
+use eventsourcing::{AccountId, Version};
 use invitations_core::{
-    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, ProjectLink,
+    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Person, ProjectLink,
 };
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgRow;
@@ -59,6 +59,20 @@ const DUE_FOR_RETIRING: &str = "
 ";
 
 const FORGET: &str = "DELETE FROM invitation_summaries WHERE invitation = $1";
+
+const REMEMBER_PERSON: &str = "
+    INSERT INTO people (account, name, email)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (account) DO UPDATE
+    SET name = EXCLUDED.name, email = EXCLUDED.email
+";
+
+const PEOPLE: &str = "
+    SELECT account, name, email
+    FROM people
+    WHERE account = ANY($1)
+    ORDER BY account
+";
 
 const LEDGER: &str = "_sqlx_migrations_invitation_summaries";
 
@@ -189,6 +203,40 @@ impl InvitationCatalog for PostgresInvitationCatalog {
 
         Ok(())
     }
+
+    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_PERSON)
+            .bind(person.account.as_str())
+            .bind(&person.name)
+            .bind(person.email.as_str())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
+        let asked: Vec<&str> = accounts.iter().map(AccountId::as_str).collect();
+        let found = sqlx::query(PEOPLE)
+            .bind(asked)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found.iter().map(person_in).collect()
+    }
+}
+
+fn person_in(row: &PgRow) -> Result<Person, CatalogError> {
+    let account: String = row.try_get("account").map_err(unreachable)?;
+    let email: String = row.try_get("email").map_err(unreachable)?;
+
+    Ok(Person {
+        account: AccountId::from(account),
+        name: row.try_get("name").map_err(unreachable)?,
+        email: EmailAddress::new(&email).map_err(unreachable)?,
+    })
 }
 
 #[cfg(test)]

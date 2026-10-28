@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use async_trait::async_trait;
-use eventsourcing::Version;
+use eventsourcing::{AccountId, Version};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
@@ -35,6 +35,13 @@ pub struct ListedInvitation {
     pub status: Status,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Person {
+    pub account: AccountId,
+    pub name: String,
+    pub email: EmailAddress,
+}
+
 #[derive(Debug, Error)]
 pub enum CatalogError {
     #[error("the list of invitations could not be reached")]
@@ -65,6 +72,10 @@ pub trait InvitationCatalog: Send + Sync {
     ) -> Result<Vec<InvitationId>, CatalogError>;
 
     async fn forget(&self, invitation: &InvitationId) -> Result<(), CatalogError>;
+
+    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError>;
+
+    async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
 }
 
 impl InvitationSummary {

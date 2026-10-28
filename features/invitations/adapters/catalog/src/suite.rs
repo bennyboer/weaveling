@@ -1,8 +1,8 @@
 use email::EmailAddress;
-use eventsourcing::Version;
+use eventsourcing::{AccountId, Version};
 use invitations_core::{
-    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome, ProjectLink, Role,
-    Scope,
+    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome, Person,
+    ProjectLink, Role, Scope,
 };
 use time::OffsetDateTime;
 
@@ -347,6 +347,78 @@ pub async fn a_forgotten_invitation_leaves_the_list_and_the_others_stay(
     assert_eq!(listed(catalog).await, vec![stays]);
 }
 
+fn person(account: &str, name: &str, email: &str) -> Person {
+    Person {
+        account: AccountId::from(account),
+        name: name.to_owned(),
+        email: EmailAddress::new(email).expect("a plain address"),
+    }
+}
+
+async fn known(catalog: &impl InvitationCatalog, person: &Person) {
+    catalog
+        .remember_person(person)
+        .await
+        .expect("remembering a person should succeed");
+}
+
+async fn people(catalog: &impl InvitationCatalog, accounts: &[&str]) -> Vec<Person> {
+    let accounts: Vec<AccountId> = accounts.iter().copied().map(AccountId::from).collect();
+
+    catalog
+        .people(&accounts)
+        .await
+        .expect("asking for people should succeed")
+}
+
+pub async fn the_people_asked_for_are_told_by_account_and_no_others(
+    catalog: &impl InvitationCatalog,
+) {
+    known(
+        catalog,
+        &person("account_hedy", "Hedy Lamarr", "hedy@example.com"),
+    )
+    .await;
+    known(
+        catalog,
+        &person("account_grace", "Grace Hopper", "grace@example.com"),
+    )
+    .await;
+    known(
+        catalog,
+        &person("account_ada", "Ada Lovelace", "ada@example.com"),
+    )
+    .await;
+
+    assert!(people(catalog, &[]).await.is_empty());
+    assert_eq!(
+        people(catalog, &["account_grace", "account_nobody", "account_ada"]).await,
+        vec![
+            person("account_ada", "Ada Lovelace", "ada@example.com"),
+            person("account_grace", "Grace Hopper", "grace@example.com"),
+        ]
+    );
+}
+
+pub async fn a_person_told_again_is_known_as_last_told(catalog: &impl InvitationCatalog) {
+    known(catalog, &person("account_ada", "Ada", "ada@example.com")).await;
+
+    known(
+        catalog,
+        &person("account_ada", "Ada Lovelace", "lovelace@example.com"),
+    )
+    .await;
+
+    assert_eq!(
+        people(catalog, &["account_ada"]).await,
+        vec![person(
+            "account_ada",
+            "Ada Lovelace",
+            "lovelace@example.com"
+        )]
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -399,5 +471,10 @@ macro_rules! conformance_tests {
             $workbench,
             a_project_s_page_holds_at_most_what_was_asked_newest_first_and_goes_on_after_it
         );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            the_people_asked_for_are_told_by_account_and_no_others
+        );
+        $crate::catalog_conformance_case!($workbench, a_person_told_again_is_known_as_last_told);
     };
 }

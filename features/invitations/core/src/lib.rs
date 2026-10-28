@@ -10,7 +10,9 @@ mod token;
 #[cfg(test)]
 mod invitation_tests;
 
-pub use catalog::{CatalogError, InvitationCatalog, InvitationSummary, ListedInvitation, Status};
+pub use catalog::{
+    CatalogError, InvitationCatalog, InvitationSummary, ListedInvitation, Person, Status,
+};
 pub use error::InvitationsError;
 pub use id::InvitationId;
 pub use invitation::{

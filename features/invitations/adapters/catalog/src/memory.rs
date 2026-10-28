@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
+use eventsourcing::AccountId;
 use invitations_core::{
-    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, ProjectLink,
+    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Person, ProjectLink,
 };
 use time::OffsetDateTime;
 
@@ -12,6 +13,7 @@ type Kept = BTreeMap<InvitationId, InvitationSummary>;
 #[derive(Debug, Default)]
 pub struct InMemoryInvitationCatalog {
     kept: RwLock<Kept>,
+    people: RwLock<BTreeMap<String, Person>>,
 }
 
 impl InMemoryInvitationCatalog {
@@ -99,6 +101,28 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
         self.write().remove(invitation);
 
         Ok(())
+    }
+
+    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+        self.people
+            .write()
+            .expect("invitation catalog lock poisoned")
+            .insert(person.account.to_string(), person.clone());
+
+        Ok(())
+    }
+
+    async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
+        let known = self
+            .people
+            .read()
+            .expect("invitation catalog lock poisoned");
+
+        Ok(known
+            .values()
+            .filter(|person| accounts.contains(&person.account))
+            .cloned()
+            .collect())
     }
 }
 
