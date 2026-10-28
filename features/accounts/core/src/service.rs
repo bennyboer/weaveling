@@ -219,13 +219,38 @@ impl AccountService {
         id: &AccountId,
         token: &str,
     ) -> Result<InvitationTicket, AccountsError> {
-        let digest = InvitationToken::presented(token).digest();
+        self.take_up(id, &InvitationToken::presented(token).digest())
+            .await
+    }
+
+    pub async fn take_up_invitation_by_id(
+        &self,
+        id: &AccountId,
+        invitation: &str,
+    ) -> Result<InvitationTicket, AccountsError> {
+        let Some(digest) = self.invitation_tickets.digest_of_ticket(invitation).await? else {
+            return Err(AccountsError::InvitationInvalid);
+        };
+
+        match self.take_up(id, &digest).await {
+            Err(AccountsError::InvitationForAnotherAddress { .. }) => {
+                Err(AccountsError::InvitationInvalid)
+            }
+            taken => taken,
+        }
+    }
+
+    async fn take_up(
+        &self,
+        id: &AccountId,
+        digest: &TokenDigest,
+    ) -> Result<InvitationTicket, AccountsError> {
         let Some(
             found @ InvitationTicket {
                 scope: InvitationScope::Project { .. },
                 ..
             },
-        ) = self.invitation_tickets.find_ticket(&digest).await?
+        ) = self.invitation_tickets.find_ticket(digest).await?
         else {
             return Err(AccountsError::InvitationInvalid);
         };
@@ -235,7 +260,7 @@ impl AccountService {
         if self.clock.now() > found.until {
             return Err(AccountsError::InvitationExpired);
         }
-        let Some(ticket) = self.invitation_tickets.take_ticket(&digest).await? else {
+        let Some(ticket) = self.invitation_tickets.take_ticket(digest).await? else {
             return Err(AccountsError::InvitationInvalid);
         };
 

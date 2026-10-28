@@ -56,6 +56,10 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
             "/accounts/current/invitations",
             routing::post(take_up_invitation),
         )
+        .route(
+            "/accounts/current/invitations/{invitation}",
+            routing::post(take_up_invitation_by_id),
+        )
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
             "/instance/accounts/{account}/lock",
@@ -198,6 +202,19 @@ async fn take_up_invitation(
 ) -> Result<StatusCode, Problem> {
     accounts
         .take_up_invitation(&account, &request.token)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn take_up_invitation_by_id(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Path(invitation): Path<String>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .take_up_invitation_by_id(&account, &invitation)
         .await
         .map_err(problem_of)?;
 

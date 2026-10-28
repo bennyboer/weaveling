@@ -156,3 +156,51 @@ async fn nobody_takes_an_invitation_up_without_signing_in() {
         refused::NOT_SIGNED_IN,
     );
 }
+
+async fn takes_up_by_id(
+    server: &TestServer,
+    cookie: Option<&str>,
+    invitation: &str,
+) -> TestResponse {
+    let request = server.post(&format!("/accounts/current/invitations/{invitation}"));
+
+    match cookie {
+        Some(cookie) => request.add_header(COOKIE, cookie.to_owned()).await,
+        None => request.await,
+    }
+}
+
+#[tokio::test]
+async fn the_account_signed_in_takes_up_an_invitation_to_its_address_by_its_id() {
+    let (wired, server) = served_with_ada_invited().await;
+    let ada = signed_in(&wired, &server, ADA).await;
+
+    takes_up_by_id(&server, Some(&ada), "invitation_1")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    assert!(taken_up_by(&wired, ADA).await);
+    refused_as(
+        &takes_up_by_id(&server, Some(&ada), "invitation_1").await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::INVITATION_INVALID,
+    );
+}
+
+#[tokio::test]
+async fn nobody_takes_an_invitation_up_by_its_id_without_signing_in_nor_one_to_another_address() {
+    let (wired, server) = served_with_ada_invited().await;
+    let bob = signed_in(&wired, &server, BOB).await;
+
+    refused_as(
+        &takes_up_by_id(&server, None, "invitation_1").await,
+        StatusCode::UNAUTHORIZED,
+        refused::NOT_SIGNED_IN,
+    );
+    refused_as(
+        &takes_up_by_id(&server, Some(&bob), "invitation_1").await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::INVITATION_INVALID,
+    );
+    assert!(!taken_up_by(&wired, BOB).await);
+}

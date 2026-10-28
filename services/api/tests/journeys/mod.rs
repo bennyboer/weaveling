@@ -848,7 +848,9 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
     journey.end().await;
 }
 
-pub async fn an_account_is_told_in_the_application_what_it_is_invited_into<B: Backend>() {
+pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_joins_there<
+    B: Backend,
+>() {
     let journey = Journey::<B>::signed_in("told").await;
     let project = journey.project("Shared").await;
     let server = &journey.server;
@@ -881,6 +883,37 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into<B: Ba
     assert_eq!(mine.as_array().map(Vec::len), Some(1));
     assert_eq!(mine[0]["project"], project);
     assert_eq!(mine[0]["role"], "author");
+
+    server
+        .post(&format!(
+            "/api/accounts/current/invitations/{}",
+            mine[0]["id"].as_str().unwrap_or_default()
+        ))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    assert!(
+        until(|| async {
+            let listed: Value = server.get(&members).await.json();
+            listed
+                .as_array()
+                .is_some_and(|members| members.iter().any(|member| member["role"] == "author"))
+        })
+        .await,
+        "taken up in the application, no link followed, she joins as she was invited"
+    );
+    assert!(
+        until(|| async {
+            server
+                .get("/api/invitations/mine")
+                .await
+                .json::<Value>()
+                .as_array()
+                .is_some_and(Vec::is_empty)
+        })
+        .await,
+        "and is invited to it no more"
+    );
     journey.end().await;
 }
 
@@ -906,7 +939,7 @@ macro_rules! journeys {
             a_project_s_members_are_listed_for_whoever_may_read_it,
             an_account_invited_into_a_project_joins_it_by_taking_the_invitation_up,
             a_deleted_project_s_owner_neither_lists_its_members_nor_invites_into_it,
-            an_account_is_told_in_the_application_what_it_is_invited_into,
+            an_account_is_told_in_the_application_what_it_is_invited_into_and_joins_there,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {
