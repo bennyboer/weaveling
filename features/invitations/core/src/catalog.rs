@@ -42,6 +42,13 @@ pub struct Person {
     pub email: EmailAddress,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectName {
+    pub project: ProjectLink,
+    pub version: Version,
+    pub name: String,
+}
+
 #[derive(Debug, Error)]
 pub enum CatalogError {
     #[error("the list of invitations could not be reached")]
@@ -76,6 +83,25 @@ pub trait InvitationCatalog: Send + Sync {
     async fn remember_person(&self, person: &Person) -> Result<(), CatalogError>;
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
+
+    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError>;
+
+    async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn forget_project_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
+
+    async fn project_names(
+        &self,
+        projects: &[ProjectLink],
+    ) -> Result<Vec<ProjectName>, CatalogError>;
 }
 
 impl InvitationSummary {

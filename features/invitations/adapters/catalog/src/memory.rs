@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use eventsourcing::AccountId;
 use invitations_core::{
     CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Person, ProjectLink,
+    ProjectName,
 };
 use time::OffsetDateTime;
 
@@ -14,6 +15,13 @@ type Kept = BTreeMap<InvitationId, InvitationSummary>;
 pub struct InMemoryInvitationCatalog {
     kept: RwLock<Kept>,
     people: RwLock<BTreeMap<String, Person>>,
+    projects: RwLock<KnownProjects>,
+}
+
+#[derive(Debug, Default)]
+struct KnownProjects {
+    names: BTreeMap<String, ProjectName>,
+    tombstones: BTreeMap<String, OffsetDateTime>,
 }
 
 impl InMemoryInvitationCatalog {
@@ -110,6 +118,81 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
             .insert(person.account.to_string(), person.clone());
 
         Ok(())
+    }
+
+    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
+        let mut projects = self
+            .projects
+            .write()
+            .expect("invitation catalog lock poisoned");
+        let project = named.project.to_string();
+        if !projects.tombstones.contains_key(&project)
+            && projects
+                .names
+                .get(&project)
+                .is_none_or(|before| before.version < named.version)
+        {
+            projects.names.insert(project, named.clone());
+        }
+
+        Ok(())
+    }
+
+    async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut projects = self
+            .projects
+            .write()
+            .expect("invitation catalog lock poisoned");
+        projects.names.remove(project.as_str());
+        projects.tombstones.entry(project.to_string()).or_insert(at);
+
+        Ok(())
+    }
+
+    async fn forget_project_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut projects = self
+            .projects
+            .write()
+            .expect("invitation catalog lock poisoned");
+        let mut long_gone: Vec<(OffsetDateTime, String)> = projects
+            .tombstones
+            .iter()
+            .filter(|(_, laid)| **laid < before)
+            .map(|(project, laid)| (*laid, project.clone()))
+            .collect();
+        long_gone.sort();
+        long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+
+        for (_, project) in &long_gone {
+            projects.tombstones.remove(project);
+        }
+
+        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
+    }
+
+    async fn project_names(
+        &self,
+        projects: &[ProjectLink],
+    ) -> Result<Vec<ProjectName>, CatalogError> {
+        let known = self
+            .projects
+            .read()
+            .expect("invitation catalog lock poisoned");
+
+        Ok(known
+            .names
+            .values()
+            .filter(|named| projects.contains(&named.project))
+            .cloned()
+            .collect())
     }
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {

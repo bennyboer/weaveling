@@ -2,7 +2,7 @@ use email::EmailAddress;
 use eventsourcing::{AccountId, Version};
 use invitations_core::{
     DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome, Person,
-    ProjectLink, Role, Scope,
+    ProjectLink, ProjectName, Role, Scope,
 };
 use time::OffsetDateTime;
 
@@ -419,6 +419,118 @@ pub async fn a_person_told_again_is_known_as_last_told(catalog: &impl Invitation
     );
 }
 
+fn named(project: &str, version: u64, name: &str) -> ProjectName {
+    ProjectName {
+        project: ProjectLink::from(project),
+        version: Version::of(version),
+        name: name.to_owned(),
+    }
+}
+
+async fn name_known(catalog: &impl InvitationCatalog, named: &ProjectName) {
+    catalog
+        .remember_project_name(named)
+        .await
+        .expect("remembering a project's name should succeed");
+}
+
+async fn names(catalog: &impl InvitationCatalog, projects: &[&str]) -> Vec<ProjectName> {
+    let projects: Vec<ProjectLink> = projects.iter().copied().map(ProjectLink::from).collect();
+
+    catalog
+        .project_names(&projects)
+        .await
+        .expect("asking for names should succeed")
+}
+
+pub async fn the_project_names_asked_for_are_told_by_project_and_no_others(
+    catalog: &impl InvitationCatalog,
+) {
+    name_known(catalog, &named("project_c", 1, "The Weft")).await;
+    name_known(catalog, &named("project_b", 1, "The Shuttle")).await;
+    name_known(catalog, &named("project_a", 2, "The Loom")).await;
+
+    assert!(names(catalog, &[]).await.is_empty());
+    assert_eq!(
+        names(catalog, &["project_b", "project_nowhere", "project_a"]).await,
+        vec![
+            named("project_a", 2, "The Loom"),
+            named("project_b", 1, "The Shuttle"),
+        ]
+    );
+}
+
+pub async fn a_newer_name_replaces_the_older_and_an_older_one_heard_late_changes_nothing(
+    catalog: &impl InvitationCatalog,
+) {
+    name_known(catalog, &named("project_a", 2, "The Loom")).await;
+
+    name_known(catalog, &named("project_a", 4, "The Silent Loom")).await;
+    for late in [1, 4] {
+        name_known(catalog, &named("project_a", late, "Untitled")).await;
+    }
+
+    assert_eq!(
+        names(catalog, &["project_a"]).await,
+        vec![named("project_a", 4, "The Silent Loom")]
+    );
+}
+
+async fn tombstoned(catalog: &impl InvitationCatalog, project: &str, laid: i64) {
+    catalog
+        .lay_project_tombstone(&ProjectLink::from(project), at(laid))
+        .await
+        .expect("laying a tombstone should succeed");
+}
+
+async fn forget_long_gone(catalog: &impl InvitationCatalog, before: i64, at_most: u64) -> u64 {
+    catalog
+        .forget_project_tombstones_laid_before(at(before), at_most)
+        .await
+        .expect("forgetting tombstones should succeed")
+}
+
+pub async fn a_deleted_project_s_name_is_told_no_more_and_a_name_heard_late_brings_it_not_back(
+    catalog: &impl InvitationCatalog,
+) {
+    name_known(catalog, &named("project_a", 2, "The Loom")).await;
+    name_known(catalog, &named("project_b", 1, "The Shuttle")).await;
+
+    tombstoned(catalog, "project_a", 1_000).await;
+    tombstoned(catalog, "project_c", 1_000).await;
+    name_known(catalog, &named("project_a", 3, "The Silent Loom")).await;
+    name_known(catalog, &named("project_c", 1, "The Weft")).await;
+
+    assert_eq!(
+        names(catalog, &["project_a", "project_b", "project_c"]).await,
+        vec![named("project_b", 1, "The Shuttle")]
+    );
+}
+
+pub async fn a_project_s_tombstone_is_laid_once_and_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl InvitationCatalog,
+) {
+    tombstoned(catalog, "project_newest", 3_000).await;
+    tombstoned(catalog, "project_older", 2_000).await;
+    tombstoned(catalog, "project_oldest", 1_000).await;
+    tombstoned(catalog, "project_oldest", 2_900).await;
+
+    assert_eq!(forget_long_gone(catalog, 2_500, 1).await, 1);
+    name_known(catalog, &named("project_oldest", 1, "Forgotten")).await;
+    name_known(catalog, &named("project_older", 1, "Still gone")).await;
+    assert_eq!(
+        names(catalog, &["project_oldest", "project_older"]).await,
+        vec![named("project_oldest", 1, "Forgotten")],
+        "the oldest went first, as when it was first laid; once forgotten, nothing late can come"
+    );
+    assert_eq!(forget_long_gone(catalog, 2_500, 5).await, 1);
+    assert_eq!(
+        forget_long_gone(catalog, 2_500, 5).await,
+        0,
+        "the newest is not old enough"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -476,5 +588,21 @@ macro_rules! conformance_tests {
             the_people_asked_for_are_told_by_account_and_no_others
         );
         $crate::catalog_conformance_case!($workbench, a_person_told_again_is_known_as_last_told);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            the_project_names_asked_for_are_told_by_project_and_no_others
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_newer_name_replaces_the_older_and_an_older_one_heard_late_changes_nothing
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_deleted_project_s_name_is_told_no_more_and_a_name_heard_late_brings_it_not_back
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_s_tombstone_is_laid_once_and_forgotten_oldest_first_and_at_most_so_many
+        );
     };
 }

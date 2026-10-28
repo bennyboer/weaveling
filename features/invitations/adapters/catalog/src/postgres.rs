@@ -5,6 +5,7 @@ use email::EmailAddress;
 use eventsourcing::{AccountId, Version};
 use invitations_core::{
     CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Person, ProjectLink,
+    ProjectName,
 };
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgRow;
@@ -72,6 +73,36 @@ const PEOPLE: &str = "
     FROM people
     WHERE account = ANY($1)
     ORDER BY account
+";
+
+const REMEMBER_PROJECT_NAME: &str = "
+    INSERT INTO project_names (project, version, name)
+    SELECT $1, $2, $3
+    WHERE NOT EXISTS (SELECT 1 FROM project_tombstones WHERE project = $1)
+    ON CONFLICT (project) DO UPDATE
+    SET version = EXCLUDED.version, name = EXCLUDED.name
+    WHERE project_names.version < EXCLUDED.version
+";
+
+const PROJECT_NAMES: &str = "
+    SELECT project, version, name
+    FROM project_names
+    WHERE project = ANY($1)
+    ORDER BY project
+";
+
+const LAY_PROJECT_TOMBSTONE: &str =
+    "INSERT INTO project_tombstones (project, laid_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+
+const FORGET_PROJECT_NAME: &str = "DELETE FROM project_names WHERE project = $1";
+
+const FORGET_OLD_PROJECT_TOMBSTONES: &str = "
+    DELETE FROM project_tombstones WHERE project IN (
+        SELECT project FROM project_tombstones
+        WHERE laid_at < $1
+        ORDER BY laid_at, project
+        LIMIT $2
+    )
 ";
 
 const LEDGER: &str = "_sqlx_migrations_invitation_summaries";
@@ -226,6 +257,78 @@ impl InvitationCatalog for PostgresInvitationCatalog {
 
         found.iter().map(person_in).collect()
     }
+
+    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_PROJECT_NAME)
+            .bind(named.project.as_str())
+            .bind(i64::try_from(named.version.count()).map_err(unreachable)?)
+            .bind(&named.name)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(LAY_PROJECT_TOMBSTONE)
+            .bind(project.as_str())
+            .bind(at)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET_PROJECT_NAME)
+            .bind(project.as_str())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+
+        transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn forget_project_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_OLD_PROJECT_TOMBSTONES)
+            .bind(before)
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
+    }
+
+    async fn project_names(
+        &self,
+        projects: &[ProjectLink],
+    ) -> Result<Vec<ProjectName>, CatalogError> {
+        let asked: Vec<&str> = projects.iter().map(ProjectLink::as_str).collect();
+        let found = sqlx::query(PROJECT_NAMES)
+            .bind(asked)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found.iter().map(project_name_in).collect()
+    }
+}
+
+fn project_name_in(row: &PgRow) -> Result<ProjectName, CatalogError> {
+    let project: String = row.try_get("project").map_err(unreachable)?;
+    let version: i64 = row.try_get("version").map_err(unreachable)?;
+
+    Ok(ProjectName {
+        project: ProjectLink::from(project),
+        version: Version::of(u64::try_from(version).map_err(unreachable)?),
+        name: row.try_get("name").map_err(unreachable)?,
+    })
 }
 
 fn person_in(row: &PgRow) -> Result<Person, CatalogError> {

@@ -11,7 +11,8 @@ mod token;
 mod invitation_tests;
 
 pub use catalog::{
-    CatalogError, InvitationCatalog, InvitationSummary, ListedInvitation, Person, Status,
+    CatalogError, InvitationCatalog, InvitationSummary, ListedInvitation, Person, ProjectName,
+    Status,
 };
 pub use error::InvitationsError;
 pub use id::InvitationId;
