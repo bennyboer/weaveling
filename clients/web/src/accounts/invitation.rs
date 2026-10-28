@@ -12,11 +12,13 @@ use crate::quiet_note::QuietNote;
 use crate::route;
 use crate::shell;
 use crate::speech;
+use crate::speech::Speech;
 
 #[component]
 pub fn InvitationPage() -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let note = expect_context::<QuietNote>();
+    let speech = expect_context::<Speech>();
     let navigate = hooks::use_navigate();
     let token = hooks::use_location()
         .hash
@@ -46,7 +48,7 @@ pub fn InvitationPage() -> impl IntoView {
             task::spawn_local(async move {
                 match service::take_up_invitation(&token).await {
                     Ok(()) => {
-                        note.tell(speech::say("invitation-accepted"));
+                        note.tell(speech.say("invitation-accepted"));
                         navigate(route::WORKSPACE, Default::default());
                     }
                     Err(failed) => refused.set(Some(failed)),

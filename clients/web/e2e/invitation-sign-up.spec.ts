@@ -224,3 +224,14 @@ test("the invitation's page without a token, signed in, has nothing to accept", 
   await expect(page.getByRole("heading", { name: "You have been invited" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Accept" })).toHaveCount(0);
 });
+
+test("the note after accepting speaks the reader's language", async ({ page }) => {
+  await signedInFollowingTheLink(page, (route) => route.fulfill({ status: 204 }));
+  await page.getByLabel("Language").selectOption("de");
+
+  await page.getByRole("button", { name: "Annehmen" }).click();
+
+  await expect(
+    page.getByRole("status").filter({ hasText: "Einladung angenommen." }),
+  ).toBeVisible();
+});
