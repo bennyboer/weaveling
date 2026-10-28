@@ -1,7 +1,7 @@
 use accounts_contract::{
     AccountPageDTO, BecomeOperatorRequest, LockRequest, NewPasswordRequest, PasswordResetRequest,
     SendCodeRequest, ServiceModeDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest,
-    SignedInDTO, VerifyEmailRequest,
+    SignedInDTO, TakeUpInvitationRequest, VerifyEmailRequest,
 };
 use gloo_net::http::Request;
 
@@ -19,6 +19,7 @@ const PASSWORD_RESET: &str = "/api/accounts/password-reset";
 const NEW_PASSWORD: &str = "/api/accounts/password";
 const SESSIONS: &str = "/api/sessions";
 const CURRENT: &str = "/api/sessions/current";
+const TAKEN_UP: &str = "/api/accounts/current/invitations";
 const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const SUBJECT: &str = "session";
@@ -37,6 +38,19 @@ pub async fn current() -> Result<(SignInState, ServiceModeDTO), ApiError> {
     };
 
     Ok((state, mode))
+}
+
+pub async fn take_up_invitation(token: &str) -> Result<(), ApiError> {
+    let payload = TakeUpInvitationRequest {
+        token: token.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::post(TAKEN_UP), &payload).await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn sign_up_by_invitation(

@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Page, type Route } from "@playwright/test";
 
 import {
   ADA,
@@ -96,24 +96,68 @@ test("where anyone may sign up, signing in still offers it", async ({
   ).toBeVisible();
 });
 
-test("a link opened while signed in says whose session it is and how to accept", async ({
-  page,
-}) => {
+async function signedInFollowingTheLink(page: Page, answered: (route: Route) => Promise<void>) {
   const server = await aServerWithAccounts(page);
+  const taken: string[] = [];
+  await page.route(
+    (url) => url.pathname === "/api/accounts/current/invitations",
+    (route) => {
+      taken.push(route.request().postDataJSON().token);
+      return answered(route);
+    },
+  );
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
   await expect(accountButton(page, "Ada Lovelace")).toBeVisible();
-
   await page.goto(`/invitation#${THE_INVITATION}`);
+
+  return { server, taken };
+}
+
+test("a link opened while signed in is accepted there, and leads to one's projects", async ({
+  page,
+}) => {
+  const { server, taken } = await signedInFollowingTheLink(page, (route) =>
+    route.fulfill({ status: 204 }),
+  );
 
   await expect(
     page.getByRole("heading", { name: "You have been invited" }),
   ).toBeVisible();
   await expect(page.getByRole("main")).toContainText(
-    "You are already signed in as ada@example.com.",
+    "You are signed in as ada@example.com.",
   );
   await expect(page.getByLabel("Your name")).toHaveCount(0);
+  await page.getByRole("button", { name: "Accept" }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("status").filter({ hasText: "Invitation accepted." })).toBeVisible();
+  expect(taken).toEqual([THE_INVITATION]);
   expect(server.signedInAs).toBeNull();
+});
+
+test("a link for another address, opened signed in, says whose it is and stays", async ({
+  page,
+}) => {
+  await signedInFollowingTheLink(page, (route) =>
+    route.fulfill({
+      status: 403,
+      contentType: "application/problem+json",
+      body: JSON.stringify({
+        type: "invitation-for-another-address",
+        status: 403,
+        detail: "invitation-for-another-address",
+        to: "grace@example.com",
+      }),
+    }),
+  );
+
+  await page.getByRole("button", { name: "Accept" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText(
+    "This invitation was sent to grace@example.com. Sign in with that address to take it up.",
+  );
+  await expect(page.getByRole("heading", { name: "You have been invited" })).toBeVisible();
 });
 
 test("the invitation's page without a token is only the way to sign in", async ({
@@ -165,4 +209,18 @@ test("the word under the invitation's heading stands apart from the first field"
     field!.y - (hint!.y + hint!.height),
     "as much room as between one field and the next",
   ).toBeGreaterThanOrEqual(between!.y - (name!.y + name!.height));
+});
+
+test("the invitation's page without a token, signed in, has nothing to accept", async ({
+  page,
+}) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  await expect(accountButton(page, "Ada Lovelace")).toBeVisible();
+
+  await page.goto("/invitation");
+
+  await expect(page.getByRole("heading", { name: "You have been invited" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Accept" })).toHaveCount(0);
 });

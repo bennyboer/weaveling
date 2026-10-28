@@ -464,3 +464,8 @@
     font: inherit;
   }
 }
+
+.signing-in > button + .back {
+  display: inline-block;
+  margin-top: 1.25rem;
+}
