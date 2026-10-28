@@ -5,6 +5,7 @@ use leptos::{IntoView, ev, html};
 use crate::invitations::invited::Invited;
 use crate::invitations::listed::{DeclineReason, ListedInvitation, Scope, Status};
 use crate::invitations::service::InvitedInto;
+use crate::members::listed::Role;
 use crate::moment;
 use crate::problem;
 use crate::speech;
@@ -55,12 +56,28 @@ pub fn invitations_listing(into: InvitedInto) -> impl IntoView {
 
 fn inviting(invited: Invited) -> impl IntoView {
     let email = RwSignal::new(String::new());
+    let role = RwSignal::new(Role::Author);
+    let into = invited.into.get_value();
+    let into_a_project = match &into {
+        InvitedInto::Instance => None,
+        InvitedInto::Project(project) => Some(project.clone()),
+    };
+    let scope = {
+        let into_a_project = into_a_project.clone();
+        move || match &into_a_project {
+            None => Scope::Instance,
+            Some(project) => Scope::Project {
+                project: project.clone(),
+                role: role.get_untracked(),
+            },
+        }
+    };
 
     html::form()
         .class("invite")
         .on(ev::submit, move |event| {
             event.prevent_default();
-            invited.invite(email.get_untracked(), Scope::Instance, move || {
+            invited.invite(email.get_untracked(), scope(), move || {
                 email.set(String::new())
             });
         })
@@ -76,6 +93,28 @@ fn inviting(invited: Invited) -> impl IntoView {
                         email.set(event_target_value(&event))
                     }),
             )),
+            into_a_project.map(|_| {
+                html::label().class("field as").child((
+                    html::span().child(speech::said("members-invite-as")),
+                    html::select()
+                        .on(ev::change, move |event| {
+                            if let Some(chosen) = Role::of(&event_target_value(&event)) {
+                                role.set(chosen);
+                            }
+                        })
+                        .child(
+                            Role::ALL
+                                .into_iter()
+                                .map(|offered| {
+                                    html::option()
+                                        .value(offered.named())
+                                        .prop("selected", move || role.get() == offered)
+                                        .child(speech::said(offered.message()))
+                                })
+                                .collect::<Vec<_>>(),
+                        ),
+                ))
+            }),
             html::button()
                 .r#type("submit")
                 .class("primary")
@@ -114,9 +153,17 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
             html::p().class("email").child(invitation.email),
             html::p().class("issued").child(issued),
         )),
-        html::div()
-            .class("marks")
-            .child(html::span().class(mark).child(told)),
+        html::div().class("marks").child((
+            html::span().class(mark).child(told),
+            match &invitation.scope {
+                Scope::Instance => None,
+                Scope::Project { role, .. } => Some(
+                    html::span()
+                        .class("mark")
+                        .child(speech::said(role.message())),
+                ),
+            },
+        )),
         html::div().class("actions").child((
             again.map(|(email, scope)| {
                 html::button()

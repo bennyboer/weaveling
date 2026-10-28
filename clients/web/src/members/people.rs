@@ -14,15 +14,17 @@ use crate::route;
 use crate::speech;
 
 #[derive(Clone, Copy)]
-struct People {
+pub struct People {
+    session: CurrentSession,
     project: StoredValue<String>,
     members: RwSignal<Vec<Member>>,
     refused: RwSignal<Option<ApiError>>,
 }
 
 impl People {
-    fn asked(project: ProjectId) -> Self {
+    pub fn asked(project: ProjectId) -> Self {
         let people = Self {
+            session: expect_context::<CurrentSession>(),
             project: StoredValue::new(project.to_string()),
             members: RwSignal::new(Vec::new()),
             refused: RwSignal::new(None),
@@ -30,6 +32,22 @@ impl People {
         people.load();
 
         people
+    }
+
+    fn own(self) -> Option<String> {
+        match self.session.state() {
+            SignInState::SignedIn(account) => Some(account.account),
+            _ => None,
+        }
+    }
+
+    pub fn owning(self) -> bool {
+        let own = self.own();
+        self.members.with(|members| {
+            members.iter().any(|member| {
+                member.role == Role::Owner && own.as_deref() == Some(member.account.as_str())
+            })
+        })
     }
 
     fn load(self) {
@@ -68,25 +86,18 @@ impl People {
     }
 }
 
-pub fn people(project: ProjectId) -> impl IntoView {
-    let session = expect_context::<CurrentSession>();
-    let people = People::asked(project);
+pub fn people(people: People) -> impl IntoView {
     let navigate = hooks::use_navigate();
     let left = move || navigate(route::WORKSPACE, Default::default());
-    let own = move || match session.state() {
-        SignInState::SignedIn(account) => Some(account.account),
-        _ => None,
-    };
 
     (
         move || people.refused.get().map(problem::problem),
         html::ul().class("members").child(move || {
-            let own = own();
-            let members = people.members.get();
-            let owning = members.iter().any(|member| {
-                member.role == Role::Owner && own.as_deref() == Some(member.account.as_str())
-            });
-            members
+            let own = people.own();
+            let owning = people.owning();
+            people
+                .members
+                .get()
                 .into_iter()
                 .map(|member| {
                     let yourself = own.as_deref() == Some(member.account.as_str());

@@ -550,3 +550,7 @@ members-roles = Les propriétaires invitent, changent les rôles et suppriment l
 members-role-of = Rôle de { $name }
 members-remove = Retirer
 members-leave = Quitter
+members-sections = Sections
+members-people = Personnes
+members-invited = Invitations
+members-invite-as = En tant que

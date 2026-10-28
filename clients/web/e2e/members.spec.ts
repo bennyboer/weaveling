@@ -179,3 +179,92 @@ test("the last owner is told why they may neither step down nor leave, and stays
   await expect(page.getByRole("alert")).toHaveText(told);
   await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
 });
+
+type ProjectInvitation = {
+  id: string;
+  email: string;
+  issued_at: string;
+  until: string;
+  status: string;
+  scope: { kind: "project"; project: string; role: string };
+};
+
+async function projectInvitationsServed(page: Page, held: ProjectInvitation[]) {
+  const asked = { listed: [] as string[], sent: [] as unknown[] };
+  await page.route(
+    (url) => url.pathname === "/api/invitations",
+    async (route) => {
+      const request = route.request();
+      if (request.method() === "POST") {
+        const sent = request.postDataJSON();
+        asked.sent.push(sent);
+        const issued = new Date();
+        const invitation: ProjectInvitation = {
+          id: `invitation_${100 + held.length}`,
+          email: sent.email,
+          issued_at: issued.toISOString(),
+          until: new Date(issued.getTime() + 7 * 86_400_000).toISOString(),
+          status: "open",
+          scope: sent.scope,
+        };
+        held.unshift(invitation);
+        return route.fulfill({ status: 201, json: invitation });
+      }
+      asked.listed.push(new URL(request.url()).searchParams.get("project") ?? "");
+      return route.fulfill({ json: { invitations: held, next: null } });
+    },
+  );
+
+  return asked;
+}
+
+test("an owner invites into the project as a role and invites a lapsed invitation again as it was", async ({
+  page,
+}) => {
+  await onTheMembersPage(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+  ]);
+  const project = new URL(page.url()).pathname.split("/")[2];
+  const asked = await projectInvitationsServed(page, [
+    {
+      id: "invitation_1",
+      email: "lin@example.com",
+      issued_at: "2026-10-13T08:00:00Z",
+      until: "2026-10-20T08:00:00Z",
+      status: "expired",
+      scope: { kind: "project", project: "", role: "reader" },
+    },
+  ]);
+
+  await page.getByRole("link", { name: "Invited" }).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${project}/members/invited$`));
+  const invitations = page.locator(".invitations li");
+  await expect(invitations).toHaveCount(1);
+  await expect(invitations.nth(0)).toContainText("lin@example.com");
+  await expect(invitations.nth(0)).toContainText("Reader");
+  expect(asked.listed).toEqual([project]);
+
+  await page.getByLabel("Email address").fill("ken@example.com");
+  await page.getByLabel("As").selectOption("Owner");
+  await page.getByRole("button", { name: "Invite", exact: true }).click();
+
+  await expect(invitations).toHaveCount(2);
+  await expect(invitations.nth(0)).toContainText("ken@example.com");
+  await expect(invitations.nth(0)).toContainText("Owner");
+  await page.getByRole("button", { name: "Invite again" }).click();
+  await expect(invitations).toHaveCount(3);
+  expect(asked.sent).toEqual([
+    { email: "ken@example.com", scope: { kind: "project", project, role: "owner" } },
+    { email: "lin@example.com", scope: { kind: "project", project: "", role: "reader" } },
+  ]);
+});
+
+test("whoever is no owner finds no Invited tab", async ({ page }) => {
+  await onTheMembersPage(page, [
+    { ...GRACE, role: "owner" },
+    { account: ADA.account, role: "author", name: ADA.name },
+  ]);
+
+  await expect(page.getByRole("link", { name: "People" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Invited" })).toHaveCount(0);
+});

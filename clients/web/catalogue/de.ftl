@@ -550,3 +550,7 @@ members-roles = Eigentümer:innen laden ein, ändern Rollen und löschen das Pro
 members-role-of = Rolle von { $name }
 members-remove = Entfernen
 members-leave = Verlassen
+members-sections = Bereiche
+members-people = Personen
+members-invited = Eingeladen
+members-invite-as = Als

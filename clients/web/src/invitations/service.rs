@@ -12,8 +12,6 @@ const INVITATION: &str = "invitation";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InvitedInto {
     Instance,
-    // TODO 5d-3b: the Members page's Invited tab invites into its project.
-    #[cfg_attr(not(test), expect(dead_code))]
     Project(String),
 }
 

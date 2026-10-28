@@ -550,3 +550,7 @@ members-roles = Owners invite, change roles and delete the project. Authors read
 members-role-of = Role of { $name }
 members-remove = Remove
 members-leave = Leave
+members-sections = Sections
+members-people = People
+members-invited = Invited
+members-invite-as = As

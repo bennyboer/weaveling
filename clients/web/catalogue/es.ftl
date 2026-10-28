@@ -550,3 +550,7 @@ members-roles = Quien es propietario/a invita, cambia los roles y borra el proye
 members-role-of = Rol de { $name }
 members-remove = Quitar
 members-leave = Salir
+members-sections = Secciones
+members-people = Personas
+members-invited = Invitaciones
+members-invite-as = Como

@@ -49,6 +49,10 @@ pub fn members(project: &str) -> String {
     format!("/projects/{project}/members")
 }
 
+pub fn members_invited(project: &str) -> String {
+    format!("/projects/{project}/members/invited")
+}
+
 pub fn pool(project: &str) -> String {
     format!("/projects/{project}/ideas")
 }

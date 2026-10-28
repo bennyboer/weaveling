@@ -550,3 +550,7 @@ members-roles = Quem é dono(a) convida, muda os papéis e exclui o projeto. Que
 members-role-of = Papel de { $name }
 members-remove = Remover
 members-leave = Sair
+members-sections = Seções
+members-people = Pessoas
+members-invited = Convites
+members-invite-as = Como
