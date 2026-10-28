@@ -1,13 +1,15 @@
 mod retiring;
+mod tombstones;
 
 use std::sync::Arc;
 
+use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore};
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
-    RememberWhoSignedUpListener,
+    RememberProjectNamesListener, RememberWhoSignedUpListener,
 };
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
@@ -15,6 +17,7 @@ use throttling::{InMemoryThrottles, Throttles};
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 use crate::retiring::RetireDueInvitations;
+use crate::tombstones::InvitationTombstones;
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
@@ -144,8 +147,16 @@ impl Feature for InvitationFeature {
                 Arc::new(DeclineInvitationListener::new(invitations.clone())),
                 Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
                 Arc::new(RememberWhoSignedUpListener::new(invitations.clone())),
+                Arc::new(RememberProjectNamesListener::new(invitations.clone())),
             ])
-            .doing_chores(vec![Arc::new(RetireDueInvitations::new(invitations))])
+            .doing_chores(vec![
+                Arc::new(RetireDueInvitations::new(invitations.clone())),
+                Arc::new(ForgetOldTombstones::new(
+                    "forget-old-invitation-tombstones",
+                    Arc::new(InvitationTombstones::of(invitations)),
+                    context.clock.clone(),
+                )),
+            ])
     }
 }
 
@@ -157,7 +168,7 @@ mod tests {
     use email::EmailAddress;
     use eventsourcing::Version;
     use eventsourcing::{Agent, AggregateId};
-    use invitations_core::{InvitationId, InvitationSummary, KIND, Outcome, Scope};
+    use invitations_core::{InvitationId, InvitationSummary, KIND, Outcome, ProjectLink, Scope};
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use time::OffsetDateTime;
 
@@ -202,6 +213,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+        let context = a_context();
+        let ports = InvitationFeature::in_memory(&context);
+        let wired = InvitationFeature::wire(&ports, &context);
+        ports
+            .catalog
+            .lay_project_tombstone(
+                &ProjectLink::from("project_long_gone"),
+                OffsetDateTime::UNIX_EPOCH,
+            )
+            .await
+            .expect("laying a tombstone should succeed");
+
+        let chore = wired
+            .chores
+            .iter()
+            .find(|chore| chore.named() == "forget-old-invitation-tombstones")
+            .expect("the feature forgets its tombstones as a chore");
+
+        assert_eq!(
+            chore
+                .carry_out()
+                .await
+                .expect("the chore should be carried out"),
+            1
+        );
+    }
+
+    #[tokio::test]
     async fn the_feature_retires_what_is_due_as_a_chore() {
         let context = a_context();
         let ports = InvitationFeature::in_memory(&context);
@@ -226,10 +266,11 @@ mod tests {
             .await
             .expect("remembering should succeed");
 
-        let [chore] = wired.chores.as_slice() else {
-            panic!("the feature hands over one chore");
-        };
-        assert_eq!(chore.named(), "retire-due-invitations");
+        let chore = wired
+            .chores
+            .iter()
+            .find(|chore| chore.named() == "retire-due-invitations")
+            .expect("the feature retires as a chore");
         assert_eq!(
             chore
                 .carry_out()
@@ -254,7 +295,8 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_hears_its_invitations_taken_up_declined_and_listed_and_who_signed_up() {
+    fn the_feature_hears_its_invitations_taken_up_declined_and_listed_who_signed_up_and_the_projects_names()
+     {
         let context = a_context();
 
         let wired = InvitationFeature::wire(&InvitationFeature::in_memory(&context), &context);
@@ -264,6 +306,7 @@ mod tests {
             "decline-invitation",
             "catalogue-invitation",
             "invitations-remember-who-signed-up",
+            "remember-project-names",
         ] {
             assert!(
                 wired

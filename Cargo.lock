@@ -4235,6 +4235,7 @@ dependencies = [
  "weaveling-invitations-contract",
  "weaveling-invitations-core",
  "weaveling-messaging",
+ "weaveling-projects-contract",
 ]
 
 [[package]]
@@ -4287,6 +4288,7 @@ dependencies = [
  "weaveling-invitations-rest",
  "weaveling-mailing",
  "weaveling-messaging",
+ "weaveling-projects-contract",
  "weaveling-throttling",
 ]
 

@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait = { workspace = true }
+time = { workspace = true }
 sqlx = { workspace = true, optional = true }
 
 chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
@@ -32,4 +33,3 @@ tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 test-harness = { version = "0.1.0", path = "../../../libraries/test-harness", package = "weaveling-test-harness" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 email = { version = "0.1.0", path = "../../../libraries/email", package = "weaveling-email" }
-time = { workspace = true }

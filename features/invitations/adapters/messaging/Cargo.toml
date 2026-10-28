@@ -10,6 +10,7 @@ email = { version = "0.1.0", path = "../../../../libraries/email", package = "we
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 async-trait = { workspace = true }
 
 invitations-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-invitations-contract" }

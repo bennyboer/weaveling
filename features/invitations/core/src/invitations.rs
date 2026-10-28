@@ -8,7 +8,7 @@ use mailing::Mailer;
 use throttling::Throttles;
 use time::OffsetDateTime;
 
-use crate::catalog::{InvitationCatalog, InvitationSummary, ListedInvitation, Person};
+use crate::catalog::{InvitationCatalog, InvitationSummary, ListedInvitation, Person, ProjectName};
 use crate::error::InvitationsError;
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, InvitationError, InvitationEvent, KIND};
@@ -173,6 +173,29 @@ impl InvitationsCore {
                 .decline(invitation, reason, &Agent::System)
                 .await,
         )
+    }
+
+    pub async fn remember_project_name(&self, named: &ProjectName) -> Result<(), InvitationsError> {
+        Ok(self.catalog.remember_project_name(named).await?)
+    }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), InvitationsError> {
+        Ok(self.catalog.lay_project_tombstone(project, at).await?)
+    }
+
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, InvitationsError> {
+        Ok(self
+            .catalog
+            .forget_project_tombstones_laid_before(before, at_most)
+            .await?)
     }
 
     pub async fn remember_person(&self, person: &Person) -> Result<(), InvitationsError> {
