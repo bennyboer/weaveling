@@ -175,6 +175,7 @@ impl Sieve for NamingTheFollower {
             | MembersEventDTO::RoleChanged { account, .. }
             | MembersEventDTO::Left { account }
             | MembersEventDTO::Removed { account } => account,
+            MembersEventDTO::Disbanded => return Ok(false),
         };
 
         Ok(self.members.may_hear(&self.agent, &named))
@@ -245,6 +246,7 @@ mod tests {
 
         for event in [
             json!({ "name": "JOINED", "account": "account_grace", "role": "author" }),
+            json!({ "name": "DISBANDED" }),
             json!({ "name": "FOUNDED", "owner": "account_ada" }),
             json!({ "name": "REMOVED", "account": "account_grace" }),
             json!({ "name": "JOINED", "account": "account_ada", "role": "reader" }),
@@ -265,7 +267,7 @@ mod tests {
         assert_eq!(
             names,
             ["FOUNDED", "JOINED", "ROLE_CHANGED", "LEFT", "REMOVED"],
-            "Ada is told what happened to her, and nothing of Grace"
+            "Ada is told what happened to her, nothing of Grace, and nothing of a disbanding, which the projects tell"
         );
     }
 

@@ -143,7 +143,7 @@ pub fn membership_in(frame: FrameDTO) -> Option<Membership> {
         MembersEventDTO::Left { .. } | MembersEventDTO::Removed { .. } => {
             Some(Membership::Ended(project))
         }
-        MembersEventDTO::RoleChanged { .. } => None,
+        MembersEventDTO::RoleChanged { .. } | MembersEventDTO::Disbanded => None,
     }
 }
 
@@ -224,7 +224,7 @@ mod tests {
         }
 
         #[test]
-        fn a_new_role_or_a_frame_about_nothing_known_changes_no_list() {
+        fn a_new_role_a_disbanding_or_a_frame_about_nothing_known_changes_no_list() {
             for frame in [
                 told(
                     Some("project_1"),
@@ -234,6 +234,7 @@ mod tests {
                     Some("project_1"),
                     json!({ "name": "RENAMED", "project_name": "Weft" }),
                 ),
+                told(Some("project_1"), json!({ "name": "DISBANDED" })),
                 told(
                     None,
                     json!({ "name": "JOINED", "account": "account_1", "role": "reader" }),

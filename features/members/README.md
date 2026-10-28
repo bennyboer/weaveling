@@ -2,7 +2,7 @@
 
 Who may work in a project, and as what.
 
-**`Members` is an aggregate, one per project,** kept under the project's own id, so founding it twice for the same project is refused by the store rather than by a lookup first. It is `Founded` with its owner, whoever started the project; others `Joined` in a role; a role is `RoleChanged`; a member `Left` or was `Removed`, told apart for the history. The members are listed in the order they joined.
+**`Members` is an aggregate, one per project,** kept under the project's own id, so founding it twice for the same project is refused by the store rather than by a lookup first. It is `Founded` with its owner, whoever started the project; others `Joined` in a role; a role is `RoleChanged`; a member `Left` or was `Removed`, told apart for the history. The members are listed in the order they joined. When the project is deleted its members are `Disbanded`: everyone goes at once, and nothing after, a founding heard late, a join, a role, is let in, as a disbanding heard first begins the members just as disbanded; a snapshot keeps that they were.
 
 **Three roles:** an **Owner** does everything, inviting, changing roles and deleting the project among it; an **Author** reads and writes; a **Reader** only reads. What each role may do is the `Authorizer`'s to decide, not the aggregate's: the aggregate keeps who is in which role and the one rule that is about the members themselves.
 
@@ -16,7 +16,7 @@ Who may work in a project, and as what.
 
 **Whoever takes up an invitation into a project joins it.** The listener `join-by-accepted-invitation` hears `invitation.accepted` and, for an invitation into a project, lets the account the message names as acting join it in the role invited, recorded as the system's doing. An invitation to the instance lets nobody join anything. A member already keeps the role they have, an owner being the one to change it, and joining again in the same role changes nothing, since a message comes at least once.
 
-**The list of who may work where follows every change.** Each change is told as `members.founded`, `members.joined`, `members.role.changed`, `members.left` or `members.removed`, naming accounts by id and roles by name, never an address. The listener `catalogue-members` hears them all and remembers the project's members as they stand now, read from their events, not what the message was about.
+**The list of who may work where follows every change.** Each change is told as `members.founded`, `members.joined`, `members.role.changed`, `members.left`, `members.removed` or `members.disbanded`, naming accounts by id and roles by name, never an address. The listener `catalogue-members` hears them all and remembers the project's members as they stand now, read from their events, not what the message was about.
 
 **The members answer the [`Authorizer`](../../libraries/authorizing)** on a server with accounts, `MembersAuthorizer`, asking the list for the account's role: an owner may `Read`, `Write` and `Manage`, an author `Read` and `Write`, a reader `Read`, and an account not in the project nothing. The application acting on its own, `System`, may; nobody unsigned, `Local`, may not, since on a server nobody works unsigned. A list that cannot be asked is a failure, not a no. It reads the list, not the aggregate: it answers every request, and a role changed or taken away counts once the list has heard of it, within moments.
 

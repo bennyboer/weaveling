@@ -4,12 +4,29 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 enum StoredMembersEvent {
-    Founded { owner: String },
-    Joined { account: String, role: StoredRole },
-    RoleChanged { account: String, to: StoredRole },
-    Left { account: String },
-    Removed { account: String },
-    Snapshotted { members: Vec<StoredMember> },
+    Founded {
+        owner: String,
+    },
+    Joined {
+        account: String,
+        role: StoredRole,
+    },
+    RoleChanged {
+        account: String,
+        to: StoredRole,
+    },
+    Left {
+        account: String,
+    },
+    Removed {
+        account: String,
+    },
+    Disbanded,
+    Snapshotted {
+        members: Vec<StoredMember>,
+        #[serde(default)]
+        disbanded: bool,
+    },
 }
 
 #[derive(Serialize, Deserialize)]
@@ -80,7 +97,8 @@ impl From<&MembersEvent> for StoredMembersEvent {
             MembersEvent::Removed { account } => Self::Removed {
                 account: account.to_string(),
             },
-            MembersEvent::Snapshotted { members } => Self::Snapshotted {
+            MembersEvent::Disbanded => Self::Disbanded,
+            MembersEvent::Snapshotted { members, disbanded } => Self::Snapshotted {
                 members: members
                     .iter()
                     .map(|member| StoredMember {
@@ -88,6 +106,7 @@ impl From<&MembersEvent> for StoredMembersEvent {
                         role: member.role.into(),
                     })
                     .collect(),
+                disbanded: *disbanded,
             },
         }
     }
@@ -113,7 +132,8 @@ impl From<StoredMembersEvent> for MembersEvent {
             StoredMembersEvent::Removed { account } => Self::Removed {
                 account: AccountId::from(account),
             },
-            StoredMembersEvent::Snapshotted { members } => Self::Snapshotted {
+            StoredMembersEvent::Disbanded => Self::Disbanded,
+            StoredMembersEvent::Snapshotted { members, disbanded } => Self::Snapshotted {
                 members: members
                     .into_iter()
                     .map(|member| Member {
@@ -121,6 +141,7 @@ impl From<StoredMembersEvent> for MembersEvent {
                         role: member.role.into(),
                     })
                     .collect(),
+                disbanded,
             },
         }
     }
@@ -157,7 +178,13 @@ mod tests {
                 },
                 MembersEvent::Left { account: grace() },
                 MembersEvent::Removed { account: grace() },
+                MembersEvent::Disbanded,
                 MembersEvent::Snapshotted {
+                    members: vec![],
+                    disbanded: true,
+                },
+                MembersEvent::Snapshotted {
+                    disbanded: false,
                     members: vec![
                         Member {
                             account: AccountId::from("account_ada"),
@@ -191,6 +218,17 @@ mod tests {
         assert!(
             (codec().event)(json!({ "Joined": { "account": "account_grace", "role": "editor" } }))
                 .is_none()
+        );
+    }
+
+    #[test]
+    fn a_snapshot_written_before_disbanding_was_kept_reads_as_not_disbanded() {
+        assert_eq!(
+            (codec().event)(json!({ "Snapshotted": { "members": [] } })),
+            Some(MembersEvent::Snapshotted {
+                members: vec![],
+                disbanded: false,
+            })
         );
     }
 }

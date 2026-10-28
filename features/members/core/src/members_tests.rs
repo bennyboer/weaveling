@@ -352,7 +352,11 @@ fn every_event_is_named_and_only_the_snapshot_is_one() {
         },
         MembersEvent::Left { account: grace() },
         MembersEvent::Removed { account: grace() },
-        MembersEvent::Snapshotted { members: vec![] },
+        MembersEvent::Disbanded,
+        MembersEvent::Snapshotted {
+            members: vec![],
+            disbanded: false,
+        },
     ]
     .iter()
     .map(|event| (event.name().to_string(), event.is_snapshot()))
@@ -366,6 +370,7 @@ fn every_event_is_named_and_only_the_snapshot_is_one() {
             ("ROLE_CHANGED".to_owned(), false),
             ("LEFT".to_owned(), false),
             ("REMOVED".to_owned(), false),
+            ("DISBANDED".to_owned(), false),
             ("SNAPSHOTTED".to_owned(), true),
         ]
     );
@@ -389,4 +394,81 @@ fn a_project_s_members_are_in_its_context_and_stay_so_through_a_snapshot() {
     for held in [&members, &rebuilt, &applied] {
         assert_eq!(held.context().get(PROJECT), Some("project_1"));
     }
+}
+
+#[test]
+fn a_deleted_project_s_members_are_disbanded_all_at_once_and_once() {
+    let members = with(&[(grace(), Role::Author), (hedy(), Role::Reader)]);
+
+    assert_eq!(
+        told(&members, MembersCommand::Disband),
+        Ok(vec![MembersEvent::Disbanded])
+    );
+    let disbanded = after(members, &[MembersEvent::Disbanded]);
+    assert!(disbanded.members().is_empty());
+    assert_eq!(disbanded.role_of(&ada()), None);
+    assert_eq!(told(&disbanded, MembersCommand::Disband), Ok(vec![]));
+}
+
+#[test]
+fn nobody_joins_or_changes_among_members_disbanded() {
+    let disbanded = after(with(&[(grace(), Role::Author)]), &[MembersEvent::Disbanded]);
+
+    for command in [
+        MembersCommand::Found { owner: ken() },
+        MembersCommand::Join {
+            account: ken(),
+            role: Role::Reader,
+        },
+        MembersCommand::ChangeRole {
+            account: grace(),
+            to: Role::Owner,
+        },
+        MembersCommand::Leave { account: grace() },
+        MembersCommand::Remove { account: grace() },
+    ] {
+        assert_eq!(told(&disbanded, command), Err(MembersError::Disbanded));
+    }
+}
+
+#[test]
+fn members_disbanded_before_they_were_founded_are_founded_no_more() {
+    assert_eq!(
+        Members::begin(MembersCommand::Disband, &Agent::System),
+        Ok(vec![MembersEvent::Disbanded])
+    );
+    let disbanded = Members::from_first(&MembersEvent::Disbanded, &stamped(1))
+        .expect("a disbanding gives birth, so a founding heard late finds them gone");
+
+    assert!(disbanded.members().is_empty());
+    assert_eq!(
+        told(&disbanded, MembersCommand::Found { owner: ada() }),
+        Err(MembersError::Disbanded)
+    );
+}
+
+#[test]
+fn a_snapshot_of_members_disbanded_keeps_them_disbanded() {
+    let disbanded = after(with(&[(grace(), Role::Author)]), &[MembersEvent::Disbanded]);
+    let snapshot = disbanded.snapshot();
+
+    assert_eq!(
+        snapshot,
+        MembersEvent::Snapshotted {
+            members: vec![],
+            disbanded: true,
+        }
+    );
+    let read_back = Members::from_first(&snapshot, &stamped(4)).expect("a snapshot gives birth");
+    assert_eq!(
+        told(
+            &read_back,
+            MembersCommand::Join {
+                account: ken(),
+                role: Role::Reader,
+            }
+        ),
+        Err(MembersError::Disbanded)
+    );
+    assert_eq!(after(founded_by_ada(), &[snapshot]), disbanded);
 }

@@ -18,6 +18,7 @@ const JOINED: EventName = EventName::of("JOINED");
 const ROLE_CHANGED: EventName = EventName::of("ROLE_CHANGED");
 const LEFT: EventName = EventName::of("LEFT");
 const REMOVED: EventName = EventName::of("REMOVED");
+const DISBANDED: EventName = EventName::of("DISBANDED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -43,22 +44,40 @@ pub enum MembersCommand {
     ChangeRole { account: AccountId, to: Role },
     Leave { account: AccountId },
     Remove { account: AccountId },
+    Disband,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MembersEvent {
-    Founded { owner: AccountId },
-    Joined { account: AccountId, role: Role },
-    RoleChanged { account: AccountId, to: Role },
-    Left { account: AccountId },
-    Removed { account: AccountId },
-    Snapshotted { members: Vec<Member> },
+    Founded {
+        owner: AccountId,
+    },
+    Joined {
+        account: AccountId,
+        role: Role,
+    },
+    RoleChanged {
+        account: AccountId,
+        to: Role,
+    },
+    Left {
+        account: AccountId,
+    },
+    Removed {
+        account: AccountId,
+    },
+    Disbanded,
+    Snapshotted {
+        members: Vec<Member>,
+        disbanded: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Members {
     project: ProjectLink,
     roles: IndexMap<AccountId, Role>,
+    disbanded: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -73,6 +92,8 @@ pub enum MembersError {
     NotMember,
     #[error("a project keeps at least one owner; make someone else an owner first")]
     LastOwner,
+    #[error("this project was deleted, so it has no members any more")]
+    Disbanded,
 }
 
 impl ProjectLink {
@@ -138,13 +159,14 @@ impl Members {
                 == 1
     }
 
-    fn of(project: ProjectLink, members: &[Member]) -> Self {
+    fn of(project: ProjectLink, members: &[Member], disbanded: bool) -> Self {
         Self {
             project,
             roles: members
                 .iter()
                 .map(|member| (member.account.clone(), member.role))
                 .collect(),
+            disbanded,
         }
     }
 }
@@ -157,6 +179,7 @@ impl Event for MembersEvent {
             Self::RoleChanged { .. } => ROLE_CHANGED,
             Self::Left { .. } => LEFT,
             Self::Removed { .. } => REMOVED,
+            Self::Disbanded => DISBANDED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
     }
@@ -184,6 +207,7 @@ impl Aggregate for Members {
     fn begin(command: MembersCommand, _agent: &Agent) -> Result<Vec<MembersEvent>, MembersError> {
         match command {
             MembersCommand::Found { owner } => Ok(vec![MembersEvent::Founded { owner }]),
+            MembersCommand::Disband => Ok(vec![MembersEvent::Disbanded]),
             MembersCommand::Join { .. }
             | MembersCommand::ChangeRole { .. }
             | MembersCommand::Leave { .. }
@@ -201,8 +225,12 @@ impl Aggregate for Members {
                     account: owner.clone(),
                     role: Role::Owner,
                 }],
+                false,
             )),
-            MembersEvent::Snapshotted { members } => Some(Self::of(project, members)),
+            MembersEvent::Disbanded => Some(Self::of(project, &[], true)),
+            MembersEvent::Snapshotted { members, disbanded } => {
+                Some(Self::of(project, members, *disbanded))
+            }
             MembersEvent::Joined { .. }
             | MembersEvent::RoleChanged { .. }
             | MembersEvent::Left { .. }
@@ -215,8 +243,16 @@ impl Aggregate for Members {
         command: MembersCommand,
         _agent: &Agent,
     ) -> Result<Vec<MembersEvent>, MembersError> {
+        if self.disbanded {
+            return match command {
+                MembersCommand::Disband => Ok(vec![]),
+                _ => Err(MembersError::Disbanded),
+            };
+        }
+
         match command {
             MembersCommand::Found { .. } => Err(MembersError::AlreadyFounded),
+            MembersCommand::Disband => Ok(vec![MembersEvent::Disbanded]),
             MembersCommand::Join { account, role } => match self.role_of(&account) {
                 Some(already) if already == role => Ok(vec![]),
                 Some(_) => Err(MembersError::AlreadyMember),
@@ -255,8 +291,12 @@ impl Aggregate for Members {
             MembersEvent::Left { account } | MembersEvent::Removed { account } => {
                 self.roles.shift_remove(account);
             }
-            MembersEvent::Snapshotted { members } => {
-                *self = Self::of(self.project.clone(), members)
+            MembersEvent::Disbanded => {
+                self.roles.clear();
+                self.disbanded = true;
+            }
+            MembersEvent::Snapshotted { members, disbanded } => {
+                *self = Self::of(self.project.clone(), members, *disbanded)
             }
         }
     }
@@ -264,6 +304,7 @@ impl Aggregate for Members {
     fn snapshot(&self) -> MembersEvent {
         MembersEvent::Snapshotted {
             members: self.members(),
+            disbanded: self.disbanded,
         }
     }
 }

@@ -5,6 +5,7 @@ pub const JOINED: &str = "members.joined";
 pub const ROLE_CHANGED: &str = "members.role.changed";
 pub const LEFT: &str = "members.left";
 pub const REMOVED: &str = "members.removed";
+pub const DISBANDED: &str = "members.disbanded";
 pub const EVERY_MEMBERS: &str = "members.#";
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
@@ -20,6 +21,8 @@ pub enum MembersEventDTO {
     Left { account: String },
     #[serde(rename = "REMOVED")]
     Removed { account: String },
+    #[serde(rename = "DISBANDED")]
+    Disbanded,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
