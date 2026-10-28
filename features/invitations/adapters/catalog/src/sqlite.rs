@@ -52,6 +52,13 @@ const IN_PROJECT_AFTER: &str = "
     LIMIT ?3
 ";
 
+const OPEN_TO: &str = "
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by
+    FROM invitation_summaries
+    WHERE email = ?1 AND outcome = 'open'
+    ORDER BY invitation DESC
+";
+
 const DUE_FOR_RETIRING: &str = "
     SELECT invitation
     FROM invitation_summaries
@@ -203,6 +210,16 @@ impl InvitationCatalog for SqliteInvitationCatalog {
             .bind(project.as_str())
             .bind(after.map(ToString::to_string))
             .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found.iter().map(to_summary).collect()
+    }
+
+    async fn open_to(&self, to: &EmailAddress) -> Result<Vec<InvitationSummary>, CatalogError> {
+        let found = sqlx::query(OPEN_TO)
+            .bind(to.as_str())
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;

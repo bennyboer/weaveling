@@ -2,9 +2,10 @@ use std::collections::BTreeMap;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
+use email::EmailAddress;
 use eventsourcing::AccountId;
 use invitations_core::{
-    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Person, ProjectLink,
+    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Outcome, Person, ProjectLink,
     ProjectName,
 };
 use time::OffsetDateTime;
@@ -84,6 +85,16 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
         at_most: usize,
     ) -> Result<Vec<InvitationSummary>, CatalogError> {
         Ok(self.listed(Some(project), after, at_most))
+    }
+
+    async fn open_to(&self, to: &EmailAddress) -> Result<Vec<InvitationSummary>, CatalogError> {
+        Ok(self
+            .read()
+            .values()
+            .rev()
+            .filter(|summary| summary.to == *to && summary.outcome == Outcome::Open)
+            .cloned()
+            .collect())
     }
 
     async fn due_for_retiring(

@@ -73,6 +73,8 @@ pub trait InvitationCatalog: Send + Sync {
         at_most: usize,
     ) -> Result<Vec<InvitationSummary>, CatalogError>;
 
+    async fn open_to(&self, to: &EmailAddress) -> Result<Vec<InvitationSummary>, CatalogError>;
+
     async fn due_for_retiring(
         &self,
         now: OffsetDateTime,

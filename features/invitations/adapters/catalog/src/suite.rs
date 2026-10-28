@@ -553,6 +553,52 @@ pub async fn a_project_s_tombstone_is_laid_once_and_forgotten_oldest_first_and_a
     );
 }
 
+async fn open_to(catalog: &impl InvitationCatalog, to: &str) -> Vec<InvitationId> {
+    catalog
+        .open_to(&EmailAddress::new(to).expect("a plain address"))
+        .await
+        .expect("asking for an address's invitations should succeed")
+        .into_iter()
+        .map(|summary| summary.id)
+        .collect()
+}
+
+pub async fn the_open_invitations_to_an_address_are_told_newest_first_and_no_others(
+    catalog: &impl InvitationCatalog,
+) {
+    let older = InvitationId::generate(at(1_000));
+    let newer = InvitationId::generate(at(2_000));
+    let elsewhere = InvitationId::generate(at(3_000));
+    remembered(catalog, &into("project_b", Role::Reader, older)).await;
+    remembered(catalog, &into("project_a", Role::Author, newer)).await;
+    remembered(catalog, &a_summary(elsewhere, "hedy@example.com")).await;
+    for (seconds, outcome) in [
+        (4_000, Outcome::Accepted),
+        (5_000, Outcome::Withdrawn),
+        (6_000, Outcome::Declined(DeclineReason::AddressHasAccount)),
+    ] {
+        remembered(
+            catalog,
+            &InvitationSummary {
+                outcome,
+                ..into(
+                    "project_a",
+                    Role::Author,
+                    InvitationId::generate(at(seconds)),
+                )
+            },
+        )
+        .await;
+    }
+
+    assert_eq!(
+        open_to(catalog, " Grace@Example.com ").await,
+        vec![newer, older]
+    );
+    assert_eq!(open_to(catalog, "hedy@example.com").await, vec![elsewhere]);
+    assert!(open_to(catalog, "nobody@example.com").await.is_empty());
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -604,6 +650,10 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_project_s_page_holds_at_most_what_was_asked_newest_first_and_goes_on_after_it
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            the_open_invitations_to_an_address_are_told_newest_first_and_no_others
         );
         $crate::catalog_conformance_case!(
             $workbench,

@@ -14,6 +14,8 @@ CREATE TABLE invitation_summaries (
 
 CREATE INDEX invitation_summaries_by_project ON invitation_summaries (project, invitation);
 
+CREATE INDEX invitation_summaries_by_email ON invitation_summaries (email, invitation);
+
 CREATE TABLE people (
     account          TEXT COLLATE "C" PRIMARY KEY,
     name             TEXT             NOT NULL,
