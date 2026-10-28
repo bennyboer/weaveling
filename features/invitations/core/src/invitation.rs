@@ -1,5 +1,7 @@
 use email::EmailAddress;
-use eventsourcing::{Agent, Aggregate, AggregateType, Event, EventMetadata, EventName, Version};
+use eventsourcing::{
+    AccountId, Agent, Aggregate, AggregateType, Event, EventMetadata, EventName, Version,
+};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
 
@@ -55,6 +57,7 @@ pub enum InvitationEvent {
         to: EmailAddress,
         scope: Scope,
         by_an_operator: bool,
+        issued_by: Option<AccountId>,
         issued_at: OffsetDateTime,
         until: OffsetDateTime,
         outcome: Outcome,
@@ -81,6 +84,7 @@ pub struct Invitation {
     to: EmailAddress,
     scope: Scope,
     by_an_operator: bool,
+    issued_by: Option<AccountId>,
     issued_at: OffsetDateTime,
     until: OffsetDateTime,
     outcome: Outcome,
@@ -117,6 +121,10 @@ impl Invitation {
 
     pub fn is_by_an_operator(&self) -> bool {
         self.by_an_operator
+    }
+
+    pub fn issued_by(&self) -> Option<&AccountId> {
+        self.issued_by.as_ref()
     }
 
     pub fn issued_at(&self) -> OffsetDateTime {
@@ -214,6 +222,10 @@ impl Aggregate for Invitation {
                 to: to.clone(),
                 scope: scope.clone(),
                 by_an_operator: *by_an_operator,
+                issued_by: match &metadata.agent {
+                    Agent::Account(account) => Some(account.clone()),
+                    _ => None,
+                },
                 issued_at: metadata.occurred_at,
                 until: *until,
                 outcome: Outcome::Open,
@@ -224,6 +236,7 @@ impl Aggregate for Invitation {
                 to,
                 scope,
                 by_an_operator,
+                issued_by,
                 issued_at,
                 until,
                 outcome,
@@ -233,6 +246,7 @@ impl Aggregate for Invitation {
                 to: to.clone(),
                 scope: scope.clone(),
                 by_an_operator: *by_an_operator,
+                issued_by: issued_by.clone(),
                 issued_at: *issued_at,
                 until: *until,
                 outcome: *outcome,
@@ -295,6 +309,7 @@ impl Aggregate for Invitation {
                 to,
                 scope,
                 by_an_operator,
+                issued_by,
                 issued_at,
                 until,
                 outcome,
@@ -304,6 +319,7 @@ impl Aggregate for Invitation {
                 self.to = to.clone();
                 self.scope = scope.clone();
                 self.by_an_operator = *by_an_operator;
+                self.issued_by = issued_by.clone();
                 self.issued_at = *issued_at;
                 self.until = *until;
                 self.outcome = *outcome;
@@ -318,6 +334,7 @@ impl Aggregate for Invitation {
             to: self.to.clone(),
             scope: self.scope.clone(),
             by_an_operator: self.by_an_operator,
+            issued_by: self.issued_by.clone(),
             issued_at: self.issued_at,
             until: self.until,
             outcome: self.outcome,

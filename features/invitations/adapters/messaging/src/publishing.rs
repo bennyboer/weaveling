@@ -294,6 +294,7 @@ mod tests {
                     to: ada(),
                     scope: Scope::Instance,
                     by_an_operator: true,
+                    issued_by: None,
                     issued_at: at(1_000),
                     until: at(1_000) + Duration::days(7),
                     outcome: Outcome::Open,

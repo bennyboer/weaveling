@@ -1,5 +1,7 @@
 use email::EmailAddress;
-use eventsourcing::{Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, Version};
+use eventsourcing::{
+    AccountId, Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, Version,
+};
 use time::{Duration, OffsetDateTime};
 
 use crate::invitation::*;
@@ -416,4 +418,29 @@ fn an_acceptance_tells_the_scope_it_was_into() {
         }]),
         "members hear from the acceptance alone where to let the account join"
     );
+}
+
+#[test]
+fn an_invitation_knows_which_account_issued_it_and_keeps_it_through_a_snapshot() {
+    let by_an_account = issued_at(1_000);
+    let by_the_system = Invitation::from_first(
+        &an_issue(1_000),
+        &EventMetadata {
+            agent: Agent::System,
+            ..stamped(1, at(1_000))
+        },
+    )
+    .expect("issuing gives birth");
+
+    assert_eq!(
+        by_an_account.issued_by(),
+        Some(&AccountId::from("account_1"))
+    );
+    assert_eq!(by_the_system.issued_by(), None);
+    let restored = Invitation::from_first(&by_an_account.snapshot(), &stamped(2, at(2_000)))
+        .expect("a snapshot gives birth");
+    assert_eq!(restored.issued_by(), Some(&AccountId::from("account_1")));
+    let mut behind = by_the_system;
+    behind.apply(&by_an_account.snapshot(), &stamped(2, at(2_000)));
+    assert_eq!(behind.issued_by(), Some(&AccountId::from("account_1")));
 }

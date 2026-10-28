@@ -1,5 +1,5 @@
 use email::EmailAddress;
-use eventsourcing::Codec;
+use eventsourcing::{AccountId, Codec};
 use invitations_core::{
     DeclineReason, InvitationEvent, InvitationTokenDigest, Outcome, ProjectLink, Role, Scope,
 };
@@ -33,6 +33,7 @@ enum StoredInvitationEvent {
         scope: StoredScope,
         #[serde(default)]
         by_an_operator: bool,
+        issued_by: Option<String>,
         #[serde(with = "time::serde::rfc3339")]
         issued_at: OffsetDateTime,
         #[serde(with = "time::serde::rfc3339")]
@@ -203,6 +204,7 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 to,
                 scope,
                 by_an_operator,
+                issued_by,
                 issued_at,
                 until,
                 outcome,
@@ -212,6 +214,7 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 to: to.to_string(),
                 scope: scope.into(),
                 by_an_operator: *by_an_operator,
+                issued_by: issued_by.as_ref().map(ToString::to_string),
                 issued_at: *issued_at,
                 until: *until,
                 outcome: (*outcome).into(),
@@ -259,6 +262,7 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 to,
                 scope,
                 by_an_operator,
+                issued_by,
                 issued_at,
                 until,
                 outcome,
@@ -268,6 +272,7 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 to: readable(&to)?,
                 scope: scope.into(),
                 by_an_operator,
+                issued_by: issued_by.map(AccountId::from),
                 issued_at,
                 until,
                 outcome: outcome.into(),
@@ -339,6 +344,7 @@ mod tests {
                     to: ada(),
                     scope: a_project_s(Role::Author),
                     by_an_operator: true,
+                    issued_by: Some(AccountId::from("account_grace")),
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                     outcome,
@@ -349,6 +355,7 @@ mod tests {
                     to: ada(),
                     scope: Scope::Instance,
                     by_an_operator: false,
+                    issued_by: None,
                     issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
                     until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
                     outcome,
@@ -397,6 +404,29 @@ mod tests {
         ] {
             assert!((codec().event)(refused.clone()).is_none(), "{refused}");
         }
+    }
+
+    #[test]
+    fn a_snapshot_stored_before_its_issuer_was_kept_reads_as_issued_by_nobody_known() {
+        assert_eq!(
+            (codec().event)(json!({ "Snapshotted": {
+                "to": "ada@example.com",
+                "issued_at": "1970-01-01T00:16:40Z",
+                "until": "1970-01-01T00:33:20Z",
+                "outcome": "open",
+            } })),
+            Some(InvitationEvent::Snapshotted {
+                to: ada(),
+                scope: Scope::Instance,
+                by_an_operator: false,
+                issued_by: None,
+                issued_at: OffsetDateTime::UNIX_EPOCH + Duration::seconds(1_000),
+                until: OffsetDateTime::UNIX_EPOCH + Duration::seconds(2_000),
+                outcome: Outcome::Open,
+                settled_at: None,
+                retired: false,
+            })
+        );
     }
 
     #[test]
