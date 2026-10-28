@@ -26,6 +26,15 @@ const DECLINED: Invited = {
   declined_for: "address-has-account",
 };
 
+const TURNED_DOWN: Invited = {
+  id: "invitation_4",
+  email: "hopper@example.com",
+  issued_at: "2026-10-21T08:00:00Z",
+  until: "2026-10-28T08:00:00Z",
+  status: "declined",
+  declined_for: "turned-down",
+};
+
 const EXPIRED: Invited = {
   id: "invitation_1",
   email: "hedy@example.com",
@@ -61,7 +70,7 @@ const row = (page: Page, email: string) =>
 test("the operator sees whom they invited, when, and how each stands", async ({
   page,
 }) => {
-  await anOperatorInviting(page, [OPEN, DECLINED, EXPIRED]);
+  await anOperatorInviting(page, [OPEN, DECLINED, TURNED_DOWN, EXPIRED]);
 
   await expect(
     page
@@ -80,6 +89,7 @@ test("the operator sees whom they invited, when, and how each stands", async ({
   await expect(row(page, "ada@example.com")).toContainText(
     "Not needed: this email address already has an account",
   );
+  await expect(row(page, "hopper@example.com")).toContainText("Turned down");
   await expect(page.getByText("Nobody is invited just now.")).toHaveCount(0);
 });
 

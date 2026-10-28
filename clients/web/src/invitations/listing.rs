@@ -146,6 +146,10 @@ fn listed(invited: Invited, invitation: ListedInvitation) -> impl IntoView {
             "mark declined",
             speech::say("instance-invitation-declined-address-has-account"),
         ),
+        Status::Declined(DeclineReason::TurnedDown) => (
+            "mark declined",
+            speech::say("instance-invitation-declined-turned-down"),
+        ),
     };
 
     html::li().child((

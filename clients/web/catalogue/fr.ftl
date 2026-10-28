@@ -506,6 +506,7 @@ instance-invitation-issued = Invité le { $when }
 instance-invitation-open = Ouverte jusqu’au { $when }
 instance-invitation-expired = Expirée le { $when }
 instance-invitation-declined-address-has-account = Inutile : cette adresse e-mail a déjà un compte
+instance-invitation-declined-turned-down = Refusée
 instance-account-operator = Opère l’instance
 instance-account-locked = Verrouillé depuis le { $when }
 instance-account-lock = Verrouiller…

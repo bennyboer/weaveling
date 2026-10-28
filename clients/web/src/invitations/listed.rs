@@ -17,6 +17,7 @@ pub enum Status {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeclineReason {
     AddressHasAccount,
+    TurnedDown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -73,6 +74,9 @@ fn status_of(told: &str, declined_for: Option<&str>) -> Result<Status, ApiError>
         (status::EXPIRED, None) => Ok(Status::Expired),
         (status::DECLINED, Some(decline_reason::ADDRESS_HAS_ACCOUNT)) => {
             Ok(Status::Declined(DeclineReason::AddressHasAccount))
+        }
+        (status::DECLINED, Some(decline_reason::TURNED_DOWN)) => {
+            Ok(Status::Declined(DeclineReason::TurnedDown))
         }
         _ => Err(ApiError::Unexpected),
     }
@@ -159,6 +163,10 @@ mod tests {
             the_status(grace("declined", Some("address-has-account"))),
             Ok(Status::Declined(DeclineReason::AddressHasAccount))
         );
+        assert_eq!(
+            the_status(grace("declined", Some("turned-down"))),
+            Ok(Status::Declined(DeclineReason::TurnedDown))
+        );
     }
 
     #[test]
@@ -222,6 +230,7 @@ mod tests {
             grace("declined", None),
             grace("declined", Some("had a bad day")),
             grace("open", Some("address-has-account")),
+            grace("expired", Some("turned-down")),
             broken,
             InvitationSummaryDTO {
                 scope: ScopeDTO::Project {
