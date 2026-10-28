@@ -56,6 +56,7 @@ fn named(given: Role) -> &'static str {
 fn declined_for(reason: DeclineReason) -> &'static str {
     match reason {
         DeclineReason::AddressHasAccount => decline_reason::ADDRESS_HAS_ACCOUNT,
+        DeclineReason::TurnedDown => decline_reason::TURNED_DOWN,
     }
 }
 
@@ -245,17 +246,17 @@ mod tests {
     fn a_decline_tells_why() {
         let id = InvitationId::generate(at(1_000));
 
-        assert_eq!(
-            eventsourcing_body(&recorded(
-                &id,
-                InvitationEvent::Declined {
-                    reason: DeclineReason::AddressHasAccount,
-                },
-            )),
-            InvitationEventDTO::Declined {
-                reason: "address-has-account".to_owned()
-            }
-        );
+        for (reason, told) in [
+            (DeclineReason::AddressHasAccount, "address-has-account"),
+            (DeclineReason::TurnedDown, "turned-down"),
+        ] {
+            assert_eq!(
+                eventsourcing_body(&recorded(&id, InvitationEvent::Declined { reason })),
+                InvitationEventDTO::Declined {
+                    reason: told.to_owned()
+                }
+            );
+        }
     }
 
     fn eventsourcing_body(happened: &Recorded<InvitationEvent>) -> InvitationEventDTO {

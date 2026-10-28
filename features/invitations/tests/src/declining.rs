@@ -11,8 +11,12 @@ use crate::wiring::{ORIGIN, Wired};
 const ADA: &str = "ada@example.com";
 
 fn declined(invitation: &InvitationId) -> Message {
+    declined_for(invitation, "address-has-account")
+}
+
+fn declined_for(invitation: &InvitationId, reason: &str) -> Message {
     told(
-        json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": invitation.to_string(), "reason": "address-has-account" }),
+        json!({ "version": 0, "name": "INVITATION_DECLINED", "invitation": invitation.to_string(), "reason": reason }),
     )
 }
 
@@ -93,6 +97,27 @@ async fn an_invitation_declined_by_an_account_is_declined_once() {
             InvitationEvent::Issued { .. },
             InvitationEvent::Declined {
                 reason: DeclineReason::AddressHasAccount
+            }
+        ]
+    ));
+}
+
+#[tokio::test]
+async fn an_invitation_turned_down_by_whom_it_was_for_is_declined_so() {
+    let wired = wiring::wired();
+    let id = invited(&wired).await;
+
+    listener(&wired)
+        .take_in(&declined_for(&id, "turned-down"))
+        .await
+        .expect("declining should succeed");
+
+    assert!(matches!(
+        happened(&wired, &id).await.as_slice(),
+        [
+            InvitationEvent::Issued { .. },
+            InvitationEvent::Declined {
+                reason: DeclineReason::TurnedDown
             }
         ]
     ));

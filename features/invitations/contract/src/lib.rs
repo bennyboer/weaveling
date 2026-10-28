@@ -96,6 +96,7 @@ pub mod role {
 
 pub mod decline_reason {
     pub const ADDRESS_HAS_ACCOUNT: &str = "address-has-account";
+    pub const TURNED_DOWN: &str = "turned-down";
 }
 
 pub mod refused {

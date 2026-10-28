@@ -183,3 +183,46 @@ async fn a_list_that_fills_one_page_exactly_promises_no_next() {
     assert_eq!(page.invitations.len(), PAGE);
     assert_eq!(page.next, None);
 }
+
+#[tokio::test]
+async fn an_operator_sees_why_each_invitation_was_declined() {
+    let wired = wiring::wired();
+    let now = 1_700_000_000;
+    let had_an_account = a_summary(
+        now - 120,
+        "ada@example.com",
+        Outcome::Declined(DeclineReason::AddressHasAccount),
+    );
+    let turned_down = a_summary(
+        now - 60,
+        "grace@example.com",
+        Outcome::Declined(DeclineReason::TurnedDown),
+    );
+    for summary in [&had_an_account, &turned_down] {
+        remembered(&wired, summary).await;
+    }
+
+    let page: InvitationPageDTO = served_to(&wired, wiring::an_operator())
+        .get("/invitations")
+        .await
+        .json();
+
+    let told: Vec<_> = page
+        .invitations
+        .iter()
+        .map(|summary| {
+            (
+                summary.email.as_str(),
+                summary.status.as_str(),
+                summary.declined_for.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        told,
+        vec![
+            ("grace@example.com", "declined", Some("turned-down")),
+            ("ada@example.com", "declined", Some("address-has-account")),
+        ]
+    );
+}

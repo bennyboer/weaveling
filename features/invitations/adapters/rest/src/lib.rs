@@ -174,6 +174,10 @@ fn to_summary_dto(listed: &ListedInvitation) -> InvitationSummaryDTO {
             status::DECLINED,
             Some(decline_reason::ADDRESS_HAS_ACCOUNT.to_owned()),
         ),
+        Status::Declined(DeclineReason::TurnedDown) => (
+            status::DECLINED,
+            Some(decline_reason::TURNED_DOWN.to_owned()),
+        ),
     };
 
     InvitationSummaryDTO {

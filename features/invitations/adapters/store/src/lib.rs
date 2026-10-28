@@ -122,12 +122,14 @@ impl From<StoredScope> for Scope {
 #[serde(rename_all = "kebab-case")]
 enum StoredDeclineReason {
     AddressHasAccount,
+    TurnedDown,
 }
 
 impl From<DeclineReason> for StoredDeclineReason {
     fn from(reason: DeclineReason) -> Self {
         match reason {
             DeclineReason::AddressHasAccount => Self::AddressHasAccount,
+            DeclineReason::TurnedDown => Self::TurnedDown,
         }
     }
 }
@@ -136,6 +138,7 @@ impl From<StoredDeclineReason> for DeclineReason {
     fn from(reason: StoredDeclineReason) -> Self {
         match reason {
             StoredDeclineReason::AddressHasAccount => Self::AddressHasAccount,
+            StoredDeclineReason::TurnedDown => Self::TurnedDown,
         }
     }
 }
@@ -314,6 +317,7 @@ mod tests {
             Outcome::Accepted,
             Outcome::Withdrawn,
             Outcome::Declined(DeclineReason::AddressHasAccount),
+            Outcome::Declined(DeclineReason::TurnedDown),
         ] {
             for event in [
                 InvitationEvent::Issued {
@@ -339,6 +343,9 @@ mod tests {
                 InvitationEvent::Withdrawn,
                 InvitationEvent::Declined {
                     reason: DeclineReason::AddressHasAccount,
+                },
+                InvitationEvent::Declined {
+                    reason: DeclineReason::TurnedDown,
                 },
                 InvitationEvent::Snapshotted {
                     to: ada(),

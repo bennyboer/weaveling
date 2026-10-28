@@ -77,6 +77,7 @@ pub enum Outcome {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeclineReason {
     AddressHasAccount,
+    TurnedDown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

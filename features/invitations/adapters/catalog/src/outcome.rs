@@ -5,6 +5,7 @@ const ACCEPTED: &str = "accepted";
 const WITHDRAWN: &str = "withdrawn";
 const DECLINED: &str = "declined";
 const ADDRESS_HAS_ACCOUNT: &str = "address-has-account";
+const TURNED_DOWN: &str = "turned-down";
 
 pub fn written(outcome: Outcome) -> (&'static str, Option<&'static str>) {
     match outcome {
@@ -14,6 +15,7 @@ pub fn written(outcome: Outcome) -> (&'static str, Option<&'static str>) {
         Outcome::Declined(DeclineReason::AddressHasAccount) => {
             (DECLINED, Some(ADDRESS_HAS_ACCOUNT))
         }
+        Outcome::Declined(DeclineReason::TurnedDown) => (DECLINED, Some(TURNED_DOWN)),
     }
 }
 
@@ -25,6 +27,7 @@ pub fn read(outcome: &str, declined_for: Option<&str>) -> Result<Outcome, Catalo
         (DECLINED, Some(ADDRESS_HAS_ACCOUNT)) => {
             Ok(Outcome::Declined(DeclineReason::AddressHasAccount))
         }
+        (DECLINED, Some(TURNED_DOWN)) => Ok(Outcome::Declined(DeclineReason::TurnedDown)),
         _ => Err(CatalogError::Backend(
             format!("{outcome:?} for {declined_for:?} is no way for an invitation to stand").into(),
         )),
@@ -42,6 +45,7 @@ mod tests {
             Outcome::Accepted,
             Outcome::Withdrawn,
             Outcome::Declined(DeclineReason::AddressHasAccount),
+            Outcome::Declined(DeclineReason::TurnedDown),
         ] {
             let (kept, declined_for) = written(outcome);
 
@@ -56,6 +60,7 @@ mod tests {
             ("declined", None),
             ("declined", Some("had a bad day")),
             ("open", Some("address-has-account")),
+            ("open", Some("turned-down")),
         ] {
             assert!(
                 read(outcome, declined_for).is_err(),
