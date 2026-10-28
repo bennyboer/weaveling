@@ -19,6 +19,7 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 invitations-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-invitations-catalog" }
 invitations-core = { version = "0.1.0", path = "../core", package = "weaveling-invitations-core" }
 invitations-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-invitations-rest" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 invitations-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-invitations-messaging" }
 invitations-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-invitations-store" }
 

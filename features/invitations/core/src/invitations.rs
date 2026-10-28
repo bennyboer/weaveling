@@ -3,6 +3,7 @@ use std::sync::Arc;
 use acting::Acting;
 use authorizing::{Act, Authorizer};
 use clock::Clock;
+use email::EmailAddress;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError};
 use mailing::Mailer;
 use throttling::Throttles;
@@ -81,26 +82,31 @@ impl InvitationsCore {
             .await
     }
 
-    pub async fn invitations_to(
-        &self,
-        by: &Acting,
-    ) -> Result<Vec<InvitationToYou>, InvitationsError> {
+    pub async fn address_of(&self, by: &Acting) -> Result<Option<EmailAddress>, InvitationsError> {
         let Agent::Account(account) = &by.agent else {
-            return Ok(Vec::new());
+            return Ok(None);
         };
-        let Some(you) = self
+
+        Ok(self
             .catalog
             .people(std::slice::from_ref(account))
             .await?
             .into_iter()
             .next()
-        else {
+            .map(|you| you.email))
+    }
+
+    pub async fn invitations_to(
+        &self,
+        by: &Acting,
+    ) -> Result<Vec<InvitationToYou>, InvitationsError> {
+        let Some(address) = self.address_of(by).await? else {
             return Ok(Vec::new());
         };
         let now = self.clock.now();
         let open: Vec<(InvitationSummary, ProjectLink, Role)> = self
             .catalog
-            .open_to(&you.email)
+            .open_to(&address)
             .await?
             .into_iter()
             .filter(|summary| summary.status(now) == Some(Status::Open))

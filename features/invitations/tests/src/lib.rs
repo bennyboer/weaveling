@@ -23,6 +23,9 @@ mod listing_api;
 mod mine_api;
 
 #[cfg(test)]
+mod mine_live;
+
+#[cfg(test)]
 mod naming;
 
 #[cfg(test)]

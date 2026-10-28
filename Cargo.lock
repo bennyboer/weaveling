@@ -4242,14 +4242,17 @@ dependencies = [
 name = "weaveling-invitations-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "serde",
+ "time",
  "weaveling-acting",
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
  "weaveling-invitations-contract",
  "weaveling-invitations-core",
+ "weaveling-live",
  "weaveling-serving",
 ]
 
@@ -4286,6 +4289,8 @@ dependencies = [
  "weaveling-invitations-core",
  "weaveling-invitations-messaging",
  "weaveling-invitations-rest",
+ "weaveling-live",
+ "weaveling-live-contract",
  "weaveling-mailing",
  "weaveling-messaging",
  "weaveling-projects-contract",
@@ -4311,6 +4316,7 @@ dependencies = [
  "weaveling-invitations-messaging",
  "weaveling-invitations-rest",
  "weaveling-invitations-store",
+ "weaveling-live",
  "weaveling-mailing",
  "weaveling-messaging",
  "weaveling-outbox",

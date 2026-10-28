@@ -921,6 +921,75 @@ async fn on_a_server_whoever_starts_a_project_is_told_by_the_members_that_it_is_
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_an_account_following_its_invitations_is_told_of_one_to_its_address() {
+    let signed_in = an_operator_signed_in_on_a_server("told-live").await;
+    let server = &signed_in.server;
+    let ada: Value = server.get("/api/sessions/current").await.json();
+    let mut known = false;
+    for _ in 0..50 {
+        known = server
+            .get_websocket("/api/invitations/mine/live")
+            .await
+            .status_code()
+            == StatusCode::SWITCHING_PROTOCOLS;
+        if known {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(known, "invitations hear her sign-up through the outbox");
+    let mut socket = server
+        .get_websocket("/api/invitations/mine/live")
+        .await
+        .into_websocket()
+        .await;
+    let started: Value = server
+        .post("/api/projects")
+        .json(&json!({ "name": "Shared with herself" }))
+        .await
+        .json();
+    let mut owning = false;
+    for _ in 0..50 {
+        owning = server
+            .get(&format!(
+                "/api/members?project={}",
+                started["id"].as_str().unwrap_or_default()
+            ))
+            .await
+            .status_code()
+            == StatusCode::OK;
+        if owning {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(owning, "the members hear the project started");
+
+    let issued: Value = server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({
+            "email": ada["email"],
+            "scope": { "kind": "project", "project": started["id"], "role": "reader" },
+        }))
+        .await
+        .json();
+
+    let frame: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(5), socket.receive_text())
+            .await
+            .expect("the invitation is told while it is fresh"),
+    )
+    .expect("a frame is JSON");
+    assert_eq!(
+        frame["of"], issued["id"],
+        "the list tells the address's account, once it has listed the invitation"
+    );
+
+    signed_in.end().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
     let signed_in = an_operator_signed_in_on_a_server("guarding").await;
     let server = &signed_in.server;

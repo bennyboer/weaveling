@@ -12,6 +12,8 @@ use invitations_messaging::{
     RememberProjectNamesListener, RememberWhoSignedUpListener,
     WithdrawInvitationsOfDeletedProjectListener,
 };
+use invitations_rest::TellingInvitations;
+use live::Broadcaster;
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
 use throttling::{InMemoryThrottles, Throttles};
@@ -140,27 +142,41 @@ impl Feature for InvitationFeature {
     }
 
     fn wire(ports: &Ports, context: &Context) -> Wired {
-        let invitations = core(ports, context);
+        let broadcaster = Broadcaster::new();
+        let invitations = InvitationsCore::new(
+            ports.events.clone(),
+            ports.throttles.clone(),
+            Arc::new(TellingInvitations::around(
+                ports.catalog.clone(),
+                broadcaster.clone(),
+            )),
+            ports.mailer.clone(),
+            context.authorizer.clone(),
+            context.clock.clone(),
+        );
 
-        Wired::serving(invitations_rest::router(invitations.clone()))
-            .listening(vec![
-                Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
-                Arc::new(DeclineInvitationListener::new(invitations.clone())),
-                Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
-                Arc::new(RememberWhoSignedUpListener::new(invitations.clone())),
-                Arc::new(RememberProjectNamesListener::new(invitations.clone())),
-                Arc::new(WithdrawInvitationsOfDeletedProjectListener::new(
-                    invitations.clone(),
-                )),
-            ])
-            .doing_chores(vec![
-                Arc::new(RetireDueInvitations::new(invitations.clone())),
-                Arc::new(ForgetOldTombstones::new(
-                    "forget-old-invitation-tombstones",
-                    Arc::new(InvitationTombstones::of(invitations)),
-                    context.clock.clone(),
-                )),
-            ])
+        Wired::serving(
+            invitations_rest::router(invitations.clone())
+                .merge(invitations_rest::live(invitations.clone(), broadcaster)),
+        )
+        .listening(vec![
+            Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
+            Arc::new(DeclineInvitationListener::new(invitations.clone())),
+            Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
+            Arc::new(RememberWhoSignedUpListener::new(invitations.clone())),
+            Arc::new(RememberProjectNamesListener::new(invitations.clone())),
+            Arc::new(WithdrawInvitationsOfDeletedProjectListener::new(
+                invitations.clone(),
+            )),
+        ])
+        .doing_chores(vec![
+            Arc::new(RetireDueInvitations::new(invitations.clone())),
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-invitation-tombstones",
+                Arc::new(InvitationTombstones::of(invitations)),
+                context.clock.clone(),
+            )),
+        ])
     }
 }
 

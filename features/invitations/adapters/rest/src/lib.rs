@@ -1,7 +1,11 @@
+mod telling;
+
 use acting::Acting;
+use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, Query, State};
 use axum::http::header::ORIGIN;
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, routing};
 use clock::text;
 use email::InvalidEmailAddress;
@@ -14,8 +18,11 @@ use invitations_core::{
     DeclineReason, InvitationError, InvitationId, InvitationToYou, InvitationsCore,
     InvitationsError, ListedInvitation, Role, Scope, Status,
 };
+use live::Broadcaster;
 use serde::Deserialize;
 use serving::Problem;
+
+pub use telling::TellingInvitations;
 
 pub fn router(invitations: InvitationsCore) -> Router {
     Router::new()
@@ -23,6 +30,33 @@ pub fn router(invitations: InvitationsCore) -> Router {
         .route("/invitations/mine", routing::get(mine))
         .route("/invitations/{invitation}", routing::delete(withdraw))
         .with_state(invitations)
+}
+
+#[derive(Clone)]
+struct Following {
+    invitations: InvitationsCore,
+    broadcaster: Broadcaster,
+}
+
+pub fn live(invitations: InvitationsCore, broadcaster: Broadcaster) -> Router {
+    Router::new()
+        .route("/invitations/mine/live", routing::get(follow_mine))
+        .with_state(Following {
+            invitations,
+            broadcaster,
+        })
+}
+
+async fn follow_mine(
+    upgrade: WebSocketUpgrade,
+    State(following): State<Following>,
+    Extension(acting): Extension<Acting>,
+) -> Response {
+    match following.invitations.address_of(&acting).await {
+        Ok(Some(address)) => live::streaming(upgrade, following.broadcaster.hear(address.as_str())),
+        Ok(None) => StatusCode::NOT_FOUND.into_response(),
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
 }
 
 async fn invite(
