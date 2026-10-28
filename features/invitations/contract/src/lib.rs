@@ -32,6 +32,18 @@ pub struct InvitationSummaryDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct InvitationToYouDTO {
+    pub id: String,
+    pub project: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project_name: Option<String>,
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub invited_by: Option<String>,
+    pub until: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct InvitationPageDTO {
     pub invitations: Vec<InvitationSummaryDTO>,
     pub next: Option<String>,

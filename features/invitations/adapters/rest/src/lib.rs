@@ -7,12 +7,12 @@ use clock::text;
 use email::InvalidEmailAddress;
 use eventsourcing::ServiceError;
 use invitations_contract::{
-    InvitationPageDTO, InvitationSummaryDTO, InviteRequest, ScopeDTO, decline_reason, refused,
-    role, status,
+    InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO, InviteRequest, ScopeDTO,
+    decline_reason, refused, role, status,
 };
 use invitations_core::{
-    DeclineReason, InvitationError, InvitationId, InvitationsCore, InvitationsError,
-    ListedInvitation, Role, Scope, Status,
+    DeclineReason, InvitationError, InvitationId, InvitationToYou, InvitationsCore,
+    InvitationsError, ListedInvitation, Role, Scope, Status,
 };
 use serde::Deserialize;
 use serving::Problem;
@@ -20,6 +20,7 @@ use serving::Problem;
 pub fn router(invitations: InvitationsCore) -> Router {
     Router::new()
         .route("/invitations", routing::post(invite).get(list))
+        .route("/invitations/mine", routing::get(mine))
         .route("/invitations/{invitation}", routing::delete(withdraw))
         .with_state(invitations)
 }
@@ -68,6 +69,29 @@ async fn invite(
             status: Status::Open,
         })),
     ))
+}
+
+async fn mine(
+    State(invitations): State<InvitationsCore>,
+    Extension(acting): Extension<Acting>,
+) -> Result<Json<Vec<InvitationToYouDTO>>, Problem> {
+    let yours = invitations
+        .invitations_to(&acting)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(Json(yours.iter().map(to_you_dto).collect()))
+}
+
+fn to_you_dto(yours: &InvitationToYou) -> InvitationToYouDTO {
+    InvitationToYouDTO {
+        id: yours.id.to_string(),
+        project: yours.project.to_string(),
+        project_name: yours.project_name.clone(),
+        role: named(yours.role).to_owned(),
+        invited_by: yours.invited_by.clone(),
+        until: text::serialize(yours.until),
+    }
 }
 
 pub const PAGE: usize = 100;

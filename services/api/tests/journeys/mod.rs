@@ -848,6 +848,42 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
     journey.end().await;
 }
 
+pub async fn an_account_is_told_in_the_application_what_it_is_invited_into<B: Backend>() {
+    let journey = Journey::<B>::signed_in("told").await;
+    let project = journey.project("Shared").await;
+    let server = &journey.server;
+    let members = format!("/api/members?project={project}");
+    assert!(
+        until(|| async { server.get(&members).await.status_code() == StatusCode::OK }).await,
+        "its owner may invite once the members have heard of her"
+    );
+    server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({
+            "email": "grace@example.com",
+            "scope": { "kind": "project", "project": project, "role": "author" },
+        }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    journey.signed_in_as_another("grace@example.com").await;
+
+    assert!(
+        until(|| async {
+            let mine: Value = server.get("/api/invitations/mine").await.json();
+            mine[0]["project_name"] == "Shared" && mine[0]["invited_by"] == "Ada"
+        })
+        .await,
+        "invitations hear of her sign-up, the project's name and who invited, all through the outbox"
+    );
+    let mine: Value = server.get("/api/invitations/mine").await.json();
+    assert_eq!(mine.as_array().map(Vec::len), Some(1));
+    assert_eq!(mine[0]["project"], project);
+    assert_eq!(mine[0]["role"], "author");
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -870,6 +906,7 @@ macro_rules! journeys {
             a_project_s_members_are_listed_for_whoever_may_read_it,
             an_account_invited_into_a_project_joins_it_by_taking_the_invitation_up,
             a_deleted_project_s_owner_neither_lists_its_members_nor_invites_into_it,
+            an_account_is_told_in_the_application_what_it_is_invited_into,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

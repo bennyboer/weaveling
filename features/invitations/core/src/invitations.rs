@@ -3,12 +3,15 @@ use std::sync::Arc;
 use acting::Acting;
 use authorizing::{Act, Authorizer};
 use clock::Clock;
-use eventsourcing::{Agent, AggregateId, EventStore, ServiceError};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError};
 use mailing::Mailer;
 use throttling::Throttles;
 use time::OffsetDateTime;
 
-use crate::catalog::{InvitationCatalog, InvitationSummary, ListedInvitation, Person, ProjectName};
+use crate::catalog::{
+    InvitationCatalog, InvitationSummary, InvitationToYou, ListedInvitation, Person, ProjectName,
+    Status,
+};
 use crate::error::InvitationsError;
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, InvitationError, InvitationEvent, KIND};
@@ -76,6 +79,62 @@ impl InvitationsCore {
                 &by.agent,
             )
             .await
+    }
+
+    pub async fn invitations_to(
+        &self,
+        by: &Acting,
+    ) -> Result<Vec<InvitationToYou>, InvitationsError> {
+        let Agent::Account(account) = &by.agent else {
+            return Ok(Vec::new());
+        };
+        let Some(you) = self
+            .catalog
+            .people(std::slice::from_ref(account))
+            .await?
+            .into_iter()
+            .next()
+        else {
+            return Ok(Vec::new());
+        };
+        let now = self.clock.now();
+        let open: Vec<(InvitationSummary, ProjectLink, Role)> = self
+            .catalog
+            .open_to(&you.email)
+            .await?
+            .into_iter()
+            .filter(|summary| summary.status(now) == Some(Status::Open))
+            .filter_map(|summary| match summary.scope.clone() {
+                Scope::Project { project, role } => Some((summary, project, role)),
+                Scope::Instance => None,
+            })
+            .collect();
+        let projects: Vec<ProjectLink> =
+            open.iter().map(|(_, project, _)| project.clone()).collect();
+        let names = self.catalog.project_names(&projects).await?;
+        let issuers: Vec<AccountId> = open
+            .iter()
+            .filter_map(|(summary, _, _)| summary.issued_by.clone())
+            .collect();
+        let inviters = self.catalog.people(&issuers).await?;
+
+        Ok(open
+            .into_iter()
+            .map(|(summary, project, role)| InvitationToYou {
+                id: summary.id,
+                project_name: names
+                    .iter()
+                    .find(|named| named.project == project)
+                    .map(|named| named.name.clone()),
+                invited_by: inviters
+                    .iter()
+                    .find(|person| Some(&person.account) == summary.issued_by.as_ref())
+                    .map(|person| person.name.clone()),
+                project,
+                role,
+                until: summary.until,
+            })
+            .collect())
     }
 
     pub async fn withdraw(

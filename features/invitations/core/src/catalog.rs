@@ -7,7 +7,7 @@ use time::{Duration, OffsetDateTime};
 
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, Invitation, Outcome};
-use crate::scope::{ProjectLink, Scope};
+use crate::scope::{ProjectLink, Role, Scope};
 use email::EmailAddress;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,6 +48,16 @@ pub struct ProjectName {
     pub project: ProjectLink,
     pub version: Version,
     pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvitationToYou {
+    pub id: InvitationId,
+    pub project: ProjectLink,
+    pub project_name: Option<String>,
+    pub role: Role,
+    pub invited_by: Option<String>,
+    pub until: OffsetDateTime,
 }
 
 #[derive(Debug, Error)]
