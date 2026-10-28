@@ -153,6 +153,15 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
         Ok(())
     }
 
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        Ok(self
+            .projects
+            .read()
+            .expect("invitation catalog lock poisoned")
+            .tombstones
+            .contains_key(project.as_str()))
+    }
+
     async fn forget_project_tombstones_laid_before(
         &self,
         before: OffsetDateTime,

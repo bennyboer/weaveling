@@ -92,6 +92,8 @@ pub trait InvitationCatalog: Send + Sync {
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
+
     async fn forget_project_tombstones_laid_before(
         &self,
         before: OffsetDateTime,

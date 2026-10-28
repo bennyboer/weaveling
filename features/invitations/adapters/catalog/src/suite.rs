@@ -507,6 +507,27 @@ pub async fn a_deleted_project_s_name_is_told_no_more_and_a_name_heard_late_brin
     );
 }
 
+async fn has_tombstone(catalog: &impl InvitationCatalog, project: &str) -> bool {
+    catalog
+        .has_project_tombstone(&ProjectLink::from(project))
+        .await
+        .expect("asking for a tombstone should succeed")
+}
+
+pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
+    catalog: &impl InvitationCatalog,
+) {
+    name_known(catalog, &named("project_a", 1, "The Loom")).await;
+    assert!(!has_tombstone(catalog, "project_a").await);
+
+    tombstoned(catalog, "project_a", 1_000).await;
+    assert!(has_tombstone(catalog, "project_a").await);
+    assert!(!has_tombstone(catalog, "project_b").await);
+
+    forget_long_gone(catalog, 2_000, 10).await;
+    assert!(!has_tombstone(catalog, "project_a").await);
+}
+
 pub async fn a_project_s_tombstone_is_laid_once_and_forgotten_oldest_first_and_at_most_so_many(
     catalog: &impl InvitationCatalog,
 ) {
@@ -603,6 +624,10 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_project_s_tombstone_is_laid_once_and_forgotten_oldest_first_and_at_most_so_many
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten
         );
     };
 }

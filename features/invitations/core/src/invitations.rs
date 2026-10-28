@@ -63,6 +63,9 @@ impl InvitationsCore {
     ) -> Result<InvitationSummary, InvitationsError> {
         let project = ProjectLink::from(project);
         self.owning(by, &project).await?;
+        if self.catalog.has_project_tombstone(&project).await? {
+            return Err(InvitationsError::ProjectNotThere);
+        }
 
         self.service
             .issue(
@@ -208,14 +211,17 @@ impl InvitationsCore {
             return Ok(self.catalog.forget(invitation).await?);
         }
 
-        Ok(self
-            .catalog
-            .remember(&InvitationSummary::of(
-                *invitation,
-                standing.version,
-                &standing.state,
-            ))
-            .await?)
+        let summary = InvitationSummary::of(*invitation, standing.version, &standing.state);
+        self.catalog.remember(&summary).await?;
+
+        match &summary.scope {
+            Scope::Project { project, .. }
+                if self.catalog.has_project_tombstone(project).await? =>
+            {
+                settled(self.service.withdraw(invitation, &Agent::System).await)
+            }
+            _ => Ok(()),
+        }
     }
 
     pub async fn sweep(&self, project: &str) -> Result<(), InvitationsError> {

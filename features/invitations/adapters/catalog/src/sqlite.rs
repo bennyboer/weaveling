@@ -87,6 +87,9 @@ const LAY_PROJECT_TOMBSTONE: &str =
 
 const FORGET_PROJECT_NAME: &str = "DELETE FROM project_names WHERE project = ?1";
 
+const HAS_PROJECT_TOMBSTONE: &str =
+    "SELECT EXISTS (SELECT 1 FROM project_tombstones WHERE project = ?1)";
+
 const FORGET_OLD_PROJECT_TOMBSTONES: &str = "
     DELETE FROM project_tombstones WHERE project IN (
         SELECT project FROM project_tombstones
@@ -291,6 +294,14 @@ impl InvitationCatalog for SqliteInvitationCatalog {
             .map_err(unreachable)?;
 
         transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
+            .bind(project.as_str())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)
     }
 
     async fn forget_project_tombstones_laid_before(

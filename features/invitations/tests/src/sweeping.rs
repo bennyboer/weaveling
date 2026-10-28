@@ -1,6 +1,6 @@
 use acting::Acting;
 use eventsourcing::{Agent, AggregateId, EventStore, Version};
-use invitations_core::{InvitationEvent, InvitationId, KIND, Role};
+use invitations_core::{InvitationEvent, InvitationId, InvitationsError, KIND, ProjectLink, Role};
 use invitations_messaging::WithdrawInvitationsOfDeletedProjectListener;
 use messaging::{Handler, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
@@ -126,4 +126,101 @@ async fn an_invitation_taken_up_or_withdrawn_before_is_left_as_it_was_and_a_swee
             .count(),
         1
     );
+}
+
+#[tokio::test]
+async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_before_is_withdrawn_once_listed()
+ {
+    let wired = wiring::wired();
+    let just_before = wired
+        .invitations
+        .invite_to_project(
+            &an_owner(),
+            "project_loom",
+            Role::Author,
+            "ada@example.com",
+            ORIGIN,
+        )
+        .await
+        .expect("an owner may invite")
+        .id;
+    WithdrawInvitationsOfDeletedProjectListener::new(wired.invitations.clone())
+        .take_in(&deleted("project_loom"))
+        .await
+        .expect("the sweep goes through");
+    wired
+        .invitations
+        .lay_project_tombstone(
+            &ProjectLink::from("project_loom"),
+            OffsetDateTime::UNIX_EPOCH,
+        )
+        .await
+        .expect("laying the tombstone should succeed");
+
+    assert!(matches!(
+        wired
+            .invitations
+            .invite_to_project(
+                &an_owner(),
+                "project_loom",
+                Role::Author,
+                "grace@example.com",
+                ORIGIN
+            )
+            .await,
+        Err(InvitationsError::ProjectNotThere)
+    ));
+    assert!(
+        matches!(
+            last_of(&wired, &just_before).await.0,
+            InvitationEvent::Issued { .. }
+        ),
+        "the sweep missed it, as the list had not heard of it yet"
+    );
+
+    wired
+        .invitations
+        .catalogue(&just_before)
+        .await
+        .expect("cataloguing should succeed");
+
+    assert_eq!(
+        last_of(&wired, &just_before).await,
+        (InvitationEvent::Withdrawn, Agent::System)
+    );
+    invited_into(&wired, "project_weft", "hedy@example.com").await;
+}
+
+#[tokio::test]
+async fn an_invitation_into_a_deleted_project_taken_up_before_is_listed_as_it_was() {
+    let wired = wiring::wired();
+    let accepted = invited_into(&wired, "project_loom", "ada@example.com").await;
+    wired
+        .invitations
+        .taken_up(
+            &accepted,
+            wiring::at(1_700_000_100),
+            &Agent::Account("account_ada".into()),
+        )
+        .await
+        .expect("taking up should succeed");
+    wired
+        .invitations
+        .lay_project_tombstone(
+            &ProjectLink::from("project_loom"),
+            OffsetDateTime::UNIX_EPOCH,
+        )
+        .await
+        .expect("laying the tombstone should succeed");
+
+    wired
+        .invitations
+        .catalogue(&accepted)
+        .await
+        .expect("an invitation taken up is no failure to list");
+
+    assert!(matches!(
+        last_of(&wired, &accepted).await.0,
+        InvitationEvent::Accepted { .. }
+    ));
 }
