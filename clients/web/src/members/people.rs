@@ -6,10 +6,12 @@ use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SignInState};
 use crate::http::ApiError;
+use crate::members::leaving;
 use crate::members::listed::{Member, Role};
 use crate::members::service;
 use crate::problem;
 use crate::projects::model::ProjectId;
+use crate::projects::service as projects;
 use crate::route;
 use crate::speech;
 
@@ -17,8 +19,9 @@ use crate::speech;
 pub struct People {
     session: CurrentSession,
     project: StoredValue<String>,
-    members: RwSignal<Vec<Member>>,
+    pub(super) members: RwSignal<Vec<Member>>,
     refused: RwSignal<Option<ApiError>>,
+    pub(super) leaving: RwSignal<bool>,
 }
 
 impl People {
@@ -28,13 +31,14 @@ impl People {
             project: StoredValue::new(project.to_string()),
             members: RwSignal::new(Vec::new()),
             refused: RwSignal::new(None),
+            leaving: RwSignal::new(false),
         };
         people.load();
 
         people
     }
 
-    fn own(self) -> Option<String> {
+    pub(super) fn own(self) -> Option<String> {
         match self.session.state() {
             SignInState::SignedIn(account) => Some(account.account),
             _ => None,
@@ -48,6 +52,17 @@ impl People {
                 member.role == Role::Owner && own.as_deref() == Some(member.account.as_str())
             })
         })
+    }
+
+    fn the_only_owner(self) -> bool {
+        self.owning()
+            && self.members.with(|members| {
+                members
+                    .iter()
+                    .filter(|member| member.role == Role::Owner)
+                    .count()
+                    == 1
+            })
     }
 
     fn load(self) {
@@ -74,6 +89,38 @@ impl People {
         });
     }
 
+    pub(super) fn hand_over_and_leave(self, to: String, then: impl Fn() + 'static) {
+        let Some(own) = self.own() else {
+            return;
+        };
+        let project = self.project.get_value();
+        self.refused.set(None);
+        task::spawn_local(async move {
+            let left = match service::change_role(&project, &to, Role::Owner).await {
+                Ok(_) => service::remove(&project, &own).await,
+                Err(failed) => Err(failed),
+            };
+            match left {
+                Ok(()) => then(),
+                Err(failed) => {
+                    self.refused.set(Some(failed));
+                    self.load();
+                }
+            }
+        });
+    }
+
+    pub(super) fn delete_project(self, then: impl Fn() + 'static) {
+        let project = ProjectId::from(self.project.get_value());
+        self.refused.set(None);
+        task::spawn_local(async move {
+            match projects::delete(&project).await {
+                Ok(()) => then(),
+                Err(failed) => self.refused.set(Some(failed)),
+            }
+        });
+    }
+
     fn remove(self, account: String, then: impl Fn() + 'static) {
         let project = self.project.get_value();
         self.refused.set(None);
@@ -92,6 +139,15 @@ pub fn people(people: People) -> impl IntoView {
 
     (
         move || people.refused.get().map(problem::problem),
+        {
+            let left = left.clone();
+            move || {
+                people
+                    .leaving
+                    .get()
+                    .then(|| leaving::leaving(people, left.clone()))
+            }
+        },
         html::ul().class("members").child(move || {
             let own = people.own();
             let owning = people.owning();
@@ -108,7 +164,7 @@ pub fn people(people: People) -> impl IntoView {
     )
 }
 
-fn shown_name(named: &Option<String>) -> String {
+pub(super) fn shown_name(named: &Option<String>) -> String {
     named
         .clone()
         .unwrap_or_else(|| speech::say("members-unnamed"))
@@ -123,7 +179,12 @@ fn listed(
 ) -> impl IntoView {
     let named = member.name.clone();
     let account = member.account.clone();
-    let role = if owning {
+    let role = if yourself && people.the_only_owner() {
+        html::p()
+            .class("role")
+            .child(speech::said("members-only-owner"))
+            .into_any()
+    } else if owning {
         role_choice(people, &member).into_any()
     } else {
         html::p()
@@ -136,7 +197,11 @@ fn listed(
             html::button()
                 .r#type("button")
                 .on(ev::click, move |_| {
-                    people.remove(account.clone(), left.clone())
+                    if people.the_only_owner() {
+                        people.leaving.set(true);
+                    } else {
+                        people.remove(account.clone(), left.clone());
+                    }
                 })
                 .child(speech::said("members-leave"))
                 .into_any(),

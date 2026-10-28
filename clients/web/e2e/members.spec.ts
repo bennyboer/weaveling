@@ -48,7 +48,7 @@ test("a project's members are listed by name and role, with whoever is me marked
   await expect(people).toHaveCount(3);
   await expect(people.nth(0)).toContainText("Ada Lovelace(you)");
   await expect(people.nth(0)).toContainText(ADA.email);
-  await expect(page.getByLabel("Role of Ada Lovelace")).toHaveValue("owner");
+  await expect(people.nth(0)).toContainText("Owner, the only one");
   await expect(people.nth(1)).toContainText("Grace Hopper");
   await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("author");
   await expect(people.nth(1)).not.toContainText("(you)");
@@ -137,6 +137,10 @@ test("an owner changes a member's role and removes another, and the list follows
   await page.getByLabel("Role of Grace Hopper").selectOption("Owner");
   await expect.poll(() => asked.patched).toEqual([{ account: GRACE.account, role: "owner" }]);
   await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("owner");
+  await expect(
+    page.getByLabel("Role of Ada Lovelace"),
+    "with another owner, one may step down",
+  ).toHaveValue("owner");
 
   await people.filter({ hasText: "Hedy Lamarr" }).getByRole("button", { name: "Remove" }).click();
   await expect(people).toHaveCount(2);
@@ -162,22 +166,74 @@ test("an author sees the roles plainly and may only leave, which leads back to t
   expect(asked.deleted).toEqual([ADA.account]);
 });
 
-test("the last owner is told why they may neither step down nor leave, and stays as they were", async ({
+test("the only owner is shown as such, may stay, and leaves by handing the project over", async ({
   page,
 }) => {
+  const asked = await onTheMembersPage(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+    { ...GRACE, role: "author" },
+    { ...HEDY, role: "reader" },
+  ]);
+  const own = page.locator(".members li").filter({ hasText: "(you)" });
+  await expect(own).toContainText("Owner, the only one");
+  await expect(page.getByLabel("Role of Ada Lovelace")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Leave" }).click();
+  const dialog = page.getByRole("dialog", { name: "You are its only owner" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Stay" }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(asked.patched).toEqual([]);
+  expect(asked.deleted).toEqual([]);
+
+  await page.getByRole("button", { name: "Leave" }).click();
+  await dialog.getByLabel("New owner").selectOption({ label: "Hedy Lamarr (Reader)" });
+  await dialog.getByRole("button", { name: "Hand over and leave" }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  expect(asked.patched).toEqual([{ account: HEDY.account, role: "owner" }]);
+  expect(asked.deleted).toEqual([ADA.account]);
+});
+
+test("the only member, leaving, is offered to delete the project instead", async ({ page }) => {
+  await onTheMembersPage(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+  ]);
+  const project = new URL(page.url()).pathname.split("/")[2];
+
+  await page.getByRole("button", { name: "Leave" }).click();
+  const dialog = page.getByRole("dialog", { name: "Nobody else is in it" });
+  await expect(dialog).toContainText("Deleting cannot be undone.");
+  await dialog.getByRole("button", { name: "Delete the project" }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  expect((await page.request.get(`${API}/projects/${project}`)).status()).toBe(404);
+});
+
+test("a change refused is told, and the members are asked for again", async ({ page }) => {
   await onTheMembersPage(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { ...GRACE, role: "author" },
+    { ...HEDY, role: "reader" },
   ]);
-  const told = "A project keeps at least one owner. Make someone else an owner first.";
+  await page.route(
+    (url) => url.pathname.startsWith("/api/members/"),
+    (route) =>
+      route.fulfill({
+        status: 403,
+        contentType: "application/problem+json",
+        body: JSON.stringify({ type: "not-an-owner", status: 403, detail: "not-an-owner" }),
+      }),
+  );
+  const told = "Only an owner of this project may do this.";
 
-  await page.getByLabel("Role of Ada Lovelace").selectOption("Author");
+  await page.getByLabel("Role of Grace Hopper").selectOption("Reader");
   await expect(page.getByRole("alert")).toHaveText(told);
-  await expect(page.getByLabel("Role of Ada Lovelace")).toHaveValue("owner");
+  await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("author");
 
-  await page.getByRole("button", { name: "Leave" }).click();
+  await page.locator(".members li").filter({ hasText: "Hedy Lamarr" }).getByRole("button", { name: "Remove" }).click();
   await expect(page.getByRole("alert")).toHaveText(told);
-  await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
+  await expect(page.locator(".members li")).toHaveCount(3);
 });
 
 type ProjectInvitation = {
@@ -267,4 +323,32 @@ test("whoever is no owner finds no Invited tab", async ({ page }) => {
 
   await expect(page.getByRole("link", { name: "People" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Invited" })).toHaveCount(0);
+});
+
+test("a hand-over half done is told, and the members are shown as they now are", async ({
+  page,
+}) => {
+  await onTheMembersPage(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+    { ...GRACE, role: "author" },
+  ]);
+  await page.route(
+    (url) => url.pathname.startsWith("/api/members/"),
+    (route) =>
+      route.request().method() === "DELETE"
+        ? route.fulfill({
+            status: 403,
+            contentType: "application/problem+json",
+            body: JSON.stringify({ type: "not-a-member", status: 403, detail: "not-a-member" }),
+          })
+        : route.fallback(),
+  );
+
+  await page.getByRole("button", { name: "Leave" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Hand over and leave" }).click();
+
+  await expect(page.getByRole("alert")).toHaveText("This person is not a member of this project.");
+  await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
+  await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("owner");
+  await expect(page.getByLabel("Role of Ada Lovelace")).toHaveValue("owner");
 });
