@@ -17,8 +17,8 @@ use crate::{outcome, scope};
 
 const REMEMBER: &str = "
     INSERT INTO invitation_summaries
-        (invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        (invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
     ON CONFLICT (invitation) DO UPDATE
     SET version      = excluded.version,
         email        = excluded.email,
@@ -33,7 +33,7 @@ const REMEMBER: &str = "
 ";
 
 const LISTED_AFTER: &str = "
-    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by
     FROM invitation_summaries
     WHERE outcome IN ('open', 'declined')
       AND project IS NULL
@@ -43,7 +43,7 @@ const LISTED_AFTER: &str = "
 ";
 
 const IN_PROJECT_AFTER: &str = "
-    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by
     FROM invitation_summaries
     WHERE outcome IN ('open', 'declined')
       AND project = ?1
@@ -138,12 +138,14 @@ fn to_summary(row: &SqliteRow) -> Result<InvitationSummary, CatalogError> {
     let declined_for: Option<String> = row.try_get("declined_for").map_err(unreachable)?;
     let project: Option<String> = row.try_get("project").map_err(unreachable)?;
     let project_role: Option<String> = row.try_get("project_role").map_err(unreachable)?;
+    let issued_by: Option<String> = row.try_get("issued_by").map_err(unreachable)?;
 
     Ok(InvitationSummary {
         id: invitation.parse().map_err(unreachable)?,
         version: Version::of(u64::try_from(version).map_err(unreachable)?),
         to: EmailAddress::new(&email).map_err(unreachable)?,
         scope: scope::read(project, project_role.as_deref())?,
+        issued_by: issued_by.map(AccountId::from),
         issued_at: moment(row, "issued_at")?,
         until: moment(row, "until")?,
         outcome: outcome::read(&kept, declined_for.as_deref())?,
@@ -168,6 +170,7 @@ impl InvitationCatalog for SqliteInvitationCatalog {
             .bind(text::written(summary.retire_after))
             .bind(project)
             .bind(project_role)
+            .bind(summary.issued_by.as_ref().map(AccountId::as_str))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;

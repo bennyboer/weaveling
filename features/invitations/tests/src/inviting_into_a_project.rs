@@ -8,7 +8,7 @@ use axum::Extension;
 use axum::http::StatusCode;
 use axum::http::header::ORIGIN;
 use axum_test::{TestResponse, TestServer};
-use eventsourcing::{Agent, AggregateId, EventStore, Version};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use invitations_contract::{
     InvitationPageDTO, InvitationSummaryDTO, InviteRequest, ScopeDTO, refused, role,
 };
@@ -151,6 +151,20 @@ async fn an_owner_invites_into_the_project_for_a_role_and_the_link_is_mailed() {
         guarded.wired.links_mailed_to(BO)[0]
             .starts_with("https://weaveling.example.com/invitation#")
     );
+}
+
+#[tokio::test]
+async fn an_invitation_issued_is_answered_with_who_issued_it() {
+    let guarded = guarded();
+
+    let issued = guarded
+        .wired
+        .invitations
+        .invite_to_project(&ada(), PROJECT, Role::Author, BO, INSTANCE)
+        .await
+        .expect("an owner may invite");
+
+    assert_eq!(issued.issued_by, Some(AccountId::from("account_ada")));
 }
 
 #[tokio::test]

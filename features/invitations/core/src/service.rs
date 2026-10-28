@@ -81,6 +81,10 @@ impl InvitationService {
             version: Version::of(1),
             to,
             scope,
+            issued_by: match agent {
+                Agent::Account(account) => Some(account.clone()),
+                _ => None,
+            },
             issued_at: now,
             until,
             outcome: Outcome::Open,

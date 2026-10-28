@@ -27,6 +27,7 @@ pub fn a_summary(id: InvitationId, to: &str) -> InvitationSummary {
         version: Version::of(1),
         to: EmailAddress::new(to).expect("a plain address"),
         scope: Scope::Instance,
+        issued_by: Some(AccountId::from("account_grace")),
         issued_at: at(1_000),
         until: at(605_800),
         outcome: Outcome::Open,

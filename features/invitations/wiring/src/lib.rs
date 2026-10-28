@@ -193,6 +193,7 @@ mod tests {
             id: InvitationId::generate(OffsetDateTime::UNIX_EPOCH),
             version: Version::of(1),
             to: EmailAddress::new("ada@example.com").expect("a plain address"),
+            issued_by: None,
             issued_at: OffsetDateTime::UNIX_EPOCH,
             until: OffsetDateTime::UNIX_EPOCH,
             outcome: Outcome::Open,

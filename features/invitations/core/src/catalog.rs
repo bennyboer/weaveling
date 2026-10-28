@@ -16,6 +16,7 @@ pub struct InvitationSummary {
     pub version: Version,
     pub to: EmailAddress,
     pub scope: Scope,
+    pub issued_by: Option<AccountId>,
     pub issued_at: OffsetDateTime,
     pub until: OffsetDateTime,
     pub outcome: Outcome,
@@ -117,6 +118,7 @@ impl InvitationSummary {
             version,
             to: invitation.to().clone(),
             scope: invitation.scope().clone(),
+            issued_by: invitation.issued_by().cloned(),
             issued_at: invitation.issued_at(),
             until: invitation.until(),
             outcome: invitation.outcome(),
@@ -178,7 +180,7 @@ mod tests {
     }
 
     #[test]
-    fn a_summary_tells_to_whom_since_when_until_when_and_how_it_stands() {
+    fn a_summary_tells_to_whom_by_whom_since_when_until_when_and_how_it_stands() {
         let invitation = Invitation::from_first(
             &InvitationEvent::Issued {
                 to: ada(),
@@ -187,7 +189,10 @@ mod tests {
                 scope: Scope::Instance,
                 by_an_operator: true,
             },
-            &stamped(1, 1_000),
+            &EventMetadata {
+                agent: Agent::Account(AccountId::from("account_grace")),
+                ..stamped(1, 1_000)
+            },
         )
         .expect("issuing gives birth");
         let id = InvitationId::generate(at(1_000));
@@ -198,6 +203,7 @@ mod tests {
                 id,
                 version: Version::of(3),
                 to: ada(),
+                issued_by: Some(AccountId::from("account_grace")),
                 issued_at: at(1_000),
                 until: at(5_000),
                 outcome: Outcome::Open,
@@ -225,6 +231,7 @@ mod tests {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
             to: ada(),
+            issued_by: None,
             issued_at: at(1_000),
             until: at(5_000),
             outcome,
@@ -244,6 +251,7 @@ mod tests {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
             to: ada(),
+            issued_by: None,
             issued_at: at(1_000),
             until: at(5_000),
             outcome: Outcome::Open,
@@ -261,6 +269,7 @@ mod tests {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
             to: ada(),
+            issued_by: None,
             issued_at: at(1_000),
             until: at(5_000),
             outcome,

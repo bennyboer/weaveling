@@ -24,6 +24,7 @@ fn a_summary(seconds: i64, to: &str, outcome: Outcome) -> InvitationSummary {
         id: InvitationId::generate(wiring::at(seconds)),
         version: Version::of(1),
         to: EmailAddress::new(to).expect("a plain address"),
+        issued_by: None,
         issued_at: wiring::at(seconds),
         until: wiring::at(seconds) + Duration::days(7),
         outcome,
