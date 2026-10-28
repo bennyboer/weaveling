@@ -153,6 +153,9 @@ pub trait InvitationTickets: Send + Sync {
         digest: &TokenDigest,
     ) -> Result<Option<InvitationTicket>, SecretsError>;
 
+    async fn digest_of_ticket(&self, invitation: &str)
+    -> Result<Option<TokenDigest>, SecretsError>;
+
     async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError>;
 
     async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError>;

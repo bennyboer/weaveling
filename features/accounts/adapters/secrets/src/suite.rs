@@ -831,6 +831,44 @@ pub async fn a_project_s_ticket_is_kept_with_its_project_and_who_issued_it<S: Se
     );
 }
 
+pub async fn a_ticket_still_open_is_found_by_its_invitation_to_take_it_up_signed_in<S: Secrets>(
+    secrets: &S,
+) {
+    for (digest, invitation, to) in [
+        ("ada's", "invitation_ada", "ada@example.com"),
+        ("bob's", "invitation_bob", "bob@example.com"),
+        ("cy's", "invitation_cy", "cy@example.com"),
+    ] {
+        secrets
+            .keep_ticket(&a_digest(digest), &a_ticket(invitation, to))
+            .await
+            .expect("keeping should succeed");
+    }
+    secrets
+        .forget_ticket("invitation_bob")
+        .await
+        .expect("forgetting should succeed");
+    secrets
+        .take_ticket(&a_digest("cy's"))
+        .await
+        .expect("taking should succeed");
+
+    let digest_of = |invitation: &'static str| async move {
+        secrets
+            .digest_of_ticket(invitation)
+            .await
+            .expect("asking should succeed")
+    };
+    assert_eq!(digest_of("invitation_ada").await, Some(a_digest("ada's")));
+    assert_eq!(
+        digest_of("invitation_bob").await,
+        None,
+        "a withdrawn one is no more"
+    );
+    assert_eq!(digest_of("invitation_cy").await, None, "nor one taken up");
+    assert_eq!(digest_of("invitation_nobody").await, None);
+}
+
 pub async fn a_found_ticket_is_left_to_be_taken<S: Secrets>(secrets: &S) {
     secrets
         .keep_ticket(
@@ -1445,6 +1483,10 @@ macro_rules! conformance_tests {
             a_project_s_ticket_is_kept_with_its_project_and_who_issued_it
         );
         $crate::secrets_conformance_case!($workbench, a_found_ticket_is_left_to_be_taken);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_ticket_still_open_is_found_by_its_invitation_to_take_it_up_signed_in
+        );
         $crate::secrets_conformance_case!($workbench, a_ticket_forgotten_is_not_kept_again);
         $crate::secrets_conformance_case!(
             $workbench,

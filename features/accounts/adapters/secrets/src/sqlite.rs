@@ -114,6 +114,9 @@ const TAKE_TICKET: &str = "
     RETURNING invitation, email, until, project, by_an_operator
 ";
 
+const DIGEST_OF_TICKET: &str =
+    "SELECT digest FROM account_invitation_tickets WHERE invitation = ?1 AND NOT ended";
+
 const DROP_TICKET: &str = "DELETE FROM account_invitation_tickets WHERE invitation = ?1";
 
 const FORGET_TICKET: &str = "
@@ -520,6 +523,19 @@ impl InvitationTickets for SqliteSecrets {
             .as_ref()
             .map(to_ticket)
             .transpose()
+    }
+
+    async fn digest_of_ticket(
+        &self,
+        invitation: &str,
+    ) -> Result<Option<TokenDigest>, SecretsError> {
+        let found: Option<String> = sqlx::query_scalar(DIGEST_OF_TICKET)
+            .bind(invitation)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(found.map(TokenDigest::kept))
     }
 
     async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
