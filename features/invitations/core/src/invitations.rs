@@ -218,6 +218,25 @@ impl InvitationsCore {
             .await?)
     }
 
+    pub async fn sweep(&self, project: &str) -> Result<(), InvitationsError> {
+        let project = ProjectLink::from(project);
+        let mut after = None;
+
+        loop {
+            let page = self
+                .catalog
+                .in_project_after(&project, after.as_ref(), SWEPT_EACH_PAGE)
+                .await?;
+            for summary in &page {
+                settled(self.service.withdraw(&summary.id, &Agent::System).await)?;
+            }
+            match page.last() {
+                Some(last) if page.len() == SWEPT_EACH_PAGE => after = Some(last.id),
+                _ => return Ok(()),
+            }
+        }
+    }
+
     pub async fn retire_due(&self, at_most: usize) -> Result<usize, InvitationsError> {
         let due = self
             .catalog
@@ -230,6 +249,8 @@ impl InvitationsCore {
         Ok(due.len())
     }
 }
+
+const SWEPT_EACH_PAGE: usize = 100;
 
 fn not_found(invitation: &InvitationId) -> InvitationsError {
     InvitationsError::Events(ServiceError::NotFound {

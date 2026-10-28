@@ -10,6 +10,7 @@ use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore};
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
     RememberProjectNamesListener, RememberWhoSignedUpListener,
+    WithdrawInvitationsOfDeletedProjectListener,
 };
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
@@ -148,6 +149,9 @@ impl Feature for InvitationFeature {
                 Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
                 Arc::new(RememberWhoSignedUpListener::new(invitations.clone())),
                 Arc::new(RememberProjectNamesListener::new(invitations.clone())),
+                Arc::new(WithdrawInvitationsOfDeletedProjectListener::new(
+                    invitations.clone(),
+                )),
             ])
             .doing_chores(vec![
                 Arc::new(RetireDueInvitations::new(invitations.clone())),
@@ -307,6 +311,7 @@ mod tests {
             "catalogue-invitation",
             "invitations-remember-who-signed-up",
             "remember-project-names",
+            "withdraw-invitations-of-deleted-project",
         ] {
             assert!(
                 wired

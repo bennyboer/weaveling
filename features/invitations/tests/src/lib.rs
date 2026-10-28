@@ -26,4 +26,7 @@ mod naming;
 mod remembering;
 
 #[cfg(test)]
+mod sweeping;
+
+#[cfg(test)]
 mod wiring;
