@@ -820,6 +820,34 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
     journey.end().await;
 }
 
+pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_into_it<B: Backend>() {
+    let journey = Journey::<B>::signed_in("disbanding").await;
+    let project = journey.project("Gone").await;
+    let server = &journey.server;
+    let at = format!("/api/members?project={project}");
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::OK }).await,
+        "its owner may list the members once they have heard of her"
+    );
+
+    journey.delete(&format!("/api/projects/{project}")).await;
+
+    assert!(
+        until(|| async { server.get(&at).await.status_code() == StatusCode::NOT_FOUND }).await,
+        "the members hear the project deleted and let everyone go"
+    );
+    server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({
+            "email": "grace@example.com",
+            "scope": { "kind": "project", "project": project, "role": "author" },
+        }))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -841,6 +869,7 @@ macro_rules! journeys {
             a_project_s_scenes_are_there_only_for_whoever_may_read_its_project,
             a_project_s_members_are_listed_for_whoever_may_read_it,
             an_account_invited_into_a_project_joins_it_by_taking_the_invitation_up,
+            a_deleted_project_s_owner_neither_lists_its_members_nor_invites_into_it,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

@@ -55,6 +55,27 @@ impl MembersService {
         Ok(())
     }
 
+    pub async fn disband(
+        &self,
+        project: &ProjectLink,
+        agent: &Agent,
+    ) -> Result<(), MembersCoreError> {
+        let id = AggregateId::from(project);
+
+        match self
+            .events
+            .execute(&id, MembersCommand::Disband, agent)
+            .await
+        {
+            Err(ServiceError::NotFound { .. }) => Ok(self
+                .events
+                .begin(&id, MembersCommand::Disband, agent)
+                .await
+                .map(|_| ())?),
+            carried_out => Ok(carried_out.map(|_| ())?),
+        }
+    }
+
     pub async fn latest(
         &self,
         project: &ProjectLink,

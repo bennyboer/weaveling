@@ -139,11 +139,17 @@ impl MembersCore {
             )
             .await
         {
-            Err(MembersCoreError::Events(ServiceError::Refused(MembersError::AlreadyMember))) => {
-                Ok(())
-            }
+            Err(MembersCoreError::Events(ServiceError::Refused(
+                MembersError::AlreadyMember | MembersError::Disbanded,
+            ))) => Ok(()),
             joined => joined.map(|_| ()),
         }
+    }
+
+    pub async fn disband(&self, project: &str) -> Result<(), MembersCoreError> {
+        self.service
+            .disband(&ProjectLink::from(project), &Agent::System)
+            .await
     }
 
     pub async fn found(&self, project: &str, owner: &str) -> Result<(), MembersCoreError> {
