@@ -17,6 +17,10 @@ pub enum InvitationsError {
     NotAnOwner,
     #[error("there is no such project")]
     ProjectNotThere,
+    #[error("this invitation's link leads nowhere, or not any more")]
+    InvitationInvalid,
+    #[error("this invitation has run out")]
+    InvitationExpired,
     #[error(transparent)]
     Authorizer(#[from] AuthorizerError),
     #[error(transparent)]

@@ -755,6 +755,24 @@ async fn invitations_are_made_only_where_there_are_accounts_and_only_behind_sign
 }
 
 #[tokio::test]
+async fn an_invitation_is_turned_down_by_its_link_without_signing_in_where_there_are_accounts() {
+    for (accounts, status) in [
+        (Accounts::On, StatusCode::UNPROCESSABLE_ENTITY),
+        (Accounts::Off, StatusCode::NOT_FOUND),
+    ] {
+        let server = TestServer::new(weaveling_service_api::app(
+            Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
+        ));
+
+        server
+            .post("/api/invitations/decline")
+            .json(&json!({ "token": "a link nobody was given" }))
+            .await
+            .assert_status(status);
+    }
+}
+
+#[tokio::test]
 async fn the_server_does_the_invitations_chores_only_where_there_are_accounts() {
     for (accounts, retiring) in [(Accounts::On, true), (Accounts::Off, false)] {
         let adapters = Adapters::in_memory(accounts, Arc::new(SystemClock)).await;

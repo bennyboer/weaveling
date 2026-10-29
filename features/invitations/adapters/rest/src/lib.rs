@@ -11,8 +11,8 @@ use clock::text;
 use email::InvalidEmailAddress;
 use eventsourcing::ServiceError;
 use invitations_contract::{
-    InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO, InviteRequest, ScopeDTO,
-    decline_reason, refused, role, status,
+    DeclineInvitationRequest, InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO,
+    InviteRequest, ScopeDTO, decline_reason, refused, role, status,
 };
 use invitations_core::{
     DeclineReason, InvitationError, InvitationId, InvitationToYou, InvitationsCore,
@@ -29,6 +29,12 @@ pub fn router(invitations: InvitationsCore) -> Router {
         .route("/invitations", routing::post(invite).get(list))
         .route("/invitations/mine", routing::get(mine))
         .route("/invitations/{invitation}", routing::delete(withdraw))
+        .with_state(invitations)
+}
+
+pub fn router_for_anyone(invitations: InvitationsCore) -> Router {
+    Router::new()
+        .route("/invitations/decline", routing::post(decline_by_token))
         .with_state(invitations)
 }
 
@@ -220,6 +226,18 @@ fn invitation_named(raw: &str) -> Result<InvitationId, Problem> {
     })
 }
 
+async fn decline_by_token(
+    State(invitations): State<InvitationsCore>,
+    Json(request): Json<DeclineInvitationRequest>,
+) -> Result<StatusCode, Problem> {
+    invitations
+        .decline_by_token(&request.token)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn withdraw(
     State(invitations): State<InvitationsCore>,
     Extension(acting): Extension<Acting>,
@@ -240,6 +258,12 @@ fn problem_of(refusal: InvitationsError) -> Problem {
         InvitationsError::NotAnOperator => Problem::forbidden(refused::NOT_AN_OPERATOR, refusal),
         InvitationsError::NotAnOwner => Problem::forbidden(refused::NOT_AN_OWNER, refusal),
         InvitationsError::ProjectNotThere => Problem::not_found(serving::NOT_FOUND, refusal),
+        InvitationsError::InvitationInvalid => {
+            Problem::unprocessable(refused::INVITATION_INVALID, refusal)
+        }
+        InvitationsError::InvitationExpired => {
+            Problem::unprocessable(refused::INVITATION_EXPIRED, refusal)
+        }
         InvitationsError::InvalidEmail(reason) => match reason {
             InvalidEmailAddress::Malformed => {
                 Problem::unprocessable(refused::EMAIL_MALFORMED, reason)

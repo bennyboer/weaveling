@@ -61,6 +61,7 @@ pub enum Storage {
 pub struct Assembled {
     pub outbox: Option<Arc<dyn Outbox>>,
     pub routes: Router,
+    pub open_routes: Router,
     pub listeners: Vec<Arc<dyn Listener>>,
     pub settling: Vec<Arc<dyn Settling>>,
     pub chores: Vec<Arc<dyn Chore>>,
@@ -76,6 +77,7 @@ pub async fn assemble<F: Feature>(
     Ok(Assembled {
         outbox: F::outbox(&ports),
         routes: wired.routes,
+        open_routes: wired.open_routes,
         listeners: wired.listeners,
         settling: wired.settling,
         chores: wired.chores,

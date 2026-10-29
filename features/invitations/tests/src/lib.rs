@@ -8,6 +8,9 @@ mod cataloguing;
 mod declining;
 
 #[cfg(test)]
+mod declining_by_token;
+
+#[cfg(test)]
 mod invitations_api;
 
 #[cfg(test)]

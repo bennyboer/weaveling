@@ -233,7 +233,7 @@ pub fn app(adapters: Adapters) -> Router {
             adapters.clock.clone(),
             adapters.refusals.clone(),
         ));
-    let open_routes = Router::new().nest("/service", service);
+    let mut open_routes = Router::new().nest("/service", service);
 
     let accounts_listeners = adapters
         .accounts
@@ -243,6 +243,7 @@ pub fn app(adapters: Adapters) -> Router {
     let mut listeners = Vec::new();
     for feature in adapters.features {
         guarded_routes = guarded_routes.merge(feature.routes);
+        open_routes = open_routes.merge(feature.open_routes);
         listeners.extend(feature.listeners);
     }
     for listener in listeners.into_iter().chain(accounts_listeners) {

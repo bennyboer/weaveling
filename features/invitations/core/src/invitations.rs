@@ -18,6 +18,7 @@ use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, InvitationError, InvitationEvent, KIND};
 use crate::scope::{ProjectLink, Role, Scope};
 use crate::service::InvitationService;
+use crate::token::InvitationToken;
 
 #[derive(Clone)]
 pub struct InvitationsCore {
@@ -241,6 +242,30 @@ impl InvitationsCore {
                 .decline(invitation, reason, &Agent::System)
                 .await,
         )
+    }
+
+    pub async fn decline_by_token(&self, token: &str) -> Result<(), InvitationsError> {
+        let Some(summary) = self
+            .catalog
+            .with_digest(&InvitationToken::presented(token).digest())
+            .await?
+        else {
+            return Err(InvitationsError::InvitationInvalid);
+        };
+        if summary.status(self.clock.now()) == Some(Status::Expired) {
+            return Err(InvitationsError::InvitationExpired);
+        }
+
+        match self
+            .service
+            .decline(&summary.id, DeclineReason::TurnedDown, &Agent::System)
+            .await
+        {
+            Err(InvitationsError::Events(ServiceError::Refused(
+                InvitationError::AlreadyAccepted | InvitationError::Withdrawn,
+            ))) => Err(InvitationsError::InvitationInvalid),
+            declined => declined,
+        }
     }
 
     pub async fn remember_project_name(&self, named: &ProjectName) -> Result<(), InvitationsError> {

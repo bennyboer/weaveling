@@ -37,6 +37,7 @@ pub trait Settling: Send + Sync {
 
 pub struct Wired {
     pub routes: Router,
+    pub open_routes: Router,
     pub listeners: Vec<Arc<dyn Listener>>,
     pub settling: Vec<Arc<dyn Settling>>,
     pub chores: Vec<Arc<dyn Chore>>,
@@ -46,10 +47,16 @@ impl Wired {
     pub fn serving(routes: Router) -> Self {
         Self {
             routes,
+            open_routes: Router::new(),
             listeners: Vec::new(),
             settling: Vec::new(),
             chores: Vec::new(),
         }
+    }
+
+    pub fn serving_anyone(mut self, open_routes: Router) -> Self {
+        self.open_routes = open_routes;
+        self
     }
 
     pub fn listening(mut self, listeners: Vec<Arc<dyn Listener>>) -> Self {

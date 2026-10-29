@@ -7,6 +7,11 @@ pub struct InviteRequest {
     pub scope: ScopeDTO,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct DeclineInvitationRequest {
+    pub token: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ScopeDTO {
@@ -110,8 +115,10 @@ pub mod refused {
     pub const INVITATION_ALREADY_ACCEPTED: &str = "invitation-already-accepted";
     pub const NOT_AN_OWNER: &str = "not-an-owner";
     pub const ROLE_UNKNOWN: &str = "role-unknown";
+    pub const INVITATION_INVALID: &str = "invitation-invalid";
+    pub const INVITATION_EXPIRED: &str = "invitation-expired";
 
-    pub const EVERY: [&str; 10] = [
+    pub const EVERY: [&str; 12] = [
         NOT_AN_OPERATOR,
         EMAIL_MALFORMED,
         EMAIL_TOO_LONG,
@@ -122,5 +129,7 @@ pub mod refused {
         INVITATION_ALREADY_ACCEPTED,
         NOT_AN_OWNER,
         ROLE_UNKNOWN,
+        INVITATION_INVALID,
+        INVITATION_EXPIRED,
     ];
 }

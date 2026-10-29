@@ -55,6 +55,7 @@ pub async fn assembled_invitations(
     Ok(Assembled {
         outbox: Some(ports.outbox.clone()),
         routes: wired.routes,
+        open_routes: wired.open_routes,
         listeners: wired.listeners,
         settling: wired.settling,
         chores: wired.chores,
@@ -159,6 +160,7 @@ impl Feature for InvitationFeature {
             invitations_rest::router(invitations.clone())
                 .merge(invitations_rest::live(invitations.clone(), broadcaster)),
         )
+        .serving_anyone(invitations_rest::router_for_anyone(invitations.clone()))
         .listening(vec![
             Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
             Arc::new(DeclineInvitationListener::new(invitations.clone())),

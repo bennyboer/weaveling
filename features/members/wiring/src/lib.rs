@@ -65,6 +65,7 @@ pub async fn assembled_members(
         assembled: Assembled {
             outbox: Some(ports.outbox.clone()),
             routes: wired.routes,
+            open_routes: wired.open_routes,
             listeners: wired.listeners,
             settling: wired.settling,
             chores: wired.chores,
