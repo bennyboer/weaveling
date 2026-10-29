@@ -131,31 +131,49 @@ for (const [chosen, system] of [
   });
 }
 
-test("on a phone, the theme is one button that turns through all three", async ({
+test("on a phone, the theme and the language are chosen behind the masthead's More", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 700 });
   await page.goto("/");
-  const turning = page.getByRole("button", { name: /^Theme: / });
+  const more = page.getByRole("button", { name: "More", exact: true });
 
-  await expect(turning).toHaveAccessibleName("Theme: Follow the system");
+  await expect(more).toBeVisible();
   await expect(
     theming(page),
     "the masthead is drawn by now, so hidden means hidden, not yet missing",
-  ).toBeHidden();
+  ).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Language" })).toHaveCount(0);
 
-  await turning.click();
-  await expect(turning).toHaveAccessibleName("Theme: Dark");
+  await more.click();
+  const menu = page.getByRole("dialog", { name: "More" });
+  await menu.getByRole("button", { name: "Dark" }).click();
   expect(await marked(page)).toBe("dark");
+  expect(await kept(page)).toBe("dark");
+  await expect(menu.getByRole("button", { name: "Dark" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
 
-  await turning.click();
-  await expect(turning).toHaveAccessibleName("Theme: Light");
-  expect(await marked(page)).toBe("light");
+  await menu.getByRole("combobox", { name: "Language" }).selectOption("de");
+  await expect(page.getByRole("button", { name: "Mehr", exact: true })).toBeVisible();
 
-  await turning.click();
-  await expect(turning).toHaveAccessibleName("Theme: Follow the system");
-  expect(await marked(page)).toBeNull();
-  expect(await kept(page)).toBe("system");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "Mehr" })).toHaveCount(0);
+});
+
+test("growing past a phone's width brings the theme and the language back to the masthead", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 700 });
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "More", exact: true })).toBeVisible();
+
+  await page.setViewportSize({ width: 1100, height: 700 });
+
+  await expect(theming(page)).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Language" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
 });
 
 test("on a wide window, the three themes stand side by side", async ({
@@ -165,5 +183,5 @@ test("on a wide window, the three themes stand side by side", async ({
   await page.goto("/");
 
   await expect(theming(page)).toBeVisible();
-  await expect(page.getByRole("button", { name: /^Theme: / })).toBeHidden();
+  await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
 });

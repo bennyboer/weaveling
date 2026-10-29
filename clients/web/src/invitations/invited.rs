@@ -7,7 +7,7 @@ use crate::invitations::service;
 use crate::invitations::service::InvitedInto;
 
 #[derive(Clone, Copy)]
-pub(super) struct Invited {
+pub struct Invited {
     pub(super) into: StoredValue<InvitedInto>,
     pub(super) invitations: RwSignal<Vec<ListedInvitation>>,
     pub(super) next: RwSignal<Option<String>>,
@@ -20,7 +20,14 @@ pub(super) struct Invited {
 
 impl Invited {
     pub(super) fn asked(into: InvitedInto) -> Self {
-        let invited = Self {
+        let invited = Self::unasked(into);
+        invited.load(None);
+
+        invited
+    }
+
+    pub fn unasked(into: InvitedInto) -> Self {
+        Self {
             into: StoredValue::new(into),
             invitations: RwSignal::new(Vec::new()),
             next: RwSignal::new(None),
@@ -29,13 +36,10 @@ impl Invited {
             refused: RwSignal::new(None),
             inviting: RwSignal::new(false),
             invite_refused: RwSignal::new(None),
-        };
-        invited.load(None);
-
-        invited
+        }
     }
 
-    pub(super) fn load(self, after: Option<String>) {
+    pub fn load(self, after: Option<String>) {
         if self.loading.get_untracked() {
             return;
         }

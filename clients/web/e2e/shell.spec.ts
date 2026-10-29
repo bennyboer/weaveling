@@ -199,6 +199,9 @@ for (const width of [375, 700, 900, 1100]) {
       const box = (of: string) =>
         document.querySelector(of)!.getBoundingClientRect();
       const inside = (of: string) => {
+        if (!document.querySelector(of)) {
+          return false;
+        }
         const seen = box(of);
         return seen.width > 0 && seen.left >= 0 && seen.right <= innerWidth;
       };
@@ -211,8 +214,8 @@ for (const width of [375, 700, 900, 1100]) {
         views: [...document.querySelectorAll(".views .view")].every((view) =>
           inside(`.views a[href="${view.getAttribute("href")}"]`),
         ),
-        theming: inside(".theming") || inside(".theme-turning"),
-        speaking: inside(".speaking"),
+        theming: inside(".theming") || inside(".more-button"),
+        speaking: inside(".speaking") || inside(".more-button"),
       };
     });
 

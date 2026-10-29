@@ -22,9 +22,17 @@ fn said_with(key: &'static str, args: &[(&'static str, String)]) -> String {
 pub fn invitations_listing(into: InvitedInto) -> impl IntoView {
     let invited = Invited::asked(into);
 
+    (invite_form(invited), invited_list(invited))
+}
+
+pub fn invite_form(invited: Invited) -> impl IntoView {
+    (inviting(invited), move || {
+        invited.invite_refused.get().map(problem::problem)
+    })
+}
+
+pub fn invited_list(invited: Invited) -> impl IntoView {
     (
-        inviting(invited),
-        move || invited.invite_refused.get().map(problem::problem),
         move || invited.refused.get().map(problem::problem),
         move || {
             (invited.loaded.get() && invited.invitations.with(Vec::is_empty)).then(|| {

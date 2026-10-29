@@ -10,9 +10,9 @@ theme = Farbschema
 theme-light = Hell
 theme-system = Wie das System
 theme-dark = Dunkel
-theme-chosen = Farbschema: { $theme }
 
 language = Sprache
+masthead-more = Mehr
 language-machine-translated = { $language } (maschinell übersetzt)
 
 workspace-heading = Deine Projekte
@@ -558,6 +558,11 @@ refused-too-late-to-try-again = Diese Änderung ist zu alt, um sie noch einmal z
 
 members-link = Mitglieder
 members-link-of = Mitglieder: { $names }
+share = Teilen
+share-title = „{ $project }“ teilen
+share-people = Wer Zugang hat
+share-invited = Eingeladen
+share-all-members = Alle Mitglieder und Einladungen
 members-heading = Mitglieder
 members-hint = Wer dieses Projekt lesen und schreiben darf.
 members-you = (du)

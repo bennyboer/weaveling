@@ -53,13 +53,13 @@ test("on a phone, the account takes no row of its own", async ({ page }) => {
   await signedIn(page);
 
   const account = await accountButton(page).boundingBox();
-  const language = await masthead(page)
-    .getByRole("combobox", { name: "Language" })
+  const more = await masthead(page)
+    .getByRole("button", { name: "More", exact: true })
     .boundingBox();
 
-  expect(account && language).toBeTruthy();
+  expect(account && more).toBeTruthy();
   expect(
-    Math.abs(account!.y + account!.height / 2 - (language!.y + language!.height / 2)),
-    "the account sits beside the language, not on a line below the masthead",
+    Math.abs(account!.y + account!.height / 2 - (more!.y + more!.height / 2)),
+    "the account sits beside the masthead's More, not on a line below it",
   ).toBeLessThan(4);
 });

@@ -2,7 +2,7 @@ use fluent_bundle::FluentArgs;
 use leptos::either::Either;
 use leptos::prelude::*;
 use leptos::{IntoView, view};
-use leptos::{html, task};
+use leptos::{ev, html, task};
 use leptos_router::components::A;
 
 use crate::accounts;
@@ -12,6 +12,8 @@ use crate::icons;
 use crate::icons::Icon;
 use crate::members::listed::Member;
 use crate::members::service as members;
+use crate::members::sharing;
+use crate::more_menu;
 use crate::notifications::bell;
 use crate::projects::open_project::OpenProject;
 use crate::projects::project_details;
@@ -72,6 +74,8 @@ pub fn mark() -> impl IntoView {
 }
 
 pub fn masthead(inside: Option<Inside>) -> impl IntoView {
+    let phone_sized = phone_sizing();
+
     html::header().class("masthead").child((
         view! {
             <A href=route::WORKSPACE attr:class="wordmark" attr:aria-label=speech::said("masthead-all-projects")>
@@ -80,11 +84,36 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
             </A>
         },
         inside.map(whereabouts),
-        theme::picker(),
-        picker::picker(),
+        move || {
+            (!phone_sized.get()).then(|| (theme::picker(), picker::picker()))
+        },
         bell::bell_in_masthead(),
         accounts::account_in_masthead(),
+        move || phone_sized.get().then(more_menu::more_menu),
     ))
+}
+
+const PHONE: &str = "(width <= 30rem)";
+
+fn is_phone_sized() -> bool {
+    window()
+        .match_media(PHONE)
+        .ok()
+        .flatten()
+        .is_some_and(|query| query.matches())
+}
+
+fn phone_sizing() -> RwSignal<bool> {
+    let phone_sized = RwSignal::new(is_phone_sized());
+    let resizing = window_event_listener(ev::resize, move |_| {
+        let now = is_phone_sized();
+        if phone_sized.get_untracked() != now {
+            phone_sized.set(now);
+        }
+    });
+    on_cleanup(move || resizing.remove());
+
+    phone_sized
 }
 
 pub fn status_bar() -> impl IntoView {
@@ -113,6 +142,7 @@ fn whereabouts(inside: Inside) -> impl IntoView {
                 .child(html::span().child(shown)),
             project_details::project_details(id),
             members_link(project.clone()),
+            sharing::share_in_masthead(project.clone(), shown),
         )),
         html::nav()
             .class("views")

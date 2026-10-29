@@ -90,3 +90,35 @@
   justify-content: flex-end;
   gap: 0.5rem;
 }
+
+.dialog.share {
+  width: min(36rem, 100vw - 2rem);
+  max-width: none;
+  max-height: calc(100vh - 4rem);
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+
+.operating.sharing {
+  width: auto;
+  margin: 0;
+
+  section {
+    margin-top: 1.25rem;
+  }
+
+  h3 {
+    margin: 0 0 0.5rem;
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .all-members {
+    display: inline-block;
+    margin-top: 1.25rem;
+    color: var(--muted);
+  }
+}

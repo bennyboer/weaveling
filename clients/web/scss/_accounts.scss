@@ -230,10 +230,11 @@
 }
 
 .operating select {
-  padding: 0.6rem 0.75rem;
+  appearance: none;
+  padding: 0.6rem 2.25rem 0.6rem 0.75rem;
   border: 1px solid var(--line);
   border-radius: 0.375rem;
-  background: var(--paper);
+  background: var(--paper) var(--chevron) no-repeat right 0.75rem center / 0.9rem;
   color: var(--ink);
   font: inherit;
   cursor: pointer;

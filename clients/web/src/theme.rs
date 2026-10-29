@@ -1,11 +1,9 @@
-use fluent_bundle::FluentArgs;
 use leptos::html;
 use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 
 use crate::kept;
 use crate::speech;
-use crate::speech::Speech;
 
 const REMEMBERED: &str = "weaveling.theme";
 const MARKED: &str = "data-theme";
@@ -36,14 +34,6 @@ impl Theme {
         }
     }
 
-    fn next(self) -> Self {
-        match self {
-            Self::Light => Self::System,
-            Self::System => Self::Dark,
-            Self::Dark => Self::Light,
-        }
-    }
-
     fn message(self) -> &'static str {
         match self {
             Self::Light => "theme-light",
@@ -56,39 +46,16 @@ impl Theme {
 pub fn picker() -> impl IntoView {
     let chosen = RwSignal::new(remembered());
 
-    (
-        html::div()
-            .class("theming")
-            .attr("role", "group")
-            .attr("aria-label", speech::said("theme"))
-            .child(
-                Theme::EVERY
-                    .into_iter()
-                    .map(|theme| swatch(theme, chosen))
-                    .collect::<Vec<_>>(),
-            ),
-        turning(chosen),
-    )
-}
-
-fn turning(chosen: RwSignal<Theme>) -> impl IntoView {
-    let speech = expect_context::<Speech>();
-    let labelled = move || {
-        let mut args = FluentArgs::new();
-        args.set("theme", speech.say(chosen.get().message()));
-        speech.say_with("theme-chosen", &args)
-    };
-
-    html::button()
-        .r#type("button")
-        .class("theme-turning")
-        .attr("aria-label", labelled)
-        .on(ev::click, move |_| {
-            let next = chosen.get_untracked().next();
-            choose(next);
-            chosen.set(next);
-        })
-        .child(move || mark(chosen.get()))
+    html::div()
+        .class("theming")
+        .attr("role", "group")
+        .attr("aria-label", speech::said("theme"))
+        .child(
+            Theme::EVERY
+                .into_iter()
+                .map(|theme| swatch(theme, chosen))
+                .collect::<Vec<_>>(),
+        )
 }
 
 fn swatch(theme: Theme, chosen: RwSignal<Theme>) -> impl IntoView {
@@ -172,17 +139,5 @@ fn mark(theme: Theme) -> impl IntoView {
             </svg>
         }
         .into_any(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn one_tap_turns_to_the_next_theme_and_round_again() {
-        assert_eq!(Theme::Light.next(), Theme::System);
-        assert_eq!(Theme::System.next(), Theme::Dark);
-        assert_eq!(Theme::Dark.next(), Theme::Light);
     }
 }

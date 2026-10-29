@@ -14,6 +14,7 @@ mod kept;
 mod live;
 mod members;
 mod moment;
+mod more_menu;
 mod nearness;
 mod notifications;
 mod outline;
