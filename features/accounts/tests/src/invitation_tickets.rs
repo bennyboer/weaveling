@@ -4,7 +4,7 @@ use accounts_core::{
 };
 use accounts_messaging::KeepInvitationTicketsListener;
 use eventsourcing::{AggregateId, EventStore, Version};
-use invitations_contract::{ACCEPTED, ISSUED, RETIRED, WITHDRAWN};
+use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
 use messaging::{Handler, Listener, Message, Publisher, RoutingKey};
 use serde_json::{Value, json};
 use time::Duration;
@@ -46,6 +46,14 @@ fn withdrawn(invitation: &str) -> Message {
         WITHDRAWN,
         invitation,
         json!({ "version": 2, "name": "WITHDRAWN" }),
+    )
+}
+
+fn turned_down(invitation: &str) -> Message {
+    told(
+        DECLINED,
+        invitation,
+        json!({ "version": 2, "name": "DECLINED", "reason": "turned-down" }),
     )
 }
 
@@ -98,6 +106,23 @@ async fn a_withdrawn_invitation_leaves_no_ticket_and_the_others_kept() {
 }
 
 #[tokio::test]
+async fn an_invitation_turned_down_leaves_no_ticket_nor_one_told_again_and_the_others_kept() {
+    let wired = wiring::wired();
+    tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
+    tell(&wired, issued("invitation_bob", "bob@example.com", "cd34")).await;
+
+    tell(&wired, turned_down("invitation_ada")).await;
+    tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
+
+    assert_eq!(
+        ticket_for(&wired, "ab12").await,
+        None,
+        "a link turned down signs nobody up after"
+    );
+    assert!(ticket_for(&wired, "cd34").await.is_some());
+}
+
+#[tokio::test]
 async fn an_issue_told_again_after_its_withdrawal_leaves_no_ticket() {
     let wired = wiring::wired();
     tell(&wired, issued("invitation_ada", ADA, "ab12")).await;
@@ -116,7 +141,7 @@ async fn an_issue_told_again_after_its_withdrawal_leaves_no_ticket() {
 async fn an_accepted_invitation_is_not_heard() {
     let tickets = KeepInvitationTicketsListener::new(wiring::wired().accounts.clone());
 
-    for heard in [ISSUED, WITHDRAWN, RETIRED] {
+    for heard in [ISSUED, WITHDRAWN, DECLINED, RETIRED] {
         assert!(tickets.hears(&RoutingKey::parse(heard).expect("a declared key is fine")));
     }
     assert!(

@@ -995,6 +995,74 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
     journey.end().await;
 }
 
+pub async fn an_account_signed_out_turns_down_by_the_link_what_it_is_invited_into<B: Backend>() {
+    let journey = Journey::<B>::signed_in("turned-down-by-link").await;
+    let project = journey.project("Shared").await;
+    let server = &journey.server;
+    let members = format!("/api/members?project={project}");
+    assert!(
+        until(|| async { server.get(&members).await.status_code() == StatusCode::OK }).await,
+        "its owner may invite once the members have heard of her"
+    );
+    journey.signed_in_as_another("grace@example.com").await;
+    server
+        .post("/api/sessions")
+        .json(&json!({ "email": "ada@example.com", "password": "correct horse battery" }))
+        .await
+        .assert_status_ok();
+    server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({
+            "email": "grace@example.com",
+            "scope": { "kind": "project", "project": project, "role": "author" },
+        }))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let token = crate::mail_drop::invitation_token_dropped_for(
+        journey
+            .drop
+            .as_ref()
+            .expect("a journey signed in has a mail drop"),
+        "grace@example.com",
+    )
+    .expect("the link should have been mailed");
+    let signing_up = || async {
+        server
+            .post("/api/accounts/by-invitation")
+            .do_not_save_cookies()
+            .json(&json!({ "token": token, "name": "Grace", "password": "another long password" }))
+            .await
+            .json::<Value>()["type"]
+            .clone()
+    };
+    assert!(
+        until(|| async { signing_up().await == "email-address-has-account" }).await,
+        "accounts keep the ticket, though her address has an account already"
+    );
+
+    server
+        .post("/api/invitations/decline")
+        .json(&json!({ "token": token }))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    assert!(
+        until(|| async { signing_up().await == "invitation-invalid" }).await,
+        "accounts hear it was turned down and forget the ticket, so the link signs nobody up after"
+    );
+    let invited = format!("/api/invitations?project={project}");
+    assert!(
+        until(|| async {
+            let listed: Value = server.get(&invited).await.json();
+            listed["invitations"][0]["declined_for"] == "turned-down"
+        })
+        .await,
+        "and the owner sees it turned down"
+    );
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -1019,6 +1087,7 @@ macro_rules! journeys {
             a_deleted_project_s_owner_neither_lists_its_members_nor_invites_into_it,
             an_account_is_told_in_the_application_what_it_is_invited_into_and_joins_there,
             an_account_turns_down_in_the_application_what_it_is_invited_into,
+            an_account_signed_out_turns_down_by_the_link_what_it_is_invited_into,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {
