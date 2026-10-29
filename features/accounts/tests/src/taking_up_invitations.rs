@@ -383,37 +383,52 @@ async fn nobody_turns_down_an_invitation_to_another_address_and_it_is_left_for_i
 }
 
 #[tokio::test]
-async fn an_invitation_run_out_or_to_the_instance_is_not_turned_down() {
+async fn an_invitation_run_out_is_not_turned_down() {
     let wired = wiring::wired();
     let ada = signed_up(&wired, ADA).await;
     invited(&wired, &into_a_project(ADA)).await;
     wired
         .clock
         .set(wiring::at(1_700_000_000) + Duration::days(7) + Duration::SECOND);
-    let to_the_instance = wiring::wired();
-    let ada_too = signed_up(&to_the_instance, ADA).await;
-    invited(
-        &to_the_instance,
-        &InvitationTicket {
-            scope: InvitationScope::Instance,
-            by_an_operator: true,
-            ..into_a_project(ADA)
-        },
-    )
-    .await;
 
     assert!(matches!(
         wired.accounts.decline_invitation(&ada, TOKEN).await,
         Err(AccountsError::InvitationExpired)
     ));
-    assert!(matches!(
-        to_the_instance
-            .accounts
-            .decline_invitation(&ada_too, TOKEN)
-            .await,
-        Err(AccountsError::InvitationInvalid)
-    ));
     assert!(turned_down(&wired, &ada).await.is_empty());
-    assert!(turned_down(&to_the_instance, &ada_too).await.is_empty());
     assert!(still_there(&wired).await.is_some());
+}
+
+#[tokio::test]
+async fn an_invitation_to_the_instance_is_turned_down_by_the_link_or_by_its_id() {
+    let to_the_instance = InvitationTicket {
+        scope: InvitationScope::Instance,
+        by_an_operator: true,
+        ..into_a_project(ADA)
+    };
+    let by_the_link = wiring::wired();
+    let ada = signed_up(&by_the_link, ADA).await;
+    invited(&by_the_link, &to_the_instance).await;
+    let by_its_id = wiring::wired();
+    let ada_too = signed_up(&by_its_id, ADA).await;
+    invited(&by_its_id, &to_the_instance).await;
+
+    by_the_link
+        .accounts
+        .decline_invitation(&ada, TOKEN)
+        .await
+        .expect("whoever was invited may say no, whatever to");
+    by_its_id
+        .accounts
+        .decline_invitation_by_id(&ada_too, "invitation_1")
+        .await
+        .expect("whoever was invited may say no, whatever to");
+
+    for (wired, ada) in [(&by_the_link, &ada), (&by_its_id, &ada_too)] {
+        assert_eq!(
+            turned_down(wired, ada).await,
+            vec!["invitation_1".to_owned()]
+        );
+        assert_eq!(still_there(wired).await, None);
+    }
 }
