@@ -566,9 +566,11 @@ The trait says what only the feature knows — its `NAME`, its `Ports` in memory
 
 ## Transactions and Atomicity
 
-> **Atomicity is a property of a single port method.** If two things must happen atomically, make them **one method** — never introduce a transaction object into a port.
+> **A write is atomic inside one `Transaction` of one feature.** A driven port's write method takes `&mut Transaction`; core begins it, writes through as many of the feature's ports as the use case needs, and commits. A query needs none.
 
-Coarser ports are the price, and it is cheap. Two decisions already made are what let us get away with it.
+*Revised 2026-10-29.* This used to read "atomicity is a property of a single port method — never introduce a transaction object into a port". It held while each write touched one port. A [transaction audit](./TODO.md) found the writes that touch two — an invitation ticket and the account's append, a registry claim and `Start` — ordered so that a crash between them was meant to heal, and in several places it did not. Every port of a feature lives in [that feature's own database](#dependency-rules), so one transaction across them is possible; what was missing was a way to share it. [Why the old objections no longer hold](#a-transaction-in-the-port-signature--decided) is below.
+
+What follows still holds for a write that touches one port.
 
 **The aggregate is the transaction boundary.** The orthodox DDD answer, and the right one. An event store port is one method:
 
@@ -580,17 +582,46 @@ The version check and the append are atomic *inside* it — PostgreSQL uses a re
 
 **The outbox is an adapter detail.** This is where the reach for transactions usually happens, so it is worth being blunt: the port says *append these events*. The PostgreSQL adapter appends them **and** writes the outbox rows in one transaction, notifies on that same transaction, and a relay woken by that notification publishes from those rows afterwards. The in-memory adapter does **not** get an outbox: a crash there loses the events along with anything queued, so an outbox would be guarding a failure that cannot lose one without the other — it keeps publishing through the service instead. **[M11b](./ROADMAP.md#milestone-11b--one-flow-in-every-mode) overturns this**, for a reason that has nothing to do with durability: publishing inline means local mode and server mode take different paths, so the suite that runs in memory cannot see a bug that depends on a projection being one beat behind. So the two backends differ in where publishing lives, and each feature's `Ports` constructor chooses the store and its publishing together, which is what stops a double-publish or a silent one being wired by hand. Nothing above the port knows either way.
 
-Everything in this design fits the rule already. Cross-aggregate work — discarding an idea unlinking it from its scenes — was *chosen* to be eventually consistent through the outbox, and cross-feature work is banned outright.
+Cross-aggregate work across features — discarding an idea unlinking it from its scenes — stays *chosen* to be eventually consistent through the outbox, and a transaction never crosses a feature line: there is no transaction across two databases to have.
 
-### No `Tx` in a port signature
+### A transaction in the port signature — decided
 
-The tempting alternative, `async fn create(&self, tx: &mut Tx, project: Project)`, costs three things:
+*Decided 2026-10-29; replaces "No `Tx` in a port signature", whose three objections are answered here.* `libraries/transacting` holds the type and nothing that names a database:
 
-- It puts **persistence vocabulary into a port that `core` declares** — precisely the leak the onion exists to prevent.
-- Rust has **no ambient transaction context**. There is no `@Transactional` and no thread-local that survives `.await` cleanly, so `Tx` has to be threaded through every signature by hand, forever.
-- The in-memory backend would have to **fake** a concept it does not have. A no-op `Tx` is worse than none: it makes tests pass that would fail against a real database.
+```rust
+pub struct Transaction(Box<dyn Unit>);
 
-The closure form (`uow.run(|ports| async { … })`) is conceptually nicer and fights async Rust hard — higher-ranked lifetimes, borrows across `.await`, dyn-compatibility. Not worth it for a problem the aggregate boundary already solves.
+#[async_trait]
+pub trait Transactions: Send + Sync {
+    async fn begin(&self) -> Result<Transaction, Failure>;
+    async fn join<'a>(&self, within: Option<&'a mut Transaction>) -> Result<Joined<'a>, Failure>;
+}
+
+pub enum Joined<'a> {
+    Own(Transaction),
+    Borrowed(&'a mut Transaction),
+}
+```
+
+```rust
+let mut tx = self.transactions.join(within).await?;
+self.tickets.take(&mut tx, digest).await?;
+self.events.append(&mut tx, id, expected, &stream).await?;
+tx.finish().await?;
+```
+
+- **The old objections.** *Persistence vocabulary in core:* a transaction is a unit of work, not a database, and core never sees what is behind it — no sqlx, no connection. *Threaded by hand, forever:* accepted; written out, it is one parameter, and it says at every call which writes belong together. *The in-memory backend would fake it:* it does not; see below. The closure form stays rejected for the reasons it was.
+- **Core begins it, as a rule.** The use case knows what belongs together and what must stay outside: Argon2, a mail, a sweep that takes each item in a transaction of its own. And only the owner of the boundary can retry it on `Outdated`, because the retry is the whole unit again.
+- **An inbound adapter may pass one in when the use case warrants it** — the listener whose inbox row must commit with the handler's effects is the case that asked for it. Not a rule either way: it stays in core unless there is a reason.
+- **One core method, not one per caller.** A core method that may join takes `within: Option<&mut Transaction>` (or a field of its options struct, once it has one); `join` hands back its own transaction or borrows the caller's, and `finish` commits only one it owns. REST passes `None`, the listener with an inbox passes its own.
+- **Strict at the port, lax in core.** A driven port's write method always takes `&mut Transaction` — no pool variant, no `Option`, because a forgotten transaction would be a silent loss of atomicity and the compiler is what stops it. A read takes one only when it decides a write: the tombstone check before `remember`, a `FOR UPDATE`. A core method that writes once still opens a transaction of its own; it costs one round trip. What lives outside the feature's database — messaging's deliveries, the `Mailer` — cannot join and takes none.
+- **Explicit commit; dropped is rolled back.** Not committed on `Drop`, decided after asking: an early return through `?` would commit half the work — the ticket gone, the append not there — and `Drop` can neither await nor return the error a commit can fail with, so the caller would report success for a write that never landed. Instead `Transaction` is `#[must_use]`, and one that wrote something and is dropped uncommitted logs a warning, which finds a forgotten commit as surely.
+- **The adapter downcasts** to its backend's transaction (`sqlx::Transaction<'static, Postgres>`, SQLite's under `BEGIN IMMEDIATE`). Handing one feature's transaction to another's port is a runtime error, not a type error; a marker type per feature was considered and not worth it for a mistake that unlikely.
+- **In memory**, a transaction holds the feature's one async lock, so writers are serialised as SQLite's are, and each write registers its undo with it; dropped uncommitted, the undos run in reverse. A reader outside the transaction can see a write not yet committed — accepted, since memory serves tests and development. The conformance suite proves what matters: a transaction dropped leaves nothing behind.
+- **The outbox joins as it is.** `append` hands its transaction to `outbox::postgres::enqueue`, and PostgreSQL delivers the `NOTIFY` only at commit.
+- **The snapshot stays outside.** `carry_out` appends in the transaction it is given; the snapshot after it is taken after the commit and is best-effort, so a landed command is never reported failed.
+
+Until it is built ([M17, after slice 5](./ROADMAP.md#milestone-17--accounts-members-and-roles)), a write across two ports keeps to the interim rule: **the append is the commit point** — what comes before it may be taken again by the same actor, what comes after it is driven by the event or idempotent.
 
 ### How an in-memory backend is atomic
 
