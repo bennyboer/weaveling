@@ -417,3 +417,64 @@
     }
   }
 }
+
+.avatar {
+  display: grid;
+  place-items: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  background: var(--tint, var(--muted));
+  color: var(--paper);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+@for $tint from 0 through 4 {
+  .tint-#{$tint} {
+    --tint: var(--tint-#{$tint});
+  }
+}
+
+.masthead .members-link:has(.stack) {
+  width: auto;
+  text-decoration: none;
+  margin-right: 0;
+  padding: 0 0.15rem;
+}
+
+.masthead .stack {
+  display: flex;
+  align-items: center;
+
+  .avatar {
+    border: 2px solid var(--paper);
+  }
+
+  .avatar + .avatar {
+    margin-left: -0.45rem;
+  }
+
+  .more {
+    background: var(--line);
+    color: var(--ink);
+    font-weight: 500;
+  }
+
+  .narrow {
+    display: none;
+  }
+}
+
+@media (width <= 30rem) {
+  .masthead .stack {
+    .avatar:not(:first-child, .narrow) {
+      display: none;
+    }
+
+    .narrow {
+      display: grid;
+    }
+  }
+}

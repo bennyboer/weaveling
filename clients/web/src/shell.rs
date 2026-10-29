@@ -1,12 +1,17 @@
-use leptos::html;
+use fluent_bundle::FluentArgs;
+use leptos::either::Either;
 use leptos::prelude::*;
 use leptos::{IntoView, view};
+use leptos::{html, task};
 use leptos_router::components::A;
 
 use crate::accounts;
 use crate::accounts::{CurrentSession, SignInState};
+use crate::avatar;
 use crate::icons;
 use crate::icons::Icon;
+use crate::members::listed::Member;
+use crate::members::service as members;
 use crate::notifications::bell;
 use crate::projects::open_project::OpenProject;
 use crate::projects::project_details;
@@ -14,6 +19,7 @@ use crate::refusals::alarm;
 use crate::refusals::alarm::AlarmState;
 use crate::route;
 use crate::speech;
+use crate::speech::Speech;
 use crate::speech::picker;
 use crate::theme;
 
@@ -125,23 +131,89 @@ fn whereabouts(inside: Inside) -> impl IntoView {
     )
 }
 
+const AVATARS_SHOWN: usize = 3;
+
 fn members_link(project: String) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
+    let signed_in = Memo::new(move |_| matches!(session.state(), SignInState::SignedIn(_)));
 
-    move || {
-        matches!(session.state(), SignInState::SignedIn(_)).then(|| {
-            view! {
-                <A
-                    href=route::members(&project)
-                    attr:class="members-link"
-                    attr:aria-label=speech::said("members-link")
-                    attr:title=speech::said("members-link")
-                >
-                    {icons::mark(Icon::People)}
-                </A>
-            }
-        })
+    move || signed_in.get().then(|| members_stack(project.clone()))
+}
+
+fn members_stack(project: String) -> impl IntoView {
+    let speech = expect_context::<Speech>();
+    let known = RwSignal::new(Vec::<Member>::new());
+    let id = route::project_id(&project).to_string();
+    task::spawn_local(async move {
+        if let Ok(found) = members::members_of(&id).await {
+            _ = known.try_set(found);
+        }
+    });
+    let labelled = move || {
+        let held = known.get();
+        if held.is_empty() {
+            return speech.say("members-link");
+        }
+        let mut told = FluentArgs::new();
+        told.set(
+            "names",
+            held.iter()
+                .map(|member| {
+                    member
+                        .name
+                        .clone()
+                        .unwrap_or_else(|| speech.say("members-unnamed"))
+                })
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+        speech.say_with("members-link-of", &told)
+    };
+
+    view! {
+        <A
+            href=route::members(&project)
+            attr:class="members-link"
+            attr:aria-label=labelled
+            attr:title=labelled
+        >
+            {move || {
+                let held = known.get();
+                if held.is_empty() {
+                    Either::Left(icons::mark(Icon::People))
+                } else {
+                    Either::Right(stacked(held))
+                }
+            }}
+        </A>
     }
+}
+
+fn stacked(held: Vec<Member>) -> impl IntoView {
+    let more = |shown: usize| {
+        let beyond = held.len().saturating_sub(shown);
+        (beyond > 0).then(|| format!("+{beyond}"))
+    };
+    let (wide, narrow) = (more(AVATARS_SHOWN), more(1));
+
+    html::span().class("stack").child((
+        held.iter()
+            .take(AVATARS_SHOWN)
+            .map(|member| avatar::avatar(&member.account, member.name.as_deref()))
+            .collect::<Vec<_>>(),
+        wide.map(|beyond| {
+            html::span()
+                .class("avatar more wide")
+                .attr("aria-hidden", "true")
+                .child(beyond)
+        }),
+        narrow.map(|beyond| {
+            html::span()
+                .class("avatar more narrow")
+                .attr("aria-hidden", "true")
+                .child(beyond)
+        }),
+    ))
 }
 
 fn tab(view: Viewing, project: String, here: Option<Viewing>) -> impl IntoView {

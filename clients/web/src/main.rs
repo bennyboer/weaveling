@@ -1,6 +1,7 @@
 mod accounts;
 mod app;
 mod appearances;
+mod avatar;
 mod boards;
 mod dialog;
 mod drawer;

@@ -4,6 +4,7 @@ use leptos::{IntoView, ev, html, view};
 use leptos_router::components::A;
 
 use crate::accounts::{CurrentSession, SignInState, SignedInAccount};
+use crate::avatar;
 use crate::route;
 use crate::speech;
 use crate::speech::Speech;
@@ -48,12 +49,15 @@ fn account_menu(
         .child((
             html::button()
                 .r#type("button")
-                .class("account-button")
+                .class(format!(
+                    "account-button {}",
+                    avatar::tint_of(&account.account)
+                ))
                 .attr("aria-label", labelled)
                 .attr("aria-haspopup", "menu")
                 .attr("aria-expanded", move || open.get().to_string())
                 .on(ev::click, move |_| open.update(|open| *open = !*open))
-                .child(initial_of(&account.name)),
+                .child(avatar::initial_of(&account.name)),
             move || {
                 open.get().then(|| {
                     html::div().class("menu").role("menu").child((
@@ -85,28 +89,4 @@ fn account_menu(
                 })
             },
         ))
-}
-
-fn initial_of(name: &str) -> String {
-    name.chars()
-        .find(|sign| sign.is_alphanumeric())
-        .map(|first| first.to_uppercase().collect())
-        .unwrap_or_default()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn an_account_is_shown_by_the_first_letter_of_its_name_in_capitals() {
-        assert_eq!(initial_of("Bennybär"), "B");
-        assert_eq!(initial_of("ådne"), "Å");
-    }
-
-    #[test]
-    fn what_comes_before_the_first_letter_is_passed_over() {
-        assert_eq!(initial_of("\u{201e}Ada\u{201c}"), "A");
-        assert_eq!(initial_of("  ada"), "A");
-    }
 }

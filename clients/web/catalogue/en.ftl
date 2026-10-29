@@ -557,6 +557,7 @@ refused-invitation-already-accepted = This invitation was taken up already.
 refused-too-late-to-try-again = This change is too old to be tried again.
 
 members-link = Members
+members-link-of = Members: { $names }
 members-heading = Members
 members-hint = Who may read and write this project.
 members-you = (you)

@@ -54,7 +54,8 @@ test("a project's members are listed by name and role, with whoever is me marked
   await expect(people.nth(1)).not.toContainText("(you)");
   await expect(people.nth(2)).toContainText("Not known by name yet");
   await expect(page.getByLabel("Role of Not known by name yet")).toHaveValue("reader");
-  expect(asked).toEqual([project]);
+  expect(asked.length).toBeGreaterThan(0);
+  expect(asked.every((one) => one === project)).toBe(true);
 });
 
 test("without accounts a project has no members to show", async ({ page }) => {
@@ -351,4 +352,79 @@ test("a hand-over half done is told, and the members are shown as they now are",
   await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
   await expect(page.getByLabel("Role of Grace Hopper")).toHaveValue("owner");
   await expect(page.getByLabel("Role of Ada Lovelace")).toHaveValue("owner");
+});
+
+test("the masthead shows a project's members as a stack of initials, three and how many more", async ({
+  page,
+}) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+  const project = await aProject(page);
+  await membersServed(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+    { account: "account_2", role: "author", name: "Grace Hopper" },
+    { account: "account_3", role: "reader" },
+    { account: "account_4", role: "reader", name: "Hedy Lamarr" },
+  ]);
+
+  await page.goto(`/projects/${project}/write`);
+
+  const members = page.getByRole("link", {
+    name: "Members: Ada Lovelace, Grace Hopper, Not known by name yet, Hedy Lamarr",
+  });
+  await expect(members).toBeVisible();
+  await expect(members.locator(".avatar:visible")).toHaveText(["A", "G", "?", "+1"]);
+  await members.click();
+  await expect(page.getByRole("heading", { name: "Members" })).toBeVisible();
+});
+
+test("one's own initial wears the same tint in the stack as on the account's button", async ({
+  page,
+}) => {
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+  const project = await aProject(page);
+  await membersServed(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+  ]);
+
+  await page.goto(`/projects/${project}/write`);
+
+  const mine = page.locator(".masthead .stack .avatar").first();
+  await expect(mine).toHaveText("A");
+  const tinted = (locator: import("@playwright/test").Locator) =>
+    locator.evaluate((element) => getComputedStyle(element).backgroundColor);
+  expect(await tinted(mine)).toBe(
+    await tinted(page.getByRole("button", { name: "Account: Ada Lovelace" })),
+  );
+});
+
+test("on a phone the stack shows one's first member and how many more, beside the masthead's buttons", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 700 });
+  await aServerWithAccounts(page);
+  await page.goto("/");
+  await signIn(page, ADA.email, HER_PASSWORD);
+  await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
+  const project = await aProject(page);
+  await membersServed(page, [
+    { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
+    { account: "account_2", role: "author", name: "Grace Hopper" },
+    { account: "account_3", role: "reader" },
+    { account: "account_4", role: "reader", name: "Hedy Lamarr" },
+  ]);
+
+  await page.goto(`/projects/${project}/write`);
+
+  const stack = page.locator(".masthead .stack");
+  await expect(stack.locator(".avatar:visible")).toHaveText(["A", "+3"]);
+  const shown = await stack.boundingBox();
+  const next = await page.locator(".masthead .theme-turning").boundingBox();
+  expect(shown && next).toBeTruthy();
+  expect(shown!.x + shown!.width).toBeLessThanOrEqual(next!.x);
 });
