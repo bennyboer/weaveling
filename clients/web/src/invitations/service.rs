@@ -1,12 +1,17 @@
 use gloo_net::http::Request;
-use invitations_contract::{InvitationPageDTO, InvitationSummaryDTO, InviteRequest};
+use invitations_contract::{
+    InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO, InviteRequest,
+};
 
 use crate::http;
 use crate::http::ApiError;
 use crate::invitations::listed;
 use crate::invitations::listed::{InvitationPage, ListedInvitation, Scope};
+use crate::invitations::to_you;
+use crate::invitations::to_you::InvitationToYou;
 
 const INVITATIONS: &str = "/api/invitations";
+const MINE: &str = "/api/invitations/mine";
 const INVITATION: &str = "invitation";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,6 +52,13 @@ pub async fn list_invitations(
     .await?;
 
     InvitationPage::of(page)
+}
+
+pub async fn mine() -> Result<Vec<InvitationToYou>, ApiError> {
+    let told: Vec<InvitationToYouDTO> =
+        http::parsed(http::sent(Request::get(MINE)).await?, INVITATION).await?;
+
+    to_you::read(told)
 }
 
 pub async fn invite(email: &str, scope: &Scope) -> Result<ListedInvitation, ApiError> {

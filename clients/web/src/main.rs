@@ -14,6 +14,7 @@ mod live;
 mod members;
 mod moment;
 mod nearness;
+mod notifications;
 mod outline;
 mod problem;
 mod projects;

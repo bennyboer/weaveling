@@ -50,6 +50,15 @@ export type Invited = {
   declined_for?: string;
 };
 
+export type ToYou = {
+  id: string;
+  project: string;
+  project_name?: string;
+  role: string;
+  invited_by?: string;
+  until: string;
+};
+
 export type Server = {
   password: string;
   resetsAsked: number;
@@ -70,6 +79,9 @@ export type Server = {
   signedInAs: typeof ADA | null;
   operatorWanted: boolean;
   memberships: WebSocketRoute[];
+  toYou: ToYou[];
+  answered: string[];
+  mine: WebSocketRoute[];
 };
 
 const refusing = (
@@ -110,6 +122,9 @@ export async function aServerWithAccounts(
     signedInAs: null,
     operatorWanted: false,
     memberships: [],
+    toYou: [],
+    answered: [],
+    mine: [],
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -374,6 +389,32 @@ export async function aServerWithAccounts(
   await page.routeWebSocket(at("/api/members/live"), (socket) => {
     server.memberships.push(socket);
   });
+  await page.route(at("/api/invitations/mine"), (route) =>
+    server.signedIn
+      ? route.fulfill({ json: server.toYou })
+      : refusing(route, 401, "not-signed-in"),
+  );
+  await page.routeWebSocket(at("/api/invitations/mine/live"), (socket) => {
+    server.mine.push(socket);
+    socket.onClose(() => {
+      server.mine = server.mine.filter((open) => open !== socket);
+    });
+  });
+  await page.route(
+    (url) =>
+      /^\/api\/accounts\/current\/invitations\/[^/]+\/(accept|decline)$/.test(
+        url.pathname,
+      ),
+    async (route) => {
+      const [, , , , , id, answer] = new URL(route.request().url()).pathname.split("/");
+      if (!server.toYou.some((invitation) => invitation.id === id)) {
+        return refusing(route, 422, "invitation-invalid");
+      }
+      server.toYou = server.toYou.filter((invitation) => invitation.id !== id);
+      server.answered.push(`${answer}:${id}`);
+      return route.fulfill({ status: 204 });
+    },
+  );
   await page.route(at("/api/projects"), async (route) => {
     server.projectsAsked += 1;
     return server.signedIn
@@ -397,5 +438,11 @@ export function toldOfMembers(
 ) {
   for (const socket of server.memberships) {
     socket.send(JSON.stringify({ of, version: 2, event }));
+  }
+}
+
+export function toldOfMine(server: Server) {
+  for (const socket of server.mine) {
+    socket.send(JSON.stringify({ of: "invitation_9", version: 2, event: null }));
   }
 }

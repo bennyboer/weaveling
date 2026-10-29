@@ -7,6 +7,7 @@ use crate::accounts;
 use crate::accounts::{CurrentSession, SignInState};
 use crate::icons;
 use crate::icons::Icon;
+use crate::notifications::bell;
 use crate::projects::open_project::OpenProject;
 use crate::projects::project_details;
 use crate::refusals::alarm;
@@ -75,6 +76,7 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
         inside.map(whereabouts),
         theme::picker(),
         picker::picker(),
+        bell::bell_in_masthead(),
         accounts::account_in_masthead(),
     ))
 }

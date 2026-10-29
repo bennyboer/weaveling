@@ -20,6 +20,7 @@ const NEW_PASSWORD: &str = "/api/accounts/password";
 const SESSIONS: &str = "/api/sessions";
 const CURRENT: &str = "/api/sessions/current";
 const TAKEN_UP: &str = "/api/accounts/current/invitations/accept";
+const MY_INVITATIONS: &str = "/api/accounts/current/invitations";
 const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const SUBJECT: &str = "session";
@@ -47,6 +48,30 @@ pub async fn take_up_invitation(token: &str) -> Result<(), ApiError> {
 
     http::checked(
         http::sent_with(Request::post(TAKEN_UP), &payload).await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Answer {
+    Accept,
+    Decline,
+}
+
+fn answered_at(invitation: &str, answer: Answer) -> String {
+    let answered = match answer {
+        Answer::Accept => "accept",
+        Answer::Decline => "decline",
+    };
+
+    format!("{MY_INVITATIONS}/{invitation}/{answered}")
+}
+
+pub async fn answer_invitation(invitation: &str, answer: Answer) -> Result<(), ApiError> {
+    http::checked(
+        http::sent(Request::post(&answered_at(invitation, answer))).await?,
         ACCOUNT,
     )
     .await
@@ -229,5 +254,22 @@ fn as_signed_in_account(signed_in: SignedInDTO) -> SignedInAccount {
         name: signed_in.name,
         email: signed_in.email,
         operator: signed_in.operator,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_invitation_is_accepted_or_declined_at_its_own_address() {
+        assert_eq!(
+            answered_at("invitation_1", Answer::Accept),
+            "/api/accounts/current/invitations/invitation_1/accept"
+        );
+        assert_eq!(
+            answered_at("invitation_1", Answer::Decline),
+            "/api/accounts/current/invitations/invitation_1/decline"
+        );
     }
 }

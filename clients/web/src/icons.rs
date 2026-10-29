@@ -29,6 +29,7 @@ pub enum Icon {
     FoldAll,
     Focus,
     People,
+    Bell,
 }
 
 pub fn mark(icon: Icon) -> impl IntoView {
@@ -56,6 +57,7 @@ pub fn mark(icon: Icon) -> impl IntoView {
         Icon::Focus => {
             "M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z"
         }
+        Icon::Bell => "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0",
         Icon::UnfoldAll => "m7 15 5 5 5-5M7 9l5-5 5 5",
         Icon::FoldAll => "m7 20 5-5 5 5M7 4l5 5 5-5",
         Icon::Cogwheel => {
