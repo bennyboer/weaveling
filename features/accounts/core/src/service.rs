@@ -219,11 +219,46 @@ impl AccountService {
         id: &AccountId,
         token: &str,
     ) -> Result<InvitationTicket, AccountsError> {
-        self.take_up(id, &InvitationToken::presented(token).digest())
-            .await
+        let ticket = self
+            .claimed_ticket(id, &InvitationToken::presented(token).digest())
+            .await?;
+
+        self.taken_up(id, ticket).await
     }
 
     pub async fn take_up_invitation_by_id(
+        &self,
+        id: &AccountId,
+        invitation: &str,
+    ) -> Result<InvitationTicket, AccountsError> {
+        let ticket = self.claimed_ticket_by_id(id, invitation).await?;
+
+        self.taken_up(id, ticket).await
+    }
+
+    pub async fn decline_invitation(
+        &self,
+        id: &AccountId,
+        token: &str,
+    ) -> Result<(), AccountsError> {
+        let ticket = self
+            .claimed_ticket(id, &InvitationToken::presented(token).digest())
+            .await?;
+
+        self.turned_down(id, ticket).await
+    }
+
+    pub async fn decline_invitation_by_id(
+        &self,
+        id: &AccountId,
+        invitation: &str,
+    ) -> Result<(), AccountsError> {
+        let ticket = self.claimed_ticket_by_id(id, invitation).await?;
+
+        self.turned_down(id, ticket).await
+    }
+
+    async fn claimed_ticket_by_id(
         &self,
         id: &AccountId,
         invitation: &str,
@@ -232,15 +267,15 @@ impl AccountService {
             return Err(AccountsError::InvitationInvalid);
         };
 
-        match self.take_up(id, &digest).await {
+        match self.claimed_ticket(id, &digest).await {
             Err(AccountsError::InvitationForAnotherAddress { .. }) => {
                 Err(AccountsError::InvitationInvalid)
             }
-            taken => taken,
+            claimed => claimed,
         }
     }
 
-    async fn take_up(
+    async fn claimed_ticket(
         &self,
         id: &AccountId,
         digest: &TokenDigest,
@@ -260,10 +295,18 @@ impl AccountService {
         if self.clock.now() > found.until {
             return Err(AccountsError::InvitationExpired);
         }
-        let Some(ticket) = self.invitation_tickets.take_ticket(digest).await? else {
-            return Err(AccountsError::InvitationInvalid);
-        };
 
+        self.invitation_tickets
+            .take_ticket(digest)
+            .await?
+            .ok_or(AccountsError::InvitationInvalid)
+    }
+
+    async fn taken_up(
+        &self,
+        id: &AccountId,
+        ticket: InvitationTicket,
+    ) -> Result<InvitationTicket, AccountsError> {
         let _landed = self
             .events
             .execute(
@@ -276,6 +319,26 @@ impl AccountService {
             .await?;
 
         Ok(ticket)
+    }
+
+    async fn turned_down(
+        &self,
+        id: &AccountId,
+        ticket: InvitationTicket,
+    ) -> Result<(), AccountsError> {
+        let _landed = self
+            .events
+            .execute(
+                &AggregateId::from(id),
+                AccountCommand::DeclineInvitation {
+                    invitation: ticket.invitation,
+                    reason: DeclineReason::TurnedDown,
+                },
+                &id.acting(),
+            )
+            .await?;
+
+        Ok(())
     }
 
     pub async fn keep_invitation_ticket(

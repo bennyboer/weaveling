@@ -100,7 +100,7 @@ async function signedInFollowingTheLink(page: Page, answered: (route: Route) => 
   const server = await aServerWithAccounts(page);
   const taken: string[] = [];
   await page.route(
-    (url) => url.pathname === "/api/accounts/current/invitations",
+    (url) => url.pathname === "/api/accounts/current/invitations/accept",
     (route) => {
       taken.push(route.request().postDataJSON().token);
       return answered(route);

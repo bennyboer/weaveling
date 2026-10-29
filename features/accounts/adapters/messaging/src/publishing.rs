@@ -50,6 +50,7 @@ fn personal(email: &EmailAddress, name: &AccountName) -> PersonalDTO {
 fn declined_for(reason: DeclineReason) -> &'static str {
     match reason {
         DeclineReason::AddressHasAccount => decline_reason::ADDRESS_HAS_ACCOUNT,
+        DeclineReason::TurnedDown => decline_reason::TURNED_DOWN,
     }
 }
 
@@ -279,23 +280,28 @@ mod tests {
 
     #[test]
     fn a_declined_invitation_says_which_invitation_it_was_and_why() {
-        let told = eventpublishing::published_in::<AccountEventDTO>(&published(
-            &an_account(),
-            AccountEvent::InvitationDeclined {
-                invitation: "invitation_1".to_owned(),
-                reason: DeclineReason::AddressHasAccount,
-            },
-        ))
-        .expect("what we wrote must be readable");
+        for (reason, why) in [
+            (DeclineReason::AddressHasAccount, "address-has-account"),
+            (DeclineReason::TurnedDown, "turned-down"),
+        ] {
+            let told = eventpublishing::published_in::<AccountEventDTO>(&published(
+                &an_account(),
+                AccountEvent::InvitationDeclined {
+                    invitation: "invitation_1".to_owned(),
+                    reason,
+                },
+            ))
+            .expect("what we wrote must be readable");
 
-        assert_eq!(
-            told.event.body,
-            AccountEventDTO::InvitationDeclined {
-                invitation: "invitation_1".to_owned(),
-                reason: "address-has-account".to_owned(),
-            },
-            "invitations hear from it whom to tell the operator about and why, and nothing personal"
-        );
+            assert_eq!(
+                told.event.body,
+                AccountEventDTO::InvitationDeclined {
+                    invitation: "invitation_1".to_owned(),
+                    reason: why.to_owned(),
+                },
+                "invitations hear from it which invitation it was and why, and nothing personal"
+            );
+        }
     }
 
     #[test]

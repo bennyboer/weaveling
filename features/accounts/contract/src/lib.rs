@@ -22,6 +22,11 @@ pub struct TakeUpInvitationRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct DeclineInvitationRequest {
+    pub token: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct VerifyEmailRequest {
     pub email: String,
     pub code: String,

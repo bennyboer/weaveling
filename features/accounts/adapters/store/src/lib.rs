@@ -52,12 +52,14 @@ enum StoredAccountEvent {
 #[serde(rename_all = "kebab-case")]
 enum StoredDeclineReason {
     AddressHasAccount,
+    TurnedDown,
 }
 
 impl From<DeclineReason> for StoredDeclineReason {
     fn from(reason: DeclineReason) -> Self {
         match reason {
             DeclineReason::AddressHasAccount => Self::AddressHasAccount,
+            DeclineReason::TurnedDown => Self::TurnedDown,
         }
     }
 }
@@ -66,6 +68,7 @@ impl From<StoredDeclineReason> for DeclineReason {
     fn from(reason: StoredDeclineReason) -> Self {
         match reason {
             StoredDeclineReason::AddressHasAccount => Self::AddressHasAccount,
+            StoredDeclineReason::TurnedDown => Self::TurnedDown,
         }
     }
 }
@@ -309,6 +312,10 @@ mod tests {
                 invitation: "invitation_1".to_owned(),
                 reason: DeclineReason::AddressHasAccount,
             },
+            AccountEvent::InvitationDeclined {
+                invitation: "invitation_1".to_owned(),
+                reason: DeclineReason::TurnedDown,
+            },
             AccountEvent::InvitationTakenUp {
                 invitation: "invitation_1".to_owned(),
             },
@@ -350,15 +357,17 @@ mod tests {
 
     #[test]
     fn a_reason_for_declining_is_stored_by_a_name_a_human_can_read() {
-        let written = (codec().body)(&AccountEvent::InvitationDeclined {
-            invitation: "invitation_1".to_owned(),
-            reason: DeclineReason::AddressHasAccount,
-        });
+        for (reason, stored) in [
+            (DeclineReason::AddressHasAccount, "address-has-account"),
+            (DeclineReason::TurnedDown, "turned-down"),
+        ] {
+            let written = (codec().body)(&AccountEvent::InvitationDeclined {
+                invitation: "invitation_1".to_owned(),
+                reason,
+            });
 
-        assert_eq!(
-            written["InvitationDeclined"]["reason"],
-            json!("address-has-account")
-        );
+            assert_eq!(written["InvitationDeclined"]["reason"], json!(stored));
+        }
     }
 
     #[test]

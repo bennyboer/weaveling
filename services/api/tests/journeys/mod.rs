@@ -789,7 +789,7 @@ pub async fn an_account_invited_into_a_project_joins_it_by_taking_the_invitation
     assert!(
         until(|| async {
             server
-                .post("/api/accounts/current/invitations")
+                .post("/api/accounts/current/invitations/accept")
                 .json(&json!({ "token": token }))
                 .await
                 .status_code()
@@ -886,7 +886,7 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
 
     server
         .post(&format!(
-            "/api/accounts/current/invitations/{}",
+            "/api/accounts/current/invitations/{}/accept",
             mine[0]["id"].as_str().unwrap_or_default()
         ))
         .await
@@ -917,6 +917,84 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
     journey.end().await;
 }
 
+pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B: Backend>() {
+    let journey = Journey::<B>::signed_in("turned-down").await;
+    let project = journey.project("Shared").await;
+    let server = &journey.server;
+    let members = format!("/api/members?project={project}");
+    assert!(
+        until(|| async { server.get(&members).await.status_code() == StatusCode::OK }).await,
+        "its owner may invite once the members have heard of her"
+    );
+    server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({
+            "email": "grace@example.com",
+            "scope": { "kind": "project", "project": project, "role": "author" },
+        }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    journey.signed_in_as_another("grace@example.com").await;
+    assert!(
+        until(|| async {
+            server
+                .get("/api/invitations/mine")
+                .await
+                .json::<Value>()
+                .as_array()
+                .is_some_and(|mine| mine.len() == 1)
+        })
+        .await,
+        "invitations hear of her sign-up"
+    );
+    let mine: Value = server.get("/api/invitations/mine").await.json();
+    server
+        .post(&format!(
+            "/api/accounts/current/invitations/{}/decline",
+            mine[0]["id"].as_str().unwrap_or_default()
+        ))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    assert!(
+        until(|| async {
+            server
+                .get("/api/invitations/mine")
+                .await
+                .json::<Value>()
+                .as_array()
+                .is_some_and(Vec::is_empty)
+        })
+        .await,
+        "turned down, she is invited to it no more"
+    );
+    server
+        .post("/api/sessions")
+        .json(&json!({ "email": "ada@example.com", "password": "correct horse battery" }))
+        .await
+        .assert_status_ok();
+    let invited = format!("/api/invitations?project={project}");
+    let listed: Value = server.get(&invited).await.json();
+    assert_eq!(listed["invitations"][0]["email"], "grace@example.com");
+    assert_eq!(listed["invitations"][0]["status"], "declined");
+    assert_eq!(
+        listed["invitations"][0]["declined_for"], "turned-down",
+        "the owner sees why"
+    );
+    assert!(
+        !server
+            .get(&members)
+            .await
+            .json::<Value>()
+            .as_array()
+            .is_some_and(|members| members.iter().any(|member| member["role"] == "author")),
+        "and nobody joined"
+    );
+    journey.end().await;
+}
+
 #[macro_export]
 macro_rules! journeys {
     ($backend:ty) => {
@@ -940,6 +1018,7 @@ macro_rules! journeys {
             an_account_invited_into_a_project_joins_it_by_taking_the_invitation_up,
             a_deleted_project_s_owner_neither_lists_its_members_nor_invites_into_it,
             an_account_is_told_in_the_application_what_it_is_invited_into_and_joins_there,
+            an_account_turns_down_in_the_application_what_it_is_invited_into,
         );
     };
     ($backend:ty: $($journey:ident),+ $(,)?) => {

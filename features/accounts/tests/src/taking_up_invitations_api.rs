@@ -1,6 +1,8 @@
-use accounts_contract::{SignInRequest, TakeUpInvitationRequest, refused};
+use accounts_contract::{
+    DeclineInvitationRequest, SignInRequest, TakeUpInvitationRequest, refused,
+};
 use accounts_core::{
-    AccountEvent, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket,
+    AccountEvent, DeclineReason, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket,
     InvitationTickets, InvitationToken, KIND,
 };
 use axum::http::StatusCode;
@@ -73,11 +75,12 @@ async fn signed_in(wired: &Wired, server: &TestServer, address: &str) -> String 
 }
 
 async fn takes_up(server: &TestServer, cookie: Option<&str>, token: &str) -> TestResponse {
-    let request = server
-        .post("/accounts/current/invitations")
-        .json(&TakeUpInvitationRequest {
-            token: token.to_owned(),
-        });
+    let request =
+        server
+            .post("/accounts/current/invitations/accept")
+            .json(&TakeUpInvitationRequest {
+                token: token.to_owned(),
+            });
 
     match cookie {
         Some(cookie) => request.add_header(COOKIE, cookie.to_owned()).await,
@@ -162,7 +165,9 @@ async fn takes_up_by_id(
     cookie: Option<&str>,
     invitation: &str,
 ) -> TestResponse {
-    let request = server.post(&format!("/accounts/current/invitations/{invitation}"));
+    let request = server.post(&format!(
+        "/accounts/current/invitations/{invitation}/accept"
+    ));
 
     match cookie {
         Some(cookie) => request.add_header(COOKIE, cookie.to_owned()).await,
@@ -203,4 +208,111 @@ async fn nobody_takes_an_invitation_up_by_its_id_without_signing_in_nor_one_to_a
         refused::INVITATION_INVALID,
     );
     assert!(!taken_up_by(&wired, BOB).await);
+}
+
+async fn declines(server: &TestServer, cookie: Option<&str>, token: &str) -> TestResponse {
+    let request =
+        server
+            .post("/accounts/current/invitations/decline")
+            .json(&DeclineInvitationRequest {
+                token: token.to_owned(),
+            });
+
+    match cookie {
+        Some(cookie) => request.add_header(COOKIE, cookie.to_owned()).await,
+        None => request.await,
+    }
+}
+
+async fn declines_by_id(
+    server: &TestServer,
+    cookie: Option<&str>,
+    invitation: &str,
+) -> TestResponse {
+    let request = server.post(&format!(
+        "/accounts/current/invitations/{invitation}/decline"
+    ));
+
+    match cookie {
+        Some(cookie) => request.add_header(COOKIE, cookie.to_owned()).await,
+        None => request.await,
+    }
+}
+
+async fn turned_down_by(wired: &Wired, address: &str) -> bool {
+    let holder = wired
+        .secrets
+        .holder(&EmailAddress::new(address).expect("a plain address"))
+        .await
+        .expect("reading should succeed")
+        .expect("the address is held");
+
+    wired
+        .store
+        .read_from(&AggregateId::from(&holder), KIND, Version::of(1))
+        .await
+        .expect("reading should succeed")
+        .iter()
+        .any(|recorded| {
+            matches!(
+                recorded.event,
+                AccountEvent::InvitationDeclined {
+                    reason: DeclineReason::TurnedDown,
+                    ..
+                }
+            )
+        })
+}
+
+#[tokio::test]
+async fn the_account_signed_in_turns_down_an_invitation_to_its_address_by_the_link() {
+    let (wired, server) = served_with_ada_invited().await;
+    let ada = signed_in(&wired, &server, ADA).await;
+
+    declines(&server, Some(&ada), TOKEN)
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    assert!(turned_down_by(&wired, ADA).await);
+    refused_as(
+        &takes_up(&server, Some(&ada), TOKEN).await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::INVITATION_INVALID,
+    );
+}
+
+#[tokio::test]
+async fn the_account_signed_in_turns_down_an_invitation_to_its_address_by_its_id() {
+    let (wired, server) = served_with_ada_invited().await;
+    let ada = signed_in(&wired, &server, ADA).await;
+
+    declines_by_id(&server, Some(&ada), "invitation_1")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    assert!(turned_down_by(&wired, ADA).await);
+    refused_as(
+        &declines_by_id(&server, Some(&ada), "invitation_1").await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::INVITATION_INVALID,
+    );
+}
+
+#[tokio::test]
+async fn nobody_turns_an_invitation_down_without_signing_in_nor_one_to_another_address() {
+    let (wired, server) = served_with_ada_invited().await;
+    let bob = signed_in(&wired, &server, BOB).await;
+
+    for unsigned in [
+        declines(&server, None, TOKEN).await,
+        declines_by_id(&server, None, "invitation_1").await,
+    ] {
+        refused_as(&unsigned, StatusCode::UNAUTHORIZED, refused::NOT_SIGNED_IN);
+    }
+    refused_as(
+        &declines_by_id(&server, Some(&bob), "invitation_1").await,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        refused::INVITATION_INVALID,
+    );
+    assert!(!turned_down_by(&wired, BOB).await);
 }

@@ -96,6 +96,24 @@ impl AccountsCore {
             .await
     }
 
+    pub async fn decline_invitation(
+        &self,
+        account: &AccountId,
+        token: &str,
+    ) -> Result<(), AccountsError> {
+        self.service.decline_invitation(account, token).await
+    }
+
+    pub async fn decline_invitation_by_id(
+        &self,
+        account: &AccountId,
+        invitation: &str,
+    ) -> Result<(), AccountsError> {
+        self.service
+            .decline_invitation_by_id(account, invitation)
+            .await
+    }
+
     pub async fn keep_invitation_ticket(
         &self,
         digest: &TokenDigest,

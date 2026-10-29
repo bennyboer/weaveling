@@ -1,7 +1,7 @@
 use accounts_contract::{
-    AccountPageDTO, AccountSummaryDTO, BecomeOperatorRequest, LockDTO, LockRequest,
-    NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE, SendCodeRequest, SignInRequest,
-    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
+    AccountPageDTO, AccountSummaryDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockDTO,
+    LockRequest, NewPasswordRequest, PasswordResetRequest, SESSION_COOKIE, SendCodeRequest,
+    SignInRequest, SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
     VerifyEmailRequest, lock_kind, refused, stage,
 };
 use accounts_core::{
@@ -53,12 +53,20 @@ pub fn guarded_router(accounts: AccountsCore) -> Router {
     Router::new()
         .route("/operators", routing::post(become_operator))
         .route(
-            "/accounts/current/invitations",
+            "/accounts/current/invitations/accept",
             routing::post(take_up_invitation),
         )
         .route(
-            "/accounts/current/invitations/{invitation}",
+            "/accounts/current/invitations/{invitation}/accept",
             routing::post(take_up_invitation_by_id),
+        )
+        .route(
+            "/accounts/current/invitations/decline",
+            routing::post(decline_invitation),
+        )
+        .route(
+            "/accounts/current/invitations/{invitation}/decline",
+            routing::post(decline_invitation_by_id),
         )
         .route("/instance/accounts", routing::get(list_accounts))
         .route(
@@ -215,6 +223,32 @@ async fn take_up_invitation_by_id(
 ) -> Result<StatusCode, Problem> {
     accounts
         .take_up_invitation_by_id(&account, &invitation)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn decline_invitation(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Json(request): Json<DeclineInvitationRequest>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .decline_invitation(&account, &request.token)
+        .await
+        .map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn decline_invitation_by_id(
+    State(accounts): State<AccountsCore>,
+    Extension(account): Extension<AccountId>,
+    Path(invitation): Path<String>,
+) -> Result<StatusCode, Problem> {
+    accounts
+        .decline_invitation_by_id(&account, &invitation)
         .await
         .map_err(problem_of)?;
 
