@@ -99,10 +99,18 @@ test("where anyone may sign up, signing in still offers it", async ({
 async function signedInFollowingTheLink(page: Page, answered: (route: Route) => Promise<void>) {
   const server = await aServerWithAccounts(page);
   const taken: string[] = [];
+  const declined: string[] = [];
   await page.route(
     (url) => url.pathname === "/api/accounts/current/invitations/accept",
     (route) => {
       taken.push(route.request().postDataJSON().token);
+      return answered(route);
+    },
+  );
+  await page.route(
+    (url) => url.pathname === "/api/accounts/current/invitations/decline",
+    (route) => {
+      declined.push(route.request().postDataJSON().token);
       return answered(route);
     },
   );
@@ -111,7 +119,7 @@ async function signedInFollowingTheLink(page: Page, answered: (route: Route) => 
   await expect(accountButton(page, "Ada Lovelace")).toBeVisible();
   await page.goto(`/invitation#${THE_INVITATION}`);
 
-  return { server, taken };
+  return { server, taken, declined };
 }
 
 test("a link opened while signed in is accepted there, and leads to one's projects", async ({
@@ -235,3 +243,103 @@ test("the note after accepting speaks the reader's language", async ({ page }) =
     page.getByRole("status").filter({ hasText: "Einladung angenommen." }),
   ).toBeVisible();
 });
+
+test("a link opened while signed in is declined there, and leads to one's projects", async ({
+  page,
+}) => {
+  const { taken, declined } = await signedInFollowingTheLink(page, (route) =>
+    route.fulfill({ status: 204 }),
+  );
+
+  await page.getByRole("button", { name: "Decline" }).click();
+
+  await expect(page).toHaveURL(/\/$/);
+  await expect(
+    page.getByRole("status").filter({ hasText: "You turned down the invitation." }),
+  ).toBeVisible();
+  expect(declined).toEqual([THE_INVITATION]);
+  expect(taken).toEqual([]);
+});
+
+test("a link run out, opened signed in, says so on declining and stays", async ({
+  page,
+}) => {
+  await signedInFollowingTheLink(page, (route) =>
+    route.fulfill({
+      status: 422,
+      contentType: "application/problem+json",
+      body: JSON.stringify({ type: "invitation-expired", status: 422, detail: "run out" }),
+    }),
+  );
+
+  await page.getByRole("button", { name: "Decline" }).click();
+
+  await expect(page.getByRole("alert")).toContainText(
+    "This invitation has run out. Ask for a new one.",
+  );
+  await expect(page).toHaveURL(/\/invitation/);
+});
+
+test("whoever follows the link may decline it without an account", async ({
+  page,
+}) => {
+  const server = await aServerWithAccounts(page);
+
+  await page.goto(`/invitation#${THE_INVITATION}`);
+  await page.getByRole("button", { name: "Decline the invitation instead" }).click();
+
+  await expect(page.getByRole("heading", { name: "Invitation declined" })).toBeVisible();
+  await expect(page.getByRole("main")).toContainText(
+    "Whoever invited you sees that, and the link signs nobody up any more.",
+  );
+  expect(server.declinedByLink).toEqual([THE_INVITATION]);
+  expect(server.signedIn).toBe(false);
+  await page.getByRole("button", { name: "Already have an account? Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+});
+
+test("a link that leads nowhere says so on declining and stays to be signed up through", async ({
+  page,
+}) => {
+  const server = await aServerWithAccounts(page);
+  server.invitationRefused = { status: 422, type: "invitation-expired" };
+
+  await page.goto(`/invitation#${THE_INVITATION}`);
+  await page.getByRole("button", { name: "Decline the invitation instead" }).click();
+
+  await expect(page.getByRole("alert")).toContainText(
+    "This invitation has run out. Ask for a new one.",
+  );
+  await expect(page.getByRole("heading", { name: "You have been invited" })).toBeVisible();
+  expect(server.declinedByLink).toEqual([]);
+});
+
+test("declining by the link speaks the reader's language", async ({ browser }) => {
+  const context = await browser.newContext({ locale: "de-DE" });
+  const page = await context.newPage();
+  await aServerWithAccounts(page);
+
+  await page.goto(`/invitation#${THE_INVITATION}`);
+  await page.getByRole("button", { name: "Einladung stattdessen ablehnen" }).click();
+
+  await expect(page.getByRole("heading", { name: "Einladung abgelehnt" })).toBeVisible();
+  await context.close();
+});
+
+for (const width of [1280, 320]) {
+  test(`accepting and declining sit side by side or below each other at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await signedInFollowingTheLink(page, (route) => route.fulfill({ status: 204 }));
+
+    const accept = await page.getByRole("button", { name: "Accept" }).boundingBox();
+    const decline = await page.getByRole("button", { name: "Decline" }).boundingBox();
+    expect(accept && decline).toBeTruthy();
+    expect(decline!.x + decline!.width).toBeLessThanOrEqual(width);
+    expect(
+      decline!.y >= accept!.y + accept!.height || decline!.x >= accept!.x + accept!.width,
+      "they do not overlap",
+    ).toBe(true);
+  });
+}

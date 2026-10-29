@@ -1,6 +1,7 @@
 use gloo_net::http::Request;
 use invitations_contract::{
-    InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO, InviteRequest,
+    DeclineInvitationRequest, InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO,
+    InviteRequest,
 };
 
 use crate::http;
@@ -12,6 +13,7 @@ use crate::invitations::to_you::InvitationToYou;
 
 const INVITATIONS: &str = "/api/invitations";
 const MINE: &str = "/api/invitations/mine";
+const TURNED_DOWN: &str = "/api/invitations/decline";
 const INVITATION: &str = "invitation";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,6 +61,19 @@ pub async fn mine() -> Result<Vec<InvitationToYou>, ApiError> {
         http::parsed(http::sent(Request::get(MINE)).await?, INVITATION).await?;
 
     to_you::read(told)
+}
+
+pub async fn decline_by_token(token: &str) -> Result<(), ApiError> {
+    let payload = DeclineInvitationRequest {
+        token: token.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::post(TURNED_DOWN), &payload).await?,
+        INVITATION,
+    )
+    .await
+    .map(|_| ())
 }
 
 pub async fn invite(email: &str, scope: &Scope) -> Result<ListedInvitation, ApiError> {

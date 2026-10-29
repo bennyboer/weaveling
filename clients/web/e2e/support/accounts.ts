@@ -82,6 +82,7 @@ export type Server = {
   toYou: ToYou[];
   answered: string[];
   mine: WebSocketRoute[];
+  declinedByLink: string[];
 };
 
 const refusing = (
@@ -125,6 +126,7 @@ export async function aServerWithAccounts(
     toYou: [],
     answered: [],
     mine: [],
+    declinedByLink: [],
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -158,6 +160,21 @@ export async function aServerWithAccounts(
     }
     server.signedIn = true;
     return route.fulfill({ json: { ...ADA, operator: server.operator } });
+  });
+  await page.route(at("/api/invitations/decline"), async (route) => {
+    const { token } = route.request().postDataJSON();
+    if (server.invitationRefused) {
+      return refusing(
+        route,
+        server.invitationRefused.status,
+        server.invitationRefused.type,
+      );
+    }
+    if (token !== THE_INVITATION || server.declinedByLink.includes(token)) {
+      return refusing(route, 422, "invitation-invalid");
+    }
+    server.declinedByLink.push(token);
+    return route.fulfill({ status: 204 });
   });
   await page.route(at("/api/accounts/by-invitation"), async (route) => {
     const { token, name, password } = route.request().postDataJSON();
@@ -291,6 +308,9 @@ export async function aServerWithAccounts(
   await page.route(
     (url) => /^\/api\/invitations\/[^/]+$/.test(url.pathname),
     async (route) => {
+      if (route.request().method() !== "DELETE") {
+        return route.fallback();
+      }
       const id = new URL(route.request().url()).pathname.split("/")[3];
       const at = server.invited.findIndex((invitation) => invitation.id === id);
       if (at < 0) {

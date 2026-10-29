@@ -595,6 +595,13 @@
   }
 }
 
+.signing-in > .answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.signing-in > .answers + .back,
 .signing-in > button + .back {
   display: inline-block;
   margin-top: 1.25rem;

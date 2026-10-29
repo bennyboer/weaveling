@@ -8,6 +8,7 @@ use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SigningUp, service};
 use crate::http::ApiError;
+use crate::invitations::service as invitations;
 use crate::problem;
 use crate::route;
 use crate::shell;
@@ -20,6 +21,7 @@ enum Form {
     SignUp,
     SetUp,
     Accept,
+    Declined,
     EnterCode,
     AskReset,
     Reset,
@@ -78,6 +80,7 @@ pub fn SignInPage() -> impl IntoView {
                 Form::SignUp => sign_up_form(page).into_any(),
                 Form::SetUp => set_up_form(page).into_any(),
                 Form::Accept => accept_form(page).into_any(),
+                Form::Declined => declined_form(page).into_any(),
                 Form::EnterCode => code_form(page).into_any(),
                 Form::AskReset => ask_reset_form(page).into_any(),
                 Form::Reset => reset_form(page).into_any(),
@@ -316,6 +319,26 @@ fn accept_form(page: Page) -> impl IntoView {
                 submitting(speech::said("sign-up-confirm"), asking),
             ),
         ),
+        turning(speech::said("invitation-decline-instead"), move || {
+            let token = page.invitation.get_untracked().unwrap_or_default();
+            asked(asking, refused, async move {
+                invitations::decline_by_token(&token)
+                    .await
+                    .map(|()| page.turn_to(Form::Declined, None))
+            });
+        }),
+        turning(speech::said("sign-in-instead"), move || {
+            page.turn_to(Form::SignIn, None)
+        }),
+    )
+}
+
+fn declined_form(page: Page) -> impl IntoView {
+    (
+        html::h1().child(speech::said("invitation-declined-heading")),
+        html::p()
+            .class("hint")
+            .child(speech::said("invitation-declined-hint")),
         turning(speech::said("sign-in-instead"), move || {
             page.turn_to(Form::SignIn, None)
         }),

@@ -1,7 +1,8 @@
 use accounts_contract::{
-    AccountPageDTO, BecomeOperatorRequest, LockRequest, NewPasswordRequest, PasswordResetRequest,
-    SendCodeRequest, ServiceModeDTO, SignInRequest, SignUpByInvitationRequest, SignUpRequest,
-    SignedInDTO, TakeUpInvitationRequest, VerifyEmailRequest,
+    AccountPageDTO, BecomeOperatorRequest, DeclineInvitationRequest, LockRequest,
+    NewPasswordRequest, PasswordResetRequest, SendCodeRequest, ServiceModeDTO, SignInRequest,
+    SignUpByInvitationRequest, SignUpRequest, SignedInDTO, TakeUpInvitationRequest,
+    VerifyEmailRequest,
 };
 use gloo_net::http::Request;
 
@@ -21,6 +22,7 @@ const SESSIONS: &str = "/api/sessions";
 const CURRENT: &str = "/api/sessions/current";
 const TAKEN_UP: &str = "/api/accounts/current/invitations/accept";
 const MY_INVITATIONS: &str = "/api/accounts/current/invitations";
+const TURNED_DOWN: &str = "/api/accounts/current/invitations/decline";
 const OPERATORS: &str = "/api/operators";
 const INSTANCE_ACCOUNTS: &str = "/api/instance/accounts";
 const SUBJECT: &str = "session";
@@ -48,6 +50,19 @@ pub async fn take_up_invitation(token: &str) -> Result<(), ApiError> {
 
     http::checked(
         http::sent_with(Request::post(TAKEN_UP), &payload).await?,
+        ACCOUNT,
+    )
+    .await
+    .map(|_| ())
+}
+
+pub async fn decline_invitation(token: &str) -> Result<(), ApiError> {
+    let payload = DeclineInvitationRequest {
+        token: token.to_owned(),
+    };
+
+    http::checked(
+        http::sent_with(Request::post(TURNED_DOWN), &payload).await?,
         ACCOUNT,
     )
     .await

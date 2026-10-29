@@ -26,7 +26,7 @@ pub fn InvitationPage() -> impl IntoView {
         .trim_start_matches('#')
         .to_owned();
     let refused = RwSignal::new(None::<ApiError>);
-    let accepting = RwSignal::new(false);
+    let answering = RwSignal::new(false);
     let signed_in_as = move || {
         let mut told = FluentArgs::new();
         if let SignInState::SignedIn(account) = session.state() {
@@ -35,27 +35,32 @@ pub fn InvitationPage() -> impl IntoView {
 
         speech::say_with("invitation-signed-in", &told)
     };
-    let accept = {
-        let token = token.clone();
-        move |_| {
-            if accepting.get_untracked() {
-                return;
-            }
-            accepting.set(true);
-            refused.set(None);
-            let token = token.clone();
-            let navigate = navigate.clone();
-            task::spawn_local(async move {
-                match service::take_up_invitation(&token).await {
-                    Ok(()) => {
-                        note.tell(speech.say("invitation-accepted"));
-                        navigate(route::WORKSPACE, Default::default());
-                    }
-                    Err(failed) => refused.set(Some(failed)),
-                }
-                accepting.set(false);
-            });
+    let answer = move |token: String, accepting: bool| {
+        if answering.get_untracked() {
+            return;
         }
+        answering.set(true);
+        refused.set(None);
+        let navigate = navigate.clone();
+        task::spawn_local(async move {
+            let answered = if accepting {
+                service::take_up_invitation(&token).await
+            } else {
+                service::decline_invitation(&token).await
+            };
+            match answered {
+                Ok(()) => {
+                    note.tell(speech.say(if accepting {
+                        "invitation-accepted"
+                    } else {
+                        "invitation-declined"
+                    }));
+                    navigate(route::WORKSPACE, Default::default());
+                }
+                Err(failed) => refused.set(Some(failed)),
+            }
+            answering.set(false);
+        });
     };
 
     (
@@ -65,12 +70,21 @@ pub fn InvitationPage() -> impl IntoView {
             html::p().class("hint").child(signed_in_as),
             move || refused.get().map(problem::problem),
             (!token.is_empty()).then(|| {
-                html::button()
-                    .r#type("button")
-                    .class("primary")
-                    .disabled(move || accepting.get())
-                    .on(ev::click, accept)
-                    .child(speech::said("invitation-accept"))
+                let declining = token.clone();
+                let accept = answer.clone();
+                html::div().class("answers").child((
+                    html::button()
+                        .r#type("button")
+                        .class("primary")
+                        .disabled(move || answering.get())
+                        .on(ev::click, move |_| accept(token.clone(), true))
+                        .child(speech::said("invitation-accept")),
+                    html::button()
+                        .r#type("button")
+                        .disabled(move || answering.get())
+                        .on(ev::click, move |_| answer(declining.clone(), false))
+                        .child(speech::said("invitation-decline")),
+                ))
             }),
             view! {
                 <A href=route::WORKSPACE attr:class="back">
