@@ -444,3 +444,27 @@ fn an_invitation_knows_which_account_issued_it_and_keeps_it_through_a_snapshot()
     behind.apply(&by_an_account.snapshot(), &stamped(2, at(2_000)));
     assert_eq!(behind.issued_by(), Some(&AccountId::from("account_1")));
 }
+
+#[test]
+fn an_invitation_keeps_its_token_s_digest_and_through_a_snapshot() {
+    let invitation = Invitation::from_first(
+        &InvitationEvent::Issued {
+            to: ada(),
+            digest: InvitationTokenDigest::kept("cd34".to_owned()),
+            until: at(1_000) + Invitation::LASTS,
+            scope: Scope::Instance,
+            by_an_operator: true,
+        },
+        &stamped(1, at(1_000)),
+    )
+    .expect("issuing gives birth");
+
+    assert_eq!(invitation.digest().as_str(), "cd34");
+    let restored = Invitation::from_first(&invitation.snapshot(), &stamped(2, at(2_000)))
+        .expect("a snapshot gives birth");
+    let mut behind = issued_at(500);
+    behind.apply(&invitation.snapshot(), &stamped(2, at(2_000)));
+    for told in [restored, behind] {
+        assert_eq!(told.digest().as_str(), "cd34");
+    }
+}

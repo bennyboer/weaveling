@@ -9,12 +9,15 @@ CREATE TABLE invitation_summaries (
     declined_for     TEXT,
     project          TEXT COLLATE "C",
     project_role     TEXT,
-    retire_after     TIMESTAMPTZ      NOT NULL
+    retire_after     TIMESTAMPTZ      NOT NULL,
+    digest           TEXT COLLATE "C" NOT NULL
 );
 
 CREATE INDEX invitation_summaries_by_project ON invitation_summaries (project, invitation);
 
 CREATE INDEX invitation_summaries_by_email ON invitation_summaries (email, invitation);
+
+CREATE UNIQUE INDEX invitation_summaries_by_digest ON invitation_summaries (digest);
 
 CREATE TABLE people (
     account          TEXT COLLATE "C" PRIMARY KEY,

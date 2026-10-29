@@ -5,8 +5,8 @@ use clock::text;
 use email::EmailAddress;
 use eventsourcing::{AccountId, Version};
 use invitations_core::{
-    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Person, ProjectLink,
-    ProjectName,
+    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
+    Person, ProjectLink, ProjectName,
 };
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
@@ -17,8 +17,8 @@ use crate::{outcome, scope};
 
 const REMEMBER: &str = "
     INSERT INTO invitation_summaries
-        (invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+        (invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by, digest)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
     ON CONFLICT (invitation) DO UPDATE
     SET version      = excluded.version,
         email        = excluded.email,
@@ -33,7 +33,7 @@ const REMEMBER: &str = "
 ";
 
 const LISTED_AFTER: &str = "
-    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by, digest
     FROM invitation_summaries
     WHERE outcome IN ('open', 'declined')
       AND project IS NULL
@@ -43,7 +43,7 @@ const LISTED_AFTER: &str = "
 ";
 
 const IN_PROJECT_AFTER: &str = "
-    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by, digest
     FROM invitation_summaries
     WHERE outcome IN ('open', 'declined')
       AND project = ?1
@@ -53,10 +53,16 @@ const IN_PROJECT_AFTER: &str = "
 ";
 
 const OPEN_TO: &str = "
-    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by, digest
     FROM invitation_summaries
     WHERE email = ?1 AND outcome = 'open'
     ORDER BY invitation DESC
+";
+
+const WITH_DIGEST: &str = "
+    SELECT invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by, digest
+    FROM invitation_summaries
+    WHERE digest = ?1
 ";
 
 const DUE_FOR_RETIRING: &str = "
@@ -146,11 +152,13 @@ fn to_summary(row: &SqliteRow) -> Result<InvitationSummary, CatalogError> {
     let project: Option<String> = row.try_get("project").map_err(unreachable)?;
     let project_role: Option<String> = row.try_get("project_role").map_err(unreachable)?;
     let issued_by: Option<String> = row.try_get("issued_by").map_err(unreachable)?;
+    let digest: String = row.try_get("digest").map_err(unreachable)?;
 
     Ok(InvitationSummary {
         id: invitation.parse().map_err(unreachable)?,
         version: Version::of(u64::try_from(version).map_err(unreachable)?),
         to: EmailAddress::new(&email).map_err(unreachable)?,
+        digest: InvitationTokenDigest::kept(digest),
         scope: scope::read(project, project_role.as_deref())?,
         issued_by: issued_by.map(AccountId::from),
         issued_at: moment(row, "issued_at")?,
@@ -178,6 +186,7 @@ impl InvitationCatalog for SqliteInvitationCatalog {
             .bind(project)
             .bind(project_role)
             .bind(summary.issued_by.as_ref().map(AccountId::as_str))
+            .bind(summary.digest.as_str())
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -225,6 +234,20 @@ impl InvitationCatalog for SqliteInvitationCatalog {
             .map_err(unreachable)?;
 
         found.iter().map(to_summary).collect()
+    }
+
+    async fn with_digest(
+        &self,
+        digest: &InvitationTokenDigest,
+    ) -> Result<Option<InvitationSummary>, CatalogError> {
+        sqlx::query(WITH_DIGEST)
+            .bind(digest.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .as_ref()
+            .map(to_summary)
+            .transpose()
     }
 
     async fn due_for_retiring(

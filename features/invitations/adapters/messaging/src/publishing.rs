@@ -293,6 +293,7 @@ mod tests {
                 &id,
                 InvitationEvent::Snapshotted {
                     to: ada(),
+                    digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     scope: Scope::Instance,
                     by_an_operator: true,
                     issued_by: None,

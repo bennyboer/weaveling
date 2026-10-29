@@ -6,7 +6,8 @@ use email::EmailAddress;
 use eventsourcing::Version;
 use invitations_contract::{InvitationPageDTO, InvitationSummaryDTO, ScopeDTO, refused};
 use invitations_core::{
-    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome, Scope,
+    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
+    Outcome, Scope,
 };
 use invitations_rest::PAGE;
 use serde_json::Value;
@@ -24,6 +25,7 @@ fn a_summary(seconds: i64, to: &str, outcome: Outcome) -> InvitationSummary {
         id: InvitationId::generate(wiring::at(seconds)),
         version: Version::of(1),
         to: EmailAddress::new(to).expect("a plain address"),
+        digest: InvitationTokenDigest::kept(format!("digest for {to} at {seconds}")),
         issued_by: None,
         issued_at: wiring::at(seconds),
         until: wiring::at(seconds) + Duration::days(7),

@@ -4,8 +4,8 @@ use async_trait::async_trait;
 use email::EmailAddress;
 use eventsourcing::AccountId;
 use invitations_core::{
-    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Person, ProjectLink,
-    ProjectName,
+    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
+    Person, ProjectLink, ProjectName,
 };
 use live::{Broadcaster, Teller};
 use time::OffsetDateTime;
@@ -53,6 +53,13 @@ impl InvitationCatalog for TellingInvitations {
 
     async fn open_to(&self, to: &EmailAddress) -> Result<Vec<InvitationSummary>, CatalogError> {
         self.kept.open_to(to).await
+    }
+
+    async fn with_digest(
+        &self,
+        digest: &InvitationTokenDigest,
+    ) -> Result<Option<InvitationSummary>, CatalogError> {
+        self.kept.with_digest(digest).await
     }
 
     async fn due_for_retiring(

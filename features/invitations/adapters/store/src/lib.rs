@@ -29,6 +29,7 @@ enum StoredInvitationEvent {
     Retired,
     Snapshotted {
         to: String,
+        digest: String,
         #[serde(default)]
         scope: StoredScope,
         #[serde(default)]
@@ -205,6 +206,7 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
             InvitationEvent::Retired => Self::Retired,
             InvitationEvent::Snapshotted {
                 to,
+                digest,
                 scope,
                 by_an_operator,
                 issued_by,
@@ -215,6 +217,7 @@ impl From<&InvitationEvent> for StoredInvitationEvent {
                 retired,
             } => Self::Snapshotted {
                 to: to.to_string(),
+                digest: digest.as_str().to_owned(),
                 scope: scope.into(),
                 by_an_operator: *by_an_operator,
                 issued_by: issued_by.as_ref().map(ToString::to_string),
@@ -263,6 +266,7 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
             StoredInvitationEvent::Retired => Self::Retired,
             StoredInvitationEvent::Snapshotted {
                 to,
+                digest,
                 scope,
                 by_an_operator,
                 issued_by,
@@ -273,6 +277,7 @@ impl TryFrom<StoredInvitationEvent> for InvitationEvent {
                 retired,
             } => Self::Snapshotted {
                 to: readable(&to)?,
+                digest: InvitationTokenDigest::kept(digest),
                 scope: scope.into(),
                 by_an_operator,
                 issued_by: issued_by.map(AccountId::from),
@@ -349,6 +354,7 @@ mod tests {
                 },
                 InvitationEvent::Snapshotted {
                     to: ada(),
+                    digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     scope: a_project_s(Role::Author),
                     by_an_operator: true,
                     issued_by: Some(AccountId::from("account_grace")),
@@ -360,6 +366,7 @@ mod tests {
                 },
                 InvitationEvent::Snapshotted {
                     to: ada(),
+                    digest: InvitationTokenDigest::kept("ab12".to_owned()),
                     scope: Scope::Instance,
                     by_an_operator: false,
                     issued_by: None,
@@ -418,12 +425,14 @@ mod tests {
         assert_eq!(
             (codec().event)(json!({ "Snapshotted": {
                 "to": "ada@example.com",
+                "digest": "ab12",
                 "issued_at": "1970-01-01T00:16:40Z",
                 "until": "1970-01-01T00:33:20Z",
                 "outcome": "open",
             } })),
             Some(InvitationEvent::Snapshotted {
                 to: ada(),
+                digest: InvitationTokenDigest::kept("ab12".to_owned()),
                 scope: Scope::Instance,
                 by_an_operator: false,
                 issued_by: None,

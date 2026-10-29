@@ -1,8 +1,8 @@
 use email::EmailAddress;
 use eventsourcing::{AccountId, Version};
 use invitations_core::{
-    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, Outcome, Person,
-    ProjectLink, ProjectName, Role, Scope,
+    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
+    Outcome, Person, ProjectLink, ProjectName, Role, Scope,
 };
 use time::OffsetDateTime;
 
@@ -26,6 +26,7 @@ pub fn a_summary(id: InvitationId, to: &str) -> InvitationSummary {
         id,
         version: Version::of(1),
         to: EmailAddress::new(to).expect("a plain address"),
+        digest: InvitationTokenDigest::kept(format!("digest of {id}")),
         scope: Scope::Instance,
         issued_by: Some(AccountId::from("account_grace")),
         issued_at: at(1_000),
@@ -153,6 +154,47 @@ pub async fn a_remembered_invitation_is_listed_as_it_was(catalog: &impl Invitati
     remembered(catalog, &summary).await;
 
     assert_eq!(listed(catalog).await, vec![summary]);
+}
+
+pub async fn an_invitation_is_found_by_its_token_s_digest_however_it_stands_until_forgotten(
+    catalog: &impl InvitationCatalog,
+) {
+    let open = a_summary(issued(1_000), "ada@example.com");
+    let declined = InvitationSummary {
+        outcome: Outcome::Declined(DeclineReason::TurnedDown),
+        ..a_summary(issued(2_000), "grace@example.com")
+    };
+    for summary in [&open, &declined] {
+        remembered(catalog, summary).await;
+    }
+    let with = |digest: &InvitationTokenDigest| {
+        let digest = digest.clone();
+        async move {
+            catalog
+                .with_digest(&digest)
+                .await
+                .expect("finding should succeed")
+        }
+    };
+
+    assert_eq!(with(&open.digest).await, Some(open.clone()));
+    assert_eq!(with(&declined.digest).await, Some(declined.clone()));
+    assert_eq!(
+        with(&InvitationTokenDigest::kept(
+            "a digest nobody was issued".to_owned()
+        ))
+        .await,
+        None
+    );
+    catalog
+        .forget(&open.id)
+        .await
+        .expect("forgetting should succeed");
+    assert_eq!(
+        with(&open.digest).await,
+        None,
+        "a retired invitation is found no more"
+    );
 }
 
 pub async fn an_empty_list_lists_nothing(catalog: &impl InvitationCatalog) {
@@ -618,6 +660,10 @@ macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::catalog_conformance_case!($workbench, a_remembered_invitation_is_listed_as_it_was);
         $crate::catalog_conformance_case!($workbench, an_empty_list_lists_nothing);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_invitation_is_found_by_its_token_s_digest_however_it_stands_until_forgotten
+        );
         $crate::catalog_conformance_case!(
             $workbench,
             what_is_past_its_moment_is_due_for_retiring_soonest_first_and_no_more_than_asked

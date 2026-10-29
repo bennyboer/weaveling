@@ -55,6 +55,7 @@ pub enum InvitationEvent {
     Retired,
     Snapshotted {
         to: EmailAddress,
+        digest: InvitationTokenDigest,
         scope: Scope,
         by_an_operator: bool,
         issued_by: Option<AccountId>,
@@ -83,6 +84,7 @@ pub enum DeclineReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Invitation {
     to: EmailAddress,
+    digest: InvitationTokenDigest,
     scope: Scope,
     by_an_operator: bool,
     issued_by: Option<AccountId>,
@@ -114,6 +116,10 @@ impl Invitation {
 
     pub fn to(&self) -> &EmailAddress {
         &self.to
+    }
+
+    pub fn digest(&self) -> &InvitationTokenDigest {
+        &self.digest
     }
 
     pub fn scope(&self) -> &Scope {
@@ -215,12 +221,14 @@ impl Aggregate for Invitation {
         match event {
             InvitationEvent::Issued {
                 to,
+                digest,
                 until,
                 scope,
                 by_an_operator,
                 ..
             } => Some(Self {
                 to: to.clone(),
+                digest: digest.clone(),
                 scope: scope.clone(),
                 by_an_operator: *by_an_operator,
                 issued_by: match &metadata.agent {
@@ -235,6 +243,7 @@ impl Aggregate for Invitation {
             }),
             InvitationEvent::Snapshotted {
                 to,
+                digest,
                 scope,
                 by_an_operator,
                 issued_by,
@@ -245,6 +254,7 @@ impl Aggregate for Invitation {
                 retired,
             } => Some(Self {
                 to: to.clone(),
+                digest: digest.clone(),
                 scope: scope.clone(),
                 by_an_operator: *by_an_operator,
                 issued_by: issued_by.clone(),
@@ -308,6 +318,7 @@ impl Aggregate for Invitation {
             InvitationEvent::Retired => self.retired = true,
             InvitationEvent::Snapshotted {
                 to,
+                digest,
                 scope,
                 by_an_operator,
                 issued_by,
@@ -318,6 +329,7 @@ impl Aggregate for Invitation {
                 retired,
             } => {
                 self.to = to.clone();
+                self.digest = digest.clone();
                 self.scope = scope.clone();
                 self.by_an_operator = *by_an_operator;
                 self.issued_by = issued_by.clone();
@@ -333,6 +345,7 @@ impl Aggregate for Invitation {
     fn snapshot(&self) -> InvitationEvent {
         InvitationEvent::Snapshotted {
             to: self.to.clone(),
+            digest: self.digest.clone(),
             scope: self.scope.clone(),
             by_an_operator: self.by_an_operator,
             issued_by: self.issued_by.clone(),

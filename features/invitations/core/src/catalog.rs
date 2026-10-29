@@ -8,6 +8,7 @@ use time::{Duration, OffsetDateTime};
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, Invitation, Outcome};
 use crate::scope::{ProjectLink, Role, Scope};
+use crate::token::InvitationTokenDigest;
 use email::EmailAddress;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -15,6 +16,7 @@ pub struct InvitationSummary {
     pub id: InvitationId,
     pub version: Version,
     pub to: EmailAddress,
+    pub digest: InvitationTokenDigest,
     pub scope: Scope,
     pub issued_by: Option<AccountId>,
     pub issued_at: OffsetDateTime,
@@ -85,6 +87,11 @@ pub trait InvitationCatalog: Send + Sync {
 
     async fn open_to(&self, to: &EmailAddress) -> Result<Vec<InvitationSummary>, CatalogError>;
 
+    async fn with_digest(
+        &self,
+        digest: &InvitationTokenDigest,
+    ) -> Result<Option<InvitationSummary>, CatalogError>;
+
     async fn due_for_retiring(
         &self,
         now: OffsetDateTime,
@@ -129,6 +136,7 @@ impl InvitationSummary {
             id,
             version,
             to: invitation.to().clone(),
+            digest: invitation.digest().clone(),
             scope: invitation.scope().clone(),
             issued_by: invitation.issued_by().cloned(),
             issued_at: invitation.issued_at(),
@@ -215,6 +223,7 @@ mod tests {
                 id,
                 version: Version::of(3),
                 to: ada(),
+                digest: InvitationTokenDigest::kept("ab12".to_owned()),
                 issued_by: Some(AccountId::from("account_grace")),
                 issued_at: at(1_000),
                 until: at(5_000),
@@ -243,6 +252,7 @@ mod tests {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
             to: ada(),
+            digest: InvitationTokenDigest::kept("ab12".to_owned()),
             issued_by: None,
             issued_at: at(1_000),
             until: at(5_000),
@@ -263,6 +273,7 @@ mod tests {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
             to: ada(),
+            digest: InvitationTokenDigest::kept("ab12".to_owned()),
             issued_by: None,
             issued_at: at(1_000),
             until: at(5_000),
@@ -281,6 +292,7 @@ mod tests {
             id: InvitationId::generate(at(1_000)),
             version: Version::of(1),
             to: ada(),
+            digest: InvitationTokenDigest::kept("ab12".to_owned()),
             issued_by: None,
             issued_at: at(1_000),
             until: at(5_000),

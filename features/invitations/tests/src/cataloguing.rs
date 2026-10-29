@@ -216,3 +216,26 @@ async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_
 
     assert!(listing.listed().await.is_empty());
 }
+
+#[tokio::test]
+async fn a_catalogued_invitation_is_found_by_the_digest_of_the_token_mailed_for_it() {
+    let wired = wiring::wired();
+    let issued = wired
+        .invitations
+        .invite_to_instance(&wiring::an_operator(), ADA, ORIGIN)
+        .await
+        .expect("an operator may invite");
+    wired
+        .invitations
+        .catalogue(&issued.id)
+        .await
+        .expect("cataloguing should succeed");
+
+    let found = wired
+        .catalog
+        .with_digest(&wired.token_mailed_to(ADA).digest())
+        .await
+        .expect("finding should succeed");
+
+    assert_eq!(found.map(|summary| summary.id), Some(issued.id));
+}

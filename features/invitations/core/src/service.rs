@@ -80,6 +80,7 @@ impl InvitationService {
             id,
             version: Version::of(1),
             to,
+            digest: token.digest(),
             scope,
             issued_by: match agent {
                 Agent::Account(account) => Some(account.clone()),

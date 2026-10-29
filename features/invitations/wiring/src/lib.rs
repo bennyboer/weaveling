@@ -188,7 +188,9 @@ mod tests {
     use email::EmailAddress;
     use eventsourcing::Version;
     use eventsourcing::{Agent, AggregateId};
-    use invitations_core::{InvitationId, InvitationSummary, KIND, Outcome, ProjectLink, Scope};
+    use invitations_core::{
+        InvitationId, InvitationSummary, InvitationTokenDigest, KIND, Outcome, ProjectLink, Scope,
+    };
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
     use time::OffsetDateTime;
 
@@ -209,6 +211,7 @@ mod tests {
             id: InvitationId::generate(OffsetDateTime::UNIX_EPOCH),
             version: Version::of(1),
             to: EmailAddress::new("ada@example.com").expect("a plain address"),
+            digest: InvitationTokenDigest::kept("ab12".to_owned()),
             issued_by: None,
             issued_at: OffsetDateTime::UNIX_EPOCH,
             until: OffsetDateTime::UNIX_EPOCH,

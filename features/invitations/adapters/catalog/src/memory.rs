@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use email::EmailAddress;
 use eventsourcing::AccountId;
 use invitations_core::{
-    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, Outcome, Person, ProjectLink,
-    ProjectName,
+    CatalogError, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
+    Outcome, Person, ProjectLink, ProjectName,
 };
 use time::OffsetDateTime;
 
@@ -95,6 +95,17 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
             .filter(|summary| summary.to == *to && summary.outcome == Outcome::Open)
             .cloned()
             .collect())
+    }
+
+    async fn with_digest(
+        &self,
+        digest: &InvitationTokenDigest,
+    ) -> Result<Option<InvitationSummary>, CatalogError> {
+        Ok(self
+            .read()
+            .values()
+            .find(|summary| summary.digest == *digest)
+            .cloned())
     }
 
     async fn due_for_retiring(
