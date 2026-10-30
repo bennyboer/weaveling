@@ -9,7 +9,7 @@ use axum::response::Response;
 use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::{Agent, ServiceError};
-use live::{Broadcaster, Sieve};
+use live::{Asked, Broadcaster, Refused, Sieve, Subscribed, Topic};
 use live_contract::FrameDTO;
 use members_contract::{ChangeRoleRequest, MemberDTO, MembersEventDTO, refused, role};
 use members_core::{ListedMember, MembersCore, MembersCoreError, MembersError, Role};
@@ -161,6 +161,42 @@ async fn follow(
     )
 }
 
+pub struct MembersTopic {
+    members: MembersCore,
+    broadcaster: Broadcaster,
+}
+
+impl MembersTopic {
+    pub fn new(members: MembersCore, broadcaster: Broadcaster) -> Self {
+        Self {
+            members,
+            broadcaster,
+        }
+    }
+}
+
+#[async_trait]
+impl Topic for MembersTopic {
+    fn named(&self) -> &'static str {
+        "members"
+    }
+
+    async fn subscribe(&self, agent: &Agent, about: &Asked) -> Result<Subscribed, Refused> {
+        if about.get("mine").map(String::as_str) != Some("true") {
+            return Err(Refused::NotThere);
+        }
+
+        Ok(
+            Subscribed::hearing(self.broadcaster.hear(FOLLOWED)).sifted(Arc::new(
+                NamingTheFollower {
+                    agent: agent.clone(),
+                    members: self.members.clone(),
+                },
+            )),
+        )
+    }
+}
+
 struct NamingTheFollower {
     agent: Agent,
     members: MembersCore,
@@ -287,6 +323,69 @@ mod tests {
             tokio::time::timeout(Duration::from_millis(200), socket.receive_text())
                 .await
                 .is_err()
+        );
+    }
+
+    fn on_one_socket(broadcaster: &Broadcaster, agent: Agent) -> TestServer {
+        let members = MembersCore::new(
+            Arc::new(InMemoryEventStore::new()),
+            Arc::new(InMemoryMembershipCatalog::new()),
+            Arc::new(AllowingEverything),
+            Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+        );
+
+        TestServer::builder().http_transport().build(
+            live::live_socket(live::Topics::of(vec![Arc::new(MembersTopic::new(
+                members,
+                broadcaster.clone(),
+            ))]))
+            .layer(Extension(agent)),
+        )
+    }
+
+    async fn subscribed(server: &TestServer, about: Value) -> TestWebSocket {
+        let mut socket = server.get_websocket("/live").await.into_websocket().await;
+        socket
+            .send_json(
+                &json!({ "do": "subscribe", "id": "mine", "topic": "members", "about": about }),
+            )
+            .await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        socket
+    }
+
+    #[tokio::test]
+    async fn on_the_one_socket_one_s_own_members_are_told_as_on_their_own_and_nothing_else_is_there()
+     {
+        let broadcaster = Broadcaster::new();
+        let server = on_one_socket(&broadcaster, ada());
+        let mut socket = subscribed(&server, json!({ "mine": "true" })).await;
+
+        told(
+            &broadcaster,
+            "project_1",
+            json!({ "name": "JOINED", "account": "account_grace", "role": "author" }),
+        );
+        told(
+            &broadcaster,
+            "project_1",
+            json!({ "name": "FOUNDED", "owner": "account_ada" }),
+        );
+
+        let frame = heard(&mut socket).await;
+        assert_eq!(frame["told"], "frame");
+        assert_eq!(frame["id"], "mine");
+        assert_eq!(
+            frame["frame"]["event"]["name"], "FOUNDED",
+            "nothing of Grace"
+        );
+
+        let mut elsewhere = subscribed(&server, json!({})).await;
+        assert_eq!(
+            heard(&mut elsewhere).await,
+            json!({ "told": "ended", "id": "mine", "why": "not-there" }),
+            "a project's own members are not followed here yet"
         );
     }
 

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use axum::Router;
+use live::Topic;
 use messaging::Listener;
 use outbox::Outbox;
 
@@ -62,6 +63,7 @@ pub struct Assembled {
     pub outbox: Option<Arc<dyn Outbox>>,
     pub routes: Router,
     pub open_routes: Router,
+    pub topics: Vec<Arc<dyn Topic>>,
     pub listeners: Vec<Arc<dyn Listener>>,
     pub settling: Vec<Arc<dyn Settling>>,
     pub chores: Vec<Arc<dyn Chore>>,
@@ -78,6 +80,7 @@ pub async fn assemble<F: Feature>(
         outbox: F::outbox(&ports),
         routes: wired.routes,
         open_routes: wired.open_routes,
+        topics: wired.topics,
         listeners: wired.listeners,
         settling: wired.settling,
         chores: wired.chores,

@@ -5154,6 +5154,7 @@ dependencies = [
  "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
 ]

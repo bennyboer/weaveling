@@ -1008,6 +1008,92 @@ async fn on_a_server_an_account_following_its_invitations_is_told_of_one_to_its_
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address_and_of_its_project()
+ {
+    let signed_in = an_operator_signed_in_on_a_server("one-socket").await;
+    let server = &signed_in.server;
+    let ada: Value = server.get("/api/sessions/current").await.json();
+    let mut known = false;
+    for _ in 0..50 {
+        known = server
+            .get_websocket("/api/invitations/mine/live")
+            .await
+            .status_code()
+            == StatusCode::SWITCHING_PROTOCOLS;
+        if known {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+    assert!(known, "invitations hear her sign-up through the outbox");
+    let mut socket = server
+        .get_websocket("/api/live")
+        .await
+        .into_websocket()
+        .await;
+    for (id, topic) in [("bell", "invitations"), ("projects", "members")] {
+        socket
+            .send_json(&json!({ "do": "subscribe", "id": id, "topic": topic, "about": { "mine": "true" } }))
+            .await;
+    }
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    let started: Value = server
+        .post("/api/projects")
+        .json(&json!({ "name": "Shared on one socket" }))
+        .await
+        .json();
+    let founded: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(5), socket.receive_text())
+            .await
+            .expect("the founding is told while it is fresh"),
+    )
+    .expect("told as JSON");
+    assert_eq!(founded["id"], "projects");
+    assert_eq!(founded["frame"]["of"], started["id"]);
+    assert_eq!(founded["frame"]["event"]["name"], "FOUNDED");
+
+    let issued: Value = server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({
+            "email": ada["email"],
+            "scope": { "kind": "project", "project": started["id"], "role": "reader" },
+        }))
+        .await
+        .json();
+    let invited: Value = serde_json::from_str(
+        &tokio::time::timeout(Duration::from_secs(5), socket.receive_text())
+            .await
+            .expect("the invitation is told while it is fresh"),
+    )
+    .expect("told as JSON");
+    assert_eq!(invited["id"], "bell");
+    assert_eq!(invited["frame"]["of"], issued["id"]);
+
+    signed_in.end().await;
+}
+
+#[tokio::test]
+async fn the_one_socket_is_there_only_behind_signing_in_where_there_are_accounts() {
+    for (accounts, status) in [
+        (Accounts::On, StatusCode::UNAUTHORIZED),
+        (Accounts::Off, StatusCode::SWITCHING_PROTOCOLS),
+    ] {
+        let server = TestServer::builder()
+            .http_transport()
+            .build(weaveling_service_api::app(
+                Adapters::in_memory(accounts, Arc::new(SystemClock)).await,
+            ));
+
+        assert_eq!(
+            server.get_websocket("/api/live").await.status_code(),
+            status
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
     let signed_in = an_operator_signed_in_on_a_server("guarding").await;
     let server = &signed_in.server;

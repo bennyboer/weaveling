@@ -127,3 +127,97 @@ async fn whoever_invitations_know_nothing_of_finds_nothing_to_follow() {
         .await
         .assert_status(StatusCode::NOT_FOUND);
 }
+
+fn on_one_socket(told: &Told, agent: Agent) -> TestServer {
+    TestServer::builder().http_transport().build(
+        live::live_socket(live::Topics::of(vec![Arc::new(
+            invitations_rest::InvitationsTopic::new(
+                told.invitations.clone(),
+                told.broadcaster.clone(),
+            ),
+        )]))
+        .layer(Extension(agent)),
+    )
+}
+
+async fn subscribed(server: &TestServer, about: serde_json::Value) -> TestWebSocket {
+    let mut socket = server.get_websocket("/live").await.into_websocket().await;
+    socket
+        .send_json(&serde_json::json!({ "do": "subscribe", "id": "bell", "topic": "invitations", "about": about }))
+        .await;
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    socket
+}
+
+async fn told_on_one_socket(socket: &mut TestWebSocket) -> live_contract::ToldDTO {
+    tokio::time::timeout(Duration::from_secs(1), socket.receive_json())
+        .await
+        .expect("told while it is fresh")
+}
+
+#[tokio::test]
+async fn on_the_one_socket_an_account_s_own_invitations_are_told_as_on_their_own() {
+    let told = told();
+    told.invitations
+        .remember_person(&Person {
+            account: AccountId::from("account_ada"),
+            name: "Ada Lovelace".to_owned(),
+            email: EmailAddress::new("ada@example.com").expect("a plain address"),
+        })
+        .await
+        .expect("remembering should succeed");
+    let server = on_one_socket(&told, Agent::Account(AccountId::from("account_ada")));
+    let mut socket = subscribed(&server, serde_json::json!({ "mine": "true" })).await;
+
+    invited_and_listed(&told, "hedy@example.com").await;
+    let hers = invited_and_listed(&told, "ada@example.com").await;
+
+    match told_on_one_socket(&mut socket).await {
+        live_contract::ToldDTO::Frame { id, frame } => {
+            assert_eq!(id, "bell");
+            assert_eq!(
+                frame["of"],
+                hers.to_string(),
+                "nothing of Hedy's reaches Ada"
+            );
+        }
+        other => panic!("a frame of hers, not {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn on_the_one_socket_the_unknown_and_the_unscoped_find_nothing_there() {
+    let told = told();
+    told.invitations
+        .remember_person(&Person {
+            account: AccountId::from("account_ada"),
+            name: "Ada Lovelace".to_owned(),
+            email: EmailAddress::new("ada@example.com").expect("a plain address"),
+        })
+        .await
+        .expect("remembering should succeed");
+
+    for (agent, about) in [
+        (
+            Agent::Account(AccountId::from("account_grace")),
+            serde_json::json!({ "mine": "true" }),
+        ),
+        (Agent::Local, serde_json::json!({ "mine": "true" })),
+        (
+            Agent::Account(AccountId::from("account_ada")),
+            serde_json::json!({}),
+        ),
+    ] {
+        let server = on_one_socket(&told, agent);
+        let mut socket = subscribed(&server, about).await;
+
+        assert_eq!(
+            told_on_one_socket(&mut socket).await,
+            live_contract::ToldDTO::Ended {
+                id: "bell".to_owned(),
+                why: live_contract::ended::NOT_THERE.to_owned(),
+            }
+        );
+    }
+}

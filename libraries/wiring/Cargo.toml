@@ -14,6 +14,7 @@ authorizing = { version = "0.1.0", path = "../authorizing", package = "weaveling
 chores = { version = "0.1.0", path = "../chores", package = "weaveling-chores" }
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../eventsourcing", package = "weaveling-eventsourcing" }
+live = { version = "0.1.0", path = "../live", package = "weaveling-live" }
 outbox = { version = "0.1.0", path = "../outbox", package = "weaveling-outbox" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 

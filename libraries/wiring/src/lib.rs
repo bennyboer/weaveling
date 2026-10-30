@@ -22,6 +22,7 @@ use authorizing::Authorizer;
 use axum::Router;
 use chores::Chore;
 use clock::Clock;
+use live::Topic;
 use messaging::{Listener, Publisher};
 
 pub struct Context {
@@ -38,6 +39,7 @@ pub trait Settling: Send + Sync {
 pub struct Wired {
     pub routes: Router,
     pub open_routes: Router,
+    pub topics: Vec<Arc<dyn Topic>>,
     pub listeners: Vec<Arc<dyn Listener>>,
     pub settling: Vec<Arc<dyn Settling>>,
     pub chores: Vec<Arc<dyn Chore>>,
@@ -48,6 +50,7 @@ impl Wired {
         Self {
             routes,
             open_routes: Router::new(),
+            topics: Vec::new(),
             listeners: Vec::new(),
             settling: Vec::new(),
             chores: Vec::new(),
@@ -56,6 +59,11 @@ impl Wired {
 
     pub fn serving_anyone(mut self, open_routes: Router) -> Self {
         self.open_routes = open_routes;
+        self
+    }
+
+    pub fn followed_live(mut self, topics: Vec<Arc<dyn Topic>>) -> Self {
+        self.topics = topics;
         self
     }
 

@@ -1,4 +1,5 @@
 mod telling;
+mod topic;
 
 use acting::Acting;
 use axum::extract::ws::WebSocketUpgrade;
@@ -23,6 +24,7 @@ use serde::Deserialize;
 use serving::Problem;
 
 pub use telling::TellingInvitations;
+pub use topic::InvitationsTopic;
 
 pub fn router(invitations: InvitationsCore) -> Router {
     Router::new()
@@ -58,7 +60,7 @@ async fn follow_mine(
     State(following): State<Following>,
     Extension(acting): Extension<Acting>,
 ) -> Response {
-    match following.invitations.address_of(&acting).await {
+    match following.invitations.address_of(&acting.agent).await {
         Ok(Some(address)) => live::streaming(upgrade, following.broadcaster.hear(address.as_str())),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),

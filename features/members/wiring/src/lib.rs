@@ -66,6 +66,7 @@ pub async fn assembled_members(
             outbox: Some(ports.outbox.clone()),
             routes: wired.routes,
             open_routes: wired.open_routes,
+            topics: wired.topics,
             listeners: wired.listeners,
             settling: wired.settling,
             chores: wired.chores,
@@ -154,6 +155,10 @@ impl Feature for MembersFeature {
             members_rest::router(members.clone())
                 .merge(members_rest::live(members.clone(), broadcaster.clone())),
         )
+        .followed_live(vec![Arc::new(members_rest::MembersTopic::new(
+            members.clone(),
+            broadcaster.clone(),
+        ))])
         .listening(vec![
             Arc::new(FoundMembersOfStartedProjectListener::new(members.clone())),
             Arc::new(JoinByAcceptedInvitationListener::new(members.clone())),

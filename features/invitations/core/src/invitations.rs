@@ -83,8 +83,11 @@ impl InvitationsCore {
             .await
     }
 
-    pub async fn address_of(&self, by: &Acting) -> Result<Option<EmailAddress>, InvitationsError> {
-        let Agent::Account(account) = &by.agent else {
+    pub async fn address_of(
+        &self,
+        agent: &Agent,
+    ) -> Result<Option<EmailAddress>, InvitationsError> {
+        let Agent::Account(account) = agent else {
             return Ok(None);
         };
 
@@ -101,7 +104,7 @@ impl InvitationsCore {
         &self,
         by: &Acting,
     ) -> Result<Vec<InvitationToYou>, InvitationsError> {
-        let Some(address) = self.address_of(by).await? else {
+        let Some(address) = self.address_of(&by.agent).await? else {
             return Ok(Vec::new());
         };
         let now = self.clock.now();

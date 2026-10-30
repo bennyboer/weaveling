@@ -12,7 +12,7 @@ use invitations_messaging::{
     RememberProjectNamesListener, RememberWhoSignedUpListener,
     WithdrawInvitationsOfDeletedProjectListener,
 };
-use invitations_rest::TellingInvitations;
+use invitations_rest::{InvitationsTopic, TellingInvitations};
 use live::Broadcaster;
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
@@ -56,6 +56,7 @@ pub async fn assembled_invitations(
         outbox: Some(ports.outbox.clone()),
         routes: wired.routes,
         open_routes: wired.open_routes,
+        topics: wired.topics,
         listeners: wired.listeners,
         settling: wired.settling,
         chores: wired.chores,
@@ -157,10 +158,16 @@ impl Feature for InvitationFeature {
         );
 
         Wired::serving(
-            invitations_rest::router(invitations.clone())
-                .merge(invitations_rest::live(invitations.clone(), broadcaster)),
+            invitations_rest::router(invitations.clone()).merge(invitations_rest::live(
+                invitations.clone(),
+                broadcaster.clone(),
+            )),
         )
         .serving_anyone(invitations_rest::router_for_anyone(invitations.clone()))
+        .followed_live(vec![Arc::new(InvitationsTopic::new(
+            invitations.clone(),
+            broadcaster,
+        ))])
         .listening(vec![
             Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
             Arc::new(DeclineInvitationListener::new(invitations.clone())),

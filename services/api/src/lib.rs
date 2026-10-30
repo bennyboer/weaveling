@@ -19,7 +19,7 @@ use boards_wiring::BoardFeature;
 use clock::Clock;
 use eventsourcing::Agent;
 use ideas_wiring::IdeaFeature;
-use live::Broadcaster;
+use live::{Broadcaster, Topics};
 use mailing::{LoggingMailer, Mailer};
 use messaging::{Deliveries, InMemoryDeliveries, InProcessDispatcher};
 use outline_wiring::OutlineFeature;
@@ -241,9 +241,11 @@ pub fn app(adapters: Adapters) -> Router {
         .flat_map(|accounts| accounts.listeners.clone());
     let mut guarded_routes = Router::new();
     let mut listeners = Vec::new();
+    let mut topics = Vec::new();
     for feature in adapters.features {
         guarded_routes = guarded_routes.merge(feature.routes);
         open_routes = open_routes.merge(feature.open_routes);
+        topics.extend(feature.topics);
         listeners.extend(feature.listeners);
     }
     for listener in listeners.into_iter().chain(accounts_listeners) {
@@ -252,6 +254,8 @@ pub fn app(adapters: Adapters) -> Router {
             None => listener,
         });
     }
+
+    let guarded_routes = guarded_routes.merge(live::live_socket(Topics::of(topics)));
 
     let api = match adapters.accounts {
         Some(accounts) => {
