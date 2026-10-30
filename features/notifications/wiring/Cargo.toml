@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 axum = { workspace = true }
+sqlx = { workspace = true, optional = true }
 
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
@@ -14,8 +15,15 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 notifications-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-notifications-catalog" }
 notifications-core = { version = "0.1.0", path = "../core", package = "weaveling-notifications-core" }
 notifications-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-notifications-messaging" }
+notifications-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-notifications-store" }
+
+[features]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "registry/postgres", "notifications-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "registry/sqlite", "notifications-catalog/sqlite"]
 
 [dev-dependencies]
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+test-harness = { version = "0.1.0", path = "../../../libraries/test-harness", package = "weaveling-test-harness" }
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

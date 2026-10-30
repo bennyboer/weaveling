@@ -98,6 +98,30 @@ pub async fn a_version_heard_late_changes_nothing(catalog: &impl NoticeCatalog) 
     );
 }
 
+pub async fn every_role_and_who_changed_it_read_back_as_they_were_kept(
+    catalog: &impl NoticeCatalog,
+) {
+    let mut kept = Vec::new();
+    for (at, role, by) in [
+        (3_000, Role::Owner, Some("account_ada")),
+        (2_000, Role::Author, None),
+        (1_000, Role::Reader, Some("account_cy")),
+    ] {
+        let summary = NoticeSummary {
+            about: About::RoleChanged {
+                project: ProjectLink::from("project_1"),
+                role,
+                by: by.map(AccountId::from),
+            },
+            ..a_summary("account_bo", at, 1, false)
+        };
+        remembered(catalog, &summary).await;
+        kept.push(summary);
+    }
+
+    assert_eq!(open_for(catalog, "account_bo").await, kept);
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -122,5 +146,9 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!($workbench, the_newest_notice_comes_first);
         $crate::catalog_conformance_case!($workbench, a_dismissed_notice_is_listed_no_more);
         $crate::catalog_conformance_case!($workbench, a_version_heard_late_changes_nothing);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            every_role_and_who_changed_it_read_back_as_they_were_kept
+        );
     };
 }

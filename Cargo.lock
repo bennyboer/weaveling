@@ -4527,10 +4527,14 @@ name = "weaveling-notifications-catalog"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde",
+ "sqlx",
  "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-notifications-core",
+ "weaveling-test-harness",
 ]
 
 [[package]]
@@ -4573,6 +4577,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-notifications-store"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "time",
+ "weaveling-eventsourcing",
+ "weaveling-notifications-core",
+]
+
+[[package]]
 name = "weaveling-notifications-tests"
 version = "0.1.0"
 dependencies = [
@@ -4593,6 +4608,8 @@ name = "weaveling-notifications-wiring"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "sqlx",
+ "tokio",
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
@@ -4600,8 +4617,10 @@ dependencies = [
  "weaveling-notifications-catalog",
  "weaveling-notifications-core",
  "weaveling-notifications-messaging",
+ "weaveling-notifications-store",
  "weaveling-outbox",
  "weaveling-registry",
+ "weaveling-test-harness",
  "weaveling-wiring",
 ]
 
