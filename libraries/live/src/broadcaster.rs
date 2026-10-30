@@ -25,7 +25,7 @@ impl Broadcaster {
         Self::holding(BACKLOG)
     }
 
-    fn holding(backlog: usize) -> Self {
+    pub(crate) fn holding(backlog: usize) -> Self {
         Self {
             told: broadcast::channel(backlog).0,
         }
@@ -36,6 +36,11 @@ impl Broadcaster {
             about: Arc::from(about),
             frame: Arc::from(frame),
         });
+    }
+
+    #[cfg(test)]
+    pub(crate) fn listener_count(&self) -> usize {
+        self.told.receiver_count()
     }
 
     pub fn hear(&self, about: &str) -> Hearing {

@@ -19,7 +19,7 @@ pub struct Admission {
     pub(crate) about: String,
 }
 
-enum Access {
+pub(crate) enum Access {
     Kept,
     Lost,
 }
@@ -43,7 +43,7 @@ impl Admission {
     }
 }
 
-async fn rechecked(admission: &mut Option<Admission>) -> Access {
+pub(crate) async fn rechecked(admission: &mut Option<Admission>) -> Access {
     match admission {
         Some(admission) => admission.rechecked().await,
         None => future::pending().await,
