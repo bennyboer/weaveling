@@ -1,0 +1,23 @@
+[package]
+name = "weaveling-notifications-messaging"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+
+eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
+eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+notifications-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-notifications-contract" }
+notifications-core = { version = "0.1.0", path = "../../core", package = "weaveling-notifications-core" }
+
+# Foreign contracts: another feature's published events.
+members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
+
+[dev-dependencies]
+clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
+registry = { version = "0.1.0", path = "../../../../libraries/registry", package = "weaveling-registry" }
+serde_json = { workspace = true }
+time = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }

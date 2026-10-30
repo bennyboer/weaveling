@@ -4523,6 +4523,70 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-notifications-contract"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "weaveling-notifications-core"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-ids",
+ "weaveling-registry",
+]
+
+[[package]]
+name = "weaveling-notifications-messaging"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "serde_json",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventpublishing",
+ "weaveling-eventsourcing",
+ "weaveling-members-contract",
+ "weaveling-messaging",
+ "weaveling-notifications-contract",
+ "weaveling-notifications-core",
+ "weaveling-registry",
+]
+
+[[package]]
+name = "weaveling-notifications-tests"
+version = "0.1.0"
+dependencies = [
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-notifications-core",
+ "weaveling-registry",
+]
+
+[[package]]
+name = "weaveling-notifications-wiring"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "weaveling-authorizing",
+ "weaveling-clock",
+ "weaveling-eventsourcing",
+ "weaveling-messaging",
+ "weaveling-notifications-core",
+ "weaveling-notifications-messaging",
+ "weaveling-outbox",
+ "weaveling-registry",
+ "weaveling-wiring",
+]
+
+[[package]]
 name = "weaveling-outbox"
 version = "0.1.0"
 dependencies = [

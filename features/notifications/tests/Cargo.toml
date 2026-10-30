@@ -1,0 +1,14 @@
+[package]
+name = "weaveling-notifications-tests"
+version.workspace = true
+edition.workspace = true
+
+[dev-dependencies]
+time = { workspace = true }
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
+
+notifications-core = { version = "0.1.0", path = "../core", package = "weaveling-notifications-core" }

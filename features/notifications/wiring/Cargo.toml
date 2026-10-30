@@ -1,0 +1,20 @@
+[package]
+name = "weaveling-notifications-wiring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+axum = { workspace = true }
+
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
+registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
+wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
+
+notifications-core = { version = "0.1.0", path = "../core", package = "weaveling-notifications-core" }
+notifications-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-notifications-messaging" }
+
+[dev-dependencies]
+authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
