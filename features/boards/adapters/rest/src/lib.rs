@@ -22,13 +22,16 @@ use eventsourcing::{Agent, Standing, Version};
 use live::{Admission, Asked, Broadcaster, Gate};
 use serving::Problem;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BoardChanges(pub String);
+
 #[derive(Clone)]
 struct Following {
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<BoardChanges>,
     boards: BoardsCore,
 }
 
-pub fn live(boards: BoardsCore, broadcaster: Broadcaster) -> Router {
+pub fn live(boards: BoardsCore, broadcaster: Broadcaster<BoardChanges>) -> Router {
     Router::new()
         .route("/boards/live", routing::get(follow))
         .with_state(Following {
@@ -46,7 +49,7 @@ async fn follow(
     let Some(board) = asked.get("board") else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    let hearing = following.broadcaster.hear(board);
+    let hearing = following.broadcaster.hear(BoardChanges(board.clone()));
 
     match following.boards.follow(board, &acting).await {
         Ok((standing, watch)) => live::streaming_with_version(

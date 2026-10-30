@@ -44,7 +44,10 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let unpin_discarded_ideas = UnpinOnDiscardListener::new(boards.clone());
     let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
     let broadcaster = Broadcaster::new();
-    let broadcast = BroadcastChangesListener::new(LIVE, EVERY_BOARD, broadcaster.clone());
+    let broadcast =
+        BroadcastChangesListener::new(LIVE, EVERY_BOARD, broadcaster.clone(), |published| {
+            vec![boards_rest::BoardChanges(published.aggregate.id.clone())]
+        });
 
     Wired::serving(
         boards_rest::router(boards.clone()).merge(boards_rest::live(boards.clone(), broadcaster)),

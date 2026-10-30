@@ -165,11 +165,11 @@ impl Feature for MembersFeature {
             Arc::new(RememberWhoSignedUpListener::new(members.clone())),
             Arc::new(DisbandMembersOfDeletedProjectListener::new(members.clone())),
             Arc::new(CatalogueMembersListener::new(members)),
-            Arc::new(BroadcastChangesListener::under(
+            Arc::new(BroadcastChangesListener::new(
                 LIVE,
                 EVERY_MEMBERS,
-                members_rest::FOLLOWED,
                 broadcaster,
+                |_| vec![members_rest::MembershipChanges],
             )),
         ])
     }

@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt::Display;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -14,7 +15,7 @@ use eventsourcing::Agent;
 
 use crate::following::Asked;
 use crate::socket::Admission;
-use crate::{Broadcaster, socket};
+use crate::{Broadcaster, Channel, socket};
 
 #[async_trait]
 pub trait Gate: Send + Sync {
@@ -29,19 +30,20 @@ pub trait Gate: Send + Sync {
     }
 }
 
-pub async fn streaming_while_admitted(
+pub async fn streaming_while_admitted<C: Channel + Display>(
     upgrade: WebSocketUpgrade,
-    broadcaster: &Broadcaster,
-    about: String,
+    broadcaster: &Broadcaster<C>,
+    channel: C,
     agent: Agent,
     gate: Arc<dyn Gate>,
 ) -> Response {
+    let about = channel.to_string();
     let watch = gate.watch(&about);
 
     match gate.admits(&agent, &about).await {
         Ok(true) => socket::streaming_while(
             upgrade,
-            broadcaster.hear(&about),
+            broadcaster.hear(channel),
             Admission {
                 watch,
                 gate,
@@ -54,10 +56,10 @@ pub async fn streaming_while_admitted(
     }
 }
 
-pub fn followed_while(
+pub fn followed_while<C: Channel + Display>(
     path: &str,
-    broadcaster: Broadcaster,
-    about: fn(&Asked) -> Option<String>,
+    broadcaster: Broadcaster<C>,
+    channel: fn(&Asked) -> Option<C>,
     gate: Arc<dyn Gate>,
 ) -> Router {
     Router::new().route(
@@ -66,10 +68,16 @@ pub fn followed_while(
             move |upgrade: WebSocketUpgrade,
                   Extension(agent): Extension<Agent>,
                   Query(asked): Query<Asked>| async move {
-                match about(&asked) {
-                    Some(about) => {
-                        streaming_while_admitted(upgrade, &broadcaster, about, agent, gate.clone())
-                            .await
+                match channel(&asked) {
+                    Some(channel) => {
+                        streaming_while_admitted(
+                            upgrade,
+                            &broadcaster,
+                            channel,
+                            agent,
+                            gate.clone(),
+                        )
+                        .await
                     }
                     None => StatusCode::BAD_REQUEST.into_response(),
                 }
@@ -106,7 +114,7 @@ mod tests {
         }
     }
 
-    fn served(broadcaster: &Broadcaster) -> TestServer {
+    fn served(broadcaster: &Broadcaster<String>) -> TestServer {
         TestServer::builder().http_transport().build(
             followed_while(
                 "/live",
@@ -128,8 +136,8 @@ mod tests {
         let server = served(&broadcaster);
         let mut socket = following(&server, "/live?of=mine").await;
 
-        broadcaster.tell("theirs", "not this".to_owned());
-        broadcaster.tell("mine", "this".to_owned());
+        broadcaster.tell("theirs".to_owned(), "not this".to_owned());
+        broadcaster.tell("mine".to_owned(), "this".to_owned());
 
         assert_eq!(
             tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
@@ -184,7 +192,8 @@ mod tests {
         }
     }
 
-    async fn watched_and_following() -> (Arc<Watched>, Broadcaster, TestWebSocket, TestServer) {
+    async fn watched_and_following()
+    -> (Arc<Watched>, Broadcaster<String>, TestWebSocket, TestServer) {
         let gate = Arc::new(Watched {
             admitting: Mutex::new(Ok(true)),
             changes: AccessChanges::new(),
@@ -244,7 +253,7 @@ mod tests {
         gate.changes.tell("theirs");
         tokio::time::sleep(Duration::from_millis(50)).await;
 
-        broadcaster.tell("mine", "still told".to_owned());
+        broadcaster.tell("mine".to_owned(), "still told".to_owned());
 
         assert_eq!(
             tokio::time::timeout(Duration::from_secs(1), socket.receive_text())

@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -12,7 +13,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing;
 use eventsourcing::{Agent, Standing};
 use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
-use ideas_core::{Idea, IdeaError, IdeaSummary, IdeasCore, IdeasError, InvalidIdeaTitle};
+use ideas_core::{
+    Idea, IdeaError, IdeaSummary, IdeasCore, IdeasError, InvalidIdeaTitle, ProjectLink,
+};
 use live::{AccessWatch, Broadcaster, Gate};
 use serde::Deserialize;
 use serving::Problem;
@@ -34,11 +37,24 @@ impl Gate for IdeasGate {
     }
 }
 
-pub fn live(ideas: IdeasCore, broadcaster: Broadcaster) -> Router {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdeaChanges(pub ProjectLink);
+
+impl Display for IdeaChanges {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+pub fn live(ideas: IdeasCore, broadcaster: Broadcaster<IdeaChanges>) -> Router {
     live::followed_while(
         "/ideas/live",
         broadcaster,
-        |asked| asked.get("project").cloned(),
+        |asked| {
+            asked
+                .get("project")
+                .map(|project| IdeaChanges(ProjectLink::from(project.as_str())))
+        },
         Arc::new(IdeasGate(ideas)),
     )
 }

@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -39,22 +40,38 @@ impl Gate for StatisticsGate {
     }
 }
 
-pub fn live(statistics: StatisticsCore, broadcaster: Broadcaster) -> Router {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WordCountChanges(pub ProjectLink);
+
+impl Display for WordCountChanges {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+pub fn live(statistics: StatisticsCore, broadcaster: Broadcaster<WordCountChanges>) -> Router {
     live::followed_while(
         "/statistics/word-counts/live",
         broadcaster,
-        |asked| asked.get("project").cloned(),
+        |asked| {
+            asked
+                .get("project")
+                .map(|project| WordCountChanges(ProjectLink::from(project.as_str())))
+        },
         Arc::new(StatisticsGate(statistics)),
     )
 }
 
 pub struct TellingWordCounts {
     kept: Arc<dyn WordCountCatalog>,
-    teller: Teller,
+    teller: Teller<WordCountChanges>,
 }
 
 impl TellingWordCounts {
-    pub fn around(kept: Arc<dyn WordCountCatalog>, broadcaster: Broadcaster) -> Self {
+    pub fn around(
+        kept: Arc<dyn WordCountCatalog>,
+        broadcaster: Broadcaster<WordCountChanges>,
+    ) -> Self {
         Self {
             kept,
             teller: Teller::new(broadcaster),
@@ -67,7 +84,7 @@ impl TellingWordCounts {
             words,
         };
         self.teller
-            .tell(&project.to_string(), &scene.to_string(), event);
+            .tell(WordCountChanges(project.clone()), &scene.to_string(), event);
     }
 }
 

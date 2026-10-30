@@ -3,13 +3,15 @@ use eventsourcing::Agent;
 use invitations_core::InvitationsCore;
 use live::{Asked, Broadcaster, Refused, Subscribed, Topic};
 
+use crate::InvitationChanges;
+
 pub struct InvitationsTopic {
     invitations: InvitationsCore,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<InvitationChanges>,
 }
 
 impl InvitationsTopic {
-    pub fn new(invitations: InvitationsCore, broadcaster: Broadcaster) -> Self {
+    pub fn new(invitations: InvitationsCore, broadcaster: Broadcaster<InvitationChanges>) -> Self {
         Self {
             invitations,
             broadcaster,
@@ -29,7 +31,9 @@ impl Topic for InvitationsTopic {
         }
 
         match self.invitations.address_of(agent).await {
-            Ok(Some(address)) => Ok(Subscribed::hearing(self.broadcaster.hear(address.as_str()))),
+            Ok(Some(address)) => Ok(Subscribed::hearing(
+                self.broadcaster.hear(InvitationChanges(address)),
+            )),
             Ok(None) => Err(Refused::NotThere),
             Err(_) => Err(Refused::Failed),
         }

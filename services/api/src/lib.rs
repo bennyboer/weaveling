@@ -31,7 +31,7 @@ use tower_http::trace::TraceLayer;
 use wiring::{Assembled, Context};
 
 use crate::flaky::FlakyListener;
-use crate::refusals::TellingDeliveries;
+use crate::refusals::{RefusalChanges, TellingDeliveries};
 
 pub use accounts::{Accounts, UnreadableAccounts, WEAVELING_ACCOUNTS};
 pub use backend::{Backend, Unchosen, WEAVELING_DATA, WEAVELING_DATABASE_URL};
@@ -49,7 +49,7 @@ pub struct Adapters {
     clock: Arc<dyn Clock>,
     dispatcher: Arc<InProcessDispatcher>,
     deliveries: Arc<dyn Deliveries>,
-    refusals: Broadcaster,
+    refusals: Broadcaster<RefusalChanges>,
     features: Vec<Assembled>,
     accounts: Option<AssembledAccounts>,
     authorizer: Arc<dyn Authorizer>,

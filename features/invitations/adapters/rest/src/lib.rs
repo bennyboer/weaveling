@@ -9,7 +9,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::{Extension, Json, Router, routing};
 use clock::text;
-use email::InvalidEmailAddress;
+use email::{EmailAddress, InvalidEmailAddress};
 use eventsourcing::ServiceError;
 use invitations_contract::{
     DeclineInvitationRequest, InvitationPageDTO, InvitationSummaryDTO, InvitationToYouDTO,
@@ -25,6 +25,9 @@ use serving::Problem;
 
 pub use telling::TellingInvitations;
 pub use topic::InvitationsTopic;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvitationChanges(pub EmailAddress);
 
 pub fn router(invitations: InvitationsCore) -> Router {
     Router::new()
@@ -43,10 +46,10 @@ pub fn router_for_anyone(invitations: InvitationsCore) -> Router {
 #[derive(Clone)]
 struct Following {
     invitations: InvitationsCore,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<InvitationChanges>,
 }
 
-pub fn live(invitations: InvitationsCore, broadcaster: Broadcaster) -> Router {
+pub fn live(invitations: InvitationsCore, broadcaster: Broadcaster<InvitationChanges>) -> Router {
     Router::new()
         .route("/invitations/mine/live", routing::get(follow_mine))
         .with_state(Following {
@@ -61,7 +64,10 @@ async fn follow_mine(
     Extension(acting): Extension<Acting>,
 ) -> Response {
     match following.invitations.address_of(&acting.agent).await {
-        Ok(Some(address)) => live::streaming(upgrade, following.broadcaster.hear(address.as_str())),
+        Ok(Some(address)) => live::streaming(
+            upgrade,
+            following.broadcaster.hear(InvitationChanges(address)),
+        ),
         Ok(None) => StatusCode::NOT_FOUND.into_response(),
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
     }

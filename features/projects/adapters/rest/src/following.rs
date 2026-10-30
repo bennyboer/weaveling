@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -12,15 +13,28 @@ use live::{AccessWatch, Asked, Broadcaster, Gate, Sieve};
 use live_contract::FrameDTO;
 use projects_core::ProjectsCore;
 
-pub const FOLLOWED: &str = "projects";
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectChanges {
+    Listed,
+    Of(String),
+}
+
+impl Display for ProjectChanges {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Listed => f.write_str("every project"),
+            Self::Of(project) => f.write_str(project),
+        }
+    }
+}
 
 #[derive(Clone)]
 struct Following {
     projects: ProjectsCore,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<ProjectChanges>,
 }
 
-pub fn live(projects: ProjectsCore, broadcaster: Broadcaster) -> Router {
+pub fn live(projects: ProjectsCore, broadcaster: Broadcaster<ProjectChanges>) -> Router {
     Router::new()
         .route("/projects/live", routing::get(follow))
         .with_state(Following {
@@ -38,7 +52,7 @@ async fn follow(
     let Some(project) = asked.get("project") else {
         return live::streaming_sifted(
             upgrade,
-            following.broadcaster.hear(FOLLOWED),
+            following.broadcaster.hear(ProjectChanges::Listed),
             Arc::new(ReadableBy {
                 agent,
                 projects: following.projects,
@@ -49,7 +63,7 @@ async fn follow(
     live::streaming_while_admitted(
         upgrade,
         &following.broadcaster,
-        project.clone(),
+        ProjectChanges::Of(project.clone()),
         agent,
         Arc::new(ProjectsGate(following.projects)),
     )

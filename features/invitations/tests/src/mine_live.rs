@@ -11,7 +11,7 @@ use email::EmailAddress;
 use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_core::{InvitationId, InvitationsCore, Person, Role};
-use invitations_rest::TellingInvitations;
+use invitations_rest::{InvitationChanges, TellingInvitations};
 use live::Broadcaster;
 use live_contract::FrameDTO;
 use mailing::FakeMailbox;
@@ -22,7 +22,7 @@ use crate::wiring::ORIGIN;
 
 struct Told {
     invitations: InvitationsCore,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<InvitationChanges>,
 }
 
 fn told() -> Told {

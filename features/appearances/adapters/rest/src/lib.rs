@@ -27,13 +27,16 @@ pub fn router(appearances: AppearancesCore) -> Router {
         .with_state(appearances)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppearanceChanges(pub String);
+
 #[derive(Clone)]
 struct Following {
     appearances: AppearancesCore,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<AppearanceChanges>,
 }
 
-pub fn live(appearances: AppearancesCore, broadcaster: Broadcaster) -> Router {
+pub fn live(appearances: AppearancesCore, broadcaster: Broadcaster<AppearanceChanges>) -> Router {
     Router::new()
         .route("/appearances/live", routing::get(follow))
         .with_state(Following {
@@ -57,7 +60,7 @@ async fn follow(
         Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
         Ok(true) => live::streaming_sifted(
             upgrade,
-            following.broadcaster.hear(idea),
+            following.broadcaster.hear(AppearanceChanges(idea.clone())),
             Arc::new(ReadableBy {
                 agent,
                 appearances: following.appearances,
@@ -68,11 +71,14 @@ async fn follow(
 
 pub struct TellingAppearances {
     kept: Arc<dyn AppearanceCatalog>,
-    teller: Teller,
+    teller: Teller<AppearanceChanges>,
 }
 
 impl TellingAppearances {
-    pub fn around(kept: Arc<dyn AppearanceCatalog>, broadcaster: Broadcaster) -> Self {
+    pub fn around(
+        kept: Arc<dyn AppearanceCatalog>,
+        broadcaster: Broadcaster<AppearanceChanges>,
+    ) -> Self {
         Self {
             kept,
             teller: Teller::new(broadcaster),
@@ -87,7 +93,11 @@ impl TellingAppearances {
         let event = IdeaPlacesDTO {
             places: places.iter().map(to_dto).collect(),
         };
-        self.teller.tell(idea.as_str(), idea.as_str(), event);
+        self.teller.tell(
+            AppearanceChanges(idea.as_str().to_owned()),
+            idea.as_str(),
+            event,
+        );
     }
 }
 

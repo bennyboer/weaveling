@@ -1,26 +1,37 @@
+use std::fmt;
+use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use tokio::sync::broadcast::{self, Receiver, Sender, error::RecvError};
 
 const BACKLOG: usize = 256;
 
-#[derive(Debug, Clone)]
-struct Told {
-    about: Arc<str>,
+pub trait Channel: Clone + PartialEq + Send + Sync + 'static {}
+
+impl<T: Clone + PartialEq + Send + Sync + 'static> Channel for T {}
+
+#[derive(Clone)]
+struct Told<C> {
+    channel: C,
     frame: Arc<str>,
 }
 
-#[derive(Debug, Clone)]
-pub struct Broadcaster {
-    told: Sender<Told>,
+pub struct Broadcaster<C> {
+    told: Sender<Told<C>>,
 }
 
-pub struct Hearing {
-    about: Arc<str>,
-    told: Receiver<Told>,
+pub struct Hearing<C> {
+    channel: C,
+    told: Receiver<Told<C>>,
 }
 
-impl Broadcaster {
+#[async_trait]
+pub trait Heard: Send {
+    async fn next(&mut self) -> Option<Arc<str>>;
+}
+
+impl<C: Channel> Broadcaster<C> {
     pub fn new() -> Self {
         Self::holding(BACKLOG)
     }
@@ -31,37 +42,52 @@ impl Broadcaster {
         }
     }
 
-    pub fn tell(&self, about: &str, frame: String) {
-        _ = self.told.send(Told {
-            about: Arc::from(about),
-            frame: Arc::from(frame),
-        });
-    }
-
     #[cfg(test)]
     pub(crate) fn listener_count(&self) -> usize {
         self.told.receiver_count()
     }
 
-    pub fn hear(&self, about: &str) -> Hearing {
+    pub fn tell(&self, channel: C, frame: String) {
+        _ = self.told.send(Told {
+            channel,
+            frame: Arc::from(frame),
+        });
+    }
+
+    pub fn hear(&self, channel: C) -> Hearing<C> {
         Hearing {
-            about: Arc::from(about),
+            channel,
             told: self.told.subscribe(),
         }
     }
 }
 
-impl Default for Broadcaster {
+impl<C> Clone for Broadcaster<C> {
+    fn clone(&self) -> Self {
+        Self {
+            told: self.told.clone(),
+        }
+    }
+}
+
+impl<C> Debug for Broadcaster<C> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Broadcaster").finish_non_exhaustive()
+    }
+}
+
+impl<C: Channel> Default for Broadcaster<C> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Hearing {
-    pub async fn next(&mut self) -> Option<Arc<str>> {
+#[async_trait]
+impl<C: Channel> Heard for Hearing<C> {
+    async fn next(&mut self) -> Option<Arc<str>> {
         loop {
             match self.told.recv().await {
-                Ok(told) if told.about == self.about => return Some(told.frame),
+                Ok(told) if told.channel == self.channel => return Some(told.frame),
                 Ok(_) => {}
                 Err(RecvError::Lagged(_) | RecvError::Closed) => return None,
             }
@@ -77,7 +103,7 @@ mod tests {
 
     use super::*;
 
-    async fn soon(hearing: &mut Hearing) -> Option<Arc<str>> {
+    async fn soon(hearing: &mut Hearing<&'static str>) -> Option<Arc<str>> {
         time::timeout(Duration::from_millis(100), hearing.next())
             .await
             .ok()

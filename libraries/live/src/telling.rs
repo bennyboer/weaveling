@@ -3,26 +3,26 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use live_contract::FrameDTO;
 use serde::Serialize;
 
-use crate::Broadcaster;
+use crate::{Broadcaster, Channel};
 
-pub struct Teller {
-    broadcaster: Broadcaster,
+pub struct Teller<C> {
+    broadcaster: Broadcaster<C>,
     told: AtomicU64,
 }
 
-impl Teller {
-    pub fn new(broadcaster: Broadcaster) -> Self {
+impl<C: Channel> Teller<C> {
+    pub fn new(broadcaster: Broadcaster<C>) -> Self {
         Self {
             broadcaster,
             told: AtomicU64::new(0),
         }
     }
 
-    pub fn tell(&self, about: &str, of: &str, event: impl Serialize) {
+    pub fn tell(&self, channel: C, of: &str, event: impl Serialize) {
         let version = self.told.fetch_add(1, Ordering::AcqRel) + 1;
 
         self.broadcaster.tell(
-            about,
+            channel,
             serde_json::to_string(&FrameDTO {
                 of: Some(of.to_owned()),
                 version,
@@ -43,6 +43,7 @@ mod tests {
     use tokio::time;
 
     use super::*;
+    use crate::Heard;
 
     #[tokio::test]
     async fn each_telling_says_what_it_is_of_and_is_newer_than_the_last() {

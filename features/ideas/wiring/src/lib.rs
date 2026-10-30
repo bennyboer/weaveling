@@ -35,7 +35,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
 
     let broadcaster = Broadcaster::new();
-    let broadcast = BroadcastIdeaChangesListener::new(ideas.clone(), broadcaster.clone());
+    let broadcast = BroadcastIdeaChangesListener::new(
+        ideas.clone(),
+        broadcaster.clone(),
+        ideas_rest::IdeaChanges,
+    );
 
     Wired::serving(ideas_rest::router(ideas.clone()).merge(ideas_rest::live(ideas, broadcaster)))
         .listening(vec![

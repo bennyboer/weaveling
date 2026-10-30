@@ -70,13 +70,16 @@ async fn open(
     ))
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutlineChanges(pub String);
+
 #[derive(Clone)]
 struct Following {
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<OutlineChanges>,
     outlines: OutlinesCore,
 }
 
-pub fn live(outlines: OutlinesCore, broadcaster: Broadcaster) -> Router {
+pub fn live(outlines: OutlinesCore, broadcaster: Broadcaster<OutlineChanges>) -> Router {
     Router::new()
         .route("/outlines/live", routing::get(follow))
         .with_state(Following {
@@ -94,7 +97,7 @@ async fn follow(
     let Some(outline) = asked.get("outline") else {
         return StatusCode::BAD_REQUEST.into_response();
     };
-    let hearing = following.broadcaster.hear(outline);
+    let hearing = following.broadcaster.hear(OutlineChanges(outline.clone()));
 
     match following.outlines.follow(outline, &acting).await {
         Ok((standing, watch)) => live::streaming_with_version(

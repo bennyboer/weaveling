@@ -1,25 +1,35 @@
 use async_trait::async_trait;
 use ideas_contract::EVERY_IDEA;
-use ideas_core::{IdeasCore, IdeasError};
+use ideas_core::{IdeasCore, IdeasError, ProjectLink};
 use live::Broadcaster;
+use live::Channel;
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use serde_json::Value;
 
 pub const LIVE: &str = "broadcast-idea-changes";
 
-pub struct BroadcastIdeaChangesListener {
+pub struct BroadcastIdeaChangesListener<C> {
     ideas: IdeasCore,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<C>,
+    channel_of: fn(ProjectLink) -> C,
 }
 
-impl BroadcastIdeaChangesListener {
-    pub fn new(ideas: IdeasCore, broadcaster: Broadcaster) -> Self {
-        Self { ideas, broadcaster }
+impl<C: Channel> BroadcastIdeaChangesListener<C> {
+    pub fn new(
+        ideas: IdeasCore,
+        broadcaster: Broadcaster<C>,
+        channel_of: fn(ProjectLink) -> C,
+    ) -> Self {
+        Self {
+            ideas,
+            broadcaster,
+            channel_of,
+        }
     }
 }
 
 #[async_trait]
-impl Listener for BroadcastIdeaChangesListener {
+impl<C: Channel> Listener for BroadcastIdeaChangesListener<C> {
     fn named(&self) -> ListenerName {
         ListenerName::parse(LIVE).expect("a broadcast's name is written at compile time")
     }
@@ -55,7 +65,7 @@ impl Listener for BroadcastIdeaChangesListener {
             }
         };
         self.broadcaster
-            .tell(project.as_str(), live::frame_of(&published));
+            .tell((self.channel_of)(project), live::frame_of(&published));
 
         Ok(())
     }

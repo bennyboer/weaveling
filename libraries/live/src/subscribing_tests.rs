@@ -19,7 +19,7 @@ fn of(about: &Asked) -> String {
     about.get("of").cloned().unwrap_or_default()
 }
 
-struct Open(Broadcaster);
+struct Open(Broadcaster<String>);
 
 #[async_trait]
 impl Topic for Open {
@@ -28,7 +28,7 @@ impl Topic for Open {
     }
 
     async fn subscribe(&self, _agent: &Agent, about: &Asked) -> Result<Subscribed, Refused> {
-        Ok(Subscribed::hearing(self.0.hear(&of(about))))
+        Ok(Subscribed::hearing(self.0.hear(of(about))))
     }
 }
 
@@ -45,7 +45,7 @@ impl Topic for Refusing {
     }
 }
 
-struct FromSeven(Broadcaster);
+struct FromSeven(Broadcaster<String>);
 
 #[async_trait]
 impl Topic for FromSeven {
@@ -54,7 +54,7 @@ impl Topic for FromSeven {
     }
 
     async fn subscribe(&self, _agent: &Agent, about: &Asked) -> Result<Subscribed, Refused> {
-        Ok(Subscribed::hearing(self.0.hear(&of(about))).standing_at(7))
+        Ok(Subscribed::hearing(self.0.hear(of(about))).standing_at(7))
     }
 }
 
@@ -78,7 +78,7 @@ impl Gate for Losing {
 }
 
 struct Watched {
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<String>,
     changes: AccessChanges,
     gate: Arc<Losing>,
 }
@@ -93,12 +93,14 @@ impl Topic for Watched {
         let about = of(about);
 
         Ok(
-            Subscribed::hearing(self.broadcaster.hear(&about)).while_admitted(Admission::new(
-                self.changes.watch(&about),
-                self.gate.clone(),
-                agent.clone(),
-                about,
-            )),
+            Subscribed::hearing(self.broadcaster.hear(about.clone())).while_admitted(
+                Admission::new(
+                    self.changes.watch(&about),
+                    self.gate.clone(),
+                    agent.clone(),
+                    about,
+                ),
+            ),
         )
     }
 }
@@ -115,7 +117,7 @@ impl Sieve for OnlyKept {
     }
 }
 
-struct Sifted(Broadcaster);
+struct Sifted(Broadcaster<String>);
 
 #[async_trait]
 impl Topic for Sifted {
@@ -124,18 +126,18 @@ impl Topic for Sifted {
     }
 
     async fn subscribe(&self, _agent: &Agent, about: &Asked) -> Result<Subscribed, Refused> {
-        Ok(Subscribed::hearing(self.0.hear(&of(about))).sifted(Arc::new(OnlyKept)))
+        Ok(Subscribed::hearing(self.0.hear(of(about))).sifted(Arc::new(OnlyKept)))
     }
 }
 
 struct Live {
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<String>,
     changes: AccessChanges,
     gate: Arc<Losing>,
     server: TestServer,
 }
 
-fn served_with(broadcaster: Broadcaster) -> Live {
+fn served_with(broadcaster: Broadcaster<String>) -> Live {
     let changes = AccessChanges::new();
     let gate = Arc::new(Losing {
         lost: Mutex::new(BTreeSet::new()),
@@ -229,8 +231,9 @@ async fn a_subscription_hears_its_own_frames_under_its_id_and_no_others() {
     let mut socket = opened(&live).await;
     subscribe(&mut socket, "a", "open", "mine").await;
 
-    live.broadcaster.tell("theirs", frame("theirs", 1));
-    live.broadcaster.tell("mine", frame("mine", 2));
+    live.broadcaster
+        .tell("theirs".to_owned(), frame("theirs", 1));
+    live.broadcaster.tell("mine".to_owned(), frame("mine", 2));
 
     assert_eq!(told(&mut socket).await, framed("a", "mine", 2));
     nothing_more(&mut socket).await;
@@ -243,17 +246,19 @@ async fn one_socket_holds_many_subscriptions_and_one_unsubscribed_hears_no_more(
     subscribe(&mut socket, "a", "open", "board").await;
     subscribe(&mut socket, "b", "open", "outline").await;
 
-    live.broadcaster.tell("board", frame("board", 1));
+    live.broadcaster.tell("board".to_owned(), frame("board", 1));
     assert_eq!(told(&mut socket).await, framed("a", "board", 1));
-    live.broadcaster.tell("outline", frame("outline", 1));
+    live.broadcaster
+        .tell("outline".to_owned(), frame("outline", 1));
     assert_eq!(told(&mut socket).await, framed("b", "outline", 1));
 
     socket
         .send_json(&AskedDTO::Unsubscribe { id: "a".to_owned() })
         .await;
     settled().await;
-    live.broadcaster.tell("board", frame("board", 2));
-    live.broadcaster.tell("outline", frame("outline", 2));
+    live.broadcaster.tell("board".to_owned(), frame("board", 2));
+    live.broadcaster
+        .tell("outline".to_owned(), frame("outline", 2));
 
     assert_eq!(told(&mut socket).await, framed("b", "outline", 2));
     nothing_more(&mut socket).await;
@@ -266,8 +271,9 @@ async fn subscribing_again_under_one_id_replaces_what_it_followed() {
     subscribe(&mut socket, "a", "open", "board").await;
 
     subscribe(&mut socket, "a", "open", "outline").await;
-    live.broadcaster.tell("board", frame("board", 1));
-    live.broadcaster.tell("outline", frame("outline", 1));
+    live.broadcaster.tell("board".to_owned(), frame("board", 1));
+    live.broadcaster
+        .tell("outline".to_owned(), frame("outline", 1));
 
     assert_eq!(told(&mut socket).await, framed("a", "outline", 1));
     nothing_more(&mut socket).await;
@@ -288,7 +294,7 @@ async fn a_subscription_nobody_can_follow_ends_saying_why_and_the_socket_stays()
     }
 
     subscribe(&mut socket, "d", "open", "mine").await;
-    live.broadcaster.tell("mine", frame("mine", 1));
+    live.broadcaster.tell("mine".to_owned(), frame("mine", 1));
     assert_eq!(told(&mut socket).await, framed("d", "mine", 1));
 }
 
@@ -305,7 +311,7 @@ async fn a_subscription_standing_at_a_version_is_told_it_first() {
             frame: json!({ "version": 7 }),
         }
     );
-    live.broadcaster.tell("mine", frame("mine", 8));
+    live.broadcaster.tell("mine".to_owned(), frame("mine", 8));
     assert_eq!(told(&mut socket).await, framed("a", "mine", 8));
 }
 
@@ -333,8 +339,8 @@ async fn losing_access_ends_that_subscription_alone_and_keeping_it_is_told() {
         },
         "its role may be another now, so its client asks again"
     );
-    live.broadcaster.tell("lost", frame("lost", 1));
-    live.broadcaster.tell("kept", frame("kept", 1));
+    live.broadcaster.tell("lost".to_owned(), frame("lost", 1));
+    live.broadcaster.tell("kept".to_owned(), frame("kept", 1));
     assert_eq!(told(&mut socket).await, framed("b", "kept", 1));
     nothing_more(&mut socket).await;
 }
@@ -346,12 +352,13 @@ async fn a_subscription_falling_behind_ends_so_and_the_others_follow_on() {
     subscribe(&mut socket, "a", "open", "busy").await;
 
     for version in 1..=5 {
-        live.broadcaster.tell("busy", frame("busy", version));
+        live.broadcaster
+            .tell("busy".to_owned(), frame("busy", version));
     }
     assert_eq!(told(&mut socket).await, ended_as("a", ended::BEHIND));
 
     subscribe(&mut socket, "b", "open", "busy").await;
-    live.broadcaster.tell("busy", frame("busy", 6));
+    live.broadcaster.tell("busy".to_owned(), frame("busy", 6));
     assert_eq!(
         told(&mut socket).await,
         framed("b", "busy", 6),
@@ -365,11 +372,13 @@ async fn a_sifted_subscription_hears_what_its_sieve_lets_through_and_ends_when_i
     let mut socket = opened(&live).await;
     subscribe(&mut socket, "a", "sifted", "mixed").await;
 
-    live.broadcaster.tell("mixed", frame("held back", 1));
-    live.broadcaster.tell("mixed", frame("kept", 2));
+    live.broadcaster
+        .tell("mixed".to_owned(), frame("held back", 1));
+    live.broadcaster.tell("mixed".to_owned(), frame("kept", 2));
     assert_eq!(told(&mut socket).await, framed("a", "kept", 2));
 
-    live.broadcaster.tell("mixed", frame("broken", 3));
+    live.broadcaster
+        .tell("mixed".to_owned(), frame("broken", 3));
     assert_eq!(told(&mut socket).await, ended_as("a", ended::FAILED));
 }
 

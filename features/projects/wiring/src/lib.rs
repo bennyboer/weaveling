@@ -31,12 +31,13 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let projector = CatalogueProjectsListener::new(projects.clone());
 
     let broadcaster = Broadcaster::new();
-    let broadcast = BroadcastChangesListener::under(
-        LIVE,
-        EVERY_PROJECT,
-        projects_rest::FOLLOWED,
-        broadcaster.clone(),
-    );
+    let broadcast =
+        BroadcastChangesListener::new(LIVE, EVERY_PROJECT, broadcaster.clone(), |published| {
+            vec![
+                projects_rest::ProjectChanges::Listed,
+                projects_rest::ProjectChanges::Of(published.aggregate.id.clone()),
+            ]
+        });
 
     Wired::serving(
         projects_rest::router(projects.clone()).merge(projects_rest::live(projects, broadcaster)),

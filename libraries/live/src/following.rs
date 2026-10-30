@@ -7,22 +7,22 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing;
 
-use crate::Broadcaster;
 use crate::socket;
+use crate::{Broadcaster, Channel};
 
 pub type Asked = HashMap<String, String>;
 
-pub fn followed_at(
+pub fn followed_at<C: Channel>(
     path: &str,
-    broadcaster: Broadcaster,
-    about: fn(&Asked) -> Option<String>,
+    broadcaster: Broadcaster<C>,
+    channel: fn(&Asked) -> Option<C>,
 ) -> Router {
     Router::new().route(
         path,
         routing::get(
             move |upgrade: WebSocketUpgrade, Query(asked): Query<Asked>| async move {
-                match about(&asked) {
-                    Some(about) => socket::streaming(upgrade, broadcaster.hear(&about)),
+                match channel(&asked) {
+                    Some(channel) => socket::streaming(upgrade, broadcaster.hear(channel)),
                     None => StatusCode::BAD_REQUEST.into_response(),
                 }
             },
@@ -47,7 +47,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_follower_hears_what_is_told_about_what_it_asked_for() {
-        let broadcaster = Broadcaster::new();
+        let broadcaster = Broadcaster::<String>::new();
         let server = served(followed_at("/live", broadcaster.clone(), the_project));
         let mut socket = server
             .get_websocket("/live?project=project_1")
@@ -55,15 +55,19 @@ mod tests {
             .into_websocket()
             .await;
 
-        broadcaster.tell("project_2", "theirs".to_owned());
-        broadcaster.tell("project_1", "mine".to_owned());
+        broadcaster.tell("project_2".to_owned(), "theirs".to_owned());
+        broadcaster.tell("project_1".to_owned(), "mine".to_owned());
 
         assert_eq!(socket.receive_text().await, "mine");
     }
 
     #[tokio::test]
     async fn a_follower_who_does_not_say_what_it_follows_is_turned_away() {
-        let server = served(followed_at("/live", Broadcaster::new(), the_project));
+        let server = served(followed_at(
+            "/live",
+            Broadcaster::<String>::new(),
+            the_project,
+        ));
 
         server
             .get_websocket("/live")

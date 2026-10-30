@@ -45,7 +45,10 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let detach_deleted_scenes = DetachOnSceneDeletedListener::new(outlines.clone());
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
     let broadcaster = Broadcaster::new();
-    let broadcast = BroadcastChangesListener::new(LIVE, EVERY_OUTLINE, broadcaster.clone());
+    let broadcast =
+        BroadcastChangesListener::new(LIVE, EVERY_OUTLINE, broadcaster.clone(), |published| {
+            vec![outline_rest::OutlineChanges(published.aggregate.id.clone())]
+        });
 
     Wired::serving(
         outline_rest::router(outlines.clone())

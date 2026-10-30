@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -41,22 +42,44 @@ impl Gate for ScenesGate {
     }
 }
 
-pub fn live_scenes(scenes: ScenesCore, broadcaster: Broadcaster) -> Router {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SceneChanges(pub ProjectLink);
+
+impl Display for SceneChanges {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestylingChanges(pub ProjectLink);
+
+impl Display for RestylingChanges {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        Display::fmt(&self.0, f)
+    }
+}
+
+pub fn live_scenes(scenes: ScenesCore, broadcaster: Broadcaster<SceneChanges>) -> Router {
     live::followed_while(
         "/scenes/live",
         broadcaster,
-        |asked| asked.get("project").cloned(),
+        |asked| {
+            asked
+                .get("project")
+                .map(|project| SceneChanges(ProjectLink::from(project.as_str())))
+        },
         Arc::new(ScenesGate(scenes)),
     )
 }
 
 pub struct TellingScenes {
     kept: Arc<dyn SceneCatalog>,
-    teller: Teller,
+    teller: Teller<SceneChanges>,
 }
 
 impl TellingScenes {
-    pub fn around(kept: Arc<dyn SceneCatalog>, broadcaster: Broadcaster) -> Self {
+    pub fn around(kept: Arc<dyn SceneCatalog>, broadcaster: Broadcaster<SceneChanges>) -> Self {
         Self {
             kept,
             teller: Teller::new(broadcaster),
@@ -68,7 +91,7 @@ impl TellingScenes {
             return;
         };
         self.teller.tell(
-            &summary.project.to_string(),
+            SceneChanges(summary.project.clone()),
             &id.to_string(),
             to_summary_dto(&summary),
         );
@@ -150,7 +173,10 @@ pub fn router(scenes: ScenesCore) -> Router {
         .with_state(scenes)
 }
 
-pub fn quotation_restylings(scenes: ScenesCore, broadcaster: Broadcaster) -> Router {
+pub fn quotation_restylings(
+    scenes: ScenesCore,
+    broadcaster: Broadcaster<RestylingChanges>,
+) -> Router {
     Router::new()
         .route(
             "/scenes/quotation-restylings/{project}",
@@ -160,18 +186,25 @@ pub fn quotation_restylings(scenes: ScenesCore, broadcaster: Broadcaster) -> Rou
         .merge(live::followed_while(
             "/scenes/quotation-restylings/live",
             broadcaster,
-            |asked| asked.get("project").cloned(),
+            |asked| {
+                asked
+                    .get("project")
+                    .map(|project| RestylingChanges(ProjectLink::from(project.as_str())))
+            },
             Arc::new(ScenesGate(scenes)),
         ))
 }
 
 pub struct TellingRestylingTasks {
     kept: Arc<dyn QuotationRestylingTasks>,
-    teller: Teller,
+    teller: Teller<RestylingChanges>,
 }
 
 impl TellingRestylingTasks {
-    pub fn around(kept: Arc<dyn QuotationRestylingTasks>, broadcaster: Broadcaster) -> Self {
+    pub fn around(
+        kept: Arc<dyn QuotationRestylingTasks>,
+        broadcaster: Broadcaster<RestylingChanges>,
+    ) -> Self {
         Self {
             kept,
             teller: Teller::new(broadcaster),
@@ -182,8 +215,11 @@ impl TellingRestylingTasks {
         let Ok(Some(progress)) = self.kept.progress(project).await else {
             return;
         };
-        self.teller
-            .tell(project.as_str(), project.as_str(), as_dto(progress));
+        self.teller.tell(
+            RestylingChanges(project.clone()),
+            project.as_str(),
+            as_dto(progress),
+        );
     }
 }
 

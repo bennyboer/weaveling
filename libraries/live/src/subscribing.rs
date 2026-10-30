@@ -11,23 +11,23 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
-use crate::Hearing;
 use crate::following::Asked;
 use crate::socket::{Access, Admission, Sieve, rechecked};
+use crate::{Channel, Heard, Hearing};
 
 const WAITING_TO_BE_SENT: usize = 64;
 
 pub struct Subscribed {
-    hearing: Hearing,
+    hearing: Box<dyn Heard>,
     standing: Option<u64>,
     admission: Option<Admission>,
     sieve: Option<Arc<dyn Sieve>>,
 }
 
 impl Subscribed {
-    pub fn hearing(hearing: Hearing) -> Self {
+    pub fn hearing<C: Channel>(hearing: Hearing<C>) -> Self {
         Self {
-            hearing,
+            hearing: Box::new(hearing),
             standing: None,
             admission: None,
             sieve: None,

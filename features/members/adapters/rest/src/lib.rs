@@ -16,7 +16,8 @@ use members_core::{ListedMember, MembersCore, MembersCoreError, MembersError, Ro
 use serde::Deserialize;
 use serving::Problem;
 
-pub const FOLLOWED: &str = "memberships";
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MembershipChanges;
 
 pub fn router(members: MembersCore) -> Router {
     Router::new()
@@ -134,10 +135,10 @@ fn problem_of(refusal: MembersCoreError) -> Problem {
 #[derive(Clone)]
 struct Following {
     members: MembersCore,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<MembershipChanges>,
 }
 
-pub fn live(members: MembersCore, broadcaster: Broadcaster) -> Router {
+pub fn live(members: MembersCore, broadcaster: Broadcaster<MembershipChanges>) -> Router {
     Router::new()
         .route("/members/live", routing::get(follow))
         .with_state(Following {
@@ -153,7 +154,7 @@ async fn follow(
 ) -> Response {
     live::streaming_sifted(
         upgrade,
-        following.broadcaster.hear(FOLLOWED),
+        following.broadcaster.hear(MembershipChanges),
         Arc::new(NamingTheFollower {
             agent,
             members: following.members,
@@ -163,11 +164,11 @@ async fn follow(
 
 pub struct MembersTopic {
     members: MembersCore,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<MembershipChanges>,
 }
 
 impl MembersTopic {
-    pub fn new(members: MembersCore, broadcaster: Broadcaster) -> Self {
+    pub fn new(members: MembersCore, broadcaster: Broadcaster<MembershipChanges>) -> Self {
         Self {
             members,
             broadcaster,
@@ -187,7 +188,7 @@ impl Topic for MembersTopic {
         }
 
         Ok(
-            Subscribed::hearing(self.broadcaster.hear(FOLLOWED)).sifted(Arc::new(
+            Subscribed::hearing(self.broadcaster.hear(MembershipChanges)).sifted(Arc::new(
                 NamingTheFollower {
                     agent: agent.clone(),
                     members: self.members.clone(),
@@ -232,7 +233,7 @@ mod tests {
 
     use super::*;
 
-    fn served(broadcaster: &Broadcaster, agent: Agent) -> TestServer {
+    fn served(broadcaster: &Broadcaster<MembershipChanges>, agent: Agent) -> TestServer {
         let members = MembersCore::new(
             Arc::new(InMemoryEventStore::new()),
             Arc::new(InMemoryMembershipCatalog::new()),
@@ -257,9 +258,9 @@ mod tests {
             .await
     }
 
-    fn told(broadcaster: &Broadcaster, project: &str, event: Value) {
+    fn told(broadcaster: &Broadcaster<MembershipChanges>, project: &str, event: Value) {
         broadcaster.tell(
-            FOLLOWED,
+            MembershipChanges,
             json!({ "of": project, "version": 2, "at": "1970-01-01T00:00:00Z", "event": event })
                 .to_string(),
         );
@@ -326,7 +327,7 @@ mod tests {
         );
     }
 
-    fn on_one_socket(broadcaster: &Broadcaster, agent: Agent) -> TestServer {
+    fn on_one_socket(broadcaster: &Broadcaster<MembershipChanges>, agent: Agent) -> TestServer {
         let members = MembersCore::new(
             Arc::new(InMemoryEventStore::new()),
             Arc::new(InMemoryMembershipCatalog::new()),

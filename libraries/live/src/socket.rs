@@ -10,7 +10,7 @@ use eventsourcing::Agent;
 use live_contract::{ACCESS_CHANGED, FrameDTO, NO_LONGER_ADMITTED, NoticeDTO};
 use serde_json::json;
 
-use crate::{Gate, Hearing};
+use crate::{Channel, Gate, Heard, Hearing};
 
 pub struct Admission {
     pub(crate) watch: AccessWatch,
@@ -62,44 +62,44 @@ pub trait Sieve: Send + Sync {
     async fn lets_through(&self, frame: &FrameDTO) -> Result<bool, Box<dyn Error + Send + Sync>>;
 }
 
-pub fn streaming(upgrade: WebSocketUpgrade, hearing: Hearing) -> Response {
-    upgrade.on_upgrade(move |socket| forward(socket, hearing, None, None))
+pub fn streaming<C: Channel>(upgrade: WebSocketUpgrade, hearing: Hearing<C>) -> Response {
+    upgrade.on_upgrade(move |socket| forward(socket, Box::new(hearing), None, None))
 }
 
-pub(crate) fn streaming_while(
+pub(crate) fn streaming_while<C: Channel>(
     upgrade: WebSocketUpgrade,
-    hearing: Hearing,
+    hearing: Hearing<C>,
     admission: Admission,
 ) -> Response {
-    upgrade.on_upgrade(move |socket| forward(socket, hearing, None, Some(admission)))
+    upgrade.on_upgrade(move |socket| forward(socket, Box::new(hearing), None, Some(admission)))
 }
 
-pub fn streaming_sifted(
+pub fn streaming_sifted<C: Channel>(
     upgrade: WebSocketUpgrade,
-    hearing: Hearing,
+    hearing: Hearing<C>,
     sieve: Arc<dyn Sieve>,
 ) -> Response {
-    upgrade.on_upgrade(move |socket| forward(socket, hearing, Some(sieve), None))
+    upgrade.on_upgrade(move |socket| forward(socket, Box::new(hearing), Some(sieve), None))
 }
 
-pub fn streaming_with_version(
+pub fn streaming_with_version<C: Channel>(
     upgrade: WebSocketUpgrade,
     version: u64,
-    hearing: Hearing,
+    hearing: Hearing<C>,
     admission: Admission,
 ) -> Response {
     let standing = json!({ "version": version }).to_string();
 
     upgrade.on_upgrade(move |mut socket| async move {
         if socket.send(Message::Text(standing.into())).await.is_ok() {
-            forward(socket, hearing, None, Some(admission)).await;
+            forward(socket, Box::new(hearing), None, Some(admission)).await;
         }
     })
 }
 
 async fn forward(
     mut socket: WebSocket,
-    mut hearing: Hearing,
+    mut hearing: Box<dyn Heard>,
     sieve: Option<Arc<dyn Sieve>>,
     mut admission: Option<Admission>,
 ) {
@@ -159,21 +159,21 @@ mod tests {
 
     async fn following(
         upgrade: WebSocketUpgrade,
-        State(broadcaster): State<Broadcaster>,
+        State(broadcaster): State<Broadcaster<String>>,
         Path(about): Path<String>,
     ) -> Response {
-        streaming(upgrade, broadcaster.hear(&about))
+        streaming(upgrade, broadcaster.hear(about.clone()))
     }
 
     async fn following_from_seven(
         upgrade: WebSocketUpgrade,
-        State(broadcaster): State<Broadcaster>,
+        State(broadcaster): State<Broadcaster<String>>,
         Path(about): Path<String>,
     ) -> Response {
         streaming_with_version(
             upgrade,
             7,
-            broadcaster.hear(&about),
+            broadcaster.hear(about.clone()),
             Admission::new(AccessWatch::still(), Arc::new(Open), Agent::Local, about),
         )
     }
@@ -219,13 +219,13 @@ mod tests {
 
     async fn following_mine(
         upgrade: WebSocketUpgrade,
-        State(broadcaster): State<Broadcaster>,
+        State(broadcaster): State<Broadcaster<String>>,
         Path(about): Path<String>,
     ) -> Response {
-        streaming_sifted(upgrade, broadcaster.hear(&about), Arc::new(Mine))
+        streaming_sifted(upgrade, broadcaster.hear(about.clone()), Arc::new(Mine))
     }
 
-    fn served(broadcaster: Broadcaster) -> TestServer {
+    fn served(broadcaster: Broadcaster<String>) -> TestServer {
         TestServer::builder().http_transport().build(
             Router::new()
                 .route("/live/{about}", routing::get(following))
@@ -245,10 +245,10 @@ mod tests {
             .into_websocket()
             .await;
 
-        broadcaster.tell("projects", of("theirs"));
-        broadcaster.tell("projects", of("mine, the first"));
-        broadcaster.tell("projects", of("theirs again"));
-        broadcaster.tell("projects", of("mine, the second"));
+        broadcaster.tell("projects".to_owned(), of("theirs"));
+        broadcaster.tell("projects".to_owned(), of("mine, the first"));
+        broadcaster.tell("projects".to_owned(), of("theirs again"));
+        broadcaster.tell("projects".to_owned(), of("mine, the second"));
 
         assert_eq!(of_in(&socket.receive_text().await), "mine, the first");
         assert_eq!(of_in(&socket.receive_text().await), "mine, the second");
@@ -264,8 +264,8 @@ mod tests {
             .into_websocket()
             .await;
 
-        broadcaster.tell("projects", "mine, but no frame".to_owned());
-        broadcaster.tell("projects", of("mine, after"));
+        broadcaster.tell("projects".to_owned(), "mine, but no frame".to_owned());
+        broadcaster.tell("projects".to_owned(), of("mine, after"));
 
         assert!(
             tokio::spawn(async move { socket.receive_text().await })
@@ -285,8 +285,8 @@ mod tests {
             .into_websocket()
             .await;
 
-        broadcaster.tell("projects", of("broken"));
-        broadcaster.tell("projects", of("mine, after"));
+        broadcaster.tell("projects".to_owned(), of("broken"));
+        broadcaster.tell("projects".to_owned(), of("mine, after"));
 
         assert!(
             tokio::spawn(async move { socket.receive_text().await })
@@ -306,8 +306,8 @@ mod tests {
             .into_websocket()
             .await;
 
-        broadcaster.tell("outline_2", "theirs".to_owned());
-        broadcaster.tell("outline_1", "mine".to_owned());
+        broadcaster.tell("outline_2".to_owned(), "theirs".to_owned());
+        broadcaster.tell("outline_1".to_owned(), "mine".to_owned());
 
         assert_eq!(socket.receive_text().await, "mine");
     }
@@ -322,7 +322,7 @@ mod tests {
             .into_websocket()
             .await;
 
-        broadcaster.tell("outline_1", "mine".to_owned());
+        broadcaster.tell("outline_1".to_owned(), "mine".to_owned());
 
         assert_eq!(socket.receive_text().await, r#"{"version":7}"#);
         assert_eq!(socket.receive_text().await, "mine");

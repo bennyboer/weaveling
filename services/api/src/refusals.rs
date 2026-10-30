@@ -20,6 +20,9 @@ use time::OffsetDateTime;
 
 const REFUSALS: &str = "refusals";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RefusalChanges;
+
 #[derive(Clone)]
 struct Refusals {
     deliveries: Arc<dyn Deliveries>,
@@ -31,7 +34,7 @@ pub fn router(
     deliveries: Arc<dyn Deliveries>,
     dispatcher: Arc<InProcessDispatcher>,
     clock: Arc<dyn Clock>,
-    broadcaster: Broadcaster,
+    broadcaster: Broadcaster<RefusalChanges>,
 ) -> Router {
     Router::new()
         .route("/refusals", routing::get(list))
@@ -43,17 +46,17 @@ pub fn router(
             clock,
         })
         .merge(live::followed_at("/refusals/live", broadcaster, |_| {
-            Some(REFUSALS.to_owned())
+            Some(RefusalChanges)
         }))
 }
 
 pub struct TellingDeliveries {
     kept: Arc<dyn Deliveries>,
-    teller: Teller,
+    teller: Teller<RefusalChanges>,
 }
 
 impl TellingDeliveries {
-    pub fn around(kept: Arc<dyn Deliveries>, broadcaster: Broadcaster) -> Self {
+    pub fn around(kept: Arc<dyn Deliveries>, broadcaster: Broadcaster<RefusalChanges>) -> Self {
         Self {
             kept,
             teller: Teller::new(broadcaster),
@@ -62,8 +65,11 @@ impl TellingDeliveries {
 
     fn told(&self, outcome: Result<(), DeliveryError>) -> Result<(), DeliveryError> {
         if outcome.is_ok() {
-            self.teller
-                .tell(REFUSALS, REFUSALS, json!({ "name": "REFUSALS_CHANGED" }));
+            self.teller.tell(
+                RefusalChanges,
+                REFUSALS,
+                json!({ "name": "REFUSALS_CHANGED" }),
+            );
         }
 
         outcome

@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use email::EmailAddress;
+
+use crate::InvitationChanges;
 use eventsourcing::AccountId;
 use invitations_core::{
     CatalogError, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
@@ -12,11 +14,14 @@ use time::OffsetDateTime;
 
 pub struct TellingInvitations {
     kept: Arc<dyn InvitationCatalog>,
-    teller: Teller,
+    teller: Teller<InvitationChanges>,
 }
 
 impl TellingInvitations {
-    pub fn around(kept: Arc<dyn InvitationCatalog>, broadcaster: Broadcaster) -> Self {
+    pub fn around(
+        kept: Arc<dyn InvitationCatalog>,
+        broadcaster: Broadcaster<InvitationChanges>,
+    ) -> Self {
         Self {
             kept,
             teller: Teller::new(broadcaster),
@@ -28,8 +33,11 @@ impl TellingInvitations {
 impl InvitationCatalog for TellingInvitations {
     async fn remember(&self, summary: &InvitationSummary) -> Result<(), CatalogError> {
         self.kept.remember(summary).await?;
-        self.teller
-            .tell(summary.to.as_str(), &summary.id.to_string(), ());
+        self.teller.tell(
+            InvitationChanges(summary.to.clone()),
+            &summary.id.to_string(),
+            (),
+        );
 
         Ok(())
     }

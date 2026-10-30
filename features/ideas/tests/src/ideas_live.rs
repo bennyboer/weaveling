@@ -57,7 +57,10 @@ async fn told(socket: &mut TestWebSocket) -> Value {
 #[tokio::test]
 async fn a_change_naming_no_idea_is_passed_over_rather_than_retried() {
     let (wired, _server) = served();
-    let broadcast = BroadcastIdeaChangesListener::new(wired.ideas.clone(), Broadcaster::new());
+    let broadcast =
+        BroadcastIdeaChangesListener::new(wired.ideas.clone(), Broadcaster::new(), |project| {
+            project
+        });
     let naming_no_idea = Message::opening(
         RoutingKey::parse(CAPTURED).expect("a declared routing key is fine"),
         json!({

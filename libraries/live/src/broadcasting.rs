@@ -4,31 +4,29 @@ use live_contract::FrameDTO;
 use messaging::{Delivery, Listener, ListenerName, Message, NotHandled, Subscription};
 use serde_json::Value;
 
-use crate::Broadcaster;
+use crate::{Broadcaster, Channel};
 
-pub struct BroadcastChangesListener {
+pub struct BroadcastChangesListener<C> {
     named: ListenerName,
     listens_to: Subscription,
-    about: Option<String>,
-    broadcaster: Broadcaster,
+    channels: fn(&PublishedEvent<Value>) -> Vec<C>,
+    broadcaster: Broadcaster<C>,
 }
 
-impl BroadcastChangesListener {
-    pub fn new(named: &str, listens_to: &str, broadcaster: Broadcaster) -> Self {
+impl<C: Channel> BroadcastChangesListener<C> {
+    pub fn new(
+        named: &str,
+        listens_to: &str,
+        broadcaster: Broadcaster<C>,
+        channels: fn(&PublishedEvent<Value>) -> Vec<C>,
+    ) -> Self {
         Self {
             named: ListenerName::parse(named)
                 .expect("a broadcast's name is written at compile time"),
             listens_to: Subscription::parse(listens_to)
                 .expect("a broadcast's subscription is written at compile time"),
-            about: None,
+            channels,
             broadcaster,
-        }
-    }
-
-    pub fn under(named: &str, listens_to: &str, about: &str, broadcaster: Broadcaster) -> Self {
-        Self {
-            about: Some(about.to_owned()),
-            ..Self::new(named, listens_to, broadcaster)
         }
     }
 }
@@ -44,7 +42,7 @@ pub fn frame_of(published: &PublishedEvent<Value>) -> String {
 }
 
 #[async_trait]
-impl Listener for BroadcastChangesListener {
+impl<C: Channel> Listener for BroadcastChangesListener<C> {
     fn named(&self) -> ListenerName {
         self.named.clone()
     }
@@ -64,10 +62,9 @@ impl Listener for BroadcastChangesListener {
     async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
         if let Ok(published) = eventpublishing::published_in::<Value>(message) {
             let frame = frame_of(&published);
-            if let Some(about) = &self.about {
-                self.broadcaster.tell(about, frame.clone());
+            for channel in (self.channels)(&published) {
+                self.broadcaster.tell(channel, frame.clone());
             }
-            self.broadcaster.tell(&published.aggregate.id, frame);
         }
 
         Ok(())
@@ -83,6 +80,7 @@ mod tests {
     use time::OffsetDateTime;
 
     use super::*;
+    use crate::Heard;
 
     fn retitled(outline: &str, version: u64) -> Message {
         Message::opening(
@@ -97,18 +95,19 @@ mod tests {
         )
     }
 
-    fn broadcasting(broadcaster: &Broadcaster) -> BroadcastChangesListener {
+    fn broadcasting(broadcaster: &Broadcaster<String>) -> BroadcastChangesListener<String> {
         BroadcastChangesListener::new(
             "broadcast-outline-changes",
             "outline.#",
             broadcaster.clone(),
+            |published| vec![published.aggregate.id.clone()],
         )
     }
 
     #[tokio::test]
     async fn a_published_change_is_passed_on_as_its_version_and_its_event() {
         let broadcaster = Broadcaster::new();
-        let mut hearing = broadcaster.hear("outline_1");
+        let mut hearing = broadcaster.hear("outline_1".to_owned());
 
         broadcasting(&broadcaster)
             .handle(&retitled("outline_1", 7))
@@ -134,7 +133,7 @@ mod tests {
     #[tokio::test]
     async fn a_message_that_is_no_published_change_is_let_go() {
         let broadcaster = Broadcaster::new();
-        let mut hearing = broadcaster.hear("outline_1");
+        let mut hearing = broadcaster.hear("outline_1".to_owned());
         let stray = Message::opening(
             RoutingKey::parse("outline.started").expect("a plain key"),
             json!({ "nothing": "useful" }),
@@ -154,16 +153,16 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_broadcast_under_one_name_tells_every_aggregate_s_change_there_and_under_its_own() {
+    async fn a_change_is_told_on_every_channel_it_is_read_to_belong_to() {
         let broadcaster = Broadcaster::new();
-        let mut everyone = broadcaster.hear("outlines");
-        let mut one = broadcaster.hear("outline_1");
+        let mut everyone = broadcaster.hear("outlines".to_owned());
+        let mut one = broadcaster.hear("outline_1".to_owned());
 
-        BroadcastChangesListener::under(
+        BroadcastChangesListener::new(
             "broadcast-outline-changes",
             "outline.#",
-            "outlines",
             broadcaster.clone(),
+            |published| vec!["outlines".to_owned(), published.aggregate.id.clone()],
         )
         .handle(&retitled("outline_1", 7))
         .await
@@ -184,7 +183,7 @@ mod tests {
 
     #[test]
     fn broadcasting_is_fleeting_and_hears_what_it_was_given() {
-        let broadcast = broadcasting(&Broadcaster::new());
+        let broadcast = broadcasting(&Broadcaster::<String>::new());
 
         assert_eq!(
             broadcast.delivery(),

@@ -20,7 +20,7 @@ use serving::Problem;
 
 mod following;
 
-pub use following::{FOLLOWED, live};
+pub use following::{ProjectChanges, live};
 
 pub fn router(projects: ProjectsCore) -> Router {
     Router::new()
