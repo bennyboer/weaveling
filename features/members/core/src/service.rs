@@ -192,6 +192,14 @@ mod tests {
         ) -> Result<(), StoreError> {
             Err(down(aggregate, kind))
         }
+
+        async fn forget(
+            &self,
+            aggregate: &AggregateId,
+            kind: AggregateType,
+        ) -> Result<(), StoreError> {
+            Err(down(aggregate, kind))
+        }
     }
 
     #[tokio::test]

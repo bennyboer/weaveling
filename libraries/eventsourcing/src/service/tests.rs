@@ -764,6 +764,10 @@ impl EventStore<SampleEvent> for BalksOnce {
     ) -> Result<(), StoreError> {
         self.inner.prune_through(aggregate, kind, through).await
     }
+
+    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
+        self.inner.forget(aggregate, kind).await
+    }
 }
 
 #[tokio::test]
@@ -916,6 +920,10 @@ impl EventStore<SampleEvent> for Yielding {
         through: Version,
     ) -> Result<(), StoreError> {
         self.inner.prune_through(aggregate, kind, through).await
+    }
+
+    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
+        self.inner.forget(aggregate, kind).await
     }
 }
 

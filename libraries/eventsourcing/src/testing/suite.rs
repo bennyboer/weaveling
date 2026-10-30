@@ -184,6 +184,62 @@ pub async fn a_pruned_stream_cannot_be_started_over(store: &impl EventStore<Samp
     );
 }
 
+pub async fn a_forgotten_stream_is_gone_whole_and_the_others_stay(
+    store: &impl EventStore<SampleEvent>,
+) {
+    let forgotten = AggregateId::from("sample_forgotten");
+    let kept = AggregateId::from("sample_kept");
+    given_a_stream(
+        store,
+        &forgotten,
+        vec![a_creation(), SampleEvent::Deleted, a_snapshot()],
+    )
+    .await;
+    given_a_stream(store, &kept, vec![a_creation()]).await;
+
+    store
+        .forget(&forgotten, SAMPLE)
+        .await
+        .expect("forgetting should succeed");
+    store
+        .forget(&forgotten, SAMPLE)
+        .await
+        .expect("forgetting what is gone already changes nothing");
+
+    assert!(
+        store
+            .read_from(&forgotten, SAMPLE, Version::ZERO)
+            .await
+            .expect("reading should succeed")
+            .is_empty()
+    );
+    assert!(
+        store
+            .latest_snapshot(&forgotten, SAMPLE)
+            .await
+            .expect("reading should succeed")
+            .is_none(),
+        "the snapshot goes with it, unlike pruning"
+    );
+    assert_eq!(
+        store
+            .read_from(&kept, SAMPLE, Version::ZERO)
+            .await
+            .expect("reading should succeed")
+            .len(),
+        1
+    );
+    store
+        .append(
+            &forgotten,
+            SAMPLE,
+            Version::ZERO,
+            &[at(&forgotten, 1, a_creation())],
+        )
+        .await
+        .expect("a stream forgotten whole has no history left to collide with");
+}
+
 pub async fn one_append_may_carry_several_events(store: &impl EventStore<SampleEvent>) {
     let aggregate = AggregateId::from("sample_batch");
 
@@ -736,6 +792,10 @@ macro_rules! conformance_tests {
         $crate::conformance_case!($workbench, a_refused_append_leaves_the_stream_untouched);
         $crate::conformance_case!($workbench, one_append_may_carry_several_events);
         $crate::conformance_case!($workbench, a_pruned_stream_cannot_be_started_over);
+        $crate::conformance_case!(
+            $workbench,
+            a_forgotten_stream_is_gone_whole_and_the_others_stay
+        );
         $crate::conformance_case!($workbench, streams_of_different_aggregates_do_not_mix);
         $crate::conformance_case!($workbench, reading_from_a_version_skips_what_came_before);
         $crate::conformance_case!($workbench, reading_through_a_version_stops_there);

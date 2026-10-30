@@ -22,6 +22,8 @@ ideas.execute(&idea, IdeaCommand::Discard, &Agent::Local).await?;
 let Standing { state, version } = ideas.latest(&idea).await?;
 ```
 
+**A stream is collapsed or forgotten.** `prune_through` deletes the events a snapshot replaced and keeps the snapshot, so the stream keeps its history, however little, and cannot be begun again. `forget` deletes a stream whole, snapshot and all, for what no history is kept of (a notice put away long since); a stream forgotten could be begun again from version zero, so whoever forgets one makes sure nothing will. Both in memory, on PostgreSQL and on SQLite, one conformance suite for all three.
+
 **Every event carries its aggregate's context.** An `Aggregate` may say what it belongs to as an `AggregateContext`, a small map of names to values, empty unless it says otherwise; the service stamps the context of the state after a command on every event the command wrote, and on a snapshot, and the stores keep it beside the event, as a JSON column. What the names mean is the features' business, not this library's: it knows no project, only that an aggregate may be in one, a name and a value. Messages carry it on, so a listener can tell what an event belonged to without asking anyone.
 
 **Three backends, one conformance suite.** `InMemoryEventStore`, `PostgresEventStore` and `SqliteEventStore` are driven by the same case list through a `Workbench`, so "which store" is never a behavioural question. Storage shape is the feature's own: a `Codec<E>` converts its events to and from the JSON body, which is what keeps stored shapes out of the domain and makes upcasting a `Patch` applied on read rather than a rewrite in place.

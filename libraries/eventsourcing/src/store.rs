@@ -87,4 +87,6 @@ pub trait EventStore<E>: Send + Sync {
         kind: AggregateType,
         through: Version,
     ) -> Result<(), StoreError>;
+
+    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError>;
 }

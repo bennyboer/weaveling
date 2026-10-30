@@ -177,6 +177,12 @@ where
 
         Ok(())
     }
+
+    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
+        self.write().remove(&(aggregate.clone(), kind));
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]

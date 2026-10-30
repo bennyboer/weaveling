@@ -100,4 +100,8 @@ where
     ) -> Result<(), StoreError> {
         self.discard_through(aggregate, kind, through).await
     }
+
+    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
+        self.forget_stream(aggregate, kind).await
+    }
 }

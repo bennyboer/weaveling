@@ -399,6 +399,14 @@ impl EventStore<AccountEvent> for Refusing {
     ) -> Result<(), StoreError> {
         Ok(())
     }
+
+    async fn forget(
+        &self,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
 }
 
 #[tokio::test]

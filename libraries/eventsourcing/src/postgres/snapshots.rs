@@ -23,6 +23,8 @@ const NEWEST_BY: &str = "
 
 const DISCARD: &str = "DELETE FROM events WHERE aggregate = $1 AND kind = $2 AND version <= $3";
 
+const FORGET: &str = "DELETE FROM events WHERE aggregate = $1 AND kind = $2";
+
 impl<E> PostgresEventStore<E> {
     pub(super) async fn newest_snapshot(
         &self,
@@ -51,6 +53,21 @@ impl<E> PostgresEventStore<E> {
             .bind(aggregate.as_str())
             .bind(kind.as_str())
             .bind(postgres::as_bigint(through))
+            .execute(&self.pool)
+            .await
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
+
+        Ok(())
+    }
+
+    pub(super) async fn forget_stream(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        sqlx::query(FORGET)
+            .bind(aggregate.as_str())
+            .bind(kind.as_str())
             .execute(&self.pool)
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;

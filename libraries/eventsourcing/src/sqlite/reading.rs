@@ -44,6 +44,8 @@ const NEWEST_BY: &str = "
 
 const DISCARD: &str = "DELETE FROM events WHERE aggregate = ?1 AND kind = ?2 AND version <= ?3";
 
+const FORGET: &str = "DELETE FROM events WHERE aggregate = ?1 AND kind = ?2";
+
 impl<E> SqliteEventStore<E> {
     pub(super) async fn since(
         &self,
@@ -88,6 +90,19 @@ impl<E> SqliteEventStore<E> {
         through: Version,
     ) -> Result<(), StoreError> {
         query_for(DISCARD, aggregate, kind, &[through])
+            .execute(&self.pool)
+            .await
+            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
+
+        Ok(())
+    }
+
+    pub(super) async fn forget_stream(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        query_for(FORGET, aggregate, kind, &[])
             .execute(&self.pool)
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
