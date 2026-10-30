@@ -5,6 +5,7 @@ use eventsourcing::{
     Version,
 };
 use thiserror::Error;
+use time::OffsetDateTime;
 
 use crate::id::NoticeId;
 
@@ -55,6 +56,7 @@ pub enum NoticeEvent {
     Snapshotted {
         account: AccountId,
         about: About,
+        noted_at: OffsetDateTime,
         dismissed: bool,
     },
 }
@@ -63,6 +65,7 @@ pub enum NoticeEvent {
 pub struct Notice {
     account: AccountId,
     about: About,
+    noted_at: OffsetDateTime,
     dismissed: bool,
 }
 
@@ -99,6 +102,10 @@ impl Notice {
 
     pub fn about(&self) -> &About {
         &self.about
+    }
+
+    pub fn noted_at(&self) -> OffsetDateTime {
+        self.noted_at
     }
 
     pub fn is_dismissed(&self) -> bool {
@@ -144,20 +151,23 @@ impl Aggregate for Notice {
         }
     }
 
-    fn from_first(event: &NoticeEvent, _metadata: &EventMetadata) -> Option<Self> {
+    fn from_first(event: &NoticeEvent, metadata: &EventMetadata) -> Option<Self> {
         match event {
             NoticeEvent::Noted { account, about } => Some(Self {
                 account: account.clone(),
                 about: about.clone(),
+                noted_at: metadata.occurred_at,
                 dismissed: false,
             }),
             NoticeEvent::Snapshotted {
                 account,
                 about,
+                noted_at,
                 dismissed,
             } => Some(Self {
                 account: account.clone(),
                 about: about.clone(),
+                noted_at: *noted_at,
                 dismissed: *dismissed,
             }),
             NoticeEvent::Dismissed => None,
@@ -183,10 +193,12 @@ impl Aggregate for Notice {
             NoticeEvent::Snapshotted {
                 account,
                 about,
+                noted_at,
                 dismissed,
             } => {
                 self.account = account.clone();
                 self.about = about.clone();
+                self.noted_at = *noted_at;
                 self.dismissed = *dismissed;
             }
         }
@@ -196,6 +208,7 @@ impl Aggregate for Notice {
         NoticeEvent::Snapshotted {
             account: self.account.clone(),
             about: self.about.clone(),
+            noted_at: self.noted_at,
             dismissed: self.dismissed,
         }
     }

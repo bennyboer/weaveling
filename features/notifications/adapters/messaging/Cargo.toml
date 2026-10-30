@@ -16,6 +16,7 @@ notifications-core = { version = "0.1.0", path = "../../core", package = "weavel
 members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
 
 [dev-dependencies]
+notifications-catalog = { version = "0.1.0", path = "../catalog", package = "weaveling-notifications-catalog" }
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 registry = { version = "0.1.0", path = "../../../../libraries/registry", package = "weaveling-registry" }
 serde_json = { workspace = true }

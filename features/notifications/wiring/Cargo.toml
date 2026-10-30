@@ -11,6 +11,7 @@ outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "wea
 registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }
 
+notifications-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-notifications-catalog" }
 notifications-core = { version = "0.1.0", path = "../core", package = "weaveling-notifications-core" }
 notifications-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-notifications-messaging" }
 

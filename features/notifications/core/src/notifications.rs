@@ -7,6 +7,7 @@ use eventsourcing::{
 };
 use registry::Registry;
 
+use crate::catalog::{NoticeCatalog, NoticeSummary};
 use crate::error::NotificationsError;
 use crate::id::NoticeId;
 use crate::notice::{About, KIND, Notice, NoticeCommand, NoticeError, NoticeEvent};
@@ -14,6 +15,7 @@ use crate::notice::{About, KIND, Notice, NoticeCommand, NoticeError, NoticeEvent
 #[derive(Clone)]
 pub struct NotificationsCore {
     events: Arc<EventSourcingService<Notice>>,
+    catalog: Arc<dyn NoticeCatalog>,
     registry: Arc<dyn Registry>,
     clock: Arc<dyn Clock>,
 }
@@ -21,11 +23,13 @@ pub struct NotificationsCore {
 impl NotificationsCore {
     pub fn new(
         store: Arc<dyn EventStore<NoticeEvent>>,
+        catalog: Arc<dyn NoticeCatalog>,
         registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
             events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            catalog,
             registry,
             clock,
         }
@@ -82,6 +86,26 @@ impl NotificationsCore {
             .await?;
 
         Ok(())
+    }
+
+    pub async fn open_for(&self, agent: &Agent) -> Result<Vec<NoticeSummary>, NotificationsError> {
+        match agent {
+            Agent::Account(account) => Ok(self.catalog.open_for(account).await?),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    pub async fn catalogue(&self, notice: &NoticeId) -> Result<(), NotificationsError> {
+        let standing = self.events.latest(&AggregateId::from(notice)).await?;
+
+        Ok(self
+            .catalog
+            .remember(&NoticeSummary::of(
+                *notice,
+                standing.version,
+                &standing.state,
+            ))
+            .await?)
     }
 }
 

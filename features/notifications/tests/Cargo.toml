@@ -8,7 +8,11 @@ time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
 
+notifications-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-notifications-catalog" }
+notifications-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-notifications-messaging" }
+notifications-contract = { version = "0.1.0", path = "../contract", package = "weaveling-notifications-contract" }
 notifications-core = { version = "0.1.0", path = "../core", package = "weaveling-notifications-core" }

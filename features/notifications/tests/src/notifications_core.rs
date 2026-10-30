@@ -5,6 +5,7 @@ use clock::FixedClock;
 use eventsourcing::{
     AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, ServiceError, Version,
 };
+use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{
     About, KIND, NoticeEvent, NoticeId, NotificationsCore, NotificationsError, ProjectLink, Role,
 };
@@ -22,6 +23,7 @@ fn kept() -> Kept {
     Kept {
         notifications: NotificationsCore::new(
             store.clone(),
+            Arc::new(InMemoryNoticeCatalog::new()),
             Arc::new(InMemoryRegistry::new()),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         ),

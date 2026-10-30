@@ -70,6 +70,7 @@ mod tests {
     use clock::FixedClock;
     use eventsourcing::{Agent, InMemoryEventStore};
     use messaging::{Listener, RoutingKey};
+    use notifications_catalog::InMemoryNoticeCatalog;
     use notifications_core::KIND;
     use registry::{InMemoryRegistry, Registry};
     use serde_json::{Value, json};
@@ -87,6 +88,7 @@ mod tests {
         let registry = Arc::new(InMemoryRegistry::new());
         let notifications = NotificationsCore::new(
             Arc::new(InMemoryEventStore::new()),
+            Arc::new(InMemoryNoticeCatalog::new()),
             registry.clone(),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         );

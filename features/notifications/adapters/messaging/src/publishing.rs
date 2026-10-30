@@ -109,6 +109,7 @@ mod tests {
                     role: Role::Reader,
                     by: None,
                 },
+                noted_at: OffsetDateTime::UNIX_EPOCH,
                 dismissed: true,
             },
             true,

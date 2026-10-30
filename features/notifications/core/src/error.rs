@@ -3,6 +3,7 @@ use ids::InvalidId;
 use registry::RegistryError;
 use thiserror::Error;
 
+use crate::catalog::CatalogError;
 use crate::notice::NoticeError;
 
 #[derive(Debug, Error)]
@@ -13,4 +14,6 @@ pub enum NotificationsError {
     Events(#[from] ServiceError<NoticeError>),
     #[error(transparent)]
     Registry(#[from] RegistryError),
+    #[error(transparent)]
+    Catalog(#[from] CatalogError),
 }
