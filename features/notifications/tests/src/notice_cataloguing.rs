@@ -80,7 +80,8 @@ async fn a_noted_notice_is_listed_for_its_account_alone_until_it_is_dismissed() 
             made_an_author(),
         )
         .await
-        .expect("noting should succeed");
+        .expect("noting should succeed")
+        .expect("its project is not deleted");
     listed.clock.set(NOTED_AT + Duration::hours(1));
 
     heard_through(&listed, &notice, 1).await;

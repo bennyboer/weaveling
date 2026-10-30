@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+axum = { workspace = true }
+axum-test = { workspace = true }
+serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 
@@ -12,7 +15,11 @@ messaging = { version = "0.1.0", path = "../../../libraries/messaging", package 
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
 
+accounts-contract = { version = "0.1.0", path = "../../accounts/contract", package = "weaveling-accounts-contract" }
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
+
 notifications-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-notifications-catalog" }
+notifications-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-notifications-rest" }
 notifications-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-notifications-messaging" }
 notifications-contract = { version = "0.1.0", path = "../contract", package = "weaveling-notifications-contract" }
 notifications-core = { version = "0.1.0", path = "../core", package = "weaveling-notifications-core" }

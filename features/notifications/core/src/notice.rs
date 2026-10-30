@@ -95,6 +95,20 @@ impl Display for ProjectLink {
     }
 }
 
+impl About {
+    pub fn project(&self) -> Option<&ProjectLink> {
+        match self {
+            Self::RoleChanged { project, .. } => Some(project),
+        }
+    }
+
+    pub fn accounts(&self) -> Vec<&AccountId> {
+        match self {
+            Self::RoleChanged { by, .. } => by.iter().collect(),
+        }
+    }
+}
+
 impl Notice {
     pub fn account(&self) -> &AccountId {
         &self.account

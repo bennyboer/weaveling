@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
-use axum::Router;
 use eventsourcing::EventStore;
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{NoticeCatalog, NoticeEvent, NotificationsCore};
-use notifications_messaging::{CatalogueNoticeListener, NoteRoleChangedListener};
+use notifications_messaging::{
+    CatalogueNoticeListener, NoteRoleChangedListener, RememberProjectNamesListener,
+    RememberWhoSignedUpListener,
+};
 use outbox::Outbox;
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, EventSourced, Feature, Wired};
@@ -28,9 +30,11 @@ pub fn core(ports: &Ports, context: &Context) -> NotificationsCore {
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let notifications = core(ports, context);
 
-    Wired::serving(Router::new()).listening(vec![
+    Wired::serving(notifications_rest::router(notifications.clone())).listening(vec![
         Arc::new(NoteRoleChangedListener::new(notifications.clone())),
-        Arc::new(CatalogueNoticeListener::new(notifications)),
+        Arc::new(CatalogueNoticeListener::new(notifications.clone())),
+        Arc::new(RememberWhoSignedUpListener::new(notifications.clone())),
+        Arc::new(RememberProjectNamesListener::new(notifications)),
     ])
 }
 
@@ -124,9 +128,7 @@ impl Feature for NotificationsFeature {
 mod tests {
     use authorizing::AllowingEverything;
     use clock::SystemClock;
-    use eventsourcing::AccountId;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
-    use notifications_core::{About, ProjectLink, Role};
 
     use super::*;
 
@@ -141,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_notes_a_changed_role_lists_every_notice_and_serves_nothing_yet() {
+    fn the_feature_notes_a_changed_role_lists_every_notice_and_remembers_names() {
         let context = a_context();
 
         let wired =
@@ -152,12 +154,24 @@ mod tests {
             .iter()
             .map(|listener| listener.named().as_str().to_owned())
             .collect();
-        assert_eq!(named, ["note-role-changed", "catalogue-notice"]);
+        assert_eq!(
+            named,
+            [
+                "note-role-changed",
+                "catalogue-notice",
+                "notifications-remember-who-signed-up",
+                "notifications-remember-project-names"
+            ]
+        );
         assert!(wired.topics.is_empty());
         assert!(wired.chores.is_empty());
     }
 
+    #[cfg(any(feature = "postgres", feature = "sqlite"))]
     pub(super) async fn the_list_keeps_a_noted_notice(ports: &Ports) {
+        use eventsourcing::AccountId;
+        use notifications_core::{About, ProjectLink, Role};
+
         let notifications = core(ports, &a_context());
         let bo = AccountId::from("account_bo");
 
@@ -172,7 +186,8 @@ mod tests {
                 },
             )
             .await
-            .expect("noting should succeed");
+            .expect("noting should succeed")
+            .expect("its project is not deleted");
         notifications
             .catalogue(&notice)
             .await

@@ -6,7 +6,7 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 use crate::id::NoticeId;
-use crate::notice::{About, Notice};
+use crate::notice::{About, Notice, ProjectLink};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoticeSummary {
@@ -16,6 +16,19 @@ pub struct NoticeSummary {
     pub about: About,
     pub noted_at: OffsetDateTime,
     pub dismissed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Person {
+    pub account: AccountId,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProjectName {
+    pub project: ProjectLink,
+    pub version: Version,
+    pub name: String,
 }
 
 #[derive(Debug, Error)]
@@ -29,6 +42,25 @@ pub trait NoticeCatalog: Send + Sync {
     async fn remember(&self, summary: &NoticeSummary) -> Result<(), CatalogError>;
 
     async fn open_for(&self, account: &AccountId) -> Result<Vec<NoticeSummary>, CatalogError>;
+
+    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError>;
+
+    async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
+
+    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError>;
+
+    async fn project_names(
+        &self,
+        projects: &[ProjectLink],
+    ) -> Result<Vec<ProjectName>, CatalogError>;
+
+    async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
 }
 
 impl NoticeSummary {

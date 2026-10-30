@@ -13,7 +13,9 @@ notifications-contract = { version = "0.1.0", path = "../../contract", package =
 notifications-core = { version = "0.1.0", path = "../../core", package = "weaveling-notifications-core" }
 
 # Foreign contracts: another feature's published events.
+accounts-contract = { version = "0.1.0", path = "../../../accounts/contract", package = "weaveling-accounts-contract" }
 members-contract = { version = "0.1.0", path = "../../../members/contract", package = "weaveling-members-contract" }
+projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 
 [dev-dependencies]
 notifications-catalog = { version = "0.1.0", path = "../catalog", package = "weaveling-notifications-catalog" }

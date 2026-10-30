@@ -52,6 +52,7 @@ async fn noted_for_bo(kept: &Kept) -> NoticeId {
         )
         .await
         .expect("noting should succeed")
+        .expect("its project is not deleted")
 }
 
 async fn told(kept: &Kept, notice: &NoticeId) -> Vec<NoticeEvent> {

@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
-use notifications_core::{CatalogError, NoticeCatalog, NoticeId, NoticeSummary};
+use notifications_core::{
+    CatalogError, NoticeCatalog, NoticeId, NoticeSummary, Person, ProjectLink, ProjectName,
+};
 use sqlx::migrate::Migrator;
 use sqlx::postgres::PgRow;
 use sqlx::types::Json;
@@ -28,8 +30,48 @@ const OPEN_FOR: &str = "
     SELECT notice, version, account, project, about, noted_at, dismissed
     FROM notices
     WHERE account = $1 AND NOT dismissed
+      AND (project IS NULL OR project NOT IN (SELECT project FROM project_tombstones))
     ORDER BY noted_at DESC, notice DESC
 ";
+
+const REMEMBER_PERSON: &str = "
+    INSERT INTO people (account, name)
+    VALUES ($1, $2)
+    ON CONFLICT (account) DO UPDATE
+    SET name = EXCLUDED.name
+";
+
+const PEOPLE: &str = "
+    SELECT account, name
+    FROM people
+    WHERE account = ANY($1)
+    ORDER BY account
+";
+
+const REMEMBER_PROJECT_NAME: &str = "
+    INSERT INTO project_names (project, version, name)
+    SELECT $1, $2, $3
+    WHERE NOT EXISTS (SELECT 1 FROM project_tombstones WHERE project = $1)
+    ON CONFLICT (project) DO UPDATE
+    SET version = EXCLUDED.version,
+        name    = EXCLUDED.name
+    WHERE project_names.version < EXCLUDED.version
+";
+
+const PROJECT_NAMES: &str = "
+    SELECT project, version, name
+    FROM project_names
+    WHERE project = ANY($1)
+    ORDER BY project
+";
+
+const LAY_PROJECT_TOMBSTONE: &str =
+    "INSERT INTO project_tombstones (project, laid_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+
+const FORGET_PROJECT_NAME: &str = "DELETE FROM project_names WHERE project = $1";
+
+const HAS_PROJECT_TOMBSTONE: &str =
+    "SELECT EXISTS (SELECT 1 FROM project_tombstones WHERE project = $1)";
 
 const LEDGER: &str = "_sqlx_migrations_notices";
 
@@ -100,5 +142,101 @@ impl NoticeCatalog for PostgresNoticeCatalog {
             .iter()
             .map(summary_of)
             .collect()
+    }
+
+    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_PERSON)
+            .bind(person.account.to_string())
+            .bind(&person.name)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
+        sqlx::query(PEOPLE)
+            .bind(accounts.iter().map(ToString::to_string).collect::<Vec<_>>())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .iter()
+            .map(|row: &PgRow| {
+                Ok(Person {
+                    account: AccountId::from(
+                        row.try_get::<String, _>("account").map_err(unreachable)?,
+                    ),
+                    name: row.try_get("name").map_err(unreachable)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_PROJECT_NAME)
+            .bind(named.project.to_string())
+            .bind(i64::try_from(named.version.count()).map_err(unreachable)?)
+            .bind(&named.name)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn project_names(
+        &self,
+        projects: &[ProjectLink],
+    ) -> Result<Vec<ProjectName>, CatalogError> {
+        sqlx::query(PROJECT_NAMES)
+            .bind(projects.iter().map(ToString::to_string).collect::<Vec<_>>())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .iter()
+            .map(|row: &PgRow| {
+                let version: i64 = row.try_get("version").map_err(unreachable)?;
+
+                Ok(ProjectName {
+                    project: ProjectLink::from(
+                        row.try_get::<String, _>("project")
+                            .map_err(unreachable)?
+                            .as_str(),
+                    ),
+                    version: Version::of(u64::try_from(version).map_err(unreachable)?),
+                    name: row.try_get("name").map_err(unreachable)?,
+                })
+            })
+            .collect()
+    }
+
+    async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(LAY_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .bind(at)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(FORGET_PROJECT_NAME)
+            .bind(project.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+
+        transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        sqlx::query_scalar(HAS_PROJECT_TOMBSTONE)
+            .bind(project.to_string())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unreachable)
     }
 }

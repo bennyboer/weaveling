@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 pub const NOTED: &str = "notice.noted";
@@ -11,6 +13,15 @@ pub enum NoticeEventDTO {
     Noted { account: String, about: AboutDTO },
     #[serde(rename = "DISMISSED")]
     Dismissed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct NoticeDTO {
+    pub id: String,
+    pub noted_at: String,
+    pub about: AboutDTO,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub names: BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]

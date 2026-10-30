@@ -1,5 +1,9 @@
+use std::slice;
+
 use eventsourcing::{AccountId, Version};
-use notifications_core::{About, NoticeCatalog, NoticeId, NoticeSummary, ProjectLink, Role};
+use notifications_core::{
+    About, NoticeCatalog, NoticeId, NoticeSummary, Person, ProjectLink, ProjectName, Role,
+};
 use time::OffsetDateTime;
 
 #[async_trait::async_trait]
@@ -122,6 +126,138 @@ pub async fn every_role_and_who_changed_it_read_back_as_they_were_kept(
     assert_eq!(open_for(catalog, "account_bo").await, kept);
 }
 
+pub async fn a_person_is_named_as_last_told_and_nobody_unknown_is_named(
+    catalog: &impl NoticeCatalog,
+) {
+    for name in ["Ada", "Ada Lovelace"] {
+        catalog
+            .remember_person(&Person {
+                account: AccountId::from("account_ada"),
+                name: name.to_owned(),
+            })
+            .await
+            .expect("remembering should succeed");
+    }
+
+    let named = catalog
+        .people(&[
+            AccountId::from("account_ada"),
+            AccountId::from("account_nobody"),
+        ])
+        .await
+        .expect("asking should succeed");
+
+    assert_eq!(
+        named,
+        vec![Person {
+            account: AccountId::from("account_ada"),
+            name: "Ada Lovelace".to_owned(),
+        }]
+    );
+}
+
+fn named(version: u64, name: &str) -> ProjectName {
+    ProjectName {
+        project: ProjectLink::from("project_1"),
+        version: Version::of(version),
+        name: name.to_owned(),
+    }
+}
+
+pub async fn a_project_keeps_its_newest_name_however_late_an_older_one_is_heard(
+    catalog: &impl NoticeCatalog,
+) {
+    for told in [
+        named(1, "Shared"),
+        named(3, "Shared Again"),
+        named(2, "Between"),
+    ] {
+        catalog
+            .remember_project_name(&told)
+            .await
+            .expect("remembering should succeed");
+    }
+
+    let names = catalog
+        .project_names(&[
+            ProjectLink::from("project_1"),
+            ProjectLink::from("project_unknown"),
+        ])
+        .await
+        .expect("asking should succeed");
+
+    assert_eq!(names, vec![named(3, "Shared Again")]);
+}
+
+fn in_project(summary: NoticeSummary, project: &str) -> NoticeSummary {
+    NoticeSummary {
+        about: About::RoleChanged {
+            project: ProjectLink::from(project),
+            role: Role::Author,
+            by: None,
+        },
+        ..summary
+    }
+}
+
+pub async fn a_deleted_project_s_notices_are_listed_no_more(catalog: &impl NoticeCatalog) {
+    let kept = in_project(a_summary("account_bo", 2_000, 1, false), "project_2");
+    remembered(
+        catalog,
+        &in_project(a_summary("account_bo", 1_000, 1, false), "project_1"),
+    )
+    .await;
+    remembered(catalog, &kept).await;
+
+    for _ in 0..2 {
+        catalog
+            .lay_project_tombstone(&ProjectLink::from("project_1"), at(3_000))
+            .await
+            .expect("laying a tombstone should succeed however often");
+    }
+
+    assert_eq!(open_for(catalog, "account_bo").await, vec![kept]);
+}
+
+pub async fn a_deleted_project_s_name_is_forgotten_and_one_heard_late_is_not_kept(
+    catalog: &impl NoticeCatalog,
+) {
+    let project = ProjectLink::from("project_1");
+    catalog
+        .remember_project_name(&named(1, "Shared"))
+        .await
+        .expect("remembering should succeed");
+
+    catalog
+        .lay_project_tombstone(&project, at(3_000))
+        .await
+        .expect("laying a tombstone should succeed");
+    catalog
+        .remember_project_name(&named(2, "Renamed meanwhile"))
+        .await
+        .expect("a name heard late is no failure");
+
+    assert!(
+        catalog
+            .project_names(slice::from_ref(&project))
+            .await
+            .expect("asking should succeed")
+            .is_empty()
+    );
+    assert!(
+        catalog
+            .has_project_tombstone(&project)
+            .await
+            .expect("asking should succeed")
+    );
+    assert!(
+        !catalog
+            .has_project_tombstone(&ProjectLink::from("project_2"))
+            .await
+            .expect("asking should succeed")
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -149,6 +285,22 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             every_role_and_who_changed_it_read_back_as_they_were_kept
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_person_is_named_as_last_told_and_nobody_unknown_is_named
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_keeps_its_newest_name_however_late_an_older_one_is_heard
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_deleted_project_s_notices_are_listed_no_more
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_deleted_project_s_name_is_forgotten_and_one_heard_late_is_not_kept
         );
     };
 }

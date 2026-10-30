@@ -42,6 +42,7 @@ accounts-rest = { version = "0.1.0", path = "../../features/accounts/adapters/re
 accounts-wiring = { version = "0.1.0", path = "../../features/accounts/wiring", package = "weaveling-accounts-wiring" }
 invitations-wiring = { version = "0.1.0", path = "../../features/invitations/wiring", package = "weaveling-invitations-wiring" }
 members-wiring = { version = "0.1.0", path = "../../features/members/wiring", package = "weaveling-members-wiring" }
+notifications-wiring = { version = "0.1.0", path = "../../features/notifications/wiring", package = "weaveling-notifications-wiring" }
 appearances-wiring = { version = "0.1.0", path = "../../features/appearances/wiring", package = "weaveling-appearances-wiring" }
 boards-wiring = { version = "0.1.0", path = "../../features/boards/wiring", package = "weaveling-boards-wiring" }
 outline-wiring = { version = "0.1.0", path = "../../features/outline/wiring", package = "weaveling-outline-wiring" }
@@ -60,6 +61,7 @@ postgres = [
     "accounts-wiring/postgres",
     "invitations-wiring/postgres",
     "members-wiring/postgres",
+    "notifications-wiring/postgres",
     "appearances-wiring/postgres",
     "boards-wiring/postgres",
     "outline-wiring/postgres",
@@ -76,6 +78,7 @@ sqlite = [
     "accounts-wiring/sqlite",
     "invitations-wiring/sqlite",
     "members-wiring/sqlite",
+    "notifications-wiring/sqlite",
     "appearances-wiring/sqlite",
     "boards-wiring/sqlite",
     "outline-wiring/sqlite",

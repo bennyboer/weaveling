@@ -1,3 +1,4 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use clock::Clock;
@@ -6,11 +7,18 @@ use eventsourcing::{
     StoreError,
 };
 use registry::Registry;
+use time::OffsetDateTime;
 
-use crate::catalog::{NoticeCatalog, NoticeSummary};
+use crate::catalog::{NoticeCatalog, NoticeSummary, Person, ProjectName};
 use crate::error::NotificationsError;
 use crate::id::NoticeId;
-use crate::notice::{About, KIND, Notice, NoticeCommand, NoticeError, NoticeEvent};
+use crate::notice::{About, KIND, Notice, NoticeCommand, NoticeError, NoticeEvent, ProjectLink};
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Names {
+    pub people: HashMap<AccountId, String>,
+    pub projects: HashMap<ProjectLink, String>,
+}
 
 #[derive(Clone)]
 pub struct NotificationsCore {
@@ -40,7 +48,12 @@ impl NotificationsCore {
         cause: &str,
         account: AccountId,
         about: About,
-    ) -> Result<NoticeId, NotificationsError> {
+    ) -> Result<Option<NoticeId>, NotificationsError> {
+        if let Some(project) = about.project()
+            && self.catalog.has_project_tombstone(project).await?
+        {
+            return Ok(None);
+        }
         let mine = NoticeId::generate(self.clock.now());
         let id: NoticeId = self
             .registry
@@ -59,7 +72,7 @@ impl NotificationsCore {
         {
             Ok(_)
             | Err(ServiceError::Refused(NoticeError::AlreadyNoted))
-            | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(id),
+            | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(Some(id)),
             Err(failed) => Err(failed.into()),
         }
     }
@@ -93,6 +106,59 @@ impl NotificationsCore {
             Agent::Account(account) => Ok(self.catalog.open_for(account).await?),
             _ => Ok(Vec::new()),
         }
+    }
+
+    pub async fn names_in(&self, notices: &[NoticeSummary]) -> Result<Names, NotificationsError> {
+        let accounts: Vec<AccountId> = notices
+            .iter()
+            .flat_map(|notice| notice.about.accounts())
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let projects: Vec<ProjectLink> = notices
+            .iter()
+            .filter_map(|notice| notice.about.project())
+            .cloned()
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        Ok(Names {
+            people: self
+                .catalog
+                .people(&accounts)
+                .await?
+                .into_iter()
+                .map(|person| (person.account, person.name))
+                .collect(),
+            projects: self
+                .catalog
+                .project_names(&projects)
+                .await?
+                .into_iter()
+                .map(|named| (named.project, named.name))
+                .collect(),
+        })
+    }
+
+    pub async fn remember_person(&self, person: &Person) -> Result<(), NotificationsError> {
+        Ok(self.catalog.remember_person(person).await?)
+    }
+
+    pub async fn remember_project_name(
+        &self,
+        named: &ProjectName,
+    ) -> Result<(), NotificationsError> {
+        Ok(self.catalog.remember_project_name(named).await?)
+    }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), NotificationsError> {
+        Ok(self.catalog.lay_project_tombstone(project, at).await?)
     }
 
     pub async fn catalogue(&self, notice: &NoticeId) -> Result<(), NotificationsError> {

@@ -14,11 +14,12 @@ use outbox::Cadence;
 use serde_json::{Value, json};
 use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, Storage};
 
-pub const DATABASES: [&str; 11] = [
+pub const DATABASES: [&str; 12] = [
     "messaging",
     "accounts",
     "invitations",
     "members",
+    "notifications",
     "projects",
     "ideas",
     "boards",

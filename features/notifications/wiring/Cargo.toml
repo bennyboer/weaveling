@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-axum = { workspace = true }
 sqlx = { workspace = true, optional = true }
 
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
@@ -15,6 +14,7 @@ wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "wea
 notifications-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-notifications-catalog" }
 notifications-core = { version = "0.1.0", path = "../core", package = "weaveling-notifications-core" }
 notifications-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-notifications-messaging" }
+notifications-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-notifications-rest" }
 notifications-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-notifications-store" }
 
 [features]

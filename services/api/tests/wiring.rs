@@ -183,6 +183,10 @@ async fn with_accounts_on_the_work_waits_behind_signing_in() {
         .get("/api/sessions/current")
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
+    server
+        .get("/api/notifications")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
@@ -231,6 +235,10 @@ async fn with_accounts_off_the_work_is_done_by_the_one_local_person() {
         .get("/api/projects")
         .await
         .assert_status(StatusCode::OK);
+    server
+        .get("/api/notifications")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -1141,5 +1149,99 @@ async fn on_a_server_signing_out_closes_the_one_socket_and_the_editing_socket_as
             Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == SESSION_ENDED
         ));
     }
+    signed_in.end().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_a_member_whose_role_was_changed_finds_it_in_their_notifications() {
+    let signed_in = an_operator_signed_in_on_a_server("notified").await;
+    let server = &signed_in.server;
+    let ada: Value = server.get("/api/sessions/current").await.json();
+    let ada = ada["account"]
+        .as_str()
+        .expect("the session names its account")
+        .to_owned();
+    let started: Value = server
+        .post("/api/projects")
+        .json(&json!({ "name": "Shared" }))
+        .await
+        .json();
+    let project = started["id"].as_str().expect("an id").to_owned();
+    for _ in 0..1_000 {
+        if signed_in
+            .authorizer
+            .may(&Agent::Account(ada.as_str().into()), Act::Manage, &project)
+            .await
+            .expect("asking should succeed")
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    server
+        .post("/api/invitations")
+        .add_header(ORIGIN, "https://weaveling.example.com")
+        .json(&json!({ "email": "grace@example.com", "scope": { "kind": "project", "project": project, "role": "author" } }))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let token = mail_drop::invitation_token_dropped_for(&signed_in.drop, "grace@example.com")
+        .expect("the link should have been mailed");
+    server
+        .post("/api/accounts/by-invitation")
+        .do_not_save_cookies()
+        .json(&json!({ "token": token, "name": "Grace", "password": "another long password" }))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let mut grace = None;
+    for _ in 0..1_000 {
+        let members: Value = server
+            .get(&format!("/api/members?project={project}"))
+            .await
+            .json();
+        grace = members
+            .as_array()
+            .and_then(|all| all.iter().find(|member| member["role"] == "author"))
+            .and_then(|member| member["account"].as_str())
+            .map(str::to_owned);
+        if grace.is_some() {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let grace = grace.expect("Grace joins the project she was invited into");
+
+    server
+        .patch(&format!("/api/members/{project}/accounts/{grace}"))
+        .json(&json!({ "role": "reader" }))
+        .await
+        .assert_status_ok();
+    server
+        .post("/api/sessions")
+        .json(&json!({ "email": "grace@example.com", "password": "another long password" }))
+        .await
+        .assert_status_ok();
+
+    let mut notices = Value::Null;
+    for _ in 0..1_000 {
+        notices = server.get("/api/notifications").await.json();
+        if notices[0]["names"]
+            .as_object()
+            .is_some_and(|names| names.len() == 2)
+        {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert_eq!(
+        notices[0]["about"],
+        json!({ "kind": "role-changed", "project": project, "role": "reader", "by": ada }),
+        "the change is relayed, noted for Grace, listed, and found on coming in"
+    );
+    assert_eq!(
+        notices[0]["names"],
+        json!({ ada: "Ada", project: "Shared" }),
+        "who changed it and the project, by the names notifications heard"
+    );
+
     signed_in.end().await;
 }

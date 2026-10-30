@@ -10,3 +10,22 @@ CREATE TABLE notices (
 
 CREATE INDEX notices_open_by_account ON notices (account, noted_at DESC, notice DESC)
     WHERE NOT dismissed;
+
+
+CREATE TABLE people (
+    account          TEXT COLLATE "C" PRIMARY KEY,
+    name             TEXT             NOT NULL
+);
+
+CREATE TABLE project_names (
+    project          TEXT COLLATE "C" PRIMARY KEY,
+    version          BIGINT           NOT NULL,
+    name             TEXT             NOT NULL
+);
+
+CREATE TABLE project_tombstones (
+    project          TEXT COLLATE "C" PRIMARY KEY,
+    laid_at          TIMESTAMPTZ      NOT NULL
+);
+
+CREATE INDEX project_tombstones_by_laid_at ON project_tombstones (laid_at);
