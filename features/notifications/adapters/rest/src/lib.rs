@@ -1,3 +1,6 @@
+mod telling;
+mod topic;
+
 use std::collections::BTreeMap;
 
 use axum::extract::{Path, State};
@@ -5,12 +8,18 @@ use axum::http::StatusCode;
 use axum::routing;
 use axum::{Extension, Json, Router};
 use clock::text;
-use eventsourcing::{Agent, ServiceError};
+use eventsourcing::{AccountId, Agent, ServiceError};
 use notifications_contract::{AboutDTO, NoticeDTO, role};
 use notifications_core::{
     About, Names, NoticeSummary, NotificationsCore, NotificationsError, Role,
 };
 use serving::Problem;
+
+pub use telling::TellingNotices;
+pub use topic::NotificationsTopic;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NoticeChanges(pub AccountId);
 
 pub fn router(notifications: NotificationsCore) -> Router {
     Router::new()

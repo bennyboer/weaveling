@@ -61,6 +61,11 @@ pub trait NoticeCatalog: Send + Sync {
     ) -> Result<(), CatalogError>;
 
     async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
+
+    async fn accounts_noticed_about(
+        &self,
+        project: &ProjectLink,
+    ) -> Result<Vec<AccountId>, CatalogError>;
 }
 
 impl NoticeSummary {

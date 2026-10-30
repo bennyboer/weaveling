@@ -258,6 +258,47 @@ pub async fn a_deleted_project_s_name_is_forgotten_and_one_heard_late_is_not_kep
     );
 }
 
+pub async fn the_accounts_with_open_notices_about_a_project_are_named_once_each(
+    catalog: &impl NoticeCatalog,
+) {
+    remembered(
+        catalog,
+        &in_project(a_summary("account_bo", 1_000, 1, false), "project_1"),
+    )
+    .await;
+    remembered(
+        catalog,
+        &in_project(a_summary("account_bo", 2_000, 1, false), "project_1"),
+    )
+    .await;
+    remembered(
+        catalog,
+        &in_project(a_summary("account_cy", 1_000, 1, false), "project_1"),
+    )
+    .await;
+    remembered(
+        catalog,
+        &in_project(a_summary("account_dee", 1_000, 2, true), "project_1"),
+    )
+    .await;
+    remembered(
+        catalog,
+        &in_project(a_summary("account_eve", 1_000, 1, false), "project_2"),
+    )
+    .await;
+
+    let noticed = catalog
+        .accounts_noticed_about(&ProjectLink::from("project_1"))
+        .await
+        .expect("asking should succeed");
+
+    assert_eq!(
+        noticed,
+        vec![AccountId::from("account_bo"), AccountId::from("account_cy")],
+        "whoever has dismissed theirs has nothing to be told"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -301,6 +342,10 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             a_deleted_project_s_name_is_forgotten_and_one_heard_late_is_not_kept
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            the_accounts_with_open_notices_about_a_project_are_named_once_each
         );
     };
 }

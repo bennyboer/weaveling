@@ -1245,3 +1245,26 @@ async fn on_a_server_a_member_whose_role_was_changed_finds_it_in_their_notificat
 
     signed_in.end().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_an_account_follows_its_notifications_on_the_one_socket() {
+    let signed_in = an_operator_signed_in_on_a_server("notifications-live").await;
+    let mut socket = signed_in
+        .server
+        .get_websocket("/api/live")
+        .await
+        .into_websocket()
+        .await;
+
+    socket
+        .send_json(&json!({ "do": "subscribe", "id": "bell", "topic": "notifications", "about": { "mine": "true" } }))
+        .await;
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(300), socket.receive_json::<Value>())
+            .await
+            .is_err(),
+        "followed, neither unknown nor not there, and nothing to tell yet"
+    );
+    signed_in.end().await;
+}

@@ -147,6 +147,22 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
     async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
         Ok(self.buried(project))
     }
+
+    async fn accounts_noticed_about(
+        &self,
+        project: &ProjectLink,
+    ) -> Result<Vec<AccountId>, CatalogError> {
+        let mut noticed: Vec<AccountId> = self
+            .read()
+            .values()
+            .filter(|summary| !summary.dismissed && summary.about.project() == Some(project))
+            .map(|summary| summary.account.clone())
+            .collect();
+        noticed.sort_by(|one, other| one.as_str().cmp(other.as_str()));
+        noticed.dedup();
+
+        Ok(noticed)
+    }
 }
 
 #[cfg(test)]

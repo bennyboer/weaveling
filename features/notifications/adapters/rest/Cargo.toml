@@ -4,10 +4,13 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
 axum = { workspace = true }
+time = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live" }
 serving = { version = "0.1.0", path = "../../../../libraries/serving", package = "weaveling-serving" }
 
 notifications-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-notifications-contract" }

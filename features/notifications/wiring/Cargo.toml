@@ -7,6 +7,7 @@ edition.workspace = true
 sqlx = { workspace = true, optional = true }
 
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 registry = { version = "0.1.0", path = "../../../libraries/registry", package = "weaveling-registry" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }

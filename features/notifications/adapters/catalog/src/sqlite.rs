@@ -74,6 +74,13 @@ const FORGET_PROJECT_NAME: &str = "DELETE FROM project_names WHERE project = ?1"
 const HAS_PROJECT_TOMBSTONE: &str =
     "SELECT EXISTS (SELECT 1 FROM project_tombstones WHERE project = ?1)";
 
+const ACCOUNTS_NOTICED_ABOUT: &str = "
+    SELECT DISTINCT account
+    FROM notices
+    WHERE project = ?1 AND NOT dismissed
+    ORDER BY account
+";
+
 const LEDGER: &str = "_sqlx_migrations_notices";
 
 pub fn migrations() -> Migrator {
@@ -243,5 +250,19 @@ impl NoticeCatalog for SqliteNoticeCatalog {
             .fetch_one(&self.pool)
             .await
             .map_err(unreachable)
+    }
+
+    async fn accounts_noticed_about(
+        &self,
+        project: &ProjectLink,
+    ) -> Result<Vec<AccountId>, CatalogError> {
+        Ok(sqlx::query_scalar::<_, String>(ACCOUNTS_NOTICED_ABOUT)
+            .bind(project.to_string())
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .into_iter()
+            .map(AccountId::from)
+            .collect())
     }
 }

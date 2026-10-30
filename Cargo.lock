@@ -4582,9 +4582,12 @@ dependencies = [
 name = "weaveling-notifications-rest"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
+ "time",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-notifications-contract",
  "weaveling-notifications-core",
  "weaveling-serving",
@@ -4613,6 +4616,7 @@ dependencies = [
  "weaveling-accounts-contract",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-notifications-catalog",
  "weaveling-notifications-contract",
@@ -4632,6 +4636,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-messaging",
  "weaveling-notifications-catalog",
  "weaveling-notifications-core",

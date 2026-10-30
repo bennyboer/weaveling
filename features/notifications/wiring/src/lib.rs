@@ -1,12 +1,14 @@
 use std::sync::Arc;
 
 use eventsourcing::EventStore;
+use live::Broadcaster;
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{NoticeCatalog, NoticeEvent, NotificationsCore};
 use notifications_messaging::{
     CatalogueNoticeListener, NoteRoleChangedListener, RememberProjectNamesListener,
     RememberWhoSignedUpListener,
 };
+use notifications_rest::{NotificationsTopic, TellingNotices};
 use outbox::Outbox;
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, EventSourced, Feature, Wired};
@@ -28,14 +30,25 @@ pub fn core(ports: &Ports, context: &Context) -> NotificationsCore {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    let notifications = core(ports, context);
+    let broadcaster = Broadcaster::new();
+    let notifications = NotificationsCore::new(
+        ports.events.clone(),
+        Arc::new(TellingNotices::around(
+            ports.catalog.clone(),
+            broadcaster.clone(),
+        )),
+        ports.registry.clone(),
+        context.clock.clone(),
+    );
 
-    Wired::serving(notifications_rest::router(notifications.clone())).listening(vec![
-        Arc::new(NoteRoleChangedListener::new(notifications.clone())),
-        Arc::new(CatalogueNoticeListener::new(notifications.clone())),
-        Arc::new(RememberWhoSignedUpListener::new(notifications.clone())),
-        Arc::new(RememberProjectNamesListener::new(notifications)),
-    ])
+    Wired::serving(notifications_rest::router(notifications.clone()))
+        .followed_live(vec![Arc::new(NotificationsTopic::new(broadcaster))])
+        .listening(vec![
+            Arc::new(NoteRoleChangedListener::new(notifications.clone())),
+            Arc::new(CatalogueNoticeListener::new(notifications.clone())),
+            Arc::new(RememberWhoSignedUpListener::new(notifications.clone())),
+            Arc::new(RememberProjectNamesListener::new(notifications)),
+        ])
 }
 
 pub struct NotificationsFeature;
@@ -143,7 +156,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_notes_a_changed_role_lists_every_notice_and_remembers_names() {
+    fn the_feature_notes_a_changed_role_lists_every_notice_remembers_names_and_tells_them_live() {
         let context = a_context();
 
         let wired =
@@ -163,7 +176,14 @@ mod tests {
                 "notifications-remember-project-names"
             ]
         );
-        assert!(wired.topics.is_empty());
+        assert_eq!(
+            wired
+                .topics
+                .iter()
+                .map(|topic| topic.named())
+                .collect::<Vec<_>>(),
+            ["notifications"]
+        );
         assert!(wired.chores.is_empty());
     }
 

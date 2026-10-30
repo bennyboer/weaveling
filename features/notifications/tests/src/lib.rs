@@ -8,4 +8,7 @@ mod notice_cataloguing;
 mod notices_api;
 
 #[cfg(test)]
+mod notices_live;
+
+#[cfg(test)]
 mod notifications_core;
