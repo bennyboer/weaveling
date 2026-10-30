@@ -466,6 +466,18 @@ notice-invitation-join = Entrar
 notice-invitation-decline = Recusar
 notice-invitation-joined = Você entrou em { $project }. Ele aparece na sua lista em instantes.
 notice-invitation-declined = Você recusou o convite para { $project }.
+notifications-roles = Papéis
+notice-role-unnamed-project = um projeto
+notice-role-changed-by = { $by } mudou seu papel em { $project } para { $role ->
+        [owner] dono(a)
+        [author] autor(a)
+       *[reader] leitor(a)
+    }.
+notice-role-changed = Seu papel em { $project } agora é { $role ->
+        [owner] dono(a)
+        [author] autor(a)
+       *[reader] leitor(a)
+    }.
 code-heading = Confirme seu e-mail
 code-sent = Enviamos um código para { $email }.
 code-field = Código

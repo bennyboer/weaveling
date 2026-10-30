@@ -8,6 +8,8 @@ use crate::icons::Icon;
 use crate::notifications::invited;
 use crate::notifications::invited::Invited;
 use crate::notifications::notice::{Group, Notice};
+use crate::notifications::noticed;
+use crate::notifications::noticed::Noticed;
 use crate::problem;
 use crate::speech;
 use crate::speech::Speech;
@@ -23,7 +25,12 @@ fn bell() -> impl IntoView {
     let speech = expect_context::<Speech>();
     let open = RwSignal::new(false);
     let invited = Invited::following();
-    let notices = Memo::new(move |_| invited.notices());
+    let noticed = Noticed::following();
+    let notices = Memo::new(move |_| {
+        let mut all = invited.notices();
+        all.extend(noticed.notices());
+        all
+    });
 
     let clicking_away = window_event_listener(ev::click, move |_| open.set(false));
     let escaping = window_event_listener(ev::keydown, move |event| {
@@ -75,6 +82,7 @@ fn bell() -> impl IntoView {
                         .child((
                             html::h2().child(speech::said("notifications")),
                             move || invited.refused().map(problem::problem),
+                            move || noticed.refused().map(problem::problem),
                             move || {
                                 let held = notices.get();
                                 (
@@ -85,7 +93,7 @@ fn bell() -> impl IntoView {
                                     }),
                                     Group::ALL
                                         .into_iter()
-                                        .map(|group| grouped(group, &held, invited))
+                                        .map(|group| grouped(group, &held, invited, noticed))
                                         .collect::<Vec<_>>(),
                                 )
                             },
@@ -95,7 +103,12 @@ fn bell() -> impl IntoView {
         ))
 }
 
-fn grouped(group: Group, held: &[Notice], invited: Invited) -> impl IntoView + use<> {
+fn grouped(
+    group: Group,
+    held: &[Notice],
+    invited: Invited,
+    noticed: Noticed,
+) -> impl IntoView + use<> {
     let in_group: Vec<Notice> = held
         .iter()
         .filter(|notice| notice.group() == group)
@@ -109,7 +122,10 @@ fn grouped(group: Group, held: &[Notice], invited: Invited) -> impl IntoView + u
                 in_group
                     .into_iter()
                     .map(|notice| match notice {
-                        Notice::Invitation(invitation) => invited::row(invited, invitation),
+                        Notice::Invitation(invitation) => {
+                            invited::row(invited, invitation).into_any()
+                        }
+                        Notice::RoleChanged(change) => noticed::row(noticed, change).into_any(),
                     })
                     .collect::<Vec<_>>(),
             ),

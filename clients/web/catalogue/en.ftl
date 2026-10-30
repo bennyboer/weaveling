@@ -466,6 +466,18 @@ notice-invitation-join = Join
 notice-invitation-decline = Decline
 notice-invitation-joined = You joined { $project }. It appears in your list in a moment.
 notice-invitation-declined = You turned down the invitation to { $project }.
+notifications-roles = Roles
+notice-role-unnamed-project = a project
+notice-role-changed-by = { $by } made you { $role ->
+        [owner] an owner
+        [author] an author
+       *[reader] a reader
+    } of { $project }.
+notice-role-changed = You are now { $role ->
+        [owner] an owner
+        [author] an author
+       *[reader] a reader
+    } of { $project }.
 code-heading = Confirm your address
 code-sent = We sent a code to { $email }.
 code-field = Code

@@ -20,6 +20,8 @@ What an account is told happened to it while it may have been away, kept until i
 
 **Told live, on the one socket:** the topic `notifications` with `mine` follows, for the signed-in account, a channel of its own (`NoticeChanges(account)`); nobody but an account follows, and only its own. `TellingNotices`, around the list, tells that channel each time the list takes in a change to one of the account's notices, noted or dismissed, `of` the notice, so a frame comes only once the list shows it and the client asks again; and each time a project is deleted, every account with an open notice about it, `of` the project, as those notices leave the list. Whose notices those are the list answers, `accounts_noticed_about`.
 
-*Next:* the bell (5g-6), and old notices retiring (5g-7).
+**In the client, the bell** lists them in a group of their own, Roles, beside the invitations (which stay the invitations feature's, open questions rather than news): "Ada made you an author of Shared.", or "You are now a reader of a project." when who or which is not known by name, in all five languages; each put away by Dismiss, quietly if it is gone already; asked again on every frame of `notifications`.
+
+*Next:* old notices retiring (5g-7).
 
 **Crates:** `core` (`NotificationsCore`, `Notice`, `NoticeId`, `NoticeCatalog`) · `contract` (`NoticeEventDTO`, `AboutDTO`, the routing keys) · `adapters/catalog` (in memory, PostgreSQL, SQLite, and the conformance suite every list runs) · `adapters/store` (the codec the event store keeps notices in) · `adapters/rest` (the two routes) · `adapters/messaging` (publishing, `NoteRoleChangedListener`, `CatalogueNoticeListener`) · `wiring` · `tests`.

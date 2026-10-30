@@ -93,6 +93,15 @@ export type Server = {
   answered: string[];
   declinedByLink: string[];
   memberships: { project: string; role: string }[] | null;
+  notices: Noticed[];
+  dismissed: string[];
+};
+
+export type Noticed = {
+  id: string;
+  noted_at: string;
+  about: { kind: "role-changed"; project: string; role: string; by?: string };
+  names?: Record<string, string>;
 };
 
 const refusing = (
@@ -140,6 +149,8 @@ export async function aServerWithAccounts(
     answered: [],
     declinedByLink: [],
     memberships: null,
+    notices: [],
+    dismissed: [],
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -445,6 +456,23 @@ export async function aServerWithAccounts(
   await page.route(at("/api/members/mine"), (route) =>
     server.memberships === null ? route.fallback() : route.fulfill({ json: server.memberships }),
   );
+  await page.route(at("/api/notifications"), (route) =>
+    server.signedIn
+      ? route.fulfill({ json: server.notices })
+      : refusing(route, 401, "not-signed-in"),
+  );
+  await page.route(
+    (url) => /^\/api\/notifications\/[^/]+\/dismissed$/.test(url.pathname),
+    (route) => {
+      const id = new URL(route.request().url()).pathname.split("/")[3];
+      if (!server.notices.some((notice) => notice.id === id)) {
+        return refusing(route, 404, "not-found");
+      }
+      server.notices = server.notices.filter((notice) => notice.id !== id);
+      server.dismissed.push(id);
+      return route.fulfill({ status: 204 });
+    },
+  );
   await page.route(at("/api/invitations/mine"), (route) => {
     server.mineListed += 1;
     return server.signedIn
@@ -498,6 +526,10 @@ export function toldOfMembers(
   event: Record<string, string>,
 ) {
   toldOn(server, "members", { of, version: 2, event });
+}
+
+export function toldOfNotices(server: Server, of: string) {
+  toldOn(server, "notifications", { of, version: 2, event: null });
 }
 
 export function toldOfMine(server: Server) {

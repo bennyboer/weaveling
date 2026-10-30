@@ -511,6 +511,28 @@
       gap: 0.5rem;
       margin-top: 0.5rem;
     }
+
+    .role-changed {
+      display: flex;
+      align-items: baseline;
+      gap: 0.75rem;
+
+      .told {
+        flex: 1;
+      }
+
+      .when {
+        display: block;
+        margin-top: 0.2rem;
+        color: var(--muted);
+        font-size: 0.8rem;
+      }
+
+      .dismiss {
+        flex-shrink: 0;
+        font-size: 0.85rem;
+      }
+    }
   }
 }
 
