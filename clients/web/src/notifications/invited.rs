@@ -8,7 +8,7 @@ use crate::accounts::service::Answer;
 use crate::http::ApiError;
 use crate::invitations::service;
 use crate::invitations::to_you::InvitationToYou;
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::notifications::notice::Notice;
 use crate::quiet_note::QuietNote;
 use crate::speech;
@@ -42,8 +42,9 @@ impl Invited {
             }
         });
         listing.dispatch(());
-        StoredValue::new_local(Following::start(
-            "/api/invitations/mine/live",
+        StoredValue::new_local(Subscription::start(
+            "invitations",
+            &[("mine", "true")],
             move |_| _ = listing.dispatch(()),
             move || _ = listing.dispatch(()),
         ));

@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::http::{ApiError, Refusal};
-use crate::live::Following;
+use crate::live::{Following, Subscription};
 use crate::projects::model;
 use crate::projects::model::{Membership, Project, ProjectDetails, ProjectId};
 use crate::projects::service;
@@ -76,8 +76,9 @@ impl Workspace {
         ));
         if with_accounts {
             let reconnected = StoredValue::new(false);
-            StoredValue::new_local(Following::start(
-                "/api/members/live",
+            StoredValue::new_local(Subscription::start(
+                "members",
+                &[("mine", "true")],
                 move |told: FrameDTO| match model::membership_in(told) {
                     Some(Membership::Begun(project)) => {
                         take_in_joined(known, project, Duration::ZERO)

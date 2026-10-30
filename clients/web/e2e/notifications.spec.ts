@@ -5,6 +5,8 @@ import {
   HER_PASSWORD,
   aServerWithAccounts,
   signIn,
+  endedOn,
+  subscribedTo,
   toldOfMine,
   type Server,
   type ToYou,
@@ -111,7 +113,7 @@ test("an invitation that arrives while the bell is open shows at once", async ({
   await expect(notifications(page)).toContainText(
     "Nothing new just now.",
   );
-  await expect.poll(() => server.mine.length).toBe(1);
+  await expect.poll(() => subscribedTo(server, "invitations").length).toBe(1);
 
   server.toYou = [SHARED];
   toldOfMine(server);
@@ -146,14 +148,17 @@ test("the bell is there only while signed in, and stops following on signing out
   await expect(bell(page)).toHaveCount(0);
   await signIn(page, ADA.email, HER_PASSWORD);
   await expect(bell(page)).toBeVisible();
-  await expect.poll(() => server.mine.length).toBe(1);
+  await expect.poll(() => subscribedTo(server, "invitations").length).toBe(1);
 
   await page.getByRole("button", { name: "Account: Ada Lovelace" }).click();
   await page.getByRole("menuitem", { name: "Sign out" }).click();
 
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await expect(bell(page)).toHaveCount(0);
-  await expect.poll(() => server.mine.length).toBe(0);
+  await expect.poll(() => subscribedTo(server, "invitations").length).toBe(0);
+  await expect
+    .poll(() => server.liveSockets, { message: "with nothing followed, the one socket is closed" })
+    .toBe(0);
 });
 
 test("the bell speaks the reader's language", async ({ browser }) => {
@@ -187,3 +192,38 @@ for (const width of [1280, 320]) {
     expect(shown!.x + shown!.width).toBeLessThanOrEqual(width);
   });
 }
+
+test("a bell that fell behind is subscribed again at once and lists anew", async ({ page }) => {
+  const server = await signedInInvitedTo(page, []);
+  await expect.poll(() => subscribedTo(server, "invitations").length).toBe(1);
+  const [asked, listed] = [server.subscribing, server.mineListed];
+
+  server.toYou = [SHARED];
+  endedOn(server, "invitations", "behind");
+
+  await expect.poll(() => server.subscribing).toBe(asked + 1);
+  await expect.poll(() => server.mineListed).toBeGreaterThan(listed);
+  await expect(bell(page)).toHaveAccessibleName("Notifications: 1 new");
+});
+
+test("a bell the server knows nothing of yet asks again a moment later", async ({ page }) => {
+  const server = await signedInInvitedTo(page, []);
+  await expect.poll(() => subscribedTo(server, "invitations").length).toBe(1);
+  const asked = server.subscribing;
+
+  endedOn(server, "invitations", "not-there");
+
+  await expect.poll(() => server.subscribing, { timeout: 3000 }).toBe(asked + 1);
+});
+
+test("a bell no longer let in is not asked for again", async ({ page }) => {
+  const server = await signedInInvitedTo(page, []);
+  await expect.poll(() => subscribedTo(server, "invitations").length).toBe(1);
+  const asked = server.subscribing;
+
+  endedOn(server, "invitations", "access-lost");
+
+  await page.waitForTimeout(500);
+  expect(server.subscribing).toBe(asked);
+});
+

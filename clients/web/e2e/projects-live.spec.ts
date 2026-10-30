@@ -251,3 +251,32 @@ test("a change told while the list is still on its way asks for it again", async
     "the first answer was read before the rename, and the rename was told before it arrived",
   ).toBeVisible();
 });
+
+test("with accounts a project one starts is told on the page's one socket, under its own subscription", async ({
+  page,
+}) => {
+  test.skip(!withAccounts, "the members are followed only where there are accounts");
+  const told: string[] = [];
+  page.on("websocket", (socket) => {
+    if (socket.url().endsWith("/api/live")) {
+      socket.on("framereceived", (frame) => told.push(String(frame.payload)));
+    }
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Your projects" })).toBeVisible();
+  await expect.poll(() => told.length, { message: "subscribed before starting" }).toBe(0);
+
+  const made = await page.request.post(`${API}/projects`, {
+    data: { name: aTitle("One socket"), language: "en" },
+  });
+  const project = (await made.json()).id;
+
+  await expect
+    .poll(() =>
+      told
+        .map((said) => JSON.parse(said))
+        .find((said) => said.told === "frame" && said.frame.of === project),
+    )
+    .toMatchObject({ frame: { event: { name: "FOUNDED" } } });
+});
+

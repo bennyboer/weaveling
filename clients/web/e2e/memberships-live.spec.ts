@@ -5,6 +5,7 @@ import {
   HER_PASSWORD,
   aServerWithAccounts,
   signIn,
+  subscribedTo,
   toldOfMembers,
 } from "./support/accounts";
 import { API } from "./support/shell";
@@ -48,7 +49,7 @@ async function signedIn(page: Page) {
   await page.goto("/");
   await signIn(page, ADA.email, HER_PASSWORD);
   await expect
-    .poll(() => server.memberships.length, {
+    .poll(() => subscribedTo(server, "members").length, {
       message: "the list follows the members",
     })
     .toBe(1);
@@ -166,13 +167,17 @@ test("the list is asked for once on coming in, and again when the members' chann
     "the members' channel opening the first time asks for nothing",
   ).toBe(1);
 
-  await server.memberships[0].close();
+  const first = subscribedTo(server, "members")[0].socket;
+  await first.close();
 
   await expect
-    .poll(() => server.memberships.length, {
-      message: "it follows the members again",
-    })
-    .toBe(2);
+    .poll(
+      () =>
+        subscribedTo(server, "members").filter((subscribed) => subscribed.socket !== first)
+          .length,
+      { message: "it follows the members again, on a socket opened anew" },
+    )
+    .toBe(1);
   await expect
     .poll(() => asked, {
       message: "what was missed meanwhile is caught up by listing again",

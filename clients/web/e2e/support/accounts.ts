@@ -59,6 +59,13 @@ export type ToYou = {
   until: string;
 };
 
+export type Subscribed = {
+  id: string;
+  topic: string;
+  about: Record<string, string>;
+  socket: WebSocketRoute;
+};
+
 export type Server = {
   password: string;
   resetsAsked: number;
@@ -78,10 +85,12 @@ export type Server = {
   invitationRefused: { status: number; type: string } | null;
   signedInAs: typeof ADA | null;
   operatorWanted: boolean;
-  memberships: WebSocketRoute[];
+  subscribed: Subscribed[];
+  subscribing: number;
+  liveSockets: number;
+  mineListed: number;
   toYou: ToYou[];
   answered: string[];
-  mine: WebSocketRoute[];
   declinedByLink: string[];
 };
 
@@ -122,10 +131,12 @@ export async function aServerWithAccounts(
     invitationRefused: null,
     signedInAs: null,
     operatorWanted: false,
-    memberships: [],
+    subscribed: [],
+    subscribing: 0,
+    liveSockets: 0,
+    mineListed: 0,
     toYou: [],
     answered: [],
-    mine: [],
     declinedByLink: [],
   };
 
@@ -406,19 +417,34 @@ export async function aServerWithAccounts(
       return route.fulfill({ status: 204 });
     },
   );
-  await page.routeWebSocket(at("/api/members/live"), (socket) => {
-    server.memberships.push(socket);
-  });
-  await page.route(at("/api/invitations/mine"), (route) =>
-    server.signedIn
-      ? route.fulfill({ json: server.toYou })
-      : refusing(route, 401, "not-signed-in"),
-  );
-  await page.routeWebSocket(at("/api/invitations/mine/live"), (socket) => {
-    server.mine.push(socket);
-    socket.onClose(() => {
-      server.mine = server.mine.filter((open) => open !== socket);
+  await page.routeWebSocket(at("/api/live"), (socket) => {
+    server.liveSockets += 1;
+    const others = (subscribed: Subscribed) => subscribed.socket !== socket;
+    socket.onMessage((data) => {
+      const asked = JSON.parse(String(data));
+      const elsewhere = (subscribed: Subscribed) =>
+        others(subscribed) || subscribed.id !== asked.id;
+      server.subscribed = server.subscribed.filter(elsewhere);
+      if (asked.do === "subscribe") {
+        server.subscribing += 1;
+        server.subscribed.push({
+          id: asked.id,
+          topic: asked.topic,
+          about: asked.about,
+          socket,
+        });
+      }
     });
+    socket.onClose(() => {
+      server.liveSockets -= 1;
+      server.subscribed = server.subscribed.filter(others);
+    });
+  });
+  await page.route(at("/api/invitations/mine"), (route) => {
+    server.mineListed += 1;
+    return server.signedIn
+      ? route.fulfill({ json: server.toYou })
+      : refusing(route, 401, "not-signed-in");
   });
   await page.route(
     (url) =>
@@ -451,18 +477,30 @@ export async function signIn(page: Page, email: string, password: string) {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
 }
 
+export function subscribedTo(server: Server, topic: string): Subscribed[] {
+  return server.subscribed.filter((subscribed) => subscribed.topic === topic);
+}
+
+function toldOn(server: Server, topic: string, frame: Record<string, unknown>) {
+  for (const subscribed of subscribedTo(server, topic)) {
+    subscribed.socket.send(JSON.stringify({ told: "frame", id: subscribed.id, frame }));
+  }
+}
+
 export function toldOfMembers(
   server: Server,
   of: string,
   event: Record<string, string>,
 ) {
-  for (const socket of server.memberships) {
-    socket.send(JSON.stringify({ of, version: 2, event }));
-  }
+  toldOn(server, "members", { of, version: 2, event });
 }
 
 export function toldOfMine(server: Server) {
-  for (const socket of server.mine) {
-    socket.send(JSON.stringify({ of: "invitation_9", version: 2, event: null }));
+  toldOn(server, "invitations", { of: "invitation_9", version: 2, event: null });
+}
+
+export function endedOn(server: Server, topic: string, why: string) {
+  for (const subscribed of subscribedTo(server, topic)) {
+    subscribed.socket.send(JSON.stringify({ told: "ended", id: subscribed.id, why }));
   }
 }
