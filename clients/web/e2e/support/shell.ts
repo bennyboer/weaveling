@@ -1,5 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
+import { followingLive } from "./live";
+
 export const API = "http://127.0.0.1:3000/api";
 
 const aName = (of: string) =>
@@ -16,6 +18,7 @@ export async function aNewProject(
   named: string,
   { boardNamed = "Board" } = {},
 ): Promise<string> {
+  followingLive(page);
   const title = aName(named);
   const made = await page.request.post(`${API}/projects`, {
     data: { name: title, language: "en" },

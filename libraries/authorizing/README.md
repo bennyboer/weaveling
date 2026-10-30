@@ -4,6 +4,21 @@ Who may do what in a project.
 
 **`Authorizer` is a port** every feature asks before it reads, writes or manages anything of a project: `may(agent, act, project)`. Features know only this library; who is in which project as what belongs to the members feature, which answers it, so no feature asks another.
 
+A feature asks before it does anything, and a list asks once:
+
+```rust
+use authorizing::{Act, Authorizer, Readable};
+
+if !self.authorizer.may(agent, Act::Write, project.as_str()).await? {
+    return Err(IdeasError::NotAnAuthor);
+}
+
+let projects = match self.authorizer.readable_by(agent).await? {
+    Readable::Everything => self.catalog.all().await?,
+    Readable::Only(projects) => self.catalog.among(&projects).await?,
+};
+```
+
 **Three acts.** `Read` a project and all it holds; `Write` in it, its scenes, ideas, boards and outline; `Manage` the project itself, its name and details, its members and invitations, and deleting it. Which role may which is the members feature's to say.
 
 **What may one read, as a whole:** `readable_by(agent)` answers `Everything` or `Only` these projects, so a list of projects asks once, not once a project.

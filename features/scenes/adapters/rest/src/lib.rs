@@ -11,7 +11,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::routing;
 use eventsourcing::Agent;
-use live::{AccessWatch, Broadcaster, Gate, Teller};
+use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Teller, Topic};
 use scenes_contract::{
     CreateSceneRequest, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest, SceneDTO,
     ScenePageDTO, SceneSummaryDTO, refused,
@@ -37,7 +37,7 @@ impl Gate for ScenesGate {
         Ok(self.0.may_follow(project, agent).await?)
     }
 
-    fn watch(&self, project: &str) -> AccessWatch {
+    async fn watch(&self, project: &str) -> AccessWatch {
         self.0.watch_access(project)
     }
 }
@@ -60,17 +60,37 @@ impl Display for RestylingChanges {
     }
 }
 
-pub fn live_scenes(scenes: ScenesCore, broadcaster: Broadcaster<SceneChanges>) -> Router {
-    live::followed_while(
-        "/scenes/live",
+fn scene_changes_of(about: &About) -> Option<SceneChanges> {
+    about
+        .get("project")
+        .map(|project| SceneChanges(ProjectLink::from(project.as_str())))
+}
+
+fn restyling_changes_of(about: &About) -> Option<RestylingChanges> {
+    about
+        .get("project")
+        .map(|project| RestylingChanges(ProjectLink::from(project.as_str())))
+}
+
+pub fn scenes_topic(scenes: ScenesCore, broadcaster: Broadcaster<SceneChanges>) -> Arc<dyn Topic> {
+    Arc::new(GatedTopic::new(
+        "scenes",
         broadcaster,
-        |asked| {
-            asked
-                .get("project")
-                .map(|project| SceneChanges(ProjectLink::from(project.as_str())))
-        },
+        scene_changes_of,
         Arc::new(ScenesGate(scenes)),
-    )
+    ))
+}
+
+pub fn restylings_topic(
+    scenes: ScenesCore,
+    broadcaster: Broadcaster<RestylingChanges>,
+) -> Arc<dyn Topic> {
+    Arc::new(GatedTopic::new(
+        "quotation-restylings",
+        broadcaster,
+        restyling_changes_of,
+        Arc::new(ScenesGate(scenes)),
+    ))
 }
 
 pub struct TellingScenes {
@@ -173,26 +193,13 @@ pub fn router(scenes: ScenesCore) -> Router {
         .with_state(scenes)
 }
 
-pub fn quotation_restylings(
-    scenes: ScenesCore,
-    broadcaster: Broadcaster<RestylingChanges>,
-) -> Router {
+pub fn quotation_restylings(scenes: ScenesCore) -> Router {
     Router::new()
         .route(
             "/scenes/quotation-restylings/{project}",
             routing::get(progress),
         )
-        .with_state(scenes.clone())
-        .merge(live::followed_while(
-            "/scenes/quotation-restylings/live",
-            broadcaster,
-            |asked| {
-                asked
-                    .get("project")
-                    .map(|project| RestylingChanges(ProjectLink::from(project.as_str())))
-            },
-            Arc::new(ScenesGate(scenes)),
-        ))
+        .with_state(scenes)
 }
 
 pub struct TellingRestylingTasks {

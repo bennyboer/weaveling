@@ -60,4 +60,5 @@ pub struct Handles {
     pub selected: RwSignal<Option<IdeaId>>,
     pub naming: RwSignal<Option<Naming>>,
     pub state: BoardViewState,
+    pub may_write: Memo<bool>,
 }

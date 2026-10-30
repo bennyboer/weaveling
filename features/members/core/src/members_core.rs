@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use authorizing::{Act, Authorizer};
+use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, EventStore, ServiceError};
 
-use crate::catalog::{MembershipCatalog, Person, ProjectMembers};
+use crate::catalog::{Membership, MembershipCatalog, Person, ProjectMembers};
 use crate::error::MembersCoreError;
 use crate::members::{Member, MembersCommand, MembersError, MembersEvent, ProjectLink, Role};
 use crate::service::MembersService;
@@ -179,6 +179,21 @@ impl MembersCore {
         self.authorizer.access_changed(project.as_str());
 
         Ok(())
+    }
+
+    pub async fn memberships(&self, agent: &Agent) -> Result<Vec<Membership>, MembersCoreError> {
+        match agent {
+            Agent::Account(account) => Ok(self.catalog.memberships_of(account).await?),
+            _ => Ok(Vec::new()),
+        }
+    }
+
+    pub async fn may_follow(&self, agent: &Agent, project: &str) -> Result<bool, MembersCoreError> {
+        Ok(self.authorizer.may(agent, Act::Read, project).await?)
+    }
+
+    pub fn watch_access(&self, project: &str) -> AccessWatch {
+        self.authorizer.watch_access(project)
     }
 
     pub fn may_hear(&self, agent: &Agent, about: &str) -> bool {

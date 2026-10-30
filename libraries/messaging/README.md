@@ -4,6 +4,31 @@ The messaging **seam** — the port, the envelope and an in-process dispatcher. 
 
 A `Message` carries its own identity: a `MessageId`, the `Conversation` it belongs to, and what it was `caused_by`. Those exist from the first message rather than being added when a broker arrives, because an id minted late cannot recognise a redelivery of something sent early, and a conversation cannot be reconstructed after the fact.
 
+The boards take a discarded idea off every board with a `Handler`, and the dispatcher hands it what it listens to:
+
+```rust
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use ideas_contract::{DISCARDED, IdeaEventDTO};
+use messaging::{Failure, Handler, Message};
+
+#[async_trait]
+impl Handler for UnpinOnDiscardListener {
+    const NAME: &'static str = "unpin-discarded-idea";
+    const LISTENS_TO: &'static [&'static str] = &[DISCARDED];
+    const WHEN_REFUSED: &'static str = "A discarded idea could not be taken off a board.";
+
+    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+        let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
+
+        Ok(self.boards.let_go_everywhere(&discarded.aggregate.id, message.occurred_at).await?)
+    }
+}
+
+dispatcher.listen(Arc::new(UnpinOnDiscardListener::new(boards)));
+```
+
 A `Listener` declares what it subscribes to (`RoutingKey` and wildcard `Subscription`, `idea.#`) and how a refusal should be treated:
 
 - **`Delivery::Kept`** — this message matters; a refusal goes to `DeadLetters` to be retried.

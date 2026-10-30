@@ -4,6 +4,23 @@ A throwaway PostgreSQL schema per test, or a throwaway directory of SQLite files
 
 `PostgresFixture::setup()` claims a name like `fixture_1758000000_a3f9c210`, and `create_schema("ideas")` makes one namespace per feature under it — because [each feature keeps its data apart](../../ARCHITECTURE.md#dependency-rules), and a test that proves it needs the same separation. `cleanup()` drops them.
 
+The ideas' catalog is tested on a schema of its own:
+
+```rust
+use test_harness::PostgresFixture;
+
+let fixture = PostgresFixture::setup().await;
+let pool = fixture.create_schema("ideas").await;
+ideas_catalog::postgres::migrations()
+    .run(&pool)
+    .await
+    .expect("the schema should lay down in an empty namespace");
+
+let catalog = PostgresIdeaCatalog::new(pool);
+
+fixture.cleanup().await;
+```
+
 **Only two fixtures run at once.** Each schema gets its own pool of up to five connections, so a whole-service test holds one pool per feature — seven today — and nine of those in parallel asked for more than the server's hundred. `setup()` waits its turn, and `cleanup()` (or a panic dropping the fixture) hands it on. Two fixtures of seven pools need at most 72; past nine features, lower the pool size or the turns. A test that needs two fixtures at once takes them with `two()`, both turns in one go — calling `setup()` twice would hold one turn while waiting for another, and two such tests deadlock.
 
 **A killed test leaves its schema behind**, so setup also sweeps anything older than an hour. That is deliberately not a `Drop` impl: dropping a schema is async, and a panicking test is exactly the case where nothing gets a chance to run.

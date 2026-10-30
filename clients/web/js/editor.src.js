@@ -11,7 +11,8 @@ import { redo, undo, yCursorPlugin, ySyncPlugin, yUndoPlugin } from "y-prosemirr
 import { SceneSync } from "./sync.js";
 
 export { SyncConnection } from "./sync.js";
-export { LiveFollowing, LiveSubscription } from "./live.js";
+export { LiveSubscription } from "./live.js";
+export { whenSessionEnded } from "./reconnecting.js";
 
 const FRAGMENT = "prose";
 

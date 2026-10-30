@@ -151,27 +151,24 @@ impl Feature for MembersFeature {
         let broadcaster = Broadcaster::new();
         let members = core(ports, context);
 
-        Wired::serving(
-            members_rest::router(members.clone())
-                .merge(members_rest::live(members.clone(), broadcaster.clone())),
-        )
-        .followed_live(vec![Arc::new(members_rest::MembersTopic::new(
-            members.clone(),
-            broadcaster.clone(),
-        ))])
-        .listening(vec![
-            Arc::new(FoundMembersOfStartedProjectListener::new(members.clone())),
-            Arc::new(JoinByAcceptedInvitationListener::new(members.clone())),
-            Arc::new(RememberWhoSignedUpListener::new(members.clone())),
-            Arc::new(DisbandMembersOfDeletedProjectListener::new(members.clone())),
-            Arc::new(CatalogueMembersListener::new(members)),
-            Arc::new(BroadcastChangesListener::new(
-                LIVE,
-                EVERY_MEMBERS,
-                broadcaster,
-                |_| vec![members_rest::MembershipChanges],
-            )),
-        ])
+        Wired::serving(members_rest::router(members.clone()))
+            .followed_live(vec![Arc::new(members_rest::MembersTopic::new(
+                members.clone(),
+                broadcaster.clone(),
+            ))])
+            .listening(vec![
+                Arc::new(FoundMembersOfStartedProjectListener::new(members.clone())),
+                Arc::new(JoinByAcceptedInvitationListener::new(members.clone())),
+                Arc::new(RememberWhoSignedUpListener::new(members.clone())),
+                Arc::new(DisbandMembersOfDeletedProjectListener::new(members.clone())),
+                Arc::new(CatalogueMembersListener::new(members)),
+                Arc::new(BroadcastChangesListener::new(
+                    LIVE,
+                    EVERY_MEMBERS,
+                    broadcaster,
+                    |_| vec![members_rest::MembershipChanges],
+                )),
+            ])
     }
 }
 

@@ -1,12 +1,12 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::TestServer;
 use boards_contract::{BoardDTO, OpenBoardRequest, PinIdeaRequest, SizeDTO, SpotDTO};
 use clock::FixedClock;
 use eventsourcing::Agent;
+use live::testing::Subscriber;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
@@ -49,27 +49,24 @@ async fn an_idea_pinned(server: &TestServer, board: &str, idea: &str) {
         .assert_status_ok();
 }
 
-async fn connected(server: &TestServer, board: &str) -> TestWebSocket {
-    server
-        .get_websocket(&format!("/boards/live?board={board}"))
-        .await
-        .into_websocket()
-        .await
-}
-
-async fn following(server: &TestServer, board: &str) -> TestWebSocket {
-    let mut socket = connected(server, board).await;
-    told(&mut socket).await;
+async fn connected(server: &TestServer, board: &str) -> Subscriber {
+    let mut socket = Subscriber::on(server).await;
+    socket
+        .subscribe("board", "boards", &[("board", board)])
+        .await;
 
     socket
 }
 
-async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("a change is told while it is fresh");
+async fn following(server: &TestServer, board: &str) -> Subscriber {
+    let mut socket = connected(server, board).await;
+    socket.frame().await;
 
-    serde_json::from_str(&frame).expect("a frame is JSON")
+    socket
+}
+
+async fn told(socket: &mut Subscriber) -> Value {
+    socket.frame().await
 }
 
 #[tokio::test]
@@ -120,5 +117,51 @@ async fn whoever_follows_a_board_is_first_told_the_version_it_stands_at() {
         told(&mut socket).await,
         json!({ "version": now.version }),
         "a follower holding this version has missed nothing, one holding less opens it again"
+    );
+}
+
+async fn on_one_socket(wired: &Wired) -> (TestServer, Subscriber) {
+    let live = TestServer::builder().http_transport().build(
+        live::live_socket(live::Topics::of(wired.topics.clone())).layer(Extension(Agent::Local)),
+    );
+    let socket = Subscriber::on(&live).await;
+
+    (live, socket)
+}
+
+async fn told_on_one_socket(socket: &mut Subscriber) -> Value {
+    serde_json::to_value(socket.told().await).expect("what is told is plain data")
+}
+
+#[tokio::test]
+async fn on_the_one_socket_a_board_is_told_where_it_stands_then_each_change() {
+    let (wired, server) = served();
+    let board = an_open_board(&server, "project_1").await;
+    wired.settle().await;
+    let (_live, mut socket) = on_one_socket(&wired).await;
+
+    socket
+        .subscribe("board", "boards", &[("board", &board)])
+        .await;
+    let standing = told_on_one_socket(&mut socket).await;
+    an_idea_pinned(&server, &board, "idea_1").await;
+    wired.settle().await;
+    let pinned = told_on_one_socket(&mut socket).await;
+    socket
+        .subscribe("nowhere", "boards", &[("board", "board_nobody_opened")])
+        .await;
+    let nowhere = told_on_one_socket(&mut socket).await;
+
+    assert_eq!(standing["id"], "board");
+    assert_eq!(
+        standing["frame"],
+        json!({ "version": 1 }),
+        "told first where it stands"
+    );
+    assert_eq!(pinned["frame"]["of"], board);
+    assert_eq!(pinned["frame"]["version"], 2);
+    assert_eq!(
+        nowhere,
+        json!({ "told": "ended", "id": "nowhere", "why": "not-there" })
     );
 }

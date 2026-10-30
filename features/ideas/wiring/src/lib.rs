@@ -41,7 +41,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ideas_rest::IdeaChanges,
     );
 
-    Wired::serving(ideas_rest::router(ideas.clone()).merge(ideas_rest::live(ideas, broadcaster)))
+    Wired::serving(ideas_rest::router(ideas.clone()))
+        .followed_live(vec![ideas_rest::topic(ideas, broadcaster)])
         .listening(vec![
             Arc::new(broadcast),
             Arc::new(projector),

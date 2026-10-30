@@ -62,6 +62,7 @@ test("the status bar sits along the bottom of every view", async ({ page }) => {
   };
 
   await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Your projects" })).toBeVisible();
   await atTheBottom();
   await aNewProject(page, "Footing");
   await atTheBottom();

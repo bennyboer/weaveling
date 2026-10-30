@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { API } from "./support/shell";
 import { withAccounts } from "./support/signed-in";
+import { routingLive } from "./support/live";
 
 const aTitle = (of: string) => `${of} ${crypto.randomUUID().slice(0, 8)}`;
 
@@ -50,24 +51,29 @@ async function aWorkspaceHearingOnly(
 ) {
   const mine = new Set<string>();
   let passed = 0;
-  await page.routeWebSocket(/\/api\/projects\/live$/, (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((frame) => {
-      const told = JSON.parse(String(frame));
-      if (
-        told.event?.name === "STARTED" &&
-        String(told.event.project_name).startsWith(named)
-      ) {
-        mine.add(told.of);
-      }
-      if (!mine.has(told.of)) {
-        return;
-      }
-      passed += 1;
-      if (passed !== dropping) {
-        socket.send(frame);
-      }
-    });
+  await routingLive(page, {
+    heard: {
+      projects: (told, pass, about) => {
+        if (about.mine !== "true") {
+          pass();
+          return;
+        }
+        const { frame } = JSON.parse(told);
+        if (
+          frame.event?.name === "STARTED" &&
+          String(frame.event.project_name).startsWith(named)
+        ) {
+          mine.add(frame.of);
+        }
+        if (!mine.has(frame.of)) {
+          return;
+        }
+        passed += 1;
+        if (passed !== dropping) {
+          pass();
+        }
+      },
+    },
   });
   const asks = listed(page);
   await page.goto("/");
@@ -230,14 +236,19 @@ test("a change told while the list is still on its way asks for it again", async
   });
   const mine = new Set([project]);
   let passed = 0;
-  await page.routeWebSocket(/\/api\/projects\/live$/, (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((frame) => {
-      if (mine.has(JSON.parse(String(frame)).of)) {
-        passed += 1;
-        socket.send(frame);
-      }
-    });
+  await routingLive(page, {
+    heard: {
+      projects: (told, pass, about) => {
+        if (about.mine !== "true") {
+          pass();
+          return;
+        }
+        if (mine.has(JSON.parse(told).frame.of)) {
+          passed += 1;
+          pass();
+        }
+      },
+    },
   });
   await page.goto("/");
   await expect.poll(() => answered).toBe(true);
@@ -257,14 +268,21 @@ test("with accounts a project one starts is told on the page's one socket, under
 }) => {
   test.skip(!withAccounts, "the members are followed only where there are accounts");
   const told: string[] = [];
+  const asked: string[] = [];
   page.on("websocket", (socket) => {
     if (socket.url().endsWith("/api/live")) {
+      socket.on("framesent", (frame) => asked.push(String(frame.payload)));
       socket.on("framereceived", (frame) => told.push(String(frame.payload)));
     }
   });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Your projects" })).toBeVisible();
-  await expect.poll(() => told.length, { message: "subscribed before starting" }).toBe(0);
+  await expect
+    .poll(
+      () => asked.map((said) => JSON.parse(said)).some((said) => said.topic === "members"),
+      { message: "subscribed before starting" },
+    )
+    .toBe(true);
 
   const made = await page.request.post(`${API}/projects`, {
     data: { name: aTitle("One socket"), language: "en" },

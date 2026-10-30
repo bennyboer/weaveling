@@ -87,11 +87,12 @@ export type Server = {
   operatorWanted: boolean;
   subscribed: Subscribed[];
   subscribing: number;
-  liveSockets: number;
+  liveSockets: WebSocketRoute[];
   mineListed: number;
   toYou: ToYou[];
   answered: string[];
   declinedByLink: string[];
+  memberships: { project: string; role: string }[] | null;
 };
 
 const refusing = (
@@ -133,11 +134,12 @@ export async function aServerWithAccounts(
     operatorWanted: false,
     subscribed: [],
     subscribing: 0,
-    liveSockets: 0,
+    liveSockets: [],
     mineListed: 0,
     toYou: [],
     answered: [],
     declinedByLink: [],
+    memberships: null,
   };
 
   await page.route(at("/api/service/mode"), (route) =>
@@ -418,7 +420,7 @@ export async function aServerWithAccounts(
     },
   );
   await page.routeWebSocket(at("/api/live"), (socket) => {
-    server.liveSockets += 1;
+    server.liveSockets.push(socket);
     const others = (subscribed: Subscribed) => subscribed.socket !== socket;
     socket.onMessage((data) => {
       const asked = JSON.parse(String(data));
@@ -436,10 +438,13 @@ export async function aServerWithAccounts(
       }
     });
     socket.onClose(() => {
-      server.liveSockets -= 1;
+      server.liveSockets = server.liveSockets.filter((open) => open !== socket);
       server.subscribed = server.subscribed.filter(others);
     });
   });
+  await page.route(at("/api/members/mine"), (route) =>
+    server.memberships === null ? route.fallback() : route.fulfill({ json: server.memberships }),
+  );
   await page.route(at("/api/invitations/mine"), (route) => {
     server.mineListed += 1;
     return server.signedIn
@@ -502,5 +507,11 @@ export function toldOfMine(server: Server) {
 export function endedOn(server: Server, topic: string, why: string) {
   for (const subscribed of subscribedTo(server, topic)) {
     subscribed.socket.send(JSON.stringify({ told: "ended", id: subscribed.id, why }));
+  }
+}
+
+export function sessionEndedOn(server: Server) {
+  for (const socket of server.liveSockets) {
+    socket.close({ code: 4401, reason: "session-ended" });
   }
 }

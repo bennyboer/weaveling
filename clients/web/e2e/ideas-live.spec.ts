@@ -16,6 +16,7 @@ import {
   projectOf,
   scene,
 } from "./support/writing";
+import { heardOn, routingLive, subscribing } from "./support/live";
 
 const ideas = (page: Page) => page.getByRole("list", { name: "Ideas" });
 
@@ -59,16 +60,10 @@ function asked(page: Page): () => number {
 async function aPoolFollowedLive(page: Page) {
   const asks = asked(page);
   let heard = 0;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/ideas/live?project=")) {
-      socket.on("framereceived", () => {
-        heard += 1;
-      });
-    }
+  heardOn(page, "ideas", () => {
+    heard += 1;
   });
-  const followed = page.waitForEvent("websocket", (socket) =>
-    socket.url().includes("/api/ideas/live?project="),
-  );
+  const followed = subscribing(page, "ideas");
   await openThePool(page);
   await followed;
   await expect.poll(asks, { message: "asked once, as it connects" }).toBe(1);
@@ -120,14 +115,15 @@ test("a change missed on the way asks for the ideas again, and the pool comes ou
   page,
 }) => {
   let passed = 0;
-  await page.routeWebSocket(/\/api\/ideas\/live\?project=/, (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((frame) => {
-      passed += 1;
-      if (passed !== 1) {
-        socket.send(frame);
-      }
-    });
+  await routingLive(page, {
+    heard: {
+      ideas: (_told, pass) => {
+        passed += 1;
+        if (passed !== 1) {
+          pass();
+        }
+      },
+    },
   });
   await aNewProject(page, "PoolLiveMissed");
   const asks = asked(page);
@@ -152,12 +148,8 @@ test("a change told while the ideas are still on their way asks for them again",
   const loom = await anIdea(page, "The loom remembers");
   await catalogued(page, ["The loom remembers"]);
   let heard = 0;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/ideas/live?project=")) {
-      socket.on("framereceived", () => {
-        heard += 1;
-      });
-    }
+  heardOn(page, "ideas", () => {
+    heard += 1;
   });
   let release = () => {};
   const held = new Promise<void>((resolve) => {
@@ -252,12 +244,8 @@ test("an idea captured on the board, told back before its answer, waits only onc
 }) => {
   await aNewProject(page, "BoardIdeasOnce");
   let heard = 0;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/ideas/live?project=")) {
-      socket.on("framereceived", () => {
-        heard += 1;
-      });
-    }
+  heardOn(page, "ideas", () => {
+    heard += 1;
   });
   await page.route(/\/api\/ideas$/, async (route) => {
     const response = await route.fetch();
@@ -296,12 +284,8 @@ test("a rename on the board answered after a newer one was told leaves the newer
     size: { width: 168, height: 84 },
   });
   let heard = 0;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/ideas/live?project=")) {
-      socket.on("framereceived", () => {
-        heard += 1;
-      });
-    }
+  heardOn(page, "ideas", () => {
+    heard += 1;
   });
   await page.route(new RegExp(`/api/ideas/${loom}$`), async (route) => {
     if (route.request().method() !== "PATCH") {

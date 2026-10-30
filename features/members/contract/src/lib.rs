@@ -36,6 +36,12 @@ pub struct MemberDTO {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct MembershipDTO {
+    pub project: String,
+    pub role: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ChangeRoleRequest {
     pub role: String,
 }

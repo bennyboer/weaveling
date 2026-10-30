@@ -3,7 +3,7 @@ use leptos::task;
 use scenes_contract::SceneSummaryDTO;
 
 use crate::http::ApiError;
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneSummary;
 use crate::scenes::service;
@@ -14,7 +14,7 @@ pub fn follow(
     listed: impl Fn(&[SceneSummary]) + Copy + 'static,
     told: impl Fn(&SceneSummary) + Copy + 'static,
     failed: impl Fn(ApiError) + Copy + 'static,
-) -> (Following, impl Fn() + Clone + 'static) {
+) -> (Subscription, impl Fn() + Clone + 'static) {
     let meanwhile = StoredValue::new(Vec::<SceneSummary>::new());
     let asking = {
         let project = project.clone();
@@ -36,8 +36,9 @@ pub fn follow(
             });
         }
     };
-    let following = Following::start(
-        &format!("/api/scenes/live?project={project}"),
+    let following = Subscription::start(
+        "scenes",
+        &[("project", project.to_string().as_str())],
         move |frame: FrameDTO| {
             if let Ok(found) = serde_json::from_value::<SceneSummaryDTO>(frame.event) {
                 let summary = SceneSummary::from(found);

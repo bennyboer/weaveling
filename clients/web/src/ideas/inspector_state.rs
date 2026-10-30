@@ -6,7 +6,7 @@ use crate::appearances::service as appearance_service;
 use crate::http::ApiError;
 use crate::ideas::model::{Idea, IdeaId};
 use crate::ideas::service as idea_service;
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::outline::model::{Section, SectionId};
 use crate::outline::service as outline_service;
 use crate::route;
@@ -98,8 +98,8 @@ impl InspectorState {
             }
         });
 
-        let following = StoredValue::new_local(None::<Following>);
-        let scenes_followed = StoredValue::new_local(None::<(Following, Box<dyn Fn()>)>);
+        let following = StoredValue::new_local(None::<Subscription>);
+        let scenes_followed = StoredValue::new_local(None::<(Subscription, Box<dyn Fn()>)>);
         let asking_scenes =
             move || scenes_followed.with_value(|held| held.as_ref().map(|(_, ask)| ask()));
         let heard = move |told: FrameDTO| {
@@ -136,8 +136,9 @@ impl InspectorState {
                 }
                 places.set(Vec::new());
                 opening_idea.dispatch(asked.clone());
-                following.set_value(Some(Following::start(
-                    &format!("/api/appearances/live?idea={asked}"),
+                following.set_value(Some(Subscription::start(
+                    "appearances",
+                    &[("idea", asked.to_string().as_str())],
                     heard,
                     move || _ = asking_places.dispatch(asked.clone()),
                 )));

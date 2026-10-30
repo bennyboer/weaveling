@@ -11,6 +11,7 @@ use crate::avatar;
 use crate::icons;
 use crate::icons::Icon;
 use crate::members::listed::Member;
+use crate::members::roles::Roles;
 use crate::members::service as members;
 use crate::members::sharing;
 use crate::more_menu;
@@ -75,6 +76,8 @@ pub fn mark() -> impl IntoView {
 
 pub fn masthead(inside: Option<Inside>) -> impl IntoView {
     let phone_sized = phone_sizing();
+    let sharing = RwSignal::new(false);
+    let this_project = inside.as_ref().map(|inside| inside.project.clone());
 
     html::header().class("masthead").child((
         view! {
@@ -83,13 +86,17 @@ pub fn masthead(inside: Option<Inside>) -> impl IntoView {
                 <span>"Weaveling"</span>
             </A>
         },
-        inside.map(whereabouts),
+        inside.map(|inside| whereabouts(inside, phone_sized, sharing)),
         move || {
             (!phone_sized.get()).then(|| (theme::picker(), picker::picker()))
         },
         bell::bell_in_masthead(),
         accounts::account_in_masthead(),
-        move || phone_sized.get().then(more_menu::more_menu),
+        move || {
+            phone_sized
+                .get()
+                .then(|| more_menu::more_menu(this_project.clone(), sharing))
+        },
     ))
 }
 
@@ -123,13 +130,18 @@ pub fn status_bar() -> impl IntoView {
         .child(alarm::alarm(AlarmState::new()))
 }
 
-fn whereabouts(inside: Inside) -> impl IntoView {
+fn whereabouts(
+    inside: Inside,
+    phone_sized: RwSignal<bool>,
+    sharing: RwSignal<bool>,
+) -> impl IntoView {
     let Inside {
         project,
         named,
         here,
     } = inside;
     let open_project = expect_context::<OpenProject>();
+    let roles = expect_context::<Roles>();
     let id = route::project_id(&project);
     open_project.open(&id);
     let shown = Signal::derive(move || open_project.name().unwrap_or_else(|| named.clone()));
@@ -141,13 +153,23 @@ fn whereabouts(inside: Inside) -> impl IntoView {
                 .attr("title", shown)
                 .child(html::span().child(shown)),
             project_details::project_details(id),
-            members_link(project.clone()),
-            sharing::share_in_masthead(project.clone(), shown),
+            {
+                let project = project.clone();
+                move || (!phone_sized.get()).then(|| members_link(project.clone()))
+            },
+            sharing::share_in_masthead(
+                project.clone(),
+                shown,
+                sharing,
+                Signal::derive(move || !phone_sized.get()),
+            ),
         )),
         html::nav()
             .class("views")
             .attr("aria-label", speech::said("masthead-views"))
-            .child(
+            .child(move || {
+                let writing = roles.may_write(&project);
+
                 [
                     Viewing::Write,
                     Viewing::Board,
@@ -155,9 +177,10 @@ fn whereabouts(inside: Inside) -> impl IntoView {
                     Viewing::Ideas,
                 ]
                 .into_iter()
+                .filter(|view| writing || *view != Viewing::Write)
                 .map(|view| tab(view, project.clone(), here))
-                .collect::<Vec<_>>(),
-            ),
+                .collect::<Vec<_>>()
+            }),
     )
 }
 
@@ -224,22 +247,16 @@ fn stacked(held: Vec<Member>) -> impl IntoView {
         let beyond = held.len().saturating_sub(shown);
         (beyond > 0).then(|| format!("+{beyond}"))
     };
-    let (wide, narrow) = (more(AVATARS_SHOWN), more(1));
+    let beyond = more(AVATARS_SHOWN);
 
     html::span().class("stack").child((
         held.iter()
             .take(AVATARS_SHOWN)
             .map(|member| avatar::avatar(&member.account, member.name.as_deref()))
             .collect::<Vec<_>>(),
-        wide.map(|beyond| {
+        beyond.map(|beyond| {
             html::span()
-                .class("avatar more wide")
-                .attr("aria-hidden", "true")
-                .child(beyond)
-        }),
-        narrow.map(|beyond| {
-            html::span()
-                .class("avatar more narrow")
+                .class("avatar more")
                 .attr("aria-hidden", "true")
                 .child(beyond)
         }),

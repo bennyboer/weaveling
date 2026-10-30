@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aNewProject, API } from "./support/shell";
 import { flow, openTheWritingView, projectOf } from "./support/writing";
+import { heardOn, routingLive, subscribing, unsubscribedOn } from "./support/live";
 
 const masthead = (page: Page) => page.getByRole("heading", { level: 1 });
 
@@ -37,9 +38,7 @@ function described(page: Page): () => number {
 
 async function anOpenProjectFollowedLive(page: Page, named: string) {
   const asks = described(page);
-  const followed = page.waitForEvent("websocket", (socket) =>
-    socket.url().includes("/api/projects/live?project="),
-  );
+  const followed = subscribing(page, "projects");
   const title = await aNewProject(page, named);
   await followed;
   await expect(masthead(page)).toHaveText(title);
@@ -92,14 +91,10 @@ test("an open project another author deletes says so, and is followed no longer"
   page,
 }) => {
   let closed = false;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/projects/live?project=")) {
-      socket.on("close", () => {
-        closed = true;
-      });
-    }
-  });
   const { project } = await anOpenProjectFollowedLive(page, "OpenDeleted");
+  unsubscribedOn(page, "projects", { project }, () => {
+    closed = true;
+  });
   await openTheWritingView(page);
 
   await anotherAuthor(page, "delete", `/projects/${project}`);
@@ -118,14 +113,19 @@ test("a change missed on the way asks for the project again, and it comes out ri
   page,
 }) => {
   let passed = 0;
-  await page.routeWebSocket(/\/api\/projects\/live\?project=/, (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((frame) => {
-      passed += 1;
-      if (passed !== 1) {
-        socket.send(frame);
-      }
-    });
+  await routingLive(page, {
+    heard: {
+      projects: (_told, pass, about) => {
+        if (!about.project) {
+          pass();
+          return;
+        }
+        passed += 1;
+        if (passed !== 1) {
+          pass();
+        }
+      },
+    },
   });
   const asks = described(page);
   const title = await aNewProject(page, "OpenMissed");
@@ -153,13 +153,14 @@ test("a change told while the project is still on its way asks for it again", as
   const project = projectOf(page);
   const renamed = `Rewoven ${crypto.randomUUID().slice(0, 8)}`;
   let heard = 0;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/projects/live?project=")) {
-      socket.on("framereceived", () => {
-        heard += 1;
-      });
-    }
-  });
+  heardOn(
+    page,
+    "projects",
+    () => {
+      heard += 1;
+    },
+    { project },
+  );
   let release = () => {};
   const held = new Promise<void>((resolve) => {
     release = resolve;
@@ -197,13 +198,14 @@ test("my details answered after another author's newer rename leave their name",
   const { project } = await anOpenProjectFollowedLive(page, "OpenOvertaken");
   const theirs = `Theirs ${crypto.randomUUID().slice(0, 8)}`;
   let heard = 0;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/projects/live?project=")) {
-      socket.on("framereceived", () => {
-        heard += 1;
-      });
-    }
-  });
+  heardOn(
+    page,
+    "projects",
+    () => {
+      heard += 1;
+    },
+    { project },
+  );
   await page.reload();
   await expect.poll(() => heard).toBe(0);
   await page.route(

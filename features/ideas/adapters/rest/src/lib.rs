@@ -16,7 +16,7 @@ use ideas_contract::{CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest, refused};
 use ideas_core::{
     Idea, IdeaError, IdeaSummary, IdeasCore, IdeasError, InvalidIdeaTitle, ProjectLink,
 };
-use live::{AccessWatch, Broadcaster, Gate};
+use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Topic};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -32,7 +32,7 @@ impl Gate for IdeasGate {
         Ok(self.0.may_follow(project, agent).await?)
     }
 
-    fn watch(&self, project: &str) -> AccessWatch {
+    async fn watch(&self, project: &str) -> AccessWatch {
         self.0.watch_access(project)
     }
 }
@@ -46,17 +46,19 @@ impl Display for IdeaChanges {
     }
 }
 
-pub fn live(ideas: IdeasCore, broadcaster: Broadcaster<IdeaChanges>) -> Router {
-    live::followed_while(
-        "/ideas/live",
+fn idea_changes_of(about: &About) -> Option<IdeaChanges> {
+    about
+        .get("project")
+        .map(|project| IdeaChanges(ProjectLink::from(project.as_str())))
+}
+
+pub fn topic(ideas: IdeasCore, broadcaster: Broadcaster<IdeaChanges>) -> Arc<dyn Topic> {
+    Arc::new(GatedTopic::new(
+        "ideas",
         broadcaster,
-        |asked| {
-            asked
-                .get("project")
-                .map(|project| IdeaChanges(ProjectLink::from(project.as_str())))
-        },
+        idea_changes_of,
         Arc::new(IdeasGate(ideas)),
-    )
+    ))
 }
 
 pub fn router(ideas: IdeasCore) -> Router {

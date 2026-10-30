@@ -6,6 +6,7 @@ use authorizing::{Act, AllowingEverything, Authorizer, AuthorizerError, Readable
 use axum::Router;
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, InMemoryEventStore};
+use live::Topic;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use outline_catalog::InMemoryOutlineCatalog;
@@ -42,6 +43,7 @@ pub struct Wired {
     pub outlines: OutlinesCore,
     pub reopened: Box<dyn Fn() -> OutlinesCore + Send + Sync>,
     pub routes: Router,
+    pub topics: Vec<Arc<dyn Topic>>,
     pub store: Arc<InMemoryEventStore<OutlineEvent>>,
     pub outbox: Arc<InMemoryOutbox>,
     pub consuming: DeliveryConsumer,
@@ -125,7 +127,10 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     Wired {
         outlines: outline_wiring::core(&ports, &context),
         reopened: Box::new(afresh),
-        routes: wired.routes,
+        routes: wired
+            .routes
+            .merge(live::live_socket(live::Topics::of(wired.topics.clone()))),
+        topics: wired.topics,
         store,
         outbox,
         consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, context.clock.clone()),

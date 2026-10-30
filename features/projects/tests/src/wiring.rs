@@ -4,6 +4,7 @@ use authorizing::{AllowingEverything, Authorizer};
 use axum::Router;
 use clock::Clock;
 use eventsourcing::InMemoryEventStore;
+use live::Topic;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use projects_catalog::InMemoryProjectCatalog;
@@ -15,6 +16,7 @@ const CATALOGUING: &str = "catalogue-project";
 pub struct Wired {
     pub projects: ProjectsCore,
     pub routes: Router,
+    pub topics: Vec<Arc<dyn Topic>>,
     pub outbox: Arc<InMemoryOutbox>,
     pub consuming: DeliveryConsumer,
     pub catalog: Arc<InMemoryProjectCatalog>,
@@ -59,7 +61,10 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
 
     Wired {
         projects: projects_wiring::core(&ports, &context),
-        routes: wired.routes,
+        routes: wired
+            .routes
+            .merge(live::live_socket(live::Topics::of(wired.topics.clone()))),
+        topics: wired.topics,
         outbox,
         consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, context.clock.clone()),
         catalog,

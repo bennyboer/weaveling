@@ -23,44 +23,4 @@ backend = "ws://127.0.0.1:3000/api/live"
 ws = true
 
 [[proxy]]
-backend = "ws://127.0.0.1:3000/api/outlines/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/boards/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/ideas/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/projects/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/members/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/statistics/word-counts/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/appearances/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/scenes/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/service/refusals/live"
-ws = true
-
-[[proxy]]
-backend = "ws://127.0.0.1:3000/api/scenes/quotation-restylings/live"
-ws = true
-
-[[proxy]]
 backend = "http://127.0.0.1:3000/api"

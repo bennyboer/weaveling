@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::http::ApiError;
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::projects::model::{DescribedProject, ProjectId};
 use crate::projects::service;
 use live_contract::FrameDTO;
@@ -13,7 +13,7 @@ pub struct OpenProject {
     project: RwSignal<Option<ProjectId>>,
     described: RwSignal<Option<DescribedProject>>,
     refused: RwSignal<Option<ApiError>>,
-    following: StoredValue<Option<Following>, LocalStorage>,
+    following: StoredValue<Option<Subscription>, LocalStorage>,
     latest: StoredValue<u64>,
 }
 
@@ -38,8 +38,9 @@ impl OpenProject {
         self.project.set(Some(project.clone()));
         self.described.set(None);
         self.refused.set(None);
-        self.following.set_value(Some(Following::start(
-            &format!("/api/projects/live?project={project}"),
+        self.following.set_value(Some(Subscription::start(
+            "projects",
+            &[("project", project.to_string().as_str())],
             move |told| self.heard(told),
             move || self.ask(),
         )));

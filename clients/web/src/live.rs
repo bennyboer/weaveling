@@ -6,18 +6,6 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 #[wasm_bindgen(module = "/js/editor.bundle.js")]
 extern "C" {
-    type LiveFollowing;
-
-    #[wasm_bindgen(constructor)]
-    fn new(
-        path: &str,
-        heard: &Closure<dyn Fn(String)>,
-        opened: &Closure<dyn Fn()>,
-    ) -> LiveFollowing;
-
-    #[wasm_bindgen(method)]
-    fn close(this: &LiveFollowing);
-
     type LiveSubscription;
 
     #[wasm_bindgen(constructor)]
@@ -30,6 +18,15 @@ extern "C" {
 
     #[wasm_bindgen(method)]
     fn close(this: &LiveSubscription);
+
+    #[wasm_bindgen(js_name = whenSessionEnded)]
+    fn when_session_ended_told(told: &Closure<dyn Fn()>);
+}
+
+pub fn when_session_ended(told: impl Fn() + 'static) {
+    let told = Closure::<dyn Fn()>::new(told);
+    when_session_ended_told(&told);
+    told.forget();
 }
 
 fn heard_as_frames(heard: impl Fn(FrameDTO) + 'static) -> Closure<dyn Fn(String)> {
@@ -73,36 +70,6 @@ impl Subscription {
 impl Drop for Subscription {
     fn drop(&mut self) {
         self.subscription.close();
-    }
-}
-
-pub struct Following {
-    connection: LiveFollowing,
-    _heard: Closure<dyn Fn(String)>,
-    _opened: Closure<dyn Fn()>,
-}
-
-impl Following {
-    pub fn start(
-        path: &str,
-        heard: impl Fn(FrameDTO) + 'static,
-        opened: impl Fn() + 'static,
-    ) -> Self {
-        let heard = heard_as_frames(heard);
-        let opened = Closure::<dyn Fn()>::new(opened);
-        let connection = LiveFollowing::new(path, &heard, &opened);
-
-        Self {
-            connection,
-            _heard: heard,
-            _opened: opened,
-        }
-    }
-}
-
-impl Drop for Following {
-    fn drop(&mut self) {
-        self.connection.close();
     }
 }
 

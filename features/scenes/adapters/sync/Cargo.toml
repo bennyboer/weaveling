@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+live-contract = { version = "0.1.0", path = "../../../../libraries/live-contract", package = "weaveling-live-contract" }
+acting = { version = "0.1.0", path = "../../../../libraries/acting", package = "weaveling-acting" }
 async-trait = { workspace = true }
 axum = { workspace = true, features = ["ws"] }
 futures-util = { workspace = true }

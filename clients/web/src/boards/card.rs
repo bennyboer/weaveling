@@ -52,6 +52,9 @@ pub fn card(href: String, idea: Idea, at: Placement, handles: Handles) -> impl I
         })
         .on(ev::dblclick, move |event| {
             event.stop_propagation();
+            if !handles.may_write.get_untracked() {
+                return;
+            }
             handles.naming.set(Some(Naming::Renaming {
                 idea: renamed.clone(),
                 at,
@@ -59,6 +62,9 @@ pub fn card(href: String, idea: Idea, at: Placement, handles: Handles) -> impl I
             }));
         })
         .on(ev::keydown, move |event| {
+            if !handles.may_write.get_untracked() {
+                return;
+            }
             if event.key() == "Enter" {
                 event.prevent_default();
                 handles.naming.set(Some(Naming::Renaming {
@@ -128,6 +134,9 @@ fn grab(event: &ev::PointerEvent, idea: IdeaId, held: Held, at: Placement, handl
     }
 
     handles.selected.set(Some(idea.clone()));
+    if !handles.may_write.get_untracked() {
+        return;
+    }
     handles.carrying.set(Some(Carrying {
         idea,
         held,

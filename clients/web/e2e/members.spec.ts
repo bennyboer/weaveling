@@ -2,6 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { ADA, HER_PASSWORD, aServerWithAccounts, signIn } from "./support/accounts";
 import { API } from "./support/shell";
+import { withAccounts } from "./support/signed-in";
 
 async function aProject(page: import("@playwright/test").Page): Promise<string> {
   const made = await page.request.post(`${API}/projects`, {
@@ -59,6 +60,7 @@ test("a project's members are listed by name and role, with whoever is me marked
 });
 
 test("without accounts a project has no members to show", async ({ page }) => {
+  test.skip(withAccounts, "the server these tests run against keeps accounts");
   const project = await aProject(page);
 
   await page.goto(`/projects/${project}/write`);
@@ -403,7 +405,7 @@ test("one's own initial wears the same tint in the stack as on the account's but
   );
 });
 
-test("on a phone the stack shows one's first member and how many more, beside the masthead's buttons", async ({
+test("on a phone the members are in the More menu, not beside the project's name", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 360, height: 700 });
@@ -415,18 +417,19 @@ test("on a phone the stack shows one's first member and how many more, beside th
   await membersServed(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { account: "account_2", role: "author", name: "Grace Hopper" },
-    { account: "account_3", role: "reader" },
-    { account: "account_4", role: "reader", name: "Hedy Lamarr" },
   ]);
 
   await page.goto(`/projects/${project}/write`);
+  await expect(page.getByRole("button", { name: "More" })).toBeVisible();
 
-  const stack = page.locator(".masthead .stack");
-  await expect(stack.locator(".avatar:visible")).toHaveText(["A", "+3"]);
-  const shown = await stack.boundingBox();
-  const next = await page.locator(".masthead .bell-button").boundingBox();
-  expect(shown && next).toBeTruthy();
-  expect(shown!.x + shown!.width).toBeLessThanOrEqual(next!.x);
+  await expect(page.locator(".masthead .stack")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "More" }).click();
+  const menu = page.getByRole("dialog", { name: "More" });
+  await expect(menu.getByRole("heading", { name: "This project" })).toBeVisible();
+  await menu.getByRole("link", { name: "Members" }).click();
+  await expect(page).toHaveURL(new RegExp(`/projects/${project}/members$`));
+  await expect(menu).toHaveCount(0);
 });
 
 async function sharing(page: Page, listed: Listed[]) {
@@ -516,6 +519,7 @@ test("from the Share dialog the Members page is one step away", async ({ page })
 });
 
 test("without accounts there is nothing to share", async ({ page }) => {
+  test.skip(withAccounts, "the server these tests run against keeps accounts");
   const project = await aProject(page);
 
   await page.goto(`/projects/${project}/write`);
@@ -524,22 +528,18 @@ test("without accounts there is nothing to share", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
 });
 
-test("on a phone, Share is its icon alone and the dialog fits the screen", async ({ page }) => {
+test("on a phone, Share is in the More menu and the dialog fits the screen", async ({ page }) => {
   await page.setViewportSize({ width: 360, height: 700 });
   await sharing(page, [
     { account: ADA.account, role: "owner", name: ADA.name, email: ADA.email },
     { account: "account_2", role: "author", name: "Grace Hopper", email: "grace@example.com" },
   ]);
 
-  const share = page.getByRole("button", { name: "Share", exact: true });
-  await expect(share).toBeVisible();
-  const button = await share.boundingBox();
-  const bell = await page.locator(".masthead .bell-button").boundingBox();
-  expect(button && bell).toBeTruthy();
-  expect(button!.width).toBeLessThan(40);
-  expect(button!.x + button!.width).toBeLessThanOrEqual(bell!.x);
+  await page.getByRole("button", { name: "More" }).click();
+  await page.getByRole("dialog", { name: "More" }).getByRole("button", { name: "Share" }).click();
 
-  await share.click();
+  await expect(page.getByRole("dialog", { name: "More" })).toHaveCount(0);
+  await expect(shareDialog(page).getByRole("heading", { name: "People with access" })).toBeVisible();
   const shown = await shareDialog(page).boundingBox();
   expect(shown).not.toBeNull();
   expect(shown!.x).toBeGreaterThanOrEqual(0);

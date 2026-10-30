@@ -13,6 +13,7 @@ theme-dark = Dark
 
 language = Language
 masthead-more = More
+masthead-this-project = This project
 language-machine-translated = { $language } (machine-translated)
 
 workspace-heading = Your projects
@@ -570,6 +571,7 @@ members-unnamed = Not known by name yet
 members-role-owner = Owner
 members-role-author = Author
 members-role-reader = Reader
+roles-changed = Your role has been changed to { $role }.
 members-roles = Owners invite, change roles and delete the project. Authors read and write. Readers only read.
 members-role-of = Role of { $name }
 members-remove = Remove

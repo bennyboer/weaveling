@@ -21,6 +21,7 @@ import {
   sceneActions,
   titled,
 } from "./support/writing";
+import { routingLive } from "./support/live";
 
 const sceneCarried = (frame: string | Buffer) => {
   const bytes = Buffer.from(frame);
@@ -47,20 +48,17 @@ async function holdingBackTheTextOfOneScene(page: Page) {
 async function standingInForTheScenesSocket(page: Page) {
   const stand = { tell: (_summaries: { id: string; title: string; opening: string }[]) => {} };
   let told = 0;
-  await page.routeWebSocket(/\/api\/scenes\/live\?project=/, (socket) => {
-    stand.tell = (summaries) => {
-      for (const summary of summaries) {
-        told += 1;
-        socket.send(
-          JSON.stringify({
-            of: summary.id,
-            version: 1_000_000 + told,
-            event: { project: "", ...summary },
-          }),
-        );
-      }
-    };
-  });
+  const live = await routingLive(page, { withheld: ["scenes"] });
+  stand.tell = (summaries) => {
+    for (const summary of summaries) {
+      told += 1;
+      live.tell("scenes", {
+        of: summary.id,
+        version: 1_000_000 + told,
+        event: { project: "", ...summary },
+      });
+    }
+  };
 
   return stand;
 }
@@ -258,10 +256,8 @@ test("a scene written here and then let go takes in the openings it is told agai
 test("scenes asked for again while my own rename is on its way do not undo it", async ({
   page,
 }) => {
-  let drop = () => {};
-  await page.routeWebSocket(/\/api\/scenes\/live\?project=/, (socket) => {
-    drop = () => void socket.close();
-  });
+  const live = await routingLive(page);
+  const drop = () => live.end("scenes", "behind");
   await aNewProject(page, "RenameAskedAgain");
   const [first] = (await aBookWithScenes(page, { "Part One": 1 }))["Part One"];
   await titled(page, first, "The arrival");

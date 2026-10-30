@@ -5,8 +5,7 @@ use async_trait::async_trait;
 use axum::Extension;
 use axum::Json;
 use axum::Router;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -18,52 +17,58 @@ use boards_contract::{
 use boards_core::{
     Board, BoardError, BoardsCore, BoardsError, IdeaLink, PositionedIdea, Size, Spot,
 };
-use eventsourcing::{Agent, Standing, Version};
-use live::{Admission, Asked, Broadcaster, Gate};
+use eventsourcing::{Agent, ServiceError, Standing, Version};
+use live::{About, AccessWatch, Broadcaster, Gate, Refused, Subscribed, Topic};
 use serving::Problem;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoardChanges(pub String);
 
-#[derive(Clone)]
-struct Following {
-    broadcaster: Broadcaster<BoardChanges>,
+pub struct BoardsTopic {
     boards: BoardsCore,
+    broadcaster: Broadcaster<BoardChanges>,
 }
 
-pub fn live(boards: BoardsCore, broadcaster: Broadcaster<BoardChanges>) -> Router {
-    Router::new()
-        .route("/boards/live", routing::get(follow))
-        .with_state(Following {
-            broadcaster,
+impl BoardsTopic {
+    pub fn new(boards: BoardsCore, broadcaster: Broadcaster<BoardChanges>) -> Self {
+        Self {
             boards,
-        })
+            broadcaster,
+        }
+    }
 }
 
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(following): State<Following>,
-    Extension(acting): Extension<Agent>,
-    Query(asked): Query<Asked>,
-) -> Response {
-    let Some(board) = asked.get("board") else {
-        return StatusCode::BAD_REQUEST.into_response();
-    };
-    let hearing = following.broadcaster.hear(BoardChanges(board.clone()));
+#[async_trait]
+impl Topic for BoardsTopic {
+    fn named(&self) -> &'static str {
+        "boards"
+    }
 
-    match following.boards.follow(board, &acting).await {
-        Ok((standing, watch)) => live::streaming_with_version(
-            upgrade,
-            standing.version.count(),
-            hearing,
-            Admission::new(
-                watch,
-                Arc::new(BoardsGate(following.boards)),
-                acting,
-                board.clone(),
-            ),
-        ),
-        Err(refused) => problem_of(refused).into_response(),
+    async fn subscribe(&self, agent: &Agent, about: &About) -> Result<Subscribed, Refused> {
+        let Some(board) = about.get("board") else {
+            return Err(Refused::NotThere);
+        };
+        let hearing = self.broadcaster.hear(BoardChanges(board.clone()));
+        let admission =
+            live::admitted(Arc::new(BoardsGate(self.boards.clone())), agent, board).await?;
+        let standing = self
+            .boards
+            .read(board, agent)
+            .await
+            .map_err(|failed| refused(&failed))?;
+
+        Ok(Subscribed::hearing(hearing)
+            .standing_at(standing.version.count())
+            .while_admitted(admission))
+    }
+}
+
+fn refused(failed: &BoardsError) -> Refused {
+    match failed {
+        BoardsError::InvalidId(_)
+        | BoardsError::ProjectNotThere
+        | BoardsError::Events(ServiceError::NotFound { .. }) => Refused::NotThere,
+        _ => Refused::Failed,
     }
 }
 
@@ -76,7 +81,20 @@ impl Gate for BoardsGate {
         agent: &Agent,
         board: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        Ok(self.0.read(board, agent).await.is_ok())
+        match self.0.read(board, agent).await {
+            Ok(_) => Ok(true),
+            Err(failed) => match refused(&failed) {
+                Refused::NotThere => Ok(false),
+                Refused::Failed => Err(Box::new(failed)),
+            },
+        }
+    }
+
+    async fn watch(&self, board: &str) -> AccessWatch {
+        self.0
+            .watch_access(board)
+            .await
+            .unwrap_or_else(|_| AccessWatch::still())
     }
 }
 

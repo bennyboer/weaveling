@@ -4,6 +4,23 @@ Background work a feature hands over and the service does now and then, apart fr
 
 A **`Chore`** has a name, says how often it comes round, `every()`, and does its work once in `carry_out()`, answering how many things it cleared. A feature hands its chores over through `wiring`, as it does its listeners. **`Chores::started(chores)`** gives each chore a round of its own: done at once, then again each time its `every` has passed, so a chore that comes round hourly never waits on one that comes round daily. What a chore cleared is logged; a chore that fails is warned of and done again next time, keeping no other chore from its round. **`stop()`** ends every round at once, not waiting for a slow chore's next turn.
 
+The boards forget their old tombstones like this:
+
+```rust
+use std::sync::Arc;
+
+use chores::{Chores, ForgetOldTombstones};
+
+let forget = ForgetOldTombstones::new(
+    "forget-old-board-tombstones",
+    Arc::new(BoardTombstones::of(boards)),
+    clock.clone(),
+);
+
+let chores = Chores::started(vec![Arc::new(forget)]);
+chores.stop().await;
+```
+
 A chore is for upkeep nobody asked for at a given moment, forgetting what is long settled, say. Work that must happen before the server stops is `wiring::Settling` instead.
 
 **Tombstones.** A feature that keeps a tombstone of what was discarded, so a late message cannot bring it back, implements **`Tombstones`**, `forget_laid_before(at)`, and hands over a **`ForgetOldTombstones`** named for it. Hourly, it forgets the tombstones laid more than `TOMBSTONES_KEPT_FOR` ago, a day longer than `messaging::RETRIABLE_FOR`: a refused change older than that is not tried again, and the day covers a change that happened a little after the tombstone was laid, a scene linking an idea just discarded, say, so no message about a forgotten tombstone can still arrive. A tombstone is laid when what it marks went, the `occurred_at` of the message saying so. It forgets in batches: `forget_laid_before(at, at_most)` forgets at most `at_most` of each kind of tombstone, the oldest first, in one short transaction, and the chore asks for `TOMBSTONES_EACH_BATCH` at a time until a batch comes back short, so a backlog, a whole project deleted a month ago say, never holds a feature's store for long, yet is cleared in one round.

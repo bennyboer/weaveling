@@ -4,7 +4,7 @@ use crate::http::ApiError;
 use crate::ideas::model;
 use crate::ideas::model::Idea;
 use crate::ideas::service;
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::projects::model::ProjectId;
 use live_contract::FrameDTO;
 
@@ -39,9 +39,10 @@ pub fn following(
     project: &ProjectId,
     held: RwSignal<Option<Vec<Idea>>>,
     asking: Action<(), ()>,
-) -> Following {
-    Following::start(
-        &format!("/api/ideas/live?project={project}"),
+) -> Subscription {
+    Subscription::start(
+        "ideas",
+        &[("project", project.to_string().as_str())],
         move |told: FrameDTO| {
             let Some(known) = held.try_get_untracked() else {
                 return;

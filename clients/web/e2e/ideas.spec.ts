@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aNewProject, anOpenProject, catalogued } from "./support/shell";
+import { routingLive } from "./support/live";
 
 const ideas = (page: Page) => page.getByRole("list", { name: "Ideas" });
 
@@ -147,7 +148,7 @@ test("a project url opened cold shows that project", async ({ page }) => {
 });
 
 test("a project can be opened in a new tab", async ({ page, context }) => {
-  await page.routeWebSocket(/\/api\/projects\/live$/, () => {});
+  await routingLive(page, { withheld: ["projects"] });
   const title = await aNewProject(page, "NewTab");
   await page.getByRole("link", { name: "All projects" }).click();
 

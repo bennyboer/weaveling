@@ -12,6 +12,7 @@ use web_sys::{HtmlElement, HtmlInputElement};
 use crate::dialog;
 use crate::icons;
 use crate::icons::Icon;
+use crate::members::roles::Roles;
 use crate::outline::in_view::{InView, LEAVES_PLACE};
 use crate::outline::model::{Attachment, Section, SectionId};
 use crate::outline::outline_view_state::{OutlineViewState, Urge};
@@ -40,6 +41,7 @@ struct Held {
     in_view: InView,
     state: OutlineViewState,
     renamed_meanwhile: RwSignal<Option<RenamedMeanwhile>>,
+    may_write: Memo<bool>,
 }
 
 #[derive(Clone)]
@@ -60,6 +62,12 @@ pub fn OutlineView(project: String) -> impl IntoView {
         carrying.with(Option::is_some) || hauling.with(Option::is_some)
     }));
     on_cleanup(move || in_view.close());
+    let roles = expect_context::<Roles>();
+    let may_write = {
+        let project = project.clone();
+
+        Memo::new(move |_| roles.may_write(&project))
+    };
     let held = Held {
         project: StoredValue::new(project.clone()),
         carrying,
@@ -71,6 +79,7 @@ pub fn OutlineView(project: String) -> impl IntoView {
         in_view,
         state: OutlineViewState::open(&route::project_id(&project)),
         renamed_meanwhile: RwSignal::new(None),
+        may_write,
     };
     let state = held.state;
 
@@ -106,7 +115,7 @@ pub fn OutlineView(project: String) -> impl IntoView {
                     html::button()
                         .r#type("button")
                         .class("begin")
-                        .prop("disabled", move || !state.ready())
+                        .prop("disabled", move || !state.ready() || !may_write.get())
                         .on(ev::click, move |_| {
                             state.add(None, last_top(state), String::new())
                         })
@@ -324,7 +333,9 @@ fn row(section: Section, held: Held) -> impl IntoView {
             held.over.set(None);
         })
         .child((
-            grip(id.clone(), held),
+            held.may_write
+                .get_untracked()
+                .then(|| grip(id.clone(), held)),
             move || {
                 if !bears(&bearing, held) {
                     return html::span().class("stub").into_any();
@@ -369,6 +380,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     move || about_section("outline-section", &state.title_of(&mine))
                 })
                 .placeholder(speech::said("untitled"))
+                .prop("readOnly", move || !held.may_write.get())
                 .prop("value", {
                     let mine = valued.clone();
                     let own = Memo::new(move |_| state.title_of(&mine));
@@ -395,7 +407,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                     }
                 })
                 .on(ev::keydown, move |event| match event.key().as_str() {
-                    "Enter" => {
+                    "Enter" if held.may_write.get_untracked() => {
                         event.prevent_default();
                         settle(&event, &named, held, began_with, field);
                         state.add(
@@ -408,7 +420,7 @@ fn row(section: Section, held: Held) -> impl IntoView {
                             String::new(),
                         );
                     }
-                    "Tab" => {
+                    "Tab" if held.may_write.get_untracked() => {
                         event.prevent_default();
                         settle(&event, &urged, held, began_with, field);
                         state.urge(
@@ -419,11 +431,11 @@ fn row(section: Section, held: Held) -> impl IntoView {
                             },
                         );
                     }
-                    "ArrowUp" if event.alt_key() => {
+                    "ArrowUp" if event.alt_key() && held.may_write.get_untracked() => {
                         event.prevent_default();
                         state.urge(shuffled.clone(), Urge::Earlier);
                     }
-                    "ArrowDown" if event.alt_key() => {
+                    "ArrowDown" if event.alt_key() && held.may_write.get_untracked() => {
                         event.prevent_default();
                         state.urge(shuffled.clone(), Urge::Later);
                     }
@@ -446,22 +458,24 @@ fn row(section: Section, held: Held) -> impl IntoView {
                         .child((icons::mark(Icon::Hollow), "empty"))
                 })
             },
-            html::div()
-                .class("row-actions")
-                .attr("role", "toolbar")
-                .attr("aria-label", {
-                    let mine = toolbarred.clone();
+            held.may_write.get_untracked().then(|| {
+                html::div()
+                    .class("row-actions")
+                    .attr("role", "toolbar")
+                    .attr("aria-label", {
+                        let mine = toolbarred.clone();
 
-                    move || about_section("outline-actions", &state.title_of(&mine))
-                })
-                .child((
-                    urging(Urge::Earlier, pruned.clone(), state),
-                    urging(Urge::Later, pruned.clone(), state),
-                    urging(Urge::Promote, pruned.clone(), state),
-                    urging(Urge::Demote, pruned.clone(), state),
-                    writing(pruned.clone(), state),
-                    pruning(pruned.clone(), state),
-                )),
+                        move || about_section("outline-actions", &state.title_of(&mine))
+                    })
+                    .child((
+                        urging(Urge::Earlier, pruned.clone(), state),
+                        urging(Urge::Later, pruned.clone(), state),
+                        urging(Urge::Promote, pruned.clone(), state),
+                        urging(Urge::Demote, pruned.clone(), state),
+                        writing(pruned.clone(), state),
+                        pruning(pruned.clone(), state),
+                    ))
+            }),
         ))
 }
 
@@ -580,11 +594,13 @@ fn leaf(attachment: Attachment, held: Held) -> impl IntoView {
                     {named}
                 </A>
             },
-            deed(
-                speech::say_about("outline-take-out", "name", &shown),
-                Icon::Remove,
-                move || state.detach(taken.clone()),
-            ),
+            held.may_write.get_untracked().then(|| {
+                deed(
+                    speech::say_about("outline-take-out", "name", &shown),
+                    Icon::Remove,
+                    move || state.detach(taken.clone()),
+                )
+            }),
         )))
 }
 
@@ -652,6 +668,7 @@ fn carried(attachment: Attachment, shown: String, held: Held) -> impl IntoView {
     html::li().child(
         html::button()
             .r#type("button")
+            .prop("disabled", move || !held.may_write.get())
             .class(("carrying", move || {
                 held.carrying
                     .with(|attachment| attachment.as_ref() == Some(&mine))

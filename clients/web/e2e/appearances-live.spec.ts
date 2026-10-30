@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aNewProject, API, sceneCatalogued } from "./support/shell";
+import { routingLive } from "./support/live";
 
 const projectSegment = (page: Page) =>
   new URL(page.url()).pathname.split("/")[2];
@@ -146,11 +147,9 @@ test("places asked for and answered after newer ones were told are let go", asyn
   const idea = await anIdea(page, "A girl in a wood");
   await noteInASection(page, idea, "Chapter one");
   const scene = await linkFromAScene(page, idea, "The clearing");
-  let tell: (places: object[]) => void = () => {};
-  await page.routeWebSocket(/\/api\/appearances\/live\?idea=/, (socket) => {
-    tell = (places) =>
-      socket.send(JSON.stringify({ of: idea, version: 1_000_000, event: { places } }));
-  });
+  const live = await routingLive(page, { withheld: ["appearances"] });
+  const tell = (places: object[]) =>
+    live.tell("appearances", { of: idea, version: 1_000_000, event: { places } });
   let release = () => {};
   const asked = new Promise<void>((resolve) => {
     release = resolve;
@@ -179,7 +178,7 @@ test("places asked for and answered after newer ones were told are let go", asyn
 test("a scene the inspector hears of only through the idea's places is asked for, and named", async ({
   page,
 }) => {
-  await page.routeWebSocket(/\/api\/scenes\/live\?project=/, () => {});
+  await routingLive(page, { withheld: ["scenes"] });
   await aNewProject(page, "AppearingUnknownScene");
   const idea = await anIdea(page, "A girl in a wood");
   await inspectedLive(page, idea);

@@ -62,22 +62,13 @@ impl OutlinesCore {
         Ok(standing)
     }
 
-    pub async fn follow(
-        &self,
-        outline: &str,
-        agent: &Agent,
-    ) -> Result<(Standing<Outline>, AccessWatch), OutlinesError> {
+    pub async fn watch_access(&self, outline: &str) -> Result<AccessWatch, OutlinesError> {
         let outline: OutlineId = outline.parse()?;
         let standing = self.service.latest(&outline).await?;
-        let watch = self
-            .authorizer
-            .watch_access(standing.state.project().as_str());
-        self.authorized(agent, Act::Read, standing.state.project(), || {
-            service::not_found(&outline)
-        })
-        .await?;
 
-        Ok((standing, watch))
+        Ok(self
+            .authorizer
+            .watch_access(standing.state.project().as_str()))
     }
 
     pub async fn add(

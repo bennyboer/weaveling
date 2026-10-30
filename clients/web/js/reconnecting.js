@@ -1,6 +1,13 @@
 const RECONNECT_FIRST = 100;
 const RECONNECT_AT_MOST = 2500;
 const STEADY_AFTER = 3000;
+const SESSION_ENDED = 4401;
+
+let sessionEnded = () => {};
+
+export function whenSessionEnded(told) {
+  sessionEnded = told;
+}
 
 function address(path) {
   const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -39,10 +46,14 @@ export class ReconnectingSocket {
       this.opened();
     };
     socket.onmessage = (event) => this.heard(event.data);
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       clearTimeout(this.steady);
       this.open = false;
       this.dropped();
+      if (event.code === SESSION_ENDED) {
+        sessionEnded();
+        return;
+      }
       if (!this.closed) {
         const wait = Math.min(RECONNECT_FIRST * 2 ** this.failures, RECONNECT_AT_MOST);
         this.failures += 1;

@@ -63,10 +63,13 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 
     Wired::serving(
         scenes_rest::router(core.clone())
-            .merge(scenes_rest::quotation_restylings(core.clone(), restylings))
-            .merge(scenes_rest::live_scenes(core.clone(), scenes_told))
+            .merge(scenes_rest::quotation_restylings(core.clone()))
             .merge(scenes_sync::router(live.clone())),
     )
+    .followed_live(vec![
+        scenes_rest::scenes_topic(core.clone(), scenes_told),
+        scenes_rest::restylings_topic(core.clone(), restylings),
+    ])
     .listening(vec![
         Arc::new(sweep),
         Arc::new(unlink),

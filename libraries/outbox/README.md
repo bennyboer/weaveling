@@ -4,6 +4,24 @@ The transactional outbox and its relay: how a change that commits is always anno
 
 **Enqueue inside the writer's transaction.** `postgres::enqueue(transaction, origin, message)` and `sqlite::enqueue(…)` put a message into the outbox table inside *any* writer's transaction — the event store's `append`, or a feature that is not event-sourced at all, like scenes, whose prose is a CRDT. `Origin` records what the message is about (`aggregate`, `kind`, `version`); a writer with no versions passes `0`. On PostgreSQL the same transaction notifies, so the relay wakes when the write commits.
 
+The scenes announce a change in the transaction that stores it, and a relay sends it on:
+
+```rust
+use outbox::{Cadence, Origin, RelayTask};
+
+let mut transaction = pool.begin().await?;
+store_the_change(&mut transaction).await?;
+
+let scene = change.scene().to_string();
+let origin = Origin { aggregate: &scene, kind: "scene", version: 0 };
+outbox::postgres::enqueue(&mut transaction, origin, &mapping.message(&change)).await?;
+
+transaction.commit().await?;
+
+let relay = RelayTask::started(scenes_outbox, Cadence::default());
+relay.stop().await;
+```
+
 **The relay.** `RelayTask` runs two loops per `Outbox`: one delivering, woken by the notification and polling only as a backstop; one sweeping published entries past `KEPT_FOR`. A claimed entry is left alone for `CLAIM_FOR`, which is what stops a crashed relay stranding a message, and on PostgreSQL `FOR UPDATE SKIP LOCKED` is what lets two relays run at all. A retry publishes the message with the id it was written with, so the far end can recognise a redelivery.
 
 **That holds for the relay's retries, not a listener's.** A listener that answers a message with another one, as the ideas and scenes sweeps do with `MORE_TO_SWEEP`, mints a fresh id through `Message::answering` each time it runs. When the broker redelivers what it is answering, the second answer is a new message, and no dedup on its id can tell it from the first. Such an answer needs an id derived from what it answers; see [TODO](../../TODO.md).

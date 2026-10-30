@@ -55,22 +55,13 @@ impl BoardsCore {
         Ok(standing)
     }
 
-    pub async fn follow(
-        &self,
-        board: &str,
-        agent: &Agent,
-    ) -> Result<(Standing<Board>, AccessWatch), BoardsError> {
+    pub async fn watch_access(&self, board: &str) -> Result<AccessWatch, BoardsError> {
         let board: BoardId = board.parse()?;
         let standing = self.service.latest(&board).await?;
-        let watch = self
-            .authorizer
-            .watch_access(standing.state.project().as_str());
-        self.authorized(agent, Act::Read, standing.state.project(), || {
-            service::not_found(&board)
-        })
-        .await?;
 
-        Ok((standing, watch))
+        Ok(self
+            .authorizer
+            .watch_access(standing.state.project().as_str()))
     }
 
     pub async fn pin(

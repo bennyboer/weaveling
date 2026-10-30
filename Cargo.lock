@@ -3598,6 +3598,8 @@ dependencies = [
  "sha2 0.10.9",
  "thiserror",
  "time",
+ "tokio",
+ "weaveling-acting",
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
@@ -3715,6 +3717,7 @@ dependencies = [
 name = "weaveling-acting"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "weaveling-eventsourcing",
 ]
 
@@ -3929,6 +3932,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
+ "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -4336,6 +4340,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-acting",
  "weaveling-authorizing",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
@@ -4454,6 +4459,7 @@ dependencies = [
 name = "weaveling-members-tests"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum",
  "axum-test",
  "serde_json",
@@ -4462,6 +4468,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-members-catalog",
  "weaveling-members-contract",
  "weaveling-members-core",
@@ -4627,6 +4634,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
+ "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -4758,6 +4766,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -4902,8 +4911,10 @@ dependencies = [
  "time",
  "tokio",
  "tracing",
+ "weaveling-acting",
  "weaveling-authorizing",
  "weaveling-eventsourcing",
+ "weaveling-live-contract",
  "weaveling-quotation",
  "weaveling-scenes-core",
  "yrs",
@@ -4919,6 +4930,7 @@ dependencies = [
  "serde_json",
  "time",
  "tokio",
+ "weaveling-acting",
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
@@ -4990,6 +5002,7 @@ dependencies = [
  "weaveling-ideas-wiring",
  "weaveling-invitations-wiring",
  "weaveling-live",
+ "weaveling-live-contract",
  "weaveling-mailing",
  "weaveling-members-wiring",
  "weaveling-messaging",

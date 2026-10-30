@@ -2,7 +2,7 @@ use leptos::prelude::*;
 use leptos::task;
 use statistics_contract::WordCountDTO;
 
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::projects::model::ProjectId;
 use crate::quiet_note::QuietNote;
 use crate::scenes::followed as scenes_followed;
@@ -138,8 +138,9 @@ impl WriteViewState {
                 });
             }
         };
-        StoredValue::new_local(Following::start(
-            &format!("/api/statistics/word-counts/live?project={counting}"),
+        StoredValue::new_local(Subscription::start(
+            "word-counts",
+            &[("project", counting.to_string().as_str())],
             move |told: FrameDTO| {
                 if let Ok(found) = serde_json::from_value::<WordCountDTO>(told.event) {
                     let count = SceneWordCount::from(found);

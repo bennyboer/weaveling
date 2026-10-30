@@ -13,6 +13,7 @@ theme-dark = Escuro
 
 language = Idioma
 masthead-more = Mais
+masthead-this-project = Este projeto
 language-machine-translated = { $language } (tradução automática)
 
 workspace-heading = Seus projetos
@@ -570,6 +571,7 @@ members-unnamed = Nome ainda desconhecido
 members-role-owner = Dono(a)
 members-role-author = Autor(a)
 members-role-reader = Leitor(a)
+roles-changed = Seu papel foi alterado para { $role }.
 members-roles = Quem é dono(a) convida, muda os papéis e exclui o projeto. Quem é autor(a) lê e escreve. Quem é leitor(a) só lê.
 members-role-of = Papel de { $name }
 members-remove = Remover

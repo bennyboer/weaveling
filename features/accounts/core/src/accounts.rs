@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
+use acting::SessionEnd;
 use clock::Clock;
 use eventsourcing::EventStore;
 use mailing::Mailer;
+use time::OffsetDateTime;
+use tokio::sync::watch;
 
 use crate::account::AccountEvent;
 use crate::catalog::{AccountCatalog, AccountSummary};
@@ -12,6 +15,7 @@ use crate::operator::OperatorCode;
 use crate::secrets::SecretStores;
 use crate::service::{AccountService, SignedIn};
 use crate::session::{SessionToken, TokenDigest};
+use crate::session_end;
 use crate::signing_up::SigningUp;
 use crate::ticket::InvitationTicket;
 
@@ -19,6 +23,8 @@ use crate::ticket::InvitationTicket;
 pub struct AccountsCore {
     service: AccountService,
     catalog: Arc<dyn AccountCatalog>,
+    clock: Arc<dyn Clock>,
+    sessions_checked: Arc<watch::Sender<u64>>,
 }
 
 impl AccountsCore {
@@ -30,8 +36,10 @@ impl AccountsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: AccountService::new(store, secrets, catalog.clone(), mailer, clock),
+            service: AccountService::new(store, secrets, catalog.clone(), mailer, clock.clone()),
             catalog,
+            clock,
+            sessions_checked: Arc::new(watch::Sender::new(0)),
         }
     }
 
@@ -148,7 +156,10 @@ impl AccountsCore {
         code: &str,
         password: &str,
     ) -> Result<(), AccountsError> {
-        self.service.reset_password(email, code, password).await
+        self.service.reset_password(email, code, password).await?;
+        self.check_sessions();
+
+        Ok(())
     }
 
     pub async fn sign_in(&self, email: &str, password: &str) -> Result<AccountId, AccountsError> {
@@ -168,7 +179,30 @@ impl AccountsCore {
     }
 
     pub async fn end_session(&self, token: &SessionToken) -> Result<(), AccountsError> {
-        self.service.end_session(token).await
+        self.service.end_session(token).await?;
+        self.check_sessions();
+
+        Ok(())
+    }
+
+    pub fn session_end(&self, token: &SessionToken, until: OffsetDateTime) -> SessionEnd {
+        session_end::of(self.clone(), SessionToken::presented(token.as_str()), until)
+    }
+
+    pub(crate) fn session_checks(&self) -> watch::Receiver<u64> {
+        self.sessions_checked.subscribe()
+    }
+
+    pub(crate) fn now(&self) -> OffsetDateTime {
+        self.clock.now()
+    }
+
+    pub(crate) async fn still_acting(&self, token: &SessionToken) -> bool {
+        !matches!(self.signed_in(token).await, Ok(None))
+    }
+
+    fn check_sessions(&self) {
+        self.sessions_checked.send_modify(|checked| *checked += 1);
     }
 
     pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountsError> {
@@ -187,7 +221,10 @@ impl AccountsCore {
     ) -> Result<(), AccountsError> {
         self.operating(by).await?;
 
-        self.service.lock(by, account, reason).await
+        self.service.lock(by, account, reason).await?;
+        self.check_sessions();
+
+        Ok(())
     }
 
     pub async fn unlock(&self, by: &AccountId, account: &AccountId) -> Result<(), AccountsError> {

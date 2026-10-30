@@ -5,14 +5,11 @@ use appearances_core::{
     AppearanceCatalog, AppearancesCore, AppearancesError, CatalogError, Place, ProjectLink, Subject,
 };
 use async_trait::async_trait;
-use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
 use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
-use live::{Asked, Broadcaster, Teller};
+use live::{About, Broadcaster, Refused, Subscribed, Teller, Topic};
 
 use crate::guarding::ReadableBy;
 use serde::Deserialize;
@@ -30,42 +27,42 @@ pub fn router(appearances: AppearancesCore) -> Router {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppearanceChanges(pub String);
 
-#[derive(Clone)]
-struct Following {
+pub struct AppearancesTopic {
     appearances: AppearancesCore,
     broadcaster: Broadcaster<AppearanceChanges>,
 }
 
-pub fn live(appearances: AppearancesCore, broadcaster: Broadcaster<AppearanceChanges>) -> Router {
-    Router::new()
-        .route("/appearances/live", routing::get(follow))
-        .with_state(Following {
+impl AppearancesTopic {
+    pub fn new(appearances: AppearancesCore, broadcaster: Broadcaster<AppearanceChanges>) -> Self {
+        Self {
             appearances,
             broadcaster,
-        })
+        }
+    }
 }
 
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(following): State<Following>,
-    Extension(agent): Extension<Agent>,
-    Query(asked): Query<Asked>,
-) -> Response {
-    let Some(idea) = asked.get("idea") else {
-        return StatusCode::BAD_REQUEST.into_response();
-    };
+#[async_trait]
+impl Topic for AppearancesTopic {
+    fn named(&self) -> &'static str {
+        "appearances"
+    }
 
-    match following.appearances.may_follow(idea, &agent).await {
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-        Ok(true) => live::streaming_sifted(
-            upgrade,
-            following.broadcaster.hear(AppearanceChanges(idea.clone())),
-            Arc::new(ReadableBy {
-                agent,
-                appearances: following.appearances,
-            }),
-        ),
+    async fn subscribe(&self, agent: &Agent, about: &About) -> Result<Subscribed, Refused> {
+        let Some(idea) = about.get("idea") else {
+            return Err(Refused::NotThere);
+        };
+
+        match self.appearances.may_follow(idea, agent).await {
+            Ok(true) => Ok(Subscribed::hearing(
+                self.broadcaster.hear(AppearanceChanges(idea.clone())),
+            )
+            .sifted(Arc::new(ReadableBy {
+                agent: agent.clone(),
+                appearances: self.appearances.clone(),
+            }))),
+            Ok(false) => Err(Refused::NotThere),
+            Err(_) => Err(Refused::Failed),
+        }
     }
 }
 

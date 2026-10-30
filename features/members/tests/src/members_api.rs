@@ -9,7 +9,7 @@ use eventsourcing::{
     AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, ServiceError, Version,
 };
 use members_catalog::InMemoryMembershipCatalog;
-use members_contract::{ChangeRoleRequest, MemberDTO, refused, role};
+use members_contract::{ChangeRoleRequest, MemberDTO, MembershipDTO, refused, role};
 use members_core::{
     KIND, MembersAuthorizer, MembersCore, MembersCoreError, MembersError, MembersEvent, Person,
     ProjectLink, Role,
@@ -151,6 +151,28 @@ async fn whoever_may_read_the_project_lists_its_members_and_nobody_else_finds_it
         StatusCode::NOT_FOUND,
         "not-found",
     );
+}
+
+#[tokio::test]
+async fn one_s_own_memberships_are_listed_with_one_s_role_and_nobody_else_s() {
+    let members = a_project_of_three().await;
+
+    let grace_s = members
+        .as_account("account_grace")
+        .get("/members/mine")
+        .await;
+    let cy_s = members.as_account("account_cy").get("/members/mine").await;
+
+    grace_s.assert_status_ok();
+    assert_eq!(
+        grace_s.json::<Vec<MembershipDTO>>(),
+        vec![MembershipDTO {
+            project: PROJECT.to_owned(),
+            role: role::AUTHOR.to_owned(),
+        }]
+    );
+    cy_s.assert_status_ok();
+    assert!(cy_s.json::<Vec<MembershipDTO>>().is_empty());
 }
 
 #[tokio::test]

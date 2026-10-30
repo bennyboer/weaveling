@@ -2,17 +2,20 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration as Wait;
 
+use acting::{Ending, SessionEnd};
 use async_trait::async_trait;
 use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum_test::{TestServer, WsMessage};
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
+use live_contract::SESSION_ENDED;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{FRAGMENT, ScenesCore};
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{Connection, Envelope, LiveScenes, Message};
 use time::OffsetDateTime;
+use tokio::sync::Notify;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
@@ -433,4 +436,36 @@ async fn the_socket_asks_again_when_the_members_change() {
         Envelope::decode(&bytes).expect("a whole envelope"),
         Envelope::Refused(guarded.scene.clone())
     );
+}
+
+struct Signing(Notify);
+
+#[async_trait]
+impl Ending for Signing {
+    async fn reached(&self) {
+        self.0.notified().await;
+    }
+}
+
+#[tokio::test]
+async fn the_socket_is_closed_as_such_when_its_session_ends() {
+    let guarded = guarded().await;
+    let signing = Arc::new(Signing(Notify::new()));
+    let server = TestServer::builder().http_transport().build(
+        scenes_sync::router(guarded.live.clone())
+            .layer(Extension(account("account_bo")))
+            .layer(Extension(SessionEnd::of(signing.clone()))),
+    );
+    let mut socket = server
+        .get_websocket("/scenes/sync")
+        .await
+        .into_websocket()
+        .await;
+
+    signing.0.notify_one();
+
+    assert!(matches!(
+        tokio::time::timeout(Wait::from_secs(1), socket.receive_message()).await,
+        Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == SESSION_ENDED
+    ));
 }

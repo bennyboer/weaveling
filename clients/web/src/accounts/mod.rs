@@ -16,6 +16,7 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::http;
+use crate::live;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedInAccount {
@@ -85,6 +86,7 @@ impl CurrentSession {
             operator_wanted: RwSignal::new(false),
         };
         http::when_no_longer_signed_in(move || session.state.set(SignInState::SignedOut));
+        live::when_session_ended(move || session.state.set(SignInState::SignedOut));
         session.ask();
 
         session

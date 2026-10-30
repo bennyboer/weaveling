@@ -12,6 +12,8 @@ import {
   openTheOutline,
 } from "./support/shell";
 import { flow, openTheWritingView, projectOf, scene } from "./support/writing";
+import { routingLive } from "./support/live";
+import { withAccounts } from "./support/signed-in";
 
 const spoken = (page: Page) =>
   page.evaluate(() => document.documentElement.getAttribute("lang"));
@@ -121,10 +123,8 @@ test.describe("a browser asking for German, about a project's details", () => {
   test("rewriting the quotation marks is asked and followed in German, one scene told as one", async ({
     page,
   }) => {
-    let tell: (event: object) => void = () => {};
-    await page.routeWebSocket(/\/api\/scenes\/quotation-restylings\/live\?project=/, (socket) => {
-      tell = (event) => socket.send(JSON.stringify({ version: 1, event }));
-    });
+    const live = await routingLive(page, { withheld: ["quotation-restylings"] });
+    const tell = (event: object) => live.tell("quotation-restylings", { version: 1, event });
     await aNewProject(page, "Zeichen", { boardNamed: "Pinnwand" });
     await aBookWithScenes(page, { "Part One": 1 });
     await page.route("**/api/scenes/quotation-restylings/*", (route) =>
@@ -186,20 +186,24 @@ test.describe("a browser asking for German, about a project's details", () => {
   }) => {
     const title = `Gelöscht ${crypto.randomUUID().slice(0, 8)}`;
     const id = await aGermanProjectListed(page, title);
-    await page.routeWebSocket(/\/api\/projects\/live$/, () => {});
+    await routingLive(page, { withheld: ["projects"] });
     await page.goto("/");
     const row = page.getByRole("listitem").filter({ hasText: title });
-    await expect(row).toBeVisible();
-    await page.request.delete(`${API}/projects/${id}`);
-
     await row.getByRole("button", { name: "Weitere Aktionen" }).click();
     await page.getByRole("menuitem", { name: "Umbenennen" }).click();
     const renaming = page.getByRole("listitem").getByRole("textbox");
     await renaming.fill(`${title} neu`);
+
+    await page.request.delete(`${API}/projects/${id}`);
     await renaming.press("Enter");
 
-    await expect(page.getByRole("alert")).toHaveText(
-      "Dieses Projekt wurde inzwischen gelöscht.",
+    await expect(
+      page.getByRole("alert"),
+      "with accounts its members are disbanded with it, so it is not there for anyone",
+    ).toHaveText(
+      withAccounts
+        ? "Dieses Projekt gibt es nicht mehr."
+        : "Dieses Projekt wurde inzwischen gelöscht.",
     );
   });
 

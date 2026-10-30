@@ -4,7 +4,7 @@ use leptos_router::hooks;
 use crate::http::ApiError;
 use crate::ideas::followed;
 use crate::ideas::model::Idea;
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::outline::model::{Attachment, Outline, OutlineChange, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -294,7 +294,7 @@ impl OutlineViewState {
             })
         };
 
-        let following = StoredValue::new_local(None::<Following>);
+        let following = StoredValue::new_local(None::<Subscription>);
         Effect::new(move || {
             let Some(id) = confirmed.with(|held| held.as_ref().map(|held| held.id.clone())) else {
                 return;
@@ -302,8 +302,9 @@ impl OutlineViewState {
             if following.with_value(Option::is_some) {
                 return;
             }
-            following.set_value(Some(Following::start(
-                &format!("/api/outlines/live?outline={id}"),
+            following.set_value(Some(Subscription::start(
+                "outlines",
+                &[("outline", id.to_string().as_str())],
                 move |told: FrameDTO| {
                     let Some(Some(held)) = confirmed.try_get_untracked() else {
                         return;

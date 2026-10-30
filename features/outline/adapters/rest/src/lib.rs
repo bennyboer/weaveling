@@ -5,14 +5,13 @@ use async_trait::async_trait;
 use axum::Extension;
 use axum::Json;
 use axum::Router;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::header::ETAG;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing;
-use eventsourcing::{Agent, Standing, Version};
-use live::{Admission, Asked, Broadcaster, Gate};
+use eventsourcing::{Agent, ServiceError, Standing, Version};
+use live::{About, AccessWatch, Broadcaster, Gate, Refused, Subscribed, Topic};
 use outline_contract::{
     AddSectionRequest, AddedSectionResponse, AttachRequest, AttachmentDTO, ChangedSectionDTO,
     MoveSectionRequest, OpenOutlineRequest, OutlineChangeDTO, OutlineDTO, PlacedSectionDTO,
@@ -73,45 +72,55 @@ async fn open(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OutlineChanges(pub String);
 
-#[derive(Clone)]
-struct Following {
-    broadcaster: Broadcaster<OutlineChanges>,
+pub struct OutlinesTopic {
     outlines: OutlinesCore,
+    broadcaster: Broadcaster<OutlineChanges>,
 }
 
-pub fn live(outlines: OutlinesCore, broadcaster: Broadcaster<OutlineChanges>) -> Router {
-    Router::new()
-        .route("/outlines/live", routing::get(follow))
-        .with_state(Following {
-            broadcaster,
+impl OutlinesTopic {
+    pub fn new(outlines: OutlinesCore, broadcaster: Broadcaster<OutlineChanges>) -> Self {
+        Self {
             outlines,
-        })
+            broadcaster,
+        }
+    }
 }
 
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(following): State<Following>,
-    Extension(acting): Extension<Agent>,
-    Query(asked): Query<Asked>,
-) -> Response {
-    let Some(outline) = asked.get("outline") else {
-        return StatusCode::BAD_REQUEST.into_response();
-    };
-    let hearing = following.broadcaster.hear(OutlineChanges(outline.clone()));
+#[async_trait]
+impl Topic for OutlinesTopic {
+    fn named(&self) -> &'static str {
+        "outlines"
+    }
 
-    match following.outlines.follow(outline, &acting).await {
-        Ok((standing, watch)) => live::streaming_with_version(
-            upgrade,
-            standing.version.count(),
-            hearing,
-            Admission::new(
-                watch,
-                Arc::new(OutlinesGate(following.outlines)),
-                acting,
-                outline.clone(),
-            ),
-        ),
-        Err(refused) => problem_of(refused).into_response(),
+    async fn subscribe(&self, agent: &Agent, about: &About) -> Result<Subscribed, Refused> {
+        let Some(outline) = about.get("outline") else {
+            return Err(Refused::NotThere);
+        };
+        let hearing = self.broadcaster.hear(OutlineChanges(outline.clone()));
+        let admission = live::admitted(
+            Arc::new(OutlinesGate(self.outlines.clone())),
+            agent,
+            outline,
+        )
+        .await?;
+        let standing = self
+            .outlines
+            .read(outline, agent)
+            .await
+            .map_err(|failed| refused(&failed))?;
+
+        Ok(Subscribed::hearing(hearing)
+            .standing_at(standing.version.count())
+            .while_admitted(admission))
+    }
+}
+
+fn refused(failed: &OutlinesError) -> Refused {
+    match failed {
+        OutlinesError::InvalidId(_)
+        | OutlinesError::ProjectNotThere
+        | OutlinesError::Events(ServiceError::NotFound { .. }) => Refused::NotThere,
+        _ => Refused::Failed,
     }
 }
 
@@ -124,7 +133,20 @@ impl Gate for OutlinesGate {
         agent: &Agent,
         outline: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-        Ok(self.0.read(outline, agent).await.is_ok())
+        match self.0.read(outline, agent).await {
+            Ok(_) => Ok(true),
+            Err(failed) => match refused(&failed) {
+                Refused::NotThere => Ok(false),
+                Refused::Failed => Err(Box::new(failed)),
+            },
+        }
+    }
+
+    async fn watch(&self, outline: &str) -> AccessWatch {
+        self.0
+            .watch_access(outline)
+            .await
+            .unwrap_or_else(|_| AccessWatch::still())
     }
 }
 

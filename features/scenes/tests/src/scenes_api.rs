@@ -8,6 +8,7 @@ use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
 use eventsourcing::Agent;
 use live::Broadcaster;
+use live::testing::Subscriber;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{
     CreateSceneRequest, FRAGMENT, LinkIdeaRequest, QuotationRestylingDTO, RetitleSceneRequest,
@@ -402,14 +403,11 @@ async fn linking_to_a_scene_nobody_created_is_not_found() {
 
 async fn restyling(tasks: InMemoryQuotationRestylingTasks) -> axum_test::TestResponse {
     TestServer::new(
-        scenes_rest::quotation_restylings(
-            a_core_of(
-                Arc::new(InMemorySceneStore::new()),
-                Arc::new(InMemorySceneCatalog::new()),
-                Arc::new(tasks),
-            ),
-            Broadcaster::new(),
-        )
+        scenes_rest::quotation_restylings(a_core_of(
+            Arc::new(InMemorySceneStore::new()),
+            Arc::new(InMemorySceneCatalog::new()),
+            Arc::new(tasks),
+        ))
         .layer(Extension(Agent::Local)),
     )
     .get(&format!("/scenes/quotation-restylings/{A_PROJECT}"))
@@ -418,7 +416,7 @@ async fn restyling(tasks: InMemoryQuotationRestylingTasks) -> axum_test::TestRes
 
 struct RestylingFollowed {
     tasks: Arc<dyn QuotationRestylingTasks>,
-    socket: axum_test::TestWebSocket,
+    socket: Subscriber,
     _server: TestServer,
 }
 
@@ -428,23 +426,25 @@ async fn a_restyling_followed(project: &str) -> RestylingFollowed {
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         broadcaster.clone(),
     ));
+    let scenes = a_core_of(
+        Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        tasks.clone(),
+    );
     let server = TestServer::builder().http_transport().build(
-        scenes_rest::quotation_restylings(
-            a_core_of(
-                Arc::new(InMemorySceneStore::new()),
-                Arc::new(InMemorySceneCatalog::new()),
-                tasks.clone(),
-            ),
+        live::live_socket(live::Topics::of(vec![scenes_rest::restylings_topic(
+            scenes,
             broadcaster,
-        )
+        )]))
         .layer(Extension(Agent::Local)),
     );
-    let socket = server
-        .get_websocket(&format!(
-            "/scenes/quotation-restylings/live?project={project}"
-        ))
-        .await
-        .into_websocket()
+    let mut socket = Subscriber::on(&server).await;
+    socket
+        .subscribe(
+            "restylings",
+            "quotation-restylings",
+            &[("project", project)],
+        )
         .await;
 
     RestylingFollowed {
@@ -454,13 +454,9 @@ async fn a_restyling_followed(project: &str) -> RestylingFollowed {
     }
 }
 
-async fn told_progress(socket: &mut axum_test::TestWebSocket) -> QuotationRestylingDTO {
-    let frame = tokio::time::timeout(std::time::Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("progress is told while it is fresh");
-    let frame: serde_json::Value = serde_json::from_str(&frame).expect("a frame is JSON");
-
-    serde_json::from_value(frame["event"].clone()).expect("the frame carries the progress")
+async fn told_progress(socket: &mut Subscriber) -> QuotationRestylingDTO {
+    serde_json::from_value(socket.frame().await["event"].clone())
+        .expect("the frame carries the progress")
 }
 
 #[tokio::test]
@@ -523,15 +519,7 @@ async fn an_older_change_that_cannot_begin_and_another_book_tell_nothing() {
         .await
         .expect("beginning should succeed");
 
-    assert!(
-        tokio::time::timeout(
-            std::time::Duration::from_millis(200),
-            followed.socket.receive_text()
-        )
-        .await
-        .is_err(),
-        "neither an older change nor another book is this book's progress"
-    );
+    followed.socket.nothing().await;
 }
 
 #[tokio::test]

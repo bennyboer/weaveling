@@ -3,9 +3,10 @@ use std::time::Duration;
 
 use authorizing::AllowingEverything;
 use axum::Extension;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::TestServer;
 use eventsourcing::Agent;
 use live::Broadcaster;
+use live::testing::Subscriber;
 use serde_json::{Value, json};
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
@@ -14,7 +15,7 @@ use time::OffsetDateTime;
 
 struct CountsFollowed {
     catalog: TellingWordCounts,
-    socket: TestWebSocket,
+    socket: Subscriber,
     _server: TestServer,
 }
 
@@ -25,19 +26,18 @@ async fn counts_followed(project: &str) -> CountsFollowed {
         broadcaster.clone(),
     );
     let server = TestServer::builder().http_transport().build(
-        statistics_rest::live(
+        live::live_socket(live::Topics::of(vec![statistics_rest::topic(
             StatisticsCore::new(
                 Arc::new(InMemoryWordCountCatalog::new()),
                 Arc::new(AllowingEverything),
             ),
             broadcaster,
-        )
+        )]))
         .layer(Extension(Agent::Local)),
     );
-    let socket = server
-        .get_websocket(&format!("/statistics/word-counts/live?project={project}"))
-        .await
-        .into_websocket()
+    let mut socket = Subscriber::on(&server).await;
+    socket
+        .subscribe("counts", "word-counts", &[("project", project)])
         .await;
 
     CountsFollowed {
@@ -59,12 +59,8 @@ async fn counted(catalog: &TellingWordCounts, scene: &str, project: &str, words:
         .expect("keeping should succeed");
 }
 
-async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("the counts are told while they are fresh");
-
-    serde_json::from_str(&frame).expect("a frame is JSON")
+async fn told(socket: &mut Subscriber) -> Value {
+    socket.frame().await
 }
 
 fn count_in(frame: &Value) -> (String, u64) {

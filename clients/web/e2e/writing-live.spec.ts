@@ -15,16 +15,13 @@ import {
   sectionActions,
   shown,
 } from "./support/writing";
+import { heardOn, routingLive } from "./support/live";
 
 async function followingLive(page: Page, { routed = false } = {}) {
   let opened = 0;
   let told = 0;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/outlines/live")) {
-      socket.on("framereceived", () => {
-        told += 1;
-      });
-    }
+  heardOn(page, "outlines", () => {
+    told += 1;
   });
   page.on("response", (response) => {
     if (
@@ -105,16 +102,16 @@ test("a section another author adds appears without a reload", async ({
 });
 
 test("a change already held is not loaded again", async ({ page }) => {
-  let toPage: ((frame: string | Buffer) => void) | null = null;
-  let last: string | Buffer | null = null;
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((frame) => {
-      last = frame;
-      socket.send(frame);
-    });
-    toPage = (frame) => socket.send(frame);
+  let last: string | null = null;
+  const live = await routingLive(page, {
+    heard: {
+      outlines: (told, pass) => {
+        last = told;
+        pass();
+      },
+    },
   });
+  const toPage = (told: string) => live.again(told);
   const { outline, ids, reloads } = await aBookFollowedLive(page, "LiveHeld");
   await anotherAuthor(page, "post", `/outlines/${outline}/sections`, {
     title: "Part Three",
@@ -125,7 +122,7 @@ test("a change already held is not loaded again", async ({ page }) => {
   await page.waitForTimeout(300);
   const settled = reloads();
 
-  toPage!(last!);
+  toPage(last!);
   await page.waitForTimeout(500);
 
   expect(
@@ -165,15 +162,15 @@ test("a section another author removes goes", async ({ page }) => {
 test("what changed while the connection was down shows once it is back", async ({
   page,
 }) => {
-  let connections = 0;
   let first: { close: () => Promise<void> } | null = null;
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
-    connections += 1;
-    if (connections === 1) {
-      first = socket;
-      return;
-    }
-    socket.connectToServer();
+  await routingLive(page, {
+    connecting: (socket, nth) => {
+      if (nth === 1) {
+        first = socket;
+        return false;
+      }
+      return true;
+    },
   });
   const { outline, ids } = await aBookFollowedLive(page, "LiveCaughtUp", {
     routed: true,
@@ -198,9 +195,12 @@ test("a channel that keeps dropping just after opening is tried again less and l
   page,
 }) => {
   let connections = 0;
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
-    connections += 1;
-    setTimeout(() => void socket.close(), 50);
+  await routingLive(page, {
+    connecting: (socket) => {
+      connections += 1;
+      setTimeout(() => void socket.close(), 50);
+      return false;
+    },
   });
   await aNewProject(page, "LiveDropping");
   await aBookShaped(page, [{ title: "Part One" }]);
@@ -790,7 +790,7 @@ test("where I am reading holds while sections come and go above it", async ({
 test("a change made from a view that is behind is refused gently, and the view catches up", async ({
   page,
 }) => {
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, () => {});
+  await routingLive(page, { withheld: ["outlines"] });
   const { outline, ids } = await aBookFollowedLive(page, "LiveOvertaken", {
     routed: true,
   });
@@ -841,15 +841,19 @@ test("a change missed on the way opens the book again, and the book comes out ri
 }) => {
   let passed = 0;
   let connected = false;
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
-    connected = true;
-    const server = socket.connectToServer();
-    server.onMessage((frame) => {
-      passed += 1;
-      if (passed !== 2) {
-        socket.send(frame);
-      }
-    });
+  await routingLive(page, {
+    connecting: () => {
+      connected = true;
+      return true;
+    },
+    heard: {
+      outlines: (_told, pass) => {
+        passed += 1;
+        if (passed !== 2) {
+          pass();
+        }
+      },
+    },
   });
   await aNewProject(page, "LiveMissed");
   const { outline, ids } = await aBookShaped(page, [

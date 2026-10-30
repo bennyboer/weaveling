@@ -1,5 +1,4 @@
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
@@ -11,10 +10,10 @@ use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::TestServer;
 use eventsourcing::{AccountId, Agent};
 use live::Broadcaster;
-use serde_json::Value;
+use live::testing::Subscriber;
 
 const READABLE: &str = "project_ada";
 const UNREADABLE: &str = "project_kept";
@@ -57,7 +56,9 @@ async fn guarded() -> Guarded {
     let appearances = AppearancesCore::new(kept.clone(), authorizer.clone());
     let server = TestServer::builder().http_transport().build(
         appearances_rest::router(appearances.clone())
-            .merge(appearances_rest::live(appearances, broadcaster.clone()))
+            .merge(live::live_socket(live::Topics::of(vec![Arc::new(
+                appearances_rest::AppearancesTopic::new(appearances, broadcaster.clone()),
+            )])))
             .layer(Extension(Agent::Account(AccountId::from("account_ada")))),
     );
     for (idea, project) in [("idea_ada", READABLE), ("idea_kept", UNREADABLE)] {
@@ -77,19 +78,17 @@ async fn guarded() -> Guarded {
     }
 }
 
-async fn following(server: &TestServer, idea: &str) -> TestWebSocket {
-    server
-        .get_websocket(&format!("/appearances/live?idea={idea}"))
-        .await
-        .into_websocket()
-        .await
+async fn following(server: &TestServer, idea: &str) -> Subscriber {
+    let mut socket = Subscriber::on(server).await;
+    socket
+        .subscribe("appearances", "appearances", &[("idea", idea)])
+        .await;
+
+    socket
 }
 
-async fn heard_soon(socket: &mut TestWebSocket) -> Option<Value> {
-    tokio::time::timeout(Duration::from_millis(300), socket.receive_text())
-        .await
-        .ok()
-        .map(|frame| serde_json::from_str(&frame).expect("a frame is JSON"))
+async fn heard_soon(socket: &mut Subscriber) -> bool {
+    !socket.silent().await
 }
 
 #[tokio::test]
@@ -115,10 +114,7 @@ async fn where_an_idea_of_a_project_one_may_read_appears_is_told_and_followed() 
             id: "scene_1".to_owned()
         }]
     );
-    assert_eq!(
-        heard_soon(&mut socket).await.expect("told while fresh")["of"],
-        "idea_ada"
-    );
+    assert_eq!(socket.frame().await["of"], "idea_ada");
 }
 
 #[tokio::test]
@@ -130,11 +126,10 @@ async fn an_idea_of_a_project_one_may_not_read_is_not_there() {
         .get("/appearances?idea=idea_kept")
         .await
         .assert_status(StatusCode::NOT_FOUND);
-    guarded
-        .server
-        .get_websocket("/appearances/live?idea=idea_kept")
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    assert_eq!(
+        following(&guarded.server, "idea_kept").await.ended().await,
+        "not-there"
+    );
 }
 
 #[tokio::test]
@@ -161,11 +156,11 @@ async fn an_idea_of_no_project_known_yet_appears_nowhere_and_is_told_only_once_i
     listed.assert_status_ok();
     assert!(listed.json::<Vec<PlaceDTO>>().is_empty());
     assert!(
-        heard_soon(&mut readable).await.is_some(),
+        heard_soon(&mut readable).await,
         "an idea whose project turns out readable is told, so the frames do go out"
     );
     assert!(
-        heard_soon(&mut kept_from).await.is_none(),
+        !heard_soon(&mut kept_from).await,
         "followed before its project was known, an idea of a project kept from one stays untold"
     );
     guarded
@@ -178,7 +173,7 @@ async fn an_idea_of_no_project_known_yet_appears_nowhere_and_is_told_only_once_i
         .await
         .expect("remembering should succeed");
     assert!(
-        heard_soon(&mut orphaned).await.is_none(),
+        !heard_soon(&mut orphaned).await,
         "where an idea of no project known appears is told to nobody, as nobody can be let in to it"
     );
 }
@@ -199,11 +194,10 @@ async fn a_followed_idea_ends_once_whom_to_tell_cannot_be_known() {
         .await
         .expect("remembering should succeed");
 
-    assert!(
-        tokio::spawn(async move { socket.receive_text().await })
-            .await
-            .is_err(),
-        "a change it cannot judge may be one the follower needed, so the socket ends and its client reloads"
+    assert_eq!(
+        socket.ended().await,
+        "failed",
+        "a change it cannot judge may be one the follower needed, so the subscription ends and its client asks again"
     );
 }
 
@@ -217,9 +211,8 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
         .get("/appearances?idea=idea_ada")
         .await
         .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
-    guarded
-        .server
-        .get_websocket("/appearances/live?idea=idea_ada")
-        .await
-        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        following(&guarded.server, "idea_ada").await.ended().await,
+        "failed"
+    );
 }

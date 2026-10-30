@@ -3,10 +3,11 @@ use std::time::Duration;
 
 use authorizing::AllowingEverything;
 use axum::Extension;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use live::Broadcaster;
+use live::testing::Subscriber;
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{ProjectLink, SceneCatalog, SceneId, SceneTitle, ScenesCore};
 use scenes_rest::TellingScenes;
@@ -16,7 +17,7 @@ use time::OffsetDateTime;
 
 struct ScenesFollowed {
     catalog: TellingScenes,
-    socket: TestWebSocket,
+    socket: Subscriber,
     _server: TestServer,
 }
 
@@ -30,13 +31,16 @@ async fn scenes_followed(project: &str) -> ScenesFollowed {
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
-    let server = TestServer::builder()
-        .http_transport()
-        .build(scenes_rest::live_scenes(scenes, broadcaster).layer(Extension(Agent::Local)));
-    let socket = server
-        .get_websocket(&format!("/scenes/live?project={project}"))
-        .await
-        .into_websocket()
+    let server = TestServer::builder().http_transport().build(
+        live::live_socket(live::Topics::of(vec![scenes_rest::scenes_topic(
+            scenes,
+            broadcaster,
+        )]))
+        .layer(Extension(Agent::Local)),
+    );
+    let mut socket = Subscriber::on(&server).await;
+    socket
+        .subscribe("scenes", "scenes", &[("project", project)])
         .await;
 
     ScenesFollowed {
@@ -50,12 +54,8 @@ fn a_scene(made_at: i64) -> SceneId {
     SceneId::generate(OffsetDateTime::UNIX_EPOCH + time::Duration::seconds(made_at))
 }
 
-async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("a scene's summary is told while it is fresh");
-
-    serde_json::from_str(&frame).expect("a frame is JSON")
+async fn told(socket: &mut Subscriber) -> Value {
+    socket.frame().await
 }
 
 async fn retitled(catalog: &TellingScenes, id: SceneId, title: &str, version: u64) {

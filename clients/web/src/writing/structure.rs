@@ -6,7 +6,7 @@ use leptos::task;
 
 use crate::http::ApiError;
 use crate::ideas::model::IdeaId;
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::outline::model::{Attachment, Outline, OutlineChange, OutlineId, Section, SectionId};
 use crate::outline::service;
 use crate::projects::model::ProjectId;
@@ -33,7 +33,7 @@ pub struct Structure {
     outline: RwSignal<Option<Outline>>,
     writes: StoredValue<VecDeque<Write>, LocalStorage>,
     writing: StoredValue<bool>,
-    following: StoredValue<Option<Following>, LocalStorage>,
+    following: StoredValue<Option<Subscription>, LocalStorage>,
     reload_in_flight: StoredValue<bool>,
     rearranged_by_others: RwSignal<Vec<SectionId>>,
     removed_by_others: RwSignal<Vec<Removed>>,
@@ -80,8 +80,9 @@ impl Structure {
     }
 
     fn follow(self, outline: &OutlineId) {
-        let following = Following::start(
-            &format!("/api/outlines/live?outline={outline}"),
+        let following = Subscription::start(
+            "outlines",
+            &[("outline", outline.to_string().as_str())],
             move |told| self.heard_of(told),
             || {},
         );

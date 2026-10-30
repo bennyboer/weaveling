@@ -4,7 +4,7 @@ use leptos::prelude::*;
 use leptos::task;
 
 use crate::http::{ApiError, Refusal};
-use crate::live::{Following, Subscription};
+use crate::live::Subscription;
 use crate::projects::model;
 use crate::projects::model::{Membership, Project, ProjectDetails, ProjectId};
 use crate::projects::service;
@@ -61,8 +61,9 @@ impl Workspace {
                 }
             }
         });
-        StoredValue::new_local(Following::start(
-            "/api/projects/live",
+        StoredValue::new_local(Subscription::start(
+            "projects",
+            &[("mine", "true")],
             move |told: FrameDTO| {
                 let Some(held) = known.try_get_untracked() else {
                     return;

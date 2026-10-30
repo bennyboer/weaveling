@@ -231,7 +231,6 @@ pub fn app(adapters: Adapters) -> Router {
             adapters.deliveries.clone(),
             adapters.dispatcher.clone(),
             adapters.clock.clone(),
-            adapters.refusals.clone(),
         ));
     let mut open_routes = Router::new().nest("/service", service);
 
@@ -241,7 +240,8 @@ pub fn app(adapters: Adapters) -> Router {
         .flat_map(|accounts| accounts.listeners.clone());
     let mut guarded_routes = Router::new();
     let mut listeners = Vec::new();
-    let mut topics = Vec::new();
+    let mut topics: Vec<Arc<dyn live::Topic>> =
+        vec![Arc::new(refusals::RefusalsTopic(adapters.refusals.clone()))];
     for feature in adapters.features {
         guarded_routes = guarded_routes.merge(feature.routes);
         open_routes = open_routes.merge(feature.open_routes);

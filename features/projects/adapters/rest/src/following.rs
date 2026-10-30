@@ -3,13 +3,8 @@ use std::fmt::{self, Display, Formatter};
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::extract::{Query, State};
-use axum::response::Response;
-use axum::routing;
-use axum::{Extension, Router};
 use eventsourcing::Agent;
-use live::{AccessWatch, Asked, Broadcaster, Gate, Sieve};
+use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Refused, Sieve, Subscribed, Topic};
 use live_contract::FrameDTO;
 use projects_core::ProjectsCore;
 
@@ -28,46 +23,50 @@ impl Display for ProjectChanges {
     }
 }
 
-#[derive(Clone)]
-struct Following {
+pub struct ProjectsTopic {
     projects: ProjectsCore,
     broadcaster: Broadcaster<ProjectChanges>,
+    one_project: GatedTopic<ProjectChanges>,
 }
 
-pub fn live(projects: ProjectsCore, broadcaster: Broadcaster<ProjectChanges>) -> Router {
-    Router::new()
-        .route("/projects/live", routing::get(follow))
-        .with_state(Following {
+impl ProjectsTopic {
+    pub fn new(projects: ProjectsCore, broadcaster: Broadcaster<ProjectChanges>) -> Self {
+        Self {
+            one_project: GatedTopic::new(
+                "projects",
+                broadcaster.clone(),
+                |about| about.get("project").cloned().map(ProjectChanges::Of),
+                Arc::new(ProjectsGate(projects.clone())),
+            ),
             projects,
             broadcaster,
-        })
+        }
+    }
 }
 
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(following): State<Following>,
-    Extension(agent): Extension<Agent>,
-    Query(asked): Query<Asked>,
-) -> Response {
-    let Some(project) = asked.get("project") else {
-        return live::streaming_sifted(
-            upgrade,
-            following.broadcaster.hear(ProjectChanges::Listed),
-            Arc::new(ReadableBy {
-                agent,
-                projects: following.projects,
-            }),
-        );
-    };
+#[async_trait]
+impl Topic for ProjectsTopic {
+    fn named(&self) -> &'static str {
+        "projects"
+    }
 
-    live::streaming_while_admitted(
-        upgrade,
-        &following.broadcaster,
-        ProjectChanges::Of(project.clone()),
-        agent,
-        Arc::new(ProjectsGate(following.projects)),
-    )
-    .await
+    async fn subscribe(&self, agent: &Agent, about: &About) -> Result<Subscribed, Refused> {
+        if about.contains_key("project") {
+            return self.one_project.subscribe(agent, about).await;
+        }
+        if about.get("mine").map(String::as_str) != Some("true") {
+            return Err(Refused::NotThere);
+        }
+
+        Ok(
+            Subscribed::hearing(self.broadcaster.hear(ProjectChanges::Listed)).sifted(Arc::new(
+                ReadableBy {
+                    agent: agent.clone(),
+                    projects: self.projects.clone(),
+                },
+            )),
+        )
+    }
 }
 
 struct ProjectsGate(ProjectsCore);
@@ -82,7 +81,7 @@ impl Gate for ProjectsGate {
         Ok(self.0.may_follow(project, agent).await?)
     }
 
-    fn watch(&self, project: &str) -> AccessWatch {
+    async fn watch(&self, project: &str) -> AccessWatch {
         self.0.watch_access(project)
     }
 }

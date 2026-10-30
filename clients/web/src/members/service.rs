@@ -1,5 +1,5 @@
 use gloo_net::http::Request;
-use members_contract::{ChangeRoleRequest, MemberDTO};
+use members_contract::{ChangeRoleRequest, MemberDTO, MembershipDTO};
 
 use crate::http;
 use crate::http::ApiError;
@@ -25,6 +25,19 @@ pub async fn members_of(project: &str) -> Result<Vec<Member>, ApiError> {
         )
         .await?,
     )
+}
+
+pub async fn mine() -> Result<Vec<(String, Role)>, ApiError> {
+    let told: Vec<MembershipDTO> = http::parsed(
+        http::sent(Request::get(&format!("{MEMBERS}/mine"))).await?,
+        MEMBER,
+    )
+    .await?;
+
+    Ok(told
+        .into_iter()
+        .filter_map(|membership| Some((membership.project, Role::of(&membership.role)?)))
+        .collect())
 }
 
 pub async fn change_role(project: &str, account: &str, to: Role) -> Result<Vec<Member>, ApiError> {

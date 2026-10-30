@@ -157,7 +157,9 @@ test("the bell is there only while signed in, and stops following on signing out
   await expect(bell(page)).toHaveCount(0);
   await expect.poll(() => subscribedTo(server, "invitations").length).toBe(0);
   await expect
-    .poll(() => server.liveSockets, { message: "with nothing followed, the one socket is closed" })
+    .poll(() => server.liveSockets.length, {
+      message: "with nothing followed, the one socket is closed",
+    })
     .toBe(0);
 });
 

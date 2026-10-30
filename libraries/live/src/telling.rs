@@ -5,6 +5,7 @@ use serde::Serialize;
 
 use crate::{Broadcaster, Channel};
 
+/// Tells frames it numbers itself, for changes that carry no published version.
 pub struct Teller<C> {
     broadcaster: Broadcaster<C>,
     told: AtomicU64,
@@ -43,7 +44,7 @@ mod tests {
     use tokio::time;
 
     use super::*;
-    use crate::Heard;
+    use crate::Frames;
 
     #[tokio::test]
     async fn each_telling_says_what_it_is_of_and_is_newer_than_the_last() {

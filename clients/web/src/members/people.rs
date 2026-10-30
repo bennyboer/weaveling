@@ -6,6 +6,7 @@ use leptos_router::hooks;
 
 use crate::accounts::{CurrentSession, SignInState};
 use crate::http::ApiError;
+use crate::live::Subscription;
 use crate::members::leaving;
 use crate::members::listed::{Member, Role};
 use crate::members::service;
@@ -22,6 +23,7 @@ pub struct People {
     pub(super) members: RwSignal<Vec<Member>>,
     refused: RwSignal<Option<ApiError>>,
     pub(super) leaving: RwSignal<bool>,
+    following: StoredValue<Option<Subscription>, LocalStorage>,
 }
 
 impl People {
@@ -32,8 +34,14 @@ impl People {
             members: RwSignal::new(Vec::new()),
             refused: RwSignal::new(None),
             leaving: RwSignal::new(false),
+            following: StoredValue::new_local(None),
         };
-        people.load();
+        people.following.set_value(Some(Subscription::start(
+            "members",
+            &[("project", &people.project.get_value())],
+            move |_| people.load(),
+            move || people.load(),
+        )));
 
         people
     }

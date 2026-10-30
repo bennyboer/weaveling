@@ -18,6 +18,7 @@ use crate::boards::viewport::{NEARER, Viewport};
 use crate::ideas::inspector;
 use crate::ideas::inspector_state::InspectorState;
 use crate::ideas::model::{Idea, IdeaId};
+use crate::members::roles::Roles;
 use crate::problem;
 use crate::route;
 use crate::speech;
@@ -29,12 +30,19 @@ const DOTS: i64 = 20;
 pub fn BoardView(project: String) -> impl IntoView {
     let state = BoardViewState::open(&route::project_id(&project));
     let selected = RwSignal::new(None::<IdeaId>);
+    let roles = expect_context::<Roles>();
+    let may_write = {
+        let project = project.clone();
+
+        Memo::new(move |_| roles.may_write(&project))
+    };
     let handles = Handles {
         viewport: RwSignal::new(Viewport::RESTING),
         carrying: RwSignal::new(None::<Carrying>),
         selected,
         naming: RwSignal::new(None::<Naming>),
         state,
+        may_write,
     };
     let inspector = {
         let project = project.clone();
@@ -53,24 +61,27 @@ pub fn BoardView(project: String) -> impl IntoView {
         }
     });
 
-    html::section().class("board").child((
-        move || {
-            state
-                .problem()
-                .map(|failure| problem::problem_to_dismiss(failure, move || state.dismiss()))
-        },
-        tray::laid_out(
-            corkboard(project, handles).into_any(),
-            kept(handles, inspector).into_any(),
+    html::section()
+        .class("board")
+        .class(("reading", move || !may_write.get()))
+        .child((
             move || {
-                speech::say_about(
-                    "board-not-on-it",
-                    "count",
-                    &state.unpinned().len().to_string(),
-                )
+                state
+                    .problem()
+                    .map(|failure| problem::problem_to_dismiss(failure, move || state.dismiss()))
             },
-        ),
-    ))
+            tray::laid_out(
+                corkboard(project, handles).into_any(),
+                kept(handles, inspector).into_any(),
+                move || {
+                    speech::say_about(
+                        "board-not-on-it",
+                        "count",
+                        &state.unpinned().len().to_string(),
+                    )
+                },
+            ),
+        ))
 }
 
 fn kept(handles: Handles, inspector: InspectorState) -> impl IntoView {
@@ -115,6 +126,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
         selected,
         naming: held,
         state,
+        may_write,
     } = handles;
     let board_ref = NodeRef::<html::Section>::new();
     let panning = RwSignal::new(false);
@@ -196,7 +208,7 @@ fn corkboard(project: String, handles: Handles) -> impl IntoView {
             viewport.update(|it| *it = it.zoomed(towards, by));
         })
         .on(ev::dblclick, move |event| {
-            if event.target() != event.current_target() {
+            if event.target() != event.current_target() || !may_write.get_untracked() {
                 return;
             }
 
@@ -330,6 +342,9 @@ fn pinnable(idea: Idea, handles: Handles) -> impl IntoView {
                 let shown = shown.clone();
 
                 move || speech::say_about("board-pin", "idea", &shown)
+            })
+            .attr("disabled", move || {
+                (!handles.may_write.get()).then_some("disabled")
             })
             .on(ev::click, move |_| {
                 handles

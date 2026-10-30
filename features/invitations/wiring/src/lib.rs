@@ -157,35 +157,30 @@ impl Feature for InvitationFeature {
             context.clock.clone(),
         );
 
-        Wired::serving(
-            invitations_rest::router(invitations.clone()).merge(invitations_rest::live(
+        Wired::serving(invitations_rest::router(invitations.clone()))
+            .serving_anyone(invitations_rest::router_for_anyone(invitations.clone()))
+            .followed_live(vec![Arc::new(InvitationsTopic::new(
                 invitations.clone(),
-                broadcaster.clone(),
-            )),
-        )
-        .serving_anyone(invitations_rest::router_for_anyone(invitations.clone()))
-        .followed_live(vec![Arc::new(InvitationsTopic::new(
-            invitations.clone(),
-            broadcaster,
-        ))])
-        .listening(vec![
-            Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
-            Arc::new(DeclineInvitationListener::new(invitations.clone())),
-            Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
-            Arc::new(RememberWhoSignedUpListener::new(invitations.clone())),
-            Arc::new(RememberProjectNamesListener::new(invitations.clone())),
-            Arc::new(WithdrawInvitationsOfDeletedProjectListener::new(
-                invitations.clone(),
-            )),
-        ])
-        .doing_chores(vec![
-            Arc::new(RetireDueInvitations::new(invitations.clone())),
-            Arc::new(ForgetOldTombstones::new(
-                "forget-old-invitation-tombstones",
-                Arc::new(InvitationTombstones::of(invitations)),
-                context.clock.clone(),
-            )),
-        ])
+                broadcaster,
+            ))])
+            .listening(vec![
+                Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
+                Arc::new(DeclineInvitationListener::new(invitations.clone())),
+                Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
+                Arc::new(RememberWhoSignedUpListener::new(invitations.clone())),
+                Arc::new(RememberProjectNamesListener::new(invitations.clone())),
+                Arc::new(WithdrawInvitationsOfDeletedProjectListener::new(
+                    invitations.clone(),
+                )),
+            ])
+            .doing_chores(vec![
+                Arc::new(RetireDueInvitations::new(invitations.clone())),
+                Arc::new(ForgetOldTombstones::new(
+                    "forget-old-invitation-tombstones",
+                    Arc::new(InvitationTombstones::of(invitations)),
+                    context.clock.clone(),
+                )),
+            ])
     }
 }
 

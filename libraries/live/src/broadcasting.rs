@@ -6,6 +6,7 @@ use serde_json::Value;
 
 use crate::{Broadcaster, Channel};
 
+/// Passes each published change it hears to the broadcaster, as a frame, on every channel `channels` names for it.
 pub struct BroadcastChangesListener<C> {
     named: ListenerName,
     listens_to: Subscription,
@@ -31,6 +32,7 @@ impl<C: Channel> BroadcastChangesListener<C> {
     }
 }
 
+/// The frame a published change is told as: what it is of, its version, when it happened and its event.
 pub fn frame_of(published: &PublishedEvent<Value>) -> String {
     serde_json::to_string(&FrameDTO {
         of: Some(published.aggregate.id.clone()),
@@ -80,7 +82,7 @@ mod tests {
     use time::OffsetDateTime;
 
     use super::*;
-    use crate::Heard;
+    use crate::Frames;
 
     fn retitled(outline: &str, version: u64) -> Message {
         Message::opening(

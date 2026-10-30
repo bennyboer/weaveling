@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { aNewProject, API, views } from "./support/shell";
 import { aBookWithScenes } from "./support/book";
 import { projectOf, theBookIsIn } from "./support/writing";
+import { routingLive } from "./support/live";
 
 const masthead = (page: Page) => page.getByRole("heading", { level: 1 });
 
@@ -345,10 +346,8 @@ test("details that leave the marks as they look are saved without asking", async
 test("confirmed, the dialog follows the book being rewritten until every scene is done", async ({
   page,
 }) => {
-  let tell: (event: object) => void = () => {};
-  await page.routeWebSocket(/\/api\/scenes\/quotation-restylings\/live\?project=/, (socket) => {
-    tell = (event) => socket.send(JSON.stringify({ version: 1, event }));
-  });
+  const live = await routingLive(page, { withheld: ["quotation-restylings"] });
+  const tell = (event: object) => live.tell("quotation-restylings", { version: 1, event });
   await aNewProject(page, "Followed");
   await aBookWithScenes(page, { "Part One": 3 });
   await page.route("**/api/scenes/quotation-restylings/*", (route) =>

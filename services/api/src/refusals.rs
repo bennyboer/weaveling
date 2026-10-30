@@ -8,7 +8,8 @@ use axum::http::StatusCode;
 use axum::routing;
 use clock::Clock;
 use clock::text;
-use live::{Broadcaster, Teller};
+use eventsourcing::Agent;
+use live::{About, Broadcaster, Refused, Subscribed, Teller, Topic};
 use messaging::{
     DeadLetter, Deliveries, DeliveryError, InProcessDispatcher, ListenerName, Message,
     Notifications, Queued,
@@ -30,11 +31,23 @@ struct Refusals {
     clock: Arc<dyn Clock>,
 }
 
+pub struct RefusalsTopic(pub Broadcaster<RefusalChanges>);
+
+#[async_trait]
+impl Topic for RefusalsTopic {
+    fn named(&self) -> &'static str {
+        REFUSALS
+    }
+
+    async fn subscribe(&self, _agent: &Agent, _about: &About) -> Result<Subscribed, Refused> {
+        Ok(Subscribed::hearing(self.0.hear(RefusalChanges)))
+    }
+}
+
 pub fn router(
     deliveries: Arc<dyn Deliveries>,
     dispatcher: Arc<InProcessDispatcher>,
     clock: Arc<dyn Clock>,
-    broadcaster: Broadcaster<RefusalChanges>,
 ) -> Router {
     Router::new()
         .route("/refusals", routing::get(list))
@@ -45,9 +58,6 @@ pub fn router(
             dispatcher,
             clock,
         })
-        .merge(live::followed_at("/refusals/live", broadcaster, |_| {
-            Some(RefusalChanges)
-        }))
 }
 
 pub struct TellingDeliveries {

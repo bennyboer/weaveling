@@ -1,19 +1,18 @@
 mod broadcaster;
 mod broadcasting;
-mod following;
 mod gate;
-mod socket;
 mod subscribing;
 mod telling;
+
+#[cfg(any(test, feature = "testing"))]
+pub mod testing;
 
 #[cfg(test)]
 mod subscribing_tests;
 
 pub use authorizing::AccessWatch;
-pub use broadcaster::{Broadcaster, Channel, Heard, Hearing};
+pub use broadcaster::{Broadcaster, Channel, Frames, Hearing};
 pub use broadcasting::{BroadcastChangesListener, frame_of};
-pub use following::{Asked, followed_at};
-pub use gate::{Gate, followed_while, streaming_while_admitted};
-pub use socket::{Admission, Sieve, streaming, streaming_sifted, streaming_with_version};
-pub use subscribing::{Refused, Subscribed, Topic, Topics, live_socket};
+pub use gate::{Admission, Gate, GatedTopic, admitted};
+pub use subscribing::{About, Refused, Sieve, Subscribed, Topic, Topics, live_socket};
 pub use telling::Teller;

@@ -4,9 +4,10 @@ use leptos::prelude::*;
 use leptos::task;
 use leptos::{IntoView, ev, html};
 
+use crate::accounts::{CurrentSession, SignInState};
 use crate::icons;
 use crate::icons::Icon;
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::refusals::dialog;
 use crate::refusals::model::Refusal;
 use crate::refusals::service;
@@ -19,7 +20,7 @@ pub struct AlarmState {
     pulsing: RwSignal<bool>,
     noting: RwSignal<bool>,
     looking: RwSignal<bool>,
-    following: StoredValue<Option<Following>, LocalStorage>,
+    following: StoredValue<Option<Subscription>, LocalStorage>,
 }
 
 impl AlarmState {
@@ -33,11 +34,18 @@ impl AlarmState {
             following: StoredValue::new_local(None),
         };
 
-        state.following.set_value(Some(Following::start(
-            "/api/service/refusals/live",
-            move |_| state.ask(),
-            move || state.ask(),
-        )));
+        let session = expect_context::<CurrentSession>();
+        let let_in = Memo::new(move |_| {
+            matches!(
+                session.state(),
+                SignInState::SignedIn(_) | SignInState::NoAccounts
+            )
+        });
+        Effect::new(move |_| {
+            state.following.set_value(let_in.get().then(|| {
+                Subscription::start("refusals", &[], move |_| state.ask(), move || state.ask())
+            }));
+        });
 
         state
     }

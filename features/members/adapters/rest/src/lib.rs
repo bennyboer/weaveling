@@ -2,17 +2,18 @@ use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::extract::ws::WebSocketUpgrade;
+use authorizing::AccessWatch;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
-use axum::response::Response;
 use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::{Agent, ServiceError};
-use live::{Asked, Broadcaster, Refused, Sieve, Subscribed, Topic};
+use live::{About, Broadcaster, Gate, Refused, Sieve, Subscribed, Topic};
 use live_contract::FrameDTO;
-use members_contract::{ChangeRoleRequest, MemberDTO, MembersEventDTO, refused, role};
-use members_core::{ListedMember, MembersCore, MembersCoreError, MembersError, Role};
+use members_contract::{
+    ChangeRoleRequest, MemberDTO, MembersEventDTO, MembershipDTO, refused, role,
+};
+use members_core::{ListedMember, MembersCore, MembersCoreError, MembersError, Membership, Role};
 use serde::Deserialize;
 use serving::Problem;
 
@@ -22,6 +23,7 @@ pub struct MembershipChanges;
 pub fn router(members: MembersCore) -> Router {
     Router::new()
         .route("/members", routing::get(list))
+        .route("/members/mine", routing::get(mine))
         .route(
             "/members/{project}/accounts/{account}",
             routing::patch(change_role).delete(remove),
@@ -45,6 +47,15 @@ async fn list(
         .map_err(problem_of)?;
 
     Ok(Json(listed.iter().map(to_dto).collect()))
+}
+
+async fn mine(
+    State(members): State<MembersCore>,
+    Extension(agent): Extension<Agent>,
+) -> Result<Json<Vec<MembershipDTO>>, Problem> {
+    let held = members.memberships(&agent).await.map_err(problem_of)?;
+
+    Ok(Json(held.iter().map(membership_dto).collect()))
 }
 
 async fn change_role(
@@ -94,6 +105,13 @@ fn to_dto(member: &ListedMember) -> MemberDTO {
     }
 }
 
+fn membership_dto(membership: &Membership) -> MembershipDTO {
+    MembershipDTO {
+        project: membership.project.to_string(),
+        role: named(membership.role).to_owned(),
+    }
+}
+
 fn named(given: Role) -> &'static str {
     match given {
         Role::Owner => role::OWNER,
@@ -132,36 +150,6 @@ fn problem_of(refusal: MembersCoreError) -> Problem {
     }
 }
 
-#[derive(Clone)]
-struct Following {
-    members: MembersCore,
-    broadcaster: Broadcaster<MembershipChanges>,
-}
-
-pub fn live(members: MembersCore, broadcaster: Broadcaster<MembershipChanges>) -> Router {
-    Router::new()
-        .route("/members/live", routing::get(follow))
-        .with_state(Following {
-            members,
-            broadcaster,
-        })
-}
-
-async fn follow(
-    upgrade: WebSocketUpgrade,
-    State(following): State<Following>,
-    Extension(agent): Extension<Agent>,
-) -> Response {
-    live::streaming_sifted(
-        upgrade,
-        following.broadcaster.hear(MembershipChanges),
-        Arc::new(NamingTheFollower {
-            agent,
-            members: following.members,
-        }),
-    )
-}
-
 pub struct MembersTopic {
     members: MembersCore,
     broadcaster: Broadcaster<MembershipChanges>,
@@ -174,6 +162,43 @@ impl MembersTopic {
             broadcaster,
         }
     }
+
+    async fn of_project(&self, agent: &Agent, project: &str) -> Result<Subscribed, Refused> {
+        let admission =
+            live::admitted(Arc::new(MembersGate(self.members.clone())), agent, project).await?;
+
+        Ok(
+            Subscribed::hearing(self.broadcaster.hear(MembershipChanges))
+                .while_admitted(admission)
+                .sifted(Arc::new(OfProject(project.to_owned()))),
+        )
+    }
+}
+
+struct MembersGate(MembersCore);
+
+#[async_trait]
+impl Gate for MembersGate {
+    async fn admits(
+        &self,
+        agent: &Agent,
+        about: &str,
+    ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(self.0.may_follow(agent, about).await?)
+    }
+
+    async fn watch(&self, about: &str) -> AccessWatch {
+        self.0.watch_access(about)
+    }
+}
+
+struct OfProject(String);
+
+#[async_trait]
+impl Sieve for OfProject {
+    async fn lets_through(&self, frame: &FrameDTO) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        Ok(frame.of.as_deref() == Some(self.0.as_str()))
+    }
 }
 
 #[async_trait]
@@ -182,7 +207,10 @@ impl Topic for MembersTopic {
         "members"
     }
 
-    async fn subscribe(&self, agent: &Agent, about: &Asked) -> Result<Subscribed, Refused> {
+    async fn subscribe(&self, agent: &Agent, about: &About) -> Result<Subscribed, Refused> {
+        if let Some(project) = about.get("project") {
+            return self.of_project(agent, project).await;
+        }
         if about.get("mine").map(String::as_str) != Some("true") {
             return Err(Refused::NotThere);
         }
@@ -221,12 +249,11 @@ impl Sieve for NamingTheFollower {
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use authorizing::AllowingEverything;
-    use axum_test::{TestServer, TestWebSocket};
+    use axum_test::TestServer;
     use clock::FixedClock;
     use eventsourcing::InMemoryEventStore;
+    use live::testing::Subscriber;
     use members_catalog::InMemoryMembershipCatalog;
     use serde_json::{Value, json};
     use time::OffsetDateTime;
@@ -241,21 +268,24 @@ mod tests {
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         );
 
-        TestServer::builder()
-            .http_transport()
-            .build(live(members, broadcaster.clone()).layer(Extension(agent)))
+        TestServer::builder().http_transport().build(
+            live::live_socket(live::Topics::of(vec![Arc::new(MembersTopic::new(
+                members,
+                broadcaster.clone(),
+            ))]))
+            .layer(Extension(agent)),
+        )
     }
 
     fn ada() -> Agent {
         Agent::Account("account_ada".into())
     }
 
-    async fn following(server: &TestServer) -> TestWebSocket {
-        server
-            .get_websocket("/members/live")
-            .await
-            .into_websocket()
-            .await
+    async fn following(server: &TestServer, about: &[(&str, &str)]) -> Subscriber {
+        let mut socket = Subscriber::on(server).await;
+        socket.subscribe("mine", "members", about).await;
+
+        socket
     }
 
     fn told(broadcaster: &Broadcaster<MembershipChanges>, project: &str, event: Value) {
@@ -266,20 +296,11 @@ mod tests {
         );
     }
 
-    async fn heard(socket: &mut TestWebSocket) -> Value {
-        serde_json::from_str(
-            &tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-                .await
-                .expect("a change is told while it is fresh"),
-        )
-        .expect("a frame is JSON")
-    }
-
     #[tokio::test]
     async fn a_follower_is_told_every_change_to_members_that_names_them_and_no_other() {
         let broadcaster = Broadcaster::new();
         let server = served(&broadcaster, ada());
-        let mut socket = following(&server).await;
+        let mut socket = following(&server, &[("mine", "true")]).await;
 
         for event in [
             json!({ "name": "JOINED", "account": "account_grace", "role": "author" }),
@@ -297,7 +318,7 @@ mod tests {
 
         let mut names = Vec::new();
         for _ in 0..5 {
-            let frame = heard(&mut socket).await;
+            let frame = socket.frame().await;
             assert_eq!(frame["of"], "project_1");
             names.push(frame["event"]["name"].clone());
         }
@@ -312,7 +333,7 @@ mod tests {
     async fn nobody_unsigned_is_told_anything() {
         let broadcaster = Broadcaster::new();
         let server = served(&broadcaster, Agent::Local);
-        let mut socket = following(&server).await;
+        let mut socket = following(&server, &[("mine", "true")]).await;
 
         told(
             &broadcaster,
@@ -320,81 +341,26 @@ mod tests {
             json!({ "name": "FOUNDED", "owner": "local" }),
         );
 
-        assert!(
-            tokio::time::timeout(Duration::from_millis(200), socket.receive_text())
-                .await
-                .is_err()
-        );
-    }
-
-    fn on_one_socket(broadcaster: &Broadcaster<MembershipChanges>, agent: Agent) -> TestServer {
-        let members = MembersCore::new(
-            Arc::new(InMemoryEventStore::new()),
-            Arc::new(InMemoryMembershipCatalog::new()),
-            Arc::new(AllowingEverything),
-            Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
-        );
-
-        TestServer::builder().http_transport().build(
-            live::live_socket(live::Topics::of(vec![Arc::new(MembersTopic::new(
-                members,
-                broadcaster.clone(),
-            ))]))
-            .layer(Extension(agent)),
-        )
-    }
-
-    async fn subscribed(server: &TestServer, about: Value) -> TestWebSocket {
-        let mut socket = server.get_websocket("/live").await.into_websocket().await;
-        socket
-            .send_json(
-                &json!({ "do": "subscribe", "id": "mine", "topic": "members", "about": about }),
-            )
-            .await;
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
-        socket
+        socket.nothing().await;
     }
 
     #[tokio::test]
-    async fn on_the_one_socket_one_s_own_members_are_told_as_on_their_own_and_nothing_else_is_there()
-     {
-        let broadcaster = Broadcaster::new();
-        let server = on_one_socket(&broadcaster, ada());
-        let mut socket = subscribed(&server, json!({ "mine": "true" })).await;
-
-        told(
-            &broadcaster,
-            "project_1",
-            json!({ "name": "JOINED", "account": "account_grace", "role": "author" }),
-        );
-        told(
-            &broadcaster,
-            "project_1",
-            json!({ "name": "FOUNDED", "owner": "account_ada" }),
-        );
-
-        let frame = heard(&mut socket).await;
-        assert_eq!(frame["told"], "frame");
-        assert_eq!(frame["id"], "mine");
-        assert_eq!(
-            frame["frame"]["event"]["name"], "FOUNDED",
-            "nothing of Grace"
-        );
-
-        let mut elsewhere = subscribed(&server, json!({})).await;
-        assert_eq!(
-            heard(&mut elsewhere).await,
-            json!({ "told": "ended", "id": "mine", "why": "not-there" }),
-            "a project's own members are not followed here yet"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_frame_that_tells_no_change_to_members_ends_the_socket() {
+    async fn asking_for_neither_one_s_own_nor_a_project_s_members_finds_nothing_there() {
         let broadcaster = Broadcaster::new();
         let server = served(&broadcaster, ada());
-        let mut socket = following(&server).await;
+
+        assert_eq!(
+            following(&server, &[]).await.ended().await,
+            "not-there",
+            "a subscription says whose members it follows"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_frame_that_tells_no_change_to_members_ends_the_subscription() {
+        let broadcaster = Broadcaster::new();
+        let server = served(&broadcaster, ada());
+        let mut socket = following(&server, &[("mine", "true")]).await;
 
         told(&broadcaster, "project_1", json!({ "name": "RENAMED" }));
         told(
@@ -403,10 +369,9 @@ mod tests {
             json!({ "name": "FOUNDED", "owner": "account_ada" }),
         );
 
-        assert!(
-            tokio::spawn(async move { socket.receive_text().await })
-                .await
-                .is_err(),
+        assert_eq!(
+            socket.ended().await,
+            "failed",
             "only changes to members are told here, so anything else is a frame it cannot judge"
         );
     }

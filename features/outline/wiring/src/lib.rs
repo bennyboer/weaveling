@@ -50,23 +50,24 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             vec![outline_rest::OutlineChanges(published.aggregate.id.clone())]
         });
 
-    Wired::serving(
-        outline_rest::router(outlines.clone())
-            .merge(outline_rest::live(outlines.clone(), broadcaster)),
-    )
-    .listening(vec![
-        Arc::new(broadcast),
-        Arc::new(catalogue),
-        Arc::new(index),
-        Arc::new(detach_discarded_ideas),
-        Arc::new(detach_deleted_scenes),
-        Arc::new(sweep),
-    ])
-    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-        "forget-old-outline-tombstones",
-        Arc::new(OutlineTombstones::of(outlines)),
-        context.clock.clone(),
-    ))])
+    Wired::serving(outline_rest::router(outlines.clone()))
+        .followed_live(vec![Arc::new(outline_rest::OutlinesTopic::new(
+            outlines.clone(),
+            broadcaster,
+        ))])
+        .listening(vec![
+            Arc::new(broadcast),
+            Arc::new(catalogue),
+            Arc::new(index),
+            Arc::new(detach_discarded_ideas),
+            Arc::new(detach_deleted_scenes),
+            Arc::new(sweep),
+        ])
+        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+            "forget-old-outline-tombstones",
+            Arc::new(OutlineTombstones::of(outlines)),
+            context.clock.clone(),
+        ))])
 }
 
 pub struct OutlineFeature;

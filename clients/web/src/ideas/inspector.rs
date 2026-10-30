@@ -6,6 +6,7 @@ use leptos_router::components::A;
 use crate::icons;
 use crate::icons::Icon;
 use crate::ideas::inspector_state::InspectorState;
+use crate::members::roles::Roles;
 use crate::problem;
 use crate::route;
 use crate::speech;
@@ -15,9 +16,12 @@ pub fn inspector(state: InspectorState) -> impl IntoView {
 }
 
 fn name_field(state: InspectorState) -> impl IntoView {
+    let roles = expect_context::<Roles>();
+
     html::h1().class("idea-name").child(
         html::input()
             .r#type("text")
+            .prop("readOnly", move || !roles.may_write(&state.project()))
             .attr("aria-label", speech::said("inspector-idea-name"))
             .attr("placeholder", speech::said("untitled"))
             .prop("value", move || {

@@ -15,7 +15,7 @@ messaging = { version = "0.1.0", path = "../../../libraries/messaging", package 
 
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
-live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 appearances-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-appearances-catalog" }
 appearances-contract = { version = "0.1.0", path = "../contract", package = "weaveling-appearances-contract" }
 appearances-core = { version = "0.1.0", path = "../core", package = "weaveling-appearances-core" }

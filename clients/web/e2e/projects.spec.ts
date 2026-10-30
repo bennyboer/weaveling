@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { routingLive } from "./support/live";
 
 const aTitle = () => `The Loom ${crypto.randomUUID().slice(0, 8)}`;
 
@@ -380,7 +381,7 @@ test("a new project that never opens says so, and is in the list all the same", 
 }) => {
   test.setTimeout(30_000);
   await notFoundAtFirst(page, 1_000);
-  await page.routeWebSocket(/\/api\/projects\/live$/, () => {});
+  await routingLive(page, { withheld: ["projects"] });
   await page.goto("/");
   const title = aTitle();
 

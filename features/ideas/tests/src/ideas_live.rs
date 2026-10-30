@@ -1,14 +1,14 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use ideas_contract::{CAPTURED, CaptureIdeaRequest, IdeaDTO, RetitleIdeaRequest};
 use ideas_messaging::BroadcastIdeaChangesListener;
 use live::Broadcaster;
+use live::testing::Subscriber;
 use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -38,20 +38,17 @@ async fn captured(server: &TestServer, project: &str, title: &str) -> IdeaDTO {
     response.json()
 }
 
-async fn following(server: &TestServer, project: &str) -> TestWebSocket {
-    server
-        .get_websocket(&format!("/ideas/live?project={project}"))
-        .await
-        .into_websocket()
-        .await
+async fn following(server: &TestServer, project: &str) -> Subscriber {
+    let mut socket = Subscriber::on(server).await;
+    socket
+        .subscribe("ideas", "ideas", &[("project", project)])
+        .await;
+
+    socket
 }
 
-async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("a change is told while it is fresh");
-
-    serde_json::from_str(&frame).expect("a frame is JSON")
+async fn told(socket: &mut Subscriber) -> Value {
+    socket.frame().await
 }
 
 #[tokio::test]

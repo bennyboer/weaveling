@@ -1,10 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::TestServer;
 use clock::FixedClock;
+use eventsourcing::Agent;
 use live::Broadcaster;
+use live::testing::Subscriber;
 use messaging::RETRIABLE_FOR;
 use messaging::{
     Deliveries, InMemoryDeliveries, InProcessDispatcher, Listener, ListenerName, Message,
@@ -15,7 +18,7 @@ use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
 
 use crate::refusals;
-use crate::refusals::TellingDeliveries;
+use crate::refusals::{RefusalsTopic, TellingDeliveries};
 
 const OCCURRED: OffsetDateTime = datetime!(2026-10-08 09:00 UTC);
 
@@ -51,6 +54,7 @@ impl Listener for Cataloguing {
 struct Refused {
     deliveries: Arc<dyn Deliveries>,
     server: TestServer,
+    live: TestServer,
 }
 
 impl Refused {
@@ -68,18 +72,24 @@ impl Refused {
                 deliveries.clone(),
                 dispatcher,
                 Arc::new(FixedClock::new(ASKED)),
-                broadcaster,
             ));
+        let live = TestServer::builder().http_transport().build(
+            live::live_socket(live::Topics::of(vec![Arc::new(RefusalsTopic(broadcaster))]))
+                .layer(Extension(Agent::Local)),
+        );
 
-        Self { deliveries, server }
+        Self {
+            deliveries,
+            server,
+            live,
+        }
     }
 
-    async fn followed(&self) -> TestWebSocket {
-        self.server
-            .get_websocket("/refusals/live")
-            .await
-            .into_websocket()
-            .await
+    async fn followed(&self) -> Subscriber {
+        let mut socket = Subscriber::on(&self.live).await;
+        socket.subscribe("refusals", "refusals", &[]).await;
+
+        socket
     }
 
     async fn given_up_on(&self, routing: &str) {
@@ -261,12 +271,8 @@ async fn an_id_that_is_not_a_number_is_a_bad_request() {
     response.assert_status(StatusCode::BAD_REQUEST);
 }
 
-async fn told(socket: &mut TestWebSocket) -> serde_json::Value {
-    let frame = tokio::time::timeout(std::time::Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("a change of the refusals is told while it is fresh");
-
-    serde_json::from_str(&frame).expect("a frame is JSON")
+async fn told(socket: &mut Subscriber) -> serde_json::Value {
+    socket.frame().await
 }
 
 #[tokio::test]
@@ -333,9 +339,7 @@ async fn a_delivery_refused_but_offered_again_tells_nothing() {
         .expect("refusing should succeed");
 
     assert!(
-        tokio::time::timeout(std::time::Duration::from_millis(200), socket.receive_text())
-            .await
-            .is_err(),
+        socket.silent().await,
         "a delivery that will be offered again is not a refusal anyone needs to see"
     );
 }

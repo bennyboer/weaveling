@@ -7,7 +7,7 @@ use axum::extract::{Query, State};
 use axum::routing;
 use axum::{Extension, Json, Router};
 use eventsourcing::Agent;
-use live::{AccessWatch, Broadcaster, Gate, Teller};
+use live::{About, AccessWatch, Broadcaster, Gate, GatedTopic, Teller, Topic};
 use serde::Deserialize;
 use serving::Problem;
 use statistics_contract::WordCountDTO;
@@ -35,7 +35,7 @@ impl Gate for StatisticsGate {
         Ok(self.0.may_follow(project, agent).await?)
     }
 
-    fn watch(&self, project: &str) -> AccessWatch {
+    async fn watch(&self, project: &str) -> AccessWatch {
         self.0.watch_access(project)
     }
 }
@@ -49,17 +49,22 @@ impl Display for WordCountChanges {
     }
 }
 
-pub fn live(statistics: StatisticsCore, broadcaster: Broadcaster<WordCountChanges>) -> Router {
-    live::followed_while(
-        "/statistics/word-counts/live",
+fn word_count_changes_of(about: &About) -> Option<WordCountChanges> {
+    about
+        .get("project")
+        .map(|project| WordCountChanges(ProjectLink::from(project.as_str())))
+}
+
+pub fn topic(
+    statistics: StatisticsCore,
+    broadcaster: Broadcaster<WordCountChanges>,
+) -> Arc<dyn Topic> {
+    Arc::new(GatedTopic::new(
+        "word-counts",
         broadcaster,
-        |asked| {
-            asked
-                .get("project")
-                .map(|project| WordCountChanges(ProjectLink::from(project.as_str())))
-        },
+        word_count_changes_of,
         Arc::new(StatisticsGate(statistics)),
-    )
+    ))
 }
 
 pub struct TellingWordCounts {

@@ -1,11 +1,11 @@
 use std::sync::Arc;
-use std::time::Duration;
 
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::Agent;
+use live::testing::Subscriber;
 use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -37,20 +37,17 @@ async fn started(server: &TestServer, name: &str) -> ProjectDTO {
     response.json()
 }
 
-async fn following(server: &TestServer) -> TestWebSocket {
-    server
-        .get_websocket("/projects/live")
-        .await
-        .into_websocket()
-        .await
+async fn following(server: &TestServer) -> Subscriber {
+    let mut socket = Subscriber::on(server).await;
+    socket
+        .subscribe("list", "projects", &[("mine", "true")])
+        .await;
+
+    socket
 }
 
-async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("a change is told while it is fresh");
-
-    serde_json::from_str(&frame).expect("a frame is JSON")
+async fn told(socket: &mut Subscriber) -> Value {
+    socket.frame().await
 }
 
 #[tokio::test]
@@ -113,10 +110,9 @@ async fn whoever_follows_one_project_is_told_its_changes_and_not_another_s() {
     let loom = started(&server, "The Loom").await;
     let weft = started(&server, "The Weft").await;
     wired.settle().await;
-    let mut socket = server
-        .get_websocket(&format!("/projects/live?project={}", loom.id))
-        .await
-        .into_websocket()
+    let mut socket = Subscriber::on(&server).await;
+    socket
+        .subscribe("loom", "projects", &[("project", &loom.id)])
         .await;
 
     for (project, name) in [(&weft, "Theirs"), (&loom, "The Heddle")] {
@@ -135,5 +131,68 @@ async fn whoever_follows_one_project_is_told_its_changes_and_not_another_s() {
         (frame["of"].clone(), frame["event"]["project_name"].clone()),
         (json!(loom.id), json!("The Heddle")),
         "the first thing told is about the project being followed"
+    );
+}
+
+async fn on_one_socket(wired: &Wired) -> (TestServer, Subscriber) {
+    let live = TestServer::builder().http_transport().build(
+        live::live_socket(live::Topics::of(wired.topics.clone())).layer(Extension(Agent::Local)),
+    );
+    let socket = Subscriber::on(&live).await;
+
+    (live, socket)
+}
+
+async fn told_on_one_socket(socket: &mut Subscriber) -> Value {
+    serde_json::to_value(socket.told().await).expect("what is told is plain data")
+}
+
+#[tokio::test]
+async fn on_the_one_socket_the_list_hears_every_project_and_one_project_its_own() {
+    let (wired, server) = served();
+    let loom = started(&server, "The Loom").await;
+    wired.settle().await;
+    let (_live, mut socket) = on_one_socket(&wired).await;
+    socket
+        .subscribe("list", "projects", &[("mine", "true")])
+        .await;
+    socket
+        .subscribe("loom", "projects", &[("project", &loom.id)])
+        .await;
+
+    let weft = started(&server, "The Weft").await;
+    wired.settle().await;
+    let listed = told_on_one_socket(&mut socket).await;
+    server
+        .patch(&format!("/projects/{}", loom.id))
+        .json(&json!({ "name": "The Loom Again" }))
+        .await
+        .assert_status_ok();
+    wired.settle().await;
+    let mut renamed = [
+        told_on_one_socket(&mut socket).await,
+        told_on_one_socket(&mut socket).await,
+    ];
+    renamed.sort_by_key(|told| told["id"].as_str().unwrap_or_default().to_owned());
+    socket.subscribe("nothing", "projects", &[]).await;
+
+    assert_eq!(
+        listed["id"], "list",
+        "the list hears another project's start, the one project does not"
+    );
+    assert_eq!(listed["frame"]["of"], weft.id);
+    assert_eq!(
+        renamed
+            .iter()
+            .map(|told| (told["id"].clone(), told["frame"]["of"].clone()))
+            .collect::<Vec<_>>(),
+        vec![
+            (json!("list"), json!(loom.id)),
+            (json!("loom"), json!(loom.id))
+        ]
+    );
+    assert_eq!(
+        told_on_one_socket(&mut socket).await,
+        json!({ "told": "ended", "id": "nothing", "why": "not-there" })
     );
 }

@@ -10,11 +10,11 @@ use appearances_core::{
 use appearances_rest::TellingAppearances;
 use authorizing::AllowingEverything;
 use axum::Extension;
-use axum_test::{TestServer, TestWebSocket};
+use axum_test::TestServer;
 use eventsourcing::Agent;
 use live::Broadcaster;
+use live::testing::Subscriber;
 use serde_json::{Value, json};
-use tokio::time;
 
 const LAID: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
@@ -32,7 +32,7 @@ fn a_section(id: &str) -> Place {
 
 struct Followed {
     catalog: TellingAppearances,
-    sockets: Vec<TestWebSocket>,
+    sockets: Vec<Subscriber>,
     _server: TestServer,
 }
 
@@ -46,21 +46,21 @@ async fn followed(ideas: &[&str]) -> Followed {
     }
     let catalog = TellingAppearances::around(kept.clone(), broadcaster.clone());
     let server = TestServer::builder().http_transport().build(
-        appearances_rest::live(
-            AppearancesCore::new(kept, Arc::new(AllowingEverything)),
-            broadcaster,
-        )
+        live::live_socket(live::Topics::of(vec![Arc::new(
+            appearances_rest::AppearancesTopic::new(
+                AppearancesCore::new(kept, Arc::new(AllowingEverything)),
+                broadcaster,
+            ),
+        )]))
         .layer(Extension(Agent::Local)),
     );
     let mut sockets = Vec::new();
     for idea in ideas {
-        sockets.push(
-            server
-                .get_websocket(&format!("/appearances/live?idea={idea}"))
-                .await
-                .into_websocket()
-                .await,
-        );
+        let mut socket = Subscriber::on(&server).await;
+        socket
+            .subscribe("appearances", "appearances", &[("idea", idea)])
+            .await;
+        sockets.push(socket);
     }
 
     Followed {
@@ -70,18 +70,12 @@ async fn followed(ideas: &[&str]) -> Followed {
     }
 }
 
-async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = time::timeout(Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("the places are told while they are fresh");
-
-    serde_json::from_str(&frame).expect("a frame is JSON")
+async fn told(socket: &mut Subscriber) -> Value {
+    socket.frame().await
 }
 
-async fn nothing_told(socket: &mut TestWebSocket) -> bool {
-    time::timeout(Duration::from_millis(200), socket.receive_text())
-        .await
-        .is_err()
+async fn nothing_told(socket: &mut Subscriber) -> bool {
+    socket.silent().await
 }
 
 #[tokio::test]

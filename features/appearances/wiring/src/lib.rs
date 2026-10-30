@@ -26,20 +26,21 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 
     let appearances = AppearancesCore::new(telling, context.authorizer.clone());
 
-    Wired::serving(
-        appearances_rest::router(appearances.clone())
-            .merge(appearances_rest::live(appearances.clone(), broadcaster)),
-    )
-    .listening(vec![
-        Arc::new(ProjectOutlineAppearancesListener::new(appearances.clone())),
-        Arc::new(ProjectSceneAppearancesListener::new(appearances.clone())),
-        Arc::new(ForgetDiscardedIdeaListener::new(appearances.clone())),
-    ])
-    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-        "forget-old-appearance-tombstones",
-        Arc::new(AppearanceTombstones::of(appearances)),
-        context.clock.clone(),
-    ))])
+    Wired::serving(appearances_rest::router(appearances.clone()))
+        .followed_live(vec![Arc::new(appearances_rest::AppearancesTopic::new(
+            appearances.clone(),
+            broadcaster,
+        ))])
+        .listening(vec![
+            Arc::new(ProjectOutlineAppearancesListener::new(appearances.clone())),
+            Arc::new(ProjectSceneAppearancesListener::new(appearances.clone())),
+            Arc::new(ForgetDiscardedIdeaListener::new(appearances.clone())),
+        ])
+        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+            "forget-old-appearance-tombstones",
+            Arc::new(AppearanceTombstones::of(appearances)),
+            context.clock.clone(),
+        ))])
 }
 
 pub struct AppearanceFeature;

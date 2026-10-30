@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { aBookWithScenes } from "./support/book";
 import { aNewProject } from "./support/shell";
 import { openTheWritingView, saveState, scene, wordCount } from "./support/writing";
+import { routingLive } from "./support/live";
 
 const sceneCarried = (frame: string | Buffer) => {
   const bytes = Buffer.from(frame);
@@ -66,15 +67,13 @@ test("a count told for the scene being written here does not stand over it", asy
 }) => {
   const held = await holdingBackTheTextOfOneScene(page);
   let told = 0;
-  let tell: (counts: object[]) => void = () => {};
-  await page.routeWebSocket(/\/api\/statistics\/word-counts\/live\?project=/, (socket) => {
-    tell = (counts) => {
-      for (const count of counts as { scene: string }[]) {
-        told += 1;
-        socket.send(JSON.stringify({ of: count.scene, version: 1_000_000 + told, event: count }));
-      }
-    };
-  });
+  const live = await routingLive(page, { withheld: ["word-counts"] });
+  const tell = (counts: object[]) => {
+    for (const count of counts as { scene: string }[]) {
+      told += 1;
+      live.tell("word-counts", { of: count.scene, version: 1_000_000 + told, event: count });
+    }
+  };
   await aNewProject(page, "CountedHere");
   const scenes = await aBookWithScenes(page, { "Part One": 1, "Part Two": 1 });
   const [first] = scenes["Part One"];
@@ -102,15 +101,13 @@ test("counts answered after newer ones were told keep the newer ones and take in
 }) => {
   const held = await holdingBackTheTextOfOneScene(page);
   let told = 0;
-  let tell: (counts: object[]) => void = () => {};
-  await page.routeWebSocket(/\/api\/statistics\/word-counts\/live\?project=/, (socket) => {
-    tell = (counts) => {
-      for (const count of counts as { scene: string }[]) {
-        told += 1;
-        socket.send(JSON.stringify({ of: count.scene, version: 1_000_000 + told, event: count }));
-      }
-    };
-  });
+  const live = await routingLive(page, { withheld: ["word-counts"] });
+  const tell = (counts: object[]) => {
+    for (const count of counts as { scene: string }[]) {
+      told += 1;
+      live.tell("word-counts", { of: count.scene, version: 1_000_000 + told, event: count });
+    }
+  };
   await aNewProject(page, "CountedOvertaken");
   const [later, other] = (await aBookWithScenes(page, { "Part One": 2 }))["Part One"];
   held.scenes = [later, other];

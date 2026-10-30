@@ -41,6 +41,9 @@ mod operators_api;
 mod password_reset;
 
 #[cfg(test)]
+mod session_ends;
+
+#[cfg(test)]
 mod sessions_api;
 
 #[cfg(test)]

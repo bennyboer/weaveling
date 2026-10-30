@@ -5,13 +5,15 @@ edition.workspace = true
 
 [dev-dependencies]
 axum = { workspace = true }
-axum-test = { workspace = true }
+async-trait = { workspace = true }
+axum-test = { workspace = true, features = ["ws"] }
 serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time"] }
 
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
 members-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-members-catalog" }

@@ -1,11 +1,13 @@
+use acting::SessionEnd;
 use axum::extract::State;
-use axum::extract::ws::{Message as Frame, WebSocket, WebSocketUpgrade};
+use axum::extract::ws::{CloseFrame, Message as Frame, WebSocket, WebSocketUpgrade};
 use axum::response::Response;
 use axum::routing;
 use axum::{Extension, Router};
 use eventsourcing::Agent;
 use futures_util::stream::SplitSink;
 use futures_util::{SinkExt, StreamExt};
+use live_contract::SESSION_ENDED;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
 
 use crate::connection::Connection;
@@ -21,25 +23,47 @@ async fn attach(
     upgrade: WebSocketUpgrade,
     State(live): State<LiveScenes>,
     Extension(agent): Extension<Agent>,
+    session: Option<Extension<SessionEnd>>,
 ) -> Response {
-    upgrade.on_upgrade(move |socket| stay(socket, live, agent))
+    let session = session.map_or_else(SessionEnd::never, |Extension(session)| session);
+    upgrade.on_upgrade(move |socket| stay(socket, live, agent, session))
 }
 
 async fn write_out(
     mut sink: SplitSink<WebSocket, Frame>,
     mut outgoing: UnboundedReceiver<Vec<u8>>,
+    session: SessionEnd,
 ) {
-    while let Some(frame) = outgoing.recv().await {
-        if sink.send(Frame::Binary(frame.into())).await.is_err() {
-            break;
+    let session_ended = session.reached();
+    tokio::pin!(session_ended);
+
+    loop {
+        tokio::select! {
+            () = &mut session_ended => {
+                _ = sink
+                    .send(Frame::Close(Some(CloseFrame {
+                        code: SESSION_ENDED,
+                        reason: "session-ended".into(),
+                    })))
+                    .await;
+                break;
+            }
+            frame = outgoing.recv() => {
+                let Some(frame) = frame else {
+                    break;
+                };
+                if sink.send(Frame::Binary(frame.into())).await.is_err() {
+                    break;
+                }
+            }
         }
     }
 }
 
-async fn stay(socket: WebSocket, live: LiveScenes, agent: Agent) {
+async fn stay(socket: WebSocket, live: LiveScenes, agent: Agent, session: SessionEnd) {
     let (sink, mut stream) = socket.split();
     let (to_client, outgoing) = mpsc::unbounded_channel();
-    let writing = tokio::spawn(write_out(sink, outgoing));
+    let writing = tokio::spawn(write_out(sink, outgoing, session));
     let mut connection = Connection::new(live, agent, to_client);
 
     loop {

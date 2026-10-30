@@ -16,34 +16,51 @@ use crate::route;
 use crate::speech;
 use crate::speech::Speech;
 
-pub fn share_in_masthead(project: String, named: Signal<String>) -> impl IntoView {
+pub fn share_in_masthead(
+    project: String,
+    named: Signal<String>,
+    open: RwSignal<bool>,
+    in_row: Signal<bool>,
+) -> impl IntoView {
     let session = expect_context::<CurrentSession>();
     let signed_in = Memo::new(move |_| matches!(session.state(), SignInState::SignedIn(_)));
 
-    move || signed_in.get().then(|| share(project.clone(), named))
+    move || {
+        signed_in
+            .get()
+            .then(|| share(project.clone(), named, open, in_row))
+    }
 }
 
-fn share(project: String, named: Signal<String>) -> impl IntoView {
-    let open = RwSignal::new(false);
+fn share(
+    project: String,
+    named: Signal<String>,
+    open: RwSignal<bool>,
+    in_row: Signal<bool>,
+) -> impl IntoView {
     let close = move || open.set(false);
 
     (
-        html::button()
-            .r#type("button")
-            .class("share-button")
-            .attr("aria-label", speech::said("share"))
-            .attr("title", speech::said("share"))
-            .attr("aria-haspopup", "dialog")
-            .on(ev::click, move |_| open.set(true))
-            .child((
-                icons::mark(Icon::Share),
-                html::span()
-                    .class("share-word")
-                    .attr("aria-hidden", "true")
-                    .child(speech::said("share")),
-            )),
+        move || in_row.get().then(|| share_button(open)),
         move || open.get().then(|| sharing(project.clone(), named, close)),
     )
+}
+
+fn share_button(open: RwSignal<bool>) -> impl IntoView {
+    html::button()
+        .r#type("button")
+        .class("share-button")
+        .attr("aria-label", speech::said("share"))
+        .attr("title", speech::said("share"))
+        .attr("aria-haspopup", "dialog")
+        .on(ev::click, move |_| open.set(true))
+        .child((
+            icons::mark(Icon::Share),
+            html::span()
+                .class("share-word")
+                .attr("aria-hidden", "true")
+                .child(speech::said("share")),
+        ))
 }
 
 fn sharing(

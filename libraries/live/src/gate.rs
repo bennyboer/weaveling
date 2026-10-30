@@ -4,262 +4,105 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use authorizing::AccessWatch;
-use axum::Extension;
-use axum::Router;
-use axum::extract::Query;
-use axum::extract::ws::WebSocketUpgrade;
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::routing;
 use eventsourcing::Agent;
 
-use crate::following::Asked;
-use crate::socket::Admission;
-use crate::{Broadcaster, Channel, socket};
+use crate::{About, Broadcaster, Channel, Refused, Subscribed, Topic};
 
+/// Decides who may follow what a topic is about, told as text: a project's id, a board's.
 #[async_trait]
 pub trait Gate: Send + Sync {
+    /// Whether `agent` may follow `about` now; an error when that cannot be told, which is no answer either way.
     async fn admits(
         &self,
         agent: &Agent,
         about: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>>;
 
-    fn watch(&self, _about: &str) -> AccessWatch {
+    /// What wakes when who may follow `about` may have changed, so the gate is asked again; by default nothing ever does.
+    async fn watch(&self, _about: &str) -> AccessWatch {
         AccessWatch::still()
     }
 }
 
-pub async fn streaming_while_admitted<C: Channel + Display>(
-    upgrade: WebSocketUpgrade,
-    broadcaster: &Broadcaster<C>,
-    channel: C,
+/// A follower a gate let in, kept to ask the gate again whenever its watch wakes.
+pub struct Admission {
+    watch: AccessWatch,
+    gate: Arc<dyn Gate>,
     agent: Agent,
-    gate: Arc<dyn Gate>,
-) -> Response {
-    let about = channel.to_string();
-    let watch = gate.watch(&about);
+    about: String,
+}
 
-    match gate.admits(&agent, &about).await {
-        Ok(true) => socket::streaming_while(
-            upgrade,
-            broadcaster.hear(channel),
-            Admission {
-                watch,
-                gate,
-                agent,
-                about,
-            },
-        ),
-        Ok(false) => StatusCode::NOT_FOUND.into_response(),
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+pub(crate) enum Access {
+    Kept,
+    Lost,
+}
+
+/// Asks `gate` whether `agent` may follow `about`, watching first so that no change of access slips in between: let in, refused as not there, or refused as failed when the gate cannot tell.
+pub async fn admitted(
+    gate: Arc<dyn Gate>,
+    agent: &Agent,
+    about: &str,
+) -> Result<Admission, Refused> {
+    let watch = gate.watch(about).await;
+
+    match gate.admits(agent, about).await {
+        Ok(true) => Ok(Admission {
+            watch,
+            gate,
+            agent: agent.clone(),
+            about: about.to_owned(),
+        }),
+        Ok(false) => Err(Refused::NotThere),
+        Err(_) => Err(Refused::Failed),
     }
 }
 
-pub fn followed_while<C: Channel + Display>(
-    path: &str,
+impl Admission {
+    pub(crate) async fn rechecked(&mut self) -> Access {
+        self.watch.changed().await;
+        match self.gate.admits(&self.agent, &self.about).await {
+            Ok(true) => Access::Kept,
+            _ => Access::Lost,
+        }
+    }
+}
+
+/// The topic of a feature that only asks a gate: each subscription hears the one channel `channel_of` reads from what it is about, while the gate lets it in.
+pub struct GatedTopic<C> {
+    named: &'static str,
     broadcaster: Broadcaster<C>,
-    channel: fn(&Asked) -> Option<C>,
+    channel_of: fn(&About) -> Option<C>,
     gate: Arc<dyn Gate>,
-) -> Router {
-    Router::new().route(
-        path,
-        routing::get(
-            move |upgrade: WebSocketUpgrade,
-                  Extension(agent): Extension<Agent>,
-                  Query(asked): Query<Asked>| async move {
-                match channel(&asked) {
-                    Some(channel) => {
-                        streaming_while_admitted(
-                            upgrade,
-                            &broadcaster,
-                            channel,
-                            agent,
-                            gate.clone(),
-                        )
-                        .await
-                    }
-                    None => StatusCode::BAD_REQUEST.into_response(),
-                }
-            },
-        ),
-    )
 }
 
-#[cfg(test)]
-mod tests {
-    use std::time::Duration;
-
-    use std::sync::Mutex;
-
-    use authorizing::AccessChanges;
-    use axum_test::{TestServer, TestWebSocket, WsMessage};
-    use live_contract::{ACCESS_CHANGED, NO_LONGER_ADMITTED, NoticeDTO};
-
-    use super::*;
-
-    struct Only(&'static str);
-
-    #[async_trait]
-    impl Gate for Only {
-        async fn admits(
-            &self,
-            _agent: &Agent,
-            about: &str,
-        ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-            match about {
-                "broken" => Err("the gate cannot tell".into()),
-                about => Ok(about == self.0),
-            }
+impl<C: Channel> GatedTopic<C> {
+    pub fn new(
+        named: &'static str,
+        broadcaster: Broadcaster<C>,
+        channel_of: fn(&About) -> Option<C>,
+        gate: Arc<dyn Gate>,
+    ) -> Self {
+        Self {
+            named,
+            broadcaster,
+            channel_of,
+            gate,
         }
     }
+}
 
-    fn served(broadcaster: &Broadcaster<String>) -> TestServer {
-        TestServer::builder().http_transport().build(
-            followed_while(
-                "/live",
-                broadcaster.clone(),
-                |asked| asked.get("of").cloned(),
-                Arc::new(Only("mine")),
-            )
-            .layer(Extension(Agent::Local)),
-        )
+#[async_trait]
+impl<C: Channel + Display> Topic for GatedTopic<C> {
+    fn named(&self) -> &'static str {
+        self.named
     }
 
-    async fn following(server: &TestServer, path: &str) -> TestWebSocket {
-        server.get_websocket(path).await.into_websocket().await
-    }
+    async fn subscribe(&self, agent: &Agent, about: &About) -> Result<Subscribed, Refused> {
+        let Some(channel) = (self.channel_of)(about) else {
+            return Err(Refused::NotThere);
+        };
+        let admission = admitted(self.gate.clone(), agent, &channel.to_string()).await?;
 
-    #[tokio::test]
-    async fn whoever_the_gate_admits_follows_what_they_asked_for() {
-        let broadcaster = Broadcaster::new();
-        let server = served(&broadcaster);
-        let mut socket = following(&server, "/live?of=mine").await;
-
-        broadcaster.tell("theirs".to_owned(), "not this".to_owned());
-        broadcaster.tell("mine".to_owned(), "this".to_owned());
-
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-                .await
-                .expect("told while fresh"),
-            "this"
-        );
-    }
-
-    #[tokio::test]
-    async fn whoever_the_gate_turns_away_finds_nothing_there() {
-        let server = served(&Broadcaster::new());
-
-        server
-            .get_websocket("/live?of=theirs")
-            .await
-            .assert_status(StatusCode::NOT_FOUND);
-    }
-
-    #[tokio::test]
-    async fn a_gate_that_cannot_tell_is_a_failure_and_asking_for_nothing_is_a_bad_request() {
-        let server = served(&Broadcaster::new());
-
-        server
-            .get_websocket("/live?of=broken")
-            .await
-            .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
-        server
-            .get_websocket("/live")
-            .await
-            .assert_status(StatusCode::BAD_REQUEST);
-    }
-
-    struct Watched {
-        admitting: Mutex<Result<bool, ()>>,
-        changes: AccessChanges,
-    }
-
-    #[async_trait]
-    impl Gate for Watched {
-        async fn admits(
-            &self,
-            _agent: &Agent,
-            _about: &str,
-        ) -> Result<bool, Box<dyn Error + Send + Sync>> {
-            (*self.admitting.lock().expect("the gate is not poisoned"))
-                .map_err(|()| "the gate cannot tell".into())
-        }
-
-        fn watch(&self, about: &str) -> AccessWatch {
-            self.changes.watch(about)
-        }
-    }
-
-    async fn watched_and_following()
-    -> (Arc<Watched>, Broadcaster<String>, TestWebSocket, TestServer) {
-        let gate = Arc::new(Watched {
-            admitting: Mutex::new(Ok(true)),
-            changes: AccessChanges::new(),
-        });
-        let broadcaster = Broadcaster::new();
-        let server = TestServer::builder().http_transport().build(
-            followed_while(
-                "/live",
-                broadcaster.clone(),
-                |asked| asked.get("of").cloned(),
-                gate.clone(),
-            )
-            .layer(Extension(Agent::Local)),
-        );
-        let socket = following(&server, "/live?of=mine").await;
-
-        (gate, broadcaster, socket, server)
-    }
-
-    async fn closed_as_no_longer_admitted(socket: &mut TestWebSocket) -> bool {
-        matches!(
-            tokio::time::timeout(Duration::from_secs(1), socket.receive_message()).await,
-            Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == NO_LONGER_ADMITTED
-        )
-    }
-
-    #[tokio::test]
-    async fn a_follower_no_longer_admitted_after_a_change_is_closed_out() {
-        for after in [Ok(false), Err(())] {
-            let (gate, _broadcaster, mut socket, _server) = watched_and_following().await;
-            *gate.admitting.lock().expect("the gate is not poisoned") = after;
-
-            gate.changes.tell("mine");
-
-            assert!(
-                closed_as_no_longer_admitted(&mut socket).await,
-                "neither turned away nor unanswered may keep following"
-            );
-        }
-    }
-
-    #[tokio::test]
-    async fn a_follower_still_admitted_is_told_its_access_changed_and_follows_on() {
-        let (gate, broadcaster, mut socket, _server) = watched_and_following().await;
-        gate.changes.tell("mine");
-        let told = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-            .await
-            .expect("told of the change");
-        assert_eq!(
-            serde_json::from_str::<NoticeDTO>(&told).expect("a notice"),
-            NoticeDTO {
-                notice: ACCESS_CHANGED.to_owned()
-            },
-            "its role may be another now, so its client asks again"
-        );
-        *gate.admitting.lock().expect("the gate is not poisoned") = Ok(false);
-        gate.changes.tell("theirs");
-        tokio::time::sleep(Duration::from_millis(50)).await;
-
-        broadcaster.tell("mine".to_owned(), "still told".to_owned());
-
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-                .await
-                .expect("told while admitted"),
-            "still told"
-        );
+        Ok(Subscribed::hearing(self.broadcaster.hear(channel)).while_admitted(admission))
     }
 }

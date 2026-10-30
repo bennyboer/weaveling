@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use eventsourcing::Agent;
 use invitations_core::InvitationsCore;
-use live::{Asked, Broadcaster, Refused, Subscribed, Topic};
+use live::{About, Broadcaster, Refused, Subscribed, Topic};
 
 use crate::InvitationChanges;
 
@@ -25,7 +25,7 @@ impl Topic for InvitationsTopic {
         "invitations"
     }
 
-    async fn subscribe(&self, agent: &Agent, about: &Asked) -> Result<Subscribed, Refused> {
+    async fn subscribe(&self, agent: &Agent, about: &About) -> Result<Subscribed, Refused> {
         if about.get("mine").map(String::as_str) != Some("true") {
             return Err(Refused::NotThere);
         }

@@ -11,9 +11,10 @@ use axum::body;
 use axum::body::Body;
 use axum::http::header::ORIGIN;
 use axum::http::{Request, StatusCode};
-use axum_test::TestServer;
+use axum_test::{TestServer, WsMessage};
 use clock::SystemClock;
 use eventsourcing::Agent;
+use live_contract::SESSION_ENDED;
 use outbox::Cadence;
 use serde_json::{Value, json};
 use tower::ServiceExt;
@@ -284,8 +285,8 @@ async fn there_is_no_socket_for_one_scene_any_more() {
 }
 
 #[tokio::test]
-async fn the_outline_is_followed_live_under_api() {
-    let (status, body) = get("/api/outlines/live?outline=outline_031VkO0hnpeQZUiAB7nDma").await;
+async fn the_one_socket_is_under_api() {
+    let (status, body) = get("/api/live").await;
 
     assert_eq!(status, StatusCode::BAD_REQUEST);
     assert!(
@@ -900,142 +901,35 @@ async fn on_a_server_each_account_lists_only_the_projects_it_is_in() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn on_a_server_whoever_starts_a_project_is_told_by_the_members_that_it_is_theirs() {
-    let signed_in = an_operator_signed_in_on_a_server("following").await;
-    let server = &signed_in.server;
-    let ada: Value = server.get("/api/sessions/current").await.json();
-    let mut socket = server
-        .get_websocket("/api/members/live")
-        .await
-        .into_websocket()
-        .await;
-
-    let started: Value = server
-        .post("/api/projects")
-        .json(&json!({ "name": "Followed" }))
-        .await
-        .json();
-
-    let mut founded = Value::Null;
-    for _ in 0..10 {
-        let frame: Value = serde_json::from_str(
-            &tokio::time::timeout(Duration::from_secs(5), socket.receive_text())
-                .await
-                .expect("the change is told while it is fresh"),
-        )
-        .expect("a frame is JSON");
-        if frame["event"]["name"] == "FOUNDED" {
-            founded = frame;
-            break;
-        }
-    }
-    assert_eq!(founded["of"], started["id"]);
-    assert_eq!(
-        founded["event"]["owner"], ada["account"],
-        "the members are founded by their own feature and told on their own channel, to her"
-    );
-
-    signed_in.end().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn on_a_server_an_account_following_its_invitations_is_told_of_one_to_its_address() {
-    let signed_in = an_operator_signed_in_on_a_server("told-live").await;
-    let server = &signed_in.server;
-    let ada: Value = server.get("/api/sessions/current").await.json();
-    let mut known = false;
-    for _ in 0..50 {
-        known = server
-            .get_websocket("/api/invitations/mine/live")
-            .await
-            .status_code()
-            == StatusCode::SWITCHING_PROTOCOLS;
-        if known {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    assert!(known, "invitations hear her sign-up through the outbox");
-    let mut socket = server
-        .get_websocket("/api/invitations/mine/live")
-        .await
-        .into_websocket()
-        .await;
-    let started: Value = server
-        .post("/api/projects")
-        .json(&json!({ "name": "Shared with herself" }))
-        .await
-        .json();
-    let mut owning = false;
-    for _ in 0..50 {
-        owning = server
-            .get(&format!(
-                "/api/members?project={}",
-                started["id"].as_str().unwrap_or_default()
-            ))
-            .await
-            .status_code()
-            == StatusCode::OK;
-        if owning {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    assert!(owning, "the members hear the project started");
-
-    let issued: Value = server
-        .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
-        .json(&json!({
-            "email": ada["email"],
-            "scope": { "kind": "project", "project": started["id"], "role": "reader" },
-        }))
-        .await
-        .json();
-
-    let frame: Value = serde_json::from_str(
-        &tokio::time::timeout(Duration::from_secs(5), socket.receive_text())
-            .await
-            .expect("the invitation is told while it is fresh"),
-    )
-    .expect("a frame is JSON");
-    assert_eq!(
-        frame["of"], issued["id"],
-        "the list tells the address's account, once it has listed the invitation"
-    );
-
-    signed_in.end().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address_and_of_its_project()
  {
     let signed_in = an_operator_signed_in_on_a_server("one-socket").await;
     let server = &signed_in.server;
     let ada: Value = server.get("/api/sessions/current").await.json();
-    let mut known = false;
-    for _ in 0..50 {
-        known = server
-            .get_websocket("/api/invitations/mine/live")
-            .await
-            .status_code()
-            == StatusCode::SWITCHING_PROTOCOLS;
-        if known {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    assert!(known, "invitations hear her sign-up through the outbox");
     let mut socket = server
         .get_websocket("/api/live")
         .await
         .into_websocket()
         .await;
-    for (id, topic) in [("bell", "invitations"), ("projects", "members")] {
+    let mut known = false;
+    for _ in 0..50 {
         socket
-            .send_json(&json!({ "do": "subscribe", "id": id, "topic": topic, "about": { "mine": "true" } }))
+            .send_json(&json!({ "do": "subscribe", "id": "bell", "topic": "invitations", "about": { "mine": "true" } }))
             .await;
+        known = tokio::time::timeout(Duration::from_millis(200), socket.receive_json::<Value>())
+            .await
+            .is_err();
+        if known {
+            break;
+        }
     }
+    assert!(
+        known,
+        "invitations hear her sign-up through the outbox, and know her address"
+    );
+    socket
+        .send_json(&json!({ "do": "subscribe", "id": "projects", "topic": "members", "about": { "mine": "true" } }))
+        .await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     let started: Value = server
@@ -1072,6 +966,51 @@ async fn on_a_server_one_socket_tells_an_account_of_an_invitation_to_its_address
     assert_eq!(invited["frame"]["of"], issued["id"]);
 
     signed_in.end().await;
+}
+
+#[tokio::test]
+async fn the_one_socket_knows_every_topic_a_project_is_followed_by() {
+    let server = TestServer::builder()
+        .http_transport()
+        .build(weaveling_service_api::app(
+            Adapters::in_memory(Accounts::Off, Arc::new(SystemClock)).await,
+        ));
+    let mut socket = server
+        .get_websocket("/api/live")
+        .await
+        .into_websocket()
+        .await;
+
+    for (topic, about) in [
+        ("projects", json!({ "mine": "true" })),
+        ("projects", json!({ "project": "project_1" })),
+        ("boards", json!({ "board": "board_1" })),
+        ("outlines", json!({ "outline": "outline_1" })),
+        ("ideas", json!({ "project": "project_1" })),
+        ("appearances", json!({ "idea": "idea_1" })),
+        ("scenes", json!({ "project": "project_1" })),
+        ("quotation-restylings", json!({ "project": "project_1" })),
+        ("word-counts", json!({ "project": "project_1" })),
+        ("nobody-registered-this", json!({})),
+    ] {
+        socket
+            .send_json(&json!({ "do": "subscribe", "id": topic, "topic": topic, "about": about }))
+            .await;
+    }
+
+    let mut unknown = Vec::new();
+    while let Ok(told) =
+        tokio::time::timeout(Duration::from_millis(500), socket.receive_json::<Value>()).await
+    {
+        if told["why"] == "unknown-topic" {
+            unknown.push(told["id"].clone());
+        }
+    }
+    assert_eq!(
+        unknown,
+        vec![json!("nobody-registered-this")],
+        "every other is known"
+    );
 }
 
 #[tokio::test]
@@ -1144,13 +1083,6 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         .delete(&at)
         .await
         .assert_status(StatusCode::NOT_FOUND);
-    server
-        .get_websocket(&format!(
-            "/api/projects/live?project={}",
-            started["id"].as_str().expect("an id")
-        ))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
     let project = started["id"].as_str().expect("an id");
     server
         .get(&format!("/api/ideas?project={project}"))
@@ -1161,10 +1093,53 @@ async fn on_a_server_a_project_is_not_there_for_an_account_not_in_it() {
         .json(&json!({ "project": project, "title": "Grace's idea" }))
         .await
         .assert_status(StatusCode::NOT_FOUND);
-    server
-        .get_websocket(&format!("/api/ideas/live?project={project}"))
+    let mut socket = server
+        .get_websocket("/api/live")
         .await
-        .assert_status(StatusCode::NOT_FOUND);
+        .into_websocket()
+        .await;
+    for topic in ["projects", "ideas"] {
+        socket
+            .send_json(&json!({ "do": "subscribe", "id": topic, "topic": topic, "about": { "project": project } }))
+            .await;
+        assert_eq!(
+            tokio::time::timeout(Duration::from_secs(1), socket.receive_json::<Value>())
+                .await
+                .expect("told at once"),
+            json!({ "told": "ended", "id": topic, "why": "not-there" })
+        );
+    }
 
+    signed_in.end().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn on_a_server_signing_out_closes_the_one_socket_and_the_editing_socket_as_ended() {
+    let signed_in = an_operator_signed_in_on_a_server("signing-out").await;
+    let mut live = signed_in
+        .server
+        .get_websocket("/api/live")
+        .await
+        .into_websocket()
+        .await;
+    let mut editing = signed_in
+        .server
+        .get_websocket("/api/scenes/sync")
+        .await
+        .into_websocket()
+        .await;
+
+    signed_in
+        .server
+        .delete("/api/sessions/current")
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+
+    for socket in [&mut live, &mut editing] {
+        assert!(matches!(
+            tokio::time::timeout(Duration::from_secs(1), socket.receive_message()).await,
+            Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == SESSION_ENDED
+        ));
+    }
     signed_in.end().await;
 }

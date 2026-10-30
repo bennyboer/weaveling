@@ -60,7 +60,9 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
 
     Wired {
         ideas: ideas_wiring::core(&ports, &context),
-        routes: wired.routes,
+        routes: wired
+            .routes
+            .merge(live::live_socket(live::Topics::of(wired.topics))),
         store,
         outbox,
         consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, context.clock.clone()),

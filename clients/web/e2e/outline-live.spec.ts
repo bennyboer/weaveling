@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { aBookShaped } from "./support/book";
 import { aNewProject, aSceneMade, API, openTheOutline } from "./support/shell";
 import { projectOf, savedTitles, titled } from "./support/writing";
+import { heardOn, routingLive } from "./support/live";
 
 async function anOutlineFollowedLive(
   page: Page,
@@ -16,12 +17,8 @@ async function anOutlineFollowedLive(
   ]);
   let opened = 0;
   let heard = 0;
-  page.on("websocket", (socket) => {
-    if (socket.url().includes("/api/outlines/live")) {
-      socket.on("framereceived", () => {
-        heard += 1;
-      });
-    }
+  heardOn(page, "outlines", () => {
+    heard += 1;
   });
   page.on("response", (response) => {
     if (
@@ -149,7 +146,7 @@ test("a title I only sat in takes another author's rename without writing the ol
 test("a scene the listing does not know yet is asked for once, not over and over", async ({
   page,
 }) => {
-  await page.routeWebSocket(/\/api\/scenes\/live\?project=/, () => {});
+  await routingLive(page, { withheld: ["scenes"] });
   const { outline, ids } = await anOutlineFollowedLive(
     page,
     "OutlineLiveLagging",
@@ -291,7 +288,7 @@ test("typing the very title someone else gave meanwhile asks nothing", async ({
 test("a move made from an outline that is behind is refused gently, and the outline catches up", async ({
   page,
 }) => {
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, () => {});
+  await routingLive(page, { withheld: ["outlines"] });
   const { outline, ids } = await anOutlineFollowedLive(
     page,
     "OutlineOvertaken",
@@ -322,7 +319,7 @@ async function anOutlineThatHearsNothing(
   named: string,
   sections: { title: string; after?: string }[],
 ) {
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, () => {});
+  await routingLive(page, { withheld: ["outlines"] });
   await aNewProject(page, named);
   const book = await aBookShaped(page, sections);
   await openTheOutline(page);
@@ -470,15 +467,19 @@ test("a change missed on the way opens the outline again, and the outline comes 
 }) => {
   let passed = 0;
   let connected = false;
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
-    connected = true;
-    const server = socket.connectToServer();
-    server.onMessage((frame) => {
-      passed += 1;
-      if (passed !== 2) {
-        socket.send(frame);
-      }
-    });
+  await routingLive(page, {
+    connecting: () => {
+      connected = true;
+      return true;
+    },
+    heard: {
+      outlines: (_told, pass) => {
+        passed += 1;
+        if (passed !== 2) {
+          pass();
+        }
+      },
+    },
   });
   await aNewProject(page, "OutlineLiveMissed");
   const { outline, ids } = await aBookShaped(page, [
@@ -510,10 +511,8 @@ test("a change missed on the way opens the outline again, and the outline comes 
 test("an outline is opened once, and a change made before it is followed is caught up as it connects", async ({
   page,
 }) => {
-  let connect = () => {};
-  await page.routeWebSocket(/\/api\/outlines\/live\?outline=/, (socket) => {
-    connect = () => void socket.connectToServer();
-  });
+  const live = await routingLive(page, { held: ["outlines"] });
+  const connect = () => live.release("outlines");
   const { outline, reloads } = await anOutlineFollowedLive(page, "OutlineHello", {
     routed: true,
   });
@@ -535,7 +534,7 @@ test("an outline is opened once, and a change made before it is followed is caug
 test("an idea noted elsewhere that the list of ideas does not hold yet is asked for, and named", async ({
   page,
 }) => {
-  await page.routeWebSocket(/\/api\/ideas\/live\?project=/, () => {});
+  await routingLive(page, { withheld: ["ideas"] });
   const { outline, ids } = await anOutlineFollowedLive(page, "OutlineUnknownIdea");
   const captured = await anotherAuthor(page, "post", "/ideas", {
     project: projectOf(page),

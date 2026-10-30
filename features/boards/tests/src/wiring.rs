@@ -8,6 +8,7 @@ use boards_catalog::InMemoryBoardCatalog;
 use boards_core::{BoardEvent, BoardsCore};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, InMemoryEventStore};
+use live::Topic;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use registry::InMemoryRegistry;
@@ -40,6 +41,7 @@ impl Authorizer for TheSystemAndTheAuthor {
 pub struct Wired {
     pub boards: BoardsCore,
     pub routes: Router,
+    pub topics: Vec<Arc<dyn Topic>>,
     pub store: Arc<InMemoryEventStore<BoardEvent>>,
     pub outbox: Arc<InMemoryOutbox>,
     pub consuming: DeliveryConsumer,
@@ -95,7 +97,10 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
 
     Wired {
         boards: boards_wiring::core(&ports, &context),
-        routes: wired.routes,
+        routes: wired
+            .routes
+            .merge(live::live_socket(live::Topics::of(wired.topics.clone()))),
+        topics: wired.topics,
         store,
         outbox,
         consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, context.clock.clone()),

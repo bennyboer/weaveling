@@ -26,6 +26,7 @@ use crate::app::outline::OutlinePage;
 use crate::app::workspace::{WorkspacePage, WorkspacePageProps};
 use crate::app::write::{LooseScenesPage, ProjectPage, WritePage};
 use crate::instance::{InstanceAccountsPage, InstanceInvitationsPage, InstancePage};
+use crate::members::roles::Roles;
 use crate::projects::open_project::OpenProject;
 use crate::projects::overlays::Overlays;
 use crate::projects::workspace::Workspace;
@@ -44,6 +45,7 @@ pub fn App() -> impl IntoView {
     provide_context(Speech::heard());
     provide_context(QuietNote::none());
     provide_context(session);
+    provide_context(Roles::followed());
 
     window_event_listener(ev::click, move |_| overlays.close_menu());
     window_event_listener(ev::keydown, move |event| {

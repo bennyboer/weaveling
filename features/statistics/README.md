@@ -2,7 +2,7 @@
 
 How many words each scene holds, kept where a total can be had without reading every scene.
 
-It owns no aggregate and takes no command. It is a read model only: **`keep-word-counts`** hears `scene.words.counted`, which the scenes feature publishes when a scene's text settles, and remembers the count for that scene; it hears a scene deleted and forgets it. `GET /statistics/word-counts?project=…` answers every scene's count in a project, which the writing view adds up for a section and for the book, and `/statistics/word-counts/live` tells each new count to whoever follows the project, so the totals move as other authors write.
+It owns no aggregate and takes no command. It is a read model only: **`keep-word-counts`** hears `scene.words.counted`, which the scenes feature publishes when a scene's text settles, and remembers the count for that scene; it hears a scene deleted and forgets it. `GET /statistics/word-counts?project=…` answers every scene's count in a project, which the writing view adds up for a section and for the book, and the topic `word-counts` on the one socket, `/api/live`, tells each new count to whoever follows the project, so the totals move as other authors write.
 
 **A feature of its own rather than a column in the scene catalog,** since a feature may not call another, and counting is a fact about text that the scenes feature already knows how to tell. Keeping it here leaves room for what else an author may want counted, words per day or per session, without the scenes feature learning about it.
 

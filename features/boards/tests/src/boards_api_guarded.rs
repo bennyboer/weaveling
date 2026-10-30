@@ -5,10 +5,10 @@ use async_trait::async_trait;
 use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestResponse, TestServer, WsMessage};
+use axum_test::{TestResponse, TestServer};
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
-use live_contract::NO_LONGER_ADMITTED;
+use live::testing::Subscriber;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
@@ -170,11 +170,10 @@ async fn a_project_s_board_is_not_there_for_whoever_may_not_read_it() {
         answered.assert_status(StatusCode::NOT_FOUND);
         assert_eq!(answered.json::<Value>()["type"], "not-found");
     }
-    guarded
-        .grace
-        .get_websocket(&format!("/boards/live?board={}", guarded.board))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    let mut hers = Subscriber::on(&guarded.grace).await;
+    hers.subscribe("board", "boards", &[("board", &guarded.board)])
+        .await;
+    assert_eq!(hers.ended().await, "not-there");
     assert_eq!(pinned(&guarded).await, vec![json!("idea_1")]);
 }
 
@@ -195,11 +194,10 @@ async fn a_reader_opens_reads_and_follows_the_board_and_is_told_only_an_author_m
         .get(&format!("/boards/{}", guarded.board))
         .await
         .assert_status_ok();
-    guarded
-        .grace
-        .get_websocket(&format!("/boards/live?board={}", guarded.board))
-        .await
-        .assert_status(StatusCode::SWITCHING_PROTOCOLS);
+    let mut hers = Subscriber::on(&guarded.grace).await;
+    hers.subscribe("board", "boards", &[("board", &guarded.board)])
+        .await;
+    hers.frame().await;
     for refused in changes_by(&guarded, &guarded.grace).await {
         refused.assert_status(StatusCode::FORBIDDEN);
         assert_eq!(refused.json::<Value>()["type"], "not-an-author");
@@ -237,25 +235,24 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     ] {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
+    let mut ada_s = Subscriber::on(&guarded.ada).await;
+    ada_s
+        .subscribe("board", "boards", &[("board", &guarded.board)])
+        .await;
+    assert_eq!(ada_s.ended().await, "failed");
 }
 
 #[tokio::test]
 async fn a_follower_whose_role_is_taken_away_is_closed_out() {
     let guarded = guarded().await;
     guarded.roles.give("account_grace", &READER);
-    let mut hers = guarded
-        .grace
-        .get_websocket(&format!("/boards/live?board={}", guarded.board))
-        .await
-        .into_websocket()
+    let mut hers = Subscriber::on(&guarded.grace).await;
+    hers.subscribe("board", "boards", &[("board", &guarded.board)])
         .await;
-    _ = hers.receive_text().await;
+    hers.frame().await;
 
     guarded.roles.give("account_grace", &[]);
     guarded.roles.access_changed(PROJECT);
 
-    assert!(matches!(
-        tokio::time::timeout(std::time::Duration::from_secs(1), hers.receive_message()).await,
-        Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == NO_LONGER_ADMITTED
-    ));
+    assert_eq!(hers.ended().await, "access-lost");
 }

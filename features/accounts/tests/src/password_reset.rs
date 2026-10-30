@@ -10,6 +10,7 @@ use async_trait::async_trait;
 
 use time::Duration;
 
+use crate::session_ends;
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
 
@@ -431,4 +432,29 @@ async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
         "the reset is told before its new password is kept, so whoever knew the old one is out \
          even when keeping the new one fails"
     );
+}
+
+#[tokio::test]
+async fn a_reset_reaches_the_end_of_the_sessions_begun_before_it_at_once() {
+    let wired = wiring::wired();
+    ada_signed_up(&wired, true).await;
+    let (token, signed_in) = wired
+        .accounts
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("she signs in before resetting");
+    let waiting =
+        session_ends::awaited(wired.accounts.session_end(&token, signed_in.session.until)).await;
+    let code = a_reset_asked_for(&wired).await;
+    wired
+        .clock
+        .set(signed_in.session.begun + Duration::minutes(5));
+
+    wired
+        .accounts
+        .reset_password(ADA, &code, HER_NEW_PASSWORD)
+        .await
+        .expect("the code sent should reset");
+
+    assert!(session_ends::reached(waiting).await);
 }

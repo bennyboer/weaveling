@@ -3,6 +3,7 @@ use accounts_core::{
 };
 use eventsourcing::{AggregateId, EventStore, ServiceError, Version};
 
+use crate::session_ends;
 use crate::wiring;
 use crate::wiring::{HER_PASSWORD, Wired};
 
@@ -263,4 +264,25 @@ async fn unlocking_brings_back_no_session_the_lock_ended() {
         None,
         "she signs in anew"
     );
+}
+
+#[tokio::test]
+async fn a_lock_reaches_the_end_of_the_account_s_sessions_at_once() {
+    let wired = wiring::wired();
+    let (ada, grace) = ada_and_grace_the_operator(&wired).await;
+    let (token, signed_in) = wired
+        .accounts
+        .begin_session(ADA, HER_PASSWORD)
+        .await
+        .expect("she signs in before she is locked");
+    let waiting =
+        session_ends::awaited(wired.accounts.session_end(&token, signed_in.session.until)).await;
+
+    wired
+        .accounts
+        .lock(&grace, &ada, "Sent spam.")
+        .await
+        .expect("an operator may lock an account");
+
+    assert!(session_ends::reached(waiting).await);
 }

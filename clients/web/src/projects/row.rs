@@ -4,6 +4,7 @@ use leptos::prelude::*;
 use leptos::{IntoView, ev, view};
 use leptos_router::components::A;
 
+use crate::members::roles::Roles;
 use crate::moment;
 use crate::projects::model::Project;
 use crate::projects::overlays::Overlays;
@@ -110,26 +111,34 @@ fn RowMenu(
 ) -> impl IntoView {
     let row_id = StoredValue::new(row.get_value().id);
     let open = move || overlays.is_menu_open(&row_id.get_value());
+    let roles = expect_context::<Roles>();
+    let owning = Memo::new(move |_| roles.owns(&row_id.get_value().to_string()));
 
-    let kebab = view! {
-        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-            <circle cx="8" cy="3" r="1.5" fill="currentColor" />
-            <circle cx="8" cy="8" r="1.5" fill="currentColor" />
-            <circle cx="8" cy="13" r="1.5" fill="currentColor" />
-        </svg>
+    let kebab = || {
+        view! {
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <circle cx="8" cy="3" r="1.5" fill="currentColor" />
+                <circle cx="8" cy="8" r="1.5" fill="currentColor" />
+                <circle cx="8" cy="13" r="1.5" fill="currentColor" />
+            </svg>
+        }
     };
 
     html::div()
         .class("actions")
         .on(ev::click, |event| event.stop_propagation())
         .child((
-            html::button()
-                .class("menu-button")
-                .attr("aria-label", speech::said("project-more-actions"))
-                .attr("aria-haspopup", "menu")
-                .attr("aria-expanded", move || open().to_string())
-                .on(ev::click, move |_| overlays.toggle_menu(row_id.get_value()))
-                .child(kebab),
+            move || {
+                owning.get().then(|| {
+                    html::button()
+                        .class("menu-button")
+                        .attr("aria-label", speech::said("project-more-actions"))
+                        .attr("aria-haspopup", "menu")
+                        .attr("aria-expanded", move || open().to_string())
+                        .on(ev::click, move |_| overlays.toggle_menu(row_id.get_value()))
+                        .child(kebab())
+                })
+            },
             move || {
                 open().then(|| {
                     html::div().class("menu").role("menu").child((

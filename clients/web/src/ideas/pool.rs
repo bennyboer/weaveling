@@ -9,6 +9,7 @@ use crate::ideas::followed;
 use crate::ideas::model;
 use crate::ideas::model::Idea;
 use crate::ideas::service;
+use crate::members::roles::Roles;
 use crate::problem;
 use crate::route;
 use crate::speech;
@@ -17,6 +18,12 @@ use crate::speech;
 pub fn Pool(project: String) -> impl IntoView {
     let whose = project;
     let project = route::project_id(&whose);
+    let roles = expect_context::<Roles>();
+    let may_write = {
+        let whose = whose.clone();
+
+        Memo::new(move |_| roles.may_write(&whose))
+    };
     let failed = RwSignal::new(None::<ApiError>);
     let held = RwSignal::new(None::<Vec<Idea>>);
     let title: NodeRef<Input> = NodeRef::new();
@@ -59,23 +66,27 @@ pub fn Pool(project: String) -> impl IntoView {
 
     html::section().class("pool").child((
         html::h2().child(speech::said("ideas")),
-        html::form()
-            .class("capture")
-            .on(ev::submit, move |event| {
-                event.prevent_default();
-                capture();
+        move || {
+            may_write.get().then(|| {
+                html::form()
+                    .class("capture")
+                    .on(ev::submit, move |event| {
+                        event.prevent_default();
+                        capture();
+                    })
+                    .child((
+                        html::input()
+                            .r#type("text")
+                            .attr("aria-label", speech::said("idea-asked"))
+                            .placeholder(speech::said("idea-asked"))
+                            .node_ref(title),
+                        html::button()
+                            .r#type("submit")
+                            .disabled(capturing.pending())
+                            .child(speech::said("ideas-capture")),
+                    ))
             })
-            .child((
-                html::input()
-                    .r#type("text")
-                    .attr("aria-label", speech::said("idea-asked"))
-                    .placeholder(speech::said("idea-asked"))
-                    .node_ref(title),
-                html::button()
-                    .r#type("submit")
-                    .disabled(capturing.pending())
-                    .child(speech::said("ideas-capture")),
-            )),
+        },
         move || failed.get().map(problem::problem),
         move || {
             (ideas().is_empty()).then(|| {

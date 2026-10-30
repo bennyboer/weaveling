@@ -2,7 +2,7 @@ import { test, expect, type Page } from "@playwright/test";
 
 import { aBookWithScenes } from "./support/book";
 import { aNewProject, openTheOutline, views } from "./support/shell";
-import { aBookInTheWritingView, asked, backToWhereILeftOff, backToWhereYouLeftOffButton, beginning, flow, following, menuItem, openTheWritingView, saveState, scene, sceneActions, theBookIsIn, titled } from "./support/writing";
+import { aBookInTheWritingView, asked, backToWhereILeftOff, backToWhereYouLeftOffButton, beginning, flow, following, menuItem, openTheWritingView, projectOf, saveState, scene, sceneActions, theBookIsIn, titled } from "./support/writing";
 
 test("the first time, Write lands at the start of the book", async ({
   page,
@@ -195,12 +195,10 @@ test("a project's details are fetched once while moving between its views", asyn
 }) => {
   await aNewProject(page, "OnceOnly");
   await aBookWithScenes(page, { "Part One": 1 });
+  const project = projectOf(page);
   const asked: string[] = [];
   page.on("request", (request) => {
-    if (
-      request.method() === "GET" &&
-      /\/api\/projects\/[^/?]+$/.test(request.url())
-    ) {
+    if (request.method() === "GET" && request.url().endsWith(`/api/projects/${project}`)) {
       asked.push(request.url());
     }
   });

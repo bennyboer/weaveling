@@ -4,6 +4,24 @@ The event store and the service that drives aggregates over it. The outbox an ap
 
 **The model.** An `Aggregate` says how it is born (`begin`, `from_first`), what it will accept (`decide`), how it changes (`apply`), and how it collapses (`snapshot`). `EventSourcingService` replays a stream into state, runs a command against it, and appends what it decided under a `Version` guard, retrying a lost race a few times before giving up. `Standing<A>` is what a reader gets: the state and the version it stands at.
 
+The ideas drive their aggregate like this:
+
+```rust
+use std::sync::Arc;
+
+use clock::{Clock, SystemClock};
+use eventsourcing::{Agent, AggregateId, EventSourcingService, InMemoryEventStore, Standing};
+
+let clock = Arc::new(SystemClock);
+let ideas = EventSourcingService::<Idea>::new(Arc::new(InMemoryEventStore::new()), clock.clone());
+let idea = AggregateId::from(&IdeaId::generate(clock.now()));
+
+ideas.begin(&idea, IdeaCommand::Capture { project, title }, &Agent::Local).await?;
+ideas.execute(&idea, IdeaCommand::Discard, &Agent::Local).await?;
+
+let Standing { state, version } = ideas.latest(&idea).await?;
+```
+
 **Every event carries its aggregate's context.** An `Aggregate` may say what it belongs to as an `AggregateContext`, a small map of names to values, empty unless it says otherwise; the service stamps the context of the state after a command on every event the command wrote, and on a snapshot, and the stores keep it beside the event, as a JSON column. What the names mean is the features' business, not this library's: it knows no project, only that an aggregate may be in one, a name and a value. Messages carry it on, so a listener can tell what an event belonged to without asking anyone.
 
 **Three backends, one conformance suite.** `InMemoryEventStore`, `PostgresEventStore` and `SqliteEventStore` are driven by the same case list through a `Workbench`, so "which store" is never a behavioural question. Storage shape is the feature's own: a `Codec<E>` converts its events to and from the JSON body, which is what keeps stored shapes out of the domain and makes upcasting a `Patch` applied on read rather than a rewrite in place.

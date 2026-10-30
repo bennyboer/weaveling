@@ -5,10 +5,11 @@ use async_trait::async_trait;
 use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestServer, WsMessage};
+use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
-use live_contract::{ACCESS_CHANGED, NO_LONGER_ADMITTED};
+use live::testing::Subscriber;
+use live_contract::{ACCESS_CHANGED, ToldDTO};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
@@ -147,11 +148,10 @@ async fn the_ideas_of_a_project_are_not_there_for_whoever_may_not_read_it() {
         answered.assert_status(StatusCode::NOT_FOUND);
         assert_eq!(answered.json::<Value>()["type"], "not-found");
     }
-    guarded
-        .grace
-        .get_websocket(&format!("/ideas/live?project={PROJECT}"))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    let mut hers = Subscriber::on(&guarded.grace).await;
+    hers.subscribe("ideas", "ideas", &[("project", PROJECT)])
+        .await;
+    assert_eq!(hers.ended().await, "not-there");
     assert_eq!(titled(&guarded).await, "A girl in a wood");
 }
 
@@ -168,11 +168,10 @@ async fn a_reader_reads_and_follows_the_ideas_and_is_told_only_an_author_may_cha
     listed.assert_status_ok();
     assert_eq!(listed.json::<Value>()[0]["id"], guarded.idea.as_str());
     guarded.grace.get(&at).await.assert_status_ok();
-    guarded
-        .grace
-        .get_websocket(&format!("/ideas/live?project={PROJECT}"))
-        .await
-        .assert_status(StatusCode::SWITCHING_PROTOCOLS);
+    let mut hers = Subscriber::on(&guarded.grace).await;
+    hers.subscribe("ideas", "ideas", &[("project", PROJECT)])
+        .await;
+    hers.nothing().await;
     for refused in [
         guarded
             .grace
@@ -224,34 +223,24 @@ async fn an_author_captures_retitles_and_discards() {
 async fn a_follower_whose_role_is_taken_away_is_closed_out_and_the_others_follow_on() {
     let guarded = guarded().await;
     guarded.roles.give("account_grace", &READER);
-    let mut hers = guarded
-        .grace
-        .get_websocket(&format!("/ideas/live?project={PROJECT}"))
-        .await
-        .into_websocket()
+    let mut hers = Subscriber::on(&guarded.grace).await;
+    hers.subscribe("ideas", "ideas", &[("project", PROJECT)])
         .await;
-    let mut ada_s = guarded
-        .ada
-        .get_websocket(&format!("/ideas/live?project={PROJECT}"))
-        .await
-        .into_websocket()
+    let mut ada_s = Subscriber::on(&guarded.ada).await;
+    ada_s
+        .subscribe("ideas", "ideas", &[("project", PROJECT)])
         .await;
 
     guarded.roles.give("account_grace", &[]);
     guarded.roles.access_changed(PROJECT);
 
-    assert!(
-        matches!(
-            tokio::time::timeout(std::time::Duration::from_secs(1), hers.receive_message()).await,
-            Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == NO_LONGER_ADMITTED
-        ),
+    assert_eq!(
+        hers.ended().await,
+        "access-lost",
         "a member removed hears nothing more of the project"
     );
     assert!(
-        tokio::time::timeout(std::time::Duration::from_secs(1), ada_s.receive_text())
-            .await
-            .expect("the owner is told")
-            .contains(ACCESS_CHANGED),
+        matches!(ada_s.told().await, ToldDTO::Notice { notice, .. } if notice == ACCESS_CHANGED),
         "the owner stays and is told the members changed"
     );
     guarded
@@ -261,11 +250,10 @@ async fn a_follower_whose_role_is_taken_away_is_closed_out_and_the_others_follow
         .await
         .assert_status(StatusCode::CREATED);
     guarded.wired.settle().await;
-    assert!(
-        tokio::time::timeout(std::time::Duration::from_secs(1), ada_s.receive_text())
-            .await
-            .expect("the owner still follows")
-            .contains("Told to the owner")
+    assert_eq!(
+        ada_s.frame().await["event"]["title"],
+        "Told to the owner",
+        "the owner still follows"
     );
 }
 
@@ -280,9 +268,9 @@ async fn whom_to_let_in_not_being_known_is_a_failure_not_a_no() {
     ] {
         answered.assert_status(StatusCode::INTERNAL_SERVER_ERROR);
     }
-    guarded
-        .ada
-        .get_websocket(&format!("/ideas/live?project={PROJECT}"))
-        .await
-        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    let mut ada_s = Subscriber::on(&guarded.ada).await;
+    ada_s
+        .subscribe("ideas", "ideas", &[("project", PROJECT)])
+        .await;
+    assert_eq!(ada_s.ended().await, "failed");
 }

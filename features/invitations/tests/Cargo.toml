@@ -16,7 +16,7 @@ acting = { version = "0.1.0", path = "../../../libraries/acting", package = "wea
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 email = { version = "0.1.0", path = "../../../libraries/email", package = "weaveling-email" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
-live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 live-contract = { version = "0.1.0", path = "../../../libraries/live-contract", package = "weaveling-live-contract" }
 mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "weaveling-mailing" }
 throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }

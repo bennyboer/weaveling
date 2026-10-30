@@ -49,21 +49,23 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             vec![boards_rest::BoardChanges(published.aggregate.id.clone())]
         });
 
-    Wired::serving(
-        boards_rest::router(boards.clone()).merge(boards_rest::live(boards.clone(), broadcaster)),
-    )
-    .listening(vec![
-        Arc::new(broadcast),
-        Arc::new(catalogue),
-        Arc::new(index),
-        Arc::new(unpin_discarded_ideas),
-        Arc::new(sweep),
-    ])
-    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-        "forget-old-board-tombstones",
-        Arc::new(BoardTombstones::of(boards)),
-        context.clock.clone(),
-    ))])
+    Wired::serving(boards_rest::router(boards.clone()))
+        .followed_live(vec![Arc::new(boards_rest::BoardsTopic::new(
+            boards.clone(),
+            broadcaster,
+        ))])
+        .listening(vec![
+            Arc::new(broadcast),
+            Arc::new(catalogue),
+            Arc::new(index),
+            Arc::new(unpin_discarded_ideas),
+            Arc::new(sweep),
+        ])
+        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+            "forget-old-board-tombstones",
+            Arc::new(BoardTombstones::of(boards)),
+            context.clock.clone(),
+        ))])
 }
 
 pub struct BoardFeature;

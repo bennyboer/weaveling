@@ -12,6 +12,7 @@ mod password;
 mod secrets;
 mod service;
 mod session;
+mod session_end;
 mod signing_up;
 mod throttle;
 mod ticket;

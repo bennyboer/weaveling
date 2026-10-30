@@ -5,11 +5,13 @@ import {
   HER_PASSWORD,
   aServerWithAccounts,
   signIn,
+  endedOn,
   subscribedTo,
   toldOfMembers,
 } from "./support/accounts";
 import { API } from "./support/shell";
 import { withAccounts } from "./support/signed-in";
+import { watchingLive } from "./support/live";
 
 const rowFor = (page: Page, title: string) =>
   page.getByRole("listitem").filter({ hasText: title });
@@ -50,9 +52,9 @@ async function signedIn(page: Page) {
   await signIn(page, ADA.email, HER_PASSWORD);
   await expect
     .poll(() => subscribedTo(server, "members").length, {
-      message: "the list follows the members",
+      message: "the list and one's roles follow the members",
     })
-    .toBe(1);
+    .toBe(2);
 
   return server;
 }
@@ -133,18 +135,15 @@ test("a new role changes nothing in the list", async ({ page }) => {
 
 test("without accounts nobody follows the members", async ({ page }) => {
   test.skip(withAccounts, "the server these tests run against keeps accounts");
-  const followed: string[] = [];
-  page.on("websocket", (socket) =>
-    followed.push(new URL(socket.url()).pathname),
-  );
+  const followed = watchingLive(page);
 
   await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Your projects" }),
   ).toBeVisible();
-  await expect.poll(() => followed).toContain("/api/projects/live");
+  await expect.poll(() => followed.topics()).toContain("projects");
 
-  expect(followed).not.toContain("/api/members/live");
+  expect(followed.topics()).not.toContain("members");
 });
 
 test("the list is asked for once on coming in, and again when the members' channel comes back", async ({
@@ -167,17 +166,14 @@ test("the list is asked for once on coming in, and again when the members' chann
     "the members' channel opening the first time asks for nothing",
   ).toBe(1);
 
-  const first = subscribedTo(server, "members")[0].socket;
-  await first.close();
+  const asking = server.subscribing;
+  endedOn(server, "members", "behind");
 
   await expect
-    .poll(
-      () =>
-        subscribedTo(server, "members").filter((subscribed) => subscribed.socket !== first)
-          .length,
-      { message: "it follows the members again, on a socket opened anew" },
-    )
-    .toBe(1);
+    .poll(() => server.subscribing, {
+      message: "the list and one's roles follow the members again",
+    })
+    .toBe(asking + 2);
   await expect
     .poll(() => asked, {
       message: "what was missed meanwhile is caught up by listing again",

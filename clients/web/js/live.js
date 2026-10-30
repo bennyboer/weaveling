@@ -4,19 +4,6 @@ const LIVE = "/api/live";
 const ASKED_AGAIN_FIRST = 100;
 const ASKED_AGAIN_AT_MOST = 2500;
 
-export class LiveFollowing {
-  constructor(path, heard, opened) {
-    this.socket = new ReconnectingSocket(path, {
-      opened: () => opened(),
-      heard: (data) => heard(String(data)),
-    });
-  }
-
-  close() {
-    this.socket.close();
-  }
-}
-
 class LiveConnection {
   constructor() {
     this.subscriptions = new Map();

@@ -5,7 +5,7 @@ use leptos::task;
 
 use crate::ideas::followed;
 use crate::ideas::model::{Idea, IdeaId};
-use crate::live::Following;
+use crate::live::Subscription;
 use crate::projects::model::ProjectId;
 use crate::scenes::model::SceneId;
 use crate::scenes::service as scenes;
@@ -19,7 +19,7 @@ pub struct SceneIdeas {
     asked: StoredValue<HashSet<SceneId>>,
     ideas: RwSignal<Option<Vec<Idea>>>,
     asking: Action<(), ()>,
-    following: StoredValue<Option<Following>, LocalStorage>,
+    following: StoredValue<Option<Subscription>, LocalStorage>,
     picking: RwSignal<bool>,
     problems: Problems,
     saving: Saving,
@@ -28,7 +28,7 @@ pub struct SceneIdeas {
 impl SceneIdeas {
     pub fn of(project: &ProjectId, problems: Problems, saving: Saving) -> Self {
         let ideas = RwSignal::new(None);
-        let following = StoredValue::new_local(None::<Following>);
+        let following = StoredValue::new_local(None::<Subscription>);
 
         Self {
             project: StoredValue::new(project.clone()),

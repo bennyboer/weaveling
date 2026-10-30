@@ -10,7 +10,8 @@ use crate::dialog;
 use crate::http::ApiError;
 use crate::icons;
 use crate::icons::Icon;
-use crate::live::Following;
+use crate::live::Subscription;
+use crate::members::roles::Roles;
 use crate::problem;
 use crate::projects::details_form;
 use crate::projects::details_form::DetailsDraft;
@@ -64,6 +65,12 @@ fn changing_dialog(
     changing: RwSignal<bool>,
     open_project: OpenProject,
 ) -> impl IntoView {
+    let roles = expect_context::<Roles>();
+    let owning = {
+        let project = project.to_string();
+
+        Memo::new(move |_| roles.owns(&project))
+    };
     let speech = expect_context::<Speech>();
     let draft = DetailsDraft::of(RwSignal::new(known.name.clone()), &known.details);
     let field: NodeRef<Input> = NodeRef::new();
@@ -71,7 +78,7 @@ fn changing_dialog(
     let refused = RwSignal::new(None::<ApiError>);
     let stage = RwSignal::new(Stage::Editing);
     let restyled = RwSignal::new(Restyled::Waiting);
-    let following = StoredValue::new_local(None::<Following>);
+    let following = StoredValue::new_local(None::<Subscription>);
     let project = StoredValue::new(project);
     let known = StoredValue::new(known);
 
@@ -129,24 +136,33 @@ fn changing_dialog(
         move || changing.set(false),
         move || match stage.get() {
             Stage::Editing => (
-                details_form::details_fields(
-                    draft,
-                    field,
-                    move || refused.set(None),
-                    move || save(false),
-                ),
+                html::fieldset()
+                    .class("details-fields")
+                    .prop("disabled", move || !owning.get())
+                    .child(details_form::details_fields(
+                        draft,
+                        field,
+                        move || refused.set(None),
+                        move || save(false),
+                    )),
                 move || refused.get().map(problem::problem),
                 html::div().class("dialog-actions").child((
                     html::button()
                         .r#type("button")
                         .on(ev::click, move |_| changing.set(false))
                         .child(speech::said("project-details-cancel")),
-                    html::button()
-                        .r#type("button")
-                        .class("primary")
-                        .disabled(move || draft.title.get().trim().is_empty() || saving.get())
-                        .on(ev::click, move |_| save(false))
-                        .child(speech::said("project-details-save")),
+                    move || {
+                        owning.get().then(|| {
+                            html::button()
+                                .r#type("button")
+                                .class("primary")
+                                .disabled(move || {
+                                    draft.title.get().trim().is_empty() || saving.get()
+                                })
+                                .on(ev::click, move |_| save(false))
+                                .child(speech::said("project-details-save"))
+                        })
+                    },
                 )),
             )
                 .into_any(),
@@ -225,11 +241,16 @@ fn shown_on_the_bar(restyled: Restyled) -> (Option<String>, String) {
     }
 }
 
-fn follow(project: ProjectId, saved_against: Version, restyled: RwSignal<Restyled>) -> Following {
+fn follow(
+    project: ProjectId,
+    saved_against: Version,
+    restyled: RwSignal<Restyled>,
+) -> Subscription {
     let asked = project.clone();
 
-    Following::start(
-        &format!("/api/scenes/quotation-restylings/live?project={project}"),
+    Subscription::start(
+        "quotation-restylings",
+        &[("project", project.to_string().as_str())],
         move |told: FrameDTO| {
             if let Ok(found) = serde_json::from_value::<QuotationRestylingDTO>(told.event) {
                 _ = restyled.try_set(crate::scenes::restyling::standing(

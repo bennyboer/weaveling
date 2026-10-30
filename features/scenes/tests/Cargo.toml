@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+acting = { version = "0.1.0", path = "../../../libraries/acting", package = "weaveling-acting" }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 async-trait = { workspace = true }
@@ -29,5 +30,5 @@ scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveli
 # for a `contract` crate and nothing else — never its `core`, never its adapters.
 ideas-contract = { version = "0.1.0", path = "../../ideas/contract", package = "weaveling-ideas-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
-live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
+live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 live-contract = { version = "0.1.0", path = "../../../libraries/live-contract", package = "weaveling-live-contract" }

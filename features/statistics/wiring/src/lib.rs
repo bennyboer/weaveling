@@ -25,18 +25,19 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
 
     let statistics = StatisticsCore::new(telling, context.authorizer.clone());
 
-    Wired::serving(
-        statistics_rest::router(statistics.clone())
-            .merge(statistics_rest::live(statistics.clone(), broadcaster)),
-    )
-    .listening(vec![Arc::new(ProjectWordCountsListener::new(
-        statistics.clone(),
-    ))])
-    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-        "forget-old-statistics-tombstones",
-        Arc::new(StatisticsTombstones::of(statistics)),
-        context.clock.clone(),
-    ))])
+    Wired::serving(statistics_rest::router(statistics.clone()))
+        .followed_live(vec![statistics_rest::topic(
+            statistics.clone(),
+            broadcaster,
+        )])
+        .listening(vec![Arc::new(ProjectWordCountsListener::new(
+            statistics.clone(),
+        ))])
+        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+            "forget-old-statistics-tombstones",
+            Arc::new(StatisticsTombstones::of(statistics)),
+            context.clock.clone(),
+        ))])
 }
 
 pub struct StatisticsFeature;

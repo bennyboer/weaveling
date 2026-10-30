@@ -43,18 +43,22 @@ pub fn actions(href: String, idea: Idea, at: Placement, handles: Handles) -> imp
         })
         .on(ev::pointerdown, |event| event.stop_propagation())
         .child((
-            deed(about("board-rename", &shown), "\u{270e}", move || {
-                handles.naming.set(Some(Naming::Renaming {
-                    idea: renamed.clone(),
-                    at,
-                    was: called.clone(),
-                }));
+            handles.may_write.get_untracked().then(|| {
+                deed(about("board-rename", &shown), "\u{270e}", move || {
+                    handles.naming.set(Some(Naming::Renaming {
+                        idea: renamed.clone(),
+                        at,
+                        was: called.clone(),
+                    }));
+                })
             }),
             deed(about("board-open", &shown), "\u{2197}", move || {
                 opening(&href, Default::default());
             }),
-            deed(about("board-unpin", &shown), "\u{00d7}", move || {
-                handles.state.unpin(unpinned.clone());
+            handles.may_write.get_untracked().then(|| {
+                deed(about("board-unpin", &shown), "\u{00d7}", move || {
+                    handles.state.unpin(unpinned.clone());
+                })
             }),
         ))
 }

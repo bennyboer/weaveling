@@ -1,5 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { routingLive } from "./support/live";
+
 const REFUSALS = "**/api/service/refusals";
 
 const A_BEAT = 500;
@@ -65,18 +67,13 @@ async function aServerHolding(page: Page, start: Refused[]) {
 const asked = (page: Page) => page.waitForResponse(REFUSALS);
 
 async function told(page: Page) {
-  let tell = () => {};
+  const live = await routingLive(page, { withheld: ["refusals"] });
   let changes = 0;
-  await page.routeWebSocket(/\/api\/service\/refusals\/live$/, (socket) => {
-    tell = () => {
-      changes += 1;
-      socket.send(
-        JSON.stringify({ version: changes, event: { name: "REFUSALS_CHANGED" } }),
-      );
-    };
-  });
 
-  return () => tell();
+  return () => {
+    changes += 1;
+    live.tell("refusals", { version: changes, event: { name: "REFUSALS_CHANGED" } });
+  };
 }
 
 async function lookingAtTheRefusals(page: Page) {

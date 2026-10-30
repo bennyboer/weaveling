@@ -3,6 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 import { cardNamed, corkboard, seenAt, waitingIdeas } from "./support/board";
 import { aNewProject, API, catalogued } from "./support/shell";
 import { projectOf } from "./support/writing";
+import { heardOn, routingLive } from "./support/live";
 
 async function anotherAuthor(
   page: Page,
@@ -46,13 +47,7 @@ async function aBoardFollowedLive(page: Page, named: string) {
   const board = await theBoard(page);
   await page.reload();
   await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();
-  const told = new Promise<void>((resolve) => {
-    page.on("websocket", (socket) => {
-      if (socket.url().includes(`/api/boards/live?board=${board}`)) {
-        socket.once("framereceived", () => resolve());
-      }
-    });
-  });
+  const told = new Promise<void>((resolve) => heardOn(page, "boards", resolve));
   await page.reload();
   await told;
 
@@ -104,7 +99,7 @@ test("a card another author unpins goes back beside the board", async ({
 test("an idea captured and pinned elsewhere shows on the board by its name", async ({
   page,
 }) => {
-  await page.routeWebSocket(/\/api\/ideas\/live\?project=/, () => {});
+  await routingLive(page, { withheld: ["ideas"] });
   const { board } = await aBoardFollowedLive(page, "BoardLiveUnknown");
   const winter = await anIdea(page, "Winter comes early");
   await catalogued(page, ["The loom remembers", "Winter comes early"]);
@@ -120,7 +115,7 @@ test("an idea captured and pinned elsewhere shows on the board by its name", asy
 test("an idea the list of ideas does not hold yet is asked for once per change, not in a loop", async ({
   page,
 }) => {
-  await page.routeWebSocket(/\/api\/ideas\/live\?project=/, () => {});
+  await routingLive(page, { withheld: ["ideas"] });
   const { board } = await aBoardFollowedLive(page, "BoardLiveLagging");
   const winter = await anIdea(page, "Winter comes early");
   let asked = 0;
@@ -182,14 +177,15 @@ test("a change missed on the way opens the board again, and the board comes out 
   await catalogued(page, ["The loom remembers"]);
   const board = await theBoard(page);
   let passed = 0;
-  await page.routeWebSocket(/\/api\/boards\/live\?board=/, (socket) => {
-    const server = socket.connectToServer();
-    server.onMessage((frame) => {
-      passed += 1;
-      if (passed !== 3) {
-        socket.send(frame);
-      }
-    });
+  await routingLive(page, {
+    heard: {
+      boards: (_told, pass) => {
+        passed += 1;
+        if (passed !== 3) {
+          pass();
+        }
+      },
+    },
   });
   await page.reload();
   await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();
@@ -223,10 +219,8 @@ test("a board is opened once, and a change made before it is followed is caught 
   const loom = await anIdea(page, "The loom remembers");
   await catalogued(page, ["The loom remembers"]);
   const board = await theBoard(page);
-  let connect = () => {};
-  await page.routeWebSocket(/\/api\/boards\/live\?board=/, (socket) => {
-    connect = () => void socket.connectToServer();
-  });
+  const live = await routingLive(page, { held: ["boards"] });
+  const connect = () => live.release("boards");
   const opened = openings(page);
   await page.reload();
   await expect(waitingIdeas(page).getByText("The loom remembers")).toBeVisible();

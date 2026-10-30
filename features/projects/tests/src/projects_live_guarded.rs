@@ -1,15 +1,14 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 
 use async_trait::async_trait;
 use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use axum::Extension;
 use axum::http::StatusCode;
-use axum_test::{TestServer, TestWebSocket, WsMessage};
+use axum_test::TestServer;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent};
-use live_contract::NO_LONGER_ADMITTED;
+use live::testing::Subscriber;
 use projects_contract::{CreateProjectRequest, ProjectDTO, RenameProjectRequest};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
@@ -127,22 +126,21 @@ async fn renamed(server: &TestServer, project: &ProjectDTO, name: &str) {
         .assert_status_ok();
 }
 
-async fn following(server: &TestServer, path: &str) -> TestWebSocket {
-    server.get_websocket(path).await.into_websocket().await
+async fn following(server: &TestServer, about: &[(&str, &str)]) -> Subscriber {
+    let mut socket = Subscriber::on(server).await;
+    socket.subscribe("projects", "projects", about).await;
+
+    socket
 }
 
-async fn told(socket: &mut TestWebSocket) -> Value {
-    let frame = tokio::time::timeout(Duration::from_secs(1), socket.receive_text())
-        .await
-        .expect("a change is told while it is fresh");
-
-    serde_json::from_str(&frame).expect("a frame is JSON")
+async fn told(socket: &mut Subscriber) -> Value {
+    socket.frame().await
 }
 
 #[tokio::test]
 async fn whoever_follows_the_projects_is_told_only_of_those_they_may_read() {
     let guarded = guarded();
-    let mut socket = following(&guarded.server, "/projects/live").await;
+    let mut socket = following(&guarded.server, &[("mine", "true")]).await;
     let loom = started(&guarded.server, "The Loom").await;
     let weft = started(&guarded.server, "The Weft").await;
     guarded.readers.let_read(&loom.id);
@@ -166,17 +164,16 @@ async fn whoever_follows_the_projects_is_told_only_of_those_they_may_read() {
 #[tokio::test]
 async fn the_list_followed_ends_once_whom_to_tell_cannot_be_known() {
     let guarded = guarded();
-    let mut socket = following(&guarded.server, "/projects/live").await;
+    let mut socket = following(&guarded.server, &[("mine", "true")]).await;
     started(&guarded.server, "The Loom").await;
 
     guarded.readers.go_down();
     guarded.wired.settle().await;
 
-    assert!(
-        tokio::spawn(async move { socket.receive_text().await })
-            .await
-            .is_err(),
-        "a project it cannot tell about may be one the follower needed, so the socket ends and its client reloads"
+    assert_eq!(
+        socket.ended().await,
+        "failed",
+        "a project it cannot tell about may be one the follower needed, so the subscription ends and its client asks again"
     );
 }
 
@@ -188,16 +185,14 @@ async fn whoever_follows_one_project_hears_it_but_only_if_they_may_read_it() {
     guarded.readers.let_read(&loom.id);
     guarded.wired.settle().await;
 
-    guarded
-        .server
-        .get_websocket(&format!("/projects/live?project={}", weft.id))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
-    let mut socket = following(
-        &guarded.server,
-        &format!("/projects/live?project={}", loom.id),
-    )
-    .await;
+    assert_eq!(
+        following(&guarded.server, &[("project", &weft.id)])
+            .await
+            .ended()
+            .await,
+        "not-there"
+    );
+    let mut socket = following(&guarded.server, &[("project", &loom.id)]).await;
     renamed(&guarded.server, &loom, "The Heddle").await;
     guarded.wired.settle().await;
 
@@ -211,11 +206,13 @@ async fn whether_one_may_follow_a_project_not_being_known_is_a_failure() {
     let loom = started(&guarded.server, "The Loom").await;
     guarded.readers.go_down();
 
-    guarded
-        .server
-        .get_websocket(&format!("/projects/live?project={}", loom.id))
-        .await
-        .assert_status(StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(
+        following(&guarded.server, &[("project", &loom.id)])
+            .await
+            .ended()
+            .await,
+        "failed"
+    );
 }
 
 #[tokio::test]
@@ -223,16 +220,9 @@ async fn whoever_may_no_longer_read_the_project_they_follow_is_closed_out() {
     let guarded = guarded();
     let loom = started(&guarded.server, "The Loom").await;
     guarded.readers.let_read(&loom.id);
-    let mut socket = following(
-        &guarded.server,
-        &format!("/projects/live?project={}", loom.id),
-    )
-    .await;
+    let mut socket = following(&guarded.server, &[("project", &loom.id)]).await;
 
     guarded.readers.stop_reading(&loom.id);
 
-    assert!(matches!(
-        tokio::time::timeout(Duration::from_secs(1), socket.receive_message()).await,
-        Ok(WsMessage::Close(Some(frame))) if u16::from(frame.code) == NO_LONGER_ADMITTED
-    ));
+    assert_eq!(socket.ended().await, "access-lost");
 }

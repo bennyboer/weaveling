@@ -39,10 +39,12 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             ]
         });
 
-    Wired::serving(
-        projects_rest::router(projects.clone()).merge(projects_rest::live(projects, broadcaster)),
-    )
-    .listening(vec![Arc::new(broadcast), Arc::new(projector)])
+    Wired::serving(projects_rest::router(projects.clone()))
+        .followed_live(vec![Arc::new(projects_rest::ProjectsTopic::new(
+            projects.clone(),
+            broadcaster,
+        ))])
+        .listening(vec![Arc::new(broadcast), Arc::new(projector)])
 }
 
 pub struct ProjectFeature;

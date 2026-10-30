@@ -91,6 +91,9 @@ async fn admit(State(accounts): State<AccountsCore>, mut request: Request, next:
 
     match accounts.signed_in(&token).await {
         Ok(Some(signed_in)) if signed_in.session.may_act() => {
+            request
+                .extensions_mut()
+                .insert(accounts.session_end(&token, signed_in.session.until));
             let account = signed_in.session.account;
             request.extensions_mut().insert(Acting {
                 agent: account.acting(),
