@@ -4197,6 +4197,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "weaveling-inbox"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "sqlx",
+ "thiserror",
+ "time",
+ "tokio",
+ "weaveling-clock",
+ "weaveling-messaging",
+ "weaveling-test-harness",
+ "weaveling-transacting",
+]
+
+[[package]]
 name = "weaveling-invitations-catalog"
 version = "0.1.0"
 dependencies = [

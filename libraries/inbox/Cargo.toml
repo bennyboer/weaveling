@@ -1,0 +1,22 @@
+[package]
+name = "weaveling-inbox"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+sqlx = { workspace = true, optional = true, features = ["uuid"] }
+thiserror = { workspace = true }
+time = { workspace = true }
+
+clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
+messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
+transacting = { version = "0.1.0", path = "../transacting", package = "weaveling-transacting" }
+
+[features]
+postgres = ["dep:sqlx", "transacting/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "transacting/sqlite"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+test-harness = { version = "0.1.0", path = "../test-harness", package = "weaveling-test-harness" }
