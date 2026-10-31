@@ -47,7 +47,7 @@ impl PostgresInbox {
 
 #[async_trait]
 impl Inbox for PostgresInbox {
-    async fn first_time(
+    async fn heard_before(
         &self,
         transaction: &mut Transaction,
         listener: &ListenerName,
@@ -61,7 +61,7 @@ impl Inbox for PostgresInbox {
             .await
             .map_err(unreachable)?;
 
-        Ok(heard.rows_affected() == 1)
+        Ok(heard.rows_affected() == 0)
     }
 
     async fn forget_heard_before(

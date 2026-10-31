@@ -43,7 +43,7 @@ impl InMemoryInbox {
 
 #[async_trait]
 impl Inbox for InMemoryInbox {
-    async fn first_time(
+    async fn heard_before(
         &self,
         transaction: &mut Transaction,
         listener: &ListenerName,
@@ -52,7 +52,7 @@ impl Inbox for InMemoryInbox {
         let key = (listener.clone(), message);
         let mut heard = self.held();
         if heard.contains_key(&key) {
-            return Ok(false);
+            return Ok(true);
         }
 
         let undone = key.clone();
@@ -61,7 +61,7 @@ impl Inbox for InMemoryInbox {
         })?;
         heard.insert(key, self.clock.now());
 
-        Ok(true)
+        Ok(false)
     }
 
     async fn forget_heard_before(

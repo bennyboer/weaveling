@@ -58,12 +58,12 @@ impl<W: Workbench> Bench<W> {
             .expect("beginning should succeed")
     }
 
-    pub async fn hears(&self, listener: &str, message: MessageId) -> bool {
+    pub async fn heard_before(&self, listener: &str, message: MessageId) -> bool {
         let mut transaction = self.begun().await;
-        let first = self
+        let before = self
             .workbench
             .inbox()
-            .first_time(&mut transaction, &a_listener(listener), message)
+            .heard_before(&mut transaction, &a_listener(listener), message)
             .await
             .expect("hearing should succeed");
         transaction
@@ -71,13 +71,13 @@ impl<W: Workbench> Bench<W> {
             .await
             .expect("finishing should succeed");
 
-        first
+        before
     }
 
     pub async fn heard_at(&self, seconds: i64, listener: &str, message: MessageId) {
         self.clock.set(at(seconds));
         assert!(
-            self.hears(listener, message).await,
+            !self.heard_before(listener, message).await,
             "a message not heard before"
         );
     }
@@ -103,7 +103,7 @@ impl<W: Workbench> Bench<W> {
     }
 }
 
-pub async fn a_message_is_heard_the_first_time_only<W: Workbench>() {
+pub async fn a_message_was_heard_before_from_its_second_hearing_on<W: Workbench>() {
     let bench = Bench::<W>::setup().await;
     let message = a_message(1);
     let mut transaction = bench.begun().await;
@@ -111,11 +111,11 @@ pub async fn a_message_is_heard_the_first_time_only<W: Workbench>() {
     let inbox = bench.workbench.inbox();
 
     let first = inbox
-        .first_time(&mut transaction, &listener, message)
+        .heard_before(&mut transaction, &listener, message)
         .await
         .expect("hearing should succeed");
     let again = inbox
-        .first_time(&mut transaction, &listener, message)
+        .heard_before(&mut transaction, &listener, message)
         .await
         .expect("hearing should succeed");
     transaction
@@ -123,9 +123,9 @@ pub async fn a_message_is_heard_the_first_time_only<W: Workbench>() {
         .await
         .expect("finishing should succeed");
 
-    assert_eq!((first, again), (true, false));
+    assert_eq!((first, again), (false, true));
     assert!(
-        !bench.hears("note-role-changed", message).await,
+        bench.heard_before("note-role-changed", message).await,
         "what was heard stays heard once its transaction commits"
     );
     bench.cleanup().await;
@@ -138,15 +138,15 @@ pub async fn a_message_heard_in_a_dropped_transaction_was_never_heard<W: Workben
     bench
         .workbench
         .inbox()
-        .first_time(&mut transaction, &a_listener("note-role-changed"), message)
+        .heard_before(&mut transaction, &a_listener("note-role-changed"), message)
         .await
         .expect("hearing should succeed");
 
     drop(transaction);
 
     assert!(
-        bench.hears("note-role-changed", message).await,
-        "a handler that failed hears its message again when it is redelivered"
+        !bench.heard_before("note-role-changed", message).await,
+        "a handler that failed hears its message anew when it is redelivered"
     );
     bench.cleanup().await;
 }
@@ -156,11 +156,11 @@ pub async fn each_listener_hears_a_message_for_itself<W: Workbench>() {
     let message = a_message(1);
 
     let heard = (
-        bench.hears("note-role-changed", message).await,
-        bench.hears("catalogue-members", message).await,
+        bench.heard_before("note-role-changed", message).await,
+        bench.heard_before("catalogue-members", message).await,
     );
 
-    assert_eq!(heard, (true, true));
+    assert_eq!(heard, (false, false));
     bench.cleanup().await;
 }
 
@@ -168,11 +168,11 @@ pub async fn each_message_is_heard_on_its_own<W: Workbench>() {
     let bench = Bench::<W>::setup().await;
 
     let heard = (
-        bench.hears("note-role-changed", a_message(1)).await,
-        bench.hears("note-role-changed", a_message(2)).await,
+        bench.heard_before("note-role-changed", a_message(1)).await,
+        bench.heard_before("note-role-changed", a_message(2)).await,
     );
 
-    assert_eq!(heard, (true, true));
+    assert_eq!(heard, (false, false));
     bench.cleanup().await;
 }
 
@@ -192,16 +192,16 @@ pub async fn what_was_heard_long_ago_is_forgotten_oldest_first<W: Workbench>() {
     bench.clock.set(at(200));
 
     assert_eq!(forgotten, 4, "no more than asked for");
-    let mut heard_again = Vec::new();
+    let mut heard = Vec::new();
     for message in messages {
-        heard_again.push(bench.hears("note-role-changed", message).await);
+        heard.push(bench.heard_before("note-role-changed", message).await);
     }
     assert_eq!(
-        heard_again,
-        [true, true, true, true, false, false, false, false],
+        heard,
+        [false, false, false, false, true, true, true, true],
         "the four heard longest ago go first"
     );
-    assert!(!bench.hears("note-role-changed", latest).await);
+    assert!(bench.heard_before("note-role-changed", latest).await);
     bench.cleanup().await;
 }
 
@@ -233,7 +233,7 @@ pub async fn a_dropped_forgetting_keeps_what_was_heard<W: Workbench>() {
 
     drop(transaction);
 
-    assert!(!bench.hears("note-role-changed", message).await);
+    assert!(bench.heard_before("note-role-changed", message).await);
     bench.cleanup().await;
 }
 
@@ -248,7 +248,7 @@ pub async fn two_handlers_hearing_one_message_at_once_hear_it_once<W: Workbench>
         async {
             let mut transaction = bench.begun().await;
             let first = inbox
-                .first_time(&mut transaction, &listener, message)
+                .heard_before(&mut transaction, &listener, message)
                 .await
                 .expect("hearing should succeed");
             heard.send(()).expect("the second handler is waiting");
@@ -264,7 +264,7 @@ pub async fn two_handlers_hearing_one_message_at_once_hear_it_once<W: Workbench>
             hearing.await.expect("the first handler heard the message");
             let mut transaction = bench.begun().await;
             let second = inbox
-                .first_time(&mut transaction, &listener, message)
+                .heard_before(&mut transaction, &listener, message)
                 .await
                 .expect("hearing should succeed");
             transaction
@@ -278,7 +278,7 @@ pub async fn two_handlers_hearing_one_message_at_once_hear_it_once<W: Workbench>
 
     assert_eq!(
         (first, second),
-        (true, false),
+        (false, true),
         "the second waits for the first and then finds the message heard"
     );
     bench.cleanup().await;
@@ -288,7 +288,7 @@ pub async fn two_handlers_hearing_one_message_at_once_hear_it_once<W: Workbench>
 macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::conformance_tests!($workbench:
-            a_message_is_heard_the_first_time_only,
+            a_message_was_heard_before_from_its_second_hearing_on,
             a_message_heard_in_a_dropped_transaction_was_never_heard,
             each_listener_hears_a_message_for_itself,
             each_message_is_heard_on_its_own,

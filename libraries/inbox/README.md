@@ -6,14 +6,14 @@ A message can arrive at a listener more than once: the relay may publish it agai
 
 ```rust
 let mut transaction = self.transactions.begin().await?;
-if !self.inbox.first_time(&mut transaction, &self.named(), message.id).await? {
+if self.inbox.heard_before(&mut transaction, &self.named(), message.id).await? {
     return Ok(());
 }
 self.notifications.note(Some(&mut transaction), account, about).await?;
 transaction.finish().await?;
 ```
 
-**`first_time(transaction, listener, message)`** records `(listener, message id)` and answers whether this listener had heard this message before. The record commits with the handler's effects or rolls back with them, so a handler that failed hears its message again when it is redelivered, and one that succeeded never does. It is per listener: two listeners hear one message each for themselves. Two handlers hearing one message at once hear it once; the second waits for the first's transaction and then finds it heard.
+**`heard_before(transaction, listener, message)`** answers whether this listener had heard this message before, and records `(listener, message id)` if it had not. The record commits with the handler's effects or rolls back with them, so a handler that failed hears its message anew when it is redelivered, and one that succeeded hears it as heard before. It is per listener: two listeners hear one message each for themselves. Two handlers hearing one message at once hear it once; the second waits for the first's transaction and then finds it heard.
 
 **Kept for a while, then forgotten.** A message is not handed over again once it is older than `messaging::RETRIABLE_FOR`, so what was heard need not be kept longer either. **`forget_heard_before(transaction, before, at_most)`** forgets the oldest first, no more than asked, for a chore to run, as tombstones are forgotten.
 
@@ -21,4 +21,4 @@ transaction.finish().await?;
 
 **Which listeners need it.** Only those whose effects are not idempotent on their own. A catalog that re-reads the aggregate, or a command the aggregate refuses or ignores the second time, takes a redelivery in its stride without one. A `Delivery::Fleeting` listener never needs one.
 
-**Conformance.** `suite.rs` holds the cases every backend passes: heard the first time only, never heard when the transaction is dropped, per listener and per message, the oldest forgotten first and no more than asked, the moment itself kept, a dropped forgetting forgetting nothing, and two handlers at once hearing a message once.
+**Conformance.** `suite.rs` holds the cases every backend passes: heard before from the second hearing on, never heard when the transaction is dropped, per listener and per message, the oldest forgotten first and no more than asked, the moment itself kept, a dropped forgetting forgetting nothing, and two handlers at once hearing a message once.

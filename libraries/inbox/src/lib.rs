@@ -32,7 +32,7 @@ pub enum InboxError {
 
 #[async_trait]
 pub trait Inbox: Send + Sync {
-    async fn first_time(
+    async fn heard_before(
         &self,
         transaction: &mut Transaction,
         listener: &ListenerName,

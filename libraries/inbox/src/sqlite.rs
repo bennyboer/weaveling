@@ -47,7 +47,7 @@ impl SqliteInbox {
 
 #[async_trait]
 impl Inbox for SqliteInbox {
-    async fn first_time(
+    async fn heard_before(
         &self,
         transaction: &mut Transaction,
         listener: &ListenerName,
@@ -61,7 +61,7 @@ impl Inbox for SqliteInbox {
             .await
             .map_err(unreachable)?;
 
-        Ok(heard.rows_affected() == 1)
+        Ok(heard.rows_affected() == 0)
     }
 
     async fn forget_heard_before(
