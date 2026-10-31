@@ -25,7 +25,7 @@ use crate::signing_up::SigningUp;
 use crate::throttle::Guarded;
 use crate::ticket::{InvitationScope, InvitationTicket, InvitationToken};
 use email::EmailAddress;
-use throttling::Throttles;
+use throttling::{Admission, Throttles};
 
 const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
 
@@ -553,15 +553,13 @@ impl AccountService {
         password: &str,
     ) -> Result<(AccountId, Account), AccountsError> {
         let email = EmailAddress::new(email)?;
-        self.not_throttled(Guarded::SigningIn, &email).await?;
+        self.admitted(Guarded::SigningIn, &email).await?;
 
         let Some((id, account, kept)) = self.signing_in_as(&email).await? else {
             let _same_work = PasswordHash::stand_in().admits(password);
-            self.count_try(Guarded::SigningIn, &email).await?;
             return Err(AccountsError::SignInRefused);
         };
         if !kept.admits(password) {
-            self.count_try(Guarded::SigningIn, &email).await?;
             return Err(AccountsError::SignInRefused);
         }
         self.throttles
@@ -756,43 +754,24 @@ impl AccountService {
         Ok(Some((id, account, kept)))
     }
 
-    async fn not_throttled(
-        &self,
-        guarded: Guarded,
-        email: &EmailAddress,
-    ) -> Result<(), AccountsError> {
-        let now = self.clock.now();
-        let Some(tries) = self
+    async fn admitted(&self, guarded: Guarded, email: &EmailAddress) -> Result<(), AccountsError> {
+        match self
             .throttles
-            .tries(guarded.as_str(), email.as_str())
+            .admit(
+                guarded.as_str(),
+                email.as_str(),
+                guarded.rule(),
+                self.clock.now(),
+            )
             .await?
-        else {
-            return Ok(());
-        };
-        if tries.is_forgotten(now) {
-            return Ok(self
-                .throttles
-                .clear(guarded.as_str(), email.as_str())
-                .await?);
-        }
-
-        match tries.wait_before_next(guarded.rule(), now) {
-            Some(wait) => Err(AccountsError::Throttled { wait }),
-            None => Ok(()),
+        {
+            Admission::Admitted => Ok(()),
+            Admission::Wait(wait) => Err(AccountsError::Throttled { wait }),
         }
     }
 
     async fn counted_mail_to(&self, email: &EmailAddress) -> Result<(), AccountsError> {
-        self.not_throttled(Guarded::SendingCodes, email).await?;
-        self.count_try(Guarded::SendingCodes, email).await
-    }
-
-    async fn count_try(&self, guarded: Guarded, email: &EmailAddress) -> Result<(), AccountsError> {
-        self.throttles
-            .count(guarded.as_str(), email.as_str(), self.clock.now())
-            .await?;
-
-        Ok(())
+        self.admitted(Guarded::SendingCodes, email).await
     }
 
     async fn claimed(

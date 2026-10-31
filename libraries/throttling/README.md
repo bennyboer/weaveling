@@ -7,21 +7,24 @@ How often something may be tried before it has to wait, kept the same wherever s
 The invitations let three go free to an address, then make the next wait:
 
 ```rust
-use throttling::{Rule, Throttles};
+use throttling::{Admission, Rule, Throttles};
 
 const INVITING: &str = "inviting";
 const INVITING_RULE: Rule = Rule { free: 3 };
 
-let now = self.clock.now();
-if let Some(tries) = self.throttles.tries(INVITING, to.as_str()).await? {
-    if let Some(wait) = tries.wait_before_next(INVITING_RULE, now) {
-        return Err(InvitationsError::Throttled { wait });
-    }
+match self
+    .throttles
+    .admit(INVITING, to.as_str(), INVITING_RULE, self.clock.now())
+    .await?
+{
+    Admission::Admitted => {}
+    Admission::Wait(wait) => return Err(InvitationsError::Throttled { wait }),
 }
-self.throttles.count(INVITING, to.as_str(), now).await?;
 ```
 
-**The count behind a port.** `Throttles` counts tries by **what is guarded** and **about whom**, signing in and an address, say, so one person's mistakes never slow another down and one kind of try never another. Tries counted at the same moment are each counted, or sending them together would slip the throttle. Kept in memory, on PostgreSQL and on SQLite, each feature laying the table down in its own database under a ledger of its own.
+**Admitted and counted in one step.** `admit(guarded, about, rule, at)` decides by the rule and counts the try only when it lets it through, as one step: tries sent together cannot all read a count under the limit before any of them is counted, and a try refused for its wait is not counted, so impatience alone, or whoever keeps typing someone's address, never lengthens the wait. `Tries::admitted` holds the decision, what an admitted try leaves behind or how long a refused one waits, so every backend decides alike: memory under its lock, PostgreSQL and SQLite by reading and then writing only if nothing changed since, an insert that does nothing where another got there first and an update that matches the count and moment it read, reading again when another try was counted in between. `tries` reads the count and `clear` starts it over, after a right password, say.
+
+**The count behind a port.** `Throttles` counts tries by **what is guarded** and **about whom**, signing in and an address, say, so one person's mistakes never slow another down and one kind of try never another. Tries sent at the same moment are admitted no more often than the rule lets, which the conformance suite proves by sending twenty at once. Kept in memory, on PostgreSQL and on SQLite, each feature laying the table down in its own database under a ledger of its own.
 
 **Per address, never per IP,** as decided for accounts: many people share an address behind a NAT, and a throttle by IP would let one slow them all.
 

@@ -4,7 +4,7 @@ use clock::Clock;
 use email::EmailAddress;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standing, Version};
 use mailing::{Mail, Mailer};
-use throttling::{Rule, Throttles};
+use throttling::{Admission, Rule, Throttles};
 use time::OffsetDateTime;
 use transacting::Transactions;
 
@@ -55,10 +55,7 @@ impl InvitationService {
         agent: &Agent,
     ) -> Result<InvitationSummary, InvitationsError> {
         let to = EmailAddress::new(to)?;
-        self.not_throttled(&to).await?;
-        self.throttles
-            .count(INVITING, to.as_str(), self.clock.now())
-            .await?;
+        self.admitted(&to).await?;
 
         let now = self.clock.now();
         let id = InvitationId::generate(now);
@@ -159,18 +156,14 @@ impl InvitationService {
         Ok(())
     }
 
-    async fn not_throttled(&self, to: &EmailAddress) -> Result<(), InvitationsError> {
-        let now = self.clock.now();
-        let Some(tries) = self.throttles.tries(INVITING, to.as_str()).await? else {
-            return Ok(());
-        };
-        if tries.is_forgotten(now) {
-            return Ok(self.throttles.clear(INVITING, to.as_str()).await?);
-        }
-
-        match tries.wait_before_next(INVITING_RULE, now) {
-            Some(wait) => Err(InvitationsError::Throttled { wait }),
-            None => Ok(()),
+    async fn admitted(&self, to: &EmailAddress) -> Result<(), InvitationsError> {
+        match self
+            .throttles
+            .admit(INVITING, to.as_str(), INVITING_RULE, self.clock.now())
+            .await?
+        {
+            Admission::Admitted => Ok(()),
+            Admission::Wait(wait) => Err(InvitationsError::Throttled { wait }),
         }
     }
 }

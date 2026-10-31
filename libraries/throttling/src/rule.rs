@@ -6,6 +6,12 @@ pub struct Rule {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Admission {
+    Admitted,
+    Wait(Duration),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Tries {
     pub counted: u32,
     pub last: OffsetDateTime,
@@ -18,6 +24,27 @@ impl Tries {
 
     pub fn is_forgotten(&self, now: OffsetDateTime) -> bool {
         now - self.last >= Self::FORGOTTEN_AFTER
+    }
+
+    pub fn admitted(
+        before: Option<Tries>,
+        rule: Rule,
+        now: OffsetDateTime,
+    ) -> Result<Tries, Duration> {
+        let Some(before) = before.filter(|tries| !tries.is_forgotten(now)) else {
+            return Ok(Tries {
+                counted: 1,
+                last: now,
+            });
+        };
+        if let Some(wait) = before.wait_before_next(rule, now) {
+            return Err(wait);
+        }
+
+        Ok(Tries {
+            counted: before.counted.saturating_add(1),
+            last: now,
+        })
     }
 
     pub fn wait_before_next(&self, rule: Rule, now: OffsetDateTime) -> Option<Duration> {
@@ -95,6 +122,40 @@ mod tests {
             Some(Duration::seconds(30))
         );
         assert_eq!(tried(6).wait_before_next(FIVE_FREE, at(1_120)), None);
+    }
+
+    #[test]
+    fn an_admitted_try_is_counted_on_what_came_before_and_a_refused_one_is_told_its_wait() {
+        assert_eq!(
+            Tries::admitted(None, FIVE_FREE, at(1_000)),
+            Ok(Tries {
+                counted: 1,
+                last: at(1_000)
+            })
+        );
+        assert_eq!(
+            Tries::admitted(Some(tried(4)), FIVE_FREE, at(1_010)),
+            Ok(Tries {
+                counted: 5,
+                last: at(1_010)
+            })
+        );
+        assert_eq!(
+            Tries::admitted(Some(tried(5)), FIVE_FREE, at(1_010)),
+            Err(Duration::seconds(50))
+        );
+        assert_eq!(
+            Tries::admitted(
+                Some(tried(40)),
+                FIVE_FREE,
+                at(1_000) + Tries::FORGOTTEN_AFTER
+            ),
+            Ok(Tries {
+                counted: 1,
+                last: at(1_000) + Tries::FORGOTTEN_AFTER
+            }),
+            "tries a day old are counted from the start again"
+        );
     }
 
     #[test]

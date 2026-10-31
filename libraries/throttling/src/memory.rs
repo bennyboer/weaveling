@@ -4,7 +4,7 @@ use std::sync::{Mutex, MutexGuard};
 use async_trait::async_trait;
 use time::OffsetDateTime;
 
-use crate::{Throttles, ThrottlesError, Tries};
+use crate::{Admission, Rule, Throttles, ThrottlesError, Tries};
 
 type Counted = HashMap<(String, String), Tries>;
 
@@ -28,23 +28,23 @@ impl Throttles for InMemoryThrottles {
             .copied())
     }
 
-    async fn count(
+    async fn admit(
         &self,
         guarded: &str,
         about: &str,
+        rule: Rule,
         at: OffsetDateTime,
-    ) -> Result<Tries, ThrottlesError> {
+    ) -> Result<Admission, ThrottlesError> {
         let mut counted = self.counted();
-        let tries = counted
-            .entry((guarded.to_owned(), about.to_owned()))
-            .or_insert(Tries {
-                counted: 0,
-                last: at,
-            });
-        tries.counted += 1;
-        tries.last = at;
+        let key = (guarded.to_owned(), about.to_owned());
 
-        Ok(*tries)
+        match Tries::admitted(counted.get(&key).copied(), rule, at) {
+            Ok(tries) => {
+                counted.insert(key, tries);
+                Ok(Admission::Admitted)
+            }
+            Err(wait) => Ok(Admission::Wait(wait)),
+        }
     }
 
     async fn clear(&self, guarded: &str, about: &str) -> Result<(), ThrottlesError> {

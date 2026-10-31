@@ -1,4 +1,5 @@
 use accounts_core::{AccountsError, Guarded};
+use futures_util::future;
 use throttling::Throttles;
 use time::Duration;
 
@@ -282,4 +283,27 @@ async fn a_sign_up_refused_for_what_it_asks_is_not_counted() {
     }
 
     ada_signed_up(&wired, false).await;
+}
+
+#[tokio::test]
+async fn wrong_passwords_sent_at_once_are_checked_no_more_often_than_the_free_tries() {
+    let wired = wiring::wired();
+    ada_signed_up(&wired, true).await;
+
+    let told = future::join_all((0..20).map(|_| wired.accounts.sign_in(ADA, NOT_HERS))).await;
+
+    let checked = told
+        .iter()
+        .filter(|told| matches!(told, Err(AccountsError::SignInRefused)))
+        .count();
+    let waiting = told.iter().filter(|told| waits_for(told)).count();
+    assert_eq!(
+        (checked, waiting),
+        (5, 15),
+        "guesses sent together must not all read a count under the limit before any is counted"
+    );
+}
+
+fn waits_for<T>(told: &Result<T, AccountsError>) -> bool {
+    matches!(told, Err(AccountsError::Throttled { .. }))
 }

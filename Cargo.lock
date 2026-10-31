@@ -3673,6 +3673,7 @@ dependencies = [
  "async-trait",
  "axum",
  "axum-test",
+ "futures-util",
  "serde_json",
  "time",
  "tokio",

@@ -9,7 +9,7 @@ use thiserror::Error;
 use time::OffsetDateTime;
 
 pub use memory::InMemoryThrottles;
-pub use rule::{Rule, Tries};
+pub use rule::{Admission, Rule, Tries};
 
 #[derive(Debug, Error)]
 pub enum ThrottlesError {
@@ -21,12 +21,13 @@ pub enum ThrottlesError {
 pub trait Throttles: Send + Sync {
     async fn tries(&self, guarded: &str, about: &str) -> Result<Option<Tries>, ThrottlesError>;
 
-    async fn count(
+    async fn admit(
         &self,
         guarded: &str,
         about: &str,
+        rule: Rule,
         at: OffsetDateTime,
-    ) -> Result<Tries, ThrottlesError>;
+    ) -> Result<Admission, ThrottlesError>;
 
     async fn clear(&self, guarded: &str, about: &str) -> Result<(), ThrottlesError>;
 }
