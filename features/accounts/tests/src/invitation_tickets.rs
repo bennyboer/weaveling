@@ -1,6 +1,6 @@
 use accounts_core::{
     AccountEvent, DeclineReason, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket,
-    InvitationTickets, InvitationToken, KIND, TokenDigest,
+    InvitationToken, KIND, TokenDigest,
 };
 use accounts_messaging::KeepInvitationTicketsListener;
 use eventsourcing::{AggregateId, EventStore, Version};
@@ -68,7 +68,6 @@ async fn tell(wired: &Wired, message: Message) {
 
 async fn ticket_for(wired: &Wired, digest: &str) -> Option<InvitationTicket> {
     wired
-        .secrets
         .take_ticket(&TokenDigest::kept(digest.to_owned()))
         .await
         .expect("taking should succeed")
@@ -330,7 +329,6 @@ async fn a_retired_invitation_leaves_no_ticket_nor_mark_and_the_others_stay() {
 
     assert!(
         wired
-            .secrets
             .keep_ticket(
                 &TokenDigest::kept("ab12".to_owned()),
                 &InvitationTicket {
@@ -346,4 +344,45 @@ async fn a_retired_invitation_leaves_no_ticket_nor_mark_and_the_others_stay() {
         "the withdrawn invitation's mark is gone with its ticket"
     );
     assert!(ticket_for(&wired, "cd34").await.is_some());
+}
+
+#[tokio::test]
+async fn an_issue_to_an_address_with_an_account_whose_decline_failed_is_declined_when_told_again() {
+    let wired = wiring::wired();
+    wired
+        .accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    let holder = wired
+        .secrets
+        .holder(&EmailAddress::new(ADA).expect("a plain address"))
+        .await
+        .expect("reading should succeed")
+        .expect("the address is held");
+    let issue = issued("invitation_ada", ADA, "ab12");
+
+    let refused = KeepInvitationTicketsListener::new(wired.refusing_appends())
+        .take_in(&issue)
+        .await;
+    tell(&wired, issue).await;
+
+    assert!(refused.is_err());
+    let declined: Vec<AccountEvent> = wired
+        .store
+        .read_from(&AggregateId::from(&holder), KIND, Version::of(1))
+        .await
+        .expect("reading should succeed")
+        .into_iter()
+        .map(|recorded| recorded.event)
+        .filter(|event| matches!(event, AccountEvent::InvitationDeclined { .. }))
+        .collect();
+    assert_eq!(
+        declined,
+        vec![AccountEvent::InvitationDeclined {
+            invitation: "invitation_ada".to_owned(),
+            reason: DeclineReason::AddressHasAccount,
+        }],
+        "a ticket kept by a decline that failed would make its redelivery decline nothing"
+    );
 }

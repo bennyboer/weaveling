@@ -105,7 +105,7 @@ impl NotificationsCore {
         let id: NoticeId = notice.parse()?;
         self.read(notice, agent).await?;
         self.events
-            .execute(&AggregateId::from(&id), NoticeCommand::Dismiss, agent)
+            .execute(None, &AggregateId::from(&id), NoticeCommand::Dismiss, agent)
             .await?;
 
         Ok(())

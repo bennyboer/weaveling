@@ -130,7 +130,7 @@ impl ProjectService {
                     .execute_at(&key, expected, command, agent)
                     .await?
             }
-            None => self.events.execute(&key, command, agent).await?,
+            None => self.events.execute(None, &key, command, agent).await?,
         };
 
         Ok(landed.version)

@@ -9,7 +9,7 @@ use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
 
 use time::Duration;
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transaction};
 
 use crate::session_ends;
 use crate::wiring;
@@ -99,7 +99,6 @@ async fn an_address_held_but_not_the_accounts_own_gets_no_code() {
     let wired = wiring::wired();
     let id = ada_signed_up(&wired, true).await;
     wired
-        .secrets
         .claim(
             &EmailAddress::new("ada@example.org").expect("a plain address"),
             &id,
@@ -254,12 +253,17 @@ struct FailingOnce {
 
 #[async_trait]
 impl Passwords for FailingOnce {
-    async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError> {
+    async fn keep(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        password: &PasswordHash,
+    ) -> Result<(), SecretsError> {
         if self.armed.swap(false, Ordering::SeqCst) {
             return Err(SecretsError::Backend("the disk was full".into()));
         }
 
-        self.kept.keep(account, password).await
+        self.kept.keep(transaction, account, password).await
     }
 
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError> {
@@ -268,7 +272,7 @@ impl Passwords for FailingOnce {
 }
 
 #[tokio::test]
-async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
+async fn a_reset_whose_new_password_cannot_be_kept_changes_nothing_and_the_same_code_finishes_it() {
     let wired = wiring::wired();
     let passwords = Arc::new(FailingOnce {
         kept: wired.secrets.clone(),
@@ -290,6 +294,10 @@ async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
         .await
         .expect("signing up should succeed");
     accounts
+        .verify(ADA, &wired.last_code_sent_to(ADA))
+        .await
+        .expect("the code sent should verify");
+    accounts
         .ask_to_reset_password(ADA)
         .await
         .expect("asking should succeed");
@@ -307,8 +315,9 @@ async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
     );
     assert!(
         accounts.sign_in(ADA, HER_PASSWORD).await.is_ok(),
-        "a reset broken off before the new password was kept leaves the old one"
+        "a reset whose new password was not kept is not told either, so the old one stands"
     );
+    assert!(accounts.sign_in(ADA, HER_NEW_PASSWORD).await.is_err());
 
     accounts
         .reset_password(ADA, &code, HER_NEW_PASSWORD)
@@ -390,7 +399,7 @@ async fn signing_in_the_moment_after_a_reset_counts() {
 }
 
 #[tokio::test]
-async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
+async fn a_reset_whose_new_password_cannot_be_kept_ends_no_session_until_it_is_finished() {
     let wired = wiring::wired();
     let passwords = Arc::new(FailingOnce {
         kept: wired.secrets.clone(),
@@ -428,12 +437,22 @@ async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
         .pop()
         .expect("a reset code should have been sent");
     passwords.armed.store(true, Ordering::SeqCst);
-    let _broken_off = accounts.reset_password(ADA, &code, HER_NEW_PASSWORD).await;
+    let broken_off = accounts.reset_password(ADA, &code, HER_NEW_PASSWORD).await;
+    let after_breaking_off = still_signed_in(&accounts, &theirs).await;
+    accounts
+        .reset_password(ADA, &code, HER_NEW_PASSWORD)
+        .await
+        .expect("the same code finishes the reset");
 
+    assert!(broken_off.is_err());
+    assert!(
+        after_breaking_off,
+        "the reset and its new password are one, so a reset not done ends nothing, as the old \
+         password still lets its holder in"
+    );
     assert!(
         !still_signed_in(&accounts, &theirs).await,
-        "the reset is told before its new password is kept, so whoever knew the old one is out \
-         even when keeping the new one fails"
+        "the reset done ends whoever knew the old password"
     );
 }
 

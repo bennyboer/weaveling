@@ -89,7 +89,7 @@ async fn a_further_command_lands_the_next_version() {
     let id = a_created_sample(&service).await;
 
     let landed = service
-        .execute(&id, retitled("The Silent Loom"), &an_author())
+        .execute(None, &id, retitled("The Silent Loom"), &an_author())
         .await
         .expect("updating should succeed");
 
@@ -122,7 +122,7 @@ async fn a_command_on_something_that_does_not_exist_is_not_found() {
     let missing = AggregateId::from("sample_early");
 
     let refused = service
-        .execute(&missing, retitled("Too soon"), &an_author())
+        .execute(None, &missing, retitled("Too soon"), &an_author())
         .await
         .expect_err("nothing exists to update");
 
@@ -176,7 +176,7 @@ async fn a_command_at_a_stale_version_is_refused() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute(&id, retitled("Second"), &an_author())
+        .execute(None, &id, retitled("Second"), &an_author())
         .await
         .expect("updating should succeed");
 
@@ -310,12 +310,12 @@ async fn commands_after_deletion_are_refused() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute(&id, SampleCommand::Delete, &an_author())
+        .execute(None, &id, SampleCommand::Delete, &an_author())
         .await
         .expect("deleting should succeed");
 
     let refused = service
-        .execute(&id, retitled("Too late"), &an_author())
+        .execute(None, &id, retitled("Too late"), &an_author())
         .await
         .expect_err("a deleted sample accepts nothing");
 
@@ -330,7 +330,7 @@ async fn an_older_version_can_still_be_read() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute(&id, retitled("The Silent Loom"), &an_author())
+        .execute(None, &id, retitled("The Silent Loom"), &an_author())
         .await
         .expect("updating should succeed");
 
@@ -360,7 +360,7 @@ async fn many_aggregates_do_not_interfere() {
         .await
         .expect("creating should succeed");
     service
-        .execute(&other, retitled("Apart"), &an_author())
+        .execute(None, &other, retitled("Apart"), &an_author())
         .await
         .expect("updating should succeed");
 
@@ -381,6 +381,7 @@ async fn one_command_may_land_several_events_at_once() {
 
     let landed = service
         .execute(
+            None,
             &id,
             SampleCommand::Rewrite {
                 title: "The Silent Loom".to_owned(),
@@ -408,6 +409,7 @@ async fn what_landed_carries_the_events_that_were_appended() {
 
     let landed = service
         .execute(
+            None,
             &id,
             SampleCommand::Rewrite {
                 title: "The Silent Loom".to_owned(),
@@ -445,13 +447,18 @@ async fn a_snapshot_is_not_something_that_happened() {
 
     for counted in 2..100 {
         service
-            .execute(&id, retitled(&format!("Title {counted}")), &an_author())
+            .execute(
+                None,
+                &id,
+                retitled(&format!("Title {counted}")),
+                &an_author(),
+            )
             .await
             .expect("updating should succeed");
     }
 
     let landed = service
-        .execute(&id, retitled("Title 100"), &an_author())
+        .execute(None, &id, retitled("Title 100"), &an_author())
         .await
         .expect("updating should succeed");
 
@@ -482,7 +489,12 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
 
     for counted in 2..100 {
         service
-            .execute(&id, retitled(&format!("Title {counted}")), &an_author())
+            .execute(
+                None,
+                &id,
+                retitled(&format!("Title {counted}")),
+                &an_author(),
+            )
             .await
             .expect("updating should succeed");
     }
@@ -497,7 +509,7 @@ async fn a_snapshot_is_taken_once_the_threshold_is_reached() {
     );
 
     let landed = service
-        .execute(&id, retitled("Title 100"), &an_author())
+        .execute(None, &id, retitled("Title 100"), &an_author())
         .await
         .expect("updating should succeed");
 
@@ -529,7 +541,7 @@ async fn collapsing_leaves_only_a_snapshot_behind() {
     let service = a_service(store.clone());
     let id = a_created_sample(&service).await;
     service
-        .execute(&id, retitled("The Silent Loom"), &an_author())
+        .execute(None, &id, retitled("The Silent Loom"), &an_author())
         .await
         .expect("updating should succeed");
 
@@ -562,7 +574,7 @@ async fn a_collapsed_aggregate_carries_on_from_the_snapshot() {
         .expect("collapsing should succeed");
 
     let landed = service
-        .execute(&id, retitled("After the compact"), &an_author())
+        .execute(None, &id, retitled("After the compact"), &an_author())
         .await
         .expect("a collapsed aggregate still accepts commands");
 
@@ -595,7 +607,7 @@ async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
     let service = a_workbench();
     let id = a_created_sample(&service).await;
     service
-        .execute(&id, retitled("Second"), &an_author())
+        .execute(None, &id, retitled("Second"), &an_author())
         .await
         .expect("updating should succeed");
     service
@@ -1018,7 +1030,12 @@ async fn a_sample_one_short_of_a_snapshot(
     let id = a_created_sample(&service).await;
     for counted in 2..100 {
         service
-            .execute(&id, retitled(&format!("Title {counted}")), &an_author())
+            .execute(
+                None,
+                &id,
+                retitled(&format!("Title {counted}")),
+                &an_author(),
+            )
             .await
             .expect("updating should succeed");
     }
@@ -1041,7 +1058,7 @@ async fn a_landed_command_whose_snapshot_was_overtaken_is_reported_landed_and_ap
     let service = over(RefusesSnapshots::as_outdated(store.clone()));
 
     let landed = service
-        .execute(&id, retitled("Title 100"), &an_author())
+        .execute(None, &id, retitled("Title 100"), &an_author())
         .await
         .expect("the command landed, whatever became of its snapshot");
     let titles = store
@@ -1068,12 +1085,12 @@ async fn a_snapshot_that_failed_is_taken_after_the_next_command() {
     let store = a_store();
     let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
     over(RefusesSnapshots::as_broken(store.clone()))
-        .execute(&id, retitled("Title 100"), &an_author())
+        .execute(None, &id, retitled("Title 100"), &an_author())
         .await
         .expect("the command landed, whatever became of its snapshot");
 
     let landed = a_service(store.clone())
-        .execute(&id, retitled("Title 101"), &an_author())
+        .execute(None, &id, retitled("Title 101"), &an_author())
         .await
         .expect("updating should succeed");
 
@@ -1094,6 +1111,130 @@ async fn a_snapshot_that_failed_is_taken_after_the_next_command() {
     );
 }
 
+async fn executed_within(
+    service: &EventSourcingService<Sample>,
+    command: SampleCommand,
+) -> (Transaction, Outcome<Sample>) {
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    let executed = service
+        .execute(
+            Some(&mut transaction),
+            &sample::a_sample(),
+            command,
+            &an_author(),
+        )
+        .await;
+
+    (transaction, executed)
+}
+
+async fn a_sample_begun(service: &EventSourcingService<Sample>) {
+    service
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
+        .await
+        .expect("the sample is created");
+}
+
+#[tokio::test]
+async fn a_command_executed_within_a_transaction_lands_when_its_owner_finishes_it() {
+    let service = a_workbench();
+    a_sample_begun(&service).await;
+
+    let (transaction, executed) = executed_within(&service, retitled("Rewoven")).await;
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    assert_eq!(
+        executed.expect("executing should succeed").version,
+        Version::of(2)
+    );
+    assert_eq!(
+        service
+            .latest(&sample::a_sample())
+            .await
+            .expect("it was begun")
+            .state
+            .title,
+        "Rewoven"
+    );
+}
+
+#[tokio::test]
+async fn a_command_executed_within_a_transaction_that_is_dropped_never_landed() {
+    let service = a_workbench();
+    a_sample_begun(&service).await;
+
+    let (transaction, executed) = executed_within(&service, retitled("Rewoven")).await;
+    executed.expect("executing should succeed");
+    drop(transaction);
+
+    let standing = service
+        .latest(&sample::a_sample())
+        .await
+        .expect("it was begun");
+    assert_eq!(
+        (standing.state.title.as_str(), standing.version),
+        ("The Loom", Version::of(1))
+    );
+}
+
+#[tokio::test]
+async fn a_command_executed_within_a_transaction_is_not_tried_again_but_left_to_its_owner() {
+    let store = a_store();
+    a_sample_begun(&a_service(store.clone())).await;
+    let balking = BalksOnce::wrapping(store, 1);
+    let service = EventSourcingService::<Sample>::new(
+        balking.clone(),
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    );
+
+    let (_, executed) = executed_within(&service, retitled("Rewoven")).await;
+
+    assert!(
+        matches!(
+            executed,
+            Err(ServiceError::Store(StoreError::Outdated { .. }))
+        ),
+        "only the owner of the transaction can try the whole of it again"
+    );
+}
+
+#[tokio::test]
+async fn a_command_executed_within_a_transaction_on_nothing_is_not_found() {
+    let service = a_workbench();
+
+    let (_, executed) = executed_within(&service, retitled("Rewoven")).await;
+
+    assert!(matches!(executed, Err(ServiceError::NotFound { .. })));
+}
+
+#[tokio::test]
+async fn a_command_executed_within_a_transaction_that_changes_nothing_appends_nothing() {
+    let service = a_workbench();
+    a_sample_begun(&service).await;
+    let shelved = || SampleCommand::Shelve("shelf_1".to_owned());
+    service
+        .execute(None, &sample::a_sample(), shelved(), &an_author())
+        .await
+        .expect("shelving should succeed");
+
+    let (transaction, executed) = executed_within(&service, shelved()).await;
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    let executed = executed.expect("executing should succeed");
+    assert!(executed.changed_nothing());
+    assert_eq!(executed.version, Version::of(2));
+}
+
 #[tokio::test]
 async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
     let store = a_store();
@@ -1110,6 +1251,7 @@ async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
 
     let landed = service
         .execute(
+            None,
             &sample::a_sample(),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
             &an_author(),
@@ -1138,6 +1280,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
 
     let refused = service
         .execute(
+            None,
             &sample::a_sample(),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
             &an_author(),
@@ -1284,6 +1427,7 @@ async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_coll
         commanded.spawn(async move {
             service
                 .execute(
+                    None,
                     &sample::a_sample(),
                     SampleCommand::UpdateTitle(format!("Rewoven {nth}")),
                     &an_author(),
@@ -1341,6 +1485,7 @@ async fn the_events_of_a_command_carry_the_context_the_command_left_the_aggregat
         .expect("the sample is created");
     let shelved = service
         .execute(
+            None,
             &sample::a_sample(),
             SampleCommand::Shelve("shelf_1".to_owned()),
             &an_author(),
@@ -1375,6 +1520,7 @@ async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_kee
         .expect("the sample is created");
     service
         .execute(
+            None,
             &sample::a_sample(),
             SampleCommand::Shelve("shelf_1".to_owned()),
             &an_author(),
@@ -1388,6 +1534,7 @@ async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_kee
         .expect("compacting should succeed");
     let retitled = service
         .execute(
+            None,
             &sample::a_sample(),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
             &an_author(),

@@ -3,7 +3,7 @@ use accounts_contract::{
 };
 use accounts_core::{
     AccountEvent, DeclineReason, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket,
-    InvitationTickets, InvitationToken, KIND,
+    InvitationToken, KIND,
 };
 use axum::http::StatusCode;
 use axum::http::header::{CONTENT_TYPE, COOKIE, SET_COOKIE};
@@ -21,7 +21,6 @@ const BOB: &str = "bob@example.com";
 async fn served_with_ada_invited() -> (Wired, TestServer) {
     let wired = wiring::wired();
     wired
-        .secrets
         .keep_ticket(
             &InvitationToken::presented(TOKEN).digest(),
             &InvitationTicket {

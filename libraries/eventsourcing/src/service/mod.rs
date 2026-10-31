@@ -125,32 +125,21 @@ where
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        let Some(transaction) = within else {
-            return self
-                .carry_out(aggregate, None, Version::ZERO, command, agent)
-                .await;
-        };
-        let Some(decided) = self.decided(aggregate, None, Version::ZERO, command, agent)? else {
-            return Ok(Appended::nothing_at(Version::ZERO));
-        };
-        self.store
-            .append(
-                transaction,
-                aggregate,
-                A::KIND,
-                Version::ZERO,
-                &decided.stream,
-            )
-            .await?;
-
-        Ok(Appended {
-            version: decided.landed,
-            events: decided.stream,
-        })
+        match within {
+            Some(transaction) => {
+                self.appended_within(transaction, aggregate, None, Version::ZERO, command, agent)
+                    .await
+            }
+            None => {
+                self.carry_out(aggregate, None, Version::ZERO, command, agent)
+                    .await
+            }
+        }
     }
 
     pub async fn execute(
         &self,
+        within: Option<&mut Transaction>,
         aggregate: &AggregateId,
         command: A::Command,
         agent: &Agent,
@@ -158,6 +147,25 @@ where
     where
         A::Command: Clone,
     {
+        if let Some(transaction) = within {
+            let standing = self
+                .standing(aggregate, None)
+                .await?
+                .ok_or_else(|| self.nothing_there(aggregate))?;
+            let reached = standing.version;
+
+            return self
+                .appended_within(
+                    transaction,
+                    aggregate,
+                    Some(standing),
+                    reached,
+                    command,
+                    agent,
+                )
+                .await;
+        }
+
         for attempt in 1..ATTEMPTS {
             match self.once(aggregate, command.clone(), agent).await {
                 Err(ServiceError::Store(StoreError::Outdated { .. })) => {
@@ -204,6 +212,28 @@ where
                     .await
             }
         }
+    }
+
+    async fn appended_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        standing: Option<Standing<A>>,
+        expected: Version,
+        command: A::Command,
+        agent: &Agent,
+    ) -> Outcome<A> {
+        let Some(decided) = self.decided(aggregate, standing, expected, command, agent)? else {
+            return Ok(Appended::nothing_at(expected));
+        };
+        self.store
+            .append(transaction, aggregate, A::KIND, expected, &decided.stream)
+            .await?;
+
+        Ok(Appended {
+            version: decided.landed,
+            events: decided.stream,
+        })
     }
 
     async fn carry_out(

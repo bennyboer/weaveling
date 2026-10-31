@@ -25,7 +25,6 @@ fn into_a_project(to: &str) -> InvitationTicket {
 
 async fn invited(wired: &Wired, ticket: &InvitationTicket) {
     wired
-        .secrets
         .keep_ticket(&InvitationToken::presented(TOKEN).digest(), ticket)
         .await
         .expect("keeping should succeed");
@@ -156,7 +155,6 @@ async fn a_token_nobody_was_given_or_one_withdrawn_takes_nothing_up() {
     let ada = signed_up(&wired, ADA).await;
     invited(&wired, &into_a_project(ADA)).await;
     wired
-        .secrets
         .forget_ticket("invitation_1")
         .await
         .expect("forgetting should succeed");
@@ -431,4 +429,57 @@ async fn an_invitation_to_the_instance_is_turned_down_by_the_link_or_by_its_id()
         );
         assert_eq!(still_there(wired).await, None);
     }
+}
+
+#[tokio::test]
+async fn a_take_up_whose_account_cannot_be_kept_leaves_the_invitation_to_be_taken_up_again() {
+    let wired = wiring::wired();
+    let ada = signed_up(&wired, ADA).await;
+    invited(&wired, &into_a_project(ADA)).await;
+
+    let refused = wired
+        .refusing_appends()
+        .take_up_invitation(&ada, TOKEN)
+        .await;
+
+    assert!(refused.is_err());
+    assert_eq!(
+        still_there(&wired).await,
+        Some(into_a_project(ADA)),
+        "a ticket used up for a take-up that never landed would leave the invitation open for good"
+    );
+    wired
+        .accounts
+        .take_up_invitation(&ada, TOKEN)
+        .await
+        .expect("the invitation is there to take up once the account can be kept");
+    assert_eq!(
+        taken_up(&wired, &ada).await,
+        vec!["invitation_1".to_owned()]
+    );
+}
+
+#[tokio::test]
+async fn a_turning_down_whose_account_cannot_be_kept_leaves_the_invitation_to_be_turned_down_again()
+{
+    let wired = wiring::wired();
+    let ada = signed_up(&wired, ADA).await;
+    invited(&wired, &into_a_project(ADA)).await;
+
+    let refused = wired
+        .refusing_appends()
+        .decline_invitation(&ada, TOKEN)
+        .await;
+
+    assert!(refused.is_err());
+    assert_eq!(still_there(&wired).await, Some(into_a_project(ADA)));
+    wired
+        .accounts
+        .decline_invitation(&ada, TOKEN)
+        .await
+        .expect("the invitation is there to turn down once the account can be kept");
+    assert_eq!(
+        turned_down(&wired, &ada).await,
+        vec!["invitation_1".to_owned()]
+    );
 }

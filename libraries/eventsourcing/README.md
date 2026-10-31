@@ -22,12 +22,12 @@ let ideas = EventSourcingService::<Idea>::new(
 let idea = AggregateId::from(&IdeaId::generate(clock.now()));
 
 ideas.begin(None, &idea, IdeaCommand::Capture { project, title }, &Agent::Local).await?;
-ideas.execute(&idea, IdeaCommand::Discard, &Agent::Local).await?;
+ideas.execute(None, &idea, IdeaCommand::Discard, &Agent::Local).await?;
 
 let Standing { state, version } = ideas.latest(&idea).await?;
 ```
 
-**Writes go through a transaction.** `append`, `prune_through` and `forget` take a [`transacting::Transaction`](../transacting/README.md), so a feature's other ports can join the same one; reads take none. The service is handed the feature's `Transactions` and opens one for each try of a command, unless `begin` is handed the caller's as `within`, when it appends in that one and leaves the commit and the snapshot to its owner; so a retry after a lost race is a whole new unit; the snapshot that may follow is best-effort in a transaction of its own after the commit, and `compact` takes its snapshot and prunes in one. A transaction that fails to begin or commit is a `StoreError::Backend`. In memory, a write registers how to undo it, and its messages are enqueued only once the transaction commits.
+**Writes go through a transaction.** `append`, `prune_through` and `forget` take a [`transacting::Transaction`](../transacting/README.md), so a feature's other ports can join the same one; reads take none. The service is handed the feature's `Transactions` and opens one for each try of a command, unless `begin` or `execute` is handed the caller's as `within`, when it appends in that one and leaves the commit, the snapshot and any retry after a lost race to its owner, who alone can try the whole unit again; a command within a transaction reads the stream as committed, so it does not see what that same transaction appended before it; so a retry after a lost race is a whole new unit; the snapshot that may follow is best-effort in a transaction of its own after the commit, and `compact` takes its snapshot and prunes in one. A transaction that fails to begin or commit is a `StoreError::Backend`. In memory, a write registers how to undo it, and its messages are enqueued only once the transaction commits.
 
 **A stream is collapsed or forgotten.** `prune_through` deletes the events a snapshot replaced and keeps the snapshot, so the stream keeps its history, however little, and cannot be begun again. `forget` deletes a stream whole, snapshot and all, for what no history is kept of (a notice put away long since); a stream forgotten could be begun again from version zero, so whoever forgets one makes sure nothing will. Both in memory, on PostgreSQL and on SQLite, one conformance suite for all three, which also proves that an append, a prune or a forget whose transaction is dropped leaves the stream and the outbox as they were.
 

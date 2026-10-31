@@ -1,8 +1,6 @@
 use accounts_contract::SignUpRequest;
 use accounts_contract::{SESSION_COOKIE, SignUpByInvitationRequest, SignedInDTO, refused, stage};
-use accounts_core::{
-    EmailAddress, InvitationScope, InvitationTicket, InvitationTickets, InvitationToken, SigningUp,
-};
+use accounts_core::{EmailAddress, InvitationScope, InvitationTicket, InvitationToken, SigningUp};
 use axum::http::StatusCode;
 use axum::http::header::{CONTENT_TYPE, SET_COOKIE};
 use axum_test::{TestResponse, TestServer};
@@ -17,7 +15,6 @@ const TOKEN: &str = "a token drawn by invitations";
 async fn invited() -> (Wired, TestServer) {
     let wired = wiring::wired();
     wired
-        .secrets
         .keep_ticket(
             &InvitationToken::presented(TOKEN).digest(),
             &InvitationTicket {
@@ -187,7 +184,6 @@ async fn a_plain_sign_up_where_signing_up_is_by_invitation_only_is_refused_by_it
 async fn an_owner_s_invitation_where_signing_up_is_by_invitation_only_is_refused_by_its_kind() {
     let wired = wiring::wired();
     wired
-        .secrets
         .keep_ticket(
             &InvitationToken::presented(TOKEN).digest(),
             &InvitationTicket {

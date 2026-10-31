@@ -190,6 +190,7 @@ impl Aggregate for Sample {
                 SampleEvent::DescriptionUpdated(description),
             ]),
             SampleCommand::Delete => Ok(vec![SampleEvent::Deleted]),
+            SampleCommand::Shelve(shelf) if self.shelf.as_ref() == Some(&shelf) => Ok(Vec::new()),
             SampleCommand::Shelve(shelf) => Ok(vec![SampleEvent::Shelved(shelf)]),
         }
     }

@@ -4,8 +4,11 @@ use accounts_core::{
     SecretsError, Session, SessionToken, Sessions, Stage, TokenDigest, VerificationCode,
     Verifications,
 };
+use std::ops::Deref;
+
 use futures_util::future;
 use time::OffsetDateTime;
+use transacting::{Transaction, Transactions};
 
 pub trait Secrets:
     EmailAddresses + InvitationTickets + Operators + Passwords + Sessions + Verifications
@@ -25,7 +28,141 @@ pub trait Workbench: Sized {
 
     fn store(&self) -> &Self::Store;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Store> {
+        Committing {
+            store: self.store(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, S> {
+    store: &'a S,
+    transactions: &'a dyn Transactions,
+}
+
+impl<S: Secrets> Committing<'_, S> {
+    pub async fn claim(
+        &self,
+        email: &EmailAddress,
+        account: &AccountId,
+        at: OffsetDateTime,
+    ) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store
+            .claim(&mut transaction, email, account, at)
+            .await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn take_over(
+        &self,
+        email: &EmailAddress,
+        from: &AccountId,
+        to: &AccountId,
+        claimed_before: OffsetDateTime,
+        at: OffsetDateTime,
+    ) -> Result<bool, SecretsError> {
+        let mut transaction = self.begun().await?;
+        let taken = self
+            .store
+            .take_over(&mut transaction, email, from, to, claimed_before, at)
+            .await?;
+        self.finished(transaction).await?;
+
+        Ok(taken)
+    }
+
+    pub async fn release(
+        &self,
+        email: &EmailAddress,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.release(&mut transaction, email, account).await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn keep(
+        &self,
+        account: &AccountId,
+        password: &PasswordHash,
+    ) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.keep(&mut transaction, account, password).await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn keep_ticket(
+        &self,
+        digest: &TokenDigest,
+        ticket: &InvitationTicket,
+    ) -> Result<bool, SecretsError> {
+        let mut transaction = self.begun().await?;
+        let kept = self
+            .store
+            .keep_ticket(&mut transaction, digest, ticket)
+            .await?;
+        self.finished(transaction).await?;
+
+        Ok(kept)
+    }
+
+    pub async fn take_ticket(
+        &self,
+        digest: &TokenDigest,
+    ) -> Result<Option<InvitationTicket>, SecretsError> {
+        let mut transaction = self.begun().await?;
+        let taken = self.store.take_ticket(&mut transaction, digest).await?;
+        self.finished(transaction).await?;
+
+        Ok(taken)
+    }
+
+    pub async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store
+            .forget_ticket(&mut transaction, invitation)
+            .await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.drop_ticket(&mut transaction, invitation).await?;
+
+        self.finished(transaction).await
+    }
+
+    async fn begun(&self) -> Result<Transaction, SecretsError> {
+        self.transactions
+            .begin()
+            .await
+            .map_err(|failure| SecretsError::Backend(Box::new(failure)))
+    }
+
+    async fn finished(&self, transaction: Transaction) -> Result<(), SecretsError> {
+        transaction
+            .finish()
+            .await
+            .map_err(|failure| SecretsError::Backend(Box::new(failure)))
+    }
+}
+
+impl<S> Deref for Committing<'_, S> {
+    type Target = S;
+
+    fn deref(&self) -> &S {
+        self.store
+    }
 }
 
 pub fn at(seconds: i64) -> OffsetDateTime {
@@ -48,7 +185,7 @@ fn pending(code: &str, until: i64) -> PendingVerification {
     }
 }
 
-pub async fn a_claimed_address_names_its_holder<S: Secrets>(secrets: &S) {
+pub async fn a_claimed_address_names_its_holder<S: Secrets>(secrets: &Committing<'_, S>) {
     let account = AccountId::generate(at(1_000));
     secrets
         .claim(&an_address("ada@example.com"), &account, at(1_000))
@@ -64,7 +201,7 @@ pub async fn a_claimed_address_names_its_holder<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn an_address_never_claimed_names_nobody<S: Secrets>(secrets: &S) {
+pub async fn an_address_never_claimed_names_nobody<S: Secrets>(secrets: &Committing<'_, S>) {
     assert_eq!(
         secrets
             .holder(&an_address("nobody@example.com"))
@@ -74,7 +211,7 @@ pub async fn an_address_never_claimed_names_nobody<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &S) {
+pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &Committing<'_, S>) {
     let first = AccountId::generate(at(1_000));
     secrets
         .claim(&an_address("ada@example.com"), &first, at(1_000))
@@ -100,7 +237,7 @@ pub async fn an_address_is_held_by_one_account_only<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn one_account_may_hold_two_addresses<S: Secrets>(secrets: &S) {
+pub async fn one_account_may_hold_two_addresses<S: Secrets>(secrets: &Committing<'_, S>) {
     let account = AccountId::generate(at(1_000));
     for address in ["ada@example.com", "ada@example.org"] {
         secrets
@@ -121,7 +258,7 @@ pub async fn one_account_may_hold_two_addresses<S: Secrets>(secrets: &S) {
     }
 }
 
-pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &S) {
+pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &Committing<'_, S>) {
     let first = AccountId::generate(at(1_000));
     secrets
         .claim(&an_address("ada@example.com"), &first, at(1_000))
@@ -150,7 +287,9 @@ pub async fn a_released_address_can_be_claimed_again<S: Secrets>(secrets: &S) {
         .expect("a released address is free again");
 }
 
-pub async fn an_address_is_released_only_by_the_account_holding_it<S: Secrets>(secrets: &S) {
+pub async fn an_address_is_released_only_by_the_account_holding_it<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let holder = AccountId::generate(at(1_000));
     secrets
         .claim(&an_address("ada@example.com"), &holder, at(1_000))
@@ -175,7 +314,9 @@ pub async fn an_address_is_released_only_by_the_account_holding_it<S: Secrets>(s
     );
 }
 
-pub async fn a_kept_password_is_read_back_until_a_new_one_replaces_it<S: Secrets>(secrets: &S) {
+pub async fn a_kept_password_is_read_back_until_a_new_one_replaces_it<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let account = AccountId::generate(at(1_000));
     secrets
         .keep(&account, &a_hash("$argon2id$first"))
@@ -197,7 +338,9 @@ pub async fn a_kept_password_is_read_back_until_a_new_one_replaces_it<S: Secrets
     );
 }
 
-pub async fn each_account_has_a_password_of_its_own_or_none<S: Secrets>(secrets: &S) {
+pub async fn each_account_has_a_password_of_its_own_or_none<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let ada = AccountId::generate(at(1_000));
     secrets
         .keep(&ada, &a_hash("$argon2id$ada"))
@@ -214,7 +357,9 @@ pub async fn each_account_has_a_password_of_its_own_or_none<S: Secrets>(secrets:
     );
 }
 
-pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Secrets>(secrets: &S) {
+pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(
@@ -251,7 +396,9 @@ pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Sec
     );
 }
 
-pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S: Secrets>(secrets: &S) {
+pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(
@@ -280,7 +427,7 @@ pub async fn attempts_beyond_the_limit_are_not_counted_but_exhausted<S: Secrets>
     );
 }
 
-pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &S) {
+pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &Committing<'_, S>) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(
@@ -307,7 +454,7 @@ pub async fn attempts_made_at_once_are_counted_one_by_one<S: Secrets>(secrets: &
     );
 }
 
-pub async fn a_new_code_starts_its_attempts_afresh<S: Secrets>(secrets: &S) {
+pub async fn a_new_code_starts_its_attempts_afresh<S: Secrets>(secrets: &Committing<'_, S>) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(
@@ -345,7 +492,7 @@ pub async fn a_new_code_starts_its_attempts_afresh<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn each_account_has_a_code_of_its_own<S: Secrets>(secrets: &S) {
+pub async fn each_account_has_a_code_of_its_own<S: Secrets>(secrets: &Committing<'_, S>) {
     let ada = AccountId::generate(at(1_000));
     let bea = AccountId::generate(at(2_000));
     secrets
@@ -375,7 +522,9 @@ pub async fn each_account_has_a_code_of_its_own<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S: Secrets>(secrets: &S) {
+pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let account = AccountId::generate(at(1_000));
 
     assert_eq!(
@@ -401,7 +550,7 @@ fn a_session(stage: Stage) -> Session {
 }
 
 pub async fn an_opened_session_is_found_by_its_tokens_digest_until_it_ends<S: Secrets>(
-    secrets: &S,
+    secrets: &Committing<'_, S>,
 ) {
     let token = SessionToken::drawn();
     let session = a_session(Stage::SignedIn);
@@ -431,7 +580,7 @@ pub async fn an_opened_session_is_found_by_its_tokens_digest_until_it_ends<S: Se
     );
 }
 
-pub async fn a_token_nobody_was_given_finds_nothing<S: Secrets>(secrets: &S) {
+pub async fn a_token_nobody_was_given_finds_nothing<S: Secrets>(secrets: &Committing<'_, S>) {
     secrets
         .open(&SessionToken::drawn().digest(), &a_session(Stage::SignedIn))
         .await
@@ -446,7 +595,7 @@ pub async fn a_token_nobody_was_given_finds_nothing<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn each_stage_is_kept_as_it_was<S: Secrets>(secrets: &S) {
+pub async fn each_stage_is_kept_as_it_was<S: Secrets>(secrets: &Committing<'_, S>) {
     for stage in [Stage::SignedIn, Stage::SecondFactorOwed] {
         let token = SessionToken::drawn();
         secrets
@@ -466,7 +615,7 @@ pub async fn each_stage_is_kept_as_it_was<S: Secrets>(secrets: &S) {
     }
 }
 
-pub async fn ending_one_session_leaves_the_others_open<S: Secrets>(secrets: &S) {
+pub async fn ending_one_session_leaves_the_others_open<S: Secrets>(secrets: &Committing<'_, S>) {
     let phone = SessionToken::drawn();
     let laptop = SessionToken::drawn();
     for token in [&phone, &laptop] {
@@ -494,7 +643,9 @@ pub async fn ending_one_session_leaves_the_others_open<S: Secrets>(secrets: &S) 
     );
 }
 
-pub async fn a_code_for_one_purpose_is_no_code_for_another<S: Secrets>(secrets: &S) {
+pub async fn a_code_for_one_purpose_is_no_code_for_another<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let account = AccountId::generate(at(1_000));
     secrets
         .issue(
@@ -542,7 +693,9 @@ fn a_digest(of: &str) -> TokenDigest {
     TokenDigest::kept(of.to_owned())
 }
 
-pub async fn a_kept_code_is_held_until_taken_and_no_other_is<S: Secrets>(secrets: &S) {
+pub async fn a_kept_code_is_held_until_taken_and_no_other_is<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     secrets
         .keep_code(&a_digest("first"))
         .await
@@ -575,7 +728,7 @@ pub async fn a_kept_code_is_held_until_taken_and_no_other_is<S: Secrets>(secrets
     );
 }
 
-pub async fn a_kept_code_is_taken_once<S: Secrets>(secrets: &S) {
+pub async fn a_kept_code_is_taken_once<S: Secrets>(secrets: &Committing<'_, S>) {
     secrets
         .keep_code(&a_digest("first"))
         .await
@@ -596,7 +749,7 @@ pub async fn a_kept_code_is_taken_once<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn only_the_latest_code_kept_can_be_taken<S: Secrets>(secrets: &S) {
+pub async fn only_the_latest_code_kept_can_be_taken<S: Secrets>(secrets: &Committing<'_, S>) {
     for digest in ["first", "second"] {
         secrets
             .keep_code(&a_digest(digest))
@@ -619,7 +772,7 @@ pub async fn only_the_latest_code_kept_can_be_taken<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn no_code_kept_takes_nothing<S: Secrets>(secrets: &S) {
+pub async fn no_code_kept_takes_nothing<S: Secrets>(secrets: &Committing<'_, S>) {
     assert!(
         !secrets
             .take_code(&a_digest("first"))
@@ -628,7 +781,7 @@ pub async fn no_code_kept_takes_nothing<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn a_code_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S) {
+pub async fn a_code_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &Committing<'_, S>) {
     secrets
         .keep_code(&a_digest("first"))
         .await
@@ -647,7 +800,7 @@ pub async fn a_code_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn nobody_is_an_operator_until_appointed<S: Secrets>(secrets: &S) {
+pub async fn nobody_is_an_operator_until_appointed<S: Secrets>(secrets: &Committing<'_, S>) {
     assert!(
         !secrets
             .any_appointed()
@@ -668,7 +821,7 @@ pub async fn nobody_is_an_operator_until_appointed<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn appointing_twice_is_appointing_once<S: Secrets>(secrets: &S) {
+pub async fn appointing_twice_is_appointing_once<S: Secrets>(secrets: &Committing<'_, S>) {
     let account = AccountId::generate(at(1_000));
 
     for _ in 0..2 {
@@ -696,9 +849,9 @@ async fn appointed(secrets: &impl Secrets, seconds: i64) -> AccountId {
     account
 }
 
-pub async fn one_of_two_operators_is_dismissed<S: Secrets>(secrets: &S) {
-    let ada = appointed(secrets, 1_000).await;
-    let grace = appointed(secrets, 2_000).await;
+pub async fn one_of_two_operators_is_dismissed<S: Secrets>(secrets: &Committing<'_, S>) {
+    let ada = appointed(secrets.store, 1_000).await;
+    let grace = appointed(secrets.store, 2_000).await;
 
     assert_eq!(
         secrets
@@ -724,8 +877,8 @@ pub async fn one_of_two_operators_is_dismissed<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn the_last_operator_is_kept<S: Secrets>(secrets: &S) {
-    let ada = appointed(secrets, 1_000).await;
+pub async fn the_last_operator_is_kept<S: Secrets>(secrets: &Committing<'_, S>) {
+    let ada = appointed(secrets.store, 1_000).await;
 
     assert_eq!(
         secrets
@@ -742,9 +895,9 @@ pub async fn the_last_operator_is_kept<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn someone_never_appointed_is_not_dismissed<S: Secrets>(secrets: &S) {
-    let _ada = appointed(secrets, 1_000).await;
-    let _grace = appointed(secrets, 2_000).await;
+pub async fn someone_never_appointed_is_not_dismissed<S: Secrets>(secrets: &Committing<'_, S>) {
+    let _ada = appointed(secrets.store, 1_000).await;
+    let _grace = appointed(secrets.store, 2_000).await;
 
     assert_eq!(
         secrets
@@ -755,10 +908,10 @@ pub async fn someone_never_appointed_is_not_dismissed<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn operators_dismissed_all_at_once_leave_one<S: Secrets>(secrets: &S) {
+pub async fn operators_dismissed_all_at_once_leave_one<S: Secrets>(secrets: &Committing<'_, S>) {
     let mut everyone = Vec::new();
     for seconds in 1..=10 {
-        everyone.push(appointed(secrets, seconds * 1_000).await);
+        everyone.push(appointed(secrets.store, seconds * 1_000).await);
     }
 
     let dismissals =
@@ -800,7 +953,7 @@ fn a_ticket(invitation: &str, to: &str) -> InvitationTicket {
 }
 
 pub async fn a_project_s_ticket_is_kept_with_its_project_and_who_issued_it<S: Secrets>(
-    secrets: &S,
+    secrets: &Committing<'_, S>,
 ) {
     let into_a_project = InvitationTicket {
         scope: InvitationScope::Project {
@@ -832,7 +985,7 @@ pub async fn a_project_s_ticket_is_kept_with_its_project_and_who_issued_it<S: Se
 }
 
 pub async fn a_ticket_still_open_is_found_by_its_invitation_to_take_it_up_signed_in<S: Secrets>(
-    secrets: &S,
+    secrets: &Committing<'_, S>,
 ) {
     for (digest, invitation, to) in [
         ("ada's", "invitation_ada", "ada@example.com"),
@@ -869,7 +1022,7 @@ pub async fn a_ticket_still_open_is_found_by_its_invitation_to_take_it_up_signed
     assert_eq!(digest_of("invitation_nobody").await, None);
 }
 
-pub async fn a_found_ticket_is_left_to_be_taken<S: Secrets>(secrets: &S) {
+pub async fn a_found_ticket_is_left_to_be_taken<S: Secrets>(secrets: &Committing<'_, S>) {
     secrets
         .keep_ticket(
             &a_digest("ada's"),
@@ -929,7 +1082,7 @@ pub async fn a_found_ticket_is_left_to_be_taken<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn a_kept_ticket_is_taken_once_and_whole<S: Secrets>(secrets: &S) {
+pub async fn a_kept_ticket_is_taken_once_and_whole<S: Secrets>(secrets: &Committing<'_, S>) {
     assert!(
         secrets
             .keep_ticket(
@@ -965,7 +1118,7 @@ pub async fn a_kept_ticket_is_taken_once_and_whole<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn a_digest_nobody_was_given_takes_no_ticket<S: Secrets>(secrets: &S) {
+pub async fn a_digest_nobody_was_given_takes_no_ticket<S: Secrets>(secrets: &Committing<'_, S>) {
     secrets
         .keep_ticket(
             &a_digest("ada's"),
@@ -983,7 +1136,9 @@ pub async fn a_digest_nobody_was_given_takes_no_ticket<S: Secrets>(secrets: &S) 
     );
 }
 
-pub async fn a_ticket_kept_again_is_kept_once_as_it_first_was<S: Secrets>(secrets: &S) {
+pub async fn a_ticket_kept_again_is_kept_once_as_it_first_was<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     secrets
         .keep_ticket(
             &a_digest("ada's"),
@@ -1028,7 +1183,9 @@ pub async fn a_ticket_kept_again_is_kept_once_as_it_first_was<S: Secrets>(secret
     );
 }
 
-pub async fn a_forgotten_invitation_leaves_no_ticket_and_the_others_kept<S: Secrets>(secrets: &S) {
+pub async fn a_forgotten_invitation_leaves_no_ticket_and_the_others_kept<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     secrets
         .keep_ticket(
             &a_digest("ada's"),
@@ -1069,7 +1226,7 @@ pub async fn a_forgotten_invitation_leaves_no_ticket_and_the_others_kept<S: Secr
     );
 }
 
-pub async fn a_ticket_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S) {
+pub async fn a_ticket_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &Committing<'_, S>) {
     secrets
         .keep_ticket(
             &a_digest("ada's"),
@@ -1091,7 +1248,9 @@ pub async fn a_ticket_taken_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S)
     );
 }
 
-pub async fn an_invitation_kept_again_by_another_digest_keeps_its_first<S: Secrets>(secrets: &S) {
+pub async fn an_invitation_kept_again_by_another_digest_keeps_its_first<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     secrets
         .keep_ticket(
             &a_digest("ada's"),
@@ -1126,7 +1285,7 @@ pub async fn an_invitation_kept_again_by_another_digest_keeps_its_first<S: Secre
     );
 }
 
-pub async fn a_ticket_taken_is_not_kept_again<S: Secrets>(secrets: &S) {
+pub async fn a_ticket_taken_is_not_kept_again<S: Secrets>(secrets: &Committing<'_, S>) {
     let ticket = a_ticket("invitation_ada", "ada@example.com");
     secrets
         .keep_ticket(&a_digest("ada's"), &ticket)
@@ -1154,7 +1313,7 @@ pub async fn a_ticket_taken_is_not_kept_again<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn a_ticket_forgotten_is_not_kept_again<S: Secrets>(secrets: &S) {
+pub async fn a_ticket_forgotten_is_not_kept_again<S: Secrets>(secrets: &Committing<'_, S>) {
     let ticket = a_ticket("invitation_ada", "ada@example.com");
     secrets
         .keep_ticket(&a_digest("ada's"), &ticket)
@@ -1182,7 +1341,9 @@ pub async fn a_ticket_forgotten_is_not_kept_again<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn an_invitation_forgotten_before_its_ticket_came_keeps_none<S: Secrets>(secrets: &S) {
+pub async fn an_invitation_forgotten_before_its_ticket_came_keeps_none<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     secrets
         .forget_ticket("invitation_ada")
         .await
@@ -1208,7 +1369,7 @@ pub async fn an_invitation_forgotten_before_its_ticket_came_keeps_none<S: Secret
 }
 
 pub async fn a_claim_made_before_the_moment_given_is_taken_over_from_its_holder<S: Secrets>(
-    secrets: &S,
+    secrets: &Committing<'_, S>,
 ) {
     let abandoned = AccountId::generate(at(1_000));
     let taking = AccountId::generate(at(3_000));
@@ -1238,7 +1399,7 @@ pub async fn a_claim_made_before_the_moment_given_is_taken_over_from_its_holder<
     );
 }
 
-pub async fn a_claim_made_since_the_moment_given_is_kept<S: Secrets>(secrets: &S) {
+pub async fn a_claim_made_since_the_moment_given_is_kept<S: Secrets>(secrets: &Committing<'_, S>) {
     let recent = AccountId::generate(at(1_000));
     secrets
         .claim(&an_address("ada@example.com"), &recent, at(1_000))
@@ -1269,7 +1430,9 @@ pub async fn a_claim_made_since_the_moment_given_is_kept<S: Secrets>(secrets: &S
     );
 }
 
-pub async fn a_claim_is_taken_over_only_from_the_holder_named<S: Secrets>(secrets: &S) {
+pub async fn a_claim_is_taken_over_only_from_the_holder_named<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let holder = AccountId::generate(at(1_000));
     secrets
         .claim(&an_address("ada@example.com"), &holder, at(1_000))
@@ -1309,7 +1472,7 @@ pub async fn a_claim_is_taken_over_only_from_the_holder_named<S: Secrets>(secret
     );
 }
 
-pub async fn a_claim_taken_over_is_new_from_then<S: Secrets>(secrets: &S) {
+pub async fn a_claim_taken_over_is_new_from_then<S: Secrets>(secrets: &Committing<'_, S>) {
     let abandoned = AccountId::generate(at(1_000));
     let taking = AccountId::generate(at(3_000));
     secrets
@@ -1342,7 +1505,9 @@ pub async fn a_claim_taken_over_is_new_from_then<S: Secrets>(secrets: &S) {
     );
 }
 
-pub async fn a_claim_taken_over_by_many_at_once_goes_to_one<S: Secrets>(secrets: &S) {
+pub async fn a_claim_taken_over_by_many_at_once_goes_to_one<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     let abandoned = AccountId::generate(at(1_000));
     secrets
         .claim(&an_address("ada@example.com"), &abandoned, at(1_000))
@@ -1368,7 +1533,9 @@ pub async fn a_claim_taken_over_by_many_at_once_goes_to_one<S: Secrets>(secrets:
     );
 }
 
-pub async fn a_dropped_ticket_leaves_nothing_behind_open_ended_or_marked<S: Secrets>(secrets: &S) {
+pub async fn a_dropped_ticket_leaves_nothing_behind_open_ended_or_marked<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
     secrets
         .keep_ticket(
             &a_digest("ada's"),
@@ -1441,6 +1608,260 @@ pub async fn a_dropped_ticket_leaves_nothing_behind_open_ended_or_marked<S: Secr
     );
 }
 
+pub async fn a_ticket_kept_in_a_dropped_transaction_was_never_kept<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    let mut transaction = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .keep_ticket(
+            &mut transaction,
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        secrets
+            .find_ticket(&a_digest("ada's"))
+            .await
+            .expect("finding should succeed"),
+        None
+    );
+    assert!(
+        secrets
+            .keep_ticket(
+                &a_digest("ada's"),
+                &a_ticket("invitation_ada", "ada@example.com")
+            )
+            .await
+            .expect("keeping should succeed"),
+        "kept afresh, as a redelivery after a failure must be"
+    );
+}
+
+pub async fn a_ticket_taken_in_a_dropped_transaction_is_still_open<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+    let mut transaction = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .take_ticket(&mut transaction, &a_digest("ada's"))
+        .await
+        .expect("taking should succeed")
+        .expect("the ticket is open");
+
+    drop(transaction);
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed")
+            .map(|ticket| ticket.invitation),
+        Some("invitation_ada".to_owned()),
+        "a take rolled back leaves the ticket to be taken again"
+    );
+}
+
+pub async fn a_ticket_forgotten_or_dropped_in_a_dropped_transaction_is_still_there<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+    let mut forgetting = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .forget_ticket(&mut forgetting, "invitation_ada")
+        .await
+        .expect("forgetting should succeed");
+    drop(forgetting);
+    let mut dropping = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .drop_ticket(&mut dropping, "invitation_ada")
+        .await
+        .expect("dropping should succeed");
+
+    drop(dropping);
+
+    assert_eq!(
+        secrets
+            .digest_of_ticket("invitation_ada")
+            .await
+            .expect("finding should succeed"),
+        Some(a_digest("ada's"))
+    );
+}
+
+pub async fn a_used_ticket_dropped_in_a_dropped_transaction_stays_used<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    secrets
+        .keep_ticket(
+            &a_digest("ada's"),
+            &a_ticket("invitation_ada", "ada@example.com"),
+        )
+        .await
+        .expect("keeping should succeed");
+    secrets
+        .take_ticket(&a_digest("ada's"))
+        .await
+        .expect("taking should succeed")
+        .expect("the ticket is open");
+    let mut transaction = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .drop_ticket(&mut transaction, "invitation_ada")
+        .await
+        .expect("dropping should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        secrets
+            .take_ticket(&a_digest("ada's"))
+            .await
+            .expect("taking should succeed"),
+        None,
+        "a drop rolled back leaves a used ticket used"
+    );
+}
+
+pub async fn an_address_claimed_or_taken_over_in_a_dropped_transaction_is_held_as_before<
+    S: Secrets,
+>(
+    secrets: &Committing<'_, S>,
+) {
+    let (ada, bob) = (
+        AccountId::generate(at(1_000)),
+        AccountId::generate(at(1_001)),
+    );
+    let mut claiming = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .claim(
+            &mut claiming,
+            &an_address("ada@example.com"),
+            &ada,
+            at(1_000),
+        )
+        .await
+        .expect("claiming should succeed");
+    drop(claiming);
+    let unclaimed = secrets
+        .holder(&an_address("ada@example.com"))
+        .await
+        .expect("reading should succeed");
+    secrets
+        .claim(&an_address("ada@example.com"), &ada, at(1_000))
+        .await
+        .expect("claiming should succeed");
+    let mut taking_over = secrets.begun().await.expect("beginning should succeed");
+    let taken = secrets
+        .store
+        .take_over(
+            &mut taking_over,
+            &an_address("ada@example.com"),
+            &ada,
+            &bob,
+            at(2_000),
+            at(2_000),
+        )
+        .await
+        .expect("taking over should succeed");
+
+    drop(taking_over);
+
+    assert_eq!(unclaimed, None);
+    assert!(taken);
+    assert_eq!(
+        secrets
+            .holder(&an_address("ada@example.com"))
+            .await
+            .expect("reading should succeed"),
+        Some(ada),
+        "a take-over rolled back leaves the claim with whoever held it"
+    );
+}
+
+pub async fn an_address_released_or_a_password_kept_in_a_dropped_transaction_is_as_before<
+    S: Secrets,
+>(
+    secrets: &Committing<'_, S>,
+) {
+    let ada = AccountId::generate(at(1_000));
+    secrets
+        .claim(&an_address("ada@example.com"), &ada, at(1_000))
+        .await
+        .expect("claiming should succeed");
+    secrets
+        .keep(&ada, &a_hash("$argon2id$first"))
+        .await
+        .expect("keeping should succeed");
+    let mut releasing = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .release(&mut releasing, &an_address("ada@example.com"), &ada)
+        .await
+        .expect("releasing should succeed");
+    drop(releasing);
+    let mut keeping = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .keep(&mut keeping, &ada, &a_hash("$argon2id$second"))
+        .await
+        .expect("keeping should succeed");
+
+    drop(keeping);
+
+    assert_eq!(
+        secrets
+            .holder(&an_address("ada@example.com"))
+            .await
+            .expect("reading should succeed"),
+        Some(ada)
+    );
+    assert_eq!(
+        secrets.of(&ada).await.expect("reading should succeed"),
+        Some(a_hash("$argon2id$first"))
+    );
+}
+
+pub async fn a_first_password_kept_in_a_dropped_transaction_was_never_kept<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    let ada = AccountId::generate(at(1_000));
+    let mut keeping = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .keep(&mut keeping, &ada, &a_hash("$argon2id$first"))
+        .await
+        .expect("keeping should succeed");
+
+    drop(keeping);
+
+    assert_eq!(
+        secrets.of(&ada).await.expect("reading should succeed"),
+        None
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -1449,7 +1870,7 @@ macro_rules! secrets_conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.store()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -1459,6 +1880,34 @@ macro_rules! secrets_conformance_case {
 macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::secrets_conformance_case!($workbench, a_kept_ticket_is_taken_once_and_whole);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            an_address_claimed_or_taken_over_in_a_dropped_transaction_is_held_as_before
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            an_address_released_or_a_password_kept_in_a_dropped_transaction_is_as_before
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_first_password_kept_in_a_dropped_transaction_was_never_kept
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_used_ticket_dropped_in_a_dropped_transaction_stays_used
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_ticket_kept_in_a_dropped_transaction_was_never_kept
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_ticket_taken_in_a_dropped_transaction_is_still_open
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_ticket_forgotten_or_dropped_in_a_dropped_transaction_is_still_there
+        );
         $crate::secrets_conformance_case!($workbench, a_digest_nobody_was_given_takes_no_ticket);
         $crate::secrets_conformance_case!(
             $workbench,

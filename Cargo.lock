@@ -3652,6 +3652,7 @@ dependencies = [
  "weaveling-accounts-core",
  "weaveling-clock",
  "weaveling-test-harness",
+ "weaveling-transacting",
 ]
 
 [[package]]

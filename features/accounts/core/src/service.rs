@@ -4,7 +4,7 @@ use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
 use mailing::{Mail, Mailer};
 use time::Duration;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::account::{Account, AccountCommand, AccountEvent};
 use crate::catalog::{AccountCatalog, AccountSummary};
@@ -38,6 +38,7 @@ pub struct SignedIn {
 #[derive(Clone)]
 pub struct AccountService {
     events: Arc<EventSourcingService<Account>>,
+    transactions: Arc<dyn Transactions>,
     email_addresses: Arc<dyn EmailAddresses>,
     passwords: Arc<dyn Passwords>,
     verifications: Arc<dyn Verifications>,
@@ -73,9 +74,10 @@ impl AccountService {
         Self {
             events: Arc::new(EventSourcingService::new(
                 store,
-                transactions,
+                transactions.clone(),
                 clock.clone(),
             )),
+            transactions,
             email_addresses,
             passwords,
             verifications,
@@ -147,24 +149,21 @@ impl AccountService {
 
         let hashed = password.hashed();
         let id = AccountId::generate(self.clock.now());
-        if !self.claimed(&email, &id).await? {
+        let mut transaction = self.begun().await?;
+        if !self.claimed(&mut transaction, &email, &id).await? {
+            drop(transaction);
             return self.tell_already_signed_up(&email).await;
         }
-
-        if let Err(refused) = self
-            .events
+        self.events
             .begin(
-                None,
+                Some(&mut transaction),
                 &AggregateId::from(&id),
                 AccountCommand::SignUp(email.clone(), name),
                 &id.acting(),
             )
-            .await
-        {
-            self.email_addresses.release(&email, &id).await?;
-            return Err(refused.into());
-        }
-        self.passwords.keep(&id, &hashed).await?;
+            .await?;
+        self.passwords.keep(&mut transaction, &id, &hashed).await?;
+        self.finished(transaction).await?;
 
         self.mail_code(&id, &email, CodePurpose::ConfirmAddress)
             .await
@@ -188,7 +187,12 @@ impl AccountService {
         if self.signing_up == SigningUp::ByInvitation && !found.by_an_operator {
             return Err(AccountsError::InvitationNotByAnOperator);
         }
-        let Some(ticket) = self.invitation_tickets.take_ticket(&digest).await? else {
+        let mut transaction = self.begun().await?;
+        let Some(ticket) = self
+            .invitation_tickets
+            .take_ticket(&mut transaction, &digest)
+            .await?
+        else {
             return Err(AccountsError::InvitationInvalid);
         };
         if self.clock.now() > ticket.until {
@@ -196,13 +200,12 @@ impl AccountService {
         }
 
         let id = AccountId::generate(self.clock.now());
-        if !self.claimed(&ticket.to, &id).await? {
+        if !self.claimed(&mut transaction, &ticket.to, &id).await? {
             return Err(AccountsError::EmailAddressHasAccount);
         }
-        if let Err(refused) = self
-            .events
+        self.events
             .begin(
-                None,
+                Some(&mut transaction),
                 &AggregateId::from(&id),
                 AccountCommand::SignUpByInvitation {
                     email: ticket.to.clone(),
@@ -211,12 +214,9 @@ impl AccountService {
                 },
                 &id.acting(),
             )
-            .await
-        {
-            self.email_addresses.release(&ticket.to, &id).await?;
-            return Err(refused.into());
-        }
-        self.passwords.keep(&id, &hashed).await?;
+            .await?;
+        self.passwords.keep(&mut transaction, &id, &hashed).await?;
+        self.finished(transaction).await?;
         let account = self.get(&id).await?.state;
 
         self.opened(id, account).await
@@ -302,10 +302,11 @@ impl AccountService {
 
     async fn claimed_ticket(
         &self,
+        transaction: &mut Transaction,
         digest: &TokenDigest,
     ) -> Result<InvitationTicket, AccountsError> {
         self.invitation_tickets
-            .take_ticket(digest)
+            .take_ticket(transaction, digest)
             .await?
             .ok_or(AccountsError::InvitationInvalid)
     }
@@ -319,11 +320,12 @@ impl AccountService {
         if found.scope == InvitationScope::Instance {
             return Err(AccountsError::InvitationInvalid);
         }
-        let ticket = self.claimed_ticket(digest).await?;
-
+        let mut transaction = self.begun().await?;
+        let ticket = self.claimed_ticket(&mut transaction, digest).await?;
         let _landed = self
             .events
             .execute(
+                Some(&mut transaction),
                 &AggregateId::from(id),
                 AccountCommand::TakeUpInvitation {
                     invitation: ticket.invitation.clone(),
@@ -331,16 +333,18 @@ impl AccountService {
                 &id.acting(),
             )
             .await?;
+        self.finished(transaction).await?;
 
         Ok(ticket)
     }
 
     async fn turned_down(&self, id: &AccountId, digest: &TokenDigest) -> Result<(), AccountsError> {
-        let ticket = self.claimed_ticket(digest).await?;
-
+        let mut transaction = self.begun().await?;
+        let ticket = self.claimed_ticket(&mut transaction, digest).await?;
         let _landed = self
             .events
             .execute(
+                Some(&mut transaction),
                 &AggregateId::from(id),
                 AccountCommand::DeclineInvitation {
                     invitation: ticket.invitation,
@@ -350,7 +354,7 @@ impl AccountService {
             )
             .await?;
 
-        Ok(())
+        self.finished(transaction).await
     }
 
     pub async fn keep_invitation_ticket(
@@ -358,21 +362,35 @@ impl AccountService {
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<(), AccountsError> {
-        if !self.invitation_tickets.keep_ticket(digest, ticket).await?
-            || ticket.scope != InvitationScope::Instance
-        {
-            return Ok(());
+        let mut transaction = self.begun().await?;
+        let fresh = self
+            .invitation_tickets
+            .keep_ticket(&mut transaction, digest, ticket)
+            .await?;
+        if fresh && ticket.scope == InvitationScope::Instance {
+            self.declined_for_an_account(&mut transaction, ticket)
+                .await?;
         }
+
+        self.finished(transaction).await
+    }
+
+    async fn declined_for_an_account(
+        &self,
+        transaction: &mut Transaction,
+        ticket: &InvitationTicket,
+    ) -> Result<(), AccountsError> {
         let Some((id, _)) = self.whose(&ticket.to).await? else {
             return Ok(());
         };
 
         self.invitation_tickets
-            .forget_ticket(&ticket.invitation)
+            .forget_ticket(transaction, &ticket.invitation)
             .await?;
         let _landed = self
             .events
             .execute(
+                Some(transaction),
                 &AggregateId::from(&id),
                 AccountCommand::DeclineInvitation {
                     invitation: ticket.invitation.clone(),
@@ -386,11 +404,35 @@ impl AccountService {
     }
 
     pub async fn forget_invitation_ticket(&self, invitation: &str) -> Result<(), AccountsError> {
-        Ok(self.invitation_tickets.forget_ticket(invitation).await?)
+        let mut transaction = self.begun().await?;
+        self.invitation_tickets
+            .forget_ticket(&mut transaction, invitation)
+            .await?;
+
+        self.finished(transaction).await
     }
 
     pub async fn drop_invitation_ticket(&self, invitation: &str) -> Result<(), AccountsError> {
-        Ok(self.invitation_tickets.drop_ticket(invitation).await?)
+        let mut transaction = self.begun().await?;
+        self.invitation_tickets
+            .drop_ticket(&mut transaction, invitation)
+            .await?;
+
+        self.finished(transaction).await
+    }
+
+    async fn begun(&self) -> Result<Transaction, AccountsError> {
+        self.transactions
+            .begin()
+            .await
+            .map_err(|failure| SecretsError::Backend(Box::new(failure)).into())
+    }
+
+    async fn finished(&self, transaction: Transaction) -> Result<(), AccountsError> {
+        transaction
+            .finish()
+            .await
+            .map_err(|failure| SecretsError::Backend(Box::new(failure)).into())
     }
 
     pub async fn send_code_again(&self, email: &str) -> Result<(), AccountsError> {
@@ -418,6 +460,7 @@ impl AccountService {
         let _landed = self
             .events
             .execute(
+                None,
                 &AggregateId::from(&id),
                 AccountCommand::Verify,
                 &id.acting(),
@@ -455,15 +498,18 @@ impl AccountService {
         self.checked_code(&id, CodePurpose::ResetPassword, code)
             .await?;
 
+        let mut transaction = self.begun().await?;
         let _landed = self
             .events
             .execute(
+                Some(&mut transaction),
                 &AggregateId::from(&id),
                 AccountCommand::ResetPassword,
                 &id.acting(),
             )
             .await?;
-        self.passwords.keep(&id, &hashed).await?;
+        self.passwords.keep(&mut transaction, &id, &hashed).await?;
+        self.finished(transaction).await?;
         self.verifications
             .close(&id, CodePurpose::ResetPassword)
             .await?;
@@ -601,6 +647,7 @@ impl AccountService {
         let _landed = self
             .events
             .execute(
+                None,
                 &AggregateId::from(id),
                 AccountCommand::BecomeOperator,
                 &id.acting(),
@@ -622,6 +669,7 @@ impl AccountService {
         let _landed = self
             .events
             .execute(
+                None,
                 &AggregateId::from(account),
                 AccountCommand::Lock(LockKind::Operator, reason),
                 &by.acting(),
@@ -635,6 +683,7 @@ impl AccountService {
         let _landed = self
             .events
             .execute(
+                None,
                 &AggregateId::from(account),
                 AccountCommand::Unlock(LockKind::Operator),
                 &by.acting(),
@@ -660,6 +709,7 @@ impl AccountService {
         let _landed = self
             .events
             .execute(
+                None,
                 &AggregateId::from(account),
                 AccountCommand::BecomeOperator,
                 &by.acting(),
@@ -682,6 +732,7 @@ impl AccountService {
         let _landed = self
             .events
             .execute(
+                None,
                 &AggregateId::from(account),
                 AccountCommand::StopBeingOperator,
                 &by.acting(),
@@ -744,9 +795,18 @@ impl AccountService {
         Ok(())
     }
 
-    async fn claimed(&self, email: &EmailAddress, id: &AccountId) -> Result<bool, AccountsError> {
+    async fn claimed(
+        &self,
+        transaction: &mut Transaction,
+        email: &EmailAddress,
+        id: &AccountId,
+    ) -> Result<bool, AccountsError> {
         let now = self.clock.now();
-        match self.email_addresses.claim(email, id, now).await {
+        match self
+            .email_addresses
+            .claim(transaction, email, id, now)
+            .await
+        {
             Err(SecretsError::Taken) => {}
             claimed => {
                 claimed?;
@@ -760,7 +820,14 @@ impl AccountService {
         match self.get(&holder).await {
             Err(AccountsError::Events(ServiceError::NotFound { .. })) => Ok(self
                 .email_addresses
-                .take_over(email, &holder, id, now - CLAIM_ABANDONED_AFTER, now)
+                .take_over(
+                    transaction,
+                    email,
+                    &holder,
+                    id,
+                    now - CLAIM_ABANDONED_AFTER,
+                    now,
+                )
                 .await?),
             Ok(_) => Ok(false),
             Err(failed) => Err(failed),

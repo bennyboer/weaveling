@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationTicket,
@@ -8,6 +8,7 @@ use accounts_core::{
 };
 use async_trait::async_trait;
 use time::OffsetDateTime;
+use transacting::{Transaction, memory};
 
 #[derive(Default)]
 struct Kept {
@@ -23,12 +24,25 @@ struct Kept {
 
 #[derive(Default)]
 pub struct InMemorySecrets {
-    kept: Mutex<Kept>,
+    kept: Arc<Mutex<Kept>>,
 }
 
 impl InMemorySecrets {
     fn kept(&self) -> MutexGuard<'_, Kept> {
         self.kept.lock().expect("the secrets are not poisoned")
+    }
+
+    fn undo_on_rollback(
+        &self,
+        transaction: &mut Transaction,
+        restore: impl FnOnce(&mut Kept) + Send + 'static,
+    ) -> Result<(), SecretsError> {
+        let kept = self.kept.clone();
+
+        memory::undo_on_rollback(transaction, move || {
+            restore(&mut kept.lock().expect("the secrets are not poisoned"));
+        })
+        .map_err(|failure| SecretsError::Backend(Box::new(failure)))
     }
 }
 
@@ -36,6 +50,7 @@ impl InMemorySecrets {
 impl EmailAddresses for InMemorySecrets {
     async fn claim(
         &self,
+        transaction: &mut Transaction,
         email: &EmailAddress,
         account: &AccountId,
         at: OffsetDateTime,
@@ -44,6 +59,10 @@ impl EmailAddresses for InMemorySecrets {
         if kept.email_addresses.contains_key(email) {
             return Err(SecretsError::Taken);
         }
+        let claimed = email.clone();
+        self.undo_on_rollback(transaction, move |kept| {
+            kept.email_addresses.remove(&claimed);
+        })?;
         kept.email_addresses.insert(email.clone(), (*account, at));
 
         Ok(())
@@ -51,6 +70,7 @@ impl EmailAddresses for InMemorySecrets {
 
     async fn take_over(
         &self,
+        transaction: &mut Transaction,
         email: &EmailAddress,
         from: &AccountId,
         to: &AccountId,
@@ -58,9 +78,13 @@ impl EmailAddresses for InMemorySecrets {
         at: OffsetDateTime,
     ) -> Result<bool, SecretsError> {
         let mut kept = self.kept();
-        match kept.email_addresses.get_mut(email) {
+        match kept.email_addresses.get(email).copied() {
             Some(claim) if claim.0 == *from && claim.1 < claimed_before => {
-                *claim = (*to, at);
+                let claimed = email.clone();
+                self.undo_on_rollback(transaction, move |kept| {
+                    kept.email_addresses.insert(claimed, claim);
+                })?;
+                kept.email_addresses.insert(email.clone(), (*to, at));
                 Ok(true)
             }
             _ => Ok(false),
@@ -75,11 +99,25 @@ impl EmailAddresses for InMemorySecrets {
             .map(|(account, _)| *account))
     }
 
-    async fn release(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
+    async fn release(
+        &self,
+        transaction: &mut Transaction,
+        email: &EmailAddress,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
         let mut kept = self.kept();
-        if kept.email_addresses.get(email).map(|(held, _)| held) == Some(account) {
-            kept.email_addresses.remove(email);
+        let Some(claim) = kept.email_addresses.get(email).copied() else {
+            return Ok(());
+        };
+        if claim.0 != *account {
+            return Ok(());
         }
+
+        let claimed = email.clone();
+        self.undo_on_rollback(transaction, move |kept| {
+            kept.email_addresses.insert(claimed, claim);
+        })?;
+        kept.email_addresses.remove(email);
 
         Ok(())
     }
@@ -87,8 +125,25 @@ impl EmailAddresses for InMemorySecrets {
 
 #[async_trait]
 impl Passwords for InMemorySecrets {
-    async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError> {
-        self.kept().passwords.insert(*account, password.clone());
+    async fn keep(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        password: &PasswordHash,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        let before = kept.passwords.get(account).cloned();
+
+        let holder = *account;
+        self.undo_on_rollback(transaction, move |kept| match before {
+            Some(before) => {
+                kept.passwords.insert(holder, before);
+            }
+            None => {
+                kept.passwords.remove(&holder);
+            }
+        })?;
+        kept.passwords.insert(*account, password.clone());
 
         Ok(())
     }
@@ -205,6 +260,7 @@ impl Operators for InMemorySecrets {
 impl InvitationTickets for InMemorySecrets {
     async fn keep_ticket(
         &self,
+        transaction: &mut Transaction,
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<bool, SecretsError> {
@@ -217,6 +273,10 @@ impl InvitationTickets for InMemorySecrets {
             && !kept.invitation_tickets.contains_key(&ticket.invitation)
             && !kept.ended_invitations.contains(&ticket.invitation);
         if fresh {
+            let invitation = ticket.invitation.clone();
+            self.undo_on_rollback(transaction, move |kept| {
+                kept.invitation_tickets.remove(&invitation);
+            })?;
             kept.invitation_tickets
                 .insert(ticket.invitation.clone(), (digest.clone(), ticket.clone()));
         }
@@ -241,6 +301,7 @@ impl InvitationTickets for InMemorySecrets {
 
     async fn take_ticket(
         &self,
+        transaction: &mut Transaction,
         digest: &TokenDigest,
     ) -> Result<Option<InvitationTicket>, SecretsError> {
         let mut guard = self.kept();
@@ -253,6 +314,10 @@ impl InvitationTickets for InMemorySecrets {
             })
             .map(|(_, (_, ticket))| ticket.clone());
         if let Some(ticket) = &open {
+            let invitation = ticket.invitation.clone();
+            self.undo_on_rollback(transaction, move |kept| {
+                kept.ended_invitations.remove(&invitation);
+            })?;
             kept.ended_invitations.insert(ticket.invitation.clone());
         }
 
@@ -274,14 +339,43 @@ impl InvitationTickets for InMemorySecrets {
             .map(|(digest, _)| digest.clone()))
     }
 
-    async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
-        self.kept().ended_invitations.insert(invitation.to_owned());
+    async fn forget_ticket(
+        &self,
+        transaction: &mut Transaction,
+        invitation: &str,
+    ) -> Result<(), SecretsError> {
+        let mut kept = self.kept();
+        if kept.ended_invitations.contains(invitation) {
+            return Ok(());
+        }
+
+        let ended = invitation.to_owned();
+        self.undo_on_rollback(transaction, move |kept| {
+            kept.ended_invitations.remove(&ended);
+        })?;
+        kept.ended_invitations.insert(invitation.to_owned());
 
         Ok(())
     }
 
-    async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+    async fn drop_ticket(
+        &self,
+        transaction: &mut Transaction,
+        invitation: &str,
+    ) -> Result<(), SecretsError> {
         let mut kept = self.kept();
+        let held = kept.invitation_tickets.get(invitation).cloned();
+        let ended = kept.ended_invitations.contains(invitation);
+
+        let dropped = invitation.to_owned();
+        self.undo_on_rollback(transaction, move |kept| {
+            if let Some(held) = held {
+                kept.invitation_tickets.insert(dropped.clone(), held);
+            }
+            if ended {
+                kept.ended_invitations.insert(dropped);
+            }
+        })?;
         kept.invitation_tickets.remove(invitation);
         kept.ended_invitations.remove(invitation);
 

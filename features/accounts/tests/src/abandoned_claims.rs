@@ -1,6 +1,5 @@
 use accounts_core::{
-    AccountId, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket, InvitationTickets,
-    InvitationToken,
+    AccountId, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket, InvitationToken,
 };
 use clock::Clock;
 use time::Duration;
@@ -11,7 +10,6 @@ use crate::wiring::{ADA, HER_PASSWORD, Wired};
 async fn abandoned(wired: &Wired) -> AccountId {
     let never_begun = AccountId::generate(wired.clock.now());
     wired
-        .secrets
         .claim(&address(), &never_begun, wired.clock.now())
         .await
         .expect("claiming should succeed");
@@ -96,7 +94,6 @@ async fn an_invitation_to_an_address_left_claimed_still_signs_it_up() {
     let wired = wiring::wired();
     let never_begun = abandoned(&wired).await;
     wired
-        .secrets
         .keep_ticket(
             &InvitationToken::presented("a token").digest(),
             &InvitationTicket {

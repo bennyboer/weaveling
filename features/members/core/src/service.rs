@@ -55,7 +55,7 @@ impl MembersService {
     ) -> Result<(), MembersCoreError> {
         let _landed = self
             .events
-            .execute(&AggregateId::from(project), command, agent)
+            .execute(None, &AggregateId::from(project), command, agent)
             .await?;
 
         Ok(())
@@ -70,7 +70,7 @@ impl MembersService {
 
         match self
             .events
-            .execute(&id, MembersCommand::Disband, agent)
+            .execute(None, &id, MembersCommand::Disband, agent)
             .await
         {
             Err(ServiceError::NotFound { .. }) => Ok(self

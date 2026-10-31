@@ -1,21 +1,26 @@
 use std::sync::Arc;
 
 use accounts_catalog::InMemoryAccountCatalog;
-use accounts_core::{Account, AccountError, AccountEvent, AccountId, AccountsCore, SecretStores};
+use accounts_core::{
+    Account, AccountError, AccountEvent, AccountId, AccountsCore, EmailAddress, EmailAddresses,
+    InvitationTicket, InvitationTickets, SecretStores, SecretsError, TokenDigest,
+};
 use accounts_secrets::InMemorySecrets;
 use accounts_wiring::Ports;
+use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use axum::Router;
 use clock::FixedClock;
 use eventsourcing::{
-    AggregateId, EventSourcingService, InMemoryEventStore, ServiceError, Standing,
+    AggregateId, AggregateType, EventSourcingService, EventStore, InMemoryEventStore, Recorded,
+    ServiceError, Standing, StoreError, Version,
 };
 use mailing::FakeMailbox;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
 use throttling::InMemoryThrottles;
 use time::{Duration, OffsetDateTime};
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transaction, Transactions};
 use wiring::Context;
 
 pub const ADA: &str = "ada@example.com";
@@ -101,6 +106,68 @@ pub fn wired() -> Wired {
 }
 
 impl Wired {
+    pub fn refusing_appends(&self) -> AccountsCore {
+        AccountsCore::new(
+            Arc::new(RefusesAppending(self.store.clone())),
+            Arc::new(InMemoryTransactions::new()),
+            SecretStores::kept_by(self.secrets.clone(), self.throttles.clone()),
+            self.catalog.clone(),
+            self.mailbox.clone(),
+            self.clock.clone(),
+        )
+    }
+
+    pub async fn claim(
+        &self,
+        email: &EmailAddress,
+        account: &AccountId,
+        at: OffsetDateTime,
+    ) -> Result<(), SecretsError> {
+        let mut transaction = begun().await;
+        self.secrets
+            .claim(&mut transaction, email, account, at)
+            .await?;
+        finished(transaction).await;
+
+        Ok(())
+    }
+
+    pub async fn keep_ticket(
+        &self,
+        digest: &TokenDigest,
+        ticket: &InvitationTicket,
+    ) -> Result<bool, SecretsError> {
+        let mut transaction = begun().await;
+        let kept = self
+            .secrets
+            .keep_ticket(&mut transaction, digest, ticket)
+            .await?;
+        finished(transaction).await;
+
+        Ok(kept)
+    }
+
+    pub async fn take_ticket(
+        &self,
+        digest: &TokenDigest,
+    ) -> Result<Option<InvitationTicket>, SecretsError> {
+        let mut transaction = begun().await;
+        let taken = self.secrets.take_ticket(&mut transaction, digest).await?;
+        finished(transaction).await;
+
+        Ok(taken)
+    }
+
+    pub async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+        let mut transaction = begun().await;
+        self.secrets
+            .forget_ticket(&mut transaction, invitation)
+            .await?;
+        finished(transaction).await;
+
+        Ok(())
+    }
+
     pub async fn settle(&self) {
         loop {
             let published = self
@@ -136,5 +203,96 @@ impl Wired {
         self.codes_sent_to(address)
             .pop()
             .expect("a code should have been sent")
+    }
+}
+
+async fn begun() -> Transaction {
+    InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed")
+}
+
+async fn finished(transaction: Transaction) {
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+}
+
+struct RefusesAppending(Arc<InMemoryEventStore<AccountEvent>>);
+
+#[async_trait]
+impl EventStore<AccountEvent> for RefusesAppending {
+    async fn append(
+        &self,
+        _transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        _expected: Version,
+        _events: &[Recorded<AccountEvent>],
+    ) -> Result<(), StoreError> {
+        Err(StoreError::backend(
+            aggregate,
+            kind,
+            "the database went away",
+        ))
+    }
+
+    async fn read_from(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<AccountEvent>>, StoreError> {
+        self.0.read_from(aggregate, kind, from).await
+    }
+
+    async fn read_through(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+        through: Version,
+    ) -> Result<Vec<Recorded<AccountEvent>>, StoreError> {
+        self.0.read_through(aggregate, kind, from, through).await
+    }
+
+    async fn latest_snapshot(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<AccountEvent>>, StoreError> {
+        self.0.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn snapshot_at_or_before(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        version: Version,
+    ) -> Result<Option<Recorded<AccountEvent>>, StoreError> {
+        self.0.snapshot_at_or_before(aggregate, kind, version).await
+    }
+
+    async fn prune_through(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        through: Version,
+    ) -> Result<(), StoreError> {
+        self.0
+            .prune_through(transaction, aggregate, kind, through)
+            .await
+    }
+
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.0.forget(transaction, aggregate, kind).await
     }
 }

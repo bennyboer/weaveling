@@ -12,7 +12,6 @@ const TOKEN: &str = "a token drawn by invitations";
 
 async fn invited(wired: &Wired, address: &str, token: &str) {
     wired
-        .secrets
         .keep_ticket(
             &InvitationToken::presented(token).digest(),
             &InvitationTicket {
@@ -128,7 +127,6 @@ async fn a_token_nobody_was_given_or_one_withdrawn_signs_nobody_up() {
     let wired = wiring::wired();
     invited(&wired, ADA, TOKEN).await;
     wired
-        .secrets
         .forget_ticket("invitation_1")
         .await
         .expect("forgetting should succeed");
@@ -254,7 +252,6 @@ fn into_a_project(by_an_operator: bool) -> InvitationTicket {
 
 async fn invited_into_a_project(wired: &Wired, by_an_operator: bool) {
     wired
-        .secrets
         .keep_ticket(
             &InvitationToken::presented(TOKEN).digest(),
             &into_a_project(by_an_operator),
@@ -346,4 +343,36 @@ async fn an_address_with_an_account_keeps_its_invitation_to_take_up_signed_in() 
         Some(into_a_project(false)),
         "signing in, she may take it up"
     );
+}
+
+#[tokio::test]
+async fn a_sign_up_by_invitation_whose_account_cannot_be_kept_leaves_the_link_to_sign_up_by_again()
+{
+    let wired = wiring::wired();
+    invited(&wired, ADA, TOKEN).await;
+
+    let refused = wired
+        .refusing_appends()
+        .sign_up_by_invitation(TOKEN, "Ada", HER_PASSWORD)
+        .await;
+
+    assert!(refused.is_err());
+    assert_eq!(
+        holder(&wired, ADA).await,
+        None,
+        "an address claimed for an account that never came to be would be blocked for good"
+    );
+    assert!(
+        wired
+            .secrets
+            .find_ticket(&InvitationToken::presented(TOKEN).digest())
+            .await
+            .expect("finding should succeed")
+            .is_some(),
+        "a ticket used up for an account that never came to be would leave the link dead"
+    );
+    signs_up(&wired, TOKEN)
+        .await
+        .expect("the link signs its address up once the account can be kept");
+    assert!(holder(&wired, ADA).await.is_some());
 }

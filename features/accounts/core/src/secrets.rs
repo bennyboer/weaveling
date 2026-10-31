@@ -1,5 +1,6 @@
 use std::error::Error;
 use std::sync::Arc;
+use transacting::Transaction;
 
 use async_trait::async_trait;
 use thiserror::Error;
@@ -66,6 +67,7 @@ pub enum Attempt {
 pub trait EmailAddresses: Send + Sync {
     async fn claim(
         &self,
+        transaction: &mut Transaction,
         email: &EmailAddress,
         account: &AccountId,
         at: OffsetDateTime,
@@ -73,6 +75,7 @@ pub trait EmailAddresses: Send + Sync {
 
     async fn take_over(
         &self,
+        transaction: &mut Transaction,
         email: &EmailAddress,
         from: &AccountId,
         to: &AccountId,
@@ -82,12 +85,22 @@ pub trait EmailAddresses: Send + Sync {
 
     async fn holder(&self, email: &EmailAddress) -> Result<Option<AccountId>, SecretsError>;
 
-    async fn release(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError>;
+    async fn release(
+        &self,
+        transaction: &mut Transaction,
+        email: &EmailAddress,
+        account: &AccountId,
+    ) -> Result<(), SecretsError>;
 }
 
 #[async_trait]
 pub trait Passwords: Send + Sync {
-    async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError>;
+    async fn keep(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        password: &PasswordHash,
+    ) -> Result<(), SecretsError>;
 
     async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError>;
 }
@@ -139,6 +152,7 @@ pub trait Operators: Send + Sync {
 pub trait InvitationTickets: Send + Sync {
     async fn keep_ticket(
         &self,
+        transaction: &mut Transaction,
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<bool, SecretsError>;
@@ -150,15 +164,24 @@ pub trait InvitationTickets: Send + Sync {
 
     async fn take_ticket(
         &self,
+        transaction: &mut Transaction,
         digest: &TokenDigest,
     ) -> Result<Option<InvitationTicket>, SecretsError>;
 
     async fn digest_of_ticket(&self, invitation: &str)
     -> Result<Option<TokenDigest>, SecretsError>;
 
-    async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError>;
+    async fn forget_ticket(
+        &self,
+        transaction: &mut Transaction,
+        invitation: &str,
+    ) -> Result<(), SecretsError>;
 
-    async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError>;
+    async fn drop_ticket(
+        &self,
+        transaction: &mut Transaction,
+        invitation: &str,
+    ) -> Result<(), SecretsError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

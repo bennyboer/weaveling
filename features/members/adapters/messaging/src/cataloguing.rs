@@ -105,6 +105,7 @@ mod tests {
         bench
             .events
             .execute(
+                None,
                 &id,
                 MembersCommand::Join {
                     account: grace(),
@@ -142,6 +143,7 @@ mod tests {
         let left = bench
             .events
             .execute(
+                None,
                 &id,
                 MembersCommand::Leave { account: grace() },
                 &Agent::System,

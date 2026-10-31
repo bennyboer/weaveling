@@ -22,22 +22,27 @@ pub use sqlite::SqliteSecrets;
 #[cfg(test)]
 mod memory_tests {
     use async_trait::async_trait;
+    use transacting::{InMemoryTransactions, Transactions};
 
     use crate::InMemorySecrets;
     use crate::suite::Workbench;
 
-    struct InMemory(InMemorySecrets);
+    struct InMemory(InMemorySecrets, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemorySecrets;
 
         async fn setup() -> Self {
-            Self(InMemorySecrets::default())
+            Self(InMemorySecrets::default(), InMemoryTransactions::new())
         }
 
         fn store(&self) -> &Self::Store {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

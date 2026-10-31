@@ -153,7 +153,7 @@ impl InvitationService {
     ) -> Result<(), InvitationsError> {
         let _landed = self
             .events
-            .execute(&AggregateId::from(invitation), command, agent)
+            .execute(None, &AggregateId::from(invitation), command, agent)
             .await?;
 
         Ok(())

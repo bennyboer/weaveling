@@ -1,4 +1,5 @@
 use std::error::Error;
+use transacting::Transaction;
 
 use accounts_core::{
     AccountId, Attempt, CodePurpose, Dismissal, EmailAddress, EmailAddresses, InvitationScope,
@@ -200,6 +201,7 @@ fn to_pending(row: &PgRow) -> Result<PendingVerification, SecretsError> {
 impl EmailAddresses for PostgresSecrets {
     async fn claim(
         &self,
+        transaction: &mut Transaction,
         email: &EmailAddress,
         account: &AccountId,
         at: OffsetDateTime,
@@ -208,7 +210,7 @@ impl EmailAddresses for PostgresSecrets {
             .bind(email.as_str())
             .bind(account.to_string())
             .bind(at)
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -220,6 +222,7 @@ impl EmailAddresses for PostgresSecrets {
 
     async fn take_over(
         &self,
+        transaction: &mut Transaction,
         email: &EmailAddress,
         from: &AccountId,
         to: &AccountId,
@@ -232,7 +235,7 @@ impl EmailAddresses for PostgresSecrets {
             .bind(to.to_string())
             .bind(claimed_before)
             .bind(at)
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -250,11 +253,16 @@ impl EmailAddresses for PostgresSecrets {
             .transpose()
     }
 
-    async fn release(&self, email: &EmailAddress, account: &AccountId) -> Result<(), SecretsError> {
+    async fn release(
+        &self,
+        transaction: &mut Transaction,
+        email: &EmailAddress,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
         sqlx::query(RELEASE)
             .bind(email.as_str())
             .bind(account.to_string())
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -264,11 +272,16 @@ impl EmailAddresses for PostgresSecrets {
 
 #[async_trait]
 impl Passwords for PostgresSecrets {
-    async fn keep(&self, account: &AccountId, password: &PasswordHash) -> Result<(), SecretsError> {
+    async fn keep(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        password: &PasswordHash,
+    ) -> Result<(), SecretsError> {
         sqlx::query(KEEP)
             .bind(account.to_string())
             .bind(password.as_str())
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -462,6 +475,7 @@ impl Operators for PostgresSecrets {
 impl InvitationTickets for PostgresSecrets {
     async fn keep_ticket(
         &self,
+        transaction: &mut Transaction,
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<bool, SecretsError> {
@@ -475,7 +489,7 @@ impl InvitationTickets for PostgresSecrets {
                 InvitationScope::Project { project } => Some(project.as_str()),
             })
             .bind(ticket.by_an_operator)
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -498,11 +512,12 @@ impl InvitationTickets for PostgresSecrets {
 
     async fn take_ticket(
         &self,
+        transaction: &mut Transaction,
         digest: &TokenDigest,
     ) -> Result<Option<InvitationTicket>, SecretsError> {
         sqlx::query(TAKE_TICKET)
             .bind(digest.as_str())
-            .fetch_optional(&self.pool)
+            .fetch_optional(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .as_ref()
@@ -523,20 +538,28 @@ impl InvitationTickets for PostgresSecrets {
         Ok(found.map(TokenDigest::kept))
     }
 
-    async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+    async fn forget_ticket(
+        &self,
+        transaction: &mut Transaction,
+        invitation: &str,
+    ) -> Result<(), SecretsError> {
         sqlx::query(FORGET_TICKET)
             .bind(invitation)
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
     }
 
-    async fn drop_ticket(&self, invitation: &str) -> Result<(), SecretsError> {
+    async fn drop_ticket(
+        &self,
+        transaction: &mut Transaction,
+        invitation: &str,
+    ) -> Result<(), SecretsError> {
         sqlx::query(DROP_TICKET)
             .bind(invitation)
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
