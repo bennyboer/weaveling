@@ -15,7 +15,8 @@ enum StoredNoticeEvent {
         about: StoredAbout,
         #[serde(with = "time::serde::rfc3339")]
         noted_at: OffsetDateTime,
-        dismissed: bool,
+        #[serde(default, with = "time::serde::rfc3339::option")]
+        dismissed_at: Option<OffsetDateTime>,
     },
 }
 
@@ -61,12 +62,12 @@ impl From<&NoticeEvent> for StoredNoticeEvent {
                 account,
                 about,
                 noted_at,
-                dismissed,
+                dismissed_at,
             } => Self::Snapshotted {
                 account: account.to_string(),
                 about: StoredAbout::from(about),
                 noted_at: *noted_at,
-                dismissed: *dismissed,
+                dismissed_at: *dismissed_at,
             },
         }
     }
@@ -84,12 +85,12 @@ impl From<StoredNoticeEvent> for NoticeEvent {
                 account,
                 about,
                 noted_at,
-                dismissed,
+                dismissed_at,
             } => Self::Snapshotted {
                 account: AccountId::from(account),
                 about: About::from(about),
                 noted_at,
-                dismissed,
+                dismissed_at,
             },
         }
     }
@@ -174,7 +175,9 @@ mod tests {
                 about: a_role_changed(Role::Reader, Some("account_ada")),
                 noted_at: OffsetDateTime::from_unix_timestamp(1_700_000_000)
                     .expect("a plausible moment"),
-                dismissed: true,
+                dismissed_at: Some(
+                    OffsetDateTime::from_unix_timestamp(1_700_000_600).expect("a plausible moment"),
+                ),
             },
         ] {
             assert_eq!(round_trip(event.clone()), Some(event));

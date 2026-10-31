@@ -57,7 +57,7 @@ pub enum NoticeEvent {
         account: AccountId,
         about: About,
         noted_at: OffsetDateTime,
-        dismissed: bool,
+        dismissed_at: Option<OffsetDateTime>,
     },
 }
 
@@ -66,7 +66,7 @@ pub struct Notice {
     account: AccountId,
     about: About,
     noted_at: OffsetDateTime,
-    dismissed: bool,
+    dismissed_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -123,7 +123,11 @@ impl Notice {
     }
 
     pub fn is_dismissed(&self) -> bool {
-        self.dismissed
+        self.dismissed_at.is_some()
+    }
+
+    pub fn dismissed_at(&self) -> Option<OffsetDateTime> {
+        self.dismissed_at
     }
 
     pub fn is_for(&self, agent: &Agent) -> bool {
@@ -171,18 +175,18 @@ impl Aggregate for Notice {
                 account: account.clone(),
                 about: about.clone(),
                 noted_at: metadata.occurred_at,
-                dismissed: false,
+                dismissed_at: None,
             }),
             NoticeEvent::Snapshotted {
                 account,
                 about,
                 noted_at,
-                dismissed,
+                dismissed_at,
             } => Some(Self {
                 account: account.clone(),
                 about: about.clone(),
                 noted_at: *noted_at,
-                dismissed: *dismissed,
+                dismissed_at: *dismissed_at,
             }),
             NoticeEvent::Dismissed => None,
         }
@@ -195,25 +199,25 @@ impl Aggregate for Notice {
     ) -> Result<Vec<NoticeEvent>, NoticeError> {
         match command {
             NoticeCommand::Note { .. } => Err(NoticeError::AlreadyNoted),
-            NoticeCommand::Dismiss if self.dismissed => Ok(Vec::new()),
+            NoticeCommand::Dismiss if self.is_dismissed() => Ok(Vec::new()),
             NoticeCommand::Dismiss => Ok(vec![NoticeEvent::Dismissed]),
         }
     }
 
-    fn apply(&mut self, event: &NoticeEvent, _metadata: &EventMetadata) {
+    fn apply(&mut self, event: &NoticeEvent, metadata: &EventMetadata) {
         match event {
             NoticeEvent::Noted { .. } => {}
-            NoticeEvent::Dismissed => self.dismissed = true,
+            NoticeEvent::Dismissed => self.dismissed_at = Some(metadata.occurred_at),
             NoticeEvent::Snapshotted {
                 account,
                 about,
                 noted_at,
-                dismissed,
+                dismissed_at,
             } => {
                 self.account = account.clone();
                 self.about = about.clone();
                 self.noted_at = *noted_at;
-                self.dismissed = *dismissed;
+                self.dismissed_at = *dismissed_at;
             }
         }
     }
@@ -223,7 +227,7 @@ impl Aggregate for Notice {
             account: self.account.clone(),
             about: self.about.clone(),
             noted_at: self.noted_at,
-            dismissed: self.dismissed,
+            dismissed_at: self.dismissed_at,
         }
     }
 }

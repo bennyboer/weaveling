@@ -5,11 +5,11 @@ CREATE TABLE notices (
     project          TEXT,
     about            TEXT    NOT NULL,
     noted_at         TEXT    NOT NULL,
-    dismissed        INTEGER NOT NULL
+    dismissed_at     TEXT
 );
 
 CREATE INDEX notices_open_by_account ON notices (account, noted_at DESC, notice DESC)
-    WHERE NOT dismissed;
+    WHERE dismissed_at IS NULL;
 
 
 CREATE TABLE people (

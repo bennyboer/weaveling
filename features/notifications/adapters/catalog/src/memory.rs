@@ -56,7 +56,7 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
         let mut open: Vec<NoticeSummary> = self
             .read()
             .values()
-            .filter(|summary| &summary.account == account && !summary.dismissed)
+            .filter(|summary| &summary.account == account && summary.dismissed_at.is_none())
             .filter(|summary| {
                 summary
                     .about
@@ -155,13 +155,65 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
         let mut noticed: Vec<AccountId> = self
             .read()
             .values()
-            .filter(|summary| !summary.dismissed && summary.about.project() == Some(project))
+            .filter(|summary| {
+                summary.dismissed_at.is_none() && summary.about.project() == Some(project)
+            })
             .map(|summary| summary.account.clone())
             .collect();
         noticed.sort_by(|one, other| one.as_str().cmp(other.as_str()));
         noticed.dedup();
 
         Ok(noticed)
+    }
+
+    async fn due_for_forgetting(
+        &self,
+        dismissed_before: OffsetDateTime,
+        noted_before: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<NoticeId>, CatalogError> {
+        let mut due: Vec<NoticeId> = self
+            .read()
+            .values()
+            .filter(|summary| match summary.dismissed_at {
+                Some(dismissed_at) => dismissed_at < dismissed_before,
+                None => summary.noted_at < noted_before,
+            } || summary.about.project().is_some_and(|project| self.buried(project)))
+            .map(|summary| summary.id)
+            .collect();
+        due.sort();
+        due.truncate(at_most);
+
+        Ok(due)
+    }
+
+    async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError> {
+        self.write().remove(notice);
+
+        Ok(())
+    }
+
+    async fn forget_project_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut tombstones = self
+            .tombstones
+            .write()
+            .expect("notice catalog lock poisoned");
+        let mut old: Vec<(OffsetDateTime, ProjectLink)> = tombstones
+            .iter()
+            .filter(|(_, laid_at)| **laid_at < before)
+            .map(|(project, laid_at)| (*laid_at, project.clone()))
+            .collect();
+        old.sort_by(|one, other| (one.0, one.1.as_str()).cmp(&(other.0, other.1.as_str())));
+        old.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+        for (_, project) in &old {
+            tombstones.remove(project);
+        }
+
+        Ok(old.len() as u64)
     }
 }
 

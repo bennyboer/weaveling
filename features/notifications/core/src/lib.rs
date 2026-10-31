@@ -8,4 +8,4 @@ pub use catalog::{CatalogError, NoticeCatalog, NoticeSummary, Person, ProjectNam
 pub use error::NotificationsError;
 pub use id::NoticeId;
 pub use notice::{About, KIND, Notice, NoticeCommand, NoticeError, NoticeEvent, ProjectLink, Role};
-pub use notifications::{Names, NotificationsCore};
+pub use notifications::{DISMISSED_KEPT_FOR, Names, NotificationsCore, UNDISMISSED_KEPT_FOR};

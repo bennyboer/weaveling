@@ -782,7 +782,7 @@ async fn an_invitation_is_turned_down_by_its_link_without_signing_in_where_there
 }
 
 #[tokio::test]
-async fn the_server_does_the_invitations_chores_only_where_there_are_accounts() {
+async fn the_server_does_the_invitations_and_notifications_chores_only_where_there_are_accounts() {
     for (accounts, retiring) in [(Accounts::On, true), (Accounts::Off, false)] {
         let adapters = Adapters::in_memory(accounts, Arc::new(SystemClock)).await;
 
@@ -793,6 +793,7 @@ async fn the_server_does_the_invitations_chores_only_where_there_are_accounts() 
             .collect();
 
         assert_eq!(named.contains(&"retire-due-invitations"), retiring);
+        assert_eq!(named.contains(&"forget-old-notices"), retiring);
         assert!(
             named.contains(&"forget-old-appearance-tombstones"),
             "tombstones are laid with or without accounts"

@@ -1,5 +1,8 @@
+mod forgetting;
+
 use std::sync::Arc;
 
+use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use live::Broadcaster;
 use notifications_catalog::InMemoryNoticeCatalog;
@@ -12,6 +15,8 @@ use notifications_rest::{NotificationsTopic, TellingNotices};
 use outbox::Outbox;
 use registry::{InMemoryRegistry, Registry};
 use wiring::{Context, EventSourced, Feature, Wired};
+
+use crate::forgetting::{ForgetOldNotices, NoticeTombstones};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<NoticeEvent>>,
@@ -47,7 +52,15 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(NoteRoleChangedListener::new(notifications.clone())),
             Arc::new(CatalogueNoticeListener::new(notifications.clone())),
             Arc::new(RememberWhoSignedUpListener::new(notifications.clone())),
-            Arc::new(RememberProjectNamesListener::new(notifications)),
+            Arc::new(RememberProjectNamesListener::new(notifications.clone())),
+        ])
+        .doing_chores(vec![
+            Arc::new(ForgetOldNotices::new(notifications.clone())),
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-notification-tombstones",
+                Arc::new(NoticeTombstones::of(notifications)),
+                context.clock.clone(),
+            )),
         ])
 }
 
@@ -156,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_notes_a_changed_role_lists_every_notice_remembers_names_and_tells_them_live() {
+    fn the_feature_notes_lists_names_tells_live_and_forgets_old_notices_and_tombstones() {
         let context = a_context();
 
         let wired =
@@ -184,7 +197,14 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["notifications"]
         );
-        assert!(wired.chores.is_empty());
+        assert_eq!(
+            wired
+                .chores
+                .iter()
+                .map(|chore| chore.named())
+                .collect::<Vec<_>>(),
+            ["forget-old-notices", "forget-old-notification-tombstones"]
+        );
     }
 
     #[cfg(any(feature = "postgres", feature = "sqlite"))]

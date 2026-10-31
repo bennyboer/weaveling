@@ -5,11 +5,11 @@ CREATE TABLE notices (
     project          TEXT COLLATE "C",
     about            JSONB            NOT NULL,
     noted_at         TIMESTAMPTZ      NOT NULL,
-    dismissed        BOOLEAN          NOT NULL
+    dismissed_at     TIMESTAMPTZ
 );
 
 CREATE INDEX notices_open_by_account ON notices (account, noted_at DESC, notice DESC)
-    WHERE NOT dismissed;
+    WHERE dismissed_at IS NULL;
 
 
 CREATE TABLE people (

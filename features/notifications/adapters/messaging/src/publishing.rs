@@ -110,7 +110,7 @@ mod tests {
                     by: None,
                 },
                 noted_at: OffsetDateTime::UNIX_EPOCH,
-                dismissed: true,
+                dismissed_at: Some(OffsetDateTime::UNIX_EPOCH),
             },
             true,
         );

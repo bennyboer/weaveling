@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use eventsourcing::AccountId;
 use live::{Broadcaster, Teller};
 use notifications_core::{
-    CatalogError, NoticeCatalog, NoticeSummary, Person, ProjectLink, ProjectName,
+    CatalogError, NoticeCatalog, NoticeId, NoticeSummary, Person, ProjectLink, ProjectName,
 };
 use time::OffsetDateTime;
 
@@ -83,5 +83,30 @@ impl NoticeCatalog for TellingNotices {
         project: &ProjectLink,
     ) -> Result<Vec<AccountId>, CatalogError> {
         self.kept.accounts_noticed_about(project).await
+    }
+
+    async fn due_for_forgetting(
+        &self,
+        dismissed_before: OffsetDateTime,
+        noted_before: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<NoticeId>, CatalogError> {
+        self.kept
+            .due_for_forgetting(dismissed_before, noted_before, at_most)
+            .await
+    }
+
+    async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError> {
+        self.kept.forget(notice).await
+    }
+
+    async fn forget_project_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.kept
+            .forget_project_tombstones_laid_before(before, at_most)
+            .await
     }
 }

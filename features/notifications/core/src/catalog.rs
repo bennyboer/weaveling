@@ -15,7 +15,7 @@ pub struct NoticeSummary {
     pub account: AccountId,
     pub about: About,
     pub noted_at: OffsetDateTime,
-    pub dismissed: bool,
+    pub dismissed_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +66,21 @@ pub trait NoticeCatalog: Send + Sync {
         &self,
         project: &ProjectLink,
     ) -> Result<Vec<AccountId>, CatalogError>;
+
+    async fn due_for_forgetting(
+        &self,
+        dismissed_before: OffsetDateTime,
+        noted_before: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<NoticeId>, CatalogError>;
+
+    async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError>;
+
+    async fn forget_project_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 }
 
 impl NoticeSummary {
@@ -76,7 +91,7 @@ impl NoticeSummary {
             account: notice.account().clone(),
             about: notice.about().clone(),
             noted_at: notice.noted_at(),
-            dismissed: notice.is_dismissed(),
+            dismissed_at: notice.dismissed_at(),
         }
     }
 }

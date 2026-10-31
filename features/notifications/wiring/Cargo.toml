@@ -4,8 +4,11 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+async-trait = { workspace = true }
+time = { workspace = true }
 sqlx = { workspace = true, optional = true }
 
+chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }

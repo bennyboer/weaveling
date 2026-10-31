@@ -4632,9 +4632,12 @@ dependencies = [
 name = "weaveling-notifications-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
+ "time",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-live",

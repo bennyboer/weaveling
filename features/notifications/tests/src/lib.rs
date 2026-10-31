@@ -5,6 +5,9 @@ mod naming;
 mod notice_cataloguing;
 
 #[cfg(test)]
+mod notice_forgetting;
+
+#[cfg(test)]
 mod notices_api;
 
 #[cfg(test)]

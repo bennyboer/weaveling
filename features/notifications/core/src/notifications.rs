@@ -7,7 +7,7 @@ use eventsourcing::{
     StoreError,
 };
 use registry::Registry;
-use time::OffsetDateTime;
+use time::{Duration, OffsetDateTime};
 
 use crate::catalog::{NoticeCatalog, NoticeSummary, Person, ProjectName};
 use crate::error::NotificationsError;
@@ -20,8 +20,12 @@ pub struct Names {
     pub projects: HashMap<ProjectLink, String>,
 }
 
+pub const DISMISSED_KEPT_FOR: Duration = Duration::days(30);
+pub const UNDISMISSED_KEPT_FOR: Duration = Duration::days(90);
+
 #[derive(Clone)]
 pub struct NotificationsCore {
+    store: Arc<dyn EventStore<NoticeEvent>>,
     events: Arc<EventSourcingService<Notice>>,
     catalog: Arc<dyn NoticeCatalog>,
     registry: Arc<dyn Registry>,
@@ -36,7 +40,8 @@ impl NotificationsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            events: Arc::new(EventSourcingService::new(store.clone(), clock.clone())),
+            store,
             catalog,
             registry,
             clock,
@@ -159,6 +164,38 @@ impl NotificationsCore {
         at: OffsetDateTime,
     ) -> Result<(), NotificationsError> {
         Ok(self.catalog.lay_project_tombstone(project, at).await?)
+    }
+
+    pub async fn forget_due(&self, at_most: usize) -> Result<usize, NotificationsError> {
+        let now = self.clock.now();
+        let due = self
+            .catalog
+            .due_for_forgetting(
+                now - DISMISSED_KEPT_FOR,
+                now - UNDISMISSED_KEPT_FOR,
+                at_most,
+            )
+            .await?;
+        for notice in &due {
+            self.store
+                .forget(&AggregateId::from(notice), KIND)
+                .await
+                .map_err(ServiceError::Store)?;
+            self.catalog.forget(notice).await?;
+        }
+
+        Ok(due.len())
+    }
+
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, NotificationsError> {
+        Ok(self
+            .catalog
+            .forget_project_tombstones_laid_before(before, at_most)
+            .await?)
     }
 
     pub async fn catalogue(&self, notice: &NoticeId) -> Result<(), NotificationsError> {

@@ -15,7 +15,7 @@ use crate::kept::KeptAbout;
 use crate::kept::{unreachable, unreadable};
 
 const REMEMBER: &str = "
-    INSERT INTO notices (notice, version, account, project, about, noted_at, dismissed)
+    INSERT INTO notices (notice, version, account, project, about, noted_at, dismissed_at)
     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
     ON CONFLICT (notice) DO UPDATE
     SET version   = excluded.version,
@@ -23,14 +23,14 @@ const REMEMBER: &str = "
         project   = excluded.project,
         about     = excluded.about,
         noted_at  = excluded.noted_at,
-        dismissed = excluded.dismissed
+        dismissed_at = excluded.dismissed_at
     WHERE notices.version < excluded.version
 ";
 
 const OPEN_FOR: &str = "
-    SELECT notice, version, account, project, about, noted_at, dismissed
+    SELECT notice, version, account, project, about, noted_at, dismissed_at
     FROM notices
-    WHERE account = ?1 AND NOT dismissed
+    WHERE account = ?1 AND dismissed_at IS NULL
       AND (project IS NULL OR project NOT IN (SELECT project FROM project_tombstones))
     ORDER BY noted_at DESC, notice DESC
 ";
@@ -77,8 +77,29 @@ const HAS_PROJECT_TOMBSTONE: &str =
 const ACCOUNTS_NOTICED_ABOUT: &str = "
     SELECT DISTINCT account
     FROM notices
-    WHERE project = ?1 AND NOT dismissed
+    WHERE project = ?1 AND dismissed_at IS NULL
     ORDER BY account
+";
+
+const DUE_FOR_FORGETTING: &str = "
+    SELECT notice
+    FROM notices
+    WHERE dismissed_at < ?1
+       OR (dismissed_at IS NULL AND noted_at < ?2)
+       OR project IN (SELECT project FROM project_tombstones)
+    ORDER BY notice
+    LIMIT ?3
+";
+
+const FORGET: &str = "DELETE FROM notices WHERE notice = ?1";
+
+const FORGET_OLD_PROJECT_TOMBSTONES: &str = "
+    DELETE FROM project_tombstones WHERE project IN (
+        SELECT project FROM project_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, project
+        LIMIT ?2
+    )
 ";
 
 const LEDGER: &str = "_sqlx_migrations_notices";
@@ -119,7 +140,13 @@ fn summary_of(row: &SqliteRow) -> Result<NoticeSummary, CatalogError> {
         )?,
         noted_at: text::read(&noted_at)
             .ok_or_else(|| unreadable(format!("{noted_at:?} is no moment")))?,
-        dismissed: row.try_get("dismissed").map_err(unreachable)?,
+        dismissed_at: row
+            .try_get::<Option<String>, _>("dismissed_at")
+            .map_err(unreachable)?
+            .map(|written| {
+                text::read(&written).ok_or_else(|| unreadable(format!("{written:?} is no moment")))
+            })
+            .transpose()?,
     })
 }
 
@@ -133,7 +160,7 @@ impl NoticeCatalog for SqliteNoticeCatalog {
             .bind(kept::project_of(&summary.about))
             .bind(Json(kept::kept_as(&summary.about)))
             .bind(text::written(summary.noted_at))
-            .bind(summary.dismissed)
+            .bind(summary.dismissed_at.map(text::written))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?;
@@ -264,5 +291,50 @@ impl NoticeCatalog for SqliteNoticeCatalog {
             .into_iter()
             .map(AccountId::from)
             .collect())
+    }
+
+    async fn due_for_forgetting(
+        &self,
+        dismissed_before: OffsetDateTime,
+        noted_before: OffsetDateTime,
+        at_most: usize,
+    ) -> Result<Vec<NoticeId>, CatalogError> {
+        sqlx::query_scalar::<_, String>(DUE_FOR_FORGETTING)
+            .bind(text::written(dismissed_before))
+            .bind(text::written(noted_before))
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .into_iter()
+            .map(|id| {
+                id.parse::<NoticeId>()
+                    .map_err(|_| unreadable(format!("{id:?} is no notice")))
+            })
+            .collect()
+    }
+
+    async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError> {
+        sqlx::query(FORGET)
+            .bind(notice.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn forget_project_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_OLD_PROJECT_TOMBSTONES)
+            .bind(text::written(before))
+            .bind(i64::try_from(at_most).map_err(unreachable)?)
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 }

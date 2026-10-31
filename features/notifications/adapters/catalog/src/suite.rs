@@ -32,7 +32,7 @@ pub fn a_summary(account: &str, noted_at: i64, version: u64, dismissed: bool) ->
             by: Some(AccountId::from("account_ada")),
         },
         noted_at: at(noted_at),
-        dismissed,
+        dismissed_at: dismissed.then(|| at(noted_at + 600)),
     }
 }
 
@@ -76,7 +76,7 @@ pub async fn a_dismissed_notice_is_listed_no_more(catalog: &impl NoticeCatalog) 
         catalog,
         &NoticeSummary {
             version: Version::of(2),
-            dismissed: true,
+            dismissed_at: Some(at(1_600)),
             ..noted
         },
     )
@@ -89,7 +89,7 @@ pub async fn a_version_heard_late_changes_nothing(catalog: &impl NoticeCatalog) 
     let noted = a_summary("account_bo", 1_000, 1, false);
     let dismissed = NoticeSummary {
         version: Version::of(2),
-        dismissed: true,
+        dismissed_at: Some(at(1_600)),
         ..noted.clone()
     };
     remembered(catalog, &dismissed).await;
@@ -299,6 +299,119 @@ pub async fn the_accounts_with_open_notices_about_a_project_are_named_once_each(
     );
 }
 
+pub async fn notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_and_forgotten(
+    catalog: &impl NoticeCatalog,
+) {
+    let long_dismissed = NoticeSummary {
+        version: Version::of(2),
+        dismissed_at: Some(at(1_000)),
+        ..a_summary("account_bo", 900, 1, false)
+    };
+    let lately_dismissed = NoticeSummary {
+        version: Version::of(2),
+        dismissed_at: Some(at(5_000)),
+        ..a_summary("account_bo", 900, 1, false)
+    };
+    let long_noted = a_summary("account_bo", 1_000, 1, false);
+    let lately_noted = a_summary("account_bo", 5_000, 1, false);
+    let of_a_deleted_project = in_project(a_summary("account_bo", 5_000, 1, false), "project_gone");
+    for summary in [
+        &long_dismissed,
+        &lately_dismissed,
+        &long_noted,
+        &lately_noted,
+        &of_a_deleted_project,
+    ] {
+        remembered(catalog, summary).await;
+    }
+    catalog
+        .lay_project_tombstone(&ProjectLink::from("project_gone"), at(5_000))
+        .await
+        .expect("laying a tombstone should succeed");
+
+    let mut due = catalog
+        .due_for_forgetting(at(2_000), at(2_000), 10)
+        .await
+        .expect("asking should succeed");
+    due.sort();
+    let mut expected = vec![long_dismissed.id, long_noted.id, of_a_deleted_project.id];
+    expected.sort();
+    assert_eq!(due, expected);
+    assert_eq!(
+        catalog
+            .due_for_forgetting(at(2_000), at(2_000), 2)
+            .await
+            .expect("asking should succeed")
+            .len(),
+        2,
+        "no more at once than asked for"
+    );
+
+    for notice in &due {
+        catalog
+            .forget(notice)
+            .await
+            .expect("forgetting should succeed");
+    }
+    assert!(
+        catalog
+            .due_for_forgetting(at(2_000), at(2_000), 10)
+            .await
+            .expect("asking should succeed")
+            .is_empty()
+    );
+    assert_eq!(open_for(catalog, "account_bo").await, vec![lately_noted]);
+}
+
+pub async fn old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_asked(
+    catalog: &impl NoticeCatalog,
+) {
+    for (project, laid) in [
+        ("project_a", 1_000),
+        ("project_b", 2_000),
+        ("project_c", 9_000),
+    ] {
+        catalog
+            .lay_project_tombstone(&ProjectLink::from(project), at(laid))
+            .await
+            .expect("laying a tombstone should succeed");
+    }
+
+    let first = catalog
+        .forget_project_tombstones_laid_before(at(5_000), 1)
+        .await
+        .expect("forgetting should succeed");
+    let oldest_gone_first = !catalog
+        .has_project_tombstone(&ProjectLink::from("project_a"))
+        .await
+        .expect("asking should succeed")
+        && catalog
+            .has_project_tombstone(&ProjectLink::from("project_b"))
+            .await
+            .expect("asking should succeed");
+    let rest = catalog
+        .forget_project_tombstones_laid_before(at(5_000), 10)
+        .await
+        .expect("forgetting should succeed");
+
+    assert_eq!((first, rest), (1, 1));
+    assert!(oldest_gone_first, "the oldest goes first");
+    for (project, kept) in [
+        ("project_a", false),
+        ("project_b", false),
+        ("project_c", true),
+    ] {
+        assert_eq!(
+            catalog
+                .has_project_tombstone(&ProjectLink::from(project))
+                .await
+                .expect("asking should succeed"),
+            kept,
+            "{project}"
+        );
+    }
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -346,6 +459,14 @@ macro_rules! conformance_tests {
         $crate::catalog_conformance_case!(
             $workbench,
             the_accounts_with_open_notices_about_a_project_are_named_once_each
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            notices_long_dismissed_long_noted_or_of_a_deleted_project_are_due_and_forgotten
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            old_project_tombstones_are_forgotten_oldest_first_and_no_more_than_asked
         );
     };
 }
