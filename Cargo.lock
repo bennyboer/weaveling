@@ -4989,6 +4989,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "weaveling-test-harness",
+ "weaveling-transacting",
 ]
 
 [[package]]

@@ -21,6 +21,7 @@ transacting = { version = "0.1.0", path = "../transacting", package = "weaveling
 [features]
 postgres = ["dep:sqlx", "messaging/postgres", "outbox/postgres", "transacting/postgres"]
 sqlite = ["dep:sqlx", "sqlx/sqlite", "outbox/sqlite", "transacting/sqlite"]
+testing = []
 
 [dev-dependencies]
 serde = { workspace = true }

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::migrate::Migrator;
 use sqlx::{Row, SqlitePool};
+use transacting::Transaction;
 
 use crate::{Registry, RegistryError};
 
@@ -38,12 +39,18 @@ fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> Regis
 
 #[async_trait]
 impl Registry for SqliteRegistry {
-    async fn claim(&self, kind: &str, key: &str, id: &str) -> Result<String, RegistryError> {
+    async fn claim(
+        &self,
+        transaction: &mut Transaction,
+        kind: &str,
+        key: &str,
+        id: &str,
+    ) -> Result<String, RegistryError> {
         let held = sqlx::query(CLAIM)
             .bind(kind)
             .bind(key)
             .bind(id)
-            .fetch_one(&self.pool)
+            .fetch_one(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 

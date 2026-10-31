@@ -7,6 +7,8 @@ mod memory;
 mod message_mapping;
 mod metadata;
 mod patch;
+#[cfg(any(test, feature = "testing"))]
+mod refusing;
 mod service;
 mod store;
 mod version;
@@ -32,6 +34,8 @@ pub use memory::InMemoryEventStore;
 pub use message_mapping::MessageMapping;
 pub use metadata::EventMetadata;
 pub use patch::{Patch, Patcher};
+#[cfg(any(test, feature = "testing"))]
+pub use refusing::RefusesAppending;
 pub use service::{Appended, EventSourcingService, ServiceError, Standing};
 pub use store::{EventStore, StoreError};
 pub use version::Version;

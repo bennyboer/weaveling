@@ -24,6 +24,7 @@ use std::error::Error;
 
 use async_trait::async_trait;
 use thiserror::Error;
+use transacting::Transaction;
 
 #[derive(Debug, Error)]
 pub enum RegistryError {
@@ -33,7 +34,13 @@ pub enum RegistryError {
 
 #[async_trait]
 pub trait Registry: Send + Sync {
-    async fn claim(&self, kind: &str, key: &str, id: &str) -> Result<String, RegistryError>;
+    async fn claim(
+        &self,
+        transaction: &mut Transaction,
+        kind: &str,
+        key: &str,
+        id: &str,
+    ) -> Result<String, RegistryError>;
 
     async fn holder(&self, kind: &str, key: &str) -> Result<Option<String>, RegistryError>;
 }

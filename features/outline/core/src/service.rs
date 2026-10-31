@@ -5,8 +5,8 @@ use eventsourcing::{
     Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing,
     StoreError, Version,
 };
-use registry::Registry;
-use transacting::Transactions;
+use registry::{Registry, RegistryError};
+use transacting::{Transaction, Transactions};
 
 use crate::error::OutlinesError;
 use crate::id::{OutlineId, SectionId};
@@ -15,6 +15,7 @@ use crate::outline::{KIND, Outline, OutlineCommand, OutlineEvent, ProjectLink};
 #[derive(Clone)]
 pub struct OutlineService {
     events: Arc<EventSourcingService<Outline>>,
+    transactions: Arc<dyn Transactions>,
     registry: Arc<dyn Registry>,
     clock: Arc<dyn Clock>,
 }
@@ -63,17 +64,42 @@ impl OutlineService {
         Self {
             events: Arc::new(EventSourcingService::new(
                 store,
-                transactions,
+                transactions.clone(),
                 clock.clone(),
             )),
+            transactions,
             registry,
             clock,
         }
     }
 
     pub async fn open(&self, project: &ProjectLink, agent: &Agent) -> Result<Open, OutlinesError> {
-        let id = self.claimed_by(project).await?;
+        let mine = OutlineId::generate(self.clock.now());
+        let mut transaction = self.begun().await?;
+        let held = self
+            .registry
+            .claim(
+                &mut transaction,
+                KIND.as_str(),
+                project.as_str(),
+                &mine.to_string(),
+            )
+            .await?;
+        let id: OutlineId = held.parse()?;
         let key = AggregateId::from(&id);
+        if id == mine {
+            self.events
+                .begin(
+                    Some(&mut transaction),
+                    &key,
+                    OutlineCommand::Start {
+                        project: project.clone(),
+                    },
+                    agent,
+                )
+                .await?;
+        }
+        self.finished(transaction).await?;
 
         let standing = match self.events.latest(&key).await {
             Ok(standing) => standing,
@@ -133,14 +159,18 @@ impl OutlineService {
         Ok(held.map(|held| held.parse()).transpose()?)
     }
 
-    async fn claimed_by(&self, project: &ProjectLink) -> Result<OutlineId, OutlinesError> {
-        let mine = OutlineId::generate(self.clock.now());
-        let held = self
-            .registry
-            .claim(KIND.as_str(), project.as_str(), &mine.to_string())
-            .await?;
+    async fn begun(&self) -> Result<Transaction, OutlinesError> {
+        self.transactions
+            .begin()
+            .await
+            .map_err(|failure| RegistryError::Backend(Box::new(failure)).into())
+    }
 
-        Ok(held.parse()?)
+    async fn finished(&self, transaction: Transaction) -> Result<(), OutlinesError> {
+        transaction
+            .finish()
+            .await
+            .map_err(|failure| RegistryError::Backend(Box::new(failure)).into())
     }
 
     async fn start(

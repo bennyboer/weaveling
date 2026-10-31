@@ -5,8 +5,8 @@ use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, StoreError,
     Version,
 };
-use registry::Registry;
-use transacting::Transactions;
+use registry::{Registry, RegistryError};
+use transacting::{Transaction, Transactions};
 
 use crate::board::{Board, BoardCommand, BoardEvent, KIND, ProjectLink};
 use crate::error::BoardsError;
@@ -15,6 +15,7 @@ use crate::id::BoardId;
 #[derive(Clone)]
 pub struct BoardService {
     events: Arc<EventSourcingService<Board>>,
+    transactions: Arc<dyn Transactions>,
     registry: Arc<dyn Registry>,
     clock: Arc<dyn Clock>,
 }
@@ -34,17 +35,42 @@ impl BoardService {
         Self {
             events: Arc::new(EventSourcingService::new(
                 store,
-                transactions,
+                transactions.clone(),
                 clock.clone(),
             )),
+            transactions,
             registry,
             clock,
         }
     }
 
     pub async fn open(&self, project: &ProjectLink, agent: &Agent) -> Result<Open, BoardsError> {
-        let id = self.claimed_by(project).await?;
+        let mine = BoardId::generate(self.clock.now());
+        let mut transaction = self.begun().await?;
+        let held = self
+            .registry
+            .claim(
+                &mut transaction,
+                KIND.as_str(),
+                project.as_str(),
+                &mine.to_string(),
+            )
+            .await?;
+        let id: BoardId = held.parse()?;
         let key = AggregateId::from(&id);
+        if id == mine {
+            self.events
+                .begin(
+                    Some(&mut transaction),
+                    &key,
+                    BoardCommand::Start {
+                        project: project.clone(),
+                    },
+                    agent,
+                )
+                .await?;
+        }
+        self.finished(transaction).await?;
 
         let standing = match self.events.latest(&key).await {
             Ok(standing) => standing,
@@ -93,14 +119,18 @@ impl BoardService {
         Ok(held.map(|held| held.parse()).transpose()?)
     }
 
-    async fn claimed_by(&self, project: &ProjectLink) -> Result<BoardId, BoardsError> {
-        let mine = BoardId::generate(self.clock.now());
-        let held = self
-            .registry
-            .claim(KIND.as_str(), project.as_str(), &mine.to_string())
-            .await?;
+    async fn begun(&self) -> Result<Transaction, BoardsError> {
+        self.transactions
+            .begin()
+            .await
+            .map_err(|failure| RegistryError::Backend(Box::new(failure)).into())
+    }
 
-        Ok(held.parse()?)
+    async fn finished(&self, transaction: Transaction) -> Result<(), BoardsError> {
+        transaction
+            .finish()
+            .await
+            .map_err(|failure| RegistryError::Backend(Box::new(failure)).into())
     }
 
     async fn start(

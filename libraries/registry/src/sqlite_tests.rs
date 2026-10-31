@@ -2,6 +2,8 @@ use async_trait::async_trait;
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 
+use transacting::{SqliteTransactions, Transactions};
+
 use crate::Registry;
 use crate::sqlite;
 use crate::sqlite::SqliteRegistry;
@@ -11,6 +13,7 @@ struct OnSqlite {
     fixture: SqliteFixture,
     pool: SqlitePool,
     store: SqliteRegistry,
+    transactions: SqliteTransactions,
 }
 
 #[async_trait]
@@ -28,12 +31,17 @@ impl Workbench for OnSqlite {
         Self {
             fixture,
             store: SqliteRegistry::new(pool.clone()),
+            transactions: SqliteTransactions::new(pool.clone()),
             pool,
         }
     }
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {
@@ -51,12 +59,28 @@ async fn a_race_for_one_key_leaves_exactly_one_winner() {
     let racing: Vec<_> = (1..=8)
         .map(|nth| {
             let registry = registry.clone();
+            let transactions = SqliteTransactions::new(bench.pool.clone());
 
             tokio::spawn(async move {
-                registry
-                    .claim("board", "project_1", &format!("board_{nth}"))
+                let mut transaction = transactions
+                    .begin()
                     .await
-                    .expect("claiming should succeed")
+                    .expect("beginning should succeed");
+                let held = registry
+                    .claim(
+                        &mut transaction,
+                        "board",
+                        "project_1",
+                        &format!("board_{nth}"),
+                    )
+                    .await
+                    .expect("claiming should succeed");
+                transaction
+                    .finish()
+                    .await
+                    .expect("finishing should succeed");
+
+                held
             })
         })
         .collect();

@@ -1,13 +1,14 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
+use transacting::{Transaction, memory};
 
 use crate::{Registry, RegistryError};
 
 #[derive(Debug, Default)]
 pub struct InMemoryRegistry {
-    claimed: Mutex<HashMap<(String, String), String>>,
+    claimed: Arc<Mutex<HashMap<(String, String), String>>>,
 }
 
 impl InMemoryRegistry {
@@ -18,13 +19,31 @@ impl InMemoryRegistry {
 
 #[async_trait]
 impl Registry for InMemoryRegistry {
-    async fn claim(&self, kind: &str, key: &str, id: &str) -> Result<String, RegistryError> {
+    async fn claim(
+        &self,
+        transaction: &mut Transaction,
+        kind: &str,
+        key: &str,
+        id: &str,
+    ) -> Result<String, RegistryError> {
+        let key = (kind.to_owned(), key.to_owned());
         let mut claimed = self.claimed.lock().expect("registry lock poisoned");
+        if let Some(held) = claimed.get(&key) {
+            return Ok(held.clone());
+        }
 
-        Ok(claimed
-            .entry((kind.to_owned(), key.to_owned()))
-            .or_insert_with(|| id.to_owned())
-            .clone())
+        let undone = key.clone();
+        let registry = self.claimed.clone();
+        memory::undo_on_rollback(transaction, move || {
+            registry
+                .lock()
+                .expect("registry lock poisoned")
+                .remove(&undone);
+        })
+        .map_err(|failure| RegistryError::Backend(Box::new(failure)))?;
+        claimed.insert(key, id.to_owned());
+
+        Ok(id.to_owned())
     }
 
     async fn holder(&self, kind: &str, key: &str) -> Result<Option<String>, RegistryError> {
@@ -36,22 +55,28 @@ impl Registry for InMemoryRegistry {
 
 #[cfg(test)]
 mod tests {
+    use transacting::{InMemoryTransactions, Transactions};
+
     use super::*;
 
     use crate::suite::Workbench;
 
-    struct InMemory(InMemoryRegistry);
+    struct InMemory(InMemoryRegistry, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemoryRegistry;
 
         async fn setup() -> Self {
-            Self(InMemoryRegistry::new())
+            Self(InMemoryRegistry::new(), InMemoryTransactions::new())
         }
 
         fn store(&self) -> &Self::Store {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

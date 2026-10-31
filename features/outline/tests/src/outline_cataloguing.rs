@@ -1,14 +1,15 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::{
     AccountId, Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, EventStore,
-    Recorded, Standing, Version,
+    Recorded, RefusesAppending, Standing, Version,
 };
 use messaging::Message;
 use outline_core::{
-    Attachment, KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, ProjectLink, SectionId,
-    SectionTitle,
+    Attachment, KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlinesCore, ProjectLink,
+    SectionId, SectionTitle,
 };
 use time::{Duration, OffsetDateTime};
 
@@ -315,11 +316,24 @@ async fn a_snapshot_carries_the_whole_shape_of_the_book() {
 async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
     let wired = a_workbench();
     let known = OutlineId::generate(at(500));
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     wired
         .registry
-        .claim(KIND.as_str(), "project_1", &known.to_string())
+        .claim(
+            &mut transaction,
+            KIND.as_str(),
+            "project_1",
+            &known.to_string(),
+        )
         .await
         .expect("claiming should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     let opened = wired
         .outlines
@@ -331,5 +345,45 @@ async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
         opened.id, known,
         "the find branch takes whoever holds the claim rather than starting afresh; the claim is \
          authoritative where the catalog is only a projection"
+    );
+}
+
+#[tokio::test]
+async fn an_outline_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_started_next_time() {
+    let wired = a_workbench();
+    let refusing = OutlinesCore::new(
+        Arc::new(RefusesAppending(wired.store.clone())),
+        Arc::new(InMemoryTransactions::new()),
+        wired.catalog.clone(),
+        wired.registry.clone(),
+        Arc::new(AllowingEverything),
+        Arc::new(FixedClock::new(at(1_000))),
+    );
+
+    let refused = refusing.open("project_1", &an_author()).await;
+    let held_after_refusal = wired
+        .registry
+        .holder(KIND.as_str(), "project_1")
+        .await
+        .expect("asking should succeed");
+    let opened = wired
+        .outlines
+        .open("project_1", &an_author())
+        .await
+        .expect("opening should succeed")
+        .id;
+
+    assert!(refused.is_err());
+    assert_eq!(
+        held_after_refusal, None,
+        "a claim kept for an outline that never started would point every later open at nothing"
+    );
+    assert_eq!(
+        wired
+            .registry
+            .holder(KIND.as_str(), "project_1")
+            .await
+            .expect("asking should succeed"),
+        Some(opened.to_string())
     );
 }

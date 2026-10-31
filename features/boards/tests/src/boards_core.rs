@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
 use boards_core::{
-    BoardError, BoardEvent, BoardId, BoardsError, IdeaLink, KIND, ProjectLink, Size, Spot,
+    BoardError, BoardEvent, BoardId, BoardsCore, BoardsError, IdeaLink, KIND, ProjectLink, Size,
+    Spot,
 };
 use clock::FixedClock;
 use eventsourcing::{
     AccountId, Agent, AggregateContext, AggregateId, EventMetadata, EventStore, Recorded,
-    ServiceError, StoreError, Version,
+    RefusesAppending, ServiceError, StoreError, Version,
 };
 use messaging::RoutingKey;
 use registry::Registry;
@@ -87,11 +89,24 @@ async fn opening_a_project_that_never_had_a_board_starts_one() {
 async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
     let (wired, _) = a_workbench();
     let known = BoardId::generate(at(500));
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     wired
         .registry
-        .claim(KIND.as_str(), "project_1", &known.to_string())
+        .claim(
+            &mut transaction,
+            KIND.as_str(),
+            "project_1",
+            &known.to_string(),
+        )
         .await
         .expect("claiming should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
     let mut transaction = InMemoryTransactions::new()
         .begin()
         .await
@@ -381,4 +396,39 @@ async fn an_id_that_is_not_a_board_is_refused() {
         .await;
 
     assert!(matches!(refused, Err(BoardsError::InvalidId(_))));
+}
+
+#[tokio::test]
+async fn a_board_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_started_next_time() {
+    let (wired, clock) = a_workbench();
+    let refusing = BoardsCore::new(
+        Arc::new(RefusesAppending(wired.store.clone())),
+        Arc::new(InMemoryTransactions::new()),
+        wired.catalog.clone(),
+        wired.registry.clone(),
+        Arc::new(AllowingEverything),
+        clock,
+    );
+
+    let refused = refusing.open("project_1", &an_author()).await;
+    let held_after_refusal = wired
+        .registry
+        .holder(KIND.as_str(), "project_1")
+        .await
+        .expect("asking should succeed");
+    let opened = an_open_board(&wired).await;
+
+    assert!(refused.is_err());
+    assert_eq!(
+        held_after_refusal, None,
+        "a claim kept for a board that never started would point every later open at nothing"
+    );
+    assert_eq!(
+        wired
+            .registry
+            .holder(KIND.as_str(), "project_1")
+            .await
+            .expect("asking should succeed"),
+        Some(opened.to_string())
+    );
 }

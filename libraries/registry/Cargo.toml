@@ -8,9 +8,11 @@ async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
+transacting = { version = "0.1.0", path = "../transacting", package = "weaveling-transacting" }
+
 [features]
-postgres = ["dep:sqlx"]
-sqlite = ["dep:sqlx", "sqlx/sqlite"]
+postgres = ["dep:sqlx", "transacting/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

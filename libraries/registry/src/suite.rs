@@ -1,4 +1,8 @@
-use crate::Registry;
+use std::ops::Deref;
+
+use transacting::Transactions;
+
+use crate::{Registry, RegistryError};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -8,10 +12,49 @@ pub trait Workbench: Sized {
 
     fn store(&self) -> &Self::Store;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Store> {
+        Committing {
+            store: self.store(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
 }
 
-pub async fn an_unclaimed_key_is_taken_by_whoever_asks(registry: &impl Registry) {
+pub struct Committing<'a, R> {
+    store: &'a R,
+    transactions: &'a dyn Transactions,
+}
+
+impl<R: Registry> Committing<'_, R> {
+    pub async fn claim(&self, kind: &str, key: &str, id: &str) -> Result<String, RegistryError> {
+        let mut transaction = self
+            .transactions
+            .begin()
+            .await
+            .map_err(|failure| RegistryError::Backend(Box::new(failure)))?;
+        let held = self.store.claim(&mut transaction, kind, key, id).await?;
+        transaction
+            .finish()
+            .await
+            .map_err(|failure| RegistryError::Backend(Box::new(failure)))?;
+
+        Ok(held)
+    }
+}
+
+impl<R> Deref for Committing<'_, R> {
+    type Target = R;
+
+    fn deref(&self) -> &R {
+        self.store
+    }
+}
+
+pub async fn an_unclaimed_key_is_taken_by_whoever_asks(registry: &Committing<'_, impl Registry>) {
     let held = registry
         .claim("board", "project_1", "board_1")
         .await
@@ -20,7 +63,7 @@ pub async fn an_unclaimed_key_is_taken_by_whoever_asks(registry: &impl Registry)
     assert_eq!(held, "board_1");
 }
 
-pub async fn a_claimed_key_answers_with_who_holds_it(registry: &impl Registry) {
+pub async fn a_claimed_key_answers_with_who_holds_it(registry: &Committing<'_, impl Registry>) {
     registry
         .claim("board", "project_1", "board_1")
         .await
@@ -37,7 +80,7 @@ pub async fn a_claimed_key_answers_with_who_holds_it(registry: &impl Registry) {
     );
 }
 
-pub async fn claiming_the_same_key_twice_over_is_stable(registry: &impl Registry) {
+pub async fn claiming_the_same_key_twice_over_is_stable(registry: &Committing<'_, impl Registry>) {
     let mut held = Vec::new();
     for attempt in 1..=4 {
         held.push(
@@ -51,7 +94,7 @@ pub async fn claiming_the_same_key_twice_over_is_stable(registry: &impl Registry
     assert_eq!(held, vec!["board_1"; 4], "a claim never changes hands");
 }
 
-pub async fn each_key_is_claimed_on_its_own(registry: &impl Registry) {
+pub async fn each_key_is_claimed_on_its_own(registry: &Committing<'_, impl Registry>) {
     let mine = registry
         .claim("board", "project_mine", "board_1")
         .await
@@ -64,7 +107,7 @@ pub async fn each_key_is_claimed_on_its_own(registry: &impl Registry) {
     assert_eq!((mine.as_str(), theirs.as_str()), ("board_1", "board_2"));
 }
 
-pub async fn two_kinds_do_not_share_a_key(registry: &impl Registry) {
+pub async fn two_kinds_do_not_share_a_key(registry: &Committing<'_, impl Registry>) {
     let board = registry
         .claim("board", "project_1", "board_1")
         .await
@@ -81,7 +124,7 @@ pub async fn two_kinds_do_not_share_a_key(registry: &impl Registry) {
     );
 }
 
-pub async fn an_unclaimed_key_has_no_holder(registry: &impl Registry) {
+pub async fn an_unclaimed_key_has_no_holder(registry: &Committing<'_, impl Registry>) {
     let held = registry
         .holder("board", "project_1")
         .await
@@ -90,7 +133,9 @@ pub async fn an_unclaimed_key_has_no_holder(registry: &impl Registry) {
     assert_eq!(held, None);
 }
 
-pub async fn a_claimed_key_names_its_holder_without_claiming_anything(registry: &impl Registry) {
+pub async fn a_claimed_key_names_its_holder_without_claiming_anything(
+    registry: &Committing<'_, impl Registry>,
+) {
     registry
         .claim("board", "project_1", "board_1")
         .await
@@ -112,7 +157,7 @@ pub async fn a_claimed_key_names_its_holder_without_claiming_anything(registry: 
     );
 }
 
-pub async fn each_kind_names_its_own_holder(registry: &impl Registry) {
+pub async fn each_kind_names_its_own_holder(registry: &Committing<'_, impl Registry>) {
     registry
         .claim("board", "project_1", "board_1")
         .await
@@ -126,6 +171,39 @@ pub async fn each_kind_names_its_own_holder(registry: &impl Registry) {
     assert_eq!(outline, None);
 }
 
+pub async fn a_key_claimed_in_a_dropped_transaction_was_never_claimed(
+    registry: &Committing<'_, impl Registry>,
+) {
+    let mut transaction = registry
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    registry
+        .store
+        .claim(&mut transaction, "board", "project_1", "board_1")
+        .await
+        .expect("claiming should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        registry
+            .holder("board", "project_1")
+            .await
+            .expect("asking should succeed"),
+        None
+    );
+    assert_eq!(
+        registry
+            .claim("board", "project_1", "board_2")
+            .await
+            .expect("claiming should succeed"),
+        "board_2",
+        "a claim rolled back with what it was claimed for leaves the key to the next"
+    );
+}
+
 #[macro_export]
 macro_rules! registry_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -134,7 +212,7 @@ macro_rules! registry_conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.store()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -144,6 +222,10 @@ macro_rules! registry_conformance_case {
 macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::registry_conformance_case!($workbench, an_unclaimed_key_is_taken_by_whoever_asks);
+        $crate::registry_conformance_case!(
+            $workbench,
+            a_key_claimed_in_a_dropped_transaction_was_never_claimed
+        );
         $crate::registry_conformance_case!($workbench, a_claimed_key_answers_with_who_holds_it);
         $crate::registry_conformance_case!($workbench, claiming_the_same_key_twice_over_is_stable);
         $crate::registry_conformance_case!($workbench, each_key_is_claimed_on_its_own);
