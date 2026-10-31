@@ -7,6 +7,7 @@ use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use members_catalog::InMemoryMembershipCatalog;
 use members_core::{MembersAuthorizer, MembersCore, ProjectLink, Role};
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 const PROJECT: &str = "project_1";
 
@@ -26,6 +27,7 @@ async fn a_change_to_the_members_is_told_once_the_list_shows_it() {
     let authorizer = Arc::new(MembersAuthorizer::new(catalog.clone()));
     let members = MembersCore::new(
         Arc::new(InMemoryEventStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         catalog,
         authorizer.clone(),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),

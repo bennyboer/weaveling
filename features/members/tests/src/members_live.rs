@@ -13,6 +13,7 @@ use members_core::{MembersAuthorizer, MembersCore, ProjectLink, Role};
 use members_rest::{MembersTopic, MembershipChanges};
 use serde_json::json;
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 const PROJECT: &str = "project_1";
 
@@ -53,6 +54,7 @@ async fn a_project_of_two() -> Followed {
     let catalog = Arc::new(InMemoryMembershipCatalog::new());
     let core = MembersCore::new(
         Arc::new(InMemoryEventStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         catalog.clone(),
         Arc::new(MembersAuthorizer::new(catalog)),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
@@ -165,6 +167,7 @@ impl Authorizer for Unreachable {
 async fn whom_to_let_follow_not_being_known_is_a_failure_not_a_no() {
     let core = MembersCore::new(
         Arc::new(InMemoryEventStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryMembershipCatalog::new()),
         Arc::new(Unreachable),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),

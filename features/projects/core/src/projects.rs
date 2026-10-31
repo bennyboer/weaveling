@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::{AccessWatch, Act, Authorizer, Readable};
 use clock::Clock;
 use eventsourcing::{Agent, EventStore, Standing, Version};
+use transacting::Transactions;
 
 use crate::catalog::{ProjectCatalog, ProjectSummary};
 use crate::error::ProjectsError;
@@ -20,12 +21,13 @@ pub struct ProjectsCore {
 impl ProjectsCore {
     pub fn new(
         store: Arc<dyn EventStore<ProjectEvent>>,
+        transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn ProjectCatalog>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: ProjectService::new(store, clock),
+            service: ProjectService::new(store, transactions, clock),
             catalog,
             authorizer,
         }

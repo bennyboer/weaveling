@@ -19,6 +19,7 @@ members-contract = { version = "0.1.0", path = "../../contract", package = "weav
 members-core = { version = "0.1.0", path = "../../core", package = "weaveling-members-core" }
 
 [dev-dependencies]
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 live = { version = "0.1.0", path = "../../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 axum-test = { workspace = true, features = ["ws"] }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }

@@ -9,6 +9,7 @@ use invitations_core::{InvitationEvent, InvitationToken, InvitationsCore};
 use mailing::FakeMailbox;
 use throttling::InMemoryThrottles;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 
 pub const ORIGIN: &str = "https://weaveling.example.com";
 
@@ -37,6 +38,7 @@ pub fn wired_guarded_by(authorizer: Arc<dyn Authorizer>) -> Wired {
     Wired {
         invitations: InvitationsCore::new(
             store.clone(),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryThrottles::default()),
             catalog.clone(),
             mailbox.clone(),

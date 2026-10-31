@@ -1,3 +1,5 @@
+use transacting::Transaction;
+
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
 use crate::postgres;
@@ -45,6 +47,7 @@ impl<E> PostgresEventStore<E> {
 
     pub(super) async fn discard_through(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         through: Version,
@@ -53,7 +56,10 @@ impl<E> PostgresEventStore<E> {
             .bind(aggregate.as_str())
             .bind(kind.as_str())
             .bind(postgres::as_bigint(through))
-            .execute(&self.pool)
+            .execute(
+                transacting::postgres::connection(transaction)
+                    .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
+            )
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
@@ -62,13 +68,17 @@ impl<E> PostgresEventStore<E> {
 
     pub(super) async fn forget_stream(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<(), StoreError> {
         sqlx::query(FORGET)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
-            .execute(&self.pool)
+            .execute(
+                transacting::postgres::connection(transaction)
+                    .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
+            )
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 

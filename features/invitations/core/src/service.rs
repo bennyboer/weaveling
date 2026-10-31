@@ -6,6 +6,7 @@ use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standi
 use mailing::{Mail, Mailer};
 use throttling::{Rule, Throttles};
 use time::OffsetDateTime;
+use transacting::Transactions;
 
 use crate::catalog::InvitationSummary;
 use crate::error::InvitationsError;
@@ -28,12 +29,17 @@ pub struct InvitationService {
 impl InvitationService {
     pub fn new(
         store: Arc<dyn EventStore<InvitationEvent>>,
+        transactions: Arc<dyn Transactions>,
         throttles: Arc<dyn Throttles>,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            events: Arc::new(EventSourcingService::new(
+                store,
+                transactions,
+                clock.clone(),
+            )),
             throttles,
             mailer,
             clock,

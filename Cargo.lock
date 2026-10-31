@@ -3606,6 +3606,7 @@ dependencies = [
  "weaveling-ids",
  "weaveling-mailing",
  "weaveling-throttling",
+ "weaveling-transacting",
  "weaveling-words",
 ]
 
@@ -3690,6 +3691,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-throttling",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -3710,6 +3712,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-throttling",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -3871,6 +3874,7 @@ dependencies = [
  "weaveling-ids",
  "weaveling-projects-contract",
  "weaveling-registry",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -3938,6 +3942,7 @@ dependencies = [
  "weaveling-outbox",
  "weaveling-projects-contract",
  "weaveling-registry",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -3963,6 +3968,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-registry",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4090,6 +4096,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-projects-contract",
+ "weaveling-transacting",
  "weaveling-words",
 ]
 
@@ -4158,6 +4165,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-projects-contract",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4175,6 +4183,7 @@ dependencies = [
  "weaveling-ideas-store",
  "weaveling-live",
  "weaveling-outbox",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4226,6 +4235,7 @@ dependencies = [
  "weaveling-ids",
  "weaveling-mailing",
  "weaveling-throttling",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4302,6 +4312,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-projects-contract",
  "weaveling-throttling",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4329,6 +4340,7 @@ dependencies = [
  "weaveling-outbox",
  "weaveling-test-harness",
  "weaveling-throttling",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4403,6 +4415,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-projects-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4424,6 +4437,7 @@ dependencies = [
  "weaveling-members-core",
  "weaveling-messaging",
  "weaveling-projects-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4446,6 +4460,7 @@ dependencies = [
  "weaveling-members-contract",
  "weaveling-members-core",
  "weaveling-serving",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4476,6 +4491,7 @@ dependencies = [
  "weaveling-members-contract",
  "weaveling-members-core",
  "weaveling-members-rest",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4497,6 +4513,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-test-harness",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4558,6 +4575,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-registry",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4579,6 +4597,7 @@ dependencies = [
  "weaveling-notifications-core",
  "weaveling-projects-contract",
  "weaveling-registry",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4628,6 +4647,7 @@ dependencies = [
  "weaveling-notifications-rest",
  "weaveling-projects-contract",
  "weaveling-registry",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4652,6 +4672,7 @@ dependencies = [
  "weaveling-outbox",
  "weaveling-registry",
  "weaveling-test-harness",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4708,6 +4729,7 @@ dependencies = [
  "weaveling-ids",
  "weaveling-projects-contract",
  "weaveling-registry",
+ "weaveling-transacting",
  "weaveling-words",
 ]
 
@@ -4781,6 +4803,7 @@ dependencies = [
  "weaveling-registry",
  "weaveling-scenes-contract",
  "weaveling-test-harness",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4806,6 +4829,7 @@ dependencies = [
  "weaveling-outline-rest",
  "weaveling-outline-store",
  "weaveling-registry",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4844,6 +4868,7 @@ dependencies = [
  "weaveling-ids",
  "weaveling-projects-contract",
  "weaveling-quotation",
+ "weaveling-transacting",
  "weaveling-words",
 ]
 
@@ -4909,6 +4934,7 @@ dependencies = [
  "weaveling-projects-core",
  "weaveling-projects-messaging",
  "weaveling-projects-wiring",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -4927,6 +4953,7 @@ dependencies = [
  "weaveling-projects-messaging",
  "weaveling-projects-rest",
  "weaveling-projects-store",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -5317,6 +5344,7 @@ dependencies = [
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
+ "weaveling-transacting",
 ]
 
 [[package]]

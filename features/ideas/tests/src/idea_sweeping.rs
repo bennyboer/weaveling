@@ -13,6 +13,7 @@ use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 
@@ -57,6 +58,7 @@ fn a_workbench(at_most: usize) -> Wired {
     let authorizer = Arc::new(TheSystemOnly::default());
     let ideas = IdeasCore::new(
         Arc::new(InMemoryEventStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         catalog.clone(),
         authorizer.clone(),
         clock.clone(),

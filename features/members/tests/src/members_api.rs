@@ -16,6 +16,7 @@ use members_core::{
 };
 use serde_json::Value;
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 const PROJECT: &str = "project_1";
 
@@ -55,6 +56,7 @@ async fn a_project_of_three() -> Members {
     let catalog = Arc::new(InMemoryMembershipCatalog::new());
     let core = MembersCore::new(
         store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         catalog.clone(),
         Arc::new(MembersAuthorizer::new(catalog)),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
@@ -372,6 +374,7 @@ async fn leaving_asks_whether_one_is_a_member_not_whether_one_may_read() {
     let store = Arc::new(InMemoryEventStore::new());
     let core = MembersCore::new(
         store,
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryMembershipCatalog::new()),
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),

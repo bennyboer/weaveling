@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventStore, ServiceError, Standing, Version};
+use transacting::Transactions;
 
 use crate::catalog::{IdeaCatalog, IdeaSummary};
 use crate::error::IdeasError;
@@ -20,12 +21,13 @@ pub struct IdeasCore {
 impl IdeasCore {
     pub fn new(
         store: Arc<dyn EventStore<IdeaEvent>>,
+        transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn IdeaCatalog>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: IdeaService::new(store, clock),
+            service: IdeaService::new(store, transactions, clock),
             catalog,
             authorizer,
         }

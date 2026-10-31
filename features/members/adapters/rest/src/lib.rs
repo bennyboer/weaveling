@@ -257,12 +257,14 @@ mod tests {
     use members_catalog::InMemoryMembershipCatalog;
     use serde_json::{Value, json};
     use time::OffsetDateTime;
+    use transacting::InMemoryTransactions;
 
     use super::*;
 
     fn served(broadcaster: &Broadcaster<MembershipChanges>, agent: Agent) -> TestServer {
         let members = MembersCore::new(
             Arc::new(InMemoryEventStore::new()),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryMembershipCatalog::new()),
             Arc::new(AllowingEverything),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),

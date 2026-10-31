@@ -5,6 +5,7 @@ use clock::Clock;
 use eventsourcing::{Agent, EventStore, ServiceError, Standing, Version};
 use registry::Registry;
 use time::OffsetDateTime;
+use transacting::Transactions;
 
 use crate::board::{Board, BoardCommand, BoardError, BoardEvent, IdeaLink, ProjectLink};
 use crate::catalog::{BoardCatalog, BoardSummary};
@@ -24,13 +25,14 @@ pub struct BoardsCore {
 impl BoardsCore {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
+        transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn BoardCatalog>,
         registry: Arc<dyn Registry>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: BoardService::new(store, registry, clock),
+            service: BoardService::new(store, transactions, registry, clock),
             catalog,
             authorizer,
         }

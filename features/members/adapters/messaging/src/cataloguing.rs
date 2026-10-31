@@ -42,6 +42,7 @@ mod tests {
     use messaging::{Listener, RoutingKey};
     use serde_json::json;
     use time::OffsetDateTime;
+    use transacting::{InMemoryTransactions, Transactions};
 
     use super::*;
 
@@ -56,11 +57,13 @@ mod tests {
             Arc::new(eventsourcing::InMemoryEventStore::new());
         let clock: Arc<dyn Clock> = Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH));
         let catalog = Arc::new(InMemoryMembershipCatalog::new());
+        let transactions: Arc<dyn Transactions> = Arc::new(InMemoryTransactions::new());
 
         Bench {
-            events: EventSourcingService::new(store.clone(), clock.clone()),
+            events: EventSourcingService::new(store.clone(), transactions.clone(), clock.clone()),
             listener: CatalogueMembersListener::new(MembersCore::new(
                 store,
+                transactions,
                 catalog.clone(),
                 Arc::new(AllowingEverything),
                 clock,

@@ -11,6 +11,7 @@ use notifications_core::{
 };
 use registry::InMemoryRegistry;
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 struct Kept {
     store: Arc<InMemoryEventStore<NoticeEvent>>,
@@ -23,6 +24,7 @@ fn kept() -> Kept {
     Kept {
         notifications: NotificationsCore::new(
             store.clone(),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryNoticeCatalog::new()),
             Arc::new(InMemoryRegistry::new()),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),

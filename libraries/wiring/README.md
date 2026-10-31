@@ -18,10 +18,10 @@ impl Feature for IdeaFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } =
+        let EventSourced { events, transactions, outbox } =
             EventSourced::in_memory(ideas_messaging::message_for, context);
 
-        Ports { events, catalog: Arc::new(InMemoryIdeaCatalog::new()), outbox }
+        Ports { events, transactions, catalog: Arc::new(InMemoryIdeaCatalog::new()), outbox }
     }
 
     fn outbox(ports: &Ports) -> Option<Arc<dyn Outbox>> {

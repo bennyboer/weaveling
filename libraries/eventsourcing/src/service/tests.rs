@@ -2,6 +2,7 @@ use std::sync::Mutex;
 
 use clock::FixedClock;
 use time::OffsetDateTime;
+use transacting::{InMemoryTransactions, Transaction, Transactions};
 
 use super::*;
 use crate::agent::AccountId;
@@ -16,7 +17,11 @@ fn a_store() -> Arc<InMemoryEventStore<SampleEvent>> {
 }
 
 fn a_service(store: Arc<InMemoryEventStore<SampleEvent>>) -> EventSourcingService<Sample> {
-    EventSourcingService::new(store, Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)))
+    EventSourcingService::new(
+        store,
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    )
 }
 
 fn a_workbench() -> EventSourcingService<Sample> {
@@ -523,8 +528,13 @@ async fn an_event_stored_at_an_older_version_is_upgraded_before_the_aggregate_se
     let service = a_service(store.clone());
     let id = AggregateId::from("sample_ancient");
 
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     store
         .append(
+            &mut transaction,
             &id,
             Sample::KIND,
             Version::ZERO,
@@ -538,6 +548,10 @@ async fn an_event_stored_at_an_older_version_is_upgraded_before_the_aggregate_se
         )
         .await
         .expect("an old event should still be storable");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     let standing = service
         .latest(&id)
@@ -591,8 +605,13 @@ async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
     let service = a_service(store.clone());
     let id = AggregateId::from("sample_ancient_collapsed");
 
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     store
         .append(
+            &mut transaction,
             &id,
             Sample::KIND,
             Version::ZERO,
@@ -606,6 +625,10 @@ async fn an_old_event_still_reads_back_after_a_snapshot_replaces_it() {
         )
         .await
         .expect("an old event should still be storable");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     service
         .compact(&id, &an_author())
@@ -630,8 +653,13 @@ async fn an_event_two_versions_old_climbs_the_whole_chain() {
     let service = a_service(store.clone());
     let id = AggregateId::from("sample_very_ancient");
 
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     store
         .append(
+            &mut transaction,
             &id,
             Sample::KIND,
             Version::ZERO,
@@ -644,6 +672,10 @@ async fn an_event_two_versions_old_climbs_the_whole_chain() {
         )
         .await
         .expect("an event from two versions ago should still be storable");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     let standing = service
         .latest(&id)
@@ -704,6 +736,7 @@ impl BalksOnce {
 impl EventStore<SampleEvent> for BalksOnce {
     async fn append(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
@@ -713,7 +746,9 @@ impl EventStore<SampleEvent> for BalksOnce {
             return Err(StoreError::outdated(aggregate, kind, expected));
         }
 
-        self.inner.append(aggregate, kind, expected, stream).await
+        self.inner
+            .append(transaction, aggregate, kind, expected, stream)
+            .await
     }
 
     async fn read_from(
@@ -758,15 +793,23 @@ impl EventStore<SampleEvent> for BalksOnce {
 
     async fn prune_through(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         through: Version,
     ) -> Result<(), StoreError> {
-        self.inner.prune_through(aggregate, kind, through).await
+        self.inner
+            .prune_through(transaction, aggregate, kind, through)
+            .await
     }
 
-    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
-        self.inner.forget(aggregate, kind).await
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.inner.forget(transaction, aggregate, kind).await
     }
 }
 
@@ -795,6 +838,7 @@ impl RefusesSnapshots {
 impl EventStore<SampleEvent> for RefusesSnapshots {
     async fn append(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
@@ -808,7 +852,9 @@ impl EventStore<SampleEvent> for RefusesSnapshots {
             });
         }
 
-        self.inner.append(aggregate, kind, expected, stream).await
+        self.inner
+            .append(transaction, aggregate, kind, expected, stream)
+            .await
     }
 
     async fn read_from(
@@ -853,15 +899,23 @@ impl EventStore<SampleEvent> for RefusesSnapshots {
 
     async fn prune_through(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         through: Version,
     ) -> Result<(), StoreError> {
-        self.inner.prune_through(aggregate, kind, through).await
+        self.inner
+            .prune_through(transaction, aggregate, kind, through)
+            .await
     }
 
-    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
-        self.inner.forget(aggregate, kind).await
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.inner.forget(transaction, aggregate, kind).await
     }
 }
 
@@ -881,7 +935,11 @@ async fn a_sample_one_short_of_a_snapshot(
 }
 
 fn over(store: Arc<RefusesSnapshots>) -> EventSourcingService<Sample> {
-    EventSourcingService::new(store, Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)))
+    EventSourcingService::new(
+        store,
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    )
 }
 
 #[tokio::test]
@@ -954,6 +1012,7 @@ async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
     let balking = BalksOnce::wrapping(store, 2);
     let service = EventSourcingService::<Sample>::new(
         balking.clone(),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
@@ -981,6 +1040,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
         .expect("the sample is created");
     let service = EventSourcingService::<Sample>::new(
         BalksOnce::wrapping(store, ATTEMPTS),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
@@ -1007,6 +1067,7 @@ async fn a_command_aimed_at_one_version_is_never_tried_again() {
         .expect("the sample is created");
     let service = EventSourcingService::<Sample>::new(
         BalksOnce::wrapping(store, 1),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
@@ -1036,12 +1097,15 @@ struct Yielding {
 impl EventStore<SampleEvent> for Yielding {
     async fn append(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
         stream: &[Recorded<SampleEvent>],
     ) -> Result<(), StoreError> {
-        self.inner.append(aggregate, kind, expected, stream).await
+        self.inner
+            .append(transaction, aggregate, kind, expected, stream)
+            .await
     }
 
     async fn read_from(
@@ -1089,15 +1153,23 @@ impl EventStore<SampleEvent> for Yielding {
 
     async fn prune_through(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         through: Version,
     ) -> Result<(), StoreError> {
-        self.inner.prune_through(aggregate, kind, through).await
+        self.inner
+            .prune_through(transaction, aggregate, kind, through)
+            .await
     }
 
-    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
-        self.inner.forget(aggregate, kind).await
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.inner.forget(transaction, aggregate, kind).await
     }
 }
 
@@ -1110,6 +1182,7 @@ async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_coll
         .expect("the sample is created");
     let service = Arc::new(EventSourcingService::<Sample>::new(
         Arc::new(Yielding { inner: store }),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     ));
 

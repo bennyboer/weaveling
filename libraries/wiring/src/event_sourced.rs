@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use eventsourcing::{Event, EventStore, InMemoryEventStore, MessageMapping};
 use outbox::{InMemoryOutbox, Outbox};
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::Context;
 
@@ -15,9 +16,14 @@ use eventsourcing::SqliteEventStore;
 use outbox::PostgresOutbox;
 #[cfg(feature = "sqlite")]
 use outbox::SqliteOutbox;
+#[cfg(feature = "postgres")]
+use transacting::PostgresTransactions;
+#[cfg(feature = "sqlite")]
+use transacting::SqliteTransactions;
 
 pub struct EventSourced<E> {
     pub events: Arc<dyn EventStore<E>>,
+    pub transactions: Arc<dyn Transactions>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -36,6 +42,7 @@ where
                 outbox.clone(),
                 message_for,
             )),
+            transactions: Arc::new(InMemoryTransactions::new()),
             outbox,
         }
     }
@@ -49,6 +56,7 @@ where
     ) -> Self {
         Self {
             events: Arc::new(PostgresEventStore::new(pool.clone(), codec, message_for)),
+            transactions: Arc::new(PostgresTransactions::new(pool.clone())),
             outbox: Arc::new(PostgresOutbox::new(
                 pool.clone(),
                 context.publisher.clone(),
@@ -66,6 +74,7 @@ where
     ) -> Self {
         Self {
             events: Arc::new(SqliteEventStore::new(pool.clone(), codec, message_for)),
+            transactions: Arc::new(SqliteTransactions::new(pool.clone())),
             outbox: Arc::new(SqliteOutbox::new(
                 pool.clone(),
                 context.publisher.clone(),

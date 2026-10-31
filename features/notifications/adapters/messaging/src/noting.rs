@@ -75,6 +75,7 @@ mod tests {
     use registry::{InMemoryRegistry, Registry};
     use serde_json::{Value, json};
     use time::OffsetDateTime;
+    use transacting::InMemoryTransactions;
 
     use super::*;
 
@@ -88,6 +89,7 @@ mod tests {
         let registry = Arc::new(InMemoryRegistry::new());
         let notifications = NotificationsCore::new(
             Arc::new(InMemoryEventStore::new()),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryNoticeCatalog::new()),
             registry.clone(),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),

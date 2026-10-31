@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
+use transacting::{Transaction, memory};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
@@ -13,7 +14,7 @@ use outbox::InMemoryOutbox;
 type Streams<E> = HashMap<(AggregateId, AggregateType), Vec<Recorded<E>>>;
 
 pub struct InMemoryEventStore<E> {
-    streams: RwLock<Streams<E>>,
+    streams: Arc<RwLock<Streams<E>>>,
     enqueuing: Option<Enqueuing<E>>,
 }
 
@@ -29,7 +30,7 @@ impl<E> InMemoryEventStore<E> {
 
     pub fn enqueuing_to(outbox: Arc<InMemoryOutbox>, message_for: MessageMapping<E>) -> Self {
         Self {
-            streams: RwLock::new(HashMap::new()),
+            streams: Arc::new(RwLock::new(HashMap::new())),
             enqueuing: Some(Enqueuing {
                 outbox,
                 message_for,
@@ -37,16 +38,34 @@ impl<E> InMemoryEventStore<E> {
         }
     }
 
-    fn enqueue(&self, events: &[Recorded<E>]) {
+    fn enqueue(&self, transaction: &mut Transaction, events: &[Recorded<E>]) {
         let Some(enqueuing) = &self.enqueuing else {
             return;
         };
 
         for happened in events {
             if let Some(message) = (enqueuing.message_for)(happened) {
-                enqueuing.outbox.enqueue(message);
+                enqueuing.outbox.enqueue_within(transaction, message);
             }
         }
+    }
+
+    fn undo_on_rollback(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        restore: impl FnOnce(&mut Streams<E>) + Send + 'static,
+    ) -> Result<(), StoreError>
+    where
+        E: Send + Sync + 'static,
+    {
+        let streams = self.streams.clone();
+
+        memory::undo_on_rollback(transaction, move || {
+            restore(&mut streams.write().expect("event store lock poisoned"));
+        })
+        .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }
 
     fn read(&self) -> RwLockReadGuard<'_, Streams<E>> {
@@ -61,7 +80,7 @@ impl<E> InMemoryEventStore<E> {
 impl<E> Default for InMemoryEventStore<E> {
     fn default() -> Self {
         Self {
-            streams: RwLock::new(HashMap::new()),
+            streams: Arc::new(RwLock::new(HashMap::new())),
             enqueuing: None,
         }
     }
@@ -77,27 +96,41 @@ fn reached<E>(stream: Option<&Vec<Recorded<E>>>) -> Version {
 #[async_trait]
 impl<E> EventStore<E> for InMemoryEventStore<E>
 where
-    E: Clone + Send + Sync,
+    E: Clone + Send + Sync + 'static,
 {
     async fn append(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
         events: &[Recorded<E>],
     ) -> Result<(), StoreError> {
-        let mut streams = self.write();
         let key = (aggregate.clone(), kind);
+        {
+            let mut streams = self.write();
+            if reached(streams.get(&key)) != expected {
+                return Err(StoreError::outdated(aggregate, kind, expected));
+            }
 
-        if reached(streams.get(&key)) != expected {
-            return Err(StoreError::outdated(aggregate, kind, expected));
+            let before = streams.get(&key).map(Vec::len);
+            let undone = key.clone();
+            self.undo_on_rollback(transaction, aggregate, kind, move |streams| match before {
+                Some(before) => {
+                    if let Some(stream) = streams.get_mut(&undone) {
+                        stream.truncate(before);
+                    }
+                }
+                None => {
+                    streams.remove(&undone);
+                }
+            })?;
+            streams
+                .entry(key)
+                .or_default()
+                .extend(events.iter().cloned());
         }
-
-        streams
-            .entry(key)
-            .or_default()
-            .extend(events.iter().cloned());
-        self.enqueue(events);
+        self.enqueue(transaction, events);
 
         Ok(())
     }
@@ -165,21 +198,43 @@ where
 
     async fn prune_through(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         through: Version,
     ) -> Result<(), StoreError> {
+        let key = (aggregate.clone(), kind);
         let mut streams = self.write();
+        let Some(events) = streams.get_mut(&key) else {
+            return Ok(());
+        };
 
-        if let Some(events) = streams.get_mut(&(aggregate.clone(), kind)) {
-            events.retain(|entry| entry.metadata.version > through);
-        }
+        let whole = events.clone();
+        self.undo_on_rollback(transaction, aggregate, kind, move |streams| {
+            streams.insert(key, whole);
+        })?;
+        events.retain(|entry| entry.metadata.version > through);
 
         Ok(())
     }
 
-    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
-        self.write().remove(&(aggregate.clone(), kind));
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        let key = (aggregate.clone(), kind);
+        let mut streams = self.write();
+        let Some(whole) = streams.get(&key).cloned() else {
+            return Ok(());
+        };
+
+        let undone = key.clone();
+        self.undo_on_rollback(transaction, aggregate, kind, move |streams| {
+            streams.insert(undone, whole);
+        })?;
+        streams.remove(&key);
 
         Ok(())
     }
@@ -192,12 +247,15 @@ mod tests {
     use outbox::Outbox;
 
     use super::*;
+    use transacting::{InMemoryTransactions, Transactions};
+
     use crate::testing::Workbench;
     use crate::testing::sample;
     use crate::testing::sample::SampleEvent;
 
     struct InMemory {
         store: InMemoryEventStore<SampleEvent>,
+        transactions: InMemoryTransactions,
         outbox: Arc<InMemoryOutbox>,
         publisher: Arc<FakePublisher>,
     }
@@ -215,6 +273,7 @@ mod tests {
 
             Self {
                 store: InMemoryEventStore::enqueuing_to(outbox.clone(), sample::message_for),
+                transactions: InMemoryTransactions::new(),
                 outbox,
                 publisher,
             }
@@ -222,6 +281,10 @@ mod tests {
 
         fn store(&self) -> &Self::Store {
             &self.store
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.transactions
         }
 
         async fn waiting(&self) -> Vec<String> {

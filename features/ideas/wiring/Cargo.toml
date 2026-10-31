@@ -19,6 +19,7 @@ ideas-messaging = { version = "0.1.0", path = "../adapters/messaging", package =
 ideas-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-ideas-rest" }
 ideas-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-ideas-catalog" }
 ideas-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-ideas-store" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "ideas-catalog/postgres"]

@@ -14,12 +14,14 @@ use members_messaging::{
 };
 use messaging::Publisher;
 use outbox::Outbox;
+use transacting::Transactions;
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 pub const LIVE: &str = "broadcast-membership-changes";
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<MembersEvent>>,
+    pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn MembershipCatalog>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -27,6 +29,7 @@ pub struct Ports {
 pub fn core(ports: &Ports, context: &Context) -> MembersCore {
     MembersCore::new(
         ports.events.clone(),
+        ports.transactions.clone(),
         ports.catalog.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
@@ -83,11 +86,15 @@ impl Feature for MembersFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } =
-            EventSourced::in_memory(members_messaging::message_for, context);
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::in_memory(members_messaging::message_for, context);
 
         Ports {
             events,
+            transactions,
             catalog: Arc::new(InMemoryMembershipCatalog::new()),
             outbox,
         }
@@ -95,7 +102,11 @@ impl Feature for MembersFeature {
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_postgres(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
             &pool,
             members_store::codec(),
             members_messaging::message_for,
@@ -104,6 +115,7 @@ impl Feature for MembersFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(members_catalog::PostgresMembershipCatalog::new(pool)),
             outbox,
         })
@@ -120,7 +132,11 @@ impl Feature for MembersFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
             &pool,
             members_store::codec(),
             members_messaging::message_for,
@@ -129,6 +145,7 @@ impl Feature for MembersFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(members_catalog::SqliteMembershipCatalog::new(pool)),
             outbox,
         })

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standing, Version};
+use transacting::Transactions;
 
 use crate::error::IdeasError;
 use crate::id::IdeaId;
@@ -15,9 +16,17 @@ pub struct IdeaService {
 }
 
 impl IdeaService {
-    pub fn new(store: Arc<dyn EventStore<IdeaEvent>>, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        store: Arc<dyn EventStore<IdeaEvent>>,
+        transactions: Arc<dyn Transactions>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            events: Arc::new(EventSourcingService::new(
+                store,
+                transactions,
+                clock.clone(),
+            )),
             clock,
         }
     }

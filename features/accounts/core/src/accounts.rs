@@ -6,6 +6,7 @@ use eventsourcing::EventStore;
 use mailing::Mailer;
 use time::OffsetDateTime;
 use tokio::sync::watch;
+use transacting::Transactions;
 
 use crate::account::AccountEvent;
 use crate::catalog::{AccountCatalog, AccountSummary};
@@ -30,13 +31,21 @@ pub struct AccountsCore {
 impl AccountsCore {
     pub fn new(
         store: Arc<dyn EventStore<AccountEvent>>,
+        transactions: Arc<dyn Transactions>,
         secrets: SecretStores,
         catalog: Arc<dyn AccountCatalog>,
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: AccountService::new(store, secrets, catalog.clone(), mailer, clock.clone()),
+            service: AccountService::new(
+                store,
+                transactions,
+                secrets,
+                catalog.clone(),
+                mailer,
+                clock.clone(),
+            ),
             catalog,
             clock,
             sessions_checked: Arc::new(watch::Sender::new(0)),

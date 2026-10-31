@@ -12,6 +12,7 @@ use live::Topic;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use registry::InMemoryRegistry;
+use transacting::InMemoryTransactions;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-board";
@@ -68,6 +69,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let catalog = Arc::new(InMemoryBoardCatalog::new());
     let ports = boards_wiring::Ports {
         events: store.clone(),
+        transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
         registry: registry.clone(),
         outbox: outbox.clone(),

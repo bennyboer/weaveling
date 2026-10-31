@@ -21,6 +21,7 @@ accounts-messaging = { version = "0.1.0", path = "../adapters/messaging", packag
 accounts-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-accounts-rest" }
 accounts-secrets = { version = "0.1.0", path = "../adapters/secrets", package = "weaveling-accounts-secrets" }
 accounts-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-accounts-store" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "accounts-secrets/postgres", "accounts-catalog/postgres", "throttling/postgres"]

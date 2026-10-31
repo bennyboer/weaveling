@@ -20,6 +20,7 @@ notifications-core = { version = "0.1.0", path = "../core", package = "weaveling
 notifications-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-notifications-messaging" }
 notifications-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-notifications-rest" }
 notifications-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-notifications-store" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "registry/postgres", "notifications-catalog/postgres"]

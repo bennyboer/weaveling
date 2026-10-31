@@ -4,6 +4,7 @@ use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
 use mailing::{Mail, Mailer};
 use time::Duration;
+use transacting::Transactions;
 
 use crate::account::{Account, AccountCommand, AccountEvent};
 use crate::catalog::{AccountCatalog, AccountSummary};
@@ -53,6 +54,7 @@ pub struct AccountService {
 impl AccountService {
     pub fn new(
         store: Arc<dyn EventStore<AccountEvent>>,
+        transactions: Arc<dyn Transactions>,
         secrets: SecretStores,
         catalog: Arc<dyn AccountCatalog>,
         mailer: Arc<dyn Mailer>,
@@ -69,7 +71,11 @@ impl AccountService {
         } = secrets;
 
         Self {
-            events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            events: Arc::new(EventSourcingService::new(
+                store,
+                transactions,
+                clock.clone(),
+            )),
             email_addresses,
             passwords,
             verifications,

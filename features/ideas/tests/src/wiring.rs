@@ -8,6 +8,7 @@ use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaEvent, IdeasCore};
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
+use transacting::InMemoryTransactions;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-idea";
@@ -37,6 +38,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let catalog = Arc::new(InMemoryIdeaCatalog::new());
     let ports = ideas_wiring::Ports {
         events: store.clone(),
+        transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
         outbox: outbox.clone(),
     };

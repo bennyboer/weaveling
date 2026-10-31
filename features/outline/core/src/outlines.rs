@@ -5,6 +5,7 @@ use clock::Clock;
 use eventsourcing::{Agent, EventStore, ServiceError, Standing, Version};
 use registry::Registry;
 use time::OffsetDateTime;
+use transacting::Transactions;
 
 use crate::catalog::{OutlineCatalog, OutlineSummary};
 use crate::error::OutlinesError;
@@ -25,13 +26,14 @@ pub struct OutlinesCore {
 impl OutlinesCore {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
+        transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn OutlineCatalog>,
         registry: Arc<dyn Registry>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: OutlineService::new(store, registry, clock),
+            service: OutlineService::new(store, transactions, registry, clock),
             catalog,
             authorizer,
         }

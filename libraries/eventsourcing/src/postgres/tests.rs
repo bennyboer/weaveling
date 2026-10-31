@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
+use transacting::{PostgresTransactions, Transactions};
 
 use crate::aggregate::AggregateId;
 use crate::codec::Codec;
@@ -13,6 +14,7 @@ use crate::testing::{Tables, Workbench};
 struct OnPostgres {
     fixture: PostgresFixture,
     pool: PgPool,
+    transactions: PostgresTransactions,
     store: PostgresEventStore<SampleEvent>,
 }
 
@@ -41,6 +43,7 @@ impl Workbench for OnPostgres {
 
         Self {
             fixture,
+            transactions: PostgresTransactions::new(pool.clone()),
             pool,
             store,
         }
@@ -48,6 +51,10 @@ impl Workbench for OnPostgres {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn waiting(&self) -> Vec<String> {

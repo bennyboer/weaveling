@@ -11,6 +11,7 @@ use notifications_core::{
 };
 use registry::InMemoryRegistry;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 
 const NOTED_AT: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
@@ -29,6 +30,7 @@ fn kept() -> Kept {
     Kept {
         notifications: NotificationsCore::new(
             store.clone(),
+            Arc::new(InMemoryTransactions::new()),
             catalog.clone(),
             Arc::new(InMemoryRegistry::new()),
             clock.clone(),

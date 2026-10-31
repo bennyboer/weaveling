@@ -7,6 +7,7 @@ use accounts_core::{
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::{HER_PASSWORD, Wired};
@@ -214,6 +215,7 @@ async fn an_operator_broken_off_before_being_appointed_is_appointed_by_the_next_
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let accounts = AccountsCore::new(
         wired.store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         SecretStores {
             operators: Arc::new(FailingToAppointOnce {
                 kept: wired.secrets.clone(),

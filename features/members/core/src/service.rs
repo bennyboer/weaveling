@@ -5,6 +5,7 @@ use eventsourcing::{
     AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing,
     StoreError,
 };
+use transacting::Transactions;
 
 use crate::error::MembersCoreError;
 use crate::members::{Members, MembersCommand, MembersEvent, ProjectLink};
@@ -15,9 +16,13 @@ pub struct MembersService {
 }
 
 impl MembersService {
-    pub fn new(store: Arc<dyn EventStore<MembersEvent>>, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        store: Arc<dyn EventStore<MembersEvent>>,
+        transactions: Arc<dyn Transactions>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store, clock)),
+            events: Arc::new(EventSourcingService::new(store, transactions, clock)),
         }
     }
 
@@ -90,6 +95,7 @@ mod tests {
     use clock::FixedClock;
     use eventsourcing::{AggregateType, InMemoryEventStore, Recorded, Version};
     use time::OffsetDateTime;
+    use transacting::{InMemoryTransactions, Transaction};
 
     use super::*;
 
@@ -102,6 +108,7 @@ mod tests {
         let store: Arc<InMemoryEventStore<MembersEvent>> = Arc::new(InMemoryEventStore::new());
         let members = MembersService::new(
             store.clone(),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         );
         let project = ProjectLink::from("project_1");
@@ -140,6 +147,7 @@ mod tests {
     impl EventStore<MembersEvent> for DownStore {
         async fn append(
             &self,
+            _transaction: &mut Transaction,
             aggregate: &AggregateId,
             kind: AggregateType,
             _expected: Version,
@@ -186,6 +194,7 @@ mod tests {
 
         async fn prune_through(
             &self,
+            _transaction: &mut Transaction,
             aggregate: &AggregateId,
             kind: AggregateType,
             _through: Version,
@@ -195,6 +204,7 @@ mod tests {
 
         async fn forget(
             &self,
+            _transaction: &mut Transaction,
             aggregate: &AggregateId,
             kind: AggregateType,
         ) -> Result<(), StoreError> {
@@ -206,6 +216,7 @@ mod tests {
     async fn a_store_that_is_down_is_a_failure_to_found() {
         let members = MembersService::new(
             Arc::new(DownStore),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         );
 

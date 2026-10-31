@@ -22,6 +22,7 @@ live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveli
 outline-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-outline-messaging" }
 outline-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-outline-catalog" }
 outline-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-outline-store" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
 postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "registry/postgres", "outline-catalog/postgres"]

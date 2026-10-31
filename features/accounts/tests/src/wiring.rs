@@ -15,6 +15,7 @@ use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
 use throttling::InMemoryThrottles;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 use wiring::Context;
 
 pub const ADA: &str = "ada@example.com";
@@ -43,9 +44,13 @@ impl Wired {
         &self,
         id: &AccountId,
     ) -> Result<Standing<Account>, ServiceError<AccountError>> {
-        EventSourcingService::new(self.store.clone(), self.clock.clone())
-            .latest(&AggregateId::from(id))
-            .await
+        EventSourcingService::new(
+            self.store.clone(),
+            Arc::new(InMemoryTransactions::new()),
+            self.clock.clone(),
+        )
+        .latest(&AggregateId::from(id))
+        .await
     }
 }
 
@@ -64,6 +69,7 @@ pub fn wired() -> Wired {
     let catalog = Arc::new(InMemoryAccountCatalog::new());
     let ports = Ports {
         events: store.clone(),
+        transactions: Arc::new(InMemoryTransactions::new()),
         secrets: SecretStores::kept_by(secrets.clone(), throttles.clone()),
         catalog: catalog.clone(),
         mailer: mailbox.clone(),

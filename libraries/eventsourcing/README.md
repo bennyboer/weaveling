@@ -11,9 +11,14 @@ use std::sync::Arc;
 
 use clock::{Clock, SystemClock};
 use eventsourcing::{Agent, AggregateId, EventSourcingService, InMemoryEventStore, Standing};
+use transacting::InMemoryTransactions;
 
 let clock = Arc::new(SystemClock);
-let ideas = EventSourcingService::<Idea>::new(Arc::new(InMemoryEventStore::new()), clock.clone());
+let ideas = EventSourcingService::<Idea>::new(
+    Arc::new(InMemoryEventStore::new()),
+    Arc::new(InMemoryTransactions::new()),
+    clock.clone(),
+);
 let idea = AggregateId::from(&IdeaId::generate(clock.now()));
 
 ideas.begin(&idea, IdeaCommand::Capture { project, title }, &Agent::Local).await?;
@@ -22,7 +27,9 @@ ideas.execute(&idea, IdeaCommand::Discard, &Agent::Local).await?;
 let Standing { state, version } = ideas.latest(&idea).await?;
 ```
 
-**A stream is collapsed or forgotten.** `prune_through` deletes the events a snapshot replaced and keeps the snapshot, so the stream keeps its history, however little, and cannot be begun again. `forget` deletes a stream whole, snapshot and all, for what no history is kept of (a notice put away long since); a stream forgotten could be begun again from version zero, so whoever forgets one makes sure nothing will. Both in memory, on PostgreSQL and on SQLite, one conformance suite for all three.
+**Writes go through a transaction.** `append`, `prune_through` and `forget` take a [`transacting::Transaction`](../transacting/README.md), so a feature's other ports can join the same one; reads take none. The service is handed the feature's `Transactions` and opens one for each try of a command, so a retry after a lost race is a whole new unit; the snapshot that may follow is best-effort in a transaction of its own after the commit, and `compact` takes its snapshot and prunes in one. A transaction that fails to begin or commit is a `StoreError::Backend`. In memory, a write registers how to undo it, and its messages are enqueued only once the transaction commits.
+
+**A stream is collapsed or forgotten.** `prune_through` deletes the events a snapshot replaced and keeps the snapshot, so the stream keeps its history, however little, and cannot be begun again. `forget` deletes a stream whole, snapshot and all, for what no history is kept of (a notice put away long since); a stream forgotten could be begun again from version zero, so whoever forgets one makes sure nothing will. Both in memory, on PostgreSQL and on SQLite, one conformance suite for all three, which also proves that an append, a prune or a forget whose transaction is dropped leaves the stream and the outbox as they were.
 
 **Every event carries its aggregate's context.** An `Aggregate` may say what it belongs to as an `AggregateContext`, a small map of names to values, empty unless it says otherwise; the service stamps the context of the state after a command on every event the command wrote, and on a snapshot, and the stores keep it beside the event, as a JSON column. What the names mean is the features' business, not this library's: it knows no project, only that an aggregate may be in one, a name and a value. Messages carry it on, so a listener can tell what an event belonged to without asking anyone.
 
@@ -30,4 +37,4 @@ let Standing { state, version } = ideas.latest(&idea).await?;
 
 **The dual write is closed.** `append` writes the event rows and, through the outbox's `enqueue`, a message for every event its `MessageMapping` publishes — in one transaction, so there is no window where an event is durable but unannounced, and a rolled-back append announces nothing. The outbox's table therefore has to be laid down beside the events: a feature's schema is `eventsourcing::postgres::migrations()` and `outbox::postgres::migrations()` together, each with its own ledger.
 
-**SQLite is local mode's store**, behind the `sqlite` feature, with its schema in `migrations/sqlite/` beside the PostgreSQL one. Two things differ from PostgreSQL on purpose. An append opens with `BEGIN IMMEDIATE`, taking the write lock before it reads the stream's head: a deferred transaction that read the head and then found another writer had committed cannot become a writer itself, and SQLite answers that with *busy* instead of waiting — so the losing writer would hear "the file was busy" where it should hear "your version is stale". And instants are stored as fixed-width UTC text, `2026-10-07T11:22:33.123456789Z`, readable in the file without the app and comparable as plain strings, the same format the outbox uses, from `outbox::sqlite::instant`.
+**SQLite is local mode's store**, behind the `sqlite` feature, with its schema in `migrations/sqlite/` beside the PostgreSQL one. Two things differ from PostgreSQL on purpose. An append's transaction opens with `BEGIN IMMEDIATE`, as every `SqliteTransactions` does, taking the write lock before it reads the stream's head: a deferred transaction that read the head and then found another writer had committed cannot become a writer itself, and SQLite answers that with *busy* instead of waiting — so the losing writer would hear "the file was busy" where it should hear "your version is stale". And instants are stored as fixed-width UTC text, `2026-10-07T11:22:33.123456789Z`, readable in the file without the app and comparable as plain strings, the same format the outbox uses, from `outbox::sqlite::instant`.

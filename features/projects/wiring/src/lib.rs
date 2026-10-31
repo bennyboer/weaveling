@@ -7,12 +7,14 @@ use projects_catalog::InMemoryProjectCatalog;
 use projects_contract::EVERY_PROJECT;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectsCore};
 use projects_messaging::CatalogueProjectsListener;
+use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
 
 pub const LIVE: &str = "broadcast-project-changes";
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<ProjectEvent>>,
+    pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn ProjectCatalog>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -20,6 +22,7 @@ pub struct Ports {
 pub fn core(ports: &Ports, context: &Context) -> ProjectsCore {
     ProjectsCore::new(
         ports.events.clone(),
+        ports.transactions.clone(),
         ports.catalog.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
@@ -55,11 +58,15 @@ impl Feature for ProjectFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } =
-            EventSourced::in_memory(projects_messaging::message_for, context);
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::in_memory(projects_messaging::message_for, context);
 
         Ports {
             events,
+            transactions,
             catalog: Arc::new(InMemoryProjectCatalog::new()),
             outbox,
         }
@@ -67,7 +74,11 @@ impl Feature for ProjectFeature {
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_postgres(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
             &pool,
             projects_store::codec(),
             projects_messaging::message_for,
@@ -76,6 +87,7 @@ impl Feature for ProjectFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(projects_catalog::PostgresProjectCatalog::new(pool)),
             outbox,
         })
@@ -92,7 +104,11 @@ impl Feature for ProjectFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
             &pool,
             projects_store::codec(),
             projects_messaging::message_for,
@@ -101,6 +117,7 @@ impl Feature for ProjectFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(projects_catalog::SqliteProjectCatalog::new(pool)),
             outbox,
         })

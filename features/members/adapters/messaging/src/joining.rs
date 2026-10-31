@@ -59,6 +59,7 @@ mod tests {
     use messaging::{Listener, RoutingKey};
     use serde_json::{Value, json};
     use time::OffsetDateTime;
+    use transacting::InMemoryTransactions;
 
     use super::*;
 
@@ -72,6 +73,7 @@ mod tests {
         let store = Arc::new(InMemoryEventStore::new());
         let members = MembersCore::new(
             store.clone(),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryMembershipCatalog::new()),
             Arc::new(AllowingEverything),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),

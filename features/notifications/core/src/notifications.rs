@@ -8,6 +8,7 @@ use eventsourcing::{
 };
 use registry::Registry;
 use time::{Duration, OffsetDateTime};
+use transacting::{Failure, Transactions};
 
 use crate::catalog::{NoticeCatalog, NoticeSummary, Person, ProjectName};
 use crate::error::NotificationsError;
@@ -26,6 +27,7 @@ pub const UNDISMISSED_KEPT_FOR: Duration = Duration::days(90);
 #[derive(Clone)]
 pub struct NotificationsCore {
     store: Arc<dyn EventStore<NoticeEvent>>,
+    transactions: Arc<dyn Transactions>,
     events: Arc<EventSourcingService<Notice>>,
     catalog: Arc<dyn NoticeCatalog>,
     registry: Arc<dyn Registry>,
@@ -35,13 +37,19 @@ pub struct NotificationsCore {
 impl NotificationsCore {
     pub fn new(
         store: Arc<dyn EventStore<NoticeEvent>>,
+        transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn NoticeCatalog>,
         registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store.clone(), clock.clone())),
+            events: Arc::new(EventSourcingService::new(
+                store.clone(),
+                transactions.clone(),
+                clock.clone(),
+            )),
             store,
+            transactions,
             catalog,
             registry,
             clock,
@@ -177,14 +185,27 @@ impl NotificationsCore {
             )
             .await?;
         for notice in &due {
-            self.store
-                .forget(&AggregateId::from(notice), KIND)
-                .await
-                .map_err(ServiceError::Store)?;
+            self.forget_events(notice).await?;
             self.catalog.forget(notice).await?;
         }
 
         Ok(due.len())
+    }
+
+    async fn forget_events(&self, notice: &NoticeId) -> Result<(), NotificationsError> {
+        let aggregate = AggregateId::from(notice);
+        let failed = |failure: Failure| {
+            ServiceError::Store(StoreError::backend(&aggregate, KIND, failure.to_string()))
+        };
+
+        let mut transaction = self.transactions.begin().await.map_err(&failed)?;
+        self.store
+            .forget(&mut transaction, &aggregate, KIND)
+            .await
+            .map_err(ServiceError::Store)?;
+        transaction.finish().await.map_err(&failed)?;
+
+        Ok(())
     }
 
     pub async fn forget_tombstones_laid_before(

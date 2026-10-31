@@ -10,10 +10,12 @@ use mailing::{LoggingMailer, Mailer};
 use messaging::Listener;
 use outbox::Outbox;
 use throttling::InMemoryThrottles;
+use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<AccountEvent>>,
+    pub transactions: Arc<dyn Transactions>,
     pub secrets: SecretStores,
     pub catalog: Arc<dyn AccountCatalog>,
     pub mailer: Arc<dyn Mailer>,
@@ -23,6 +25,7 @@ pub struct Ports {
 pub fn core(ports: &Ports, context: &Context) -> AccountsCore {
     AccountsCore::new(
         ports.events.clone(),
+        ports.transactions.clone(),
         ports.secrets.clone(),
         ports.catalog.clone(),
         ports.mailer.clone(),
@@ -98,12 +101,16 @@ impl Feature for AccountFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } =
-            EventSourced::in_memory(accounts_messaging::message_for, context);
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::in_memory(accounts_messaging::message_for, context);
         let secrets = Arc::new(InMemorySecrets::default());
 
         Ports {
             events,
+            transactions,
             secrets: SecretStores::kept_by(secrets, Arc::new(InMemoryThrottles::default())),
             catalog: Arc::new(InMemoryAccountCatalog::new()),
             mailer: Arc::new(LoggingMailer),
@@ -113,7 +120,11 @@ impl Feature for AccountFeature {
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_postgres(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
             &pool,
             accounts_store::codec(),
             accounts_messaging::message_for,
@@ -124,6 +135,7 @@ impl Feature for AccountFeature {
 
         Ok(Ports {
             events,
+            transactions,
             secrets: SecretStores::kept_by(secrets, throttles),
             catalog: Arc::new(accounts_catalog::PostgresAccountCatalog::new(pool)),
             mailer: Arc::new(LoggingMailer),
@@ -144,7 +156,11 @@ impl Feature for AccountFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
             &pool,
             accounts_store::codec(),
             accounts_messaging::message_for,
@@ -155,6 +171,7 @@ impl Feature for AccountFeature {
 
         Ok(Ports {
             events,
+            transactions,
             secrets: SecretStores::kept_by(secrets, throttles),
             catalog: Arc::new(accounts_catalog::SqliteAccountCatalog::new(pool)),
             mailer: Arc::new(LoggingMailer),

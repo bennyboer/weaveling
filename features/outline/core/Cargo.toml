@@ -16,5 +16,6 @@ clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weave
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [dev-dependencies]

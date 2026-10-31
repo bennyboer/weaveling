@@ -7,6 +7,7 @@ use accounts_core::{
 use async_trait::async_trait;
 use eventsourcing::{AggregateId, AggregateType, EventStore, Recorded, StoreError, Version};
 use time::Duration;
+use transacting::{InMemoryTransactions, Transaction};
 
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
@@ -343,6 +344,7 @@ struct Refusing;
 impl EventStore<AccountEvent> for Refusing {
     async fn append(
         &self,
+        _transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         _expected: Version,
@@ -393,6 +395,7 @@ impl EventStore<AccountEvent> for Refusing {
 
     async fn prune_through(
         &self,
+        _transaction: &mut Transaction,
         _aggregate: &AggregateId,
         _kind: AggregateType,
         _through: Version,
@@ -402,6 +405,7 @@ impl EventStore<AccountEvent> for Refusing {
 
     async fn forget(
         &self,
+        _transaction: &mut Transaction,
         _aggregate: &AggregateId,
         _kind: AggregateType,
     ) -> Result<(), StoreError> {
@@ -414,6 +418,7 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
     let wired = wiring::wired();
     let accounts = AccountsCore::new(
         Arc::new(Refusing),
+        Arc::new(InMemoryTransactions::new()),
         SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone()),
         wired.catalog.clone(),
         wired.mailbox.clone(),

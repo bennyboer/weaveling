@@ -5,6 +5,7 @@ use crate::wiring::Wired;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Version};
 use time::{Duration, OffsetDateTime};
+use transacting::{InMemoryTransactions, Transactions};
 
 use ideas_core::{IdeaError, IdeaId, IdeaTitle, IdeasCore, IdeasError, KIND, ProjectLink};
 
@@ -295,8 +296,13 @@ async fn an_idea_survives_on_its_snapshot_alone() {
         .await
         .expect("looking should succeed")
         .expect("a hundred events should have earned a snapshot");
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     store
         .prune_through(
+            &mut transaction,
             &key,
             KIND,
             snapshot
@@ -307,6 +313,10 @@ async fn an_idea_survives_on_its_snapshot_alone() {
         )
         .await
         .expect("pruning should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     assert_eq!(
         store

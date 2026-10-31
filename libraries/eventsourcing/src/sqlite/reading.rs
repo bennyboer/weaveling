@@ -2,6 +2,7 @@ use clock::text;
 use serde_json::Value;
 use sqlx::sqlite::{SqliteArguments, SqliteRow};
 use sqlx::{Row, Sqlite};
+use transacting::Transaction;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::context::AggregateContext;
@@ -85,12 +86,16 @@ impl<E> SqliteEventStore<E> {
 
     pub(super) async fn discard_through(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         through: Version,
     ) -> Result<(), StoreError> {
         query_for(DISCARD, aggregate, kind, &[through])
-            .execute(&self.pool)
+            .execute(
+                transacting::sqlite::connection(transaction)
+                    .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
+            )
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
@@ -99,11 +104,15 @@ impl<E> SqliteEventStore<E> {
 
     pub(super) async fn forget_stream(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<(), StoreError> {
         query_for(FORGET, aggregate, kind, &[])
-            .execute(&self.pool)
+            .execute(
+                transacting::sqlite::connection(transaction)
+                    .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
+            )
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 

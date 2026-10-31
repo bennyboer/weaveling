@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use thiserror::Error;
+use transacting::Transaction;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
@@ -47,6 +48,7 @@ impl StoreError {
 pub trait EventStore<E>: Send + Sync {
     async fn append(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
@@ -83,10 +85,16 @@ pub trait EventStore<E>: Send + Sync {
 
     async fn prune_through(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         through: Version,
     ) -> Result<(), StoreError>;
 
-    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError>;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError>;
 }

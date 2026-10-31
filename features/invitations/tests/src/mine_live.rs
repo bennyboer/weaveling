@@ -15,6 +15,7 @@ use live::testing::Subscriber;
 use live_contract::ended;
 use mailing::FakeMailbox;
 use throttling::InMemoryThrottles;
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::ORIGIN;
@@ -30,6 +31,7 @@ fn told() -> Told {
     Told {
         invitations: InvitationsCore::new(
             Arc::new(InMemoryEventStore::new()),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryThrottles::default()),
             Arc::new(TellingInvitations::around(
                 Arc::new(InMemoryInvitationCatalog::new()),

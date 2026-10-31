@@ -20,6 +20,7 @@ members-core = { version = "0.1.0", path = "../core", package = "weaveling-membe
 members-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-members-rest" }
 members-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-members-messaging" }
 members-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-members-store" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
 postgres = ["dep:sqlx", "members-catalog/postgres", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres"]

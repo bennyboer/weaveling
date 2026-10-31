@@ -10,6 +10,7 @@ use acting::SessionEnd;
 use async_trait::async_trait;
 use clock::Clock;
 use tokio::task::JoinHandle;
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
@@ -156,6 +157,7 @@ async fn a_session_that_cannot_be_asked_about_is_not_taken_for_ended() {
     });
     let accounts = AccountsCore::new(
         wired.store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         SecretStores {
             sessions: sessions.clone(),
             ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())

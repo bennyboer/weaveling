@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 axum = { workspace = true }
 async-trait = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }

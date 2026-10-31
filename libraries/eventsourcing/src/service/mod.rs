@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use clock::Clock;
 use thiserror::Error;
+use transacting::{Failure, Transaction, Transactions};
 
 use crate::agent::Agent;
 use crate::aggregate::{Aggregate, AggregateId, AggregateType};
@@ -43,6 +44,7 @@ pub enum ServiceError<E> {
 
 pub struct EventSourcingService<A: Aggregate> {
     store: Arc<dyn EventStore<A::Event>>,
+    transactions: Arc<dyn Transactions>,
     patcher: Patcher<A::Event>,
     clock: Arc<dyn Clock>,
 }
@@ -78,9 +80,14 @@ where
     A: Aggregate,
     A::Event: Clone + Send + Sync + 'static,
 {
-    pub fn new(store: Arc<dyn EventStore<A::Event>>, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        store: Arc<dyn EventStore<A::Event>>,
+        transactions: Arc<dyn Transactions>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
         Self {
             store,
+            transactions,
             patcher: Patcher::holding(A::patches()),
             clock,
         }
@@ -203,9 +210,11 @@ where
         for happened in &mut stream {
             happened.metadata.context = context.clone();
         }
+        let mut transaction = self.begun(aggregate).await?;
         self.store
-            .append(aggregate, A::KIND, expected, &stream)
+            .append(&mut transaction, aggregate, A::KIND, expected, &stream)
             .await?;
+        self.finished(transaction, aggregate).await?;
 
         let landed = stream
             .last()
@@ -237,14 +246,22 @@ where
             .await?
             .ok_or_else(|| self.nothing_there(aggregate))?;
 
+        let mut transaction = self.begun(aggregate).await?;
         let taken = self
-            .snapshot(aggregate, &standing.state, standing.version, agent)
+            .snapshot(
+                &mut transaction,
+                aggregate,
+                &standing.state,
+                standing.version,
+                agent,
+            )
             .await?;
         if let Some(replaced) = taken.previous() {
             self.store
-                .prune_through(aggregate, A::KIND, replaced)
+                .prune_through(&mut transaction, aggregate, A::KIND, replaced)
                 .await?;
         }
+        self.finished(transaction, aggregate).await?;
 
         Ok(taken)
     }
@@ -351,11 +368,18 @@ where
             return Ok(landed);
         }
 
-        self.snapshot(aggregate, state, landed, agent).await
+        let mut transaction = self.begun(aggregate).await?;
+        let taken = self
+            .snapshot(&mut transaction, aggregate, state, landed, agent)
+            .await?;
+        self.finished(transaction, aggregate).await?;
+
+        Ok(taken)
     }
 
     async fn snapshot(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         state: &A,
         reached: Version,
@@ -372,7 +396,7 @@ where
 
         let stream = self.stamp(aggregate, reached, vec![snapshot], agent, &state.context());
         self.store
-            .append(aggregate, A::KIND, reached, &stream)
+            .append(transaction, aggregate, A::KIND, reached, &stream)
             .await?;
 
         Ok(stream
@@ -380,6 +404,28 @@ where
             .expect("a snapshot is one event")
             .metadata
             .version)
+    }
+
+    async fn begun(&self, aggregate: &AggregateId) -> Result<Transaction, ServiceError<A::Error>> {
+        self.transactions
+            .begin()
+            .await
+            .map_err(|failure| self.failed(aggregate, failure))
+    }
+
+    async fn finished(
+        &self,
+        transaction: Transaction,
+        aggregate: &AggregateId,
+    ) -> Result<(), ServiceError<A::Error>> {
+        transaction
+            .finish()
+            .await
+            .map_err(|failure| self.failed(aggregate, failure))
+    }
+
+    fn failed(&self, aggregate: &AggregateId, failure: Failure) -> ServiceError<A::Error> {
+        ServiceError::Store(StoreError::backend(aggregate, A::KIND, failure.to_string()))
     }
 
     fn nothing_there(&self, aggregate: &AggregateId) -> ServiceError<A::Error> {

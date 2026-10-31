@@ -5,7 +5,7 @@ use crate::event::{Event, Recorded};
 use crate::store::{EventStore, StoreError};
 use crate::testing::sample;
 use crate::testing::sample::{SAMPLE, SampleEvent, SampleKind};
-use crate::testing::{Tables, Workbench};
+use crate::testing::{Committing, Tables, Workbench};
 use crate::version::Version;
 
 fn a_creation() -> SampleEvent {
@@ -33,7 +33,7 @@ fn at(aggregate: &AggregateId, version: u64, event: SampleEvent) -> Recorded<Sam
 }
 
 async fn given_a_stream(
-    store: &impl EventStore<SampleEvent>,
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
     aggregate: &AggregateId,
     events: Vec<SampleEvent>,
 ) {
@@ -52,7 +52,9 @@ async fn given_a_stream(
     }
 }
 
-pub async fn an_empty_stream_is_at_version_zero(store: &impl EventStore<SampleEvent>) {
+pub async fn an_empty_stream_is_at_version_zero(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_empty");
 
     let found = store
@@ -66,7 +68,9 @@ pub async fn an_empty_stream_is_at_version_zero(store: &impl EventStore<SampleEv
     );
 }
 
-pub async fn appended_events_read_back_in_order(store: &impl EventStore<SampleEvent>) {
+pub async fn appended_events_read_back_in_order(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_ordered");
     given_a_stream(
         store,
@@ -92,7 +96,9 @@ pub async fn appended_events_read_back_in_order(store: &impl EventStore<SampleEv
     );
 }
 
-pub async fn appending_at_a_stale_version_is_refused(store: &impl EventStore<SampleEvent>) {
+pub async fn appending_at_a_stale_version_is_refused(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_stale");
     given_a_stream(store, &aggregate, vec![a_creation()]).await;
 
@@ -119,7 +125,9 @@ pub async fn appending_at_a_stale_version_is_refused(store: &impl EventStore<Sam
     );
 }
 
-pub async fn a_refused_append_leaves_the_stream_untouched(store: &impl EventStore<SampleEvent>) {
+pub async fn a_refused_append_leaves_the_stream_untouched(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_untouched");
     given_a_stream(store, &aggregate, vec![a_creation()]).await;
 
@@ -144,7 +152,9 @@ pub async fn a_refused_append_leaves_the_stream_untouched(store: &impl EventStor
     );
 }
 
-pub async fn a_pruned_stream_cannot_be_started_over(store: &impl EventStore<SampleEvent>) {
+pub async fn a_pruned_stream_cannot_be_started_over(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_looks_empty");
     given_a_stream(
         store,
@@ -185,7 +195,7 @@ pub async fn a_pruned_stream_cannot_be_started_over(store: &impl EventStore<Samp
 }
 
 pub async fn a_forgotten_stream_is_gone_whole_and_the_others_stay(
-    store: &impl EventStore<SampleEvent>,
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
 ) {
     let forgotten = AggregateId::from("sample_forgotten");
     let kept = AggregateId::from("sample_kept");
@@ -240,7 +250,9 @@ pub async fn a_forgotten_stream_is_gone_whole_and_the_others_stay(
         .expect("a stream forgotten whole has no history left to collide with");
 }
 
-pub async fn one_append_may_carry_several_events(store: &impl EventStore<SampleEvent>) {
+pub async fn one_append_may_carry_several_events(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_batch");
 
     store
@@ -268,7 +280,9 @@ pub async fn one_append_may_carry_several_events(store: &impl EventStore<SampleE
     assert_eq!(found.len(), 2, "a batch must be stored whole");
 }
 
-pub async fn streams_of_different_aggregates_do_not_mix(store: &impl EventStore<SampleEvent>) {
+pub async fn streams_of_different_aggregates_do_not_mix(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let one = AggregateId::from("sample_one");
     let other = AggregateId::from("sample_other");
     given_a_stream(store, &one, vec![a_creation()]).await;
@@ -292,7 +306,9 @@ pub async fn streams_of_different_aggregates_do_not_mix(store: &impl EventStore<
     assert_eq!(second.len(), 2);
 }
 
-pub async fn reading_from_a_version_skips_what_came_before(store: &impl EventStore<SampleEvent>) {
+pub async fn reading_from_a_version_skips_what_came_before(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_from");
     given_a_stream(
         store,
@@ -318,7 +334,9 @@ pub async fn reading_from_a_version_skips_what_came_before(store: &impl EventSto
     assert_eq!(found[0].metadata.version, Version::of(2));
 }
 
-pub async fn reading_through_a_version_stops_there(store: &impl EventStore<SampleEvent>) {
+pub async fn reading_through_a_version_stops_there(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_through");
     given_a_stream(
         store,
@@ -340,7 +358,9 @@ pub async fn reading_through_a_version_stops_there(store: &impl EventStore<Sampl
     assert_eq!(found[1].metadata.version, Version::of(2));
 }
 
-pub async fn a_stream_without_snapshots_has_none(store: &impl EventStore<SampleEvent>) {
+pub async fn a_stream_without_snapshots_has_none(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_nosnap");
     given_a_stream(store, &aggregate, vec![a_creation()]).await;
 
@@ -352,7 +372,9 @@ pub async fn a_stream_without_snapshots_has_none(store: &impl EventStore<SampleE
     assert!(found.is_none());
 }
 
-pub async fn the_latest_snapshot_is_the_newest_one(store: &impl EventStore<SampleEvent>) {
+pub async fn the_latest_snapshot_is_the_newest_one(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_latest");
     given_a_stream(
         store,
@@ -375,7 +397,9 @@ pub async fn the_latest_snapshot_is_the_newest_one(store: &impl EventStore<Sampl
     assert_eq!(found.metadata.version, Version::of(4));
 }
 
-pub async fn a_snapshot_can_be_found_as_of_an_older_version(store: &impl EventStore<SampleEvent>) {
+pub async fn a_snapshot_can_be_found_as_of_an_older_version(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_asof");
     given_a_stream(
         store,
@@ -402,7 +426,9 @@ pub async fn a_snapshot_can_be_found_as_of_an_older_version(store: &impl EventSt
     );
 }
 
-pub async fn pruning_discards_events_a_snapshot_replaced(store: &impl EventStore<SampleEvent>) {
+pub async fn pruning_discards_events_a_snapshot_replaced(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+) {
     let aggregate = AggregateId::from("sample_pruned");
     given_a_stream(
         store,
@@ -430,7 +456,7 @@ pub async fn pruning_discards_events_a_snapshot_replaced(store: &impl EventStore
 }
 
 pub async fn appending_after_pruning_continues_the_version_count(
-    store: &impl EventStore<SampleEvent>,
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
 ) {
     let aggregate = AggregateId::from("sample_after_prune");
     given_a_stream(
@@ -470,7 +496,10 @@ fn retitled(title: &str) -> SampleEvent {
     SampleEvent::TitleUpdated(title.to_owned())
 }
 
-async fn titles_in(store: &impl EventStore<SampleEvent>, aggregate: &AggregateId) -> Vec<String> {
+async fn titles_in(
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
+    aggregate: &AggregateId,
+) -> Vec<String> {
     store
         .read_from(aggregate, SAMPLE, Version::ZERO)
         .await
@@ -489,7 +518,7 @@ pub async fn an_append_leaves_a_message_waiting_for_every_publishable_event(
     let aggregate = AggregateId::from("sample_announced");
 
     given_a_stream(
-        bench.store(),
+        &bench.committing(),
         &aggregate,
         vec![a_creation(), retitled("Second")],
     )
@@ -506,7 +535,7 @@ pub async fn an_event_that_publishes_nothing_leaves_nothing_waiting(bench: &impl
     let aggregate = AggregateId::from("sample_quiet");
 
     given_a_stream(
-        bench.store(),
+        &bench.committing(),
         &aggregate,
         vec![
             a_creation(),
@@ -527,7 +556,7 @@ pub async fn a_refused_append_leaves_no_message_waiting(bench: &impl Workbench) 
     let aggregate = AggregateId::from("sample_refused");
 
     let refused = bench
-        .store()
+        .committing()
         .append(
             &aggregate,
             SAMPLE,
@@ -543,9 +572,152 @@ pub async fn a_refused_append_leaves_no_message_waiting(bench: &impl Workbench) 
     );
 }
 
+pub async fn a_dropped_append_leaves_neither_its_events_nor_their_messages(bench: &impl Workbench) {
+    let aggregate = AggregateId::from("sample_dropped");
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store()
+        .append(
+            &mut transaction,
+            &aggregate,
+            SAMPLE,
+            Version::ZERO,
+            &[at(&aggregate, 1, a_creation())],
+        )
+        .await
+        .expect("appending a fresh event should succeed");
+
+    drop(transaction);
+
+    assert!(
+        bench
+            .store()
+            .read_from(&aggregate, SAMPLE, Version::ZERO)
+            .await
+            .expect("reading should succeed")
+            .is_empty(),
+        "an append rolled back is not there"
+    );
+    assert!(bench.waiting().await.is_empty(), "and nothing announces it");
+    given_a_stream(&bench.committing(), &aggregate, vec![a_creation()]).await;
+}
+
+pub async fn a_dropped_append_onto_a_stream_leaves_the_stream_as_it_was(bench: &impl Workbench) {
+    let aggregate = AggregateId::from("sample_dropped_onto");
+    given_a_stream(&bench.committing(), &aggregate, vec![a_creation()]).await;
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store()
+        .append(
+            &mut transaction,
+            &aggregate,
+            SAMPLE,
+            Version::of(1),
+            &[at(&aggregate, 2, retitled("Dropped"))],
+        )
+        .await
+        .expect("appending the next event should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        bench
+            .store()
+            .read_from(&aggregate, SAMPLE, Version::ZERO)
+            .await
+            .expect("reading should succeed")
+            .len(),
+        1,
+        "what was there before the transaction stays, and nothing it appended"
+    );
+    assert_eq!(bench.waiting().await, ["sample.created"]);
+    bench
+        .committing()
+        .append(
+            &aggregate,
+            SAMPLE,
+            Version::of(1),
+            &[at(&aggregate, 2, retitled("Kept"))],
+        )
+        .await
+        .expect("the version a dropped append took is free again");
+}
+
+pub async fn a_dropped_prune_keeps_what_it_would_have_discarded(bench: &impl Workbench) {
+    let aggregate = AggregateId::from("sample_pruned_back");
+    given_a_stream(
+        &bench.committing(),
+        &aggregate,
+        vec![a_creation(), retitled("Second"), a_snapshot()],
+    )
+    .await;
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store()
+        .prune_through(&mut transaction, &aggregate, SAMPLE, Version::of(2))
+        .await
+        .expect("pruning should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        bench
+            .store()
+            .read_from(&aggregate, SAMPLE, Version::ZERO)
+            .await
+            .expect("reading should succeed")
+            .len(),
+        3
+    );
+}
+
+pub async fn a_dropped_forget_keeps_the_stream(bench: &impl Workbench) {
+    let aggregate = AggregateId::from("sample_remembered");
+    given_a_stream(
+        &bench.committing(),
+        &aggregate,
+        vec![a_creation(), retitled("Second")],
+    )
+    .await;
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store()
+        .forget(&mut transaction, &aggregate, SAMPLE)
+        .await
+        .expect("forgetting should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        bench
+            .store()
+            .read_from(&aggregate, SAMPLE, Version::ZERO)
+            .await
+            .expect("reading should succeed")
+            .len(),
+        2
+    );
+}
+
 pub async fn two_writers_at_the_same_version_cannot_both_win(bench: &impl Tables) {
     let aggregate = AggregateId::from("sample_contested");
-    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+    given_a_stream(&bench.committing(), &aggregate, vec![a_creation()]).await;
     let batch = |named: &str| {
         vec![
             at(&aggregate, 2, retitled(named)),
@@ -558,13 +730,10 @@ pub async fn two_writers_at_the_same_version_cannot_both_win(bench: &impl Tables
     };
     let (mine, yours) = (batch("Mine"), batch("Yours"));
 
+    let committing = bench.committing();
     let (mine, yours) = tokio::join!(
-        bench
-            .store()
-            .append(&aggregate, SAMPLE, Version::of(1), &mine),
-        bench
-            .store()
-            .append(&aggregate, SAMPLE, Version::of(1), &yours),
+        committing.append(&aggregate, SAMPLE, Version::of(1), &mine),
+        committing.append(&aggregate, SAMPLE, Version::of(1), &yours),
     );
 
     assert_ne!(
@@ -578,7 +747,7 @@ pub async fn two_writers_at_the_same_version_cannot_both_win(bench: &impl Tables
         "a lost race is a stale version, not a backend failure: {refused:?}"
     );
     assert_eq!(
-        titles_in(bench.store(), &aggregate).await.len(),
+        titles_in(&bench.committing(), &aggregate).await.len(),
         1,
         "the loser's events must not be mixed into the winner's"
     );
@@ -586,10 +755,10 @@ pub async fn two_writers_at_the_same_version_cannot_both_win(bench: &impl Tables
 
 pub async fn a_batch_that_collides_halfway_writes_none_of_itself(bench: &impl Tables) {
     let aggregate = AggregateId::from("sample_half");
-    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+    given_a_stream(&bench.committing(), &aggregate, vec![a_creation()]).await;
 
     let refused = bench
-        .store()
+        .committing()
         .append(
             &aggregate,
             SAMPLE,
@@ -606,7 +775,7 @@ pub async fn a_batch_that_collides_halfway_writes_none_of_itself(bench: &impl Ta
         "a batch colliding with what is already written is a stale append: {refused:?}"
     );
     assert!(
-        titles_in(bench.store(), &aggregate).await.is_empty(),
+        titles_in(&bench.committing(), &aggregate).await.is_empty(),
         "an append is all of its events or none of them"
     );
     assert_eq!(
@@ -626,7 +795,7 @@ pub async fn a_backend_that_cannot_be_reached_says_so(bench: &impl Tables) {
         .read_from(&aggregate, SAMPLE, Version::ZERO)
         .await;
     let appending = bench
-        .store()
+        .committing()
         .append(
             &aggregate,
             SAMPLE,
@@ -648,7 +817,7 @@ pub async fn an_event_written_in_a_shape_nothing_can_read_is_a_backend_failure(
     bench: &impl Tables,
 ) {
     let aggregate = AggregateId::from("sample_unreadable");
-    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+    given_a_stream(&bench.committing(), &aggregate, vec![a_creation()]).await;
 
     bench.write_unreadable_event(&aggregate, 2).await;
 
@@ -665,7 +834,7 @@ pub async fn an_event_written_in_a_shape_nothing_can_read_is_a_backend_failure(
 pub async fn what_the_columns_say_matches_what_the_body_says(bench: &impl Tables) {
     let aggregate = AggregateId::from("sample_columns");
 
-    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+    given_a_stream(&bench.committing(), &aggregate, vec![a_creation()]).await;
 
     let (name, shape, agent) = bench.columns(&aggregate, 1).await;
     assert_eq!(name, a_creation().name().as_str());
@@ -680,7 +849,15 @@ pub async fn a_codec_is_all_a_second_kind_of_event_needs(bench: &impl Tables) {
     });
     let aggregate = AggregateId::from("sample_recoded");
 
-    given_a_stream(&store, &aggregate, vec![a_creation()]).await;
+    given_a_stream(
+        &Committing {
+            store: &store,
+            transactions: bench.transactions(),
+        },
+        &aggregate,
+        vec![a_creation()],
+    )
+    .await;
 
     let found = store
         .read_from(&aggregate, SAMPLE, Version::ZERO)
@@ -697,7 +874,7 @@ pub async fn laying_the_schema_down_twice_changes_nothing(bench: &impl Tables) {
     bench.lay_the_schema_down_again().await;
 
     given_a_stream(
-        bench.store(),
+        &bench.committing(),
         &AggregateId::from("sample_again"),
         vec![a_creation()],
     )
@@ -706,11 +883,11 @@ pub async fn laying_the_schema_down_twice_changes_nothing(bench: &impl Tables) {
 
 pub async fn a_version_below_zero_is_a_backend_failure_not_a_huge_version(bench: &impl Tables) {
     let aggregate = AggregateId::from("sample_negative");
-    given_a_stream(bench.store(), &aggregate, vec![a_creation()]).await;
+    given_a_stream(&bench.committing(), &aggregate, vec![a_creation()]).await;
 
     bench.push_versions_below_zero(&aggregate).await;
 
-    let found = bench.store().latest_snapshot(&aggregate, SAMPLE).await;
+    let found = bench.committing().latest_snapshot(&aggregate, SAMPLE).await;
     assert!(
         matches!(found, Err(StoreError::Backend { .. })),
         "-3 read as a u64 is eighteen quintillion, a version nothing could ever have written: {found:?}"
@@ -718,7 +895,7 @@ pub async fn a_version_below_zero_is_a_backend_failure_not_a_huge_version(bench:
 }
 
 pub async fn an_event_s_context_is_read_back_as_it_was_written(
-    store: &impl EventStore<SampleEvent>,
+    store: &Committing<'_, impl EventStore<SampleEvent>>,
 ) {
     let aggregate = AggregateId::from("sample_in_context");
     let context = AggregateContext::default()
@@ -773,7 +950,7 @@ macro_rules! conformance_case {
             use $crate::testing::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::testing::suite::$case(bench.store()).await;
+            $crate::testing::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -816,6 +993,19 @@ macro_rules! conformance_tests {
             an_event_that_publishes_nothing_leaves_nothing_waiting
         );
         $crate::bench_case!($workbench, a_refused_append_leaves_no_message_waiting);
+        $crate::bench_case!(
+            $workbench,
+            a_dropped_append_leaves_neither_its_events_nor_their_messages
+        );
+        $crate::bench_case!(
+            $workbench,
+            a_dropped_append_onto_a_stream_leaves_the_stream_as_it_was
+        );
+        $crate::bench_case!(
+            $workbench,
+            a_dropped_prune_keeps_what_it_would_have_discarded
+        );
+        $crate::bench_case!($workbench, a_dropped_forget_keeps_the_stream);
     };
 }
 

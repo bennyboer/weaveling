@@ -9,6 +9,7 @@ use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Liste
 use outbox::{InMemoryOutbox, Outbox};
 use projects_catalog::InMemoryProjectCatalog;
 use projects_core::ProjectsCore;
+use transacting::InMemoryTransactions;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-project";
@@ -38,6 +39,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let catalog = Arc::new(InMemoryProjectCatalog::new());
     let ports = projects_wiring::Ports {
         events: store.clone(),
+        transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
         outbox: outbox.clone(),
     };

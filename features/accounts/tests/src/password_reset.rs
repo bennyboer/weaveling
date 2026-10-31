@@ -9,6 +9,7 @@ use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
 
 use time::Duration;
+use transacting::InMemoryTransactions;
 
 use crate::session_ends;
 use crate::wiring;
@@ -275,6 +276,7 @@ async fn a_reset_broken_off_after_it_was_told_is_finished_by_the_same_code() {
     });
     let accounts = AccountsCore::new(
         wired.store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         SecretStores {
             passwords: passwords.clone(),
             ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())
@@ -396,6 +398,7 @@ async fn a_reset_broken_off_after_it_was_told_has_ended_the_sessions_already() {
     });
     let accounts = AccountsCore::new(
         wired.store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         SecretStores {
             passwords: passwords.clone(),
             ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())

@@ -6,6 +6,7 @@ use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 
 use time::{Duration, OffsetDateTime};
+use transacting::{SqliteTransactions, Transactions};
 
 use crate::agent::Agent;
 use crate::aggregate::AggregateId;
@@ -23,6 +24,7 @@ use crate::version::Version;
 struct OnSqlite {
     fixture: SqliteFixture,
     pool: SqlitePool,
+    transactions: SqliteTransactions,
     store: SqliteEventStore<SampleEvent>,
 }
 
@@ -51,6 +53,7 @@ impl Workbench for OnSqlite {
 
         Self {
             fixture,
+            transactions: SqliteTransactions::new(pool.clone()),
             pool,
             store,
         }
@@ -58,6 +61,10 @@ impl Workbench for OnSqlite {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn waiting(&self) -> Vec<String> {
@@ -158,8 +165,9 @@ fn at(aggregate: &AggregateId, version: u64, event: SampleEvent) -> Recorded<Sam
     }
 }
 
-async fn a_started_stream(store: &SqliteEventStore<SampleEvent>, aggregate: &AggregateId) {
-    store
+async fn a_started_stream(bench: &OnSqlite, aggregate: &AggregateId) {
+    bench
+        .committing()
         .append(
             aggregate,
             SAMPLE,
@@ -190,7 +198,7 @@ async fn an_event_keeps_the_instant_it_happened_to_the_nanosecond() {
     let written = at(&aggregate, 1, a_creation());
 
     bench
-        .store()
+        .committing()
         .append(
             &aggregate,
             SAMPLE,
@@ -260,7 +268,7 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
 async fn a_writer_kept_waiting_by_another_is_told_it_is_stale_not_that_the_file_was_busy() {
     let bench = OnSqlite::setup().await;
     let aggregate = AggregateId::from("sample_waiting");
-    a_started_stream(bench.store(), &aggregate).await;
+    a_started_stream(&bench, &aggregate).await;
     let mut other = bench
         .pool
         .begin_with("BEGIN IMMEDIATE")
@@ -283,14 +291,27 @@ async fn a_writer_kept_waiting_by_another_is_told_it_is_stale_not_that_the_file_
         stored::codec(),
         sample::message_for,
     ));
+    let transactions = SqliteTransactions::new(bench.pool.clone());
     let appending = tokio::spawn({
         let aggregate = aggregate.clone();
         let batch = vec![at(&aggregate, 2, retitled("Mine"))];
 
         async move {
-            store
-                .append(&aggregate, SAMPLE, Version::of(1), &batch)
+            let mut transaction = transactions
+                .begin()
                 .await
+                .expect("the writer takes the lock once the other lets go");
+            let appended = store
+                .append(&mut transaction, &aggregate, SAMPLE, Version::of(1), &batch)
+                .await;
+            if appended.is_ok() {
+                transaction
+                    .finish()
+                    .await
+                    .expect("finishing should succeed");
+            }
+
+            appended
         }
     });
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;

@@ -22,6 +22,7 @@ invitations-rest = { version = "0.1.0", path = "../adapters/rest", package = "we
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
 invitations-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-invitations-messaging" }
 invitations-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-invitations-store" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
 postgres = ["dep:sqlx", "invitations-catalog/postgres", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "throttling/postgres"]

@@ -14,6 +14,7 @@ use eventsourcing::EventStore;
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use registry::{InMemoryRegistry, Registry};
+use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
 
 use crate::tombstones::BoardTombstones;
@@ -22,6 +23,7 @@ pub const LIVE: &str = "broadcast-board-changes";
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<BoardEvent>>,
+    pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn BoardCatalog>,
     pub registry: Arc<dyn Registry>,
     pub outbox: Arc<dyn Outbox>,
@@ -30,6 +32,7 @@ pub struct Ports {
 pub fn core(ports: &Ports, context: &Context) -> BoardsCore {
     BoardsCore::new(
         ports.events.clone(),
+        ports.transactions.clone(),
         ports.catalog.clone(),
         ports.registry.clone(),
         context.authorizer.clone(),
@@ -76,11 +79,15 @@ impl Feature for BoardFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } =
-            EventSourced::in_memory(boards_messaging::message_for, context);
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::in_memory(boards_messaging::message_for, context);
 
         Ports {
             events,
+            transactions,
             catalog: Arc::new(InMemoryBoardCatalog::new()),
             registry: Arc::new(InMemoryRegistry::new()),
             outbox,
@@ -89,7 +96,11 @@ impl Feature for BoardFeature {
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_postgres(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
             &pool,
             boards_store::codec(),
             boards_messaging::message_for,
@@ -98,6 +109,7 @@ impl Feature for BoardFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(boards_catalog::PostgresBoardCatalog::new(pool.clone())),
             registry: Arc::new(registry::PostgresRegistry::new(pool)),
             outbox,
@@ -116,7 +128,11 @@ impl Feature for BoardFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
             &pool,
             boards_store::codec(),
             boards_messaging::message_for,
@@ -125,6 +141,7 @@ impl Feature for BoardFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(boards_catalog::SqliteBoardCatalog::new(pool.clone())),
             registry: Arc::new(registry::SqliteRegistry::new(pool)),
             outbox,

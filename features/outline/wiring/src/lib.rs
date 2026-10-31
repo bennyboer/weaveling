@@ -14,6 +14,7 @@ use outline_messaging::{
     DiscardOutlinesOnProjectDeletedListener, IndexAttachmentsListener,
 };
 use registry::{InMemoryRegistry, Registry};
+use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
 
 use crate::tombstones::OutlineTombstones;
@@ -22,6 +23,7 @@ pub const LIVE: &str = "broadcast-outline-changes";
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<OutlineEvent>>,
+    pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn OutlineCatalog>,
     pub registry: Arc<dyn Registry>,
     pub outbox: Arc<dyn Outbox>,
@@ -30,6 +32,7 @@ pub struct Ports {
 pub fn core(ports: &Ports, context: &Context) -> OutlinesCore {
     OutlinesCore::new(
         ports.events.clone(),
+        ports.transactions.clone(),
         ports.catalog.clone(),
         ports.registry.clone(),
         context.authorizer.clone(),
@@ -78,11 +81,15 @@ impl Feature for OutlineFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } =
-            EventSourced::in_memory(outline_messaging::message_for, context);
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::in_memory(outline_messaging::message_for, context);
 
         Ports {
             events,
+            transactions,
             catalog: Arc::new(InMemoryOutlineCatalog::new()),
             registry: Arc::new(InMemoryRegistry::new()),
             outbox,
@@ -91,7 +98,11 @@ impl Feature for OutlineFeature {
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_postgres(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
             &pool,
             outline_store::codec(),
             outline_messaging::message_for,
@@ -100,6 +111,7 @@ impl Feature for OutlineFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(outline_catalog::PostgresOutlineCatalog::new(pool.clone())),
             registry: Arc::new(registry::PostgresRegistry::new(pool)),
             outbox,
@@ -118,7 +130,11 @@ impl Feature for OutlineFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
             &pool,
             outline_store::codec(),
             outline_messaging::message_for,
@@ -127,6 +143,7 @@ impl Feature for OutlineFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(outline_catalog::SqliteOutlineCatalog::new(pool.clone())),
             registry: Arc::new(registry::SqliteRegistry::new(pool)),
             outbox,

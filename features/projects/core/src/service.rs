@@ -4,6 +4,7 @@ use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
+use transacting::Transactions;
 
 use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
 use crate::error::ProjectsError;
@@ -18,9 +19,17 @@ pub struct ProjectService {
 }
 
 impl ProjectService {
-    pub fn new(store: Arc<dyn EventStore<ProjectEvent>>, clock: Arc<dyn Clock>) -> Self {
+    pub fn new(
+        store: Arc<dyn EventStore<ProjectEvent>>,
+        transactions: Arc<dyn Transactions>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            events: Arc::new(EventSourcingService::new(
+                store,
+                transactions,
+                clock.clone(),
+            )),
             clock,
         }
     }

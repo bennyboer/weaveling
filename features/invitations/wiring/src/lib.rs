@@ -17,6 +17,7 @@ use live::Broadcaster;
 use mailing::{LoggingMailer, Mailer};
 use outbox::Outbox;
 use throttling::{InMemoryThrottles, Throttles};
+use transacting::Transactions;
 use wiring::{Assembled, Context, EventSourced, Feature, Storage, Unprepared, Wired};
 
 use crate::retiring::RetireDueInvitations;
@@ -24,6 +25,7 @@ use crate::tombstones::InvitationTombstones;
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<InvitationEvent>>,
+    pub transactions: Arc<dyn Transactions>,
     pub throttles: Arc<dyn Throttles>,
     pub catalog: Arc<dyn InvitationCatalog>,
     pub mailer: Arc<dyn Mailer>,
@@ -33,6 +35,7 @@ pub struct Ports {
 pub fn core(ports: &Ports, context: &Context) -> InvitationsCore {
     InvitationsCore::new(
         ports.events.clone(),
+        ports.transactions.clone(),
         ports.throttles.clone(),
         ports.catalog.clone(),
         ports.mailer.clone(),
@@ -71,11 +74,15 @@ impl Feature for InvitationFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } =
-            EventSourced::in_memory(invitations_messaging::message_for, context);
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::in_memory(invitations_messaging::message_for, context);
 
         Ports {
             events,
+            transactions,
             throttles: Arc::new(InMemoryThrottles::default()),
             catalog: Arc::new(InMemoryInvitationCatalog::new()),
             mailer: Arc::new(LoggingMailer),
@@ -85,7 +92,11 @@ impl Feature for InvitationFeature {
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_postgres(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
             &pool,
             invitations_store::codec(),
             invitations_messaging::message_for,
@@ -94,6 +105,7 @@ impl Feature for InvitationFeature {
 
         Ok(Ports {
             events,
+            transactions,
             throttles: Arc::new(throttling::PostgresThrottles::new(pool.clone())),
             catalog: Arc::new(invitations_catalog::PostgresInvitationCatalog::new(pool)),
             mailer: Arc::new(LoggingMailer),
@@ -113,7 +125,11 @@ impl Feature for InvitationFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
             &pool,
             invitations_store::codec(),
             invitations_messaging::message_for,
@@ -122,6 +138,7 @@ impl Feature for InvitationFeature {
 
         Ok(Ports {
             events,
+            transactions,
             throttles: Arc::new(throttling::SqliteThrottles::new(pool.clone())),
             catalog: Arc::new(invitations_catalog::SqliteInvitationCatalog::new(pool)),
             mailer: Arc::new(LoggingMailer),
@@ -147,6 +164,7 @@ impl Feature for InvitationFeature {
         let broadcaster = Broadcaster::new();
         let invitations = InvitationsCore::new(
             ports.events.clone(),
+            ports.transactions.clone(),
             ports.throttles.clone(),
             Arc::new(TellingInvitations::around(
                 ports.catalog.clone(),

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, EventStore, ServiceError};
+use transacting::Transactions;
 
 use crate::catalog::{Membership, MembershipCatalog, Person, ProjectMembers};
 use crate::error::MembersCoreError;
@@ -27,12 +28,13 @@ pub struct MembersCore {
 impl MembersCore {
     pub fn new(
         store: Arc<dyn EventStore<MembersEvent>>,
+        transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn MembershipCatalog>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: MembersService::new(store, clock),
+            service: MembersService::new(store, transactions, clock),
             catalog,
             authorizer,
         }

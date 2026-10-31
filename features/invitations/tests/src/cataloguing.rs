@@ -12,6 +12,7 @@ use messaging::{Handler, Listener, Message, RoutingKey};
 use serde_json::json;
 use throttling::InMemoryThrottles;
 use time::Duration;
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::{ORIGIN, Wired};
@@ -43,6 +44,7 @@ fn listing() -> Listing {
     let catalog = Arc::new(InMemoryInvitationCatalog::new());
     let invitations = InvitationsCore::new(
         wired.store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryThrottles::default()),
         catalog.clone(),
         wired.mailbox.clone(),

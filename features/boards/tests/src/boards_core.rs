@@ -12,6 +12,7 @@ use eventsourcing::{
 use messaging::RoutingKey;
 use registry::Registry;
 use time::{Duration, OffsetDateTime};
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::Wired;
@@ -91,9 +92,14 @@ async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
         .claim(KIND.as_str(), "project_1", &known.to_string())
         .await
         .expect("claiming should succeed");
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     wired
         .store
         .append(
+            &mut transaction,
             &AggregateId::from(&known),
             KIND,
             Version::ZERO,
@@ -101,6 +107,10 @@ async fn opening_a_project_whose_board_is_already_claimed_finds_it() {
         )
         .await
         .expect("appending should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     let opened = wired
         .boards

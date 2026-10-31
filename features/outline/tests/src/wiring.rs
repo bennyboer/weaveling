@@ -12,6 +12,7 @@ use outbox::{InMemoryOutbox, Outbox};
 use outline_catalog::InMemoryOutlineCatalog;
 use outline_core::{OutlineEvent, OutlinesCore};
 use registry::InMemoryRegistry;
+use transacting::InMemoryTransactions;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-outline";
@@ -71,6 +72,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let catalog = Arc::new(InMemoryOutlineCatalog::new());
     let ports = outline_wiring::Ports {
         events: store.clone(),
+        transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
         registry: registry.clone(),
         outbox: outbox.clone(),
@@ -94,6 +96,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
             outline_wiring::core(
                 &outline_wiring::Ports {
                     events: store.clone(),
+                    transactions: Arc::new(InMemoryTransactions::new()),
                     catalog: catalog.clone(),
                     registry: registry.clone(),
                     outbox: outbox.clone(),

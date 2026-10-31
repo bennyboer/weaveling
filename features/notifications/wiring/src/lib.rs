@@ -14,12 +14,14 @@ use notifications_messaging::{
 use notifications_rest::{NotificationsTopic, TellingNotices};
 use outbox::Outbox;
 use registry::{InMemoryRegistry, Registry};
+use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
 
 use crate::forgetting::{ForgetOldNotices, NoticeTombstones};
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<NoticeEvent>>,
+    pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn NoticeCatalog>,
     pub registry: Arc<dyn Registry>,
     pub outbox: Arc<dyn Outbox>,
@@ -28,6 +30,7 @@ pub struct Ports {
 pub fn core(ports: &Ports, context: &Context) -> NotificationsCore {
     NotificationsCore::new(
         ports.events.clone(),
+        ports.transactions.clone(),
         ports.catalog.clone(),
         ports.registry.clone(),
         context.clock.clone(),
@@ -38,6 +41,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let broadcaster = Broadcaster::new();
     let notifications = NotificationsCore::new(
         ports.events.clone(),
+        ports.transactions.clone(),
         Arc::new(TellingNotices::around(
             ports.catalog.clone(),
             broadcaster.clone(),
@@ -72,11 +76,15 @@ impl Feature for NotificationsFeature {
     type Ports = Ports;
 
     fn in_memory(context: &Context) -> Ports {
-        let EventSourced { events, outbox } =
-            EventSourced::in_memory(notifications_messaging::message_for, context);
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::in_memory(notifications_messaging::message_for, context);
 
         Ports {
             events,
+            transactions,
             catalog: Arc::new(InMemoryNoticeCatalog::new()),
             registry: Arc::new(InMemoryRegistry::new()),
             outbox,
@@ -85,7 +93,11 @@ impl Feature for NotificationsFeature {
 
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_postgres(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_postgres(
             &pool,
             notifications_store::codec(),
             notifications_messaging::message_for,
@@ -94,6 +106,7 @@ impl Feature for NotificationsFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(notifications_catalog::PostgresNoticeCatalog::new(
                 pool.clone(),
             )),
@@ -114,7 +127,11 @@ impl Feature for NotificationsFeature {
 
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
-        let EventSourced { events, outbox } = EventSourced::on_sqlite(
+        let EventSourced {
+            events,
+            transactions,
+            outbox,
+        } = EventSourced::on_sqlite(
             &pool,
             notifications_store::codec(),
             notifications_messaging::message_for,
@@ -123,6 +140,7 @@ impl Feature for NotificationsFeature {
 
         Ok(Ports {
             events,
+            transactions,
             catalog: Arc::new(notifications_catalog::SqliteNoticeCatalog::new(
                 pool.clone(),
             )),

@@ -11,6 +11,7 @@ use notifications_core::{About, NoticeId, NotificationsCore, ProjectLink, Role};
 use notifications_rest::{NoticeChanges, NotificationsTopic, TellingNotices};
 use registry::InMemoryRegistry;
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 struct Told {
     notifications: NotificationsCore,
@@ -23,6 +24,7 @@ fn told() -> Told {
     Told {
         notifications: NotificationsCore::new(
             Arc::new(InMemoryEventStore::new()),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(TellingNotices::around(
                 Arc::new(InMemoryNoticeCatalog::new()),
                 broadcaster.clone(),

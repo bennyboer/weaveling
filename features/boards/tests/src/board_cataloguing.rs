@@ -7,6 +7,7 @@ use eventsourcing::{
 };
 use messaging::Message;
 use time::{Duration, OffsetDateTime};
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::Wired;
@@ -54,9 +55,14 @@ fn told_of(happened: &Recorded<BoardEvent>) -> Message {
 
 async fn a_stored_board(wired: &Wired, project: &str) -> BoardId {
     let id = BoardId::generate(at(1_000));
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     wired
         .store
         .append(
+            &mut transaction,
             &AggregateId::from(&id),
             KIND,
             Version::ZERO,
@@ -64,6 +70,10 @@ async fn a_stored_board(wired: &Wired, project: &str) -> BoardId {
         )
         .await
         .expect("appending should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     id
 }

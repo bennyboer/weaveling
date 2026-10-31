@@ -13,6 +13,7 @@ use projects_contract::{DELETED, DETAILS_CHANGED, RENAMED, STARTED};
 use registry::InMemoryRegistry;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 struct Naming {
     catalog: Arc<InMemoryNoticeCatalog>,
@@ -25,6 +26,7 @@ fn naming() -> Naming {
     let catalog = Arc::new(InMemoryNoticeCatalog::new());
     let notifications = NotificationsCore::new(
         Arc::new(InMemoryEventStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         catalog.clone(),
         Arc::new(InMemoryRegistry::new()),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),

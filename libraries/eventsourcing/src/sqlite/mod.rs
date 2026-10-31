@@ -9,6 +9,7 @@ pub use schema::migrations;
 
 use async_trait::async_trait;
 use sqlx::SqlitePool;
+use transacting::Transaction;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::codec::Codec;
@@ -46,12 +47,14 @@ where
 {
     async fn append(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
         events: &[Recorded<E>],
     ) -> Result<(), StoreError> {
-        self.write(aggregate, kind, expected, events).await
+        self.write(transaction, aggregate, kind, expected, events)
+            .await
     }
 
     async fn read_from(
@@ -92,14 +95,21 @@ where
 
     async fn prune_through(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         through: Version,
     ) -> Result<(), StoreError> {
-        self.discard_through(aggregate, kind, through).await
+        self.discard_through(transaction, aggregate, kind, through)
+            .await
     }
 
-    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
-        self.forget_stream(aggregate, kind).await
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<(), StoreError> {
+        self.forget_stream(transaction, aggregate, kind).await
     }
 }

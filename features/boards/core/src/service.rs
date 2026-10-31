@@ -6,6 +6,7 @@ use eventsourcing::{
     Version,
 };
 use registry::Registry;
+use transacting::Transactions;
 
 use crate::board::{Board, BoardCommand, BoardEvent, KIND, ProjectLink};
 use crate::error::BoardsError;
@@ -26,11 +27,16 @@ pub struct Open {
 impl BoardService {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
+        transactions: Arc<dyn Transactions>,
         registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            events: Arc::new(EventSourcingService::new(
+                store,
+                transactions,
+                clock.clone(),
+            )),
             registry,
             clock,
         }

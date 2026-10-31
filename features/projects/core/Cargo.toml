@@ -15,3 +15,4 @@ authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", pack
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 quotation = { version = "0.1.0", path = "../../../libraries/quotation", package = "weaveling-quotation" }
 words = { version = "0.1.0", path = "../../../libraries/words", package = "weaveling-words" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }

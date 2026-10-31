@@ -13,6 +13,7 @@ use outline_core::{
 use time::{Duration, OffsetDateTime};
 
 use registry::Registry;
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::shapes;
 use crate::wiring;
@@ -65,9 +66,14 @@ fn told_of(happened: &Recorded<OutlineEvent>) -> Message {
 
 async fn a_stored_outline(wired: &Wired, project: &str) -> OutlineId {
     let id = OutlineId::generate(at(1_000));
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     wired
         .store
         .append(
+            &mut transaction,
             &AggregateId::from(&id),
             KIND,
             Version::ZERO,
@@ -75,6 +81,10 @@ async fn a_stored_outline(wired: &Wired, project: &str) -> OutlineId {
         )
         .await
         .expect("appending should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     id
 }

@@ -14,6 +14,7 @@ use notifications_core::{
 use registry::InMemoryRegistry;
 use serde_json::Value;
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 struct Served {
     notifications: NotificationsCore,
@@ -62,6 +63,7 @@ fn served() -> Served {
     Served {
         notifications: NotificationsCore::new(
             Arc::new(InMemoryEventStore::new()),
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryNoticeCatalog::new()),
             Arc::new(InMemoryRegistry::new()),
             Arc::new(FixedClock::new(

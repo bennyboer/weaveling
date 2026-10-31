@@ -6,6 +6,7 @@ use eventsourcing::{
     StoreError, Version,
 };
 use registry::Registry;
+use transacting::Transactions;
 
 use crate::error::OutlinesError;
 use crate::id::{OutlineId, SectionId};
@@ -55,11 +56,16 @@ fn attachments_changed_in(landed: &Appended<OutlineEvent>) -> Vec<SectionId> {
 impl OutlineService {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
+        transactions: Arc<dyn Transactions>,
         registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store, clock.clone())),
+            events: Arc::new(EventSourcingService::new(
+                store,
+                transactions,
+                clock.clone(),
+            )),
             registry,
             clock,
         }

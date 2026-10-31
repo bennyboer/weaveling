@@ -12,6 +12,7 @@ authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", pack
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [dev-dependencies]
 time = { workspace = true }

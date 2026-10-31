@@ -11,6 +11,7 @@ use notifications_core::{
 use notifications_messaging::CatalogueNoticeListener;
 use registry::InMemoryRegistry;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 
 const NOTED_AT: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
@@ -26,6 +27,7 @@ fn listed() -> Listed {
     let clock = Arc::new(FixedClock::new(NOTED_AT));
     let notifications = NotificationsCore::new(
         store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryNoticeCatalog::new()),
         Arc::new(InMemoryRegistry::new()),
         clock.clone(),

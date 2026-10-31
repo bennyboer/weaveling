@@ -1,6 +1,6 @@
 use clock::text;
 use outbox::Origin;
-use transacting::{SqliteTransactions, Transaction, Transactions};
+use transacting::Transaction;
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
@@ -26,6 +26,7 @@ where
 {
     pub(super) async fn write(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
@@ -35,17 +36,11 @@ where
             return Ok(());
         }
 
-        // TODO T-3b: the transaction is handed in by the service, not begun here
-        let mut transaction = SqliteTransactions::new(self.pool.clone())
-            .begin()
-            .await
-            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
-
         let head: i64 = sqlx::query_scalar(HEAD)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
             .fetch_one(
-                transacting::sqlite::connection(&mut transaction)
+                transacting::sqlite::connection(transaction)
                     .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
             )
             .await
@@ -56,16 +51,13 @@ where
         }
 
         for happened in events {
-            self.insert(&mut transaction, aggregate, kind, expected, happened)
+            self.insert(transaction, aggregate, kind, expected, happened)
                 .await?;
-            self.announce(&mut transaction, aggregate, kind, happened)
+            self.announce(transaction, aggregate, kind, happened)
                 .await?;
         }
 
-        transaction
-            .finish()
-            .await
-            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
+        Ok(())
     }
 
     async fn insert(
