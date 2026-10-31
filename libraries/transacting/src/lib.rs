@@ -1,0 +1,112 @@
+pub mod memory;
+#[cfg(test)]
+mod memory_tests;
+#[cfg(test)]
+mod suite;
+
+#[cfg(feature = "postgres")]
+pub mod postgres;
+#[cfg(all(test, feature = "postgres"))]
+mod postgres_tests;
+
+#[cfg(feature = "sqlite")]
+pub mod sqlite;
+#[cfg(all(test, feature = "sqlite"))]
+mod sqlite_tests;
+
+pub use memory::InMemoryTransactions;
+
+#[cfg(feature = "postgres")]
+pub use postgres::PostgresTransactions;
+
+#[cfg(feature = "sqlite")]
+pub use sqlite::SqliteTransactions;
+
+use std::any::Any;
+use std::error::Error;
+use std::ops::{Deref, DerefMut};
+
+use async_trait::async_trait;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum Failure {
+    #[error("the transaction's backend failed")]
+    Backend(#[source] Box<dyn Error + Send + Sync>),
+    #[error("the transaction was begun by another backend than the one it was handed to")]
+    BegunElsewhere,
+}
+
+#[async_trait]
+pub trait Transactions: Send + Sync {
+    async fn begin(&self) -> Result<Transaction, Failure>;
+
+    async fn join<'a>(&self, within: Option<&'a mut Transaction>) -> Result<Joined<'a>, Failure> {
+        match within {
+            Some(transaction) => Ok(Joined::Borrowed(transaction)),
+            None => Ok(Joined::Own(self.begin().await?)),
+        }
+    }
+}
+
+#[async_trait]
+pub(crate) trait Unit: Send + 'static {
+    async fn commit(self: Box<Self>) -> Result<(), Failure>;
+
+    fn as_any(&mut self) -> &mut dyn Any;
+}
+
+#[must_use = "a transaction is rolled back unless it is finished"]
+pub struct Transaction(Box<dyn Unit>);
+
+impl Transaction {
+    pub(crate) fn of(unit: impl Unit) -> Self {
+        Self(Box::new(unit))
+    }
+
+    pub async fn finish(self) -> Result<(), Failure> {
+        self.0.commit().await
+    }
+
+    pub(crate) fn backend<U: Unit>(&mut self) -> Result<&mut U, Failure> {
+        self.0
+            .as_any()
+            .downcast_mut::<U>()
+            .ok_or(Failure::BegunElsewhere)
+    }
+}
+
+#[must_use = "a transaction of its own is rolled back unless it is finished"]
+pub enum Joined<'a> {
+    Own(Transaction),
+    Borrowed(&'a mut Transaction),
+}
+
+impl Joined<'_> {
+    pub async fn finish(self) -> Result<(), Failure> {
+        match self {
+            Joined::Own(transaction) => transaction.finish().await,
+            Joined::Borrowed(_) => Ok(()),
+        }
+    }
+}
+
+impl Deref for Joined<'_> {
+    type Target = Transaction;
+
+    fn deref(&self) -> &Transaction {
+        match self {
+            Joined::Own(transaction) => transaction,
+            Joined::Borrowed(transaction) => transaction,
+        }
+    }
+}
+
+impl DerefMut for Joined<'_> {
+    fn deref_mut(&mut self) -> &mut Transaction {
+        match self {
+            Joined::Own(transaction) => transaction,
+            Joined::Borrowed(transaction) => transaction,
+        }
+    }
+}

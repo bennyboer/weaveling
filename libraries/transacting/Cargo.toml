@@ -1,0 +1,18 @@
+[package]
+name = "weaveling-transacting"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+async-trait = { workspace = true }
+sqlx = { workspace = true, optional = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[features]
+postgres = ["dep:sqlx"]
+sqlite = ["dep:sqlx", "sqlx/sqlite"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "time"] }
+test-harness = { version = "0.1.0", path = "../test-harness", package = "weaveling-test-harness" }
