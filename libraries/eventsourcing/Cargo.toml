@@ -6,6 +6,7 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 thiserror = { workspace = true }
+tracing = { workspace = true }
 time = { workspace = true, features = ["formatting", "parsing"] }
 
 serde_json = { workspace = true }

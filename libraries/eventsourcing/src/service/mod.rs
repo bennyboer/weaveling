@@ -212,9 +212,18 @@ where
             .expect("a non-empty batch was just stamped")
             .metadata
             .version;
-        let version = self
-            .snapshot_if_due(aggregate, &state, landed, agent)
-            .await?;
+        let version = match self.snapshot_if_due(aggregate, &state, landed, agent).await {
+            Ok(version) => version,
+            Err(why) => {
+                tracing::warn!(
+                    %aggregate,
+                    kind = %A::KIND,
+                    %why,
+                    "a snapshot after a landed command failed; it is taken again later"
+                );
+                landed
+            }
+        };
 
         Ok(Appended {
             version,

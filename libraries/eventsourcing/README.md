@@ -2,7 +2,7 @@
 
 The event store and the service that drives aggregates over it. The outbox an append announces into is [its own library](../outbox).
 
-**The model.** An `Aggregate` says how it is born (`begin`, `from_first`), what it will accept (`decide`), how it changes (`apply`), and how it collapses (`snapshot`). `EventSourcingService` replays a stream into state, runs a command against it, and appends what it decided under a `Version` guard, retrying a lost race a few times before giving up. `Standing<A>` is what a reader gets: the state and the version it stands at.
+**The model.** An `Aggregate` says how it is born (`begin`, `from_first`), what it will accept (`decide`), how it changes (`apply`), and how it collapses (`snapshot`). `EventSourcingService` replays a stream into state, runs a command against it, and appends what it decided under a `Version` guard, retrying a lost race a few times before giving up. Once a command's events have landed, a snapshot falls due every `snapshot_after()` events and is taken behind them; it is best-effort, so a snapshot that fails is logged and taken after the next command, and the command is reported landed, never failed and appended again. `Standing<A>` is what a reader gets: the state and the version it stands at.
 
 The ideas drive their aggregate like this:
 

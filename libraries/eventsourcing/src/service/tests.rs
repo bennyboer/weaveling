@@ -770,6 +770,180 @@ impl EventStore<SampleEvent> for BalksOnce {
     }
 }
 
+struct RefusesSnapshots {
+    inner: Arc<InMemoryEventStore<SampleEvent>>,
+    outdated: bool,
+}
+
+impl RefusesSnapshots {
+    fn as_outdated(inner: Arc<InMemoryEventStore<SampleEvent>>) -> Arc<Self> {
+        Arc::new(Self {
+            inner,
+            outdated: true,
+        })
+    }
+
+    fn as_broken(inner: Arc<InMemoryEventStore<SampleEvent>>) -> Arc<Self> {
+        Arc::new(Self {
+            inner,
+            outdated: false,
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl EventStore<SampleEvent> for RefusesSnapshots {
+    async fn append(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        expected: Version,
+        stream: &[Recorded<SampleEvent>],
+    ) -> Result<(), StoreError> {
+        if stream.iter().any(|entry| entry.metadata.is_snapshot) {
+            return Err(if self.outdated {
+                StoreError::outdated(aggregate, kind, expected)
+            } else {
+                StoreError::backend(aggregate, kind, "the disk is full")
+            });
+        }
+
+        self.inner.append(aggregate, kind, expected, stream).await
+    }
+
+    async fn read_from(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        self.inner.read_from(aggregate, kind, from).await
+    }
+
+    async fn read_through(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+        through: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .read_through(aggregate, kind, from, through)
+            .await
+    }
+
+    async fn latest_snapshot(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn snapshot_at_or_before(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        version: Version,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .snapshot_at_or_before(aggregate, kind, version)
+            .await
+    }
+
+    async fn prune_through(
+        &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        through: Version,
+    ) -> Result<(), StoreError> {
+        self.inner.prune_through(aggregate, kind, through).await
+    }
+
+    async fn forget(&self, aggregate: &AggregateId, kind: AggregateType) -> Result<(), StoreError> {
+        self.inner.forget(aggregate, kind).await
+    }
+}
+
+async fn a_sample_one_short_of_a_snapshot(
+    store: Arc<InMemoryEventStore<SampleEvent>>,
+) -> AggregateId {
+    let service = a_service(store);
+    let id = a_created_sample(&service).await;
+    for counted in 2..100 {
+        service
+            .execute(&id, retitled(&format!("Title {counted}")), &an_author())
+            .await
+            .expect("updating should succeed");
+    }
+
+    id
+}
+
+fn over(store: Arc<RefusesSnapshots>) -> EventSourcingService<Sample> {
+    EventSourcingService::new(store, Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)))
+}
+
+#[tokio::test]
+async fn a_landed_command_whose_snapshot_was_overtaken_is_reported_landed_and_appended_once() {
+    let store = a_store();
+    let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
+    let service = over(RefusesSnapshots::as_outdated(store.clone()));
+
+    let landed = service
+        .execute(&id, retitled("Title 100"), &an_author())
+        .await
+        .expect("the command landed, whatever became of its snapshot");
+    let titles = store
+        .read_from(&id, Sample::KIND, Version::ZERO)
+        .await
+        .expect("reading should succeed")
+        .into_iter()
+        .filter(|entry| entry.event == SampleEvent::TitleUpdated("Title 100".to_owned()))
+        .count();
+
+    assert_eq!(
+        landed.version,
+        Version::of(100),
+        "the version the command landed at, with no snapshot after it"
+    );
+    assert_eq!(
+        titles, 1,
+        "a landed command is never decided and appended again"
+    );
+}
+
+#[tokio::test]
+async fn a_snapshot_that_failed_is_taken_after_the_next_command() {
+    let store = a_store();
+    let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
+    over(RefusesSnapshots::as_broken(store.clone()))
+        .execute(&id, retitled("Title 100"), &an_author())
+        .await
+        .expect("the command landed, whatever became of its snapshot");
+
+    let landed = a_service(store.clone())
+        .execute(&id, retitled("Title 101"), &an_author())
+        .await
+        .expect("updating should succeed");
+
+    assert_eq!(
+        landed.version,
+        Version::of(102),
+        "the hundred and first event is followed by the snapshot still due"
+    );
+    assert_eq!(
+        store
+            .latest_snapshot(&id, Sample::KIND)
+            .await
+            .expect("looking should succeed")
+            .expect("the snapshot was still due")
+            .metadata
+            .version,
+        Version::of(102)
+    );
+}
+
 #[tokio::test]
 async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
     let store = a_store();

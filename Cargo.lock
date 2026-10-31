@@ -4050,6 +4050,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "tracing",
  "weaveling-clock",
  "weaveling-messaging",
  "weaveling-outbox",
