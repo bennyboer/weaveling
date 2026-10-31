@@ -1,10 +1,10 @@
 use std::sync::LazyLock;
 
 use messaging::Message;
-use sqlx::{Sqlite, Transaction};
 use tokio::sync::watch;
+use transacting::Transaction;
 
-use crate::outbox::Origin;
+use crate::outbox::{Origin, OutboxError};
 use clock::text;
 
 use crate::sqlite;
@@ -23,10 +23,10 @@ const ENQUEUE: &str = "
 ";
 
 pub async fn enqueue(
-    transaction: &mut Transaction<'_, Sqlite>,
+    transaction: &mut Transaction,
     origin: Origin<'_>,
     message: &Message,
-) -> Result<(), sqlx::Error> {
+) -> Result<(), OutboxError> {
     sqlx::query(ENQUEUE)
         .bind(origin.aggregate)
         .bind(origin.kind)
@@ -48,9 +48,10 @@ pub async fn enqueue(
         .bind(message.routing.to_string())
         .bind(message.payload.to_string())
         .bind(text::written(message.occurred_at))
-        .execute(&mut **transaction)
-        .await?;
-    ENQUEUED.send_modify(|rung| *rung = rung.wrapping_add(1));
+        .execute(transacting::sqlite::connection(transaction)?)
+        .await
+        .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
+    transaction.after_commit(|| ENQUEUED.send_modify(|rung| *rung = rung.wrapping_add(1)));
 
     Ok(())
 }

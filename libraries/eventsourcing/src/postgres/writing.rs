@@ -1,5 +1,5 @@
 use outbox::Origin;
-use sqlx::{Postgres, Transaction};
+use transacting::{PostgresTransactions, Transaction, Transactions};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
@@ -34,8 +34,8 @@ where
             return Ok(());
         }
 
-        let mut transaction = self
-            .pool
+        // TODO T-3b: the transaction is handed in by the service, not begun here
+        let mut transaction = PostgresTransactions::new(self.pool.clone())
             .begin()
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
@@ -43,7 +43,10 @@ where
         let head: i64 = sqlx::query_scalar(HEAD)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
-            .fetch_one(&mut *transaction)
+            .fetch_one(
+                transacting::postgres::connection(&mut transaction)
+                    .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
+            )
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
@@ -59,14 +62,14 @@ where
         }
 
         transaction
-            .commit()
+            .finish()
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }
 
     async fn insert(
         &self,
-        transaction: &mut Transaction<'_, Postgres>,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
@@ -83,7 +86,10 @@ where
             .bind(happened.metadata.occurred_at)
             .bind(happened.metadata.is_snapshot)
             .bind(happened.metadata.context.written())
-            .execute(&mut **transaction)
+            .execute(
+                transacting::postgres::connection(transaction)
+                    .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
+            )
             .await
             .map_err(|failure| match is_unique_violation(&failure) {
                 true => StoreError::outdated(aggregate, kind, expected),
@@ -95,7 +101,7 @@ where
 
     async fn announce(
         &self,
-        transaction: &mut Transaction<'_, Postgres>,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         happened: &Recorded<E>,

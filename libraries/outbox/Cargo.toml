@@ -16,10 +16,11 @@ uuid = { workspace = true, optional = true }
 
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
+transacting = { version = "0.1.0", path = "../transacting", package = "weaveling-transacting" }
 
 [features]
-postgres = ["dep:sqlx", "dep:uuid", "messaging/postgres"]
-sqlite = ["dep:sqlx", "dep:uuid", "sqlx/sqlite"]
+postgres = ["dep:sqlx", "dep:uuid", "messaging/postgres", "transacting/postgres"]
+sqlite = ["dep:sqlx", "dep:uuid", "sqlx/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

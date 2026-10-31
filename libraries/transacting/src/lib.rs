@@ -56,20 +56,37 @@ pub(crate) trait Unit: Send + 'static {
     fn as_any(&mut self) -> &mut dyn Any;
 }
 
+type Followup = Box<dyn FnOnce() + Send>;
+
 #[must_use = "a transaction is rolled back unless it is finished"]
-pub struct Transaction(Box<dyn Unit>);
+pub struct Transaction {
+    unit: Box<dyn Unit>,
+    after_commit: Vec<Followup>,
+}
 
 impl Transaction {
     pub(crate) fn of(unit: impl Unit) -> Self {
-        Self(Box::new(unit))
+        Self {
+            unit: Box::new(unit),
+            after_commit: Vec::new(),
+        }
+    }
+
+    pub fn after_commit(&mut self, followup: impl FnOnce() + Send + 'static) {
+        self.after_commit.push(Box::new(followup));
     }
 
     pub async fn finish(self) -> Result<(), Failure> {
-        self.0.commit().await
+        self.unit.commit().await?;
+        for followup in self.after_commit {
+            followup();
+        }
+
+        Ok(())
     }
 
     pub(crate) fn backend<U: Unit>(&mut self) -> Result<&mut U, Failure> {
-        self.0
+        self.unit
             .as_any()
             .downcast_mut::<U>()
             .ok_or(Failure::BegunElsewhere)

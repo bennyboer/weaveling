@@ -1,14 +1,12 @@
 use clock::text;
 use outbox::Origin;
-use sqlx::{Sqlite, Transaction};
+use transacting::{SqliteTransactions, Transaction, Transactions};
 
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::{Event, Recorded};
 use crate::sqlite::{SqliteEventStore, agent};
 use crate::store::StoreError;
 use crate::version::Version;
-
-const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
 
 const HEAD: &str = "
     SELECT COALESCE(MAX(version), 0)
@@ -37,16 +35,19 @@ where
             return Ok(());
         }
 
-        let mut transaction = self
-            .pool
-            .begin_with(BEGIN_WRITING)
+        // TODO T-3b: the transaction is handed in by the service, not begun here
+        let mut transaction = SqliteTransactions::new(self.pool.clone())
+            .begin()
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
         let head: i64 = sqlx::query_scalar(HEAD)
             .bind(aggregate.as_str())
             .bind(kind.as_str())
-            .fetch_one(&mut *transaction)
+            .fetch_one(
+                transacting::sqlite::connection(&mut transaction)
+                    .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
+            )
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
@@ -62,14 +63,14 @@ where
         }
 
         transaction
-            .commit()
+            .finish()
             .await
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))
     }
 
     async fn insert(
         &self,
-        transaction: &mut Transaction<'_, Sqlite>,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         expected: Version,
@@ -86,7 +87,10 @@ where
             .bind(text::written(happened.metadata.occurred_at))
             .bind(happened.metadata.is_snapshot)
             .bind(happened.metadata.context.written().to_string())
-            .execute(&mut **transaction)
+            .execute(
+                transacting::sqlite::connection(transaction)
+                    .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?,
+            )
             .await
             .map_err(|failure| match is_unique_violation(&failure) {
                 true => StoreError::outdated(aggregate, kind, expected),
@@ -98,7 +102,7 @@ where
 
     async fn announce(
         &self,
-        transaction: &mut Transaction<'_, Sqlite>,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
         happened: &Recorded<E>,

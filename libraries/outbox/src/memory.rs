@@ -5,6 +5,7 @@ use clock::Clock;
 use messaging::{Message, Publisher};
 use time::OffsetDateTime;
 use tokio::sync::Notify;
+use transacting::Transaction;
 
 use messaging::Notifications;
 
@@ -49,6 +50,12 @@ impl InMemoryOutbox {
         drop(entries);
 
         self.waiting.notify_one();
+    }
+
+    pub fn enqueue_within(self: &Arc<Self>, transaction: &mut Transaction, message: Message) {
+        let outbox = self.clone();
+
+        transaction.after_commit(move || outbox.enqueue(message));
     }
 
     pub fn waiting_to_be_published(&self) -> usize {
@@ -153,18 +160,19 @@ mod tests {
     use clock::FixedClock;
     use messaging::{FakePublisher, Message};
     use time::OffsetDateTime;
+    use transacting::{InMemoryTransactions, Transactions};
 
     use super::InMemoryOutbox;
     use crate::suite::{Then, Workbench};
 
-    struct InMemory(InMemoryOutbox);
+    struct InMemory(Arc<InMemoryOutbox>);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Outbox = InMemoryOutbox;
 
         async fn setup(publisher: Arc<FakePublisher>, clock: Arc<FixedClock>) -> Self {
-            Self(InMemoryOutbox::new(publisher, clock))
+            Self(Arc::new(InMemoryOutbox::new(publisher, clock)))
         }
 
         fn outbox(&self) -> &InMemoryOutbox {
@@ -172,11 +180,16 @@ mod tests {
         }
 
         async fn enqueue(&self, messages: &[Message], then: Then) {
+            let mut transaction = InMemoryTransactions::new()
+                .begin()
+                .await
+                .expect("a transaction opens");
+            for message in messages {
+                self.0.enqueue_within(&mut transaction, message.clone());
+            }
             match then {
-                Then::Commit => messages
-                    .iter()
-                    .for_each(|message| self.0.enqueue(message.clone())),
-                Then::RollBack => panic!("nothing in memory is written inside a transaction"),
+                Then::Commit => transaction.finish().await.expect("the transaction commits"),
+                Then::RollBack => drop(transaction),
             }
         }
 

@@ -6,6 +6,7 @@ use messaging::{FakePublisher, Message};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use time::OffsetDateTime;
+use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres::PostgresOutbox;
 use crate::suite;
@@ -42,18 +43,18 @@ impl Workbench for OnPostgres {
     }
 
     async fn enqueue(&self, messages: &[Message], then: Then) {
-        let mut transaction = self.pool.begin().await.expect("a transaction opens");
+        let mut transaction = PostgresTransactions::new(self.pool.clone())
+            .begin()
+            .await
+            .expect("a transaction opens");
         for message in messages {
             crate::postgres::enqueue(&mut transaction, suite::from_a_scene(), message)
                 .await
                 .expect("enqueueing should succeed");
         }
         match then {
-            Then::Commit => transaction.commit().await.expect("the transaction commits"),
-            Then::RollBack => transaction
-                .rollback()
-                .await
-                .expect("the transaction rolls back"),
+            Then::Commit => transaction.finish().await.expect("the transaction commits"),
+            Then::RollBack => drop(transaction),
         }
     }
 
@@ -82,7 +83,7 @@ impl Workbench for OnPostgres {
     }
 }
 
-crate::outbox_conformance_tests!(OnPostgres, in_transactions);
+crate::outbox_conformance_tests!(OnPostgres);
 
 #[tokio::test]
 async fn the_outbox_keeps_its_own_ledger_beside_whoever_owns_the_database() {

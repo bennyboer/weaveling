@@ -2,21 +2,21 @@
 
 The transactional outbox and its relay: how a change that commits is always announced, and one that rolls back never is.
 
-**Enqueue inside the writer's transaction.** `postgres::enqueue(transaction, origin, message)` and `sqlite::enqueue(…)` put a message into the outbox table inside *any* writer's transaction — the event store's `append`, or a feature that is not event-sourced at all, like scenes, whose prose is a CRDT. `Origin` records what the message is about (`aggregate`, `kind`, `version`); a writer with no versions passes `0`. On PostgreSQL the same transaction notifies, so the relay wakes when the write commits.
+**Enqueue inside the writer's transaction.** `postgres::enqueue(transaction, origin, message)` and `sqlite::enqueue(…)` put a message into the outbox table inside *any* writer's [`transacting::Transaction`](../transacting/README.md), and `InMemoryOutbox::enqueue_within(transaction, message)` holds it back until that transaction commits — the event store's `append`, or a feature that is not event-sourced at all, like scenes, whose prose is a CRDT. `Origin` records what the message is about (`aggregate`, `kind`, `version`); a writer with no versions passes `0`. The relay wakes when the write commits and not before: PostgreSQL's `NOTIFY` is sent in the same transaction, and SQLite and memory ring once it is committed, through `Transaction::after_commit`. A transaction dropped unfinished takes its messages with it and wakes nobody.
 
 The scenes announce a change in the transaction that stores it, and a relay sends it on:
 
 ```rust
 use outbox::{Cadence, Origin, RelayTask};
 
-let mut transaction = pool.begin().await?;
+let mut transaction = transactions.begin().await?;
 store_the_change(&mut transaction).await?;
 
 let scene = change.scene().to_string();
 let origin = Origin { aggregate: &scene, kind: "scene", version: 0 };
 outbox::postgres::enqueue(&mut transaction, origin, &mapping.message(&change)).await?;
 
-transaction.commit().await?;
+transaction.finish().await?;
 
 let relay = RelayTask::started(scenes_outbox, Cadence::default());
 relay.stop().await;
@@ -32,4 +32,4 @@ relay.stop().await;
 
 **Messages go out in the order they were written.** A claim comes back from `UPDATE … RETURNING` in whatever order the database likes, so every outbox sorts what it claimed by entry before publishing — a `Detached` overtaking the `Attached` it undoes would leave a read model wrong for good.
 
-**The SQLite outbox is polled, not notified.** It hands the relay notifications that never fire, so delivery rides on `Cadence::deliver_every` alone — short in local mode. `enqueue` is a free function inside the writer's transaction with nothing to wake, and SQLite's commit hook runs before the commit is visible; see [the decision](../../ROADMAP.md#sqlite-backs-local-mode--decided). Claims expire by comparing instants stored as fixed-width UTC text, which sort as strings the way they sort in time.
+**The SQLite outbox rings an in-process bell.** SQLite has no `NOTIFY`, and its commit hook runs before the commit is visible, so `enqueue` rings a bell in the process once the writer's transaction has committed, and `Cadence::deliver_every` is the backstop for a writer in another process; see [the decision](../../ROADMAP.md#sqlite-backs-local-mode--decided). Claims expire by comparing instants stored as fixed-width UTC text, which sort as strings the way they sort in time.

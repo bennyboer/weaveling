@@ -1,3 +1,5 @@
+use std::sync::{Arc, Mutex};
+
 use crate::{Joined, Transaction, Transactions};
 
 #[async_trait::async_trait]
@@ -129,6 +131,90 @@ pub async fn a_borrowed_transaction_keeps_what_was_written_in_it_once_its_owner_
     assert_eq!(bench.written().await, vec!["warp", "weft"]);
 }
 
+struct Followups(Arc<Mutex<Vec<&'static str>>>);
+
+impl Followups {
+    fn new() -> Self {
+        Self(Arc::new(Mutex::new(Vec::new())))
+    }
+
+    fn noting(&self, what: &'static str) -> impl FnOnce() + Send + 'static {
+        let ran = self.0.clone();
+
+        move || ran.lock().expect("nothing panics holding it").push(what)
+    }
+
+    fn ran(&self) -> Vec<&'static str> {
+        self.0.lock().expect("nothing panics holding it").clone()
+    }
+}
+
+pub async fn what_follows_a_commit_runs_once_it_is_finished_in_the_order_it_was_asked(
+    bench: &impl Workbench,
+) {
+    let followups = Followups::new();
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench.write(&mut transaction, "warp").await;
+    transaction.after_commit(followups.noting("woken"));
+    transaction.after_commit(followups.noting("told"));
+    let before = followups.ran();
+
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    assert_eq!(
+        (before, followups.ran()),
+        (Vec::new(), vec!["woken", "told"]),
+        "nothing follows a commit before it happened"
+    );
+}
+
+pub async fn what_follows_a_commit_never_runs_when_the_transaction_is_dropped(
+    bench: &impl Workbench,
+) {
+    let followups = Followups::new();
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench.write(&mut transaction, "warp").await;
+    transaction.after_commit(followups.noting("woken"));
+
+    drop(transaction);
+
+    assert!(followups.ran().is_empty());
+}
+
+pub async fn what_follows_a_commit_asked_through_a_borrowed_transaction_waits_for_its_owner(
+    bench: &impl Workbench,
+) {
+    let followups = Followups::new();
+    let mut owned = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    let mut joined = bench
+        .transactions()
+        .join(Some(&mut owned))
+        .await
+        .expect("joining should succeed");
+    joined.after_commit(followups.noting("woken"));
+    joined.finish().await.expect("finishing should succeed");
+    let after_joined = followups.ran();
+
+    owned.finish().await.expect("finishing should succeed");
+
+    assert_eq!((after_joined, followups.ran()), (Vec::new(), vec!["woken"]));
+}
+
 #[doc(hidden)]
 #[macro_export]
 macro_rules! transacting_conformance_case {
@@ -167,6 +253,18 @@ macro_rules! conformance_tests {
         $crate::transacting_conformance_case!(
             $workbench,
             a_borrowed_transaction_keeps_what_was_written_in_it_once_its_owner_finishes
+        );
+        $crate::transacting_conformance_case!(
+            $workbench,
+            what_follows_a_commit_runs_once_it_is_finished_in_the_order_it_was_asked
+        );
+        $crate::transacting_conformance_case!(
+            $workbench,
+            what_follows_a_commit_never_runs_when_the_transaction_is_dropped
+        );
+        $crate::transacting_conformance_case!(
+            $workbench,
+            what_follows_a_commit_asked_through_a_borrowed_transaction_waits_for_its_owner
         );
     };
 }

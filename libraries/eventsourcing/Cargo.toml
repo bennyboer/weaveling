@@ -16,10 +16,11 @@ tokio = { workspace = true, features = ["rt", "time", "sync", "macros"] }
 clock = { version = "0.1.0", path = "../clock", package = "weaveling-clock" }
 messaging = { version = "0.1.0", path = "../messaging", package = "weaveling-messaging" }
 outbox = { version = "0.1.0", path = "../outbox", package = "weaveling-outbox" }
+transacting = { version = "0.1.0", path = "../transacting", package = "weaveling-transacting" }
 
 [features]
-postgres = ["dep:sqlx", "messaging/postgres", "outbox/postgres"]
-sqlite = ["dep:sqlx", "sqlx/sqlite", "outbox/sqlite"]
+postgres = ["dep:sqlx", "messaging/postgres", "outbox/postgres", "transacting/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "outbox/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
 serde = { workspace = true }

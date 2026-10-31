@@ -1,7 +1,7 @@
 use messaging::Message;
-use sqlx::{Postgres, Transaction};
+use transacting::Transaction;
 
-use crate::outbox::Origin;
+use crate::outbox::{Origin, OutboxError};
 use crate::postgres;
 
 const NOTIFY: &str = "SELECT pg_notify(left('outbox_waiting_' || current_schema(), 63), '')";
@@ -14,10 +14,11 @@ const ENQUEUE: &str = "
 ";
 
 pub async fn enqueue(
-    transaction: &mut Transaction<'_, Postgres>,
+    transaction: &mut Transaction,
     origin: Origin<'_>,
     message: &Message,
-) -> Result<(), sqlx::Error> {
+) -> Result<(), OutboxError> {
+    let connection = transacting::postgres::connection(transaction)?;
     sqlx::query(ENQUEUE)
         .bind(origin.aggregate)
         .bind(origin.kind)
@@ -28,10 +29,18 @@ pub async fn enqueue(
         .bind(message.routing.to_string())
         .bind(&message.payload)
         .bind(message.occurred_at)
-        .execute(&mut **transaction)
-        .await?;
+        .execute(&mut *connection)
+        .await
+        .map_err(unreachable)?;
 
-    sqlx::query(NOTIFY).execute(&mut **transaction).await?;
+    sqlx::query(NOTIFY)
+        .execute(&mut *connection)
+        .await
+        .map_err(unreachable)?;
 
     Ok(())
+}
+
+fn unreachable(failure: sqlx::Error) -> OutboxError {
+    OutboxError::Unreachable(failure.to_string())
 }

@@ -353,11 +353,8 @@ macro_rules! outbox_conformance_tests {
             deleting_takes_no_more_than_it_was_asked_for,
             messages_are_published_in_the_order_they_were_written,
             a_message_enqueued_beside_a_write_is_relayed_whole_once_that_write_commits,
+            a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it,
         );
-    };
-    ($workbench:ty, in_transactions) => {
-        $crate::outbox_conformance_tests!($workbench);
-        $crate::outbox_conformance_tests!($workbench: a_message_enqueued_beside_a_write_that_rolls_back_goes_with_it);
     };
     ($workbench:ty: $($case:ident),+ $(,)?) => {
         $(

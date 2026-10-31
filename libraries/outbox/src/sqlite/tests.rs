@@ -7,6 +7,7 @@ use messaging::{FakePublisher, Message};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 use time::OffsetDateTime;
+use transacting::{SqliteTransactions, Transactions};
 
 use crate::outbox::Outbox;
 use crate::relaying::{Cadence, RelayTask};
@@ -45,18 +46,18 @@ impl Workbench for OnSqlite {
     }
 
     async fn enqueue(&self, messages: &[Message], then: Then) {
-        let mut transaction = self.pool.begin().await.expect("a transaction opens");
+        let mut transaction = SqliteTransactions::new(self.pool.clone())
+            .begin()
+            .await
+            .expect("a transaction opens");
         for message in messages {
             crate::sqlite::enqueue(&mut transaction, suite::from_a_scene(), message)
                 .await
                 .expect("enqueueing should succeed");
         }
         match then {
-            Then::Commit => transaction.commit().await.expect("the transaction commits"),
-            Then::RollBack => transaction
-                .rollback()
-                .await
-                .expect("the transaction rolls back"),
+            Then::Commit => transaction.finish().await.expect("the transaction commits"),
+            Then::RollBack => drop(transaction),
         }
     }
 
@@ -83,7 +84,7 @@ impl Workbench for OnSqlite {
     }
 }
 
-crate::outbox_conformance_tests!(OnSqlite, in_transactions);
+crate::outbox_conformance_tests!(OnSqlite);
 
 #[tokio::test]
 async fn an_enqueued_message_wakes_the_relay() {
@@ -112,9 +113,7 @@ async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
     let bench = Bench::<OnSqlite>::setup().await;
     let outbox = bench.workbench.outbox.clone();
     let message = suite::a_link_message();
-    let mut transaction = bench
-        .workbench
-        .pool
+    let mut transaction = SqliteTransactions::new(bench.workbench.pool.clone())
         .begin()
         .await
         .expect("a transaction opens");
@@ -127,7 +126,7 @@ async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
         async move { outbox.deliver(10).await }
     });
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-    transaction.commit().await.expect("the transaction commits");
+    transaction.finish().await.expect("the transaction commits");
     delivering
         .await
         .expect("delivering should not panic")
@@ -136,8 +135,7 @@ async fn a_relay_woken_before_the_write_commits_still_finds_the_message() {
     assert_eq!(
         bench.ids_heard(),
         [message.id],
-        "the bell rings inside the writer's transaction, so the relay's claim waits for the \
-         write lock and sees the message once it commits"
+        "the relay's claim waits for the writer's lock and sees the message once it commits"
     );
 
     bench.cleanup().await;

@@ -4055,6 +4055,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outbox",
  "weaveling-test-harness",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4669,6 +4670,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-messaging",
  "weaveling-test-harness",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5029,6 +5031,7 @@ dependencies = [
  "weaveling-outbox",
  "weaveling-scenes-core",
  "weaveling-test-harness",
+ "weaveling-transacting",
  "yrs",
 ]
 

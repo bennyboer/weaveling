@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use messaging::Notifications;
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
+use transacting::Failure;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Origin<'a> {
@@ -20,6 +21,8 @@ pub enum OutboxError {
     Unreachable(String),
     #[error("outbox entry {entry} holds something that is not a message: {why}")]
     Unreadable { entry: i64, why: String },
+    #[error(transparent)]
+    Transacting(#[from] Failure),
 }
 
 #[derive(Debug, PartialEq, Eq)]

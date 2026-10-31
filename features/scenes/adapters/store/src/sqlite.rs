@@ -1,3 +1,4 @@
+use std::error::Error;
 use std::sync::Arc;
 
 use crate::compaction::COMPACT_AFTER;
@@ -10,9 +11,8 @@ use scenes_core::{
     IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
 use sqlx::migrate::Migrator;
-use sqlx::{Row, Sqlite, SqlitePool, Transaction};
-
-const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
+use sqlx::{Row, SqliteConnection, SqlitePool};
+use transacting::{SqliteTransactions, Transaction, Transactions};
 
 const REMEMBER: &str = "INSERT INTO scenes (scene, project, title) VALUES (?1, ?2, ?3)";
 
@@ -124,7 +124,7 @@ impl SqliteSceneStore {
 
         let project: Option<String> = sqlx::query_scalar(PROJECT_OF)
             .bind(id.to_string())
-            .fetch_optional(&mut *transaction)
+            .fetch_optional(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
         let Some(project) = project else {
@@ -134,12 +134,12 @@ impl SqliteSceneStore {
         self.enqueue_change(&mut transaction, change(ProjectLink::from(project)))
             .await?;
 
-        transaction.commit().await.map_err(unreachable)
+        transaction.finish().await.map_err(unreachable)
     }
 
     async fn enqueue_change(
         &self,
-        transaction: &mut Transaction<'_, Sqlite>,
+        transaction: &mut Transaction,
         change: SceneChange,
     ) -> Result<(), StoreError> {
         let Some(mapping) = &self.enqueuing else {
@@ -162,7 +162,7 @@ impl SqliteSceneStore {
 
         let found: Option<String> = sqlx::query_scalar(EXISTS)
             .bind(id.to_string())
-            .fetch_optional(&mut *transaction)
+            .fetch_optional(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
         let Some(project) = found else {
@@ -178,37 +178,38 @@ impl SqliteSceneStore {
         let collapsed: i64 = sqlx::query_scalar(WRITE_SNAPSHOT)
             .bind(id.to_string())
             .bind(scene.everything())
-            .fetch_one(&mut *transaction)
+            .fetch_one(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(FORGET_BEFORE)
             .bind(id.to_string())
             .bind(collapsed)
-            .execute(&mut *transaction)
+            .execute(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)?;
+        transaction.finish().await.map_err(unreachable)?;
 
         Ok(true)
     }
 
-    async fn begin_writing(&self) -> Result<Transaction<'static, Sqlite>, StoreError> {
-        self.pool
-            .begin_with(BEGIN_WRITING)
+    // TODO sweep: the store's writes take the transaction core begins, not one begun here
+    async fn begin_writing(&self) -> Result<Transaction, StoreError> {
+        SqliteTransactions::new(self.pool.clone())
+            .begin()
             .await
             .map_err(unreachable)
     }
 
     async fn parts(
         &self,
-        transaction: &mut Transaction<'_, Sqlite>,
+        transaction: &mut Transaction,
         id: SceneId,
     ) -> Result<Vec<Vec<u8>>, StoreError> {
         let found = sqlx::query(READ_SINCE_SNAPSHOT)
             .bind(id.to_string())
-            .fetch_all(&mut **transaction)
+            .fetch_all(connection(transaction)?)
             .await
             .map_err(unreachable)?;
 
@@ -232,12 +233,12 @@ fn grown(id: SceneId, project: ProjectLink, parts: &[Vec<u8>]) -> Result<Scene, 
 }
 
 async fn bumped(
-    transaction: &mut Transaction<'_, Sqlite>,
+    transaction: &mut Transaction,
     id: SceneId,
 ) -> Result<(u64, ProjectLink), StoreError> {
     let (version, project): (i64, String) = sqlx::query_as(BUMP)
         .bind(id.to_string())
-        .fetch_one(&mut **transaction)
+        .fetch_one(connection(transaction)?)
         .await
         .map_err(unreachable)?;
 
@@ -247,7 +248,11 @@ async fn bumped(
     ))
 }
 
-fn unreachable(failure: sqlx::Error) -> StoreError {
+fn connection(transaction: &mut Transaction) -> Result<&mut SqliteConnection, StoreError> {
+    transacting::sqlite::connection(transaction).map_err(unreachable)
+}
+
+fn unreachable(failure: impl Error + Send + Sync + 'static) -> StoreError {
     StoreError::Backend(Box::new(failure))
 }
 
@@ -269,7 +274,7 @@ impl SceneStore for SqliteSceneStore {
             .bind(id.to_string())
             .bind(scene.project().to_string())
             .bind(scene.title().as_str())
-            .execute(&mut *transaction)
+            .execute(connection(&mut transaction)?)
             .await
             .map_err(|failure| match is_taken(&failure) {
                 true => StoreError::Conflict(id),
@@ -279,7 +284,7 @@ impl SceneStore for SqliteSceneStore {
         sqlx::query(WRITE_SNAPSHOT)
             .bind(id.to_string())
             .bind(scene.everything())
-            .fetch_one(&mut *transaction)
+            .fetch_one(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
 
@@ -292,7 +297,7 @@ impl SceneStore for SqliteSceneStore {
         )
         .await?;
 
-        transaction.commit().await.map_err(unreachable)
+        transaction.finish().await.map_err(unreachable)
     }
 
     async fn load(&self, id: SceneId) -> Result<Scene, StoreError> {
@@ -336,7 +341,7 @@ impl SceneStore for SqliteSceneStore {
         sqlx::query(WRITE_UPDATE)
             .bind(id.to_string())
             .bind(update)
-            .execute(&mut *transaction)
+            .execute(connection(&mut transaction)?)
             .await
             .map_err(|failure| match is_unknown(&failure) {
                 true => StoreError::NotFound(id),
@@ -345,10 +350,10 @@ impl SceneStore for SqliteSceneStore {
         bumped(&mut transaction, id).await?;
         let tail: i64 = sqlx::query_scalar(TAIL)
             .bind(id.to_string())
-            .fetch_one(&mut *transaction)
+            .fetch_one(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
-        transaction.commit().await.map_err(unreachable)?;
+        transaction.finish().await.map_err(unreachable)?;
 
         if tail > self.compact_after {
             self.compact(id).await?;
@@ -363,7 +368,7 @@ impl SceneStore for SqliteSceneStore {
         let retitled: Option<(String, i64)> = sqlx::query_as(RETITLE)
             .bind(id.to_string())
             .bind(title.as_str())
-            .fetch_optional(&mut *transaction)
+            .fetch_optional(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
         let Some((project, version)) = retitled else {
@@ -381,7 +386,7 @@ impl SceneStore for SqliteSceneStore {
         )
         .await?;
 
-        transaction.commit().await.map_err(unreachable)
+        transaction.finish().await.map_err(unreachable)
     }
 
     async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
@@ -408,7 +413,7 @@ impl SceneStore for SqliteSceneStore {
         let linked = sqlx::query(LINK)
             .bind(id.to_string())
             .bind(idea.as_str())
-            .execute(&mut *transaction)
+            .execute(connection(&mut transaction)?)
             .await
             .map_err(|failure| match is_unknown(&failure) {
                 true => StoreError::NotFound(id),
@@ -429,7 +434,7 @@ impl SceneStore for SqliteSceneStore {
             .await?;
         }
 
-        transaction.commit().await.map_err(unreachable)
+        transaction.finish().await.map_err(unreachable)
     }
 
     async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
@@ -437,7 +442,7 @@ impl SceneStore for SqliteSceneStore {
 
         let known: Option<String> = sqlx::query_scalar(EXISTS)
             .bind(id.to_string())
-            .fetch_optional(&mut *transaction)
+            .fetch_optional(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
         if known.is_none() {
@@ -447,7 +452,7 @@ impl SceneStore for SqliteSceneStore {
         let unlinked = sqlx::query(UNLINK)
             .bind(id.to_string())
             .bind(idea.as_str())
-            .execute(&mut *transaction)
+            .execute(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
 
@@ -465,7 +470,7 @@ impl SceneStore for SqliteSceneStore {
             .await?;
         }
 
-        transaction.commit().await.map_err(unreachable)
+        transaction.finish().await.map_err(unreachable)
     }
 
     async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
@@ -507,7 +512,7 @@ impl SceneStore for SqliteSceneStore {
 
         let gone: Option<String> = sqlx::query_scalar(FORGET)
             .bind(id.to_string())
-            .fetch_optional(&mut *transaction)
+            .fetch_optional(connection(&mut transaction)?)
             .await
             .map_err(unreachable)?;
         let Some(project) = gone else {
@@ -523,6 +528,6 @@ impl SceneStore for SqliteSceneStore {
         )
         .await?;
 
-        transaction.commit().await.map_err(unreachable)
+        transaction.finish().await.map_err(unreachable)
     }
 }

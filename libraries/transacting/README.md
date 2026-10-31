@@ -17,6 +17,8 @@ transaction.finish().await?;
 
 **Finished, or rolled back.** A transaction is committed only by `finish()`; dropped unfinished, through an early `?` say, what it wrote is rolled back, never half committed. It is `#[must_use]`, so one begun and never used is a compiler warning. One dropped unfinished is not logged: that is how every use case that fails on an `?` rolls back, and a `finish()` forgotten shows as writes that never land, which the feature's tests see.
 
+**What follows a commit.** `after_commit(followup)` asks for something to happen once the transaction has committed, never if it is dropped: waking the outbox's relay, say, which must not go looking before there is anything to find. Followups run in the order they were asked for, and one asked through a borrowed transaction waits for its owner's `finish()`.
+
 **Backends.** One `Transactions` per feature, on that feature's own database:
 
 - **`PostgresTransactions`** (feature `postgres`) begins on the pool at PostgreSQL's default isolation; an adapter reaches its connection through `postgres::connection(&mut transaction)`, the connection rather than the transaction, since only core ends it. A read that decides a write locks what it reads, `FOR UPDATE`, or is guarded by a constraint.
@@ -25,4 +27,4 @@ transaction.finish().await?;
 
 A transaction handed to an adapter of another backend is refused with **`Failure::BegunElsewhere`**; a backend that fails is **`Failure::Backend`**.
 
-**Conformance.** `suite.rs` holds the cases every backend passes: what a finished transaction wrote is kept, what a dropped one wrote is gone, a borrowed transaction is finished only by its owner. Each backend adds what is its own: memory and SQLite that a second writer waits for the first, memory that undos run last first.
+**Conformance.** `suite.rs` holds the cases every backend passes: what a finished transaction wrote is kept, what a dropped one wrote is gone, a borrowed transaction is finished only by its owner, and what follows a commit runs only after one. Each backend adds what is its own: memory and SQLite that a second writer waits for the first, memory that undos run last first.

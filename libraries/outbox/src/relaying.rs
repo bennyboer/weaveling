@@ -149,6 +149,7 @@ mod tests {
     use messaging::{FakePublisher, Message, RoutingKey};
     use sqlx::PgPool;
     use test_harness::PostgresFixture;
+    use transacting::{PostgresTransactions, Transactions};
 
     use super::*;
     use crate::outbox::Origin;
@@ -166,7 +167,10 @@ mod tests {
     }
 
     async fn a_waiting_message(pool: &PgPool) {
-        let mut transaction = pool.begin().await.expect("a transaction opens");
+        let mut transaction = PostgresTransactions::new(pool.clone())
+            .begin()
+            .await
+            .expect("a transaction opens");
         postgres::enqueue(
             &mut transaction,
             Origin {
@@ -182,7 +186,7 @@ mod tests {
         )
         .await
         .expect("enqueueing should succeed");
-        transaction.commit().await.expect("the transaction commits");
+        transaction.finish().await.expect("the transaction commits");
     }
 
     async fn until(what: impl Fn() -> bool) -> bool {

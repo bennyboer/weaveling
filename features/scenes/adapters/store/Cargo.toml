@@ -10,13 +10,14 @@ time = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 outbox = { version = "0.1.0", path = "../../../../libraries/outbox", package = "weaveling-outbox" }
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
 
 scenes-core = { version = "0.1.0", path = "../../core", package = "weaveling-scenes-core" }
 
 [features]
-postgres = ["dep:sqlx", "outbox/postgres"]
-sqlite = ["dep:sqlx", "sqlx/sqlite", "outbox/sqlite"]
+postgres = ["dep:sqlx", "outbox/postgres", "transacting/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "outbox/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
 serde_json = { workspace = true }
