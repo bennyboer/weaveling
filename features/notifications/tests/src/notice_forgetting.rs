@@ -9,7 +9,6 @@ use notifications_core::{
     About, DISMISSED_KEPT_FOR, KIND, NoticeCatalog, NoticeEvent, NoticeId, NotificationsCore,
     NotificationsError, ProjectLink, Role, UNDISMISSED_KEPT_FOR,
 };
-use registry::InMemoryRegistry;
 use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
@@ -32,7 +31,6 @@ fn kept() -> Kept {
             store.clone(),
             Arc::new(InMemoryTransactions::new()),
             catalog.clone(),
-            Arc::new(InMemoryRegistry::new()),
             clock.clone(),
         ),
         store,
@@ -46,11 +44,11 @@ fn bo() -> Agent {
 }
 
 impl Kept {
-    async fn noted(&self, cause: &str) -> NoticeId {
+    async fn noted(&self) -> NoticeId {
         let notice = self
             .notifications
             .note(
-                cause,
+                None,
                 AccountId::from("account_bo"),
                 About::RoleChanged {
                     project: ProjectLink::from("project_1"),
@@ -101,7 +99,7 @@ impl Kept {
 #[tokio::test]
 async fn a_dismissed_notice_is_forgotten_whole_thirty_days_after_it_was_dismissed() {
     let kept = kept();
-    let notice = kept.noted("members:project_1@4").await;
+    let notice = kept.noted().await;
     let dismissed_at = NOTED_AT + Duration::days(5);
     kept.clock.set(dismissed_at);
     kept.notifications
@@ -136,7 +134,7 @@ async fn a_dismissed_notice_is_forgotten_whole_thirty_days_after_it_was_dismisse
 #[tokio::test]
 async fn a_notice_never_dismissed_is_forgotten_ninety_days_after_it_was_noted() {
     let kept = kept();
-    let notice = kept.noted("members:project_1@4").await;
+    let notice = kept.noted().await;
 
     let early = kept
         .forgotten_at(NOTED_AT + UNDISMISSED_KEPT_FOR - Duration::seconds(1))
@@ -165,7 +163,7 @@ async fn a_notice_never_dismissed_is_forgotten_ninety_days_after_it_was_noted() 
 #[tokio::test]
 async fn a_notice_of_a_deleted_project_is_forgotten_at_once() {
     let kept = kept();
-    let notice = kept.noted("members:project_1@4").await;
+    let notice = kept.noted().await;
     kept.notifications
         .lay_project_tombstone(&ProjectLink::from("project_1"), NOTED_AT)
         .await

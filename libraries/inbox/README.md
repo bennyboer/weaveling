@@ -15,7 +15,15 @@ transaction.finish().await?;
 
 **`heard_before(transaction, listener, message)`** answers whether this listener had heard this message before, and records `(listener, message id)` if it had not. The record commits with the handler's effects or rolls back with them, so a handler that failed hears its message anew when it is redelivered, and one that succeeded hears it as heard before. It is per listener: two listeners hear one message each for themselves. Two handlers hearing one message at once hear it once; the second waits for the first's transaction and then finds it heard.
 
-**Kept for a while, then forgotten.** A message is not handed over again once it is older than `messaging::RETRIABLE_FOR`, so what was heard need not be kept longer either. **`forget_heard_before(transaction, before, at_most)`** forgets the oldest first, no more than asked, for a chore to run, as tombstones are forgotten.
+**Kept for a while, then forgotten.** A message is not handed over again once it is older than `messaging::RETRIABLE_FOR`, so what was heard need not be kept longer either. **`forget_heard_before(transaction, before, at_most)`** forgets the oldest first, no more than asked. **`HeardMessages::of(inbox, transactions)`** hands that to `chores::ForgetOldTombstones`, which keeps what was heard as long as a tombstone, `RETRIABLE_FOR` and a day, and forgets in batches until one comes back short, each in a transaction of its own:
+
+```rust
+ForgetOldTombstones::new(
+    "forget-old-notification-hearings",
+    Arc::new(HeardMessages::of(ports.inbox.clone(), ports.transactions.clone())),
+    context.clock.clone(),
+)
+```
 
 **Where it lives.** In the feature's own database, beside its other ports, since it is only worth something inside the handler's transaction; the deliveries, in the `messaging` database, cannot commit with it. **`InMemoryInbox`** undoes what it recorded when the transaction is dropped, **`PostgresInbox`** behind the `postgres` feature and **`SqliteInbox`** behind `sqlite` lay their table down with `migrations()`, tracked in their own ledger, `_sqlx_migrations_inbox`, as the outbox does. Each takes the clock it stamps `heard_at` with, so forgetting compares one clock with itself.
 

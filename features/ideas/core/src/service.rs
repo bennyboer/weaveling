@@ -42,6 +42,7 @@ impl IdeaService {
         let _landed = self
             .events
             .begin(
+                None,
                 &AggregateId::from(&id),
                 IdeaCommand::Capture {
                     project: project.clone(),

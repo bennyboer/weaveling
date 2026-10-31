@@ -45,6 +45,7 @@ impl ProjectService {
         let _landed = self
             .events
             .begin(
+                None,
                 &AggregateId::from(&id),
                 ProjectCommand::Start(ProjectName::new(name)?, details.checked()?),
                 agent,

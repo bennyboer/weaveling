@@ -1,3 +1,4 @@
+mod forgetting;
 mod memory;
 #[cfg(test)]
 mod suite;
@@ -8,6 +9,7 @@ pub mod postgres;
 #[cfg(feature = "sqlite")]
 pub mod sqlite;
 
+pub use forgetting::HeardMessages;
 pub use memory::InMemoryInbox;
 
 #[cfg(feature = "postgres")]

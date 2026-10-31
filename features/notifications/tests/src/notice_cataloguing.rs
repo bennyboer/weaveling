@@ -9,7 +9,6 @@ use notifications_core::{
     About, KIND, NoticeEvent, NoticeId, NotificationsCore, ProjectLink, Role,
 };
 use notifications_messaging::CatalogueNoticeListener;
-use registry::InMemoryRegistry;
 use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
@@ -29,7 +28,6 @@ fn listed() -> Listed {
         store.clone(),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryNoticeCatalog::new()),
-        Arc::new(InMemoryRegistry::new()),
         clock.clone(),
     );
 
@@ -76,11 +74,7 @@ async fn a_noted_notice_is_listed_for_its_account_alone_until_it_is_dismissed() 
     let listed = listed();
     let notice = listed
         .notifications
-        .note(
-            "members:project_1@4",
-            AccountId::from("account_bo"),
-            made_an_author(),
-        )
+        .note(None, AccountId::from("account_bo"), made_an_author())
         .await
         .expect("noting should succeed")
         .expect("its project is not deleted");

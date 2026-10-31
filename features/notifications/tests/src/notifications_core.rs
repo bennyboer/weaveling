@@ -9,7 +9,6 @@ use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{
     About, KIND, NoticeEvent, NoticeId, NotificationsCore, NotificationsError, ProjectLink, Role,
 };
-use registry::InMemoryRegistry;
 use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
 
@@ -26,7 +25,6 @@ fn kept() -> Kept {
             store.clone(),
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryNoticeCatalog::new()),
-            Arc::new(InMemoryRegistry::new()),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         ),
         store,
@@ -47,11 +45,7 @@ fn made_an_author() -> About {
 
 async fn noted_for_bo(kept: &Kept) -> NoticeId {
     kept.notifications
-        .note(
-            "members:project_1@4",
-            AccountId::from("account_bo"),
-            made_an_author(),
-        )
+        .note(None, AccountId::from("account_bo"), made_an_author())
         .await
         .expect("noting should succeed")
         .expect("its project is not deleted")
@@ -75,13 +69,11 @@ fn not_found(answer: Result<impl Debug, NotificationsError>) -> bool {
 }
 
 #[tokio::test]
-async fn a_notice_is_noted_once_for_its_cause_and_read_by_whom_it_is_for() {
+async fn a_notice_is_noted_and_read_by_whom_it_is_for() {
     let kept = kept();
 
     let first = noted_for_bo(&kept).await;
-    let again = noted_for_bo(&kept).await;
 
-    assert_eq!(first, again, "a cause heard twice is one notice");
     let read = kept
         .notifications
         .read(&first.to_string(), &account("account_bo"))

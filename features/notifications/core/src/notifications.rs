@@ -6,9 +6,8 @@ use eventsourcing::{
     AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing,
     StoreError,
 };
-use registry::Registry;
 use time::{Duration, OffsetDateTime};
-use transacting::{Failure, Transactions};
+use transacting::{Failure, Transaction, Transactions};
 
 use crate::catalog::{NoticeCatalog, NoticeSummary, Person, ProjectName};
 use crate::error::NotificationsError;
@@ -30,7 +29,6 @@ pub struct NotificationsCore {
     transactions: Arc<dyn Transactions>,
     events: Arc<EventSourcingService<Notice>>,
     catalog: Arc<dyn NoticeCatalog>,
-    registry: Arc<dyn Registry>,
     clock: Arc<dyn Clock>,
 }
 
@@ -39,7 +37,6 @@ impl NotificationsCore {
         store: Arc<dyn EventStore<NoticeEvent>>,
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn NoticeCatalog>,
-        registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
@@ -51,14 +48,13 @@ impl NotificationsCore {
             store,
             transactions,
             catalog,
-            registry,
             clock,
         }
     }
 
     pub async fn note(
         &self,
-        cause: &str,
+        within: Option<&mut Transaction>,
         account: AccountId,
         about: About,
     ) -> Result<Option<NoticeId>, NotificationsError> {
@@ -67,27 +63,28 @@ impl NotificationsCore {
         {
             return Ok(None);
         }
-        let mine = NoticeId::generate(self.clock.now());
-        let id: NoticeId = self
-            .registry
-            .claim(KIND.as_str(), cause, &mine.to_string())
-            .await?
-            .parse()?;
+        let id = NoticeId::generate(self.clock.now());
+        let aggregate = AggregateId::from(&id);
 
-        match self
-            .events
+        let mut transaction = self
+            .transactions
+            .join(within)
+            .await
+            .map_err(|failure| failed(&aggregate, failure))?;
+        self.events
             .begin(
-                &AggregateId::from(&id),
+                Some(&mut transaction),
+                &aggregate,
                 NoticeCommand::Note { account, about },
                 &Agent::System,
             )
+            .await?;
+        transaction
+            .finish()
             .await
-        {
-            Ok(_)
-            | Err(ServiceError::Refused(NoticeError::AlreadyNoted))
-            | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(Some(id)),
-            Err(failed) => Err(failed.into()),
-        }
+            .map_err(|failure| failed(&aggregate, failure))?;
+
+        Ok(Some(id))
     }
 
     pub async fn read(
@@ -194,16 +191,20 @@ impl NotificationsCore {
 
     async fn forget_events(&self, notice: &NoticeId) -> Result<(), NotificationsError> {
         let aggregate = AggregateId::from(notice);
-        let failed = |failure: Failure| {
-            ServiceError::Store(StoreError::backend(&aggregate, KIND, failure.to_string()))
-        };
 
-        let mut transaction = self.transactions.begin().await.map_err(&failed)?;
+        let mut transaction = self
+            .transactions
+            .begin()
+            .await
+            .map_err(|failure| failed(&aggregate, failure))?;
         self.store
             .forget(&mut transaction, &aggregate, KIND)
             .await
             .map_err(ServiceError::Store)?;
-        transaction.finish().await.map_err(&failed)?;
+        transaction
+            .finish()
+            .await
+            .map_err(|failure| failed(&aggregate, failure))?;
 
         Ok(())
     }
@@ -238,4 +239,8 @@ fn not_found(notice: &NoticeId) -> NotificationsError {
         aggregate: AggregateId::from(notice),
         kind: KIND,
     })
+}
+
+fn failed(aggregate: &AggregateId, failure: Failure) -> ServiceError<NoticeError> {
+    ServiceError::Store(StoreError::backend(aggregate, KIND, failure.to_string()))
 }

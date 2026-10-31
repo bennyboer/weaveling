@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
+use inbox::{HeardMessages, InMemoryInbox, Inbox};
 use live::Broadcaster;
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{NoticeCatalog, NoticeEvent, NotificationsCore};
@@ -13,7 +14,6 @@ use notifications_messaging::{
 };
 use notifications_rest::{NotificationsTopic, TellingNotices};
 use outbox::Outbox;
-use registry::{InMemoryRegistry, Registry};
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
 
@@ -23,7 +23,7 @@ pub struct Ports {
     pub events: Arc<dyn EventStore<NoticeEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn NoticeCatalog>,
-    pub registry: Arc<dyn Registry>,
+    pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -32,7 +32,6 @@ pub fn core(ports: &Ports, context: &Context) -> NotificationsCore {
         ports.events.clone(),
         ports.transactions.clone(),
         ports.catalog.clone(),
-        ports.registry.clone(),
         context.clock.clone(),
     )
 }
@@ -46,14 +45,17 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             ports.catalog.clone(),
             broadcaster.clone(),
         )),
-        ports.registry.clone(),
         context.clock.clone(),
     );
 
     Wired::serving(notifications_rest::router(notifications.clone()))
         .followed_live(vec![Arc::new(NotificationsTopic::new(broadcaster))])
         .listening(vec![
-            Arc::new(NoteRoleChangedListener::new(notifications.clone())),
+            Arc::new(NoteRoleChangedListener::new(
+                notifications.clone(),
+                ports.transactions.clone(),
+                ports.inbox.clone(),
+            )),
             Arc::new(CatalogueNoticeListener::new(notifications.clone())),
             Arc::new(RememberWhoSignedUpListener::new(notifications.clone())),
             Arc::new(RememberProjectNamesListener::new(notifications.clone())),
@@ -63,6 +65,14 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-notification-tombstones",
                 Arc::new(NoticeTombstones::of(notifications)),
+                context.clock.clone(),
+            )),
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-notification-hearings",
+                Arc::new(HeardMessages::of(
+                    ports.inbox.clone(),
+                    ports.transactions.clone(),
+                )),
                 context.clock.clone(),
             )),
         ])
@@ -86,7 +96,7 @@ impl Feature for NotificationsFeature {
             events,
             transactions,
             catalog: Arc::new(InMemoryNoticeCatalog::new()),
-            registry: Arc::new(InMemoryRegistry::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
     }
@@ -107,10 +117,8 @@ impl Feature for NotificationsFeature {
         Ok(Ports {
             events,
             transactions,
-            catalog: Arc::new(notifications_catalog::PostgresNoticeCatalog::new(
-                pool.clone(),
-            )),
-            registry: Arc::new(registry::PostgresRegistry::new(pool)),
+            catalog: Arc::new(notifications_catalog::PostgresNoticeCatalog::new(pool)),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -121,7 +129,7 @@ impl Feature for NotificationsFeature {
             eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
             notifications_catalog::postgres::migrations(),
-            registry::postgres::migrations(),
+            inbox::postgres::migrations(),
         ]
     }
 
@@ -141,10 +149,8 @@ impl Feature for NotificationsFeature {
         Ok(Ports {
             events,
             transactions,
-            catalog: Arc::new(notifications_catalog::SqliteNoticeCatalog::new(
-                pool.clone(),
-            )),
-            registry: Arc::new(registry::SqliteRegistry::new(pool)),
+            catalog: Arc::new(notifications_catalog::SqliteNoticeCatalog::new(pool)),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -155,7 +161,7 @@ impl Feature for NotificationsFeature {
             eventsourcing::sqlite::migrations(),
             outbox::sqlite::migrations(),
             notifications_catalog::sqlite::migrations(),
-            registry::sqlite::migrations(),
+            inbox::sqlite::migrations(),
         ]
     }
 
@@ -187,7 +193,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_notes_lists_names_tells_live_and_forgets_old_notices_and_tombstones() {
+    fn the_feature_notes_lists_names_tells_live_and_forgets_old_notices_tombstones_and_hearings() {
         let context = a_context();
 
         let wired =
@@ -221,7 +227,11 @@ mod tests {
                 .iter()
                 .map(|chore| chore.named())
                 .collect::<Vec<_>>(),
-            ["forget-old-notices", "forget-old-notification-tombstones"]
+            [
+                "forget-old-notices",
+                "forget-old-notification-tombstones",
+                "forget-old-notification-hearings"
+            ]
         );
     }
 
@@ -235,7 +245,7 @@ mod tests {
 
         let notice = notifications
             .note(
-                "members:project_1@4",
+                None,
                 bo.clone(),
                 About::RoleChanged {
                     project: ProjectLink::from("project_1"),

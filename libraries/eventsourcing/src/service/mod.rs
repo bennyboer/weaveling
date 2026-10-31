@@ -69,6 +69,12 @@ pub struct Standing<A> {
     pub version: Version,
 }
 
+struct Decided<A: Aggregate> {
+    stream: Vec<Recorded<A::Event>>,
+    state: A,
+    landed: Version,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Appended<E> {
     pub version: Version,
@@ -114,12 +120,33 @@ where
 
     pub async fn begin(
         &self,
+        within: Option<&mut Transaction>,
         aggregate: &AggregateId,
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        self.carry_out(aggregate, None, Version::ZERO, command, agent)
-            .await
+        let Some(transaction) = within else {
+            return self
+                .carry_out(aggregate, None, Version::ZERO, command, agent)
+                .await;
+        };
+        let Some(decided) = self.decided(aggregate, None, Version::ZERO, command, agent)? else {
+            return Ok(Appended::nothing_at(Version::ZERO));
+        };
+        self.store
+            .append(
+                transaction,
+                aggregate,
+                A::KIND,
+                Version::ZERO,
+                &decided.stream,
+            )
+            .await?;
+
+        Ok(Appended {
+            version: decided.landed,
+            events: decided.stream,
+        })
     }
 
     pub async fn execute(
@@ -187,6 +214,51 @@ where
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
+        let Some(decided) = self.decided(aggregate, standing, expected, command, agent)? else {
+            return Ok(Appended::nothing_at(expected));
+        };
+        let mut transaction = self.begun(aggregate).await?;
+        self.store
+            .append(
+                &mut transaction,
+                aggregate,
+                A::KIND,
+                expected,
+                &decided.stream,
+            )
+            .await?;
+        self.finished(transaction, aggregate).await?;
+
+        let version = match self
+            .snapshot_if_due(aggregate, &decided.state, decided.landed, agent)
+            .await
+        {
+            Ok(version) => version,
+            Err(why) => {
+                tracing::warn!(
+                    %aggregate,
+                    kind = %A::KIND,
+                    %why,
+                    "a snapshot after a landed command failed; it is taken again later"
+                );
+                decided.landed
+            }
+        };
+
+        Ok(Appended {
+            version,
+            events: decided.stream,
+        })
+    }
+
+    fn decided(
+        &self,
+        aggregate: &AggregateId,
+        standing: Option<Standing<A>>,
+        expected: Version,
+        command: A::Command,
+        agent: &Agent,
+    ) -> Result<Option<Decided<A>>, ServiceError<A::Error>> {
         let events = match &standing {
             Some(standing) => standing.state.decide(command, agent),
             None => A::begin(command, agent),
@@ -194,7 +266,7 @@ where
         .map_err(ServiceError::Refused)?;
 
         if events.is_empty() {
-            return Ok(Appended::nothing_at(expected));
+            return Ok(None);
         }
 
         let mut stream = self.stamp(
@@ -210,34 +282,17 @@ where
         for happened in &mut stream {
             happened.metadata.context = context.clone();
         }
-        let mut transaction = self.begun(aggregate).await?;
-        self.store
-            .append(&mut transaction, aggregate, A::KIND, expected, &stream)
-            .await?;
-        self.finished(transaction, aggregate).await?;
-
         let landed = stream
             .last()
             .expect("a non-empty batch was just stamped")
             .metadata
             .version;
-        let version = match self.snapshot_if_due(aggregate, &state, landed, agent).await {
-            Ok(version) => version,
-            Err(why) => {
-                tracing::warn!(
-                    %aggregate,
-                    kind = %A::KIND,
-                    %why,
-                    "a snapshot after a landed command failed; it is taken again later"
-                );
-                landed
-            }
-        };
 
-        Ok(Appended {
-            version,
-            events: stream,
-        })
+        Ok(Some(Decided {
+            stream,
+            state,
+            landed,
+        }))
     }
 
     pub async fn compact(&self, aggregate: &AggregateId, agent: &Agent) -> Reached<A> {

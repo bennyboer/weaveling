@@ -67,6 +67,7 @@ impl InvitationService {
         let _landed = self
             .events
             .begin(
+                None,
                 &AggregateId::from(&id),
                 InvitationCommand::Issue {
                     to: to.clone(),

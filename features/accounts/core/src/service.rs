@@ -154,6 +154,7 @@ impl AccountService {
         if let Err(refused) = self
             .events
             .begin(
+                None,
                 &AggregateId::from(&id),
                 AccountCommand::SignUp(email.clone(), name),
                 &id.acting(),
@@ -201,6 +202,7 @@ impl AccountService {
         if let Err(refused) = self
             .events
             .begin(
+                None,
                 &AggregateId::from(&id),
                 AccountCommand::SignUpByInvitation {
                     email: ticket.to.clone(),

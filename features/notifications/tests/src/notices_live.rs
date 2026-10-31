@@ -9,7 +9,6 @@ use live::testing::Subscriber;
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{About, NoticeId, NotificationsCore, ProjectLink, Role};
 use notifications_rest::{NoticeChanges, NotificationsTopic, TellingNotices};
-use registry::InMemoryRegistry;
 use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
 
@@ -29,7 +28,6 @@ fn told() -> Told {
                 Arc::new(InMemoryNoticeCatalog::new()),
                 broadcaster.clone(),
             )),
-            Arc::new(InMemoryRegistry::new()),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         ),
         broadcaster,
@@ -50,11 +48,11 @@ impl Told {
         (server, socket)
     }
 
-    async fn noted_and_listed(&self, account: &str, cause: &str, project: &str) -> NoticeId {
+    async fn noted_and_listed(&self, account: &str, project: &str) -> NoticeId {
         let notice = self
             .notifications
             .note(
-                cause,
+                None,
                 AccountId::from(account),
                 About::RoleChanged {
                     project: ProjectLink::from(project),
@@ -86,9 +84,7 @@ async fn an_account_is_told_each_change_to_its_own_notices_once_they_are_listed(
     let (_bo_s, mut bo) = told.following(account("account_bo"), MINE).await;
     let (_cy_s, mut cy) = told.following(account("account_cy"), MINE).await;
 
-    let notice = told
-        .noted_and_listed("account_bo", "members:project_1@4", "project_1")
-        .await;
+    let notice = told.noted_and_listed("account_bo", "project_1").await;
     let noted = bo.frame().await;
     told.notifications
         .dismiss(&notice.to_string(), &account("account_bo"))
@@ -108,10 +104,8 @@ async fn an_account_is_told_each_change_to_its_own_notices_once_they_are_listed(
 #[tokio::test]
 async fn a_deleted_project_tells_whoever_had_an_open_notice_about_it() {
     let told = told();
-    told.noted_and_listed("account_bo", "members:project_1@4", "project_1")
-        .await;
-    told.noted_and_listed("account_cy", "members:project_2@4", "project_2")
-        .await;
+    told.noted_and_listed("account_bo", "project_1").await;
+    told.noted_and_listed("account_cy", "project_2").await;
     let (_bo_s, mut bo) = told.following(account("account_bo"), MINE).await;
     let (_cy_s, mut cy) = told.following(account("account_cy"), MINE).await;
 

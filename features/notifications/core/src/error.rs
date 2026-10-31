@@ -1,6 +1,5 @@
 use eventsourcing::ServiceError;
 use ids::InvalidId;
-use registry::RegistryError;
 use thiserror::Error;
 
 use crate::catalog::CatalogError;
@@ -12,8 +11,6 @@ pub enum NotificationsError {
     InvalidId(#[from] InvalidId),
     #[error(transparent)]
     Events(#[from] ServiceError<NoticeError>),
-    #[error(transparent)]
-    Registry(#[from] RegistryError),
     #[error(transparent)]
     Catalog(#[from] CatalogError),
 }

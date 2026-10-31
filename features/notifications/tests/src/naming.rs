@@ -10,7 +10,6 @@ use notifications_core::{
 };
 use notifications_messaging::{RememberProjectNamesListener, RememberWhoSignedUpListener};
 use projects_contract::{DELETED, DETAILS_CHANGED, RENAMED, STARTED};
-use registry::InMemoryRegistry;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
@@ -28,7 +27,6 @@ fn naming() -> Naming {
         Arc::new(InMemoryEventStore::new()),
         Arc::new(InMemoryTransactions::new()),
         catalog.clone(),
-        Arc::new(InMemoryRegistry::new()),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
 
@@ -215,7 +213,7 @@ async fn a_deleted_project_is_named_no_more_and_a_role_changed_in_it_later_notes
     let noted = naming
         .notifications
         .note(
-            "members:project_1@9",
+            None,
             AccountId::from("account_bo"),
             About::RoleChanged {
                 project: ProjectLink::from("project_1"),

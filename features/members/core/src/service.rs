@@ -35,6 +35,7 @@ impl MembersService {
         match self
             .events
             .begin(
+                None,
                 &AggregateId::from(project),
                 MembersCommand::Found { owner },
                 agent,
@@ -74,7 +75,7 @@ impl MembersService {
         {
             Err(ServiceError::NotFound { .. }) => Ok(self
                 .events
-                .begin(&id, MembersCommand::Disband, agent)
+                .begin(None, &id, MembersCommand::Disband, agent)
                 .await
                 .map(|_| ())?),
             carried_out => Ok(carried_out.map(|_| ())?),

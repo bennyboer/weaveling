@@ -4205,6 +4205,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-messaging",
  "weaveling-test-harness",
@@ -4589,7 +4590,6 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ids",
- "weaveling-registry",
  "weaveling-transacting",
 ]
 
@@ -4605,13 +4605,14 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-members-contract",
  "weaveling-messaging",
  "weaveling-notifications-catalog",
  "weaveling-notifications-contract",
  "weaveling-notifications-core",
+ "weaveling-outbox",
  "weaveling-projects-contract",
- "weaveling-registry",
  "weaveling-transacting",
 ]
 
@@ -4661,7 +4662,6 @@ dependencies = [
  "weaveling-notifications-messaging",
  "weaveling-notifications-rest",
  "weaveling-projects-contract",
- "weaveling-registry",
  "weaveling-transacting",
 ]
 
@@ -4677,6 +4677,7 @@ dependencies = [
  "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-notifications-catalog",
@@ -4685,7 +4686,6 @@ dependencies = [
  "weaveling-notifications-rest",
  "weaveling-notifications-store",
  "weaveling-outbox",
- "weaveling-registry",
  "weaveling-test-harness",
  "weaveling-transacting",
  "weaveling-wiring",

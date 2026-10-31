@@ -152,6 +152,7 @@ impl OutlineService {
         match self
             .events
             .begin(
+                None,
                 key,
                 OutlineCommand::Start {
                     project: project.clone(),

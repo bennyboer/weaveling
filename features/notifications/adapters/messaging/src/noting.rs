@@ -1,18 +1,32 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use eventsourcing::AccountId;
+use inbox::Inbox;
 use members_contract::{MembersEventDTO, ROLE_CHANGED, role};
-use messaging::{Failure, Handler, Message};
+use messaging::{Failure, Handler, Listener, Message};
 use notifications_core::{About, NotificationsCore, ProjectLink, Role};
+use transacting::Transactions;
 
 const AN_ACCOUNT: &str = "account";
 
 pub struct NoteRoleChangedListener {
     notifications: NotificationsCore,
+    transactions: Arc<dyn Transactions>,
+    inbox: Arc<dyn Inbox>,
 }
 
 impl NoteRoleChangedListener {
-    pub fn new(notifications: NotificationsCore) -> Self {
-        Self { notifications }
+    pub fn new(
+        notifications: NotificationsCore,
+        transactions: Arc<dyn Transactions>,
+        inbox: Arc<dyn Inbox>,
+    ) -> Self {
+        Self {
+            notifications,
+            transactions,
+            inbox,
+        }
     }
 }
 
@@ -33,14 +47,18 @@ impl Handler for NoteRoleChangedListener {
             .then_some(changed.agent.id)
             .flatten()
             .map(AccountId::from);
-        let cause = format!(
-            "{}:{}@{}",
-            changed.aggregate.kind, changed.aggregate.id, changed.aggregate.version
-        );
 
+        let mut transaction = self.transactions.begin().await?;
+        if self
+            .inbox
+            .heard_before(&mut transaction, &self.named(), message.id)
+            .await?
+        {
+            return Ok(());
+        }
         self.notifications
             .note(
-                &cause,
+                Some(&mut transaction),
                 AccountId::from(account),
                 About::RoleChanged {
                     project: ProjectLink::from(changed.aggregate.id.as_str()),
@@ -49,6 +67,7 @@ impl Handler for NoteRoleChangedListener {
                 },
             )
             .await?;
+        transaction.finish().await?;
 
         Ok(())
     }
@@ -68,11 +87,13 @@ mod tests {
     use std::sync::Arc;
 
     use clock::FixedClock;
+    use eventpublishing::published_in;
     use eventsourcing::{Agent, InMemoryEventStore};
-    use messaging::{Listener, RoutingKey};
+    use inbox::InMemoryInbox;
+    use messaging::{FakePublisher, Listener, RoutingKey};
     use notifications_catalog::InMemoryNoticeCatalog;
-    use notifications_core::KIND;
-    use registry::{InMemoryRegistry, Registry};
+    use notifications_contract::{NOTED, NoticeEventDTO};
+    use outbox::{InMemoryOutbox, Outbox};
     use serde_json::{Value, json};
     use time::OffsetDateTime;
     use transacting::InMemoryTransactions;
@@ -80,25 +101,36 @@ mod tests {
     use super::*;
 
     struct Bench {
-        registry: Arc<InMemoryRegistry>,
+        told: Arc<InMemoryOutbox>,
+        heard: Arc<FakePublisher>,
         notifications: NotificationsCore,
         listener: NoteRoleChangedListener,
     }
 
     fn bench() -> Bench {
-        let registry = Arc::new(InMemoryRegistry::new());
+        let clock = Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH));
+        let heard = Arc::new(FakePublisher::default());
+        let told = Arc::new(InMemoryOutbox::new(heard.clone(), clock.clone()));
+        let transactions = Arc::new(InMemoryTransactions::new());
         let notifications = NotificationsCore::new(
-            Arc::new(InMemoryEventStore::new()),
-            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryEventStore::enqueuing_to(
+                told.clone(),
+                crate::message_for,
+            )),
+            transactions.clone(),
             Arc::new(InMemoryNoticeCatalog::new()),
-            registry.clone(),
-            Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+            clock.clone(),
         );
 
         Bench {
-            listener: NoteRoleChangedListener::new(notifications.clone()),
+            listener: NoteRoleChangedListener::new(
+                notifications.clone(),
+                transactions,
+                Arc::new(InMemoryInbox::new(clock)),
+            ),
             notifications,
-            registry,
+            told,
+            heard,
         }
     }
 
@@ -123,19 +155,30 @@ mod tests {
         json!({ "kind": "account", "id": "account_ada" })
     }
 
-    async fn noted(bench: &Bench) -> Option<About> {
-        let id = bench
-            .registry
-            .holder(KIND.as_str(), "members:project_1@4")
+    async fn noted(bench: &Bench) -> Vec<About> {
+        bench
+            .told
+            .deliver(100)
             .await
-            .expect("asking should succeed")?;
-        let standing = bench
-            .notifications
-            .read(&id, &Agent::Account(AccountId::from("account_bo")))
-            .await
-            .expect("the notice is bo's to read");
+            .expect("an outbox in memory always delivers");
+        let mut noted = Vec::new();
+        for message in bench.heard.heard() {
+            if message.routing.to_string() != NOTED {
+                continue;
+            }
+            let notice = published_in::<NoticeEventDTO>(&message)
+                .expect("a noted notice is published whole")
+                .aggregate
+                .id;
+            let standing = bench
+                .notifications
+                .read(&notice, &Agent::Account(AccountId::from("account_bo")))
+                .await
+                .expect("the notice is bo's to read");
+            noted.push(standing.state.about().clone());
+        }
 
-        Some(standing.state.about().clone())
+        noted
     }
 
     #[tokio::test]
@@ -146,22 +189,24 @@ mod tests {
             ("reader", Role::Reader),
         ] {
             let bench = bench();
+            let message = changed(to(named), ada());
 
             for _ in 0..2 {
                 bench
                     .listener
-                    .take_in(&changed(to(named), ada()))
+                    .take_in(&message)
                     .await
                     .expect("messages come at least once");
             }
 
             assert_eq!(
                 noted(&bench).await,
-                Some(About::RoleChanged {
+                [About::RoleChanged {
                     project: ProjectLink::from("project_1"),
                     role,
                     by: Some(AccountId::from("account_ada")),
-                })
+                }],
+                "a message heard before is not noted again"
             );
         }
     }
@@ -181,11 +226,11 @@ mod tests {
 
         assert_eq!(
             noted(&bench).await,
-            Some(About::RoleChanged {
+            [About::RoleChanged {
                 project: ProjectLink::from("project_1"),
                 role: Role::Author,
                 by: None,
-            })
+            }]
         );
     }
 
@@ -207,7 +252,7 @@ mod tests {
         ] {
             assert!(bench.listener.take_in(&unreadable).await.is_err());
         }
-        assert_eq!(noted(&bench).await, None);
+        assert!(noted(&bench).await.is_empty());
     }
 
     #[tokio::test]

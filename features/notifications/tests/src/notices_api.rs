@@ -11,7 +11,6 @@ use notifications_contract::{AboutDTO, NoticeDTO};
 use notifications_core::{
     About, NoticeId, NotificationsCore, Person, ProjectLink, ProjectName, Role,
 };
-use registry::InMemoryRegistry;
 use serde_json::Value;
 use time::OffsetDateTime;
 use transacting::InMemoryTransactions;
@@ -31,11 +30,11 @@ impl Served {
         self.as_agent(Agent::Account(AccountId::from(account)))
     }
 
-    async fn noted_for_bo(&self, cause: &str, role: Role, by: Option<&str>) -> NoticeId {
+    async fn noted_for_bo(&self, role: Role, by: Option<&str>) -> NoticeId {
         let notice = self
             .notifications
             .note(
-                cause,
+                None,
                 AccountId::from("account_bo"),
                 About::RoleChanged {
                     project: ProjectLink::from("project_1"),
@@ -65,7 +64,6 @@ fn served() -> Served {
             Arc::new(InMemoryEventStore::new()),
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryNoticeCatalog::new()),
-            Arc::new(InMemoryRegistry::new()),
             Arc::new(FixedClock::new(
                 OffsetDateTime::from_unix_timestamp(1_700_000_000).expect("a plausible moment"),
             )),
@@ -83,9 +81,7 @@ async fn listed(server: &TestServer) -> Vec<NoticeDTO> {
 #[tokio::test]
 async fn one_s_own_open_notices_are_listed_with_what_they_are_about() {
     let served = served();
-    let notice = served
-        .noted_for_bo("members:project_1@4", Role::Author, Some("account_ada"))
-        .await;
+    let notice = served.noted_for_bo(Role::Author, Some("account_ada")).await;
     served
         .notifications
         .remember_person(&Person {
@@ -131,9 +127,7 @@ async fn one_s_own_open_notices_are_listed_with_what_they_are_about() {
 #[tokio::test]
 async fn one_s_own_notice_is_dismissed_and_listed_no_more() {
     let served = served();
-    let notice = served
-        .noted_for_bo("members:project_1@4", Role::Reader, None)
-        .await;
+    let notice = served.noted_for_bo(Role::Reader, None).await;
     let bo_s = served.as_account("account_bo");
 
     bo_s.post(&format!("/notifications/{notice}/dismissed"))
@@ -150,9 +144,7 @@ async fn one_s_own_notice_is_dismissed_and_listed_no_more() {
 #[tokio::test]
 async fn another_s_notice_or_none_at_all_is_not_there_to_dismiss() {
     let served = served();
-    let notice = served
-        .noted_for_bo("members:project_1@4", Role::Owner, Some("account_ada"))
-        .await;
+    let notice = served.noted_for_bo(Role::Owner, Some("account_ada")).await;
 
     for (server, path) in [
         (

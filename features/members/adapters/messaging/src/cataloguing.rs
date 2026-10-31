@@ -94,7 +94,12 @@ mod tests {
         let id = AggregateId::from(&project());
         let founded = bench
             .events
-            .begin(&id, MembersCommand::Found { owner: ada() }, &Agent::System)
+            .begin(
+                None,
+                &id,
+                MembersCommand::Found { owner: ada() },
+                &Agent::System,
+            )
             .await
             .expect("founded");
         bench

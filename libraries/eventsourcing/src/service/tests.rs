@@ -54,7 +54,7 @@ fn retitled(to: &str) -> SampleCommand {
 async fn a_created_sample(service: &EventSourcingService<Sample>) -> AggregateId {
     let id = AggregateId::from("sample_1");
     service
-        .begin(&id, a_creation(), &an_author())
+        .begin(None, &id, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
 
@@ -67,7 +67,7 @@ async fn creating_lands_the_first_version() {
     let id = AggregateId::from("sample_1");
 
     let landed = service
-        .begin(&id, a_creation(), &an_author())
+        .begin(None, &id, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
 
@@ -141,6 +141,7 @@ async fn beginning_with_a_command_that_does_not_create_is_refused_by_the_aggrega
 
     let refused = service
         .begin(
+            None,
             &AggregateId::from("sample_early"),
             retitled("Too soon"),
             &an_author(),
@@ -160,7 +161,7 @@ async fn beginning_something_that_already_exists_is_a_conflict() {
     let id = a_created_sample(&service).await;
 
     let refused = service
-        .begin(&id, a_creation(), &an_author())
+        .begin(None, &id, a_creation(), &an_author())
         .await
         .expect_err("it is already there");
 
@@ -213,6 +214,97 @@ async fn a_command_at_the_current_version_is_accepted() {
     assert_eq!(landed.version, Version::of(2));
 }
 
+async fn begun_within(
+    service: &EventSourcingService<Sample>,
+    command: SampleCommand,
+) -> (Transaction, Outcome<Sample>) {
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    let begun = service
+        .begin(
+            Some(&mut transaction),
+            &sample::a_sample(),
+            command,
+            &an_author(),
+        )
+        .await;
+
+    (transaction, begun)
+}
+
+#[tokio::test]
+async fn something_begun_within_a_transaction_lands_when_its_owner_finishes_it() {
+    let service = a_workbench();
+
+    let (transaction, begun) = begun_within(&service, a_creation()).await;
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    assert_eq!(
+        begun.expect("beginning should succeed").version,
+        Version::of(1)
+    );
+    assert_eq!(
+        service
+            .latest(&sample::a_sample())
+            .await
+            .expect("it was begun")
+            .state
+            .title,
+        "The Loom"
+    );
+}
+
+#[tokio::test]
+async fn something_begun_within_a_transaction_that_is_dropped_was_never_begun() {
+    let service = a_workbench();
+
+    let (transaction, begun) = begun_within(&service, a_creation()).await;
+    begun.expect("beginning should succeed");
+    drop(transaction);
+
+    assert!(matches!(
+        service.latest(&sample::a_sample()).await,
+        Err(ServiceError::NotFound { .. })
+    ));
+    service
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
+        .await
+        .expect("it can be begun again");
+}
+
+#[tokio::test]
+async fn beginning_within_a_transaction_what_already_exists_is_a_conflict() {
+    let service = a_workbench();
+    service
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
+        .await
+        .expect("the sample is created");
+
+    let (_, begun) = begun_within(&service, a_creation()).await;
+
+    assert!(matches!(
+        begun,
+        Err(ServiceError::Store(StoreError::Outdated { .. }))
+    ));
+}
+
+#[tokio::test]
+async fn beginning_within_a_transaction_with_what_does_not_begin_is_refused() {
+    let service = a_workbench();
+
+    let (_, begun) = begun_within(&service, retitled("Too soon")).await;
+
+    assert!(matches!(
+        begun,
+        Err(ServiceError::Refused(SampleError::NotCreatedYet))
+    ));
+}
+
 #[tokio::test]
 async fn commands_after_deletion_are_refused() {
     let service = a_workbench();
@@ -260,11 +352,11 @@ async fn many_aggregates_do_not_interfere() {
     let other = AggregateId::from("sample_other");
 
     service
-        .begin(&one, a_creation(), &an_author())
+        .begin(None, &one, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
     service
-        .begin(&other, a_creation(), &an_author())
+        .begin(None, &other, a_creation(), &an_author())
         .await
         .expect("creating should succeed");
     service
@@ -1006,7 +1098,7 @@ async fn a_snapshot_that_failed_is_taken_after_the_next_command() {
 async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
     let store = a_store();
     a_service(store.clone())
-        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     let balking = BalksOnce::wrapping(store, 2);
@@ -1035,7 +1127,7 @@ async fn a_command_is_tried_again_when_the_aggregate_moved_on_underneath_it() {
 async fn a_command_gives_up_once_it_has_run_out_of_tries() {
     let store = a_store();
     a_service(store.clone())
-        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     let service = EventSourcingService::<Sample>::new(
@@ -1062,7 +1154,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
 async fn a_command_aimed_at_one_version_is_never_tried_again() {
     let store = a_store();
     a_service(store.clone())
-        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     let service = EventSourcingService::<Sample>::new(
@@ -1177,7 +1269,7 @@ impl EventStore<SampleEvent> for Yielding {
 async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_collide() {
     let store = a_store();
     a_service(store.clone())
-        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     let service = Arc::new(EventSourcingService::<Sample>::new(
@@ -1244,7 +1336,7 @@ async fn the_events_of_a_command_carry_the_context_the_command_left_the_aggregat
     let service = a_service(store.clone());
 
     let created = service
-        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     let shelved = service
@@ -1278,7 +1370,7 @@ async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_kee
     let store = a_store();
     let service = a_service(store.clone());
     service
-        .begin(&sample::a_sample(), a_creation(), &an_author())
+        .begin(None, &sample::a_sample(), a_creation(), &an_author())
         .await
         .expect("the sample is created");
     service

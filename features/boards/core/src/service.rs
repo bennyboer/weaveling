@@ -112,6 +112,7 @@ impl BoardService {
         match self
             .events
             .begin(
+                None,
                 key,
                 BoardCommand::Start {
                     project: project.clone(),

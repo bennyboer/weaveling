@@ -8,9 +8,11 @@ async-trait = { workspace = true }
 
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
 notifications-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-notifications-contract" }
 notifications-core = { version = "0.1.0", path = "../../core", package = "weaveling-notifications-core" }
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
 # Foreign contracts: another feature's published events.
 accounts-contract = { version = "0.1.0", path = "../../../accounts/contract", package = "weaveling-accounts-contract" }
@@ -18,10 +20,9 @@ members-contract = { version = "0.1.0", path = "../../../members/contract", pack
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 
 [dev-dependencies]
-transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
+outbox = { version = "0.1.0", path = "../../../../libraries/outbox", package = "weaveling-outbox" }
 notifications-catalog = { version = "0.1.0", path = "../catalog", package = "weaveling-notifications-catalog" }
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
-registry = { version = "0.1.0", path = "../../../../libraries/registry", package = "weaveling-registry" }
 serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
