@@ -79,6 +79,8 @@ mod tests {
     use eventsourcing::AccountId;
 
     use super::*;
+    use transacting::Transaction;
+
     use crate::catalog::{CatalogError, Membership, Person, ProjectMembers};
 
     struct Kept {
@@ -88,11 +90,19 @@ mod tests {
 
     #[async_trait]
     impl MembershipCatalog for Kept {
-        async fn remember(&self, _members: &ProjectMembers) -> Result<(), CatalogError> {
+        async fn remember(
+            &self,
+            _transaction: &mut Transaction,
+            _members: &ProjectMembers,
+        ) -> Result<(), CatalogError> {
             Ok(())
         }
 
-        async fn remember_person(&self, _person: &Person) -> Result<(), CatalogError> {
+        async fn remember_person(
+            &self,
+            _transaction: &mut Transaction,
+            _person: &Person,
+        ) -> Result<(), CatalogError> {
             Ok(())
         }
 

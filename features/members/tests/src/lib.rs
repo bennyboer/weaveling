@@ -2,6 +2,9 @@
 mod members_api;
 
 #[cfg(test)]
+mod members_core;
+
+#[cfg(test)]
 mod members_live;
 
 #[cfg(test)]

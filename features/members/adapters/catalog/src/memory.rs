@@ -1,18 +1,19 @@
 use std::collections::BTreeMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use eventsourcing::AccountId;
 use members_core::{
     CatalogError, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
+use transacting::{Failure, Transaction};
 
 type Kept = BTreeMap<String, ProjectMembers>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryMembershipCatalog {
-    kept: RwLock<Kept>,
-    people: RwLock<BTreeMap<String, Person>>,
+    kept: Arc<RwLock<Kept>>,
+    people: Arc<RwLock<BTreeMap<String, Person>>>,
 }
 
 impl InMemoryMembershipCatalog {
@@ -27,6 +28,29 @@ impl InMemoryMembershipCatalog {
     fn write(&self) -> RwLockWriteGuard<'_, Kept> {
         self.kept.write().expect("membership catalog lock poisoned")
     }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
+        let kept = self
+            .kept
+            .read()
+            .expect("membership catalog lock poisoned")
+            .clone();
+        let people = self
+            .people
+            .read()
+            .expect("membership catalog lock poisoned")
+            .clone();
+        let into_kept = self.kept.clone();
+        let into_people = self.people.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_kept.write().expect("membership catalog lock poisoned") = kept;
+            *into_people
+                .write()
+                .expect("membership catalog lock poisoned") = people;
+        })
+        .map_err(unreachable)
+    }
 }
 
 fn role_in(members: &ProjectMembers, account: &AccountId) -> Option<Role> {
@@ -37,9 +61,18 @@ fn role_in(members: &ProjectMembers, account: &AccountId) -> Option<Role> {
         .map(|member| member.role)
 }
 
+fn unreachable(failure: Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
 #[async_trait]
 impl MembershipCatalog for InMemoryMembershipCatalog {
-    async fn remember(&self, members: &ProjectMembers) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        members: &ProjectMembers,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut kept = self.write();
         if kept
             .get(members.project.as_str())
@@ -75,7 +108,12 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
             .collect())
     }
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.people
             .write()
             .expect("membership catalog lock poisoned")
@@ -103,20 +141,29 @@ mod tests {
     use async_trait::async_trait;
 
     use crate::InMemoryMembershipCatalog;
+    use transacting::{InMemoryTransactions, Transactions};
+
     use crate::suite::Workbench;
 
-    struct InMemory(InMemoryMembershipCatalog);
+    struct InMemory(InMemoryMembershipCatalog, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemoryMembershipCatalog;
 
         async fn setup() -> Self {
-            Self(InMemoryMembershipCatalog::new())
+            Self(
+                InMemoryMembershipCatalog::new(),
+                InMemoryTransactions::new(),
+            )
         }
 
         fn store(&self) -> &Self::Store {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

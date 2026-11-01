@@ -1,7 +1,10 @@
+use std::ops::Deref;
+
 use eventsourcing::{AccountId, Version};
 use members_core::{
-    Member, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
+    CatalogError, Member, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
+use transacting::{Transaction, Transactions};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -11,7 +14,60 @@ pub trait Workbench: Sized {
 
     fn store(&self) -> &Self::Store;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Store> {
+        Committing {
+            catalog: self.store(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, C> {
+    catalog: &'a C,
+    transactions: &'a dyn Transactions,
+}
+
+fn unreachable(failure: transacting::Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
+impl<C: MembershipCatalog> Committing<'_, C> {
+    pub async fn begun(&self) -> Transaction {
+        self.transactions
+            .begin()
+            .await
+            .expect("beginning should succeed")
+    }
+
+    pub fn uncommitted(&self) -> &C {
+        self.catalog
+    }
+
+    pub async fn remember(&self, members: &ProjectMembers) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog.remember(&mut transaction, members).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .remember_person(&mut transaction, person)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+}
+
+impl<C> Deref for Committing<'_, C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        self.catalog
+    }
 }
 
 fn ada() -> AccountId {
@@ -44,7 +100,7 @@ pub fn members_of(project: &str, version: u64, members: &[(AccountId, Role)]) ->
     }
 }
 
-async fn remembered(catalog: &impl MembershipCatalog, members: &ProjectMembers) {
+async fn remembered(catalog: &Committing<'_, impl MembershipCatalog>, members: &ProjectMembers) {
     catalog
         .remember(members)
         .await
@@ -52,7 +108,7 @@ async fn remembered(catalog: &impl MembershipCatalog, members: &ProjectMembers) 
 }
 
 async fn role(
-    catalog: &impl MembershipCatalog,
+    catalog: &Committing<'_, impl MembershipCatalog>,
     project: &str,
     account: &AccountId,
 ) -> Option<Role> {
@@ -62,7 +118,10 @@ async fn role(
         .expect("asking for a role should succeed")
 }
 
-async fn memberships(catalog: &impl MembershipCatalog, account: &AccountId) -> Vec<Membership> {
+async fn memberships(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+    account: &AccountId,
+) -> Vec<Membership> {
     catalog
         .memberships_of(account)
         .await
@@ -77,28 +136,33 @@ fn person(account: AccountId, name: &str, email: &str) -> Person {
     }
 }
 
-async fn known(catalog: &impl MembershipCatalog, person: &Person) {
+async fn known(catalog: &Committing<'_, impl MembershipCatalog>, person: &Person) {
     catalog
         .remember_person(person)
         .await
         .expect("remembering a person should succeed");
 }
 
-async fn people(catalog: &impl MembershipCatalog, accounts: &[AccountId]) -> Vec<Person> {
+async fn people(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+    accounts: &[AccountId],
+) -> Vec<Person> {
     catalog
         .people(accounts)
         .await
         .expect("asking for people should succeed")
 }
 
-pub async fn an_empty_catalog_knows_nobody_in_any_project(catalog: &impl MembershipCatalog) {
+pub async fn an_empty_catalog_knows_nobody_in_any_project(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
     assert_eq!(role(catalog, "project_1", &ada()).await, None);
     assert!(memberships(catalog, &ada()).await.is_empty());
     assert!(people(catalog, &[ada()]).await.is_empty());
 }
 
 pub async fn the_people_asked_for_are_told_by_account_and_no_others(
-    catalog: &impl MembershipCatalog,
+    catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
     known(catalog, &person(hedy(), "Hedy Lamarr", "hedy@example.com")).await;
     known(
@@ -122,7 +186,9 @@ pub async fn the_people_asked_for_are_told_by_account_and_no_others(
     assert!(people(catalog, &[]).await.is_empty());
 }
 
-pub async fn a_person_told_again_is_known_as_last_told(catalog: &impl MembershipCatalog) {
+pub async fn a_person_told_again_is_known_as_last_told(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
     known(catalog, &person(ada(), "Ada", "ada@example.com")).await;
 
     known(
@@ -138,7 +204,7 @@ pub async fn a_person_told_again_is_known_as_last_told(catalog: &impl Membership
 }
 
 pub async fn each_member_has_their_role_in_their_project_and_nowhere_else(
-    catalog: &impl MembershipCatalog,
+    catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
     remembered(
         catalog,
@@ -166,7 +232,7 @@ pub async fn each_member_has_their_role_in_their_project_and_nowhere_else(
 }
 
 pub async fn an_account_s_memberships_are_every_project_it_is_in_by_project(
-    catalog: &impl MembershipCatalog,
+    catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
     remembered(
         catalog,
@@ -204,7 +270,7 @@ pub async fn an_account_s_memberships_are_every_project_it_is_in_by_project(
 }
 
 pub async fn newer_members_replace_the_older_whoever_is_gone_with_them(
-    catalog: &impl MembershipCatalog,
+    catalog: &Committing<'_, impl MembershipCatalog>,
 ) {
     remembered(
         catalog,
@@ -232,7 +298,9 @@ pub async fn newer_members_replace_the_older_whoever_is_gone_with_them(
     assert_eq!(role(catalog, "project_1", &hedy()).await, Some(Role::Owner));
 }
 
-pub async fn older_members_arriving_late_change_nothing(catalog: &impl MembershipCatalog) {
+pub async fn older_members_arriving_late_change_nothing(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
     remembered(
         catalog,
         &members_of(
@@ -262,6 +330,57 @@ pub async fn older_members_arriving_late_change_nothing(catalog: &impl Membershi
     assert_eq!(role(catalog, "project_1", &hedy()).await, None);
 }
 
+pub async fn what_was_remembered_in_a_transaction_that_is_dropped_is_gone(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    let kept = members_of("project_1", 1, &[(ada(), Role::Owner)]);
+    catalog
+        .remember(&kept)
+        .await
+        .expect("remembering should succeed");
+    let mut transaction = catalog.begun().await;
+    let uncommitted = catalog.uncommitted();
+    uncommitted
+        .remember(
+            &mut transaction,
+            &members_of(
+                "project_1",
+                2,
+                &[(ada(), Role::Owner), (grace(), Role::Author)],
+            ),
+        )
+        .await
+        .expect("remembering should succeed");
+    uncommitted
+        .remember_person(
+            &mut transaction,
+            &Person {
+                account: hedy(),
+                name: "Hedy".to_owned(),
+                email: "hedy@example.com".to_owned(),
+            },
+        )
+        .await
+        .expect("remembering should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        catalog
+            .role_of(&a_project("project_1"), &grace())
+            .await
+            .expect("asking should succeed"),
+        None
+    );
+    assert!(
+        catalog
+            .people(&[hedy()])
+            .await
+            .expect("naming should succeed")
+            .is_empty()
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -270,7 +389,7 @@ macro_rules! catalog_conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.store()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -279,6 +398,10 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!(
+            $workbench,
+            what_was_remembered_in_a_transaction_that_is_dropped_is_gone
+        );
         $crate::catalog_conformance_case!($workbench, an_empty_catalog_knows_nobody_in_any_project);
         $crate::catalog_conformance_case!(
             $workbench,

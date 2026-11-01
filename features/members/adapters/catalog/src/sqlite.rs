@@ -8,6 +8,8 @@ use members_core::{
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
+use transacting::Transaction;
+use transacting::sqlite::connection;
 
 use crate::role;
 
@@ -66,19 +68,22 @@ fn unreachable(failure: impl Error + Send + Sync + 'static) -> CatalogError {
 
 #[async_trait]
 impl MembershipCatalog for SqliteMembershipCatalog {
-    async fn remember(&self, members: &ProjectMembers) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        members: &ProjectMembers,
+    ) -> Result<(), CatalogError> {
         let claimed = sqlx::query(CLAIM)
             .bind(members.project.as_str())
             .bind(i64::try_from(members.version.count()).map_err(unreachable)?)
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         if claimed.rows_affected() > 0 {
             sqlx::query(CLEAR)
                 .bind(members.project.as_str())
-                .execute(&mut *transaction)
+                .execute(connection(transaction).map_err(unreachable)?)
                 .await
                 .map_err(unreachable)?;
             for member in &members.members {
@@ -86,13 +91,13 @@ impl MembershipCatalog for SqliteMembershipCatalog {
                     .bind(members.project.as_str())
                     .bind(member.account.as_str())
                     .bind(role::written(member.role))
-                    .execute(&mut *transaction)
+                    .execute(connection(transaction).map_err(unreachable)?)
                     .await
                     .map_err(unreachable)?;
             }
         }
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn role_of(
@@ -131,12 +136,16 @@ impl MembershipCatalog for SqliteMembershipCatalog {
             .collect()
     }
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_PERSON)
             .bind(person.account.as_str())
             .bind(&person.name)
             .bind(&person.email)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 

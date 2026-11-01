@@ -212,19 +212,31 @@ mod tests {
     pub(super) async fn the_list_keeps_what_it_is_told(ports: &Ports) {
         let ada = AccountId::from("account_ada");
         let project = ProjectLink::from("project_1");
+        let mut transaction = ports
+            .transactions
+            .begin()
+            .await
+            .expect("beginning should succeed");
 
         ports
             .catalog
-            .remember(&ProjectMembers {
-                project: project.clone(),
-                version: Version::of(1),
-                members: vec![Member {
-                    account: ada.clone(),
-                    role: Role::Owner,
-                }],
-            })
+            .remember(
+                &mut transaction,
+                &ProjectMembers {
+                    project: project.clone(),
+                    version: Version::of(1),
+                    members: vec![Member {
+                        account: ada.clone(),
+                        role: Role::Owner,
+                    }],
+                },
+            )
             .await
             .expect("the list's tables lie beside the events");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
 
         assert_eq!(
             ports

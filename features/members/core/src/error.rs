@@ -1,6 +1,7 @@
 use authorizing::AuthorizerError;
 use eventsourcing::ServiceError;
 use thiserror::Error;
+use transacting::{Failure, LostRace};
 
 use crate::catalog::CatalogError;
 use crate::members::MembersError;
@@ -17,4 +18,12 @@ pub enum MembersCoreError {
     ProjectNotThere,
     #[error("only an owner of the project may do this")]
     NotAnOwner,
+    #[error("the transaction around the change failed")]
+    Transaction(#[from] Failure),
+}
+
+impl LostRace for MembersCoreError {
+    fn lost_race(&self) -> bool {
+        matches!(self, MembersCoreError::Events(failure) if failure.lost_race())
+    }
 }

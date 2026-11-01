@@ -21,6 +21,7 @@ pub struct ListedMember {
 #[derive(Clone)]
 pub struct MembersCore {
     service: MembersService,
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn MembershipCatalog>,
     authorizer: Arc<dyn Authorizer>,
 }
@@ -34,7 +35,8 @@ impl MembersCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: MembersService::new(store, transactions, clock),
+            service: MembersService::new(store, transactions.clone(), clock),
+            transactions,
             catalog,
             authorizer,
         }
@@ -149,35 +151,47 @@ impl MembersCore {
     }
 
     pub async fn disband(&self, project: &str) -> Result<(), MembersCoreError> {
-        self.service
-            .disband(&ProjectLink::from(project), &Agent::System)
-            .await
+        let project = ProjectLink::from(project);
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service
+                .disband(transaction, &project, &Agent::System)
+                .await
+        })
     }
 
     pub async fn found(&self, project: &str, owner: &str) -> Result<(), MembersCoreError> {
+        let mut transaction = self.transactions.begin().await?;
         self.service
             .found(
+                &mut transaction,
                 &ProjectLink::from(project),
                 AccountId::from(owner),
                 &Agent::System,
             )
-            .await
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn remember_person(&self, person: &Person) -> Result<(), MembersCoreError> {
-        Ok(self.catalog.remember_person(person).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .remember_person(&mut transaction, person)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn catalogue(&self, project: &ProjectLink) -> Result<(), MembersCoreError> {
         let standing = self.service.latest(project).await?;
 
+        let mut transaction = self.transactions.begin().await?;
         self.catalog
-            .remember(&ProjectMembers::of(
-                project.clone(),
-                standing.version,
-                &standing.state,
-            ))
+            .remember(
+                &mut transaction,
+                &ProjectMembers::of(project.clone(), standing.version, &standing.state),
+            )
             .await?;
+        transaction.finish().await?;
         self.authorizer.access_changed(project.as_str());
 
         Ok(())
@@ -208,7 +222,11 @@ impl MembersCore {
         command: MembersCommand,
         agent: &Agent,
     ) -> Result<Vec<Member>, MembersCoreError> {
-        self.service.carry_out(project, command, agent).await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service
+                .carry_out(transaction, project, command.clone(), agent)
+                .await
+        })?;
 
         Ok(self.service.latest(project).await?.state.members())
     }

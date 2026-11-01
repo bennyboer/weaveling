@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
+use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
 use crate::postgres::PostgresMembershipCatalog;
@@ -9,6 +10,7 @@ use crate::suite::Workbench;
 struct OnPostgres {
     fixture: PostgresFixture,
     pool: PgPool,
+    transactions: PostgresTransactions,
     store: PostgresMembershipCatalog,
 }
 
@@ -26,6 +28,7 @@ impl Workbench for OnPostgres {
 
         Self {
             fixture,
+            transactions: PostgresTransactions::new(pool.clone()),
             store: PostgresMembershipCatalog::new(pool.clone()),
             pool,
         }
@@ -33,6 +36,10 @@ impl Workbench for OnPostgres {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {

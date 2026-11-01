@@ -3,6 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
 use thiserror::Error;
+use transacting::Transaction;
 
 use crate::members::{Member, Members, ProjectLink, Role};
 
@@ -34,7 +35,11 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait MembershipCatalog: Send + Sync {
-    async fn remember(&self, members: &ProjectMembers) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        members: &ProjectMembers,
+    ) -> Result<(), CatalogError>;
 
     async fn role_of(
         &self,
@@ -44,7 +49,11 @@ pub trait MembershipCatalog: Send + Sync {
 
     async fn memberships_of(&self, account: &AccountId) -> Result<Vec<Membership>, CatalogError>;
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError>;
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError>;
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
 }
