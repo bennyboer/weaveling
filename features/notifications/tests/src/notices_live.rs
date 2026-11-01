@@ -3,14 +3,16 @@ use std::sync::Arc;
 use axum::Extension;
 use axum_test::TestServer;
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent, InMemoryEventStore};
+use eventsourcing::{AccountId, Agent, InMemoryEventStore, Version};
 use live::Broadcaster;
 use live::testing::Subscriber;
 use notifications_catalog::InMemoryNoticeCatalog;
-use notifications_core::{About, NoticeId, NotificationsCore, ProjectLink, Role};
+use notifications_core::{
+    About, NoticeCatalog, NoticeId, NoticeSummary, NotificationsCore, ProjectLink, Role,
+};
 use notifications_rest::{NoticeChanges, NotificationsTopic, TellingNotices};
 use time::OffsetDateTime;
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transactions};
 
 struct Told {
     notifications: NotificationsCore,
@@ -135,4 +137,78 @@ async fn only_an_account_follows_and_only_its_own() {
 
         assert_eq!(socket.ended().await, "not-there");
     }
+}
+
+fn bo_s_notice() -> NoticeSummary {
+    NoticeSummary {
+        id: NoticeId::generate(OffsetDateTime::UNIX_EPOCH),
+        version: Version::of(1),
+        account: AccountId::from("account_bo"),
+        about: About::RoleChanged {
+            project: ProjectLink::from("project_1"),
+            role: Role::Author,
+            by: None,
+        },
+        noted_at: OffsetDateTime::UNIX_EPOCH,
+        dismissed_at: None,
+    }
+}
+
+#[tokio::test]
+async fn nobody_is_told_of_a_notice_remembered_in_a_transaction_that_is_dropped() {
+    let told = told();
+    let telling = TellingNotices::around(
+        Arc::new(InMemoryNoticeCatalog::new()),
+        told.broadcaster.clone(),
+    );
+    let (_bo_s, mut bo) = told.following(account("account_bo"), MINE).await;
+    let transactions = InMemoryTransactions::new();
+    let mut transaction = transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    telling
+        .remember(&mut transaction, &bo_s_notice())
+        .await
+        .expect("remembering should succeed");
+
+    drop(transaction);
+
+    bo.nothing().await;
+}
+
+#[tokio::test]
+async fn nobody_is_told_of_a_project_tombstone_laid_in_a_transaction_that_is_dropped() {
+    let told = told();
+    let telling = TellingNotices::around(
+        Arc::new(InMemoryNoticeCatalog::new()),
+        told.broadcaster.clone(),
+    );
+    let transactions = InMemoryTransactions::new();
+    let mut kept = transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    telling
+        .remember(&mut kept, &bo_s_notice())
+        .await
+        .expect("remembering should succeed");
+    kept.finish().await.expect("finishing should succeed");
+    let (_bo_s, mut bo) = told.following(account("account_bo"), MINE).await;
+    let mut transaction = transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    telling
+        .lay_project_tombstone(
+            &mut transaction,
+            &ProjectLink::from("project_1"),
+            OffsetDateTime::UNIX_EPOCH,
+        )
+        .await
+        .expect("laying a tombstone should succeed");
+
+    drop(transaction);
+
+    bo.nothing().await;
 }

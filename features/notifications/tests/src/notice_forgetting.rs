@@ -178,3 +178,25 @@ fn notices_are_kept_thirty_days_dismissed_and_ninety_not() {
     assert_eq!(DISMISSED_KEPT_FOR, Duration::days(30));
     assert_eq!(UNDISMISSED_KEPT_FOR, Duration::days(90));
 }
+
+#[tokio::test]
+async fn a_project_tombstone_forgotten_is_forgotten_for_good() {
+    let kept = kept();
+    kept.notifications
+        .lay_project_tombstone(&ProjectLink::from("project_1"), NOTED_AT)
+        .await
+        .expect("laying a tombstone should succeed");
+
+    let forgotten = [
+        kept.notifications
+            .forget_tombstones_laid_before(NOTED_AT + Duration::seconds(1), 10)
+            .await
+            .expect("forgetting should succeed"),
+        kept.notifications
+            .forget_tombstones_laid_before(NOTED_AT + Duration::seconds(1), 10)
+            .await
+            .expect("forgetting should succeed"),
+    ];
+
+    assert_eq!(forgotten, [1, 0]);
+}

@@ -8,6 +8,8 @@ use sqlx::postgres::PgRow;
 use sqlx::types::Json;
 use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::postgres::connection;
 
 use crate::kept;
 use crate::kept::KeptAbout;
@@ -145,7 +147,11 @@ fn summary_of(row: &PgRow) -> Result<NoticeSummary, CatalogError> {
 
 #[async_trait]
 impl NoticeCatalog for PostgresNoticeCatalog {
-    async fn remember(&self, summary: &NoticeSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &NoticeSummary,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(i64::try_from(summary.version.count()).map_err(unreachable)?)
@@ -154,7 +160,7 @@ impl NoticeCatalog for PostgresNoticeCatalog {
             .bind(Json(kept::kept_as(&summary.about)))
             .bind(summary.noted_at)
             .bind(summary.dismissed_at)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -172,11 +178,15 @@ impl NoticeCatalog for PostgresNoticeCatalog {
             .collect()
     }
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_PERSON)
             .bind(person.account.to_string())
             .bind(&person.name)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -201,12 +211,16 @@ impl NoticeCatalog for PostgresNoticeCatalog {
             .collect()
     }
 
-    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        named: &ProjectName,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_PROJECT_NAME)
             .bind(named.project.to_string())
             .bind(i64::try_from(named.version.count()).map_err(unreachable)?)
             .bind(&named.name)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -241,23 +255,23 @@ impl NoticeCatalog for PostgresNoticeCatalog {
 
     async fn lay_project_tombstone(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
         sqlx::query(LAY_PROJECT_TOMBSTONE)
             .bind(project.to_string())
             .bind(at)
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET_PROJECT_NAME)
             .bind(project.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
@@ -303,10 +317,14 @@ impl NoticeCatalog for PostgresNoticeCatalog {
             .collect()
     }
 
-    async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError> {
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        notice: &NoticeId,
+    ) -> Result<(), CatalogError> {
         sqlx::query(FORGET)
             .bind(notice.to_string())
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -315,13 +333,14 @@ impl NoticeCatalog for PostgresNoticeCatalog {
 
     async fn forget_project_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         Ok(sqlx::query(FORGET_OLD_PROJECT_TOMBSTONES)
             .bind(before)
             .bind(i64::try_from(at_most).map_err(unreachable)?)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected())

@@ -14,7 +14,7 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "time
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
-eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
 
 accounts-contract = { version = "0.1.0", path = "../../accounts/contract", package = "weaveling-accounts-contract" }
 projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }

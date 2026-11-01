@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use test_harness::SqliteFixture;
+use transacting::{SqliteTransactions, Transactions};
 
 use crate::sqlite;
 use crate::sqlite::SqliteNoticeCatalog;
@@ -7,6 +8,7 @@ use crate::suite::Workbench;
 
 struct OnSqlite {
     fixture: SqliteFixture,
+    transactions: SqliteTransactions,
     store: SqliteNoticeCatalog,
 }
 
@@ -24,12 +26,17 @@ impl Workbench for OnSqlite {
 
         Self {
             fixture,
+            transactions: SqliteTransactions::new(pool.clone()),
             store: SqliteNoticeCatalog::new(pool),
         }
     }
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {

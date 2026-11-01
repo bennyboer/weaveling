@@ -7,32 +7,40 @@ use notifications_core::{
     CatalogError, NoticeCatalog, NoticeId, NoticeSummary, Person, ProjectLink, ProjectName,
 };
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::NoticeChanges;
 
 pub struct TellingNotices {
     kept: Arc<dyn NoticeCatalog>,
-    teller: Teller<NoticeChanges>,
+    teller: Arc<Teller<NoticeChanges>>,
 }
 
 impl TellingNotices {
     pub fn around(kept: Arc<dyn NoticeCatalog>, broadcaster: Broadcaster<NoticeChanges>) -> Self {
         Self {
             kept,
-            teller: Teller::new(broadcaster),
+            teller: Arc::new(Teller::new(broadcaster)),
         }
     }
 }
 
 #[async_trait]
 impl NoticeCatalog for TellingNotices {
-    async fn remember(&self, summary: &NoticeSummary) -> Result<(), CatalogError> {
-        self.kept.remember(summary).await?;
-        self.teller.tell(
-            NoticeChanges(summary.account.clone()),
-            &summary.id.to_string(),
-            (),
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &NoticeSummary,
+    ) -> Result<(), CatalogError> {
+        self.kept.remember(transaction, summary).await?;
+        let (teller, account, notice) = (
+            self.teller.clone(),
+            summary.account.clone(),
+            summary.id.to_string(),
         );
+        transaction.after_commit(async move {
+            teller.tell(NoticeChanges(account), &notice, ());
+        });
 
         Ok(())
     }
@@ -41,16 +49,24 @@ impl NoticeCatalog for TellingNotices {
         self.kept.open_for(account).await
     }
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
-        self.kept.remember_person(person).await
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError> {
+        self.kept.remember_person(transaction, person).await
     }
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
         self.kept.people(accounts).await
     }
 
-    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
-        self.kept.remember_project_name(named).await
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        named: &ProjectName,
+    ) -> Result<(), CatalogError> {
+        self.kept.remember_project_name(transaction, named).await
     }
 
     async fn project_names(
@@ -62,14 +78,23 @@ impl NoticeCatalog for TellingNotices {
 
     async fn lay_project_tombstone(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        self.kept.lay_project_tombstone(project, at).await?;
-        for account in self.kept.accounts_noticed_about(project).await? {
-            self.teller
-                .tell(NoticeChanges(account), project.as_str(), ());
-        }
+        self.kept
+            .lay_project_tombstone(transaction, project, at)
+            .await?;
+        let (teller, accounts, of) = (
+            self.teller.clone(),
+            self.kept.accounts_noticed_about(project).await?,
+            project.to_string(),
+        );
+        transaction.after_commit(async move {
+            for account in accounts {
+                teller.tell(NoticeChanges(account), &of, ());
+            }
+        });
 
         Ok(())
     }
@@ -96,17 +121,22 @@ impl NoticeCatalog for TellingNotices {
             .await
     }
 
-    async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError> {
-        self.kept.forget(notice).await
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        notice: &NoticeId,
+    ) -> Result<(), CatalogError> {
+        self.kept.forget(transaction, notice).await
     }
 
     async fn forget_project_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         self.kept
-            .forget_project_tombstones_laid_before(before, at_most)
+            .forget_project_tombstones_laid_before(transaction, before, at_most)
             .await
     }
 }

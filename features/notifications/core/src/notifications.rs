@@ -4,15 +4,14 @@ use std::sync::Arc;
 use clock::Clock;
 use eventsourcing::{
     AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing,
-    StoreError,
 };
 use time::{Duration, OffsetDateTime};
-use transacting::{Failure, Transaction, Transactions};
+use transacting::{Transaction, Transactions};
 
 use crate::catalog::{NoticeCatalog, NoticeSummary, Person, ProjectName};
 use crate::error::NotificationsError;
 use crate::id::NoticeId;
-use crate::notice::{About, KIND, Notice, NoticeCommand, NoticeError, NoticeEvent, ProjectLink};
+use crate::notice::{About, KIND, Notice, NoticeCommand, NoticeEvent, ProjectLink};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Names {
@@ -64,25 +63,17 @@ impl NotificationsCore {
             return Ok(None);
         }
         let id = NoticeId::generate(self.clock.now());
-        let aggregate = AggregateId::from(&id);
 
-        let mut transaction = self
-            .transactions
-            .join(within)
-            .await
-            .map_err(|failure| failed(&aggregate, failure))?;
+        let mut transaction = self.transactions.join(within).await?;
         self.events
             .begin(
                 Some(&mut transaction),
-                &aggregate,
+                &AggregateId::from(&id),
                 NoticeCommand::Note { account, about },
                 &Agent::System,
             )
             .await?;
-        transaction
-            .finish()
-            .await
-            .map_err(|failure| failed(&aggregate, failure))?;
+        transaction.finish().await?;
 
         Ok(Some(id))
     }
@@ -104,11 +95,17 @@ impl NotificationsCore {
     pub async fn dismiss(&self, notice: &str, agent: &Agent) -> Result<(), NotificationsError> {
         let id: NoticeId = notice.parse()?;
         self.read(notice, agent).await?;
-        self.events
-            .execute(None, &AggregateId::from(&id), NoticeCommand::Dismiss, agent)
-            .await?;
-
-        Ok(())
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.events
+                .execute(
+                    Some(transaction),
+                    &AggregateId::from(&id),
+                    NoticeCommand::Dismiss,
+                    agent,
+                )
+                .await?;
+            Ok(())
+        })
     }
 
     pub async fn open_for(&self, agent: &Agent) -> Result<Vec<NoticeSummary>, NotificationsError> {
@@ -153,14 +150,22 @@ impl NotificationsCore {
     }
 
     pub async fn remember_person(&self, person: &Person) -> Result<(), NotificationsError> {
-        Ok(self.catalog.remember_person(person).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .remember_person(&mut transaction, person)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn remember_project_name(
         &self,
         named: &ProjectName,
     ) -> Result<(), NotificationsError> {
-        Ok(self.catalog.remember_project_name(named).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .remember_project_name(&mut transaction, named)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn lay_project_tombstone(
@@ -168,7 +173,11 @@ impl NotificationsCore {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), NotificationsError> {
-        Ok(self.catalog.lay_project_tombstone(project, at).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, project, at)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn forget_due(&self, at_most: usize) -> Result<usize, NotificationsError> {
@@ -182,31 +191,16 @@ impl NotificationsCore {
             )
             .await?;
         for notice in &due {
-            self.forget_events(notice).await?;
-            self.catalog.forget(notice).await?;
+            let mut transaction = self.transactions.begin().await?;
+            self.store
+                .forget(&mut transaction, &AggregateId::from(notice), KIND)
+                .await
+                .map_err(ServiceError::Store)?;
+            self.catalog.forget(&mut transaction, notice).await?;
+            transaction.finish().await?;
         }
 
         Ok(due.len())
-    }
-
-    async fn forget_events(&self, notice: &NoticeId) -> Result<(), NotificationsError> {
-        let aggregate = AggregateId::from(notice);
-
-        let mut transaction = self
-            .transactions
-            .begin()
-            .await
-            .map_err(|failure| failed(&aggregate, failure))?;
-        self.store
-            .forget(&mut transaction, &aggregate, KIND)
-            .await
-            .map_err(ServiceError::Store)?;
-        transaction
-            .finish()
-            .await
-            .map_err(|failure| failed(&aggregate, failure))?;
-
-        Ok(())
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -214,23 +208,27 @@ impl NotificationsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, NotificationsError> {
-        Ok(self
+        let mut transaction = self.transactions.begin().await?;
+        let forgotten = self
             .catalog
-            .forget_project_tombstones_laid_before(before, at_most)
-            .await?)
+            .forget_project_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(forgotten)
     }
 
     pub async fn catalogue(&self, notice: &NoticeId) -> Result<(), NotificationsError> {
         let standing = self.events.latest(&AggregateId::from(notice)).await?;
 
-        Ok(self
-            .catalog
-            .remember(&NoticeSummary::of(
-                *notice,
-                standing.version,
-                &standing.state,
-            ))
-            .await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .remember(
+                &mut transaction,
+                &NoticeSummary::of(*notice, standing.version, &standing.state),
+            )
+            .await?;
+        Ok(transaction.finish().await?)
     }
 }
 
@@ -239,8 +237,4 @@ fn not_found(notice: &NoticeId) -> NotificationsError {
         aggregate: AggregateId::from(notice),
         kind: KIND,
     })
-}
-
-fn failed(aggregate: &AggregateId, failure: Failure) -> ServiceError<NoticeError> {
-    ServiceError::Store(StoreError::backend(aggregate, KIND, failure.to_string()))
 }

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
 use thiserror::Error;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::id::NoticeId;
 use crate::notice::{About, Notice, ProjectLink};
@@ -39,15 +40,27 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait NoticeCatalog: Send + Sync {
-    async fn remember(&self, summary: &NoticeSummary) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &NoticeSummary,
+    ) -> Result<(), CatalogError>;
 
     async fn open_for(&self, account: &AccountId) -> Result<Vec<NoticeSummary>, CatalogError>;
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError>;
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError>;
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
 
-    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError>;
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        named: &ProjectName,
+    ) -> Result<(), CatalogError>;
 
     async fn project_names(
         &self,
@@ -56,6 +69,7 @@ pub trait NoticeCatalog: Send + Sync {
 
     async fn lay_project_tombstone(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
@@ -74,10 +88,15 @@ pub trait NoticeCatalog: Send + Sync {
         at_most: usize,
     ) -> Result<Vec<NoticeId>, CatalogError>;
 
-    async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError>;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        notice: &NoticeId,
+    ) -> Result<(), CatalogError>;
 
     async fn forget_project_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;

@@ -1,6 +1,6 @@
 use std::cmp::Reverse;
 use std::collections::HashMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use eventsourcing::AccountId;
@@ -8,13 +8,14 @@ use notifications_core::{
     CatalogError, NoticeCatalog, NoticeId, NoticeSummary, Person, ProjectLink, ProjectName,
 };
 use time::OffsetDateTime;
+use transacting::{Failure, Transaction};
 
 #[derive(Debug, Default)]
 pub struct InMemoryNoticeCatalog {
-    kept: RwLock<HashMap<NoticeId, NoticeSummary>>,
-    people: RwLock<HashMap<AccountId, String>>,
-    project_names: RwLock<HashMap<ProjectLink, ProjectName>>,
-    tombstones: RwLock<HashMap<ProjectLink, OffsetDateTime>>,
+    kept: Arc<RwLock<HashMap<NoticeId, NoticeSummary>>>,
+    people: Arc<RwLock<HashMap<AccountId, String>>>,
+    project_names: Arc<RwLock<HashMap<ProjectLink, ProjectName>>>,
+    tombstones: Arc<RwLock<HashMap<ProjectLink, OffsetDateTime>>>,
 }
 
 impl InMemoryNoticeCatalog {
@@ -36,11 +37,59 @@ impl InMemoryNoticeCatalog {
     fn write(&self) -> RwLockWriteGuard<'_, HashMap<NoticeId, NoticeSummary>> {
         self.kept.write().expect("notice catalog lock poisoned")
     }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
+        let kept = self
+            .kept
+            .read()
+            .expect("notice catalog lock poisoned")
+            .clone();
+        let people = self
+            .people
+            .read()
+            .expect("notice catalog lock poisoned")
+            .clone();
+        let project_names = self
+            .project_names
+            .read()
+            .expect("notice catalog lock poisoned")
+            .clone();
+        let tombstones = self
+            .tombstones
+            .read()
+            .expect("notice catalog lock poisoned")
+            .clone();
+        let into_kept = self.kept.clone();
+        let into_people = self.people.clone();
+        let into_project_names = self.project_names.clone();
+        let into_tombstones = self.tombstones.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_kept.write().expect("notice catalog lock poisoned") = kept;
+            *into_people.write().expect("notice catalog lock poisoned") = people;
+            *into_project_names
+                .write()
+                .expect("notice catalog lock poisoned") = project_names;
+            *into_tombstones
+                .write()
+                .expect("notice catalog lock poisoned") = tombstones;
+        })
+        .map_err(unreachable)
+    }
+}
+
+fn unreachable(failure: Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
 }
 
 #[async_trait]
 impl NoticeCatalog for InMemoryNoticeCatalog {
-    async fn remember(&self, summary: &NoticeSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &NoticeSummary,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut kept = self.write();
         if kept
             .get(&summary.id)
@@ -70,7 +119,12 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
         Ok(open)
     }
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.people
             .write()
             .expect("notice catalog lock poisoned")
@@ -93,7 +147,12 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
             .collect())
     }
 
-    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        named: &ProjectName,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         if self.buried(&named.project) {
             return Ok(());
         }
@@ -128,9 +187,11 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
 
     async fn lay_project_tombstone(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.tombstones
             .write()
             .expect("notice catalog lock poisoned")
@@ -187,7 +248,12 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
         Ok(due)
     }
 
-    async fn forget(&self, notice: &NoticeId) -> Result<(), CatalogError> {
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        notice: &NoticeId,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.write().remove(notice);
 
         Ok(())
@@ -195,9 +261,11 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
 
     async fn forget_project_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut tombstones = self
             .tombstones
             .write()
@@ -220,21 +288,26 @@ impl NoticeCatalog for InMemoryNoticeCatalog {
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
+    use transacting::{InMemoryTransactions, Transactions};
 
     use super::*;
 
-    struct InMemory(InMemoryNoticeCatalog);
+    struct InMemory(InMemoryNoticeCatalog, InMemoryTransactions);
 
     #[async_trait]
     impl crate::suite::Workbench for InMemory {
         type Store = InMemoryNoticeCatalog;
 
         async fn setup() -> Self {
-            Self(InMemoryNoticeCatalog::new())
+            Self(InMemoryNoticeCatalog::new(), InMemoryTransactions::new())
         }
 
         fn store(&self) -> &Self::Store {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

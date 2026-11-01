@@ -3,7 +3,8 @@ use std::sync::Arc;
 
 use clock::FixedClock;
 use eventsourcing::{
-    AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, ServiceError, Version,
+    AccountId, Agent, AggregateId, EventStore, FailsAppending, InMemoryEventStore, ServiceError,
+    StoreError, Version,
 };
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{
@@ -155,4 +156,44 @@ async fn a_notice_nobody_noted_or_no_id_at_all_is_not_there() {
             .await,
         Err(NotificationsError::InvalidId(_))
     ));
+}
+
+async fn a_notice_dismissed_while_losing_races(
+    losses: u8,
+) -> (Result<(), NotificationsError>, usize) {
+    let kept = kept();
+    let notice = noted_for_bo(&kept).await;
+    let losing = NotificationsCore::new(
+        Arc::new(FailsAppending::losing_races(kept.store.clone(), losses)),
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(InMemoryNoticeCatalog::new()),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    );
+
+    let dismissed = losing
+        .dismiss(&notice.to_string(), &account("account_bo"))
+        .await;
+
+    (dismissed, told(&kept, &notice).await.len())
+}
+
+#[tokio::test]
+async fn a_dismissal_that_lost_a_race_is_tried_again_and_lands() {
+    let (dismissed, told) = a_notice_dismissed_while_losing_races(4).await;
+
+    dismissed.expect("the fifth try lands");
+    assert_eq!(told, 2, "dismissed once");
+}
+
+#[tokio::test]
+async fn a_dismissal_that_lost_every_race_it_may_try_is_a_conflict() {
+    let (dismissed, told) = a_notice_dismissed_while_losing_races(5).await;
+
+    assert!(matches!(
+        dismissed,
+        Err(NotificationsError::Events(ServiceError::Store(
+            StoreError::Outdated { .. }
+        )))
+    ));
+    assert_eq!(told, 1, "noted, never dismissed");
 }
