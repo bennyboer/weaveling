@@ -1,11 +1,8 @@
-use std::collections::hash_map::RandomState;
-use std::hash::{BuildHasher, Hasher};
 use std::sync::Arc;
-use std::time::Duration;
 
 use clock::Clock;
 use thiserror::Error;
-use transacting::{Failure, Transaction, Transactions};
+use transacting::{Failure, LostRace, Transaction, Transactions};
 
 use crate::agent::Agent;
 use crate::aggregate::{Aggregate, AggregateId, AggregateType};
@@ -40,6 +37,14 @@ pub enum ServiceError<E> {
     Refused(E),
     #[error(transparent)]
     Store(#[from] StoreError),
+    #[error("the transaction around the command failed")]
+    Transaction(#[from] Failure),
+}
+
+impl<E> LostRace for ServiceError<E> {
+    fn lost_race(&self) -> bool {
+        matches!(self, ServiceError::Store(StoreError::Outdated { .. }))
+    }
 }
 
 pub struct EventSourcingService<A: Aggregate> {
@@ -47,17 +52,6 @@ pub struct EventSourcingService<A: Aggregate> {
     transactions: Arc<dyn Transactions>,
     patcher: Patcher<A::Event>,
     clock: Arc<dyn Clock>,
-}
-
-const ATTEMPTS: u8 = 8;
-const FIRST_PAUSE: Duration = Duration::from_millis(10);
-const LONGEST_PAUSE: Duration = Duration::from_millis(100);
-
-fn pause_after(attempt: u8) -> Duration {
-    let longest = (FIRST_PAUSE * (1 << (attempt - 1))).min(LONGEST_PAUSE);
-    let drawn = RandomState::new().build_hasher().finish();
-
-    longest.mul_f64((drawn % 1_000) as f64 / 1_000.0)
 }
 
 type Outcome<A> = Result<Appended<<A as Aggregate>::Event>, ServiceError<<A as Aggregate>::Error>>;
@@ -125,16 +119,25 @@ where
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        match within {
-            Some(transaction) => {
-                self.appended_within(transaction, aggregate, None, Version::ZERO, command, agent)
-                    .await
-            }
-            None => {
-                self.carry_out(aggregate, None, Version::ZERO, command, agent)
-                    .await
-            }
-        }
+        // TODO 2c: within required once every core owns its transaction
+        let Some(transaction) = within else {
+            let mut transaction = self.transactions.begin().await?;
+            let appended = self
+                .appended_within(
+                    &mut transaction,
+                    aggregate,
+                    None,
+                    Version::ZERO,
+                    command,
+                    agent,
+                )
+                .await?;
+            transaction.finish().await?;
+            return Ok(appended);
+        };
+
+        self.appended_within(transaction, aggregate, None, Version::ZERO, command, agent)
+            .await
     }
 
     pub async fn execute(
@@ -147,56 +150,67 @@ where
     where
         A::Command: Clone,
     {
-        if let Some(transaction) = within {
-            let standing = self
-                .standing(aggregate, None)
-                .await?
-                .ok_or_else(|| self.nothing_there(aggregate))?;
-            let reached = standing.version;
+        // TODO 2c: within required and the retry left to core once every core owns its transaction
+        let Some(transaction) = within else {
+            return transacting::retrying!(&*self.transactions, |transaction| {
+                self.executed_within(transaction, aggregate, command.clone(), agent)
+                    .await
+            });
+        };
 
-            return self
-                .appended_within(
-                    transaction,
-                    aggregate,
-                    Some(standing),
-                    reached,
-                    command,
-                    agent,
-                )
-                .await;
-        }
-
-        for attempt in 1..ATTEMPTS {
-            match self.once(aggregate, command.clone(), agent).await {
-                Err(ServiceError::Store(StoreError::Outdated { .. })) => {
-                    tokio::time::sleep(pause_after(attempt)).await;
-                }
-                settled => return settled,
-            }
-        }
-
-        self.once(aggregate, command, agent).await
+        self.executed_within(transaction, aggregate, command, agent)
+            .await
     }
 
-    async fn once(
+    async fn executed_within(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        match self.standing(aggregate, None).await? {
-            None => Err(self.nothing_there(aggregate)),
-            Some(standing) => {
-                let reached = standing.version;
+        let standing = self
+            .standing(aggregate, None)
+            .await?
+            .ok_or_else(|| self.nothing_there(aggregate))?;
+        let reached = standing.version;
 
-                self.carry_out(aggregate, Some(standing), reached, command, agent)
-                    .await
-            }
-        }
+        self.appended_within(
+            transaction,
+            aggregate,
+            Some(standing),
+            reached,
+            command,
+            agent,
+        )
+        .await
     }
 
     pub async fn execute_at(
         &self,
+        within: Option<&mut Transaction>,
+        aggregate: &AggregateId,
+        expected: Version,
+        command: A::Command,
+        agent: &Agent,
+    ) -> Outcome<A> {
+        // TODO 2c: within required once every core owns its transaction
+        let Some(transaction) = within else {
+            let mut transaction = self.transactions.begin().await?;
+            let appended = self
+                .executed_at_within(&mut transaction, aggregate, expected, command, agent)
+                .await?;
+            transaction.finish().await?;
+            return Ok(appended);
+        };
+
+        self.executed_at_within(transaction, aggregate, expected, command, agent)
+            .await
+    }
+
+    async fn executed_at_within(
+        &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         expected: Version,
         command: A::Command,
@@ -208,8 +222,15 @@ where
                 StoreError::outdated(aggregate, A::KIND, expected),
             )),
             Some(standing) => {
-                self.carry_out(aggregate, Some(standing), expected, command, agent)
-                    .await
+                self.appended_within(
+                    transaction,
+                    aggregate,
+                    Some(standing),
+                    expected,
+                    command,
+                    agent,
+                )
+                .await
             }
         }
     }
@@ -229,51 +250,15 @@ where
         self.store
             .append(transaction, aggregate, A::KIND, expected, &decided.stream)
             .await?;
-
-        Ok(Appended {
-            version: decided.landed,
-            events: decided.stream,
-        })
-    }
-
-    async fn carry_out(
-        &self,
-        aggregate: &AggregateId,
-        standing: Option<Standing<A>>,
-        expected: Version,
-        command: A::Command,
-        agent: &Agent,
-    ) -> Outcome<A> {
-        let Some(decided) = self.decided(aggregate, standing, expected, command, agent)? else {
-            return Ok(Appended::nothing_at(expected));
-        };
-        let mut transaction = self.begun(aggregate).await?;
-        self.store
-            .append(
-                &mut transaction,
+        let version = self
+            .snapshot_if_due(
+                transaction,
                 aggregate,
-                A::KIND,
-                expected,
-                &decided.stream,
+                &decided.state,
+                decided.landed,
+                agent,
             )
             .await?;
-        self.finished(transaction, aggregate).await?;
-
-        let version = match self
-            .snapshot_if_due(aggregate, &decided.state, decided.landed, agent)
-            .await
-        {
-            Ok(version) => version,
-            Err(why) => {
-                tracing::warn!(
-                    %aggregate,
-                    kind = %A::KIND,
-                    %why,
-                    "a snapshot after a landed command failed; it is taken again later"
-                );
-                decided.landed
-            }
-        };
 
         Ok(Appended {
             version,
@@ -331,7 +316,7 @@ where
             .await?
             .ok_or_else(|| self.nothing_there(aggregate))?;
 
-        let mut transaction = self.begun(aggregate).await?;
+        let mut transaction = self.transactions.begin().await?;
         let taken = self
             .snapshot(
                 &mut transaction,
@@ -346,10 +331,11 @@ where
                 .prune_through(&mut transaction, aggregate, A::KIND, replaced)
                 .await?;
         }
-        self.finished(transaction, aggregate).await?;
+        transaction.finish().await?;
 
         Ok(taken)
     }
+
     async fn standing(
         &self,
         aggregate: &AggregateId,
@@ -433,6 +419,7 @@ where
 
     async fn snapshot_if_due(
         &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         state: &A,
         landed: Version,
@@ -453,13 +440,8 @@ where
             return Ok(landed);
         }
 
-        let mut transaction = self.begun(aggregate).await?;
-        let taken = self
-            .snapshot(&mut transaction, aggregate, state, landed, agent)
-            .await?;
-        self.finished(transaction, aggregate).await?;
-
-        Ok(taken)
+        self.snapshot(transaction, aggregate, state, landed, agent)
+            .await
     }
 
     async fn snapshot(
@@ -489,28 +471,6 @@ where
             .expect("a snapshot is one event")
             .metadata
             .version)
-    }
-
-    async fn begun(&self, aggregate: &AggregateId) -> Result<Transaction, ServiceError<A::Error>> {
-        self.transactions
-            .begin()
-            .await
-            .map_err(|failure| self.failed(aggregate, failure))
-    }
-
-    async fn finished(
-        &self,
-        transaction: Transaction,
-        aggregate: &AggregateId,
-    ) -> Result<(), ServiceError<A::Error>> {
-        transaction
-            .finish()
-            .await
-            .map_err(|failure| self.failed(aggregate, failure))
-    }
-
-    fn failed(&self, aggregate: &AggregateId, failure: Failure) -> ServiceError<A::Error> {
-        ServiceError::Store(StoreError::backend(aggregate, A::KIND, failure.to_string()))
     }
 
     fn nothing_there(&self, aggregate: &AggregateId) -> ServiceError<A::Error> {

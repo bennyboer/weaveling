@@ -101,7 +101,7 @@ impl BoardService {
         let landed = match expected {
             Some(expected) => {
                 self.events
-                    .execute_at(&key, expected, command, agent)
+                    .execute_at(None, &key, expected, command, agent)
                     .await?
             }
             None => self.events.execute(None, &key, command, agent).await?,

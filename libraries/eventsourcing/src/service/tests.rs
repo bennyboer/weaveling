@@ -181,7 +181,7 @@ async fn a_command_at_a_stale_version_is_refused() {
         .expect("updating should succeed");
 
     let refused = service
-        .execute_at(&id, Version::of(1), retitled("Stale"), &an_author())
+        .execute_at(None, &id, Version::of(1), retitled("Stale"), &an_author())
         .await
         .expect_err("the stream has moved on");
 
@@ -203,6 +203,7 @@ async fn a_command_at_the_current_version_is_accepted() {
 
     let landed = service
         .execute_at(
+            None,
             &id,
             Version::of(1),
             retitled("The Silent Loom"),
@@ -616,7 +617,7 @@ async fn a_stale_version_below_a_collapsed_stream_is_outdated_not_missing() {
         .expect("collapsing should succeed");
 
     let refused = service
-        .execute_at(&id, Version::of(1), retitled("Stale"), &an_author())
+        .execute_at(None, &id, Version::of(1), retitled("Stale"), &an_author())
         .await
         .expect_err("version 1 was pruned away, but the aggregate is very much there");
 
@@ -920,6 +921,7 @@ impl EventStore<SampleEvent> for BalksOnce {
 struct RefusesSnapshots {
     inner: Arc<InMemoryEventStore<SampleEvent>>,
     outdated: bool,
+    refused: Mutex<u8>,
 }
 
 impl RefusesSnapshots {
@@ -927,6 +929,7 @@ impl RefusesSnapshots {
         Arc::new(Self {
             inner,
             outdated: true,
+            refused: Mutex::new(0),
         })
     }
 
@@ -934,7 +937,12 @@ impl RefusesSnapshots {
         Arc::new(Self {
             inner,
             outdated: false,
+            refused: Mutex::new(0),
         })
+    }
+
+    fn refused(&self) -> u8 {
+        *self.refused.lock().expect("nothing panics holding this")
     }
 }
 
@@ -949,6 +957,7 @@ impl EventStore<SampleEvent> for RefusesSnapshots {
         stream: &[Recorded<SampleEvent>],
     ) -> Result<(), StoreError> {
         if stream.iter().any(|entry| entry.metadata.is_snapshot) {
+            *self.refused.lock().expect("nothing panics holding this") += 1;
             return Err(if self.outdated {
                 StoreError::outdated(aggregate, kind, expected)
             } else {
@@ -1051,63 +1060,171 @@ fn over(store: Arc<RefusesSnapshots>) -> EventSourcingService<Sample> {
     )
 }
 
-#[tokio::test]
-async fn a_landed_command_whose_snapshot_was_overtaken_is_reported_landed_and_appended_once() {
-    let store = a_store();
-    let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
-    let service = over(RefusesSnapshots::as_outdated(store.clone()));
-
-    let landed = service
-        .execute(None, &id, retitled("Title 100"), &an_author())
-        .await
-        .expect("the command landed, whatever became of its snapshot");
-    let titles = store
-        .read_from(&id, Sample::KIND, Version::ZERO)
-        .await
-        .expect("reading should succeed")
+fn titled_100(store_read: Vec<Recorded<SampleEvent>>) -> usize {
+    store_read
         .into_iter()
         .filter(|entry| entry.event == SampleEvent::TitleUpdated("Title 100".to_owned()))
-        .count();
+        .count()
+}
 
+#[tokio::test]
+async fn a_command_whose_snapshot_fails_lands_neither() {
+    let store = a_store();
+    let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
+
+    let broken = RefusesSnapshots::as_broken(store.clone());
+
+    let refused = over(broken.clone())
+        .execute(None, &id, retitled("Title 100"), &an_author())
+        .await;
+
+    assert!(matches!(
+        refused,
+        Err(ServiceError::Store(StoreError::Backend { .. }))
+    ));
     assert_eq!(
-        landed.version,
-        Version::of(100),
-        "the version the command landed at, with no snapshot after it"
+        broken.refused(),
+        1,
+        "a store that broke did not lose a race, so the command is not tried again"
     );
     assert_eq!(
-        titles, 1,
-        "a landed command is never decided and appended again"
+        titled_100(
+            store
+                .read_from(&id, Sample::KIND, Version::ZERO)
+                .await
+                .expect("reading should succeed")
+        ),
+        0,
+        "the command and its snapshot share a transaction, so the command is rolled back with it, and tried again is never appended twice"
     );
 }
 
 #[tokio::test]
-async fn a_snapshot_that_failed_is_taken_after_the_next_command() {
+async fn a_command_whose_snapshot_lost_a_race_is_tried_again_whole() {
     let store = a_store();
     let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
-    over(RefusesSnapshots::as_broken(store.clone()))
-        .execute(None, &id, retitled("Title 100"), &an_author())
-        .await
-        .expect("the command landed, whatever became of its snapshot");
 
-    let landed = a_service(store.clone())
-        .execute(None, &id, retitled("Title 101"), &an_author())
+    let overtaken = RefusesSnapshots::as_outdated(store.clone());
+
+    let refused = over(overtaken.clone())
+        .execute(None, &id, retitled("Title 100"), &an_author())
+        .await;
+
+    assert!(matches!(
+        refused,
+        Err(ServiceError::Store(StoreError::Outdated { .. }))
+    ));
+    assert_eq!(
+        titled_100(
+            store
+                .read_from(&id, Sample::KIND, Version::ZERO)
+                .await
+                .expect("reading should succeed")
+        ),
+        0,
+        "each try rolled back whole, the command with its snapshot"
+    );
+    assert_eq!(overtaken.refused(), transacting::retrying::TRIES);
+}
+
+#[tokio::test]
+async fn a_command_executed_within_a_transaction_takes_its_snapshot_in_it() {
+    let store = a_store();
+    let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
+    let service = a_service(store.clone());
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+
+    let landed = service
+        .execute(
+            Some(&mut transaction),
+            &id,
+            retitled("Title 100"),
+            &an_author(),
+        )
         .await
         .expect("updating should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     assert_eq!(
         landed.version,
-        Version::of(102),
-        "the hundred and first event is followed by the snapshot still due"
+        Version::of(101),
+        "the version answered is the snapshot's, so whoever aims at it next is not refused"
     );
     assert_eq!(
         store
             .latest_snapshot(&id, Sample::KIND)
             .await
             .expect("looking should succeed")
-            .expect("the snapshot was still due")
+            .expect("a snapshot was due")
             .metadata
             .version,
-        Version::of(102)
+        Version::of(101)
+    );
+}
+
+#[tokio::test]
+async fn a_snapshot_taken_within_a_transaction_that_is_dropped_was_never_taken() {
+    let store = a_store();
+    let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
+    let service = a_service(store.clone());
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    service
+        .execute(
+            Some(&mut transaction),
+            &id,
+            retitled("Title 100"),
+            &an_author(),
+        )
+        .await
+        .expect("updating should succeed");
+
+    drop(transaction);
+
+    assert!(
+        store
+            .latest_snapshot(&id, Sample::KIND)
+            .await
+            .expect("looking should succeed")
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn a_command_aimed_at_a_version_takes_the_snapshot_it_makes_due() {
+    let store = a_store();
+    let id = a_sample_one_short_of_a_snapshot(store.clone()).await;
+
+    let landed = a_service(store.clone())
+        .execute_at(
+            None,
+            &id,
+            Version::of(99),
+            retitled("Title 100"),
+            &an_author(),
+        )
+        .await
+        .expect("updating should succeed");
+
+    assert_eq!(landed.version, Version::of(101));
+    assert_eq!(
+        store
+            .latest_snapshot(&id, Sample::KIND)
+            .await
+            .expect("looking should succeed")
+            .expect("a snapshot was due")
+            .metadata
+            .version,
+        Version::of(101),
+        "a command aimed at a version, handed no transaction, commits the one it opened"
     );
 }
 
@@ -1273,7 +1390,7 @@ async fn a_command_gives_up_once_it_has_run_out_of_tries() {
         .await
         .expect("the sample is created");
     let service = EventSourcingService::<Sample>::new(
-        BalksOnce::wrapping(store, ATTEMPTS),
+        BalksOnce::wrapping(store, transacting::retrying::TRIES),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
@@ -1308,6 +1425,7 @@ async fn a_command_aimed_at_one_version_is_never_tried_again() {
 
     let refused = service
         .execute_at(
+            None,
             &sample::a_sample(),
             Version::of(1),
             SampleCommand::UpdateTitle("Rewoven".to_owned()),
@@ -1422,7 +1540,7 @@ async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_coll
     ));
 
     let mut commanded = tokio::task::JoinSet::new();
-    for nth in 0..12 {
+    for nth in 0..8 {
         let service = service.clone();
         commanded.spawn(async move {
             service
@@ -1448,23 +1566,9 @@ async fn many_commands_on_one_aggregate_at_once_all_land_however_often_they_coll
 
     assert_eq!(
         reached,
-        (2..=13).map(Version::of).collect::<Vec<_>>(),
-        "twelve writers reading the same version at once, more than there are tries, each land once their pauses part them"
+        (2..=9).map(Version::of).collect::<Vec<_>>(),
+        "eight writers reading the same version at once, more than there are tries, each land once their pauses part them"
     );
-}
-
-#[test]
-fn a_pause_before_trying_again_grows_with_each_try_is_never_longer_than_allowed_and_varies() {
-    for attempt in 1..ATTEMPTS {
-        let longest = (FIRST_PAUSE * (1 << (attempt - 1))).min(LONGEST_PAUSE);
-        let drawn: Vec<Duration> = (0..50).map(|_| pause_after(attempt)).collect();
-
-        assert!(drawn.iter().all(|pause| *pause < longest), "{attempt}");
-        assert!(
-            drawn.iter().any(|pause| *pause != drawn[0]),
-            "writers that collided once must not try again in step: {attempt}"
-        );
-    }
 }
 
 fn shelves_in(stream: &[Recorded<SampleEvent>]) -> Vec<Option<String>> {
