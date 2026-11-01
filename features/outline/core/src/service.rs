@@ -2,10 +2,9 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{
-    Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing,
-    StoreError, Version,
+    Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
-use registry::{Registry, RegistryError};
+use registry::Registry;
 use transacting::{Transaction, Transactions};
 
 use crate::error::OutlinesError;
@@ -15,7 +14,6 @@ use crate::outline::{KIND, Outline, OutlineCommand, OutlineEvent, ProjectLink};
 #[derive(Clone)]
 pub struct OutlineService {
     events: Arc<EventSourcingService<Outline>>,
-    transactions: Arc<dyn Transactions>,
     registry: Arc<dyn Registry>,
     clock: Arc<dyn Clock>,
 }
@@ -37,7 +35,7 @@ pub struct Changed {
     pub standing: Standing<Outline>,
 }
 
-fn attachments_changed_in(landed: &Appended<OutlineEvent>) -> Vec<SectionId> {
+pub fn attachments_changed_in(landed: &Appended<OutlineEvent>) -> Vec<SectionId> {
     let mut changed_in = Vec::new();
 
     for happened in &landed.events {
@@ -64,34 +62,36 @@ impl OutlineService {
         Self {
             events: Arc::new(EventSourcingService::new(
                 store,
-                transactions.clone(),
+                transactions,
                 clock.clone(),
             )),
-            transactions,
             registry,
             clock,
         }
     }
 
-    pub async fn open(&self, project: &ProjectLink, agent: &Agent) -> Result<Open, OutlinesError> {
+    pub async fn claim(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        agent: &Agent,
+    ) -> Result<OutlineId, OutlinesError> {
         let mine = OutlineId::generate(self.clock.now());
-        let mut transaction = self.begun().await?;
         let held = self
             .registry
             .claim(
-                &mut transaction,
+                transaction,
                 KIND.as_str(),
                 project.as_str(),
                 &mine.to_string(),
             )
             .await?;
         let id: OutlineId = held.parse()?;
-        let key = AggregateId::from(&id);
         if id == mine {
             self.events
                 .begin(
-                    Some(&mut transaction),
-                    &key,
+                    Some(transaction),
+                    &AggregateId::from(&id),
                     OutlineCommand::Start {
                         project: project.clone(),
                     },
@@ -99,19 +99,8 @@ impl OutlineService {
                 )
                 .await?;
         }
-        self.finished(transaction).await?;
 
-        let standing = match self.events.latest(&key).await {
-            Ok(standing) => standing,
-            Err(ServiceError::NotFound { .. }) => {
-                self.start(&key, project, agent).await?;
-
-                self.events.latest(&key).await?
-            }
-            Err(refused) => return Err(refused.into()),
-        };
-
-        Ok(Open { id, standing })
+        Ok(id)
     }
 
     pub async fn latest(&self, outline: &OutlineId) -> Result<Standing<Outline>, OutlinesError> {
@@ -124,26 +113,25 @@ impl OutlineService {
 
     pub async fn carry_out(
         &self,
+        transaction: &mut Transaction,
         outline: &OutlineId,
         command: OutlineCommand,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Changed, OutlinesError> {
+    ) -> Result<Appended<OutlineEvent>, OutlinesError> {
         let key = AggregateId::from(outline);
 
-        let landed = match expected {
+        Ok(match expected {
             Some(expected) => {
                 self.events
-                    .execute_at(None, &key, expected, command, agent)
+                    .execute_at(Some(transaction), &key, expected, command, agent)
                     .await?
             }
-            None => self.events.execute(None, &key, command, agent).await?,
-        };
-
-        Ok(Changed {
-            version: landed.version,
-            attachments_changed_in: attachments_changed_in(&landed),
-            standing: self.latest(outline).await?,
+            None => {
+                self.events
+                    .execute(Some(transaction), &key, command, agent)
+                    .await?
+            }
         })
     }
 
@@ -157,43 +145,6 @@ impl OutlineService {
             .await?;
 
         Ok(held.map(|held| held.parse()).transpose()?)
-    }
-
-    async fn begun(&self) -> Result<Transaction, OutlinesError> {
-        self.transactions
-            .begin()
-            .await
-            .map_err(|failure| RegistryError::Backend(Box::new(failure)).into())
-    }
-
-    async fn finished(&self, transaction: Transaction) -> Result<(), OutlinesError> {
-        transaction
-            .finish()
-            .await
-            .map_err(|failure| RegistryError::Backend(Box::new(failure)).into())
-    }
-
-    async fn start(
-        &self,
-        key: &AggregateId,
-        project: &ProjectLink,
-        agent: &Agent,
-    ) -> Result<(), OutlinesError> {
-        match self
-            .events
-            .begin(
-                None,
-                key,
-                OutlineCommand::Start {
-                    project: project.clone(),
-                },
-                agent,
-            )
-            .await
-        {
-            Ok(_) | Err(ServiceError::Store(StoreError::Outdated { .. })) => Ok(()),
-            Err(refused) => Err(refused.into()),
-        }
     }
 }
 

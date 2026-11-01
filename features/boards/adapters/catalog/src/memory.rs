@@ -1,13 +1,14 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, IdeaLink, ProjectLink};
 use time::OffsetDateTime;
+use transacting::{Failure, Transaction};
 
 type Listed = HashMap<BoardId, BoardSummary>;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct Pins {
     by_board: HashMap<BoardId, Vec<IdeaLink>>,
     by_idea: HashMap<IdeaLink, BTreeSet<BoardId>>,
@@ -16,9 +17,9 @@ struct Pins {
 
 #[derive(Debug, Default)]
 pub struct InMemoryBoardCatalog {
-    forgotten: RwLock<HashMap<BoardId, OffsetDateTime>>,
-    listed: RwLock<Listed>,
-    pins: RwLock<Pins>,
+    forgotten: Arc<RwLock<HashMap<BoardId, OffsetDateTime>>>,
+    listed: Arc<RwLock<Listed>>,
+    pins: Arc<RwLock<Pins>>,
 }
 
 impl InMemoryBoardCatalog {
@@ -41,11 +42,48 @@ impl InMemoryBoardCatalog {
     fn write_pins(&self) -> RwLockWriteGuard<'_, Pins> {
         self.pins.write().expect("board catalog lock poisoned")
     }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
+        let forgotten = self
+            .forgotten
+            .read()
+            .expect("board catalog lock poisoned")
+            .clone();
+        let listed = self
+            .listed
+            .read()
+            .expect("board catalog lock poisoned")
+            .clone();
+        let pins = self
+            .pins
+            .read()
+            .expect("board catalog lock poisoned")
+            .clone();
+        let into_forgotten = self.forgotten.clone();
+        let into_listed = self.listed.clone();
+        let into_pins = self.pins.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_forgotten.write().expect("board catalog lock poisoned") = forgotten;
+            *into_listed.write().expect("board catalog lock poisoned") = listed;
+            *into_pins.write().expect("board catalog lock poisoned") = pins;
+        })
+        .map_err(unreachable)
+    }
+}
+
+fn unreachable(failure: Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
 }
 
 #[async_trait]
 impl BoardCatalog for InMemoryBoardCatalog {
-    async fn remember(&self, summary: &BoardSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &BoardSummary,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let forgotten = self.forgotten.read().expect("the catalog is not poisoned");
         if forgotten.contains_key(&summary.id) {
             return Ok(());
@@ -55,14 +93,20 @@ impl BoardCatalog for InMemoryBoardCatalog {
         Ok(())
     }
 
-    async fn forget(&self, board: &BoardId, at: OffsetDateTime) -> Result<(), CatalogError> {
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        board: &BoardId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.forgotten
             .write()
             .expect("the catalog is not poisoned")
             .entry(*board)
             .or_insert(at);
         self.write().remove(board);
-        self.holds(*board, &[]).await?;
+        self.holds(transaction, *board, &[]).await?;
 
         Ok(())
     }
@@ -79,7 +123,13 @@ impl BoardCatalog for InMemoryBoardCatalog {
         Ok(found)
     }
 
-    async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError> {
+    async fn holds(
+        &self,
+        transaction: &mut Transaction,
+        board: BoardId,
+        ideas: &[IdeaLink],
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut pins = self.write_pins();
         let arriving: HashSet<&IdeaLink> = ideas.iter().collect();
         let left_behind = pins
@@ -114,7 +164,13 @@ impl BoardCatalog for InMemoryBoardCatalog {
             .unwrap_or_default())
     }
 
-    async fn lay_tombstone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError> {
+    async fn lay_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        idea: &IdeaLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.write_pins()
             .tombstones
             .entry(idea.clone())
@@ -125,9 +181,11 @@ impl BoardCatalog for InMemoryBoardCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut pins = self.write_pins();
         let mut long_gone: Vec<(OffsetDateTime, IdeaLink)> = pins
             .tombstones
@@ -187,20 +245,26 @@ impl BoardCatalog for InMemoryBoardCatalog {
 mod tests {
     use super::*;
 
+    use transacting::{InMemoryTransactions, Transactions};
+
     use crate::suite::Workbench;
 
-    struct InMemory(InMemoryBoardCatalog);
+    struct InMemory(InMemoryBoardCatalog, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemoryBoardCatalog;
 
         async fn setup() -> Self {
-            Self(InMemoryBoardCatalog::new())
+            Self(InMemoryBoardCatalog::new(), InMemoryTransactions::new())
         }
 
         fn store(&self) -> &Self::Store {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

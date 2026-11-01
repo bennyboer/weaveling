@@ -19,6 +19,7 @@ use crate::spot::Spot;
 pub struct BoardsCore {
     clock: Arc<dyn Clock>,
     service: BoardService,
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn BoardCatalog>,
     authorizer: Arc<dyn Authorizer>,
 }
@@ -33,7 +34,8 @@ impl BoardsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: BoardService::new(store, transactions, registry, clock.clone()),
+            service: BoardService::new(store, transactions.clone(), registry, clock.clone()),
+            transactions,
             clock,
             catalog,
             authorizer,
@@ -45,7 +47,17 @@ impl BoardsCore {
         self.authorized(agent, Act::Read, &project, || BoardsError::ProjectNotThere)
             .await?;
 
-        self.service.open(&project, agent).await
+        let mut transaction = self.transactions.begin().await?;
+        let id = self
+            .service
+            .claim(&mut transaction, &project, agent)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(Open {
+            id,
+            standing: self.service.latest(&id).await?,
+        })
     }
 
     pub async fn read(&self, board: &str, agent: &Agent) -> Result<Standing<Board>, BoardsError> {
@@ -113,31 +125,41 @@ impl BoardsCore {
     pub async fn catalogue(&self, board: &BoardId) -> Result<(), BoardsError> {
         let standing = self.service.latest(board).await?;
 
+        let mut transaction = self.transactions.begin().await?;
         if standing.state.is_discarded() {
-            self.catalog.forget(board, self.clock.now()).await?;
+            self.catalog
+                .forget(&mut transaction, board, self.clock.now())
+                .await?;
         } else {
             self.catalog
-                .remember(&BoardSummary::of(*board, &standing.state))
+                .remember(&mut transaction, &BoardSummary::of(*board, &standing.state))
                 .await?;
         }
 
-        Ok(())
+        Ok(transaction.finish().await?)
     }
 
     pub async fn index_pins(&self, board: &BoardId) -> Result<(), BoardsError> {
         let standing = self.service.latest(board).await?;
+        let holding: Vec<IdeaLink> = if standing.state.is_discarded() {
+            Vec::new()
+        } else {
+            standing
+                .state
+                .ideas()
+                .into_iter()
+                .map(|positioned| positioned.idea)
+                .collect()
+        };
+
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .holds(&mut transaction, *board, &holding)
+            .await?;
+        transaction.finish().await?;
         if standing.state.is_discarded() {
-            self.catalog.holds(*board, &[]).await?;
             return Ok(());
         }
-
-        let holding: Vec<IdeaLink> = standing
-            .state
-            .ideas()
-            .into_iter()
-            .map(|positioned| positioned.idea)
-            .collect();
-        self.catalog.holds(*board, &holding).await?;
 
         for gone in self.catalog.held_though_tombstoned(*board).await? {
             self.let_go(*board, &gone).await?;
@@ -152,7 +174,11 @@ impl BoardsCore {
         at: OffsetDateTime,
     ) -> Result<(), BoardsError> {
         let gone = IdeaLink::from(idea);
-        self.catalog.lay_tombstone(&gone, at).await?;
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .lay_tombstone(&mut transaction, &gone, at)
+            .await?;
+        transaction.finish().await?;
 
         for board in self.catalog.boards_holding(&gone).await? {
             self.let_go(board, &gone).await?;
@@ -179,10 +205,14 @@ impl BoardsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, BoardsError> {
-        Ok(self
+        let mut transaction = self.transactions.begin().await?;
+        let forgotten = self
             .catalog
-            .forget_tombstones_laid_before(before, at_most)
-            .await?)
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(forgotten)
     }
 
     async fn let_go(&self, board: BoardId, gone: &IdeaLink) -> Result<(), BoardsError> {
@@ -204,9 +234,11 @@ impl BoardsCore {
         command: BoardCommand,
     ) -> Result<(), BoardsError> {
         self.authorized_to_write(board, &Agent::System).await?;
-        self.service
-            .carry_out(board, command, None, &Agent::System)
-            .await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service
+                .carry_out(transaction, board, command.clone(), None, &Agent::System)
+                .await
+        })?;
 
         Ok(())
     }
@@ -220,9 +252,15 @@ impl BoardsCore {
     ) -> Result<Standing<Board>, BoardsError> {
         let board: BoardId = board.parse()?;
         self.authorized_to_write(&board, agent).await?;
-        self.service
-            .carry_out(&board, command, expected, agent)
-            .await?;
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.service
+                    .carry_out(transaction, &board, command.clone(), expected, agent)
+                    .await
+            }
+        )?;
 
         self.service.latest(&board).await
     }

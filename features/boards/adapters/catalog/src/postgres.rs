@@ -3,6 +3,8 @@ use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, IdeaLink, P
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::postgres::connection;
 
 const REMEMBER: &str = "
     INSERT INTO board_summaries (board, project)
@@ -85,50 +87,57 @@ fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> Catal
 
 #[async_trait]
 impl BoardCatalog for PostgresBoardCatalog {
-    async fn remember(&self, summary: &BoardSummary) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &BoardSummary,
+    ) -> Result<(), CatalogError> {
         sqlx::query(HOLD_SUMMARY)
             .bind(summary.id.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.project.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
-    async fn forget(&self, board: &BoardId, at: OffsetDateTime) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        board: &BoardId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         sqlx::query(HOLD_SUMMARY)
             .bind(board.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(LAY_SUMMARY_TOMBSTONE)
             .bind(board.to_string())
             .bind(at)
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(FORGET)
             .bind(board.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(LET_GO)
             .bind(board.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<BoardSummary>, CatalogError> {
@@ -152,24 +161,28 @@ impl BoardCatalog for PostgresBoardCatalog {
             .collect()
     }
 
-    async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError> {
+    async fn holds(
+        &self,
+        transaction: &mut Transaction,
+        board: BoardId,
+        ideas: &[IdeaLink],
+    ) -> Result<(), CatalogError> {
         let held: Vec<String> = ideas.iter().map(ToString::to_string).collect();
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(LET_GO)
             .bind(board.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(HOLD)
             .bind(board.to_string())
             .bind(&held)
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn boards_holding(&self, idea: &IdeaLink) -> Result<Vec<BoardId>, CatalogError> {
@@ -189,11 +202,16 @@ impl BoardCatalog for PostgresBoardCatalog {
             .collect()
     }
 
-    async fn lay_tombstone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError> {
+    async fn lay_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        idea: &IdeaLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         sqlx::query(LAY_TOMBSTONE)
             .bind(idea.to_string())
             .bind(at)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -202,20 +220,21 @@ impl BoardCatalog for PostgresBoardCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         let pieces = sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(before)
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected();
         let summaries = sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
             .bind(before)
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected();

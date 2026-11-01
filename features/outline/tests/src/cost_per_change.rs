@@ -10,10 +10,12 @@ use messaging::{FakePublisher, Listener};
 use outbox::Outbox;
 use outline_contract::{AttachRequest, AttachmentDTO};
 use outline_core::{
-    Attachment, OutlineCatalog, OutlineEvent, OutlineId, OutlinesCore, SceneLink, SectionTitle,
+    Attachment, CatalogError, OutlineCatalog, OutlineEvent, OutlineId, OutlinesCore, SceneLink,
+    SectionTitle,
 };
 use outline_wiring::{OutlineFeature, Ports};
 use test_harness::SqliteFixture;
+use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature};
 
 const SIZES: [usize; 3] = [1_000, 2_500, 5_000];
@@ -176,7 +178,21 @@ impl Bench {
             .attachments();
         let mut rewriting = Vec::new();
         for _ in 0..SAMPLES {
-            let (rewritten, taken) = timed(self.catalog.holds(self.outline, &held)).await;
+            let (rewritten, taken) = timed(async {
+                let mut transaction = InMemoryTransactions::new()
+                    .begin()
+                    .await
+                    .expect("beginning should succeed");
+                self.catalog
+                    .holds(&mut transaction, self.outline, &held)
+                    .await?;
+                transaction
+                    .finish()
+                    .await
+                    .expect("finishing should succeed");
+                Ok::<_, CatalogError>(())
+            })
+            .await;
             rewritten.expect("the index is rewritten");
             rewriting.push(taken);
         }

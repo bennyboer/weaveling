@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
+use transacting::{PostgresTransactions, Transactions};
 
 use outline_core::{Attachment, OutlineCatalog, OutlineId, ProjectLink};
 
@@ -12,6 +13,7 @@ use crate::suite::Workbench;
 struct OnPostgres {
     fixture: PostgresFixture,
     pool: PgPool,
+    transactions: PostgresTransactions,
     store: PostgresOutlineCatalog,
 }
 
@@ -29,6 +31,7 @@ impl Workbench for OnPostgres {
 
         Self {
             fixture,
+            transactions: PostgresTransactions::new(pool.clone()),
             store: PostgresOutlineCatalog::new(pool.clone()),
             pool,
         }
@@ -36,6 +39,10 @@ impl Workbench for OnPostgres {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {
@@ -50,18 +57,18 @@ async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
     let bench = OnPostgres::setup().await;
     let outline = OutlineId::generate(crate::suite::at(1_000));
     bench
-        .store()
+        .committing()
         .remember(&crate::suite::a_summary(outline, "project_1"))
         .await
         .expect("remembering should succeed");
     bench
-        .store()
+        .committing()
         .holds(outline, &[Attachment::scene("scene_1")])
         .await
         .expect("indexing should succeed");
 
     bench
-        .store()
+        .committing()
         .forget(&outline, suite::at(5_000))
         .await
         .expect("forgetting should succeed");
@@ -88,7 +95,7 @@ async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_outline_standing() {
     let bench = OnPostgres::setup().await;
-    let catalog = bench.store();
+    let catalog = bench.committing();
 
     for nth in 0..40 {
         let summary = suite::a_summary(OutlineId::generate(suite::at(1_000 + nth)), "project_1");

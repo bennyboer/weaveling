@@ -7,6 +7,8 @@ use outline_core::{
 use sqlx::migrate::Migrator;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::sqlite::connection;
 
 use crate::rows;
 
@@ -109,39 +111,47 @@ fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> Catal
 
 #[async_trait]
 impl OutlineCatalog for SqliteOutlineCatalog {
-    async fn remember(&self, summary: &OutlineSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &OutlineSummary,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.project.to_string())
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
     }
 
-    async fn forget(&self, outline: &OutlineId, at: OffsetDateTime) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        outline: &OutlineId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         sqlx::query(LAY_SUMMARY_TOMBSTONE)
             .bind(outline.to_string())
             .bind(clock::text::written(at))
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(FORGET)
             .bind(outline.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(LET_GO_OF_EVERYTHING)
             .bind(outline.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<OutlineSummary>, CatalogError> {
@@ -167,18 +177,13 @@ impl OutlineCatalog for SqliteOutlineCatalog {
 
     async fn holds(
         &self,
+        transaction: &mut Transaction,
         outline: OutlineId,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
-        let mut transaction = self
-            .pool
-            .begin_with("BEGIN IMMEDIATE")
-            .await
-            .map_err(unreachable)?;
-
         let before: HashSet<(String, String)> = sqlx::query(HELD)
             .bind(outline.to_string())
-            .fetch_all(&mut *transaction)
+            .fetch_all(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .iter()
@@ -200,7 +205,7 @@ impl OutlineCatalog for SqliteOutlineCatalog {
                 .bind(outline.to_string())
                 .bind(attachment_type)
                 .bind(id)
-                .execute(&mut *transaction)
+                .execute(connection(transaction).map_err(unreachable)?)
                 .await
                 .map_err(unreachable)?;
         }
@@ -209,12 +214,12 @@ impl OutlineCatalog for SqliteOutlineCatalog {
                 .bind(outline.to_string())
                 .bind(attachment_type)
                 .bind(id)
-                .execute(&mut *transaction)
+                .execute(connection(transaction).map_err(unreachable)?)
                 .await
                 .map_err(unreachable)?;
         }
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn outlines_holding(
@@ -240,6 +245,7 @@ impl OutlineCatalog for SqliteOutlineCatalog {
 
     async fn lay_tombstone(
         &self,
+        transaction: &mut Transaction,
         attachment: &Attachment,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
@@ -247,7 +253,7 @@ impl OutlineCatalog for SqliteOutlineCatalog {
             .bind(rows::attachment_type_of(attachment))
             .bind(attachment.to_string())
             .bind(clock::text::written(at))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -256,20 +262,21 @@ impl OutlineCatalog for SqliteOutlineCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         let pieces = sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(clock::text::written(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected();
         let summaries = sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
             .bind(clock::text::written(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected();

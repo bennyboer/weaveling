@@ -20,6 +20,7 @@ use crate::title::SectionTitle;
 pub struct OutlinesCore {
     clock: Arc<dyn Clock>,
     service: OutlineService,
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn OutlineCatalog>,
     authorizer: Arc<dyn Authorizer>,
 }
@@ -34,7 +35,8 @@ impl OutlinesCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: OutlineService::new(store, transactions, registry, clock.clone()),
+            service: OutlineService::new(store, transactions.clone(), registry, clock.clone()),
+            transactions,
             clock,
             catalog,
             authorizer,
@@ -48,7 +50,17 @@ impl OutlinesCore {
         })
         .await?;
 
-        self.service.open(&project, agent).await
+        let mut transaction = self.transactions.begin().await?;
+        let id = self
+            .service
+            .claim(&mut transaction, &project, agent)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(Open {
+            id,
+            standing: self.service.latest(&id).await?,
+        })
     }
 
     pub async fn read(
@@ -224,27 +236,39 @@ impl OutlinesCore {
     pub async fn catalogue(&self, outline: &OutlineId) -> Result<(), OutlinesError> {
         let standing = self.service.latest(outline).await?;
 
+        let mut transaction = self.transactions.begin().await?;
         if standing.state.is_discarded() {
-            self.catalog.forget(outline, self.clock.now()).await?;
+            self.catalog
+                .forget(&mut transaction, outline, self.clock.now())
+                .await?;
         } else {
             self.catalog
-                .remember(&OutlineSummary::of(*outline, &standing.state))
+                .remember(
+                    &mut transaction,
+                    &OutlineSummary::of(*outline, &standing.state),
+                )
                 .await?;
         }
 
-        Ok(())
+        Ok(transaction.finish().await?)
     }
 
     pub async fn index_attachments(&self, outline: &OutlineId) -> Result<(), OutlinesError> {
         let standing = self.service.latest(outline).await?;
+        let holding = if standing.state.is_discarded() {
+            Vec::new()
+        } else {
+            standing.state.attachments()
+        };
+
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .holds(&mut transaction, *outline, &holding)
+            .await?;
+        transaction.finish().await?;
         if standing.state.is_discarded() {
-            self.catalog.holds(*outline, &[]).await?;
             return Ok(());
         }
-
-        self.catalog
-            .holds(*outline, &standing.state.attachments())
-            .await?;
 
         for gone in self.catalog.held_though_tombstoned(*outline).await? {
             self.let_go(*outline, &gone).await?;
@@ -258,7 +282,11 @@ impl OutlinesCore {
         gone: &Attachment,
         at: OffsetDateTime,
     ) -> Result<(), OutlinesError> {
-        self.catalog.lay_tombstone(gone, at).await?;
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .lay_tombstone(&mut transaction, gone, at)
+            .await?;
+        transaction.finish().await?;
 
         for outline in self.catalog.outlines_holding(gone).await? {
             self.let_go(outline, gone).await?;
@@ -285,10 +313,14 @@ impl OutlinesCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, OutlinesError> {
-        Ok(self
+        let mut transaction = self.transactions.begin().await?;
+        let forgotten = self
             .catalog
-            .forget_tombstones_laid_before(before, at_most)
-            .await?)
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(forgotten)
     }
 
     async fn let_go(&self, outline: OutlineId, gone: &Attachment) -> Result<(), OutlinesError> {
@@ -315,9 +347,11 @@ impl OutlinesCore {
         command: OutlineCommand,
     ) -> Result<(), OutlinesError> {
         self.authorized_to_write(outline, &Agent::System).await?;
-        self.service
-            .carry_out(outline, command, None, &Agent::System)
-            .await?;
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service
+                .carry_out(transaction, outline, command.clone(), None, &Agent::System)
+                .await
+        })?;
 
         Ok(())
     }
@@ -331,10 +365,21 @@ impl OutlinesCore {
     ) -> Result<Changed, OutlinesError> {
         let outline: OutlineId = outline.parse()?;
         self.authorized_to_write(&outline, agent).await?;
+        let landed = transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.service
+                    .carry_out(transaction, &outline, command.clone(), expected, agent)
+                    .await
+            }
+        )?;
 
-        self.service
-            .carry_out(&outline, command, expected, agent)
-            .await
+        Ok(Changed {
+            version: landed.version,
+            attachments_changed_in: service::attachments_changed_in(&landed),
+            standing: self.service.latest(&outline).await?,
+        })
     }
 
     async fn authorized_to_write(

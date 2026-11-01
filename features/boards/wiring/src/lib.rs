@@ -172,7 +172,6 @@ mod tests {
     use std::sync::Arc;
 
     use authorizing::AllowingEverything;
-    use boards_core::IdeaLink;
     use chores::{TOMBSTONES_KEPT_FOR, Tombstones};
     use clock::FixedClock;
     use messaging::{InMemoryDeliveries, InProcessDispatcher};
@@ -203,9 +202,8 @@ mod tests {
             ("idea_long_gone", NOW),
             ("idea_just_gone", NOW + Duration::SECOND),
         ] {
-            ports
-                .catalog
-                .lay_tombstone(&IdeaLink::from(idea), laid)
+            core(&ports, &context)
+                .let_go_everywhere(idea, laid)
                 .await
                 .expect("laying a tombstone should succeed");
         }
@@ -229,9 +227,8 @@ mod tests {
         let context = a_context();
         let ports = BoardFeature::in_memory(&context);
         for idea in ["idea_1", "idea_2"] {
-            ports
-                .catalog
-                .lay_tombstone(&IdeaLink::from(idea), NOW)
+            core(&ports, &context)
+                .let_go_everywhere(idea, NOW)
                 .await
                 .expect("laying a tombstone should succeed");
         }

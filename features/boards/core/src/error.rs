@@ -3,6 +3,7 @@ use eventsourcing::ServiceError;
 use ids::InvalidId;
 use registry::RegistryError;
 use thiserror::Error;
+use transacting::{Failure, LostRace};
 
 use crate::board::BoardError;
 use crate::catalog::CatalogError;
@@ -23,4 +24,12 @@ pub enum BoardsError {
     ProjectNotThere,
     #[error("only an author of the project may do this")]
     NotAnAuthor,
+    #[error("the transaction around the change failed")]
+    Transaction(#[from] Failure),
+}
+
+impl LostRace for BoardsError {
+    fn lost_race(&self) -> bool {
+        matches!(self, BoardsError::Events(failure) if failure.lost_race())
+    }
 }

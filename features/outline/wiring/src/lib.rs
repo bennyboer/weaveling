@@ -205,9 +205,8 @@ mod tests {
             (Attachment::scene("scene_long_gone"), NOW),
             (Attachment::idea("idea_just_gone"), NOW + Duration::SECOND),
         ] {
-            ports
-                .catalog
-                .lay_tombstone(&gone, laid)
+            core(&ports, &context)
+                .let_go_everywhere(&gone, laid)
                 .await
                 .expect("laying a tombstone should succeed");
         }
@@ -231,9 +230,8 @@ mod tests {
         let context = a_context();
         let ports = OutlineFeature::in_memory(&context);
         for gone in [Attachment::scene("scene_1"), Attachment::idea("idea_1")] {
-            ports
-                .catalog
-                .lay_tombstone(&gone, NOW)
+            core(&ports, &context)
+                .let_go_everywhere(&gone, NOW)
                 .await
                 .expect("laying a tombstone should succeed");
         }

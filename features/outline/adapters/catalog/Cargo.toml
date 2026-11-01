@@ -11,11 +11,13 @@ time = { workspace = true }
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 
 
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
+
 outline-core = { version = "0.1.0", path = "../../core", package = "weaveling-outline-core" }
 
 [features]
-postgres = ["dep:sqlx"]
-sqlite = ["dep:sqlx", "sqlx/sqlite"]
+postgres = ["dep:sqlx", "transacting/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

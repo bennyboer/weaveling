@@ -10,6 +10,7 @@ use ideas_contract::{DISCARDED, IdeaEventDTO};
 use messaging::{Message, RoutingKey};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::{TheSystemAndTheAuthor, Wired};
@@ -308,11 +309,19 @@ async fn discarding_an_idea_still_indexed_on_a_discarded_board_is_harmless() {
         .await
         .expect("sweeping should succeed");
     wired.settle().await;
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     wired
         .catalog
-        .holds(board, &[an_idea("idea_1")])
+        .holds(&mut transaction, board, &[an_idea("idea_1")])
         .await
         .expect("holding should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     wired
         .on_idea_discarded
@@ -398,15 +407,15 @@ async fn a_discarded_idea_s_tombstone_is_laid_when_it_was_discarded() {
         .await
         .expect("the listener should take this message");
 
-    for (before, forgotten) in [(at(1_000), 0), (at(1_001), 1)] {
+    for (before, forgotten) in [(at(1_000), 0), (at(1_001), 1), (at(1_001), 0)] {
         assert_eq!(
             wired
-                .catalog
+                .boards
                 .forget_tombstones_laid_before(before, u64::MAX)
                 .await
                 .expect("forgetting tombstones should succeed"),
             forgotten,
-            "laid when it happened"
+            "laid when it happened, and forgotten for good"
         );
     }
 }

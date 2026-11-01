@@ -14,6 +14,7 @@ use outline_core::{
 use scenes_contract::{DELETED as SCENE_DELETED, SceneDeletedDTO};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::{TheSystemAndTheAuthor, Wired};
@@ -416,11 +417,19 @@ async fn discarding_an_idea_still_indexed_in_a_discarded_book_is_harmless() {
         .await
         .expect("sweeping should succeed");
     wired.settle().await;
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     wired
         .catalog
-        .holds(outline, &[an_idea("idea_1")])
+        .holds(&mut transaction, outline, &[an_idea("idea_1")])
         .await
         .expect("holding should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     wired
         .on_idea_discarded
@@ -619,15 +628,15 @@ async fn a_tombstone_is_laid_when_the_idea_was_discarded_or_the_scene_deleted() 
         .await
         .expect("the listener should take this message");
 
-    for (before, forgotten) in [(at(1_000), 0), (at(1_001), 2)] {
+    for (before, forgotten) in [(at(1_000), 0), (at(1_001), 2), (at(1_001), 0)] {
         assert_eq!(
             wired
-                .catalog
+                .outlines
                 .forget_tombstones_laid_before(before, u64::MAX)
                 .await
                 .expect("forgetting tombstones should succeed"),
             forgotten,
-            "laid when it happened"
+            "laid when it happened, and forgotten for good"
         );
     }
 }

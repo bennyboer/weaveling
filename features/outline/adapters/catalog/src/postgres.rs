@@ -5,6 +5,8 @@ use outline_core::{
 use sqlx::migrate::Migrator;
 use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::postgres::connection;
 
 use crate::rows;
 
@@ -99,50 +101,57 @@ fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> Catal
 
 #[async_trait]
 impl OutlineCatalog for PostgresOutlineCatalog {
-    async fn remember(&self, summary: &OutlineSummary) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &OutlineSummary,
+    ) -> Result<(), CatalogError> {
         sqlx::query(HOLD_SUMMARY)
             .bind(summary.id.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.project.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
-    async fn forget(&self, outline: &OutlineId, at: OffsetDateTime) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        outline: &OutlineId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         sqlx::query(HOLD_SUMMARY)
             .bind(outline.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(LAY_SUMMARY_TOMBSTONE)
             .bind(outline.to_string())
             .bind(at)
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(FORGET)
             .bind(outline.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         sqlx::query(LET_GO)
             .bind(outline.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<OutlineSummary>, CatalogError> {
@@ -168,17 +177,17 @@ impl OutlineCatalog for PostgresOutlineCatalog {
 
     async fn holds(
         &self,
+        transaction: &mut Transaction,
         outline: OutlineId,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
         let attachment_types: Vec<&str> =
             attachments.iter().map(rows::attachment_type_of).collect();
         let attachment_ids: Vec<String> = attachments.iter().map(ToString::to_string).collect();
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
 
         sqlx::query(LET_GO)
             .bind(outline.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -186,11 +195,11 @@ impl OutlineCatalog for PostgresOutlineCatalog {
             .bind(outline.to_string())
             .bind(&attachment_types)
             .bind(&attachment_ids)
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn outlines_holding(
@@ -216,6 +225,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
 
     async fn lay_tombstone(
         &self,
+        transaction: &mut Transaction,
         attachment: &Attachment,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
@@ -223,7 +233,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
             .bind(rows::attachment_type_of(attachment))
             .bind(attachment.to_string())
             .bind(at)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -232,20 +242,21 @@ impl OutlineCatalog for PostgresOutlineCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         let pieces = sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(before)
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected();
         let summaries = sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
             .bind(before)
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected();

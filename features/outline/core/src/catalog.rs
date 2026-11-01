@@ -3,6 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use thiserror::Error;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::id::OutlineId;
 use crate::outline::{Attachment, Outline, ProjectLink};
@@ -21,14 +22,24 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait OutlineCatalog: Send + Sync {
-    async fn remember(&self, summary: &OutlineSummary) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &OutlineSummary,
+    ) -> Result<(), CatalogError>;
 
-    async fn forget(&self, outline: &OutlineId, at: OffsetDateTime) -> Result<(), CatalogError>;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        outline: &OutlineId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<OutlineSummary>, CatalogError>;
 
     async fn holds(
         &self,
+        transaction: &mut Transaction,
         outline: OutlineId,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError>;
@@ -40,12 +51,14 @@ pub trait OutlineCatalog: Send + Sync {
 
     async fn lay_tombstone(
         &self,
+        transaction: &mut Transaction,
         attachment: &Attachment,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;

@@ -4,12 +4,12 @@ use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::{
     AccountId, Agent, Aggregate, AggregateContext, AggregateId, EventMetadata, EventStore,
-    Recorded, RefusesAppending, Standing, Version,
+    FailsAppending, Recorded, RefusesAppending, ServiceError, Standing, StoreError, Version,
 };
 use messaging::Message;
 use outline_core::{
-    Attachment, KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlinesCore, ProjectLink,
-    SectionId, SectionTitle,
+    Attachment, KIND, Outline, OutlineCatalog, OutlineEvent, OutlineId, OutlinesCore,
+    OutlinesError, ProjectLink, SectionId, SectionTitle,
 };
 use time::{Duration, OffsetDateTime};
 
@@ -330,6 +330,17 @@ async fn opening_a_project_whose_outline_is_already_claimed_finds_it() {
         )
         .await
         .expect("claiming should succeed");
+    wired
+        .store
+        .append(
+            &mut transaction,
+            &AggregateId::from(&known),
+            KIND,
+            Version::ZERO,
+            &[a_start(&known, "project_1")],
+        )
+        .await
+        .expect("appending should succeed");
     transaction
         .finish()
         .await
@@ -385,5 +396,84 @@ async fn an_outline_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_sta
             .await
             .expect("asking should succeed"),
         Some(opened.to_string())
+    );
+}
+
+async fn a_section_added_while_losing_races(
+    losses: u8,
+    expected: Option<Version>,
+) -> (Result<Version, OutlinesError>, usize) {
+    let wired = a_workbench();
+    let outline = wired
+        .outlines
+        .open("project_1", &an_author())
+        .await
+        .expect("opening should succeed")
+        .id;
+    let losing = OutlinesCore::new(
+        Arc::new(FailsAppending::losing_races(wired.store.clone(), losses)),
+        Arc::new(InMemoryTransactions::new()),
+        wired.catalog.clone(),
+        wired.registry.clone(),
+        Arc::new(AllowingEverything),
+        Arc::new(FixedClock::new(at(1_000))),
+    );
+
+    let added = losing
+        .add(
+            &outline.to_string(),
+            None,
+            None,
+            titled("Act One"),
+            expected,
+            &an_author(),
+        )
+        .await
+        .map(|added| added.version);
+    let sections = wired
+        .outlines
+        .read(&outline.to_string(), &an_author())
+        .await
+        .expect("the outline is there")
+        .state
+        .sections()
+        .len();
+
+    (added, sections)
+}
+
+#[tokio::test]
+async fn a_section_added_after_a_lost_race_is_tried_again_and_lands() {
+    let (added, sections) = a_section_added_while_losing_races(4, None).await;
+
+    assert_eq!(added.expect("the fifth try lands"), Version::of(2));
+    assert_eq!(sections, 1);
+}
+
+#[tokio::test]
+async fn a_section_added_after_losing_every_race_it_may_try_is_a_conflict() {
+    let (added, sections) = a_section_added_while_losing_races(5, None).await;
+
+    assert!(matches!(
+        added,
+        Err(OutlinesError::Events(ServiceError::Store(
+            StoreError::Outdated { .. }
+        )))
+    ));
+    assert_eq!(sections, 0);
+}
+
+#[tokio::test]
+async fn a_section_added_at_a_version_after_a_lost_race_is_not_tried_again() {
+    let (added, sections) = a_section_added_while_losing_races(1, Some(Version::of(1))).await;
+
+    assert!(
+        matches!(
+            added,
+            Err(OutlinesError::Events(ServiceError::Store(
+                StoreError::Outdated { .. }
+            )))
+        ) && sections == 0,
+        "whoever named a version hears that it moved on, a 412, rather than having it papered over"
     );
 }

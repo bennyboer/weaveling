@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
+use transacting::{SqliteTransactions, Transactions};
 
 use boards_core::{BoardCatalog, BoardId, IdeaLink, ProjectLink};
 
@@ -12,6 +13,7 @@ use crate::suite::Workbench;
 struct OnSqlite {
     fixture: SqliteFixture,
     pool: SqlitePool,
+    transactions: SqliteTransactions,
     store: SqliteBoardCatalog,
 }
 
@@ -29,6 +31,7 @@ impl Workbench for OnSqlite {
 
         Self {
             fixture,
+            transactions: SqliteTransactions::new(pool.clone()),
             store: SqliteBoardCatalog::new(pool.clone()),
             pool,
         }
@@ -36,6 +39,10 @@ impl Workbench for OnSqlite {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {
@@ -50,18 +57,18 @@ async fn forgetting_a_board_leaves_no_half_of_it_behind() {
     let bench = OnSqlite::setup().await;
     let board = BoardId::generate(crate::suite::at(1_000));
     bench
-        .store()
+        .committing()
         .remember(&crate::suite::a_summary(board, "project_1"))
         .await
         .expect("remembering should succeed");
     bench
-        .store()
+        .committing()
         .holds(board, &[IdeaLink::from("idea_1")])
         .await
         .expect("indexing should succeed");
 
     bench
-        .store()
+        .committing()
         .forget(&board, suite::at(5_000))
         .await
         .expect("forgetting should succeed");
@@ -88,7 +95,7 @@ async fn forgetting_a_board_leaves_no_half_of_it_behind() {
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_board_standing() {
     let bench = OnSqlite::setup().await;
-    let catalog = bench.store();
+    let catalog = bench.committing();
 
     for nth in 0..40 {
         let summary = suite::a_summary(BoardId::generate(suite::at(1_000 + nth)), "project_1");

@@ -8,8 +8,8 @@ use boards_core::{
 };
 use clock::FixedClock;
 use eventsourcing::{
-    AccountId, Agent, AggregateContext, AggregateId, EventMetadata, EventStore, Recorded,
-    RefusesAppending, ServiceError, StoreError, Version,
+    AccountId, Agent, AggregateContext, AggregateId, EventMetadata, EventStore, FailsAppending,
+    Recorded, RefusesAppending, ServiceError, StoreError, Version,
 };
 use messaging::RoutingKey;
 use registry::Registry;
@@ -430,5 +430,80 @@ async fn a_board_whose_start_cannot_be_kept_leaves_no_claim_behind_and_is_starte
             .await
             .expect("asking should succeed"),
         Some(opened.to_string())
+    );
+}
+
+async fn an_idea_pinned_while_losing_races(
+    losses: u8,
+    expected: Option<Version>,
+) -> (Result<Version, BoardsError>, bool) {
+    let (wired, clock) = a_workbench();
+    let board = an_open_board(&wired).await;
+    let losing = BoardsCore::new(
+        Arc::new(FailsAppending::losing_races(wired.store.clone(), losses)),
+        Arc::new(InMemoryTransactions::new()),
+        wired.catalog.clone(),
+        wired.registry.clone(),
+        Arc::new(AllowingEverything),
+        clock,
+    );
+
+    let pinned = losing
+        .pin(
+            &board.to_string(),
+            an_idea(),
+            Spot::ORIGIN,
+            Size::CARD,
+            expected,
+            &an_author(),
+        )
+        .await
+        .map(|standing| standing.version);
+    let on_board = wired
+        .boards
+        .read(&board.to_string(), &an_author())
+        .await
+        .expect("the board is there")
+        .state
+        .ideas()
+        .iter()
+        .any(|positioned| positioned.idea == an_idea());
+
+    (pinned, on_board)
+}
+
+#[tokio::test]
+async fn a_pin_that_lost_a_race_is_tried_again_and_lands() {
+    let (pinned, on_board) = an_idea_pinned_while_losing_races(4, None).await;
+
+    assert_eq!(pinned.expect("the fifth try lands"), Version::of(2));
+    assert!(on_board);
+}
+
+#[tokio::test]
+async fn a_pin_that_lost_every_race_it_may_try_is_a_conflict() {
+    let (pinned, on_board) = an_idea_pinned_while_losing_races(5, None).await;
+
+    assert!(matches!(
+        pinned,
+        Err(BoardsError::Events(ServiceError::Store(
+            StoreError::Outdated { .. }
+        )))
+    ));
+    assert!(!on_board);
+}
+
+#[tokio::test]
+async fn a_pin_aimed_at_a_version_that_lost_a_race_is_not_tried_again() {
+    let (pinned, on_board) = an_idea_pinned_while_losing_races(1, Some(Version::of(1))).await;
+
+    assert!(
+        matches!(
+            pinned,
+            Err(BoardsError::Events(ServiceError::Store(
+                StoreError::Outdated { .. }
+            )))
+        ) && !on_board,
+        "whoever named a version hears that it moved on, a 412, rather than having it papered over"
     );
 }

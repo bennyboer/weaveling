@@ -1,5 +1,8 @@
-use boards_core::{BoardCatalog, BoardId, BoardSummary, IdeaLink, ProjectLink};
+use std::ops::Deref;
+
+use boards_core::{BoardCatalog, BoardId, BoardSummary, CatalogError, IdeaLink, ProjectLink};
 use time::OffsetDateTime;
+use transacting::{Transaction, Transactions};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -9,7 +12,91 @@ pub trait Workbench: Sized {
 
     fn store(&self) -> &Self::Store;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Store> {
+        Committing {
+            catalog: self.store(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, C> {
+    catalog: &'a C,
+    transactions: &'a dyn Transactions,
+}
+
+fn unreachable(failure: transacting::Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
+impl<C: BoardCatalog> Committing<'_, C> {
+    pub async fn begun(&self) -> Transaction {
+        self.transactions
+            .begin()
+            .await
+            .expect("beginning should succeed")
+    }
+
+    pub fn uncommitted(&self) -> &C {
+        self.catalog
+    }
+
+    pub async fn remember(&self, summary: &BoardSummary) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog.remember(&mut transaction, summary).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget(&self, board: &BoardId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog.forget(&mut transaction, board, at).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog.holds(&mut transaction, board, ideas).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn lay_tombstone(
+        &self,
+        idea: &IdeaLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .lay_tombstone(&mut transaction, idea, at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let done = self
+            .catalog
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(done)
+    }
+}
+
+impl<C> Deref for Committing<'_, C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        self.catalog
+    }
 }
 
 pub fn at(seconds: i64) -> OffsetDateTime {
@@ -23,7 +110,9 @@ pub fn a_summary(id: BoardId, project: &str) -> BoardSummary {
     }
 }
 
-pub async fn a_remembered_board_is_listed_in_its_project(catalog: &impl BoardCatalog) {
+pub async fn a_remembered_board_is_listed_in_its_project(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     let summary = a_summary(BoardId::generate(at(1_000)), "project_1");
 
     catalog
@@ -39,7 +128,9 @@ pub async fn a_remembered_board_is_listed_in_its_project(catalog: &impl BoardCat
     assert_eq!(found, vec![summary]);
 }
 
-pub async fn a_project_that_never_opened_a_board_lists_nothing(catalog: &impl BoardCatalog) {
+pub async fn a_project_that_never_opened_a_board_lists_nothing(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     let found = catalog
         .in_project(&ProjectLink::from("project_empty"))
         .await
@@ -51,7 +142,7 @@ pub async fn a_project_that_never_opened_a_board_lists_nothing(catalog: &impl Bo
     );
 }
 
-pub async fn boards_of_other_projects_are_not_listed(catalog: &impl BoardCatalog) {
+pub async fn boards_of_other_projects_are_not_listed(catalog: &Committing<'_, impl BoardCatalog>) {
     catalog
         .remember(&a_summary(BoardId::generate(at(1_000)), "project_mine"))
         .await
@@ -65,7 +156,9 @@ pub async fn boards_of_other_projects_are_not_listed(catalog: &impl BoardCatalog
     assert!(found.is_empty());
 }
 
-pub async fn remembering_the_same_board_again_replaces_what_was_there(catalog: &impl BoardCatalog) {
+pub async fn remembering_the_same_board_again_replaces_what_was_there(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     let id = BoardId::generate(at(1_000));
     catalog
         .remember(&a_summary(id, "project_1"))
@@ -89,7 +182,9 @@ pub async fn remembering_the_same_board_again_replaces_what_was_there(catalog: &
     );
 }
 
-pub async fn a_project_lists_its_boards_in_a_settled_order(catalog: &impl BoardCatalog) {
+pub async fn a_project_lists_its_boards_in_a_settled_order(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     let opened: Vec<BoardId> = (1..=6)
         .map(|nth| BoardId::generate(at(nth * 1_000)))
         .collect();
@@ -113,7 +208,7 @@ pub async fn a_project_lists_its_boards_in_a_settled_order(catalog: &impl BoardC
     );
 }
 
-pub async fn an_idea_nobody_pinned_is_on_no_board(catalog: &impl BoardCatalog) {
+pub async fn an_idea_nobody_pinned_is_on_no_board(catalog: &Committing<'_, impl BoardCatalog>) {
     let found = catalog
         .boards_holding(&IdeaLink::from("idea_loose"))
         .await
@@ -125,7 +220,7 @@ pub async fn an_idea_nobody_pinned_is_on_no_board(catalog: &impl BoardCatalog) {
     );
 }
 
-pub async fn a_pinned_idea_names_the_board_holding_it(catalog: &impl BoardCatalog) {
+pub async fn a_pinned_idea_names_the_board_holding_it(catalog: &Committing<'_, impl BoardCatalog>) {
     let board = BoardId::generate(at(1_000));
 
     catalog
@@ -142,7 +237,7 @@ pub async fn a_pinned_idea_names_the_board_holding_it(catalog: &impl BoardCatalo
     );
 }
 
-pub async fn every_idea_on_a_board_names_it(catalog: &impl BoardCatalog) {
+pub async fn every_idea_on_a_board_names_it(catalog: &Committing<'_, impl BoardCatalog>) {
     let board = BoardId::generate(at(1_000));
     let ideas = ["idea_1", "idea_2", "idea_3"].map(IdeaLink::from);
 
@@ -163,7 +258,7 @@ pub async fn every_idea_on_a_board_names_it(catalog: &impl BoardCatalog) {
     }
 }
 
-pub async fn an_idea_may_sit_on_more_than_one_board(catalog: &impl BoardCatalog) {
+pub async fn an_idea_may_sit_on_more_than_one_board(catalog: &Committing<'_, impl BoardCatalog>) {
     let earliest = BoardId::generate(at(1_000));
     let latest = BoardId::generate(at(2_000));
     for board in [latest, earliest] {
@@ -183,7 +278,9 @@ pub async fn an_idea_may_sit_on_more_than_one_board(catalog: &impl BoardCatalog)
     );
 }
 
-pub async fn what_a_board_holds_is_replaced_not_added_to(catalog: &impl BoardCatalog) {
+pub async fn what_a_board_holds_is_replaced_not_added_to(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     let board = BoardId::generate(at(1_000));
     catalog
         .holds(board, &[IdeaLink::from("idea_1")])
@@ -213,7 +310,7 @@ pub async fn what_a_board_holds_is_replaced_not_added_to(catalog: &impl BoardCat
 }
 
 pub async fn one_board_letting_an_idea_go_leaves_the_others_holding_it(
-    catalog: &impl BoardCatalog,
+    catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     let keeping = BoardId::generate(at(1_000));
     let dropping = BoardId::generate(at(2_000));
@@ -239,7 +336,7 @@ pub async fn one_board_letting_an_idea_go_leaves_the_others_holding_it(
     );
 }
 
-pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &impl BoardCatalog) {
+pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &Committing<'_, impl BoardCatalog>) {
     let board = BoardId::generate(at(1_000));
     let elsewhere = BoardId::generate(at(2_000));
     catalog
@@ -282,7 +379,9 @@ pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &impl BoardCatalo
     );
 }
 
-pub async fn forgetting_a_board_nobody_opened_is_harmless(catalog: &impl BoardCatalog) {
+pub async fn forgetting_a_board_nobody_opened_is_harmless(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     catalog
         .forget(&BoardId::generate(at(1_000)), at(5_000))
         .await
@@ -293,25 +392,28 @@ fn an_idea(id: &str) -> IdeaLink {
     IdeaLink::from(id)
 }
 
-async fn held_though_tombstoned_by(catalog: &impl BoardCatalog, board: BoardId) -> Vec<IdeaLink> {
+async fn held_though_tombstoned_by(
+    catalog: &Committing<'_, impl BoardCatalog>,
+    board: BoardId,
+) -> Vec<IdeaLink> {
     catalog
         .held_though_tombstoned(board)
         .await
         .expect("looking for what is gone should succeed")
 }
 
-async fn tombstoned(catalog: &impl BoardCatalog, idea: &str) {
+async fn tombstoned(catalog: &Committing<'_, impl BoardCatalog>, idea: &str) {
     tombstoned_at(catalog, idea, 1_000).await;
 }
 
-async fn tombstoned_at(catalog: &impl BoardCatalog, idea: &str, seconds: i64) {
+async fn tombstoned_at(catalog: &Committing<'_, impl BoardCatalog>, idea: &str, seconds: i64) {
     catalog
         .lay_tombstone(&an_idea(idea), at(seconds))
         .await
         .expect("laying a tombstone should succeed");
 }
 
-async fn pinned(catalog: &impl BoardCatalog, board: BoardId, ideas: &[&str]) {
+async fn pinned(catalog: &Committing<'_, impl BoardCatalog>, board: BoardId, ideas: &[&str]) {
     let ideas: Vec<IdeaLink> = ideas.iter().map(|idea| an_idea(idea)).collect();
     catalog
         .holds(board, &ideas)
@@ -319,14 +421,14 @@ async fn pinned(catalog: &impl BoardCatalog, board: BoardId, ideas: &[&str]) {
         .expect("indexing should succeed");
 }
 
-pub async fn nothing_pinned_is_gone_until_marked(catalog: &impl BoardCatalog) {
+pub async fn nothing_pinned_is_gone_until_marked(catalog: &Committing<'_, impl BoardCatalog>) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
 
     assert!(held_though_tombstoned_by(catalog, board).await.is_empty());
 }
 
-pub async fn a_pinned_idea_marked_gone_is_named(catalog: &impl BoardCatalog) {
+pub async fn a_pinned_idea_marked_gone_is_named(catalog: &Committing<'_, impl BoardCatalog>) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_1", "idea_2"]).await;
 
@@ -338,7 +440,9 @@ pub async fn a_pinned_idea_marked_gone_is_named(catalog: &impl BoardCatalog) {
     );
 }
 
-pub async fn an_idea_marked_gone_before_it_was_pinned_is_named(catalog: &impl BoardCatalog) {
+pub async fn an_idea_marked_gone_before_it_was_pinned_is_named(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     let board = BoardId::generate(at(1_000));
     tombstoned(catalog, "idea_1").await;
 
@@ -351,7 +455,7 @@ pub async fn an_idea_marked_gone_before_it_was_pinned_is_named(catalog: &impl Bo
     );
 }
 
-pub async fn a_gone_idea_let_go_is_no_longer_named(catalog: &impl BoardCatalog) {
+pub async fn a_gone_idea_let_go_is_no_longer_named(catalog: &Committing<'_, impl BoardCatalog>) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
     tombstoned(catalog, "idea_1").await;
@@ -361,7 +465,9 @@ pub async fn a_gone_idea_let_go_is_no_longer_named(catalog: &impl BoardCatalog) 
     assert!(held_though_tombstoned_by(catalog, board).await.is_empty());
 }
 
-pub async fn marking_the_same_idea_gone_twice_is_harmless(catalog: &impl BoardCatalog) {
+pub async fn marking_the_same_idea_gone_twice_is_harmless(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_1"]).await;
 
@@ -374,7 +480,11 @@ pub async fn marking_the_same_idea_gone_twice_is_harmless(catalog: &impl BoardCa
     );
 }
 
-async fn forget_long_gone(catalog: &impl BoardCatalog, before_seconds: i64, at_most: u64) -> u64 {
+async fn forget_long_gone(
+    catalog: &Committing<'_, impl BoardCatalog>,
+    before_seconds: i64,
+    at_most: u64,
+) -> u64 {
     catalog
         .forget_tombstones_laid_before(at(before_seconds), at_most)
         .await
@@ -382,7 +492,7 @@ async fn forget_long_gone(catalog: &impl BoardCatalog, before_seconds: i64, at_m
 }
 
 pub async fn a_forgotten_tombstone_names_nothing_and_a_later_one_still_does(
-    catalog: &impl BoardCatalog,
+    catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     let board = BoardId::generate(at(1_000));
     pinned(catalog, board, &["idea_long_gone", "idea_just_gone"]).await;
@@ -398,7 +508,9 @@ pub async fn a_forgotten_tombstone_names_nothing_and_a_later_one_still_does(
     );
 }
 
-pub async fn an_idea_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl BoardCatalog) {
+pub async fn an_idea_s_tombstone_is_laid_once_when_it_first_went(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     tombstoned_at(catalog, "idea_1", 1_000).await;
     tombstoned_at(catalog, "idea_1", 5_000).await;
 
@@ -410,7 +522,7 @@ pub async fn an_idea_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl 
 }
 
 pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
-    catalog: &impl BoardCatalog,
+    catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     let board = BoardId::generate(at(1_000));
     pinned(
@@ -436,14 +548,16 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
-async fn listed(catalog: &impl BoardCatalog) -> Vec<BoardSummary> {
+async fn listed(catalog: &Committing<'_, impl BoardCatalog>) -> Vec<BoardSummary> {
     catalog
         .in_project(&ProjectLink::from("project_1"))
         .await
         .expect("listing should succeed")
 }
 
-pub async fn a_forgotten_board_heard_of_late_is_not_remembered_again(catalog: &impl BoardCatalog) {
+pub async fn a_forgotten_board_heard_of_late_is_not_remembered_again(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
     let gone = a_summary(BoardId::generate(at(1_000)), "project_1");
     catalog
         .remember(&gone)
@@ -466,7 +580,7 @@ pub async fn a_forgotten_board_heard_of_late_is_not_remembered_again(catalog: &i
 }
 
 pub async fn board_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
-    catalog: &impl BoardCatalog,
+    catalog: &Committing<'_, impl BoardCatalog>,
 ) {
     let (older, newer, latest) = (
         a_summary(BoardId::generate(at(1_000)), "project_1"),
@@ -499,6 +613,95 @@ pub async fn board_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     );
 }
 
+pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
+    let kept = a_summary(BoardId::generate(at(1_000)), "project_1");
+    catalog
+        .remember(&kept)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .holds(kept.id, &[IdeaLink::from("idea_1")])
+        .await
+        .expect("holding should succeed");
+    let mut transaction = catalog.begun().await;
+    let uncommitted = catalog.uncommitted();
+    uncommitted
+        .remember(
+            &mut transaction,
+            &a_summary(BoardId::generate(at(2_000)), "project_1"),
+        )
+        .await
+        .expect("remembering should succeed");
+    uncommitted
+        .holds(&mut transaction, kept.id, &[IdeaLink::from("idea_2")])
+        .await
+        .expect("holding should succeed");
+    uncommitted
+        .lay_tombstone(&mut transaction, &IdeaLink::from("idea_1"), at(3_000))
+        .await
+        .expect("laying a tombstone should succeed");
+    uncommitted
+        .forget(&mut transaction, &kept.id, at(3_000))
+        .await
+        .expect("forgetting should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        catalog
+            .in_project(&ProjectLink::from("project_1"))
+            .await
+            .expect("listing should succeed"),
+        vec![kept.clone()]
+    );
+    assert_eq!(
+        catalog
+            .boards_holding(&IdeaLink::from("idea_1"))
+            .await
+            .expect("asking should succeed"),
+        vec![kept.id]
+    );
+    assert!(
+        catalog
+            .held_though_tombstoned(kept.id)
+            .await
+            .expect("asking should succeed")
+            .is_empty()
+    );
+}
+
+pub async fn board_tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
+    catalog: &Committing<'_, impl BoardCatalog>,
+) {
+    let gone = a_summary(BoardId::generate(at(1_000)), "project_1");
+    catalog
+        .forget(&gone.id, at(5_000))
+        .await
+        .expect("forgetting should succeed");
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .forget_tombstones_laid_before(&mut transaction, at(8_000), 10)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    drop(transaction);
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        catalog
+            .in_project(&ProjectLink::from("project_1"))
+            .await
+            .expect("listing should succeed")
+            .is_empty()
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -507,7 +710,7 @@ macro_rules! catalog_conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.store()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -516,6 +719,14 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!(
+            $workbench,
+            what_was_written_in_a_transaction_that_is_dropped_is_gone
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            board_tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand
+        );
         $crate::catalog_conformance_case!(
             $workbench,
             a_forgotten_board_heard_of_late_is_not_remembered_again

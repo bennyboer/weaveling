@@ -3,6 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use thiserror::Error;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::board::{Board, IdeaLink, ProjectLink};
 use crate::id::BoardId;
@@ -21,20 +22,40 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait BoardCatalog: Send + Sync {
-    async fn remember(&self, summary: &BoardSummary) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &BoardSummary,
+    ) -> Result<(), CatalogError>;
 
-    async fn forget(&self, board: &BoardId, at: OffsetDateTime) -> Result<(), CatalogError>;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        board: &BoardId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<BoardSummary>, CatalogError>;
 
-    async fn holds(&self, board: BoardId, ideas: &[IdeaLink]) -> Result<(), CatalogError>;
+    async fn holds(
+        &self,
+        transaction: &mut Transaction,
+        board: BoardId,
+        ideas: &[IdeaLink],
+    ) -> Result<(), CatalogError>;
 
     async fn boards_holding(&self, idea: &IdeaLink) -> Result<Vec<BoardId>, CatalogError>;
 
-    async fn lay_tombstone(&self, idea: &IdeaLink, at: OffsetDateTime) -> Result<(), CatalogError>;
+    async fn lay_tombstone(
+        &self,
+        transaction: &mut Transaction,
+        idea: &IdeaLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;

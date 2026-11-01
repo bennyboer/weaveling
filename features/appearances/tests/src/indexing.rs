@@ -16,7 +16,6 @@ use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 
-
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
 }

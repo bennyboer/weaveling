@@ -1,15 +1,16 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use outline_core::{
     Attachment, CatalogError, OutlineCatalog, OutlineId, OutlineSummary, ProjectLink,
 };
 use time::OffsetDateTime;
+use transacting::{Failure, Transaction};
 
 type Listed = HashMap<OutlineId, OutlineSummary>;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct Attachments {
     by_outline: HashMap<OutlineId, Vec<Attachment>>,
     by_attachment: HashMap<Attachment, BTreeSet<OutlineId>>,
@@ -18,9 +19,9 @@ struct Attachments {
 
 #[derive(Debug, Default)]
 pub struct InMemoryOutlineCatalog {
-    forgotten: RwLock<HashMap<OutlineId, OffsetDateTime>>,
-    listed: RwLock<Listed>,
-    attached: RwLock<Attachments>,
+    forgotten: Arc<RwLock<HashMap<OutlineId, OffsetDateTime>>>,
+    listed: Arc<RwLock<Listed>>,
+    attached: Arc<RwLock<Attachments>>,
 }
 
 impl InMemoryOutlineCatalog {
@@ -45,11 +46,52 @@ impl InMemoryOutlineCatalog {
             .write()
             .expect("outline catalog lock poisoned")
     }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
+        let forgotten = self
+            .forgotten
+            .read()
+            .expect("outline catalog lock poisoned")
+            .clone();
+        let listed = self
+            .listed
+            .read()
+            .expect("outline catalog lock poisoned")
+            .clone();
+        let attached = self
+            .attached
+            .read()
+            .expect("outline catalog lock poisoned")
+            .clone();
+        let into_forgotten = self.forgotten.clone();
+        let into_listed = self.listed.clone();
+        let into_attached = self.attached.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_forgotten
+                .write()
+                .expect("outline catalog lock poisoned") = forgotten;
+            *into_listed.write().expect("outline catalog lock poisoned") = listed;
+            *into_attached
+                .write()
+                .expect("outline catalog lock poisoned") = attached;
+        })
+        .map_err(unreachable)
+    }
+}
+
+fn unreachable(failure: Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
 }
 
 #[async_trait]
 impl OutlineCatalog for InMemoryOutlineCatalog {
-    async fn remember(&self, summary: &OutlineSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &OutlineSummary,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let forgotten = self.forgotten.read().expect("the catalog is not poisoned");
         if forgotten.contains_key(&summary.id) {
             return Ok(());
@@ -59,14 +101,20 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
         Ok(())
     }
 
-    async fn forget(&self, outline: &OutlineId, at: OffsetDateTime) -> Result<(), CatalogError> {
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        outline: &OutlineId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.forgotten
             .write()
             .expect("the catalog is not poisoned")
             .entry(*outline)
             .or_insert(at);
         self.write().remove(outline);
-        self.holds(*outline, &[]).await?;
+        self.holds(transaction, *outline, &[]).await?;
 
         Ok(())
     }
@@ -85,9 +133,11 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
 
     async fn holds(
         &self,
+        transaction: &mut Transaction,
         outline: OutlineId,
         attachments: &[Attachment],
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut attached = self.write_attachments();
         let arriving: HashSet<&Attachment> = attachments.iter().collect();
         let left_behind = attached
@@ -134,9 +184,11 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
 
     async fn lay_tombstone(
         &self,
+        transaction: &mut Transaction,
         attachment: &Attachment,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.write_attachments()
             .tombstones
             .entry(attachment.clone())
@@ -147,9 +199,11 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut attached = self.write_attachments();
         let mut long_gone: Vec<(OffsetDateTime, Attachment)> = attached
             .tombstones
@@ -212,20 +266,26 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
 mod tests {
     use super::*;
 
+    use transacting::{InMemoryTransactions, Transactions};
+
     use crate::suite::Workbench;
 
-    struct InMemory(InMemoryOutlineCatalog);
+    struct InMemory(InMemoryOutlineCatalog, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemoryOutlineCatalog;
 
         async fn setup() -> Self {
-            Self(InMemoryOutlineCatalog::new())
+            Self(InMemoryOutlineCatalog::new(), InMemoryTransactions::new())
         }
 
         fn store(&self) -> &Self::Store {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}
