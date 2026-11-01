@@ -11,10 +11,11 @@ use invitations_core::{
 };
 use live::{Broadcaster, Teller};
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 pub struct TellingInvitations {
     kept: Arc<dyn InvitationCatalog>,
-    teller: Teller<InvitationChanges>,
+    teller: Arc<Teller<InvitationChanges>>,
 }
 
 impl TellingInvitations {
@@ -24,20 +25,27 @@ impl TellingInvitations {
     ) -> Self {
         Self {
             kept,
-            teller: Teller::new(broadcaster),
+            teller: Arc::new(Teller::new(broadcaster)),
         }
     }
 }
 
 #[async_trait]
 impl InvitationCatalog for TellingInvitations {
-    async fn remember(&self, summary: &InvitationSummary) -> Result<(), CatalogError> {
-        self.kept.remember(summary).await?;
-        self.teller.tell(
-            InvitationChanges(summary.to.clone()),
-            &summary.id.to_string(),
-            (),
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &InvitationSummary,
+    ) -> Result<(), CatalogError> {
+        self.kept.remember(transaction, summary).await?;
+        let (teller, to, of) = (
+            self.teller.clone(),
+            summary.to.clone(),
+            summary.id.to_string(),
         );
+        transaction.after_commit(async move {
+            teller.tell(InvitationChanges(to), &of, ());
+        });
 
         Ok(())
     }
@@ -80,40 +88,53 @@ impl InvitationCatalog for TellingInvitations {
 
     async fn forget(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        self.kept.forget(invitation, at).await
+        self.kept.forget(transaction, invitation, at).await
     }
 
     async fn forget_invitation_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         self.kept
-            .forget_invitation_tombstones_laid_before(before, at_most)
+            .forget_invitation_tombstones_laid_before(transaction, before, at_most)
             .await
     }
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
-        self.kept.remember_person(person).await
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError> {
+        self.kept.remember_person(transaction, person).await
     }
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
         self.kept.people(accounts).await
     }
 
-    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
-        self.kept.remember_project_name(named).await
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        named: &ProjectName,
+    ) -> Result<(), CatalogError> {
+        self.kept.remember_project_name(transaction, named).await
     }
 
     async fn lay_project_tombstone(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        self.kept.lay_project_tombstone(project, at).await
+        self.kept
+            .lay_project_tombstone(transaction, project, at)
+            .await
     }
 
     async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
@@ -122,11 +143,12 @@ impl InvitationCatalog for TellingInvitations {
 
     async fn forget_project_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         self.kept
-            .forget_project_tombstones_laid_before(before, at_most)
+            .forget_project_tombstones_laid_before(transaction, before, at_most)
             .await
     }
 

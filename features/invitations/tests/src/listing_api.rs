@@ -12,6 +12,7 @@ use invitations_core::{
 use invitations_rest::PAGE;
 use serde_json::Value;
 use time::Duration;
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::Wired;
@@ -36,11 +37,19 @@ fn a_summary(seconds: i64, to: &str, outcome: Outcome) -> InvitationSummary {
 }
 
 async fn remembered(wired: &Wired, summary: &InvitationSummary) {
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     wired
         .catalog
-        .remember(summary)
+        .remember(&mut transaction, summary)
         .await
         .expect("remembering should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 }
 
 fn refused_as(response: &TestResponse, status: StatusCode, kind: &str) {

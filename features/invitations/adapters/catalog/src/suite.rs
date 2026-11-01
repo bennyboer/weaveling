@@ -1,10 +1,13 @@
+use std::ops::Deref;
+
 use email::EmailAddress;
 use eventsourcing::{AccountId, Version};
 use invitations_core::{
-    DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
-    Outcome, Person, ProjectLink, ProjectName, Role, Scope,
+    CatalogError, DeclineReason, InvitationCatalog, InvitationId, InvitationSummary,
+    InvitationTokenDigest, Outcome, Person, ProjectLink, ProjectName, Role, Scope,
 };
 use time::OffsetDateTime;
+use transacting::{Transaction, Transactions};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -14,7 +17,122 @@ pub trait Workbench: Sized {
 
     fn store(&self) -> &Self::Store;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Store> {
+        Committing {
+            catalog: self.store(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, C> {
+    catalog: &'a C,
+    transactions: &'a dyn Transactions,
+}
+
+fn unreachable(failure: transacting::Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
+impl<C: InvitationCatalog> Committing<'_, C> {
+    pub async fn begun(&self) -> Transaction {
+        self.transactions
+            .begin()
+            .await
+            .expect("beginning should succeed")
+    }
+
+    pub fn uncommitted(&self) -> &C {
+        self.catalog
+    }
+
+    pub async fn remember(&self, summary: &InvitationSummary) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog.remember(&mut transaction, summary).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget(
+        &self,
+        invitation: &InvitationId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .forget(&mut transaction, invitation, at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_invitation_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let done = self
+            .catalog
+            .forget_invitation_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(done)
+    }
+
+    pub async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .remember_person(&mut transaction, person)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .remember_project_name(&mut transaction, named)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn lay_project_tombstone(
+        &self,
+        project: &ProjectLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, project, at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_project_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let done = self
+            .catalog
+            .forget_project_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(done)
+    }
+}
+
+impl<C> Deref for Committing<'_, C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        self.catalog
+    }
 }
 
 pub fn at(seconds: i64) -> OffsetDateTime {
@@ -47,7 +165,7 @@ fn into(project: &str, role: Role, id: InvitationId) -> InvitationSummary {
 }
 
 async fn in_project(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
     project: &str,
     after: Option<&InvitationId>,
     at_most: usize,
@@ -59,7 +177,7 @@ async fn in_project(
 }
 
 pub async fn an_invitation_into_a_project_is_listed_with_that_project_alone(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     let to_the_instance = a_summary(issued(1_000), "ada@example.com");
     let into_the_loom = into("project_loom", Role::Reader, issued(2_000));
@@ -89,7 +207,7 @@ pub async fn an_invitation_into_a_project_is_listed_with_that_project_alone(
 }
 
 pub async fn a_project_s_page_holds_at_most_what_was_asked_newest_first_and_goes_on_after_it(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     let ids: Vec<InvitationId> = (1..=3).map(|nth| issued(nth * 1_000)).collect();
     for (id, role) in ids.iter().zip([Role::Owner, Role::Author, Role::Reader]) {
@@ -129,21 +247,23 @@ fn declined() -> Outcome {
     Outcome::Declined(DeclineReason::AddressHasAccount)
 }
 
-async fn listed(catalog: &impl InvitationCatalog) -> Vec<InvitationSummary> {
+async fn listed(catalog: &Committing<'_, impl InvitationCatalog>) -> Vec<InvitationSummary> {
     catalog
         .listed_after(None, 100)
         .await
         .expect("listing should succeed")
 }
 
-async fn remembered(catalog: &impl InvitationCatalog, summary: &InvitationSummary) {
+async fn remembered(catalog: &Committing<'_, impl InvitationCatalog>, summary: &InvitationSummary) {
     catalog
         .remember(summary)
         .await
         .expect("remembering should succeed");
 }
 
-pub async fn a_remembered_invitation_is_listed_as_it_was(catalog: &impl InvitationCatalog) {
+pub async fn a_remembered_invitation_is_listed_as_it_was(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
     let summary = InvitationSummary {
         version: Version::of(3),
         issued_at: at(1_700_000_000),
@@ -157,7 +277,7 @@ pub async fn a_remembered_invitation_is_listed_as_it_was(catalog: &impl Invitati
 }
 
 pub async fn an_invitation_is_found_by_its_token_s_digest_however_it_stands_until_forgotten(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     let open = a_summary(issued(1_000), "ada@example.com");
     let declined = InvitationSummary {
@@ -197,11 +317,11 @@ pub async fn an_invitation_is_found_by_its_token_s_digest_however_it_stands_unti
     );
 }
 
-pub async fn an_empty_list_lists_nothing(catalog: &impl InvitationCatalog) {
+pub async fn an_empty_list_lists_nothing(catalog: &Committing<'_, impl InvitationCatalog>) {
     assert!(listed(catalog).await.is_empty());
 }
 
-pub async fn a_newer_summary_replaces_the_older(catalog: &impl InvitationCatalog) {
+pub async fn a_newer_summary_replaces_the_older(catalog: &Committing<'_, impl InvitationCatalog>) {
     let id = issued(1_000);
     remembered(catalog, &a_summary(id, "ada@example.com")).await;
     let newer = InvitationSummary {
@@ -219,7 +339,9 @@ pub async fn a_newer_summary_replaces_the_older(catalog: &impl InvitationCatalog
     );
 }
 
-pub async fn an_older_summary_arriving_late_changes_nothing(catalog: &impl InvitationCatalog) {
+pub async fn an_older_summary_arriving_late_changes_nothing(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
     let id = issued(1_000);
     let accepted = InvitationSummary {
         version: Version::of(2),
@@ -236,7 +358,9 @@ pub async fn an_older_summary_arriving_late_changes_nothing(catalog: &impl Invit
     );
 }
 
-pub async fn an_invitation_taken_up_or_withdrawn_leaves_the_list(catalog: &impl InvitationCatalog) {
+pub async fn an_invitation_taken_up_or_withdrawn_leaves_the_list(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
     let open = a_summary(issued(1_000), "ada@example.com");
     let declined = InvitationSummary {
         outcome: declined(),
@@ -261,7 +385,7 @@ pub async fn an_invitation_taken_up_or_withdrawn_leaves_the_list(catalog: &impl 
 }
 
 pub async fn a_page_holds_at_most_what_was_asked_newest_first_and_the_next_goes_on_after_it(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     for seconds in [1_000, 2_000, 3_000] {
         remembered(
@@ -300,7 +424,7 @@ pub async fn a_page_holds_at_most_what_was_asked_newest_first_and_the_next_goes_
 }
 
 pub async fn what_is_past_its_moment_is_due_for_retiring_soonest_first_and_no_more_than_asked(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     let soonest = InvitationSummary {
         retire_after: at(1_000),
@@ -339,7 +463,9 @@ pub async fn what_is_past_its_moment_is_due_for_retiring_soonest_first_and_no_mo
     );
 }
 
-pub async fn a_summary_heard_anew_is_due_when_its_newest_says(catalog: &impl InvitationCatalog) {
+pub async fn a_summary_heard_anew_is_due_when_its_newest_says(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
     let id = issued(1_000);
     remembered(
         catalog,
@@ -371,7 +497,7 @@ pub async fn a_summary_heard_anew_is_due_when_its_newest_says(catalog: &impl Inv
 }
 
 pub async fn a_forgotten_invitation_leaves_the_list_and_the_others_stay(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     let gone = a_summary(issued(1_000), "gone@example.com");
     let stays = a_summary(issued(2_000), "stays@example.com");
@@ -391,7 +517,7 @@ pub async fn a_forgotten_invitation_leaves_the_list_and_the_others_stay(
 }
 
 pub async fn a_forgotten_invitation_heard_of_late_is_not_remembered_again(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     let gone = a_summary(issued(1_000), "gone@example.com");
     remembered(catalog, &gone).await;
@@ -421,7 +547,7 @@ pub async fn a_forgotten_invitation_heard_of_late_is_not_remembered_again(
 }
 
 pub async fn an_invitation_s_tombstone_is_forgotten_oldest_first_and_at_most_so_many(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     let (older, newer, latest) = (
         a_summary(issued(1_000), "older@example.com"),
@@ -459,14 +585,17 @@ fn person(account: &str, name: &str, email: &str) -> Person {
     }
 }
 
-async fn known(catalog: &impl InvitationCatalog, person: &Person) {
+async fn known(catalog: &Committing<'_, impl InvitationCatalog>, person: &Person) {
     catalog
         .remember_person(person)
         .await
         .expect("remembering a person should succeed");
 }
 
-async fn people(catalog: &impl InvitationCatalog, accounts: &[&str]) -> Vec<Person> {
+async fn people(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+    accounts: &[&str],
+) -> Vec<Person> {
     let accounts: Vec<AccountId> = accounts.iter().copied().map(AccountId::from).collect();
 
     catalog
@@ -476,7 +605,7 @@ async fn people(catalog: &impl InvitationCatalog, accounts: &[&str]) -> Vec<Pers
 }
 
 pub async fn the_people_asked_for_are_told_by_account_and_no_others(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     known(
         catalog,
@@ -504,7 +633,9 @@ pub async fn the_people_asked_for_are_told_by_account_and_no_others(
     );
 }
 
-pub async fn a_person_told_again_is_known_as_last_told(catalog: &impl InvitationCatalog) {
+pub async fn a_person_told_again_is_known_as_last_told(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
     known(catalog, &person("account_ada", "Ada", "ada@example.com")).await;
 
     known(
@@ -531,14 +662,17 @@ fn named(project: &str, version: u64, name: &str) -> ProjectName {
     }
 }
 
-async fn name_known(catalog: &impl InvitationCatalog, named: &ProjectName) {
+async fn name_known(catalog: &Committing<'_, impl InvitationCatalog>, named: &ProjectName) {
     catalog
         .remember_project_name(named)
         .await
         .expect("remembering a project's name should succeed");
 }
 
-async fn names(catalog: &impl InvitationCatalog, projects: &[&str]) -> Vec<ProjectName> {
+async fn names(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+    projects: &[&str],
+) -> Vec<ProjectName> {
     let projects: Vec<ProjectLink> = projects.iter().copied().map(ProjectLink::from).collect();
 
     catalog
@@ -548,7 +682,7 @@ async fn names(catalog: &impl InvitationCatalog, projects: &[&str]) -> Vec<Proje
 }
 
 pub async fn the_project_names_asked_for_are_told_by_project_and_no_others(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     name_known(catalog, &named("project_c", 1, "The Weft")).await;
     name_known(catalog, &named("project_b", 1, "The Shuttle")).await;
@@ -565,7 +699,7 @@ pub async fn the_project_names_asked_for_are_told_by_project_and_no_others(
 }
 
 pub async fn a_newer_name_replaces_the_older_and_an_older_one_heard_late_changes_nothing(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     name_known(catalog, &named("project_a", 2, "The Loom")).await;
 
@@ -580,14 +714,18 @@ pub async fn a_newer_name_replaces_the_older_and_an_older_one_heard_late_changes
     );
 }
 
-async fn tombstoned(catalog: &impl InvitationCatalog, project: &str, laid: i64) {
+async fn tombstoned(catalog: &Committing<'_, impl InvitationCatalog>, project: &str, laid: i64) {
     catalog
         .lay_project_tombstone(&ProjectLink::from(project), at(laid))
         .await
         .expect("laying a tombstone should succeed");
 }
 
-async fn forget_long_gone(catalog: &impl InvitationCatalog, before: i64, at_most: u64) -> u64 {
+async fn forget_long_gone(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+    before: i64,
+    at_most: u64,
+) -> u64 {
     catalog
         .forget_project_tombstones_laid_before(at(before), at_most)
         .await
@@ -595,7 +733,7 @@ async fn forget_long_gone(catalog: &impl InvitationCatalog, before: i64, at_most
 }
 
 pub async fn a_deleted_project_s_name_is_told_no_more_and_a_name_heard_late_brings_it_not_back(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     name_known(catalog, &named("project_a", 2, "The Loom")).await;
     name_known(catalog, &named("project_b", 1, "The Shuttle")).await;
@@ -611,7 +749,7 @@ pub async fn a_deleted_project_s_name_is_told_no_more_and_a_name_heard_late_brin
     );
 }
 
-async fn has_tombstone(catalog: &impl InvitationCatalog, project: &str) -> bool {
+async fn has_tombstone(catalog: &Committing<'_, impl InvitationCatalog>, project: &str) -> bool {
     catalog
         .has_project_tombstone(&ProjectLink::from(project))
         .await
@@ -619,7 +757,7 @@ async fn has_tombstone(catalog: &impl InvitationCatalog, project: &str) -> bool 
 }
 
 pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     name_known(catalog, &named("project_a", 1, "The Loom")).await;
     assert!(!has_tombstone(catalog, "project_a").await);
@@ -633,7 +771,7 @@ pub async fn a_project_has_a_tombstone_from_its_deletion_until_it_is_forgotten(
 }
 
 pub async fn a_project_s_tombstone_is_laid_once_and_forgotten_oldest_first_and_at_most_so_many(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     tombstoned(catalog, "project_newest", 3_000).await;
     tombstoned(catalog, "project_older", 2_000).await;
@@ -656,7 +794,7 @@ pub async fn a_project_s_tombstone_is_laid_once_and_forgotten_oldest_first_and_a
     );
 }
 
-async fn open_to(catalog: &impl InvitationCatalog, to: &str) -> Vec<InvitationId> {
+async fn open_to(catalog: &Committing<'_, impl InvitationCatalog>, to: &str) -> Vec<InvitationId> {
     catalog
         .open_to(&EmailAddress::new(to).expect("a plain address"))
         .await
@@ -667,7 +805,7 @@ async fn open_to(catalog: &impl InvitationCatalog, to: &str) -> Vec<InvitationId
 }
 
 pub async fn the_open_invitations_to_an_address_are_told_newest_first_and_no_others(
-    catalog: &impl InvitationCatalog,
+    catalog: &Committing<'_, impl InvitationCatalog>,
 ) {
     let older = InvitationId::generate(at(1_000));
     let newer = InvitationId::generate(at(2_000));
@@ -702,6 +840,74 @@ pub async fn the_open_invitations_to_an_address_are_told_newest_first_and_no_oth
     assert!(open_to(catalog, "nobody@example.com").await.is_empty());
 }
 
+pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
+    let kept = a_summary(issued(1_000), "ada@example.com");
+    remembered(catalog, &kept).await;
+    name_known(catalog, &named("project_1", 1, "Shared")).await;
+    let mut transaction = catalog.begun().await;
+    let uncommitted = catalog.uncommitted();
+    uncommitted
+        .remember(
+            &mut transaction,
+            &a_summary(issued(2_000), "grace@example.com"),
+        )
+        .await
+        .expect("remembering should succeed");
+    uncommitted
+        .forget(&mut transaction, &kept.id, at(3_000))
+        .await
+        .expect("forgetting should succeed");
+    uncommitted
+        .remember_person(
+            &mut transaction,
+            &person("account_ada", "Ada", "ada@example.com"),
+        )
+        .await
+        .expect("remembering should succeed");
+    uncommitted
+        .lay_project_tombstone(&mut transaction, &ProjectLink::from("project_1"), at(3_000))
+        .await
+        .expect("laying a tombstone should succeed");
+
+    drop(transaction);
+
+    assert_eq!(listed(catalog).await, vec![kept]);
+    assert!(people(catalog, &["account_ada"]).await.is_empty());
+    assert_eq!(
+        names(catalog, &["project_1"]).await,
+        vec![named("project_1", 1, "Shared")]
+    );
+}
+
+pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
+    let gone = a_summary(issued(1_000), "ada@example.com");
+    catalog
+        .forget(&gone.id, at(2_000))
+        .await
+        .expect("forgetting should succeed");
+    tombstoned(catalog, "project_1", 2_000).await;
+    let mut transaction = catalog.begun().await;
+    let uncommitted = catalog.uncommitted();
+    uncommitted
+        .forget_invitation_tombstones_laid_before(&mut transaction, at(9_000), 10)
+        .await
+        .expect("forgetting tombstones should succeed");
+    uncommitted
+        .forget_project_tombstones_laid_before(&mut transaction, at(9_000), 10)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    drop(transaction);
+    remembered(catalog, &gone).await;
+
+    assert!(listed(catalog).await.is_empty());
+    assert!(has_tombstone(catalog, "project_1").await);
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -710,7 +916,7 @@ macro_rules! catalog_conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.store()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -719,6 +925,14 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!(
+            $workbench,
+            what_was_written_in_a_transaction_that_is_dropped_is_gone
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand
+        );
         $crate::catalog_conformance_case!($workbench, a_remembered_invitation_is_listed_as_it_was);
         $crate::catalog_conformance_case!(
             $workbench,

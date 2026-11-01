@@ -24,6 +24,7 @@ use crate::token::InvitationToken;
 #[derive(Clone)]
 pub struct InvitationsCore {
     service: InvitationService,
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn InvitationCatalog>,
     authorizer: Arc<dyn Authorizer>,
     clock: Arc<dyn Clock>,
@@ -40,7 +41,14 @@ impl InvitationsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: InvitationService::new(store, transactions, throttles, mailer, clock.clone()),
+            service: InvitationService::new(
+                store,
+                transactions.clone(),
+                throttles,
+                mailer,
+                clock.clone(),
+            ),
+            transactions,
             catalog,
             authorizer,
             clock,
@@ -55,9 +63,30 @@ impl InvitationsCore {
     ) -> Result<InvitationSummary, InvitationsError> {
         operating(by)?;
 
-        self.service
-            .issue(to, origin, Scope::Instance, true, &by.agent)
+        self.issued(to, origin, Scope::Instance, true, &by.agent)
             .await
+    }
+
+    async fn issued(
+        &self,
+        to: &str,
+        origin: &str,
+        scope: Scope,
+        by_an_operator: bool,
+        agent: &Agent,
+    ) -> Result<InvitationSummary, InvitationsError> {
+        let to = EmailAddress::new(to)?;
+        self.service.admitted(&to).await?;
+
+        let mut transaction = self.transactions.begin().await?;
+        let (summary, mail) = self
+            .service
+            .issue(&mut transaction, &to, origin, scope, by_an_operator, agent)
+            .await?;
+        transaction.finish().await?;
+        self.service.send(mail).await?;
+
+        Ok(summary)
     }
 
     pub async fn invite_to_project(
@@ -74,15 +103,14 @@ impl InvitationsCore {
             return Err(InvitationsError::ProjectNotThere);
         }
 
-        self.service
-            .issue(
-                to,
-                origin,
-                Scope::Project { project, role },
-                by.operator,
-                &by.agent,
-            )
-            .await
+        self.issued(
+            to,
+            origin,
+            Scope::Project { project, role },
+            by.operator,
+            &by.agent,
+        )
+        .await
     }
 
     pub async fn address_of(
@@ -166,7 +194,11 @@ impl InvitationsCore {
             }
         }
 
-        self.service.withdraw(invitation, &by.agent).await
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service
+                .withdraw(transaction, invitation, &by.agent)
+                .await
+        })
     }
 
     pub async fn instance_invitations(
@@ -234,7 +266,9 @@ impl InvitationsCore {
         at: OffsetDateTime,
         by: &Agent,
     ) -> Result<(), InvitationsError> {
-        settled(self.service.accept(invitation, at, by).await)
+        settled(transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.accept(transaction, invitation, at, by).await
+        }))
     }
 
     pub async fn declined(
@@ -242,11 +276,11 @@ impl InvitationsCore {
         invitation: &InvitationId,
         reason: DeclineReason,
     ) -> Result<(), InvitationsError> {
-        settled(
+        settled(transacting::retrying!(&*self.transactions, |transaction| {
             self.service
-                .decline(invitation, reason, &Agent::System)
-                .await,
-        )
+                .decline(transaction, invitation, reason, &Agent::System)
+                .await
+        }))
     }
 
     pub async fn decline_by_token(&self, token: &str) -> Result<(), InvitationsError> {
@@ -261,11 +295,16 @@ impl InvitationsCore {
             return Err(InvitationsError::InvitationExpired);
         }
 
-        match self
-            .service
-            .decline(&summary.id, DeclineReason::TurnedDown, &Agent::System)
-            .await
-        {
+        match transacting::retrying!(&*self.transactions, |transaction| {
+            self.service
+                .decline(
+                    transaction,
+                    &summary.id,
+                    DeclineReason::TurnedDown,
+                    &Agent::System,
+                )
+                .await
+        }) {
             Err(InvitationsError::Events(ServiceError::Refused(
                 InvitationError::AlreadyAccepted | InvitationError::Withdrawn,
             ))) => Err(InvitationsError::InvitationInvalid),
@@ -274,7 +313,11 @@ impl InvitationsCore {
     }
 
     pub async fn remember_project_name(&self, named: &ProjectName) -> Result<(), InvitationsError> {
-        Ok(self.catalog.remember_project_name(named).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .remember_project_name(&mut transaction, named)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn lay_project_tombstone(
@@ -282,7 +325,11 @@ impl InvitationsCore {
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), InvitationsError> {
-        Ok(self.catalog.lay_project_tombstone(project, at).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .lay_project_tombstone(&mut transaction, project, at)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -290,36 +337,46 @@ impl InvitationsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, InvitationsError> {
+        let mut transaction = self.transactions.begin().await?;
         let projects = self
             .catalog
-            .forget_project_tombstones_laid_before(before, at_most)
+            .forget_project_tombstones_laid_before(&mut transaction, before, at_most)
             .await?;
         let invitations = self
             .catalog
-            .forget_invitation_tombstones_laid_before(before, at_most)
+            .forget_invitation_tombstones_laid_before(&mut transaction, before, at_most)
             .await?;
+        transaction.finish().await?;
 
         Ok(projects + invitations)
     }
 
     pub async fn remember_person(&self, person: &Person) -> Result<(), InvitationsError> {
-        Ok(self.catalog.remember_person(person).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .remember_person(&mut transaction, person)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn catalogue(&self, invitation: &InvitationId) -> Result<(), InvitationsError> {
         let standing = self.service.latest(invitation).await?;
-        if standing.state.is_retired() {
-            return Ok(self.catalog.forget(invitation, self.clock.now()).await?);
-        }
-
         let summary = InvitationSummary::of(*invitation, standing.version, &standing.state);
-        self.catalog.remember(&summary).await?;
+        let mut transaction = self.transactions.begin().await?;
+        if standing.state.is_retired() {
+            self.catalog
+                .forget(&mut transaction, invitation, self.clock.now())
+                .await?;
+            return Ok(transaction.finish().await?);
+        }
+        self.catalog.remember(&mut transaction, &summary).await?;
+        transaction.finish().await?;
 
         match &summary.scope {
             Scope::Project { project, .. }
                 if self.catalog.has_project_tombstone(project).await? =>
             {
-                settled(self.service.withdraw(invitation, &Agent::System).await)
+                settled(self.withdrawn_by_the_system(invitation).await)
             }
             _ => Ok(()),
         }
@@ -335,7 +392,7 @@ impl InvitationsCore {
                 .in_project_after(&project, after.as_ref(), SWEPT_EACH_PAGE)
                 .await?;
             for summary in &page {
-                settled(self.service.withdraw(&summary.id, &Agent::System).await)?;
+                settled(self.withdrawn_by_the_system(&summary.id).await)?;
             }
             match page.last() {
                 Some(last) if page.len() == SWEPT_EACH_PAGE => after = Some(last.id),
@@ -350,10 +407,25 @@ impl InvitationsCore {
             .due_for_retiring(self.clock.now(), at_most)
             .await?;
         for invitation in &due {
-            self.service.retire(invitation, &Agent::System).await?;
+            transacting::retrying!(&*self.transactions, |transaction| {
+                self.service
+                    .retire(transaction, invitation, &Agent::System)
+                    .await
+            })?;
         }
 
         Ok(due.len())
+    }
+
+    async fn withdrawn_by_the_system(
+        &self,
+        invitation: &InvitationId,
+    ) -> Result<(), InvitationsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service
+                .withdraw(transaction, invitation, &Agent::System)
+                .await
+        })
     }
 }
 

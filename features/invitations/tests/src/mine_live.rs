@@ -8,14 +8,14 @@ use clock::FixedClock;
 use email::EmailAddress;
 use eventsourcing::{AccountId, Agent, InMemoryEventStore};
 use invitations_catalog::InMemoryInvitationCatalog;
-use invitations_core::{InvitationId, InvitationsCore, Person, Role};
+use invitations_core::{InvitationCatalog, InvitationId, InvitationsCore, Person, Role};
 use invitations_rest::{InvitationChanges, TellingInvitations};
 use live::Broadcaster;
 use live::testing::Subscriber;
 use live_contract::ended;
 use mailing::FakeMailbox;
 use throttling::InMemoryThrottles;
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::ORIGIN;
@@ -139,4 +139,40 @@ async fn on_the_one_socket_the_unknown_and_the_unscoped_find_nothing_there() {
 
         assert_eq!(socket.ended().await, ended::NOT_THERE);
     }
+}
+
+#[tokio::test]
+async fn nobody_is_told_of_an_invitation_remembered_in_a_transaction_that_is_dropped() {
+    let told = told();
+    told.invitations
+        .remember_person(&Person {
+            account: AccountId::from("account_ada"),
+            name: "Ada Lovelace".to_owned(),
+            email: EmailAddress::new("ada@example.com").expect("a plain address"),
+        })
+        .await
+        .expect("remembering should succeed");
+    let telling = TellingInvitations::around(
+        Arc::new(InMemoryInvitationCatalog::new()),
+        told.broadcaster.clone(),
+    );
+    let server = on_one_socket(&told, Agent::Account(AccountId::from("account_ada")));
+    let mut socket = subscribed(&server, &[("mine", "true")]).await;
+    let issued = told
+        .invitations
+        .invite_to_instance(&wiring::an_operator(), "ada@example.com", ORIGIN)
+        .await
+        .expect("an operator may invite");
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    telling
+        .remember(&mut transaction, &issued)
+        .await
+        .expect("remembering should succeed");
+
+    drop(transaction);
+
+    assert!(socket.silent().await);
 }

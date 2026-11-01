@@ -6,7 +6,7 @@ use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standi
 use mailing::{Mail, Mailer};
 use throttling::{Admission, Rule, Throttles};
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::catalog::InvitationSummary;
 use crate::error::InvitationsError;
@@ -48,23 +48,20 @@ impl InvitationService {
 
     pub async fn issue(
         &self,
-        to: &str,
+        transaction: &mut Transaction,
+        to: &EmailAddress,
         origin: &str,
         scope: Scope,
         by_an_operator: bool,
         agent: &Agent,
-    ) -> Result<InvitationSummary, InvitationsError> {
-        let to = EmailAddress::new(to)?;
-        self.admitted(&to).await?;
-
+    ) -> Result<(InvitationSummary, Mail), InvitationsError> {
         let now = self.clock.now();
         let id = InvitationId::generate(now);
         let until = now + Invitation::LASTS;
         let token = InvitationToken::drawn();
-        let _landed = self
-            .events
+        self.events
             .begin(
-                None,
+                Some(transaction),
                 &AggregateId::from(&id),
                 InvitationCommand::Issue {
                     to: to.clone(),
@@ -76,14 +73,12 @@ impl InvitationService {
                 agent,
             )
             .await?;
-        self.mailer
-            .send(invitation_mail(&to, origin, &scope, &token))
-            .await?;
+        let mail = invitation_mail(to, origin, &scope, &token);
 
-        Ok(InvitationSummary {
+        let summary = InvitationSummary {
             id,
             version: Version::of(1),
-            to,
+            to: to.clone(),
             digest: token.digest(),
             scope,
             issued_by: match agent {
@@ -94,7 +89,13 @@ impl InvitationService {
             until,
             outcome: Outcome::Open,
             retire_after: until + InvitationSummary::EXPIRED_LISTED_FOR,
-        })
+        };
+
+        Ok((summary, mail))
+    }
+
+    pub async fn send(&self, mail: Mail) -> Result<(), InvitationsError> {
+        Ok(self.mailer.send(mail).await?)
     }
 
     pub async fn latest(
@@ -106,57 +107,77 @@ impl InvitationService {
 
     pub async fn withdraw(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        self.carry_out(invitation, InvitationCommand::Withdraw, agent)
+        self.carry_out(transaction, invitation, InvitationCommand::Withdraw, agent)
             .await
     }
 
     pub async fn retire(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        self.carry_out(invitation, InvitationCommand::Retire, agent)
+        self.carry_out(transaction, invitation, InvitationCommand::Retire, agent)
             .await
     }
 
     pub async fn accept(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         at: OffsetDateTime,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        self.carry_out(invitation, InvitationCommand::Accept { at }, agent)
-            .await
+        self.carry_out(
+            transaction,
+            invitation,
+            InvitationCommand::Accept { at },
+            agent,
+        )
+        .await
     }
 
     pub async fn decline(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         reason: DeclineReason,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
-        self.carry_out(invitation, InvitationCommand::Decline { reason }, agent)
-            .await
+        self.carry_out(
+            transaction,
+            invitation,
+            InvitationCommand::Decline { reason },
+            agent,
+        )
+        .await
     }
 
     async fn carry_out(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         command: InvitationCommand,
         agent: &Agent,
     ) -> Result<(), InvitationsError> {
         let _landed = self
             .events
-            .execute(None, &AggregateId::from(invitation), command, agent)
+            .execute(
+                Some(transaction),
+                &AggregateId::from(invitation),
+                command,
+                agent,
+            )
             .await?;
 
         Ok(())
     }
 
-    async fn admitted(&self, to: &EmailAddress) -> Result<(), InvitationsError> {
+    pub async fn admitted(&self, to: &EmailAddress) -> Result<(), InvitationsError> {
         match self
             .throttles
             .admit(INVITING, to.as_str(), INVITING_RULE, self.clock.now())

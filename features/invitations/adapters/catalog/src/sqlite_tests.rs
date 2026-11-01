@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use invitations_core::{InvitationCatalog, InvitationId};
+use invitations_core::{CatalogError, InvitationCatalog, InvitationId};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
+use transacting::{SqliteTransactions, Transactions};
 
 use crate::sqlite;
 use crate::sqlite::SqliteInvitationCatalog;
@@ -13,6 +14,7 @@ use crate::suite::Workbench;
 struct OnSqlite {
     fixture: SqliteFixture,
     pool: SqlitePool,
+    transactions: SqliteTransactions,
     store: SqliteInvitationCatalog,
 }
 
@@ -30,6 +32,7 @@ impl Workbench for OnSqlite {
 
         Self {
             fixture,
+            transactions: SqliteTransactions::new(pool.clone()),
             store: SqliteInvitationCatalog::new(pool.clone()),
             pool,
         }
@@ -37,6 +40,10 @@ impl Workbench for OnSqlite {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {
@@ -50,6 +57,7 @@ crate::conformance_tests!(OnSqlite);
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_standing() {
     let bench = OnSqlite::setup().await;
     let catalog = Arc::new(SqliteInvitationCatalog::new(bench.pool.clone()));
+    let transactions = Arc::new(SqliteTransactions::new(bench.pool.clone()));
 
     for nth in 0..40 {
         let summary = suite::a_summary(
@@ -57,10 +65,35 @@ async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_
             "ada@example.com",
         );
         let (remembering, forgetting) = (catalog.clone(), catalog.clone());
+        let (remembered_in, forgotten_in) = (transactions.clone(), transactions.clone());
         let id = summary.id;
         let (remembered, forgotten) = tokio::join!(
-            tokio::spawn(async move { remembering.remember(&summary).await }),
-            tokio::spawn(async move { forgetting.forget(&id, suite::at(5_000)).await }),
+            tokio::spawn(async move {
+                let mut transaction = remembered_in
+                    .begin()
+                    .await
+                    .expect("beginning should succeed");
+                remembering.remember(&mut transaction, &summary).await?;
+                transaction
+                    .finish()
+                    .await
+                    .expect("finishing should succeed");
+                Ok::<_, CatalogError>(())
+            }),
+            tokio::spawn(async move {
+                let mut transaction = forgotten_in
+                    .begin()
+                    .await
+                    .expect("beginning should succeed");
+                forgetting
+                    .forget(&mut transaction, &id, suite::at(5_000))
+                    .await?;
+                transaction
+                    .finish()
+                    .await
+                    .expect("finishing should succeed");
+                Ok::<_, CatalogError>(())
+            }),
         );
         remembered
             .expect("remembering should not panic")

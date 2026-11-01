@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
+use transacting::Transaction;
 
 use crate::id::InvitationId;
 use crate::invitation::{DeclineReason, Invitation, Outcome};
@@ -70,7 +71,11 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait InvitationCatalog: Send + Sync {
-    async fn remember(&self, summary: &InvitationSummary) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &InvitationSummary,
+    ) -> Result<(), CatalogError>;
 
     async fn listed_after(
         &self,
@@ -100,24 +105,35 @@ pub trait InvitationCatalog: Send + Sync {
 
     async fn forget(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
     async fn forget_invitation_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError>;
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError>;
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
 
-    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError>;
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        named: &ProjectName,
+    ) -> Result<(), CatalogError>;
 
     async fn lay_project_tombstone(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
@@ -126,6 +142,7 @@ pub trait InvitationCatalog: Send + Sync {
 
     async fn forget_project_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;

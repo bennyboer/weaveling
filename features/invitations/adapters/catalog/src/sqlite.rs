@@ -12,6 +12,8 @@ use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::sqlite::connection;
 
 use crate::{outcome, scope};
 
@@ -182,7 +184,11 @@ fn to_summary(row: &SqliteRow) -> Result<InvitationSummary, CatalogError> {
 
 #[async_trait]
 impl InvitationCatalog for SqliteInvitationCatalog {
-    async fn remember(&self, summary: &InvitationSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &InvitationSummary,
+    ) -> Result<(), CatalogError> {
         let (kept, declined_for) = outcome::written(summary.outcome);
         let (project, project_role) = scope::written(&summary.scope);
 
@@ -199,7 +205,7 @@ impl InvitationCatalog for SqliteInvitationCatalog {
             .bind(project_role)
             .bind(summary.issued_by.as_ref().map(AccountId::as_str))
             .bind(summary.digest.as_str())
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -281,45 +287,50 @@ impl InvitationCatalog for SqliteInvitationCatalog {
 
     async fn forget(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
         sqlx::query(LAY_INVITATION_TOMBSTONE)
             .bind(invitation.to_string())
             .bind(text::written(at))
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(invitation.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn forget_invitation_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         Ok(sqlx::query(FORGET_OLD_INVITATION_TOMBSTONES)
             .bind(text::written(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected())
     }
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_PERSON)
             .bind(person.account.as_str())
             .bind(&person.name)
             .bind(person.email.as_str())
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -343,12 +354,16 @@ impl InvitationCatalog for SqliteInvitationCatalog {
         Ok(found)
     }
 
-    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        named: &ProjectName,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER_PROJECT_NAME)
             .bind(named.project.as_str())
             .bind(i64::try_from(named.version.count()).map_err(unreachable)?)
             .bind(&named.name)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -357,23 +372,23 @@ impl InvitationCatalog for SqliteInvitationCatalog {
 
     async fn lay_project_tombstone(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
         sqlx::query(LAY_PROJECT_TOMBSTONE)
             .bind(project.as_str())
             .bind(text::written(at))
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET_PROJECT_NAME)
             .bind(project.as_str())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn has_project_tombstone(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
@@ -386,13 +401,14 @@ impl InvitationCatalog for SqliteInvitationCatalog {
 
     async fn forget_project_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         Ok(sqlx::query(FORGET_OLD_PROJECT_TOMBSTONES)
             .bind(text::written(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected())

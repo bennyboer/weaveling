@@ -14,6 +14,9 @@ mod declining_by_token;
 mod invitations_api;
 
 #[cfg(test)]
+mod invitations_core;
+
+#[cfg(test)]
 mod issuing;
 
 #[cfg(test)]

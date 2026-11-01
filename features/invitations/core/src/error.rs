@@ -5,6 +5,7 @@ use mailing::Unsent;
 use thiserror::Error;
 use throttling::ThrottlesError;
 use time::Duration;
+use transacting::{Failure, LostRace};
 
 use crate::catalog::CatalogError;
 use crate::invitation::InvitationError;
@@ -35,4 +36,12 @@ pub enum InvitationsError {
     Catalog(#[from] CatalogError),
     #[error(transparent)]
     Unsent(#[from] Unsent),
+    #[error("the transaction around the change failed")]
+    Transaction(#[from] Failure),
+}
+
+impl LostRace for InvitationsError {
+    fn lost_race(&self) -> bool {
+        matches!(self, InvitationsError::Events(failure) if failure.lost_race())
+    }
 }

@@ -242,11 +242,20 @@ mod tests {
             scope: Scope::Instance,
         };
 
+        let mut transaction = ports
+            .transactions
+            .begin()
+            .await
+            .expect("beginning should succeed");
         ports
             .catalog
-            .remember(&summary)
+            .remember(&mut transaction, &summary)
             .await
             .expect("the list's table lies beside the events");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
 
         assert_eq!(
             ports
@@ -263,8 +272,7 @@ mod tests {
         let context = a_context();
         let ports = InvitationFeature::in_memory(&context);
         let wired = InvitationFeature::wire(&ports, &context);
-        ports
-            .catalog
+        core(&ports, &context)
             .lay_project_tombstone(
                 &ProjectLink::from("project_long_gone"),
                 OffsetDateTime::UNIX_EPOCH,
@@ -303,14 +311,26 @@ mod tests {
             )
             .await
             .expect("an operator may invite");
+        let mut transaction = ports
+            .transactions
+            .begin()
+            .await
+            .expect("beginning should succeed");
         ports
             .catalog
-            .remember(&InvitationSummary {
-                retire_after: OffsetDateTime::UNIX_EPOCH,
-                ..issued.clone()
-            })
+            .remember(
+                &mut transaction,
+                &InvitationSummary {
+                    retire_after: OffsetDateTime::UNIX_EPOCH,
+                    ..issued.clone()
+                },
+            )
             .await
             .expect("remembering should succeed");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
 
         let chore = wired
             .chores

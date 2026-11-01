@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use email::EmailAddress;
@@ -9,18 +9,19 @@ use invitations_core::{
     Outcome, Person, ProjectLink, ProjectName,
 };
 use time::OffsetDateTime;
+use transacting::{Failure, Transaction};
 
 type Kept = BTreeMap<InvitationId, InvitationSummary>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryInvitationCatalog {
-    tombstones: RwLock<BTreeMap<InvitationId, OffsetDateTime>>,
-    kept: RwLock<Kept>,
-    people: RwLock<BTreeMap<String, Person>>,
-    projects: RwLock<KnownProjects>,
+    tombstones: Arc<RwLock<BTreeMap<InvitationId, OffsetDateTime>>>,
+    kept: Arc<RwLock<Kept>>,
+    people: Arc<RwLock<BTreeMap<String, Person>>>,
+    projects: Arc<RwLock<KnownProjects>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct KnownProjects {
     names: BTreeMap<String, ProjectName>,
     tombstones: BTreeMap<String, OffsetDateTime>,
@@ -55,11 +56,61 @@ impl InMemoryInvitationCatalog {
             .cloned()
             .collect()
     }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
+        let tombstones = self
+            .tombstones
+            .read()
+            .expect("invitation catalog lock poisoned")
+            .clone();
+        let kept = self
+            .kept
+            .read()
+            .expect("invitation catalog lock poisoned")
+            .clone();
+        let people = self
+            .people
+            .read()
+            .expect("invitation catalog lock poisoned")
+            .clone();
+        let projects = self
+            .projects
+            .read()
+            .expect("invitation catalog lock poisoned")
+            .clone();
+        let into_tombstones = self.tombstones.clone();
+        let into_kept = self.kept.clone();
+        let into_people = self.people.clone();
+        let into_projects = self.projects.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_tombstones
+                .write()
+                .expect("invitation catalog lock poisoned") = tombstones;
+            *into_kept.write().expect("invitation catalog lock poisoned") = kept;
+            *into_people
+                .write()
+                .expect("invitation catalog lock poisoned") = people;
+            *into_projects
+                .write()
+                .expect("invitation catalog lock poisoned") = projects;
+        })
+        .map_err(unreachable)
+    }
+}
+
+fn unreachable(failure: Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
 }
 
 #[async_trait]
 impl InvitationCatalog for InMemoryInvitationCatalog {
-    async fn remember(&self, summary: &InvitationSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &InvitationSummary,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let tombstones = self
             .tombstones
             .read()
@@ -137,9 +188,11 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
 
     async fn forget(
         &self,
+        transaction: &mut Transaction,
         invitation: &InvitationId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut tombstones = self
             .tombstones
             .write()
@@ -152,9 +205,11 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
 
     async fn forget_invitation_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut tombstones = self
             .tombstones
             .write()
@@ -174,7 +229,12 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
         Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
     }
 
-    async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
+    async fn remember_person(
+        &self,
+        transaction: &mut Transaction,
+        person: &Person,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.people
             .write()
             .expect("invitation catalog lock poisoned")
@@ -183,7 +243,12 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
         Ok(())
     }
 
-    async fn remember_project_name(&self, named: &ProjectName) -> Result<(), CatalogError> {
+    async fn remember_project_name(
+        &self,
+        transaction: &mut Transaction,
+        named: &ProjectName,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut projects = self
             .projects
             .write()
@@ -203,9 +268,11 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
 
     async fn lay_project_tombstone(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut projects = self
             .projects
             .write()
@@ -227,9 +294,11 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
 
     async fn forget_project_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut projects = self
             .projects
             .write()
@@ -286,20 +355,29 @@ mod tests {
     use async_trait::async_trait;
 
     use crate::InMemoryInvitationCatalog;
+    use transacting::{InMemoryTransactions, Transactions};
+
     use crate::suite::Workbench;
 
-    struct InMemory(InMemoryInvitationCatalog);
+    struct InMemory(InMemoryInvitationCatalog, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemoryInvitationCatalog;
 
         async fn setup() -> Self {
-            Self(InMemoryInvitationCatalog::new())
+            Self(
+                InMemoryInvitationCatalog::new(),
+                InMemoryTransactions::new(),
+            )
         }
 
         fn store(&self) -> &Self::Store {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

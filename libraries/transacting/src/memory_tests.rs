@@ -125,3 +125,35 @@ async fn each_feature_writes_apart_from_the_others() {
         "a transaction of one feature does not hold up another's"
     );
 }
+
+#[tokio::test]
+async fn a_transaction_whose_commit_is_refused_is_rolled_back_and_runs_nothing_that_follows() {
+    let transactions = InMemoryTransactions::refusing_commits();
+    let written = Arc::new(Mutex::new(vec!["warp"]));
+    let followed = Arc::new(Mutex::new(false));
+    let mut transaction = transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    let undoing = written.clone();
+    memory::undo_on_rollback(&mut transaction, move || {
+        undoing.lock().expect("nothing panics holding it").clear();
+    })
+    .expect("a transaction begun in memory takes an undo");
+    let following = followed.clone();
+    transaction.after_commit(async move {
+        *following.lock().expect("nothing panics holding it") = true;
+    });
+
+    let finished = transaction.finish().await;
+
+    assert!(finished.is_err());
+    assert!(
+        written
+            .lock()
+            .expect("nothing panics holding it")
+            .is_empty(),
+        "a commit refused leaves nothing behind"
+    );
+    assert!(!*followed.lock().expect("nothing panics holding it"));
+}

@@ -4238,6 +4238,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-invitations-core",
  "weaveling-test-harness",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4300,6 +4301,7 @@ dependencies = [
  "weaveling-invitations-core",
  "weaveling-live",
  "weaveling-serving",
+ "weaveling-transacting",
 ]
 
 [[package]]
