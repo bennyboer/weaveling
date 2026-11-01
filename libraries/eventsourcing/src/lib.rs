@@ -35,7 +35,7 @@ pub use message_mapping::MessageMapping;
 pub use metadata::EventMetadata;
 pub use patch::{Patch, Patcher};
 #[cfg(any(test, feature = "testing"))]
-pub use refusing::RefusesAppending;
+pub use refusing::{FailsAppending, RefusesAppending};
 pub use service::{Appended, EventSourcingService, ServiceError, Standing};
 pub use store::{EventStore, StoreError};
 pub use version::Version;

@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use eventsourcing::Version;
 use thiserror::Error;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::id::ProjectId;
 use crate::name::ProjectName;
@@ -26,12 +27,22 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait ProjectCatalog: Send + Sync {
-    async fn remember(&self, summary: &ProjectSummary) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &ProjectSummary,
+    ) -> Result<(), CatalogError>;
 
-    async fn forget(&self, id: &ProjectId, at: OffsetDateTime) -> Result<(), CatalogError>;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        id: &ProjectId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;

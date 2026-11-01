@@ -153,9 +153,14 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
                 .forget_tombstones_laid_before(at(1_001), 10)
                 .await
                 .expect("forgetting should succeed"),
+            wired
+                .projects
+                .forget_tombstones_laid_before(at(1_001), 10)
+                .await
+                .expect("forgetting should succeed"),
         ),
-        (0, 1),
-        "its tombstone was laid as it was catalogued gone, by the clock"
+        (0, 1, 0),
+        "its tombstone was laid as it was catalogued gone, by the clock, and forgotten for good"
     );
 }
 

@@ -1,6 +1,9 @@
+use std::ops::Deref;
+
 use eventsourcing::Version;
-use projects_core::{ProjectCatalog, ProjectId, ProjectName, ProjectSummary};
+use projects_core::{CatalogError, ProjectCatalog, ProjectId, ProjectName, ProjectSummary};
 use time::OffsetDateTime;
+use transacting::{Transaction, Transactions};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -10,7 +13,69 @@ pub trait Workbench: Sized {
 
     fn store(&self) -> &Self::Store;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Store> {
+        Committing {
+            catalog: self.store(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, C> {
+    catalog: &'a C,
+    transactions: &'a dyn Transactions,
+}
+
+fn unreachable(failure: transacting::Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
+impl<C: ProjectCatalog> Committing<'_, C> {
+    pub async fn begun(&self) -> Transaction {
+        self.transactions
+            .begin()
+            .await
+            .expect("beginning should succeed")
+    }
+
+    pub async fn remember(&self, summary: &ProjectSummary) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog.remember(&mut transaction, summary).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget(&self, id: &ProjectId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog.forget(&mut transaction, id, at).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let forgotten = self
+            .catalog
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(forgotten)
+    }
+}
+
+impl<C> Deref for Committing<'_, C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        self.catalog
+    }
 }
 
 pub fn at(seconds: i64) -> OffsetDateTime {
@@ -27,7 +92,7 @@ pub fn a_summary(id: ProjectId, name: &str) -> ProjectSummary {
     }
 }
 
-pub async fn a_remembered_project_is_listed(catalog: &impl ProjectCatalog) {
+pub async fn a_remembered_project_is_listed(catalog: &Committing<'_, impl ProjectCatalog>) {
     let summary = a_summary(ProjectId::generate(at(1_000)), "The Weaver's Apprentice");
 
     catalog
@@ -40,7 +105,7 @@ pub async fn a_remembered_project_is_listed(catalog: &impl ProjectCatalog) {
     assert_eq!(found, vec![summary]);
 }
 
-pub async fn an_empty_catalog_lists_nothing(catalog: &impl ProjectCatalog) {
+pub async fn an_empty_catalog_lists_nothing(catalog: &Committing<'_, impl ProjectCatalog>) {
     let found = catalog
         .all()
         .await
@@ -50,7 +115,7 @@ pub async fn an_empty_catalog_lists_nothing(catalog: &impl ProjectCatalog) {
 }
 
 pub async fn remembering_the_same_project_again_replaces_what_was_there(
-    catalog: &impl ProjectCatalog,
+    catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     let id = ProjectId::generate(at(1_000));
     catalog
@@ -71,7 +136,9 @@ pub async fn remembering_the_same_project_again_replaces_what_was_there(
     assert_eq!(found, vec![later], "a catalog holds one row per project");
 }
 
-pub async fn a_forgotten_project_is_no_longer_listed(catalog: &impl ProjectCatalog) {
+pub async fn a_forgotten_project_is_no_longer_listed(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
     let id = ProjectId::generate(at(1_000));
     catalog
         .remember(&a_summary(id, "Abandoned"))
@@ -92,14 +159,16 @@ pub async fn a_forgotten_project_is_no_longer_listed(catalog: &impl ProjectCatal
     );
 }
 
-pub async fn forgetting_something_never_remembered_is_harmless(catalog: &impl ProjectCatalog) {
+pub async fn forgetting_something_never_remembered_is_harmless(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
     catalog
         .forget(&ProjectId::generate(at(1_000)), at(5_000))
         .await
         .expect("forgetting an unknown project should not fail");
 }
 
-pub async fn the_newest_project_is_listed_first(catalog: &impl ProjectCatalog) {
+pub async fn the_newest_project_is_listed_first(catalog: &Committing<'_, impl ProjectCatalog>) {
     let started: Vec<ProjectId> = (1..=6)
         .map(|nth| ProjectId::generate(at(nth * 1_000)))
         .collect();
@@ -120,7 +189,9 @@ pub async fn the_newest_project_is_listed_first(catalog: &impl ProjectCatalog) {
     );
 }
 
-pub async fn the_moments_a_project_carries_survive_the_round_trip(catalog: &impl ProjectCatalog) {
+pub async fn the_moments_a_project_carries_survive_the_round_trip(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
     let mut summary = a_summary(ProjectId::generate(at(1_000)), "Timestamped");
     summary.created_at = at(1_700_000_000);
     summary.updated_at = at(1_700_086_400);
@@ -143,7 +214,7 @@ pub async fn the_moments_a_project_carries_survive_the_round_trip(catalog: &impl
 }
 
 pub async fn among_some_ids_only_those_projects_are_listed_newest_first(
-    catalog: &impl ProjectCatalog,
+    catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     let started: Vec<ProjectId> = (1..=4)
         .map(|nth| ProjectId::generate(at(nth * 1_000)))
@@ -168,7 +239,7 @@ pub async fn among_some_ids_only_those_projects_are_listed_newest_first(
     );
 }
 
-pub async fn among_no_ids_nothing_is_listed(catalog: &impl ProjectCatalog) {
+pub async fn among_no_ids_nothing_is_listed(catalog: &Committing<'_, impl ProjectCatalog>) {
     catalog
         .remember(&a_summary(ProjectId::generate(at(1_000)), "A project"))
         .await
@@ -184,12 +255,12 @@ pub async fn among_no_ids_nothing_is_listed(catalog: &impl ProjectCatalog) {
     );
 }
 
-async fn listed(catalog: &impl ProjectCatalog) -> Vec<ProjectSummary> {
+async fn listed(catalog: &Committing<'_, impl ProjectCatalog>) -> Vec<ProjectSummary> {
     catalog.all().await.expect("listing should succeed")
 }
 
 pub async fn a_forgotten_project_heard_of_late_is_not_remembered_again(
-    catalog: &impl ProjectCatalog,
+    catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     let gone = a_summary(ProjectId::generate(at(1_000)), "Working Title");
     catalog
@@ -219,7 +290,7 @@ pub async fn a_forgotten_project_heard_of_late_is_not_remembered_again(
 }
 
 pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
-    catalog: &impl ProjectCatalog,
+    catalog: &Committing<'_, impl ProjectCatalog>,
 ) {
     let (older, newer, latest) = (
         a_summary(ProjectId::generate(at(1_000)), "Working Title"),
@@ -252,7 +323,9 @@ pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     );
 }
 
-pub async fn an_older_project_summary_heard_late_changes_nothing(catalog: &impl ProjectCatalog) {
+pub async fn an_older_project_summary_heard_late_changes_nothing(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
     let summary = a_summary(ProjectId::generate(at(1_000)), "Working Title");
     let mut newer = summary.clone();
     newer.version = Version::of(2);
@@ -269,6 +342,77 @@ pub async fn an_older_project_summary_heard_late_changes_nothing(catalog: &impl 
     assert_eq!(listed(catalog).await, vec![newer]);
 }
 
+pub async fn a_project_remembered_in_a_transaction_that_is_dropped_was_never_remembered(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
+    let mut transaction = catalog.begun().await;
+    catalog
+        .catalog
+        .remember(
+            &mut transaction,
+            &a_summary(ProjectId::generate(at(1_000)), "Working Title"),
+        )
+        .await
+        .expect("remembering should succeed");
+
+    drop(transaction);
+
+    assert!(listed(catalog).await.is_empty());
+}
+
+pub async fn a_project_forgotten_in_a_transaction_that_is_dropped_is_still_there_and_can_be_remembered(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
+    let mut kept = a_summary(ProjectId::generate(at(1_000)), "Working Title");
+    catalog
+        .remember(&kept)
+        .await
+        .expect("remembering should succeed");
+    let mut transaction = catalog.begun().await;
+    catalog
+        .catalog
+        .forget(&mut transaction, &kept.id, at(5_000))
+        .await
+        .expect("forgetting should succeed");
+
+    drop(transaction);
+    kept.version = Version::of(2);
+    catalog
+        .remember(&kept)
+        .await
+        .expect("remembering should succeed");
+
+    assert_eq!(
+        listed(catalog).await,
+        vec![kept],
+        "neither the delete nor the tombstone outlives the transaction"
+    );
+}
+
+pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
+    let gone = a_summary(ProjectId::generate(at(1_000)), "Working Title");
+    catalog
+        .forget(&gone.id, at(5_000))
+        .await
+        .expect("forgetting should succeed");
+    let mut transaction = catalog.begun().await;
+    catalog
+        .catalog
+        .forget_tombstones_laid_before(&mut transaction, at(8_000), 10)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    drop(transaction);
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(listed(catalog).await.is_empty());
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -277,7 +421,7 @@ macro_rules! catalog_conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.store()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -286,6 +430,9 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!($workbench, a_project_remembered_in_a_transaction_that_is_dropped_was_never_remembered);
+        $crate::catalog_conformance_case!($workbench, a_project_forgotten_in_a_transaction_that_is_dropped_is_still_there_and_can_be_remembered);
+        $crate::catalog_conformance_case!($workbench, tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand);
         $crate::catalog_conformance_case!(
             $workbench,
             a_forgotten_project_heard_of_late_is_not_remembered_again

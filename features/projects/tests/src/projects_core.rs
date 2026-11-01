@@ -1,9 +1,15 @@
 use std::sync::Arc;
 
+use authorizing::AllowingEverything;
 use clock::FixedClock;
-use eventsourcing::{Agent, ServiceError, Version};
-use projects_core::{InvalidProjectName, ProjectError, ProjectId, ProjectSummary, RawDetails};
+use eventsourcing::{Agent, FailsAppending, InMemoryEventStore, ServiceError, StoreError, Version};
+use projects_catalog::InMemoryProjectCatalog;
+use projects_core::{
+    InvalidProjectName, ProjectError, ProjectEvent, ProjectId, ProjectSummary, ProjectsCore,
+    ProjectsError, RawDetails,
+};
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::Wired;
@@ -312,5 +318,117 @@ async fn renaming_from_a_stale_version_is_refused() {
             ))
         ),
         "expected a stale-version refusal, got {refused:?}"
+    );
+}
+
+async fn a_project_renamed_while_failing(
+    failing: fn(Arc<InMemoryEventStore<ProjectEvent>>) -> FailsAppending<ProjectEvent>,
+    expected: Option<Version>,
+) -> (Result<Version, ProjectsError>, String, u8) {
+    let store = Arc::new(InMemoryEventStore::new());
+    let core_over = |store| {
+        ProjectsCore::new(
+            store,
+            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryProjectCatalog::new()),
+            Arc::new(AllowingEverything),
+            Arc::new(FixedClock::new(at(1_000))),
+        )
+    };
+    let (id, _) = core_over(store.clone())
+        .start("Tapestry", &RawDetails::default(), &nobody())
+        .await
+        .expect("starting should succeed");
+    let losing = Arc::new(failing(store.clone()));
+
+    let renamed = core_over(losing.clone())
+        .rename(&id.to_string(), "Loom", expected, &nobody())
+        .await
+        .map(|standing| standing.version);
+    let name = core_over(store)
+        .read(&id.to_string(), &nobody())
+        .await
+        .expect("it should be there")
+        .state
+        .name()
+        .as_str()
+        .to_owned();
+
+    (renamed, name, losing.left())
+}
+
+#[tokio::test]
+async fn a_rename_that_lost_a_race_is_tried_again_and_lands() {
+    let (renamed, name, _) =
+        a_project_renamed_while_failing(|store| FailsAppending::losing_races(store, 4), None).await;
+
+    assert_eq!(renamed.expect("the fifth try lands"), Version::of(2));
+    assert_eq!(name, "Loom");
+}
+
+#[tokio::test]
+async fn a_rename_that_lost_every_race_it_may_try_is_a_conflict() {
+    let (renamed, name, left) =
+        a_project_renamed_while_failing(|store| FailsAppending::losing_races(store, 6), None).await;
+
+    assert!(matches!(
+        renamed,
+        Err(ProjectsError::Events(ServiceError::Store(
+            StoreError::Outdated { .. }
+        )))
+    ));
+    assert_eq!(
+        (name.as_str(), left),
+        ("Tapestry", 1),
+        "five tries, no more"
+    );
+}
+
+#[tokio::test]
+async fn a_rename_aimed_at_a_version_that_lost_a_race_is_not_tried_again() {
+    let (renamed, name, left) = a_project_renamed_while_failing(
+        |store| FailsAppending::losing_races(store, 2),
+        Some(Version::of(1)),
+    )
+    .await;
+
+    assert!(matches!(
+        renamed,
+        Err(ProjectsError::Events(ServiceError::Store(
+            StoreError::Outdated { .. }
+        )))
+    ));
+    assert_eq!(
+        (name.as_str(), left),
+        ("Tapestry", 1),
+        "whoever named a version hears that it moved on, a 412, rather than having it papered over"
+    );
+}
+
+#[tokio::test]
+async fn a_rename_whose_store_broke_is_not_tried_again() {
+    let (renamed, _, left) =
+        a_project_renamed_while_failing(|store| FailsAppending::broken(store, 2), None).await;
+
+    assert!(matches!(
+        renamed,
+        Err(ProjectsError::Events(ServiceError::Store(
+            StoreError::Backend { .. }
+        )))
+    ));
+    assert_eq!(left, 1, "only a lost race is tried again");
+}
+
+#[tokio::test]
+async fn a_rename_aimed_at_the_version_it_stands_at_lands() {
+    let (renamed, name, _) = a_project_renamed_while_failing(
+        |store| FailsAppending::losing_races(store, 0),
+        Some(Version::of(1)),
+    )
+    .await;
+
+    assert_eq!(
+        (renamed.expect("renaming should succeed"), name.as_str()),
+        (Version::of(2), "Loom")
     );
 }

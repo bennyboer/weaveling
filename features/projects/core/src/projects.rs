@@ -16,6 +16,7 @@ use crate::service::{self, ProjectService, RawDetails};
 pub struct ProjectsCore {
     clock: Arc<dyn Clock>,
     service: ProjectService,
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn ProjectCatalog>,
     authorizer: Arc<dyn Authorizer>,
 }
@@ -29,7 +30,8 @@ impl ProjectsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: ProjectService::new(store, transactions, clock.clone()),
+            service: ProjectService::new(store, transactions.clone(), clock.clone()),
+            transactions,
             clock,
             catalog,
             authorizer,
@@ -120,22 +122,33 @@ impl ProjectsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, ProjectsError> {
-        Ok(self
+        let mut transaction = self.transactions.begin().await?;
+        let forgotten = self
             .catalog
-            .forget_tombstones_laid_before(before, at_most)
-            .await?)
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(forgotten)
     }
 
     pub async fn catalogue(&self, id: &ProjectId) -> Result<(), ProjectsError> {
         let standing = self.service.latest_even_deleted(id).await?;
 
+        let mut transaction = self.transactions.begin().await?;
         if standing.state.is_deleted() {
-            self.catalog.forget(id, self.clock.now()).await?;
+            self.catalog
+                .forget(&mut transaction, id, self.clock.now())
+                .await?;
         } else {
             self.catalog
-                .remember(&ProjectSummary::of(*id, standing.version, &standing.state))
+                .remember(
+                    &mut transaction,
+                    &ProjectSummary::of(*id, standing.version, &standing.state),
+                )
                 .await?;
         }
+        transaction.finish().await?;
 
         Ok(())
     }

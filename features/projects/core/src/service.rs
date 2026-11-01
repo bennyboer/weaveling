@@ -15,6 +15,7 @@ use crate::project::{KIND, Project, ProjectCommand, ProjectEvent};
 #[derive(Clone)]
 pub struct ProjectService {
     events: Arc<EventSourcingService<Project>>,
+    transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
 }
 
@@ -27,9 +28,10 @@ impl ProjectService {
         Self {
             events: Arc::new(EventSourcingService::new(
                 store,
-                transactions,
+                transactions.clone(),
                 clock.clone(),
             )),
+            transactions,
             clock,
         }
     }
@@ -41,16 +43,18 @@ impl ProjectService {
         agent: &Agent,
     ) -> Result<ProjectId, ProjectsError> {
         let id = ProjectId::generate(self.clock.now());
+        let command = ProjectCommand::Start(ProjectName::new(name)?, details.checked()?);
 
-        let _landed = self
-            .events
+        let mut transaction = self.transactions.begin().await?;
+        self.events
             .begin(
-                None,
+                Some(&mut transaction),
                 &AggregateId::from(&id),
-                ProjectCommand::Start(ProjectName::new(name)?, details.checked()?),
+                command,
                 agent,
             )
             .await?;
+        transaction.finish().await?;
 
         Ok(id)
     }
@@ -124,14 +128,22 @@ impl ProjectService {
     ) -> Result<Version, ProjectsError> {
         let key = AggregateId::from(id);
 
-        let landed = match expected {
-            Some(expected) => {
-                self.events
-                    .execute_at(None, &key, expected, command, agent)
+        let Some(expected) = expected else {
+            return transacting::retrying!(&*self.transactions, |transaction| {
+                Ok(self
+                    .events
+                    .execute(Some(transaction), &key, command.clone(), agent)
                     .await?
-            }
-            None => self.events.execute(None, &key, command, agent).await?,
+                    .version)
+            });
         };
+
+        let mut transaction = self.transactions.begin().await?;
+        let landed = self
+            .events
+            .execute_at(Some(&mut transaction), &key, expected, command, agent)
+            .await?;
+        transaction.finish().await?;
 
         Ok(landed.version)
     }

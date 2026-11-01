@@ -6,6 +6,8 @@ use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::sqlite::connection;
 
 const REMEMBER: &str = "
     INSERT INTO project_summaries (project, version, name, created_at, updated_at)
@@ -86,46 +88,55 @@ fn to_summary(row: &SqliteRow) -> Result<ProjectSummary, CatalogError> {
 
 #[async_trait]
 impl ProjectCatalog for SqliteProjectCatalog {
-    async fn remember(&self, summary: &ProjectSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &ProjectSummary,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.version.count() as i64)
             .bind(summary.name.as_str())
             .bind(text::written(summary.created_at))
             .bind(text::written(summary.updated_at))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
     }
 
-    async fn forget(&self, id: &ProjectId, at: OffsetDateTime) -> Result<(), CatalogError> {
-        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        id: &ProjectId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         sqlx::query(LAY_TOMBSTONE)
             .bind(id.to_string())
             .bind(clock::text::written(at))
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(id.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         Ok(sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
             .bind(clock::text::written(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected())

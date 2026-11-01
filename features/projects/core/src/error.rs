@@ -2,6 +2,7 @@ use authorizing::AuthorizerError;
 use eventsourcing::ServiceError;
 use ids::InvalidId;
 use thiserror::Error;
+use transacting::{Failure, LostRace};
 
 use crate::catalog::CatalogError;
 use crate::details::{InvalidBookLanguage, InvalidProjectDescription, InvalidQuotationMarks};
@@ -28,4 +29,12 @@ pub enum ProjectsError {
     Authorizer(#[from] AuthorizerError),
     #[error("only an owner of the project may do this")]
     NotAnOwner,
+    #[error("the transaction around the change failed")]
+    Transaction(#[from] Failure),
+}
+
+impl LostRace for ProjectsError {
+    fn lost_race(&self) -> bool {
+        matches!(self, ProjectsError::Events(failure) if failure.lost_race())
+    }
 }
