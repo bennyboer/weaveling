@@ -4,9 +4,10 @@ use async_trait::async_trait;
 use clock::FixedClock;
 use messaging::{FakePublisher, Message};
 use outbox::{Outbox, SqliteOutbox};
-use scenes_core::{SceneId, StoreError};
+use scenes_core::{Scene, SceneId, SceneStore, StoreError};
 use sqlx::{Row, SqlitePool};
 use test_harness::SqliteFixture;
+use tokio::task::JoinSet;
 
 use crate::sqlite;
 use crate::sqlite::SqliteSceneStore;
@@ -184,4 +185,44 @@ async fn walking_a_project_comes_out_of_the_index() {
     );
 
     bench.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
+    let (fixture, pool) = a_migrated_schema().await;
+    let store = Arc::new(SqliteSceneStore::compacting_after(pool, 2));
+    let id = suite::an_id(1_000);
+    store
+        .create(&Scene::empty(id, suite::a_project()))
+        .await
+        .expect("creating should succeed");
+
+    let mut writing = JoinSet::new();
+    for nth in 0..200 {
+        let store = store.clone();
+        writing.spawn(async move {
+            store
+                .apply(id, &suite::a_paragraph(&format!("[{nth}]")))
+                .await
+        });
+    }
+    for _ in 0..50 {
+        let store = store.clone();
+        writing.spawn(async move { store.compact(id).await.map(|_| ()) });
+    }
+    while let Some(written) = writing.join_next().await {
+        written
+            .expect("writing should not panic")
+            .expect("writing should succeed");
+    }
+
+    let text = store.load(id).await.expect("loading should succeed").text();
+    let lost: Vec<usize> = (0..200)
+        .filter(|nth| !text.contains(&format!("[{nth}]")))
+        .collect();
+    assert!(
+        lost.is_empty(),
+        "edits written while the scene was compacted were lost: {lost:?}"
+    );
+    fixture.cleanup().await;
 }

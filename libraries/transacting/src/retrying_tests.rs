@@ -1,0 +1,160 @@
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use crate::retrying::TRIES;
+use crate::{Failure, InMemoryTransactions, LostRace, Transaction, memory};
+
+#[derive(Debug, PartialEq)]
+enum Refusal {
+    Lost,
+    Other,
+    Failed,
+}
+
+impl LostRace for Refusal {
+    fn lost_race(&self) -> bool {
+        matches!(self, Refusal::Lost)
+    }
+}
+
+impl From<Failure> for Refusal {
+    fn from(_: Failure) -> Self {
+        Refusal::Failed
+    }
+}
+
+#[derive(Clone, Default)]
+struct Words(Arc<Mutex<Vec<String>>>);
+
+impl Words {
+    fn write(&self, transaction: &mut Transaction, word: String) {
+        self.0.lock().expect("nothing panics holding it").push(word);
+        let words = self.0.clone();
+        memory::undo_on_rollback(transaction, move || {
+            words.lock().expect("nothing panics holding it").pop();
+        })
+        .expect("a transaction begun in memory takes an undo");
+    }
+
+    fn written(&self) -> Vec<String> {
+        self.0.lock().expect("nothing panics holding it").clone()
+    }
+}
+
+#[tokio::test]
+async fn a_try_that_wins_is_finished_and_answered_at_once() {
+    let words = Words::default();
+    let mut tried = 0;
+
+    let answered: Result<_, Refusal> =
+        crate::retrying!(&InMemoryTransactions::new(), |transaction| {
+            tried += 1;
+            words.write(transaction, "warp".to_owned());
+            Ok("woven")
+        });
+
+    assert_eq!(
+        (answered, tried, words.written()),
+        (Ok("woven"), 1, vec!["warp".to_owned()])
+    );
+}
+
+#[tokio::test]
+async fn a_lost_race_is_tried_again_in_a_fresh_transaction() {
+    let words = Words::default();
+    let mut tried = 0;
+
+    let answered: Result<_, Refusal> =
+        crate::retrying!(&InMemoryTransactions::new(), |transaction| {
+            tried += 1;
+            words.write(transaction, format!("try {tried}"));
+            if tried < 3 {
+                return Err(Refusal::Lost);
+            }
+            Ok(tried)
+        });
+
+    assert_eq!(answered, Ok(3));
+    assert_eq!(
+        words.written(),
+        vec!["try 3".to_owned()],
+        "what a lost try wrote is rolled back before the next begins"
+    );
+}
+
+#[tokio::test]
+async fn after_five_lost_races_the_last_loss_is_the_answer() {
+    let words = Words::default();
+    let mut tried = 0;
+
+    let answered: Result<_, Refusal> =
+        crate::retrying!(&InMemoryTransactions::new(), |transaction| {
+            tried += 1;
+            words.write(transaction, format!("try {tried}"));
+            Err(Refusal::Lost)
+        });
+
+    assert_eq!((answered, tried), (Err(Refusal::Lost), TRIES));
+    assert!(words.written().is_empty());
+}
+
+#[tokio::test]
+async fn a_refusal_other_than_a_lost_race_is_answered_without_trying_again() {
+    let words = Words::default();
+    let mut tried = 0;
+
+    let answered: Result<_, Refusal> =
+        crate::retrying!(&InMemoryTransactions::new(), |transaction| {
+            tried += 1;
+            words.write(transaction, "warp".to_owned());
+            Err(Refusal::Other)
+        });
+
+    assert_eq!((answered, tried), (Err(Refusal::Other), 1));
+    assert!(words.written().is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_retried_write_runs_on_any_task() {
+    let transactions = InMemoryTransactions::new();
+    let words = Words::default();
+
+    let spawned = tokio::spawn({
+        let words = words.clone();
+        async move {
+            let answered: Result<_, Refusal> = crate::retrying!(&transactions, |transaction| {
+                words.write(transaction, "warp".to_owned());
+                tokio::task::yield_now().await;
+                Ok(())
+            });
+            answered
+        }
+    });
+
+    assert_eq!(spawned.await.expect("the task should not panic"), Ok(()));
+    assert_eq!(words.written(), vec!["warp".to_owned()]);
+}
+
+#[test]
+fn each_pause_is_drawn_up_to_twice_the_one_before_starting_at_ten_milliseconds() {
+    for (tried, longest) in [(1, 10), (2, 20), (3, 40), (4, 80)] {
+        let longest = Duration::from_millis(longest);
+        let drawn: Vec<Duration> = (0..200)
+            .map(|_| crate::retrying::pause_after(tried))
+            .collect();
+
+        assert!(
+            drawn.iter().all(|pause| *pause <= longest),
+            "after try {tried} no pause is longer than {longest:?}"
+        );
+        assert!(
+            drawn.iter().any(|pause| *pause > longest / 2),
+            "after try {tried} pauses reach up towards {longest:?}"
+        );
+        assert!(
+            drawn.iter().collect::<HashSet<_>>().len() > 100,
+            "pauses are drawn at random, so writers that collided do not collide again"
+        );
+    }
+}

@@ -55,7 +55,7 @@ impl InMemoryOutbox {
     pub fn enqueue_within(self: &Arc<Self>, transaction: &mut Transaction, message: Message) {
         let outbox = self.clone();
 
-        transaction.after_commit(move || outbox.enqueue(message));
+        transaction.after_commit(async move { outbox.enqueue(message) });
     }
 
     pub fn waiting_to_be_published(&self) -> usize {

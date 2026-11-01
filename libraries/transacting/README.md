@@ -17,7 +17,18 @@ transaction.finish().await?;
 
 **Finished, or rolled back.** A transaction is committed only by `finish()`; dropped unfinished, through an early `?` say, what it wrote is rolled back, never half committed. It is `#[must_use]`, so one begun and never used is a compiler warning. One dropped unfinished is not logged: that is how every use case that fails on an `?` rolls back, and a `finish()` forgotten shows as writes that never land, which the feature's tests see.
 
-**What follows a commit.** `after_commit(followup)` asks for something to happen once the transaction has committed, never if it is dropped: waking the outbox's relay, say, which must not go looking before there is anything to find. Followups run in the order they were asked for, and one asked through a borrowed transaction waits for its owner's `finish()`.
+**What follows a commit.** `after_commit(followup)` asks for a future to run once the transaction has committed, never if it is dropped: waking the outbox's relay, say, which must not go looking before there is anything to find, or taking a snapshot. `finish()` awaits each followup in the order they were asked for, after the commit, so a followup answers `()` and deals with its own failure: what follows a commit cannot undo it. One asked through a borrowed transaction waits for its owner's `finish()`.
+
+**Retrying a lost race.** Whoever owns a transaction retries it, as [ARCHITECTURE](../../ARCHITECTURE.md) has it, through one macro:
+
+```rust
+transacting::retrying!(&*self.transactions, |transaction| {
+    self.service.execute(Some(transaction), &id, command, agent).await?;
+    Ok(())
+})
+```
+
+The block runs in a fresh transaction, finished when it answers `Ok`, dropped and so rolled back when it answers `Err`; `?` and `return` end the try, not the method. An error that is a **`LostRace`** (`lost_race()` true) is tried again, up to `retrying::TRIES`, five, after a pause drawn at random up to 10 ms and twice as long after each try, so writers that collided spread out; any other error, and the fifth lost race, is the answer. The error type takes a `Failure` through `From`. A macro rather than a function taking an async closure, since such a closure borrowing `&self` makes a future that is not `Send` on stable Rust; written out where it is used, the loop borrows what it likes.
 
 **Backends.** One `Transactions` per feature, on that feature's own database:
 
@@ -27,4 +38,4 @@ transaction.finish().await?;
 
 A transaction handed to an adapter of another backend is refused with **`Failure::BegunElsewhere`**; a backend that fails is **`Failure::Backend`**.
 
-**Conformance.** `suite.rs` holds the cases every backend passes: what a finished transaction wrote is kept, what a dropped one wrote is gone, a borrowed transaction is finished only by its owner, and what follows a commit runs only after one. Each backend adds what is its own: memory and SQLite that a second writer waits for the first, memory that undos run last first.
+**Conformance.** `suite.rs` holds the cases every backend passes: what a finished transaction wrote is kept, what a dropped one wrote is gone, a borrowed transaction is finished only by its owner, and what follows a commit runs only after one, each awaited in turn. `retrying_tests.rs` holds the retry's: a won try answered at once, a lost one tried again in a fresh transaction with what it wrote rolled back, the fifth loss answered, another error never retried, a retry spawned on another task, and the pauses' bounds and spread. Each backend adds what is its own: memory and SQLite that a second writer waits for the first, memory that undos run last first.

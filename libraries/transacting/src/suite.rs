@@ -1,4 +1,6 @@
+use std::future::Future;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use crate::{Joined, Transaction, Transactions};
 
@@ -138,10 +140,22 @@ impl Followups {
         Self(Arc::new(Mutex::new(Vec::new())))
     }
 
-    fn noting(&self, what: &'static str) -> impl FnOnce() + Send + 'static {
+    fn noting(&self, what: &'static str) -> impl Future<Output = ()> + Send + 'static {
         let ran = self.0.clone();
 
-        move || ran.lock().expect("nothing panics holding it").push(what)
+        async move { ran.lock().expect("nothing panics holding it").push(what) }
+    }
+
+    fn noting_after_a_pause(
+        &self,
+        what: &'static str,
+    ) -> impl Future<Output = ()> + Send + 'static {
+        let noting = self.noting(what);
+
+        async move {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            noting.await;
+        }
     }
 
     fn ran(&self) -> Vec<&'static str> {
@@ -159,7 +173,7 @@ pub async fn what_follows_a_commit_runs_once_it_is_finished_in_the_order_it_was_
         .await
         .expect("beginning should succeed");
     bench.write(&mut transaction, "warp").await;
-    transaction.after_commit(followups.noting("woken"));
+    transaction.after_commit(followups.noting_after_a_pause("woken"));
     transaction.after_commit(followups.noting("told"));
     let before = followups.ran();
 
@@ -171,7 +185,7 @@ pub async fn what_follows_a_commit_runs_once_it_is_finished_in_the_order_it_was_
     assert_eq!(
         (before, followups.ran()),
         (Vec::new(), vec!["woken", "told"]),
-        "nothing follows a commit before it happened"
+        "nothing follows a commit before it happened, and finishing awaits all that does, one after the other"
     );
 }
 

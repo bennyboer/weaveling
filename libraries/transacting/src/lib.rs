@@ -1,6 +1,9 @@
 pub mod memory;
 #[cfg(test)]
 mod memory_tests;
+pub mod retrying;
+#[cfg(test)]
+mod retrying_tests;
 #[cfg(test)]
 mod suite;
 
@@ -15,6 +18,7 @@ pub mod sqlite;
 mod sqlite_tests;
 
 pub use memory::InMemoryTransactions;
+pub use retrying::LostRace;
 
 #[cfg(feature = "postgres")]
 pub use postgres::PostgresTransactions;
@@ -24,7 +28,9 @@ pub use sqlite::SqliteTransactions;
 
 use std::any::Any;
 use std::error::Error;
+use std::future::Future;
 use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
 
 use async_trait::async_trait;
 use thiserror::Error;
@@ -56,7 +62,7 @@ pub(crate) trait Unit: Send + 'static {
     fn as_any(&mut self) -> &mut dyn Any;
 }
 
-type Followup = Box<dyn FnOnce() + Send>;
+type Followup = Pin<Box<dyn Future<Output = ()> + Send>>;
 
 #[must_use = "a transaction is rolled back unless it is finished"]
 pub struct Transaction {
@@ -72,14 +78,14 @@ impl Transaction {
         }
     }
 
-    pub fn after_commit(&mut self, followup: impl FnOnce() + Send + 'static) {
-        self.after_commit.push(Box::new(followup));
+    pub fn after_commit(&mut self, followup: impl Future<Output = ()> + Send + 'static) {
+        self.after_commit.push(Box::pin(followup));
     }
 
     pub async fn finish(self) -> Result<(), Failure> {
         self.unit.commit().await?;
         for followup in self.after_commit {
-            followup();
+            followup.await;
         }
 
         Ok(())

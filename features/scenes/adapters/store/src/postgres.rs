@@ -341,15 +341,22 @@ impl SceneStore for PostgresSceneStore {
     async fn apply(&self, id: SceneId, update: &[u8]) -> Result<(), StoreError> {
         Scene::readable(update).map_err(|_| StoreError::Unusable(id))?;
 
+        let mut transaction = self.begin().await?;
+        let held: Option<String> = sqlx::query_scalar(HOLD)
+            .bind(id.to_string())
+            .fetch_optional(connection(&mut transaction)?)
+            .await
+            .map_err(unreachable)?;
+        if held.is_none() {
+            return Err(StoreError::NotFound(id));
+        }
         let tail: i64 = sqlx::query_scalar(WRITE_UPDATE)
             .bind(id.to_string())
             .bind(update)
-            .fetch_one(&self.pool)
+            .fetch_one(connection(&mut transaction)?)
             .await
-            .map_err(|failure| match is_unknown(&failure) {
-                true => StoreError::NotFound(id),
-                false => unreachable(failure),
-            })?;
+            .map_err(unreachable)?;
+        transaction.finish().await.map_err(unreachable)?;
 
         if tail + 1 > self.compact_after {
             self.compact(id).await?;

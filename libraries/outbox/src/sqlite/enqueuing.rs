@@ -51,7 +51,7 @@ pub async fn enqueue(
         .execute(transacting::sqlite::connection(transaction)?)
         .await
         .map_err(|failure| OutboxError::Unreachable(failure.to_string()))?;
-    transaction.after_commit(|| ENQUEUED.send_modify(|rung| *rung = rung.wrapping_add(1)));
+    transaction.after_commit(async { ENQUEUED.send_modify(|rung| *rung = rung.wrapping_add(1)) });
 
     Ok(())
 }
