@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
 use time::OffsetDateTime;
+use transacting::{Failure, Transaction};
 
 #[derive(Debug, Clone)]
 struct Kept {
@@ -12,7 +13,7 @@ struct Kept {
     counted_at: OffsetDateTime,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct Counts {
     kept: BTreeMap<SceneLink, Kept>,
     tombstones: BTreeMap<SceneLink, OffsetDateTime>,
@@ -20,7 +21,7 @@ struct Counts {
 
 #[derive(Debug, Default)]
 pub struct InMemoryWordCountCatalog {
-    counts: RwLock<Counts>,
+    counts: Arc<RwLock<Counts>>,
 }
 
 impl InMemoryWordCountCatalog {
@@ -39,17 +40,39 @@ impl InMemoryWordCountCatalog {
             .write()
             .expect("word count catalog lock poisoned")
     }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
+        let counts = self
+            .counts
+            .read()
+            .expect("word count catalog lock poisoned")
+            .clone();
+        let into_counts = self.counts.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_counts
+                .write()
+                .expect("word count catalog lock poisoned") = counts;
+        })
+        .map_err(unreachable)
+    }
+}
+
+fn unreachable(failure: Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
 }
 
 #[async_trait]
 impl WordCountCatalog for InMemoryWordCountCatalog {
     async fn keep(
         &self,
+        transaction: &mut Transaction,
         scene: &SceneLink,
         project: &ProjectLink,
         words: u64,
         counted_at: OffsetDateTime,
     ) -> Result<Option<u64>, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut counts = self.write();
 
         if counts.tombstones.contains_key(scene) {
@@ -72,9 +95,11 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
 
     async fn forget_scene(
         &self,
+        transaction: &mut Transaction,
         scene: &SceneLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut counts = self.write();
 
         counts.tombstones.entry(scene.clone()).or_insert(at);
@@ -85,9 +110,11 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut counts = self.write();
         let mut long_gone: Vec<(OffsetDateTime, SceneLink)> = counts
             .tombstones
@@ -122,22 +149,27 @@ impl WordCountCatalog for InMemoryWordCountCatalog {
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
+    use transacting::{InMemoryTransactions, Transactions};
 
     use super::*;
     use crate::suite::Workbench;
 
-    struct InMemory(InMemoryWordCountCatalog);
+    struct InMemory(InMemoryWordCountCatalog, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Catalog = InMemoryWordCountCatalog;
 
         async fn setup() -> Self {
-            Self(InMemoryWordCountCatalog::new())
+            Self(InMemoryWordCountCatalog::new(), InMemoryTransactions::new())
         }
 
         fn catalog(&self) -> &Self::Catalog {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

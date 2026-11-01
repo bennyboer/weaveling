@@ -1,5 +1,6 @@
 use authorizing::AuthorizerError;
 use thiserror::Error;
+use transacting::Failure;
 
 use crate::catalog::CatalogError;
 
@@ -11,4 +12,6 @@ pub enum AppearancesError {
     Authorizer(#[from] AuthorizerError),
     #[error("there is no such idea")]
     IdeaNotThere,
+    #[error("the transaction around the change failed")]
+    Transaction(#[from] Failure),
 }

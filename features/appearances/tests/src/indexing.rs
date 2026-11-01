@@ -14,6 +14,8 @@ use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTI
 use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
+
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -28,7 +30,11 @@ struct Wired {
 
 fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemoryAppearanceCatalog::new());
-    let appearances = AppearancesCore::new(catalog.clone(), Arc::new(AllowingEverything));
+    let appearances = AppearancesCore::new(
+        Arc::new(InMemoryTransactions::new()),
+        catalog.clone(),
+        Arc::new(AllowingEverything),
+    );
 
     Wired {
         outline: ProjectOutlineAppearancesListener::new(appearances.clone()),
@@ -531,23 +537,24 @@ async fn a_tombstone_is_laid_when_what_it_marks_went() {
     wired.hears(&wired.outline, removed("section_1")).await;
     wired.hears(&wired.scenes, deleted("scene_1")).await;
 
-    let forgotten_before = |moment| {
-        wired
-            .catalog
-            .forget_tombstones_laid_before(moment, u64::MAX)
-    };
+    let appearances = AppearancesCore::new(
+        Arc::new(InMemoryTransactions::new()),
+        wired.catalog.clone(),
+        Arc::new(AllowingEverything),
+    );
+    let mut forgotten = Vec::new();
+    for moment in [at(1_000), at(1_001), at(1_001)] {
+        forgotten.push(
+            appearances
+                .forget_tombstones_laid_before(moment, u64::MAX)
+                .await
+                .expect("forgetting tombstones should succeed"),
+        );
+    }
 
     assert_eq!(
-        forgotten_before(at(1_000))
-            .await
-            .expect("forgetting tombstones should succeed"),
-        0,
-        "laid when it happened, not when it was heard"
-    );
-    assert_eq!(
-        forgotten_before(at(1_001))
-            .await
-            .expect("forgetting tombstones should succeed"),
-        3
+        forgotten,
+        [0, 3, 0],
+        "laid when it happened, not when it was heard, and forgotten for good"
     );
 }

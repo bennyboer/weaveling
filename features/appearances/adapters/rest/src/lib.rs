@@ -15,6 +15,7 @@ use crate::guarding::ReadableBy;
 use serde::Deserialize;
 use serving::Problem;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 mod guarding;
 
@@ -68,7 +69,7 @@ impl Topic for AppearancesTopic {
 
 pub struct TellingAppearances {
     kept: Arc<dyn AppearanceCatalog>,
-    teller: Teller<AppearanceChanges>,
+    teller: Arc<Teller<AppearanceChanges>>,
 }
 
 impl TellingAppearances {
@@ -78,23 +79,29 @@ impl TellingAppearances {
     ) -> Self {
         Self {
             kept,
-            teller: Teller::new(broadcaster),
+            teller: Arc::new(Teller::new(broadcaster)),
         }
     }
 
-    async fn tell(&self, subject: &Subject) {
-        let Ok(places) = self.kept.places_of(subject).await else {
-            return;
-        };
-        let Subject::Idea(idea) = subject;
-        let event = IdeaPlacesDTO {
-            places: places.iter().map(to_dto).collect(),
-        };
-        self.teller.tell(
-            AppearanceChanges(idea.as_str().to_owned()),
-            idea.as_str(),
-            event,
-        );
+    fn tell_after(&self, transaction: &mut Transaction, subjects: Vec<Subject>) {
+        let (kept, teller) = (self.kept.clone(), self.teller.clone());
+
+        transaction.after_commit(async move {
+            for subject in subjects {
+                let Ok(places) = kept.places_of(&subject).await else {
+                    continue;
+                };
+                let Subject::Idea(idea) = subject;
+                let event = IdeaPlacesDTO {
+                    places: places.iter().map(to_dto).collect(),
+                };
+                teller.tell(
+                    AppearanceChanges(idea.as_str().to_owned()),
+                    idea.as_str(),
+                    event,
+                );
+            }
+        });
     }
 }
 
@@ -102,59 +109,66 @@ impl TellingAppearances {
 impl AppearanceCatalog for TellingAppearances {
     async fn remember(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
     ) -> Result<(), CatalogError> {
-        self.kept.remember(subject, place, version).await?;
-        self.tell(subject).await;
+        self.kept
+            .remember(transaction, subject, place, version)
+            .await?;
+        self.tell_after(transaction, vec![subject.clone()]);
 
         Ok(())
     }
 
     async fn forget(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
     ) -> Result<(), CatalogError> {
-        self.kept.forget(subject, place, version).await?;
-        self.tell(subject).await;
+        self.kept
+            .forget(transaction, subject, place, version)
+            .await?;
+        self.tell_after(transaction, vec![subject.clone()]);
 
         Ok(())
     }
 
     async fn forget_subject(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        self.kept.forget_subject(subject, at).await?;
-        self.tell(subject).await;
+        self.kept.forget_subject(transaction, subject, at).await?;
+        self.tell_after(transaction, vec![subject.clone()]);
 
         Ok(())
     }
 
     async fn forget_place(
         &self,
+        transaction: &mut Transaction,
         place: &Place,
         at: OffsetDateTime,
     ) -> Result<Vec<Subject>, CatalogError> {
-        let appeared = self.kept.forget_place(place, at).await?;
-        for subject in &appeared {
-            self.tell(subject).await;
-        }
+        let appeared = self.kept.forget_place(transaction, place, at).await?;
+        self.tell_after(transaction, appeared.clone());
 
         Ok(appeared)
     }
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         self.kept
-            .forget_tombstones_laid_before(before, at_most)
+            .forget_tombstones_laid_before(transaction, before, at_most)
             .await
     }
 
@@ -164,10 +178,13 @@ impl AppearanceCatalog for TellingAppearances {
 
     async fn remember_project(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         project: &ProjectLink,
     ) -> Result<(), CatalogError> {
-        self.kept.remember_project(subject, project).await
+        self.kept
+            .remember_project(transaction, subject, project)
+            .await
     }
 
     async fn project_of(&self, subject: &Subject) -> Result<Option<ProjectLink>, CatalogError> {

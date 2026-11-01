@@ -7,6 +7,7 @@ use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCount, WordCountCatalog};
 use statistics_messaging::ProjectWordCountsListener;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -22,6 +23,7 @@ fn a_workbench() -> Wired {
 
     Wired {
         projector: ProjectWordCountsListener::new(StatisticsCore::new(
+            Arc::new(InMemoryTransactions::new()),
             catalog.clone(),
             Arc::new(AllowingEverything),
         )),
@@ -130,23 +132,33 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
     let bench = a_workbench();
     bench.hears(deleted("scene_1")).await;
 
-    let forgotten_before = |moment| {
-        bench
-            .catalog
-            .forget_tombstones_laid_before(moment, u64::MAX)
-    };
+    let statistics = StatisticsCore::new(
+        Arc::new(InMemoryTransactions::new()),
+        bench.catalog.clone(),
+        Arc::new(AllowingEverything),
+    );
 
     assert_eq!(
-        forgotten_before(at(5_000))
+        statistics
+            .forget_tombstones_laid_before(at(5_000), u64::MAX)
             .await
             .expect("forgetting tombstones should succeed"),
         0,
         "laid when it happened, not when it was heard"
     );
     assert_eq!(
-        forgotten_before(at(5_001))
+        statistics
+            .forget_tombstones_laid_before(at(5_001), u64::MAX)
             .await
             .expect("forgetting tombstones should succeed"),
         1
+    );
+    assert_eq!(
+        statistics
+            .forget_tombstones_laid_before(at(5_001), u64::MAX)
+            .await
+            .expect("forgetting tombstones should succeed"),
+        0,
+        "forgotten for good"
     );
 }

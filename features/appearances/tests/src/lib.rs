@@ -1,4 +1,7 @@
 #[cfg(test)]
+mod committed;
+
+#[cfg(test)]
 mod appearances_api;
 
 #[cfg(test)]

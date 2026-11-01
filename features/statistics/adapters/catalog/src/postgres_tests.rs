@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
+use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
 use crate::postgres::PostgresWordCountCatalog;
@@ -8,6 +9,7 @@ use crate::suite::Workbench;
 
 struct OnPostgres {
     fixture: PostgresFixture,
+    transactions: PostgresTransactions,
     catalog: PostgresWordCountCatalog,
 }
 
@@ -25,12 +27,17 @@ impl Workbench for OnPostgres {
 
         Self {
             fixture,
+            transactions: PostgresTransactions::new(pool.clone()),
             catalog: PostgresWordCountCatalog::new(pool),
         }
     }
 
     fn catalog(&self) -> &Self::Catalog {
         &self.catalog
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {

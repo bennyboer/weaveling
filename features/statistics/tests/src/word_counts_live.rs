@@ -12,6 +12,7 @@ use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
 use statistics_rest::TellingWordCounts;
 use time::OffsetDateTime;
+use transacting::{InMemoryTransactions, Transaction, Transactions};
 
 struct CountsFollowed {
     catalog: TellingWordCounts,
@@ -28,6 +29,7 @@ async fn counts_followed(project: &str) -> CountsFollowed {
     let server = TestServer::builder().http_transport().build(
         live::live_socket(live::Topics::of(vec![statistics_rest::topic(
             StatisticsCore::new(
+                Arc::new(InMemoryTransactions::new()),
                 Arc::new(InMemoryWordCountCatalog::new()),
                 Arc::new(AllowingEverything),
             ),
@@ -47,9 +49,17 @@ async fn counts_followed(project: &str) -> CountsFollowed {
     }
 }
 
-async fn counted(catalog: &TellingWordCounts, scene: &str, project: &str, words: u64, at: i64) {
+async fn counted_in(
+    transaction: &mut Transaction,
+    catalog: &TellingWordCounts,
+    scene: &str,
+    project: &str,
+    words: u64,
+    at: i64,
+) {
     catalog
         .keep(
+            transaction,
             &SceneLink::from(scene),
             &ProjectLink::from(project),
             words,
@@ -57,6 +67,37 @@ async fn counted(catalog: &TellingWordCounts, scene: &str, project: &str, words:
         )
         .await
         .expect("keeping should succeed");
+}
+
+async fn counted(catalog: &TellingWordCounts, scene: &str, project: &str, words: u64, at: i64) {
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    counted_in(&mut transaction, catalog, scene, project, words, at).await;
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+}
+
+async fn forgotten(catalog: &TellingWordCounts, scene: &str) {
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    catalog
+        .forget_scene(
+            &mut transaction,
+            &SceneLink::from(scene),
+            OffsetDateTime::UNIX_EPOCH,
+        )
+        .await
+        .expect("forgetting should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 }
 
 async fn told(socket: &mut Subscriber) -> Value {
@@ -109,11 +150,7 @@ async fn an_older_count_is_told_as_the_count_that_is_kept() {
 #[tokio::test]
 async fn a_count_for_a_forgotten_scene_and_another_project_s_tell_nothing() {
     let mut followed = counts_followed("project_1").await;
-    followed
-        .catalog
-        .forget_scene(&SceneLink::from("scene_gone"), OffsetDateTime::UNIX_EPOCH)
-        .await
-        .expect("forgetting should succeed");
+    forgotten(&followed.catalog, "scene_gone").await;
 
     counted(&followed.catalog, "scene_gone", "project_1", 5, 1).await;
     counted(&followed.catalog, "scene_9", "project_2", 99, 2).await;
@@ -129,15 +166,16 @@ async fn a_count_for_a_forgotten_scene_and_another_project_s_tell_nothing() {
 #[tokio::test]
 async fn forgetting_old_tombstones_reaches_the_catalog() {
     let followed = counts_followed("project_1").await;
-    followed
-        .catalog
-        .forget_scene(&SceneLink::from("scene_gone"), OffsetDateTime::UNIX_EPOCH)
-        .await
-        .expect("forgetting should succeed");
+    forgotten(&followed.catalog, "scene_gone").await;
 
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
     let forgotten = followed
         .catalog
         .forget_tombstones_laid_before(
+            &mut transaction,
             OffsetDateTime::UNIX_EPOCH + Duration::from_secs(1),
             u64::MAX,
         )
@@ -145,4 +183,26 @@ async fn forgetting_old_tombstones_reaches_the_catalog() {
         .expect("forgetting tombstones should succeed");
 
     assert_eq!(forgotten, 1);
+}
+
+#[tokio::test]
+async fn a_count_kept_in_a_transaction_that_is_dropped_tells_nothing() {
+    let mut followed = counts_followed("project_1").await;
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    counted_in(
+        &mut transaction,
+        &followed.catalog,
+        "scene_1",
+        "project_1",
+        42,
+        1,
+    )
+    .await;
+
+    drop(transaction);
+
+    followed.socket.nothing().await;
 }

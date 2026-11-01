@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{
-    AppearanceCatalog, AppearancesCore, IdeaLink, Place, SceneLink, SectionLink, Subject,
-};
+use appearances_core::{AppearancesCore, IdeaLink, Place, SceneLink, SectionLink, Subject};
 use authorizing::AllowingEverything;
 use axum::Extension;
 use axum_test::TestServer;
 use eventsourcing::Agent;
+use transacting::InMemoryTransactions;
+
+use crate::committed::Committed;
 
 fn an_idea(id: &str) -> Subject {
     Subject::Idea(IdeaLink::from(id))
@@ -16,8 +17,12 @@ fn an_idea(id: &str) -> Subject {
 
 fn served(catalog: Arc<InMemoryAppearanceCatalog>) -> TestServer {
     TestServer::new(
-        appearances_rest::router(AppearancesCore::new(catalog, Arc::new(AllowingEverything)))
-            .layer(Extension(Agent::Local)),
+        appearances_rest::router(AppearancesCore::new(
+            Arc::new(InMemoryTransactions::new()),
+            catalog,
+            Arc::new(AllowingEverything),
+        ))
+        .layer(Extension(Agent::Local)),
     )
 }
 
@@ -39,7 +44,7 @@ async fn an_idea_answers_with_every_place_it_appears() {
         Place::Scene(SceneLink::from("scene_1")),
     ] {
         catalog
-            .remember(&an_idea("idea_1"), &place, 1)
+            .remember_committed(&an_idea("idea_1"), &place, 1)
             .await
             .expect("remembering should succeed");
     }

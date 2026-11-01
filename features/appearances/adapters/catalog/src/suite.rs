@@ -1,8 +1,11 @@
+use std::ops::Deref;
+
 use appearances_core::{
-    AppearanceCatalog, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
+    AppearanceCatalog, CatalogError, IdeaLink, Place, ProjectLink, SceneLink, SectionLink, Subject,
 };
 use time::macros::datetime;
 use time::{Duration, OffsetDateTime};
+use transacting::{Transaction, Transactions};
 
 const LAID: OffsetDateTime = datetime!(2026-10-25 12:00 UTC);
 
@@ -16,7 +19,126 @@ pub trait Workbench: Sized {
 
     fn catalog(&self) -> &Self::Catalog;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Catalog> {
+        Committing {
+            catalog: self.catalog(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, C> {
+    catalog: &'a C,
+    transactions: &'a dyn Transactions,
+}
+
+fn unreachable(failure: transacting::Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
+impl<C: AppearanceCatalog> Committing<'_, C> {
+    pub async fn begun(&self) -> Transaction {
+        self.transactions
+            .begin()
+            .await
+            .expect("beginning should succeed")
+    }
+
+    pub fn uncommitted(&self) -> &C {
+        self.catalog
+    }
+
+    pub async fn remember(
+        &self,
+        subject: &Subject,
+        place: &Place,
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .remember(&mut transaction, subject, place, version)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget(
+        &self,
+        subject: &Subject,
+        place: &Place,
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .forget(&mut transaction, subject, place, version)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_subject(
+        &self,
+        subject: &Subject,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .forget_subject(&mut transaction, subject, at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_place(
+        &self,
+        place: &Place,
+        at: OffsetDateTime,
+    ) -> Result<Vec<Subject>, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let done = self
+            .catalog
+            .forget_place(&mut transaction, place, at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(done)
+    }
+
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let done = self
+            .catalog
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(done)
+    }
+
+    pub async fn remember_project(
+        &self,
+        subject: &Subject,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .remember_project(&mut transaction, subject, project)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+}
+
+impl<C> Deref for Committing<'_, C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        self.catalog
+    }
 }
 
 fn an_idea(named: &str) -> Subject {
@@ -31,7 +153,11 @@ fn a_scene(named: &str) -> Place {
     Place::Scene(SceneLink::from(named))
 }
 
-async fn remembered(catalog: &impl AppearanceCatalog, idea: &str, places: &[Place]) {
+async fn remembered(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+    idea: &str,
+    places: &[Place],
+) {
     for place in places {
         catalog
             .remember(&an_idea(idea), place, 1)
@@ -40,18 +166,22 @@ async fn remembered(catalog: &impl AppearanceCatalog, idea: &str, places: &[Plac
     }
 }
 
-async fn places_of(catalog: &impl AppearanceCatalog, idea: &str) -> Vec<Place> {
+async fn places_of(catalog: &Committing<'_, impl AppearanceCatalog>, idea: &str) -> Vec<Place> {
     catalog
         .places_of(&an_idea(idea))
         .await
         .expect("asking should succeed")
 }
 
-pub async fn an_idea_nobody_placed_appears_nowhere(catalog: &impl AppearanceCatalog) {
+pub async fn an_idea_nobody_placed_appears_nowhere(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     assert!(places_of(catalog, "idea_1").await.is_empty());
 }
 
-pub async fn an_idea_appears_wherever_it_was_remembered(catalog: &impl AppearanceCatalog) {
+pub async fn an_idea_appears_wherever_it_was_remembered(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     remembered(
         catalog,
         "idea_1",
@@ -66,7 +196,7 @@ pub async fn an_idea_appears_wherever_it_was_remembered(catalog: &impl Appearanc
 }
 
 pub async fn places_come_back_in_one_order_whatever_order_they_were_remembered_in(
-    catalog: &impl AppearanceCatalog,
+    catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     remembered(
         catalog,
@@ -91,7 +221,9 @@ pub async fn places_come_back_in_one_order_whatever_order_they_were_remembered_i
     );
 }
 
-pub async fn remembering_the_same_place_twice_is_one_appearance(catalog: &impl AppearanceCatalog) {
+pub async fn remembering_the_same_place_twice_is_one_appearance(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     remembered(
         catalog,
         "idea_1",
@@ -106,7 +238,9 @@ pub async fn remembering_the_same_place_twice_is_one_appearance(catalog: &impl A
     );
 }
 
-pub async fn forgetting_one_place_leaves_the_others(catalog: &impl AppearanceCatalog) {
+pub async fn forgetting_one_place_leaves_the_others(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     remembered(
         catalog,
         "idea_1",
@@ -122,7 +256,9 @@ pub async fn forgetting_one_place_leaves_the_others(catalog: &impl AppearanceCat
     assert_eq!(places_of(catalog, "idea_1").await, vec![a_scene("scene_1")]);
 }
 
-pub async fn forgetting_an_idea_leaves_every_other_idea(catalog: &impl AppearanceCatalog) {
+pub async fn forgetting_an_idea_leaves_every_other_idea(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     remembered(catalog, "idea_gone", &[a_section("section_1")]).await;
     remembered(catalog, "idea_kept", &[a_section("section_1")]).await;
 
@@ -139,7 +275,9 @@ pub async fn forgetting_an_idea_leaves_every_other_idea(catalog: &impl Appearanc
     );
 }
 
-pub async fn forgetting_a_place_reaches_every_idea_in_it(catalog: &impl AppearanceCatalog) {
+pub async fn forgetting_a_place_reaches_every_idea_in_it(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     remembered(
         catalog,
         "idea_1",
@@ -163,7 +301,9 @@ pub async fn forgetting_a_place_reaches_every_idea_in_it(catalog: &impl Appearan
     );
 }
 
-pub async fn forgetting_a_place_says_which_ideas_appeared_there(catalog: &impl AppearanceCatalog) {
+pub async fn forgetting_a_place_says_which_ideas_appeared_there(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     remembered(catalog, "idea_2", &[a_section("section_gone")]).await;
     remembered(catalog, "idea_1", &[a_section("section_gone")]).await;
     remembered(catalog, "idea_3", &[a_section("section_gone")]).await;
@@ -191,7 +331,7 @@ pub async fn forgetting_a_place_says_which_ideas_appeared_there(catalog: &impl A
 }
 
 pub async fn a_section_and_a_scene_sharing_an_id_are_different_places(
-    catalog: &impl AppearanceCatalog,
+    catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     remembered(catalog, "idea_1", &[a_section("same_1"), a_scene("same_1")]).await;
 
@@ -207,7 +347,9 @@ pub async fn a_section_and_a_scene_sharing_an_id_are_different_places(
     );
 }
 
-pub async fn forgetting_what_was_never_remembered_is_harmless(catalog: &impl AppearanceCatalog) {
+pub async fn forgetting_what_was_never_remembered_is_harmless(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     catalog
         .forget(&an_idea("idea_1"), &a_section("section_1"), 1)
         .await
@@ -222,7 +364,11 @@ pub async fn forgetting_what_was_never_remembered_is_harmless(catalog: &impl App
         .expect("forgetting nothing is not a failure");
 }
 
-async fn seen(catalog: &impl AppearanceCatalog, at: &Place, changes: &[(bool, u64)]) {
+async fn seen(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+    at: &Place,
+    changes: &[(bool, u64)],
+) {
     for (present, version) in changes {
         if *present {
             catalog
@@ -238,7 +384,9 @@ async fn seen(catalog: &impl AppearanceCatalog, at: &Place, changes: &[(bool, u6
     }
 }
 
-pub async fn a_late_remembering_does_not_undo_a_later_forgetting(catalog: &impl AppearanceCatalog) {
+pub async fn a_late_remembering_does_not_undo_a_later_forgetting(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     seen(
         catalog,
         &a_section("section_1"),
@@ -252,7 +400,9 @@ pub async fn a_late_remembering_does_not_undo_a_later_forgetting(catalog: &impl 
     );
 }
 
-pub async fn a_late_forgetting_does_not_undo_a_later_remembering(catalog: &impl AppearanceCatalog) {
+pub async fn a_late_forgetting_does_not_undo_a_later_remembering(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     seen(
         catalog,
         &a_section("section_1"),
@@ -267,7 +417,9 @@ pub async fn a_late_forgetting_does_not_undo_a_later_remembering(catalog: &impl 
     );
 }
 
-pub async fn nothing_comes_back_to_a_forgotten_place(catalog: &impl AppearanceCatalog) {
+pub async fn nothing_comes_back_to_a_forgotten_place(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     seen(catalog, &a_section("section_1"), &[(true, 1)]).await;
     catalog
         .forget_place(&a_section("section_1"), LAID)
@@ -282,7 +434,7 @@ pub async fn nothing_comes_back_to_a_forgotten_place(catalog: &impl AppearanceCa
     );
 }
 
-pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &impl AppearanceCatalog) {
+pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &Committing<'_, impl AppearanceCatalog>) {
     seen(catalog, &a_section("section_1"), &[(true, 1)]).await;
     catalog
         .forget_subject(&an_idea("idea_1"), LAID)
@@ -298,7 +450,9 @@ pub async fn a_forgotten_idea_comes_back_nowhere(catalog: &impl AppearanceCatalo
     );
 }
 
-pub async fn an_idea_s_project_is_kept_and_none_known_is_none(catalog: &impl AppearanceCatalog) {
+pub async fn an_idea_s_project_is_kept_and_none_known_is_none(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
     catalog
         .remember_project(&an_idea("idea_1"), &ProjectLink::from("project_1"))
         .await
@@ -325,7 +479,7 @@ pub async fn an_idea_s_project_is_kept_and_none_known_is_none(catalog: &impl App
 }
 
 pub async fn a_discarded_idea_s_project_outlives_it_as_its_tombstone_does(
-    catalog: &impl AppearanceCatalog,
+    catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     catalog
         .remember_project(&an_idea("idea_1"), &ProjectLink::from("project_1"))
@@ -349,7 +503,7 @@ pub async fn a_discarded_idea_s_project_outlives_it_as_its_tombstone_does(
 }
 
 pub async fn remembering_an_idea_s_project_again_keeps_one_the_last(
-    catalog: &impl AppearanceCatalog,
+    catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     for project in ["project_1", "project_1", "project_2"] {
         catalog
@@ -368,7 +522,7 @@ pub async fn remembering_an_idea_s_project_again_keeps_one_the_last(
 }
 
 pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
-    catalog: &impl AppearanceCatalog,
+    catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     let before = LAID + Duration::DAY;
     catalog
@@ -415,7 +569,7 @@ pub async fn tombstones_laid_before_a_moment_are_forgotten_and_the_later_kept(
 }
 
 pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(
-    catalog: &impl AppearanceCatalog,
+    catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     catalog
         .forget_subject(&an_idea("idea_1"), LAID)
@@ -445,7 +599,7 @@ pub async fn a_tombstone_is_laid_once_when_what_it_marks_first_went(
 }
 
 pub async fn a_long_gone_idea_s_project_is_forgotten_with_its_tombstone(
-    catalog: &impl AppearanceCatalog,
+    catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     for idea in ["idea_long_gone", "idea_just_gone", "idea_here"] {
         catalog
@@ -484,7 +638,7 @@ pub async fn a_long_gone_idea_s_project_is_forgotten_with_its_tombstone(
 }
 
 pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_kind(
-    catalog: &impl AppearanceCatalog,
+    catalog: &Committing<'_, impl AppearanceCatalog>,
 ) {
     for (idea, section, laid) in [
         ("idea_newest", "section_newest", LAID + Duration::SECOND * 2),
@@ -563,6 +717,88 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many_of_each_k
     }
 }
 
+pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    remembered(
+        catalog,
+        "idea_kept",
+        &[a_scene("scene_1"), a_section("section_1")],
+    )
+    .await;
+    let mut transaction = catalog.begun().await;
+    let uncommitted = catalog.uncommitted();
+    uncommitted
+        .remember(
+            &mut transaction,
+            &an_idea("idea_new"),
+            &a_scene("scene_1"),
+            1,
+        )
+        .await
+        .expect("remembering should succeed");
+    uncommitted
+        .remember_project(
+            &mut transaction,
+            &an_idea("idea_new"),
+            &ProjectLink::from("project_1"),
+        )
+        .await
+        .expect("remembering should succeed");
+    uncommitted
+        .forget(
+            &mut transaction,
+            &an_idea("idea_kept"),
+            &a_section("section_1"),
+            2,
+        )
+        .await
+        .expect("forgetting should succeed");
+    uncommitted
+        .forget_place(&mut transaction, &a_scene("scene_1"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    uncommitted
+        .forget_subject(&mut transaction, &an_idea("idea_kept"), LAID)
+        .await
+        .expect("forgetting should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        places_of(catalog, "idea_kept").await,
+        vec![a_scene("scene_1"), a_section("section_1")]
+    );
+    assert!(places_of(catalog, "idea_new").await.is_empty());
+    assert_eq!(
+        catalog
+            .project_of(&an_idea("idea_new"))
+            .await
+            .expect("asking should succeed"),
+        None
+    );
+}
+
+pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
+    catalog: &Committing<'_, impl AppearanceCatalog>,
+) {
+    catalog
+        .forget_subject(&an_idea("idea_gone"), LAID)
+        .await
+        .expect("forgetting should succeed");
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .forget_tombstones_laid_before(&mut transaction, LAID + Duration::seconds(1), ALL_AT_ONCE)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    drop(transaction);
+    remembered(catalog, "idea_gone", &[a_scene("scene_1")]).await;
+
+    assert!(places_of(catalog, "idea_gone").await.is_empty());
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -570,7 +806,7 @@ macro_rules! conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.catalog()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -578,6 +814,14 @@ macro_rules! conformance_case {
 
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::suite::conformance_case!(
+            $workbench,
+            what_was_written_in_a_transaction_that_is_dropped_is_gone
+        );
+        $crate::suite::conformance_case!(
+            $workbench,
+            tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand
+        );
         $crate::suite::conformance_case!($workbench, an_idea_nobody_placed_appears_nowhere);
         $crate::suite::conformance_case!(
             $workbench,

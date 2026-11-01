@@ -3,6 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use thiserror::Error;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::appearance::{Place, Subject};
 use crate::link::ProjectLink;
@@ -17,6 +18,7 @@ pub enum CatalogError {
 pub trait AppearanceCatalog: Send + Sync {
     async fn remember(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
@@ -24,6 +26,7 @@ pub trait AppearanceCatalog: Send + Sync {
 
     async fn forget(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
@@ -31,18 +34,21 @@ pub trait AppearanceCatalog: Send + Sync {
 
     async fn forget_subject(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
     async fn forget_place(
         &self,
+        transaction: &mut Transaction,
         place: &Place,
         at: OffsetDateTime,
     ) -> Result<Vec<Subject>, CatalogError>;
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;
@@ -51,6 +57,7 @@ pub trait AppearanceCatalog: Send + Sync {
 
     async fn remember_project(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         project: &ProjectLink,
     ) -> Result<(), CatalogError>;

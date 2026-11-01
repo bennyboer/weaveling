@@ -16,6 +16,7 @@ use statistics_core::{
     WordCountCatalog,
 };
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 pub fn router(statistics: StatisticsCore) -> Router {
     Router::new()
@@ -69,7 +70,7 @@ pub fn topic(
 
 pub struct TellingWordCounts {
     kept: Arc<dyn WordCountCatalog>,
-    teller: Teller<WordCountChanges>,
+    teller: Arc<Teller<WordCountChanges>>,
 }
 
 impl TellingWordCounts {
@@ -79,17 +80,25 @@ impl TellingWordCounts {
     ) -> Self {
         Self {
             kept,
-            teller: Teller::new(broadcaster),
+            teller: Arc::new(Teller::new(broadcaster)),
         }
     }
 
-    fn tell(&self, project: &ProjectLink, scene: &SceneLink, words: u64) {
-        let event = WordCountDTO {
-            scene: scene.to_string(),
-            words,
-        };
-        self.teller
-            .tell(WordCountChanges(project.clone()), &scene.to_string(), event);
+    fn tell_after(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        scene: &SceneLink,
+        words: u64,
+    ) {
+        let (teller, project, scene) = (self.teller.clone(), project.clone(), scene.to_string());
+        transaction.after_commit(async move {
+            let event = WordCountDTO {
+                scene: scene.clone(),
+                words,
+            };
+            teller.tell(WordCountChanges(project), &scene, event);
+        });
     }
 }
 
@@ -97,14 +106,18 @@ impl TellingWordCounts {
 impl WordCountCatalog for TellingWordCounts {
     async fn keep(
         &self,
+        transaction: &mut Transaction,
         scene: &SceneLink,
         project: &ProjectLink,
         words: u64,
         counted_at: OffsetDateTime,
     ) -> Result<Option<u64>, CatalogError> {
-        let kept = self.kept.keep(scene, project, words, counted_at).await?;
+        let kept = self
+            .kept
+            .keep(transaction, scene, project, words, counted_at)
+            .await?;
         if let Some(words) = kept {
-            self.tell(project, scene, words);
+            self.tell_after(transaction, project, scene, words);
         }
 
         Ok(kept)
@@ -112,19 +125,21 @@ impl WordCountCatalog for TellingWordCounts {
 
     async fn forget_scene(
         &self,
+        transaction: &mut Transaction,
         scene: &SceneLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        self.kept.forget_scene(scene, at).await
+        self.kept.forget_scene(transaction, scene, at).await
     }
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         self.kept
-            .forget_tombstones_laid_before(before, at_most)
+            .forget_tombstones_laid_before(transaction, before, at_most)
             .await
     }
 

@@ -15,6 +15,9 @@ use eventsourcing::Agent;
 use live::Broadcaster;
 use live::testing::Subscriber;
 use serde_json::{Value, json};
+use transacting::{InMemoryTransactions, Transactions};
+
+use crate::committed::Committed;
 
 const LAID: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
@@ -40,7 +43,7 @@ async fn followed(ideas: &[&str]) -> Followed {
     let broadcaster = Broadcaster::new();
     let kept = Arc::new(InMemoryAppearanceCatalog::new());
     for idea in ideas {
-        kept.remember_project(&an_idea(idea), &ProjectLink::from("project_1"))
+        kept.remember_project_committed(&an_idea(idea), &ProjectLink::from("project_1"))
             .await
             .expect("remembering should succeed");
     }
@@ -48,7 +51,11 @@ async fn followed(ideas: &[&str]) -> Followed {
     let server = TestServer::builder().http_transport().build(
         live::live_socket(live::Topics::of(vec![Arc::new(
             appearances_rest::AppearancesTopic::new(
-                AppearancesCore::new(kept, Arc::new(AllowingEverything)),
+                AppearancesCore::new(
+                    Arc::new(InMemoryTransactions::new()),
+                    kept,
+                    Arc::new(AllowingEverything),
+                ),
                 broadcaster,
             ),
         )]))
@@ -84,13 +91,13 @@ async fn whoever_follows_an_idea_is_told_where_it_appears_as_that_changes() {
 
     followed
         .catalog
-        .remember(&an_idea("idea_1"), &a_scene("scene_1"), 1)
+        .remember_committed(&an_idea("idea_1"), &a_scene("scene_1"), 1)
         .await
         .expect("remembering should succeed");
     let placed = told(&mut followed.sockets[0]).await;
     followed
         .catalog
-        .forget(&an_idea("idea_1"), &a_scene("scene_1"), 2)
+        .forget_committed(&an_idea("idea_1"), &a_scene("scene_1"), 2)
         .await
         .expect("forgetting should succeed");
     let gone = told(&mut followed.sockets[0]).await;
@@ -111,14 +118,14 @@ async fn a_late_change_is_told_as_what_is_kept() {
     let mut followed = followed(&["idea_1"]).await;
     followed
         .catalog
-        .forget(&an_idea("idea_1"), &a_scene("scene_1"), 2)
+        .forget_committed(&an_idea("idea_1"), &a_scene("scene_1"), 2)
         .await
         .expect("forgetting should succeed");
     told(&mut followed.sockets[0]).await;
 
     followed
         .catalog
-        .remember(&an_idea("idea_1"), &a_scene("scene_1"), 1)
+        .remember_committed(&an_idea("idea_1"), &a_scene("scene_1"), 1)
         .await
         .expect("remembering should succeed");
 
@@ -140,7 +147,7 @@ async fn a_place_forgotten_is_told_to_every_idea_that_appeared_there_and_no_othe
     ] {
         followed
             .catalog
-            .remember(&an_idea(idea), &place, 1)
+            .remember_committed(&an_idea(idea), &place, 1)
             .await
             .expect("remembering should succeed");
     }
@@ -150,7 +157,7 @@ async fn a_place_forgotten_is_told_to_every_idea_that_appeared_there_and_no_othe
 
     followed
         .catalog
-        .forget_place(&a_section("section_gone"), LAID)
+        .forget_place_committed(&a_section("section_gone"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -173,14 +180,14 @@ async fn a_discarded_idea_is_told_it_appears_nowhere() {
     let mut followed = followed(&["idea_1"]).await;
     followed
         .catalog
-        .remember(&an_idea("idea_1"), &a_scene("scene_1"), 1)
+        .remember_committed(&an_idea("idea_1"), &a_scene("scene_1"), 1)
         .await
         .expect("remembering should succeed");
     told(&mut followed.sockets[0]).await;
 
     followed
         .catalog
-        .forget_subject(&an_idea("idea_1"), LAID)
+        .forget_subject_committed(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting should succeed");
 
@@ -195,14 +202,14 @@ async fn forgetting_old_tombstones_reaches_the_catalog_and_tells_nobody() {
     let mut followed = followed(&["idea_1"]).await;
     followed
         .catalog
-        .forget_subject(&an_idea("idea_1"), LAID)
+        .forget_subject_committed(&an_idea("idea_1"), LAID)
         .await
         .expect("forgetting should succeed");
     told(&mut followed.sockets[0]).await;
 
     let forgotten = followed
         .catalog
-        .forget_tombstones_laid_before(LAID + Duration::from_secs(1), u64::MAX)
+        .forget_tombstones_laid_before_committed(LAID + Duration::from_secs(1), u64::MAX)
         .await
         .expect("forgetting tombstones should succeed");
 
@@ -211,4 +218,27 @@ async fn forgetting_old_tombstones_reaches_the_catalog_and_tells_nobody() {
         nothing_told(&mut followed.sockets[0]).await,
         "where an idea appears does not change when its tombstone goes"
     );
+}
+
+#[tokio::test]
+async fn an_appearance_written_in_a_transaction_that_is_dropped_tells_nothing() {
+    let mut followed = followed(&["idea_1"]).await;
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    followed
+        .catalog
+        .remember(&mut transaction, &an_idea("idea_1"), &a_scene("scene_1"), 1)
+        .await
+        .expect("remembering should succeed");
+    followed
+        .catalog
+        .forget_subject(&mut transaction, &an_idea("idea_1"), LAID)
+        .await
+        .expect("forgetting should succeed");
+
+    drop(transaction);
+
+    assert!(nothing_told(&mut followed.sockets[0]).await);
 }

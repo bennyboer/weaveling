@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::{AccessWatch, Act, Authorizer};
 use eventsourcing::Agent;
 use time::OffsetDateTime;
+use transacting::Transactions;
 
 use crate::catalog::WordCountCatalog;
 use crate::error::StatisticsError;
@@ -11,13 +12,19 @@ use crate::word_count::WordCount;
 
 #[derive(Clone)]
 pub struct StatisticsCore {
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn WordCountCatalog>,
     authorizer: Arc<dyn Authorizer>,
 }
 
 impl StatisticsCore {
-    pub fn new(catalog: Arc<dyn WordCountCatalog>, authorizer: Arc<dyn Authorizer>) -> Self {
+    pub fn new(
+        transactions: Arc<dyn Transactions>,
+        catalog: Arc<dyn WordCountCatalog>,
+        authorizer: Arc<dyn Authorizer>,
+    ) -> Self {
         Self {
+            transactions,
             catalog,
             authorizer,
         }
@@ -50,8 +57,10 @@ impl StatisticsCore {
         words: u64,
         at: OffsetDateTime,
     ) -> Result<(), StatisticsError> {
+        let mut transaction = self.transactions.begin().await?;
         self.catalog
             .keep(
+                &mut transaction,
                 &SceneLink::from(scene),
                 &ProjectLink::from(project),
                 words,
@@ -59,7 +68,7 @@ impl StatisticsCore {
             )
             .await?;
 
-        Ok(())
+        Ok(transaction.finish().await?)
     }
 
     pub async fn scene_deleted(
@@ -67,10 +76,12 @@ impl StatisticsCore {
         scene: &str,
         at: OffsetDateTime,
     ) -> Result<(), StatisticsError> {
-        Ok(self
-            .catalog
-            .forget_scene(&SceneLink::from(scene), at)
-            .await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .forget_scene(&mut transaction, &SceneLink::from(scene), at)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -78,9 +89,13 @@ impl StatisticsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, StatisticsError> {
-        Ok(self
+        let mut transaction = self.transactions.begin().await?;
+        let forgotten = self
             .catalog
-            .forget_tombstones_laid_before(before, at_most)
-            .await?)
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(forgotten)
     }
 }

@@ -8,11 +8,13 @@ use outbox::Outbox;
 use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{StatisticsCore, WordCountCatalog};
 use statistics_messaging::ProjectWordCountsListener;
+use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Wired};
 
 use crate::tombstones::StatisticsTombstones;
 
 pub struct Ports {
+    pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn WordCountCatalog>,
 }
 
@@ -23,7 +25,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         broadcaster.clone(),
     ));
 
-    let statistics = StatisticsCore::new(telling, context.authorizer.clone());
+    let statistics = StatisticsCore::new(
+        ports.transactions.clone(),
+        telling,
+        context.authorizer.clone(),
+    );
 
     Wired::serving(statistics_rest::router(statistics.clone()))
         .followed_live(vec![statistics_rest::topic(
@@ -49,6 +55,7 @@ impl Feature for StatisticsFeature {
 
     fn in_memory(_context: &Context) -> Ports {
         Ports {
+            transactions: Arc::new(InMemoryTransactions::new()),
             catalog: Arc::new(InMemoryWordCountCatalog::new()),
         }
     }
@@ -56,6 +63,7 @@ impl Feature for StatisticsFeature {
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
         Ok(Ports {
+            transactions: Arc::new(transacting::PostgresTransactions::new(pool.clone())),
             catalog: Arc::new(statistics_catalog::PostgresWordCountCatalog::new(pool)),
         })
     }
@@ -68,6 +76,7 @@ impl Feature for StatisticsFeature {
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
         Ok(Ports {
+            transactions: Arc::new(transacting::SqliteTransactions::new(pool.clone())),
             catalog: Arc::new(statistics_catalog::SqliteWordCountCatalog::new(pool)),
         })
     }
@@ -118,11 +127,20 @@ mod tests {
             ("scene_long_gone", NOW),
             ("scene_just_gone", NOW + Duration::SECOND),
         ] {
+            let mut transaction = ports
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
             ports
                 .catalog
-                .forget_scene(&SceneLink::from(scene), laid)
+                .forget_scene(&mut transaction, &SceneLink::from(scene), laid)
                 .await
                 .expect("forgetting should succeed");
+            transaction
+                .finish()
+                .await
+                .expect("finishing should succeed");
         }
 
         let [chore] = wired.chores.as_slice() else {
@@ -141,19 +159,22 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        let catalog: Arc<dyn WordCountCatalog> = Arc::new(InMemoryWordCountCatalog::new());
+        let statistics = StatisticsCore::new(
+            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryWordCountCatalog::new()),
+            Arc::new(AllowingEverything),
+        );
         for scene in ["scene_1", "scene_2"] {
-            catalog
-                .forget_scene(&SceneLink::from(scene), NOW)
+            statistics
+                .scene_deleted(scene, NOW)
                 .await
                 .expect("forgetting should succeed");
         }
 
-        let forgotten =
-            StatisticsTombstones::of(StatisticsCore::new(catalog, Arc::new(AllowingEverything)))
-                .forget_laid_before(NOW + Duration::SECOND, 1)
-                .await
-                .expect("forgetting tombstones should succeed");
+        let forgotten = StatisticsTombstones::of(statistics)
+            .forget_laid_before(NOW + Duration::SECOND, 1)
+            .await
+            .expect("forgetting tombstones should succeed");
 
         assert_eq!(forgotten, 1);
     }

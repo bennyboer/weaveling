@@ -14,4 +14,6 @@ The count itself is [`words::words_in`](../../libraries/words), the same rule th
 
 **One way in: `StatisticsCore`.** The word counts, their live route, the listener keeping them and the chore all go through one struct, which asks `Read` of the project. Errors are one enum, `StatisticsError`.
 
+**Core owns each write's transaction.** The feature keeps no events, yet `Ports` carries its own `Transactions` on its database, and `StatisticsCore` begins one for every write: a count kept, a scene's tombstone laid, old tombstones forgotten; the catalog's writes take it, and `TellingWordCounts` tells a count in an `after_commit`, never for one rolled back. Nothing is retried: no write here aims at a version, and the catalog's own guards settle counts heard out of order.
+
 **Crates:** `core` (`StatisticsCore`, word count, catalog port, links to projects and scenes) · `contract` · `adapters/catalog` (in memory, PostgreSQL and SQLite) · `adapters/messaging` (the listener) · `adapters/rest` · `wiring` · `tests`.

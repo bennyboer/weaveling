@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
+use transacting::{SqliteTransactions, Transactions};
 
 use crate::sqlite;
 use crate::sqlite::SqliteWordCountCatalog;
@@ -8,6 +9,7 @@ use crate::suite::Workbench;
 
 struct OnSqlite {
     fixture: SqliteFixture,
+    transactions: SqliteTransactions,
     catalog: SqliteWordCountCatalog,
 }
 
@@ -25,12 +27,17 @@ impl Workbench for OnSqlite {
 
         Self {
             fixture,
+            transactions: SqliteTransactions::new(pool.clone()),
             catalog: SqliteWordCountCatalog::new(pool),
         }
     }
 
     fn catalog(&self) -> &Self::Catalog {
         &self.catalog
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {

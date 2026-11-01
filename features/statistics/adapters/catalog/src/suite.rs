@@ -1,5 +1,8 @@
-use statistics_core::{ProjectLink, SceneLink, WordCount, WordCountCatalog};
+use std::ops::Deref;
+
+use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
 use time::{Duration, OffsetDateTime};
+use transacting::{Transaction, Transactions};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -9,7 +12,90 @@ pub trait Workbench: Sized {
 
     fn catalog(&self) -> &Self::Catalog;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Catalog> {
+        Committing {
+            catalog: self.catalog(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, C> {
+    catalog: &'a C,
+    transactions: &'a dyn Transactions,
+}
+
+fn unreachable(failure: transacting::Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
+impl<C: WordCountCatalog> Committing<'_, C> {
+    pub async fn begun(&self) -> Transaction {
+        self.transactions
+            .begin()
+            .await
+            .expect("beginning should succeed")
+    }
+
+    pub fn uncommitted(&self) -> &C {
+        self.catalog
+    }
+
+    pub async fn keep(
+        &self,
+        scene: &SceneLink,
+        project: &ProjectLink,
+        words: u64,
+        counted_at: OffsetDateTime,
+    ) -> Result<Option<u64>, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let kept = self
+            .catalog
+            .keep(&mut transaction, scene, project, words, counted_at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(kept)
+    }
+
+    pub async fn forget_scene(
+        &self,
+        scene: &SceneLink,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .forget_scene(&mut transaction, scene, at)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        let forgotten = self
+            .catalog
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await.map_err(unreachable)?;
+
+        Ok(forgotten)
+    }
+}
+
+impl<C> Deref for Committing<'_, C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        self.catalog
+    }
 }
 
 fn at(seconds: i64) -> OffsetDateTime {
@@ -31,36 +117,48 @@ fn counted(scene: &str, words: u64) -> WordCount {
     }
 }
 
-async fn kept(catalog: &impl WordCountCatalog, scene: &str, words: u64, seconds: i64) {
+async fn kept(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+    scene: &str,
+    words: u64,
+    seconds: i64,
+) {
     catalog
         .keep(&a_scene(scene), &a_project("project_1"), words, at(seconds))
         .await
         .expect("keeping should succeed");
 }
 
-async fn in_project(catalog: &impl WordCountCatalog, project: &str) -> Vec<WordCount> {
+async fn in_project(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+    project: &str,
+) -> Vec<WordCount> {
     catalog
         .in_project(&a_project(project))
         .await
         .expect("asking should succeed")
 }
 
-async fn forgotten(catalog: &impl WordCountCatalog, scene: &str) {
+async fn forgotten(catalog: &Committing<'_, impl WordCountCatalog>, scene: &str) {
     forgotten_at(catalog, scene, 10_000).await;
 }
 
-async fn forgotten_at(catalog: &impl WordCountCatalog, scene: &str, seconds: i64) {
+async fn forgotten_at(catalog: &Committing<'_, impl WordCountCatalog>, scene: &str, seconds: i64) {
     catalog
         .forget_scene(&a_scene(scene), at(seconds))
         .await
         .expect("forgetting should succeed");
 }
 
-pub async fn a_project_nobody_counted_has_no_counts(catalog: &impl WordCountCatalog) {
+pub async fn a_project_nobody_counted_has_no_counts(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+) {
     assert!(in_project(catalog, "project_1").await.is_empty());
 }
 
-pub async fn a_kept_count_comes_back_with_its_project(catalog: &impl WordCountCatalog) {
+pub async fn a_kept_count_comes_back_with_its_project(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+) {
     kept(catalog, "scene_1", 42, 1_000).await;
 
     assert_eq!(
@@ -69,14 +167,14 @@ pub async fn a_kept_count_comes_back_with_its_project(catalog: &impl WordCountCa
     );
 }
 
-pub async fn another_project_sees_none_of_them(catalog: &impl WordCountCatalog) {
+pub async fn another_project_sees_none_of_them(catalog: &Committing<'_, impl WordCountCatalog>) {
     kept(catalog, "scene_1", 42, 1_000).await;
 
     assert!(in_project(catalog, "project_2").await.is_empty());
 }
 
 pub async fn counts_come_back_in_one_order_whatever_order_they_were_kept_in(
-    catalog: &impl WordCountCatalog,
+    catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
     kept(catalog, "scene_2", 2, 1_000).await;
     kept(catalog, "scene_3", 3, 1_000).await;
@@ -92,7 +190,9 @@ pub async fn counts_come_back_in_one_order_whatever_order_they_were_kept_in(
     );
 }
 
-pub async fn a_newer_count_takes_the_place_of_an_older_one(catalog: &impl WordCountCatalog) {
+pub async fn a_newer_count_takes_the_place_of_an_older_one(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+) {
     kept(catalog, "scene_1", 42, 1_000).await;
     kept(catalog, "scene_1", 50, 2_000).await;
 
@@ -102,7 +202,9 @@ pub async fn a_newer_count_takes_the_place_of_an_older_one(catalog: &impl WordCo
     );
 }
 
-pub async fn a_late_count_does_not_undo_a_newer_one(catalog: &impl WordCountCatalog) {
+pub async fn a_late_count_does_not_undo_a_newer_one(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+) {
     kept(catalog, "scene_1", 50, 2_000).await;
     kept(catalog, "scene_1", 42, 1_000).await;
 
@@ -113,7 +215,7 @@ pub async fn a_late_count_does_not_undo_a_newer_one(catalog: &impl WordCountCata
     );
 }
 
-pub async fn a_forgotten_scene_has_no_count(catalog: &impl WordCountCatalog) {
+pub async fn a_forgotten_scene_has_no_count(catalog: &Committing<'_, impl WordCountCatalog>) {
     kept(catalog, "scene_1", 42, 1_000).await;
     kept(catalog, "scene_2", 7, 1_000).await;
 
@@ -126,7 +228,7 @@ pub async fn a_forgotten_scene_has_no_count(catalog: &impl WordCountCatalog) {
 }
 
 pub async fn a_count_arriving_after_its_scene_was_forgotten_does_not_bring_it_back(
-    catalog: &impl WordCountCatalog,
+    catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
     forgotten(catalog, "scene_1").await;
 
@@ -138,7 +240,7 @@ pub async fn a_count_arriving_after_its_scene_was_forgotten_does_not_bring_it_ba
     );
 }
 
-pub async fn keeping_says_what_is_kept(catalog: &impl WordCountCatalog) {
+pub async fn keeping_says_what_is_kept(catalog: &Committing<'_, impl WordCountCatalog>) {
     let keeping = |words: u64, seconds: i64| async move {
         catalog
             .keep(
@@ -164,7 +266,9 @@ pub async fn keeping_says_what_is_kept(catalog: &impl WordCountCatalog) {
     );
 }
 
-pub async fn forgetting_what_was_never_counted_is_harmless(catalog: &impl WordCountCatalog) {
+pub async fn forgetting_what_was_never_counted_is_harmless(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+) {
     forgotten(catalog, "scene_1").await;
     forgotten(catalog, "scene_1").await;
 
@@ -172,7 +276,7 @@ pub async fn forgetting_what_was_never_counted_is_harmless(catalog: &impl WordCo
 }
 
 async fn forget_long_gone(
-    catalog: &impl WordCountCatalog,
+    catalog: &Committing<'_, impl WordCountCatalog>,
     before_seconds: i64,
     at_most: u64,
 ) -> u64 {
@@ -183,7 +287,7 @@ async fn forget_long_gone(
 }
 
 pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
-    catalog: &impl WordCountCatalog,
+    catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
     forgotten_at(catalog, "scene_long_gone", 1_000).await;
     forgotten_at(catalog, "scene_just_gone", 2_000).await;
@@ -199,7 +303,9 @@ pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
     );
 }
 
-pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl WordCountCatalog) {
+pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+) {
     forgotten_at(catalog, "scene_1", 1_000).await;
     forgotten_at(catalog, "scene_1", 5_000).await;
 
@@ -211,7 +317,7 @@ pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl 
 }
 
 pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
-    catalog: &impl WordCountCatalog,
+    catalog: &Committing<'_, impl WordCountCatalog>,
 ) {
     for (scene, seconds) in [
         ("scene_newest", 1_002),
@@ -233,6 +339,42 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
+pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone(
+    catalog: &Committing<'_, impl WordCountCatalog>,
+) {
+    kept(catalog, "scene_kept", 5, 1_000).await;
+    forgotten_at(catalog, "scene_gone", 1_000).await;
+    let mut transaction = catalog.begun().await;
+    let uncommitted = catalog.uncommitted();
+    uncommitted
+        .keep(
+            &mut transaction,
+            &a_scene("scene_new"),
+            &a_project("project_1"),
+            3,
+            at(2_000),
+        )
+        .await
+        .expect("keeping should succeed");
+    uncommitted
+        .forget_scene(&mut transaction, &a_scene("scene_kept"), at(2_000))
+        .await
+        .expect("forgetting should succeed");
+    uncommitted
+        .forget_tombstones_laid_before(&mut transaction, at(5_000), 10)
+        .await
+        .expect("forgetting tombstones should succeed");
+
+    drop(transaction);
+    kept(catalog, "scene_gone", 9, 3_000).await;
+
+    assert_eq!(
+        in_project(catalog, "project_1").await,
+        vec![counted("scene_kept", 5)],
+        "nothing written in the dropped transaction stands, and the tombstone it forgot is still laid"
+    );
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -240,7 +382,7 @@ macro_rules! conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.catalog()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -248,6 +390,10 @@ macro_rules! conformance_case {
 
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::suite::conformance_case!(
+            $workbench,
+            what_was_written_in_a_transaction_that_is_dropped_is_gone
+        );
         $crate::suite::conformance_case!($workbench, a_project_nobody_counted_has_no_counts);
         $crate::suite::conformance_case!($workbench, a_kept_count_comes_back_with_its_project);
         $crate::suite::conformance_case!($workbench, another_project_sees_none_of_them);

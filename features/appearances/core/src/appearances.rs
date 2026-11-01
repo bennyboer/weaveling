@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::{Act, Authorizer};
 use eventsourcing::Agent;
 use time::OffsetDateTime;
+use transacting::Transactions;
 
 use crate::appearance::{Place, Subject};
 use crate::catalog::AppearanceCatalog;
@@ -11,13 +12,19 @@ use crate::link::{IdeaLink, ProjectLink};
 
 #[derive(Clone)]
 pub struct AppearancesCore {
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn AppearanceCatalog>,
     authorizer: Arc<dyn Authorizer>,
 }
 
 impl AppearancesCore {
-    pub fn new(catalog: Arc<dyn AppearanceCatalog>, authorizer: Arc<dyn Authorizer>) -> Self {
+    pub fn new(
+        transactions: Arc<dyn Transactions>,
+        catalog: Arc<dyn AppearanceCatalog>,
+        authorizer: Arc<dyn Authorizer>,
+    ) -> Self {
         Self {
+            transactions,
             catalog,
             authorizer,
         }
@@ -51,13 +58,18 @@ impl AppearancesCore {
         project: Option<&str>,
     ) -> Result<(), AppearancesError> {
         let idea = an_idea(idea);
+
+        let mut transaction = self.transactions.begin().await?;
         if let Some(project) = project {
             self.catalog
-                .remember_project(&idea, &ProjectLink::from(project))
+                .remember_project(&mut transaction, &idea, &ProjectLink::from(project))
                 .await?;
         }
+        self.catalog
+            .remember(&mut transaction, &idea, place, version)
+            .await?;
 
-        Ok(self.catalog.remember(&idea, place, version).await?)
+        Ok(transaction.finish().await?)
     }
 
     pub async fn disappeared(
@@ -66,7 +78,12 @@ impl AppearancesCore {
         place: &Place,
         version: u64,
     ) -> Result<(), AppearancesError> {
-        Ok(self.catalog.forget(&an_idea(idea), place, version).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .forget(&mut transaction, &an_idea(idea), place, version)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn place_gone(
@@ -74,9 +91,12 @@ impl AppearancesCore {
         place: &Place,
         at: OffsetDateTime,
     ) -> Result<(), AppearancesError> {
-        self.catalog.forget_place(place, at).await?;
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .forget_place(&mut transaction, place, at)
+            .await?;
 
-        Ok(())
+        Ok(transaction.finish().await?)
     }
 
     pub async fn idea_discarded(
@@ -84,7 +104,12 @@ impl AppearancesCore {
         idea: &str,
         at: OffsetDateTime,
     ) -> Result<(), AppearancesError> {
-        Ok(self.catalog.forget_subject(&an_idea(idea), at).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .forget_subject(&mut transaction, &an_idea(idea), at)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -92,10 +117,14 @@ impl AppearancesCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, AppearancesError> {
-        Ok(self
+        let mut transaction = self.transactions.begin().await?;
+        let forgotten = self
             .catalog
-            .forget_tombstones_laid_before(before, at_most)
-            .await?)
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(forgotten)
     }
 
     async fn may_read(&self, idea: &str, agent: &Agent) -> Result<Option<bool>, AppearancesError> {

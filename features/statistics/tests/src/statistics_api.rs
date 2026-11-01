@@ -8,11 +8,13 @@ use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_contract::WordCountDTO;
 use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
 use time::OffsetDateTime;
+use transacting::{InMemoryTransactions, Transactions};
 
 #[tokio::test]
 async fn a_project_nobody_counted_answers_with_nothing() {
     let server = TestServer::new(
         statistics_rest::router(StatisticsCore::new(
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryWordCountCatalog::new()),
             Arc::new(AllowingEverything),
         ))
@@ -35,8 +37,13 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
         ("scene_2", "project_1", 7),
         ("scene_3", "project_2", 99),
     ] {
+        let mut transaction = InMemoryTransactions::new()
+            .begin()
+            .await
+            .expect("beginning should succeed");
         catalog
             .keep(
+                &mut transaction,
                 &SceneLink::from(scene),
                 &ProjectLink::from(project),
                 words,
@@ -44,10 +51,18 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
             )
             .await
             .expect("keeping should succeed");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
     }
     let server = TestServer::new(
-        statistics_rest::router(StatisticsCore::new(catalog, Arc::new(AllowingEverything)))
-            .layer(Extension(Agent::Local)),
+        statistics_rest::router(StatisticsCore::new(
+            Arc::new(InMemoryTransactions::new()),
+            catalog,
+            Arc::new(AllowingEverything),
+        ))
+        .layer(Extension(Agent::Local)),
     );
 
     let response = server
@@ -74,6 +89,7 @@ async fn a_project_answers_with_the_count_of_each_of_its_scenes() {
 async fn asking_without_a_project_is_a_bad_request() {
     let server = TestServer::new(
         statistics_rest::router(StatisticsCore::new(
+            Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryWordCountCatalog::new()),
             Arc::new(AllowingEverything),
         ))

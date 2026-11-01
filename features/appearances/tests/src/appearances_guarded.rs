@@ -2,9 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use appearances_catalog::InMemoryAppearanceCatalog;
 use appearances_contract::PlaceDTO;
-use appearances_core::{
-    AppearanceCatalog, AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, Subject,
-};
+use appearances_core::{AppearancesCore, IdeaLink, Place, ProjectLink, SceneLink, Subject};
 use appearances_rest::TellingAppearances;
 use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
@@ -14,6 +12,9 @@ use axum_test::TestServer;
 use eventsourcing::{AccountId, Agent};
 use live::Broadcaster;
 use live::testing::Subscriber;
+use transacting::InMemoryTransactions;
+
+use crate::committed::Committed;
 
 const READABLE: &str = "project_ada";
 const UNREADABLE: &str = "project_kept";
@@ -53,7 +54,11 @@ async fn guarded() -> Guarded {
     let broadcaster = Broadcaster::new();
     let kept = Arc::new(InMemoryAppearanceCatalog::new());
     let authorizer = Arc::new(OneProject::default());
-    let appearances = AppearancesCore::new(kept.clone(), authorizer.clone());
+    let appearances = AppearancesCore::new(
+        Arc::new(InMemoryTransactions::new()),
+        kept.clone(),
+        authorizer.clone(),
+    );
     let server = TestServer::builder().http_transport().build(
         appearances_rest::router(appearances.clone())
             .merge(live::live_socket(live::Topics::of(vec![Arc::new(
@@ -62,10 +67,10 @@ async fn guarded() -> Guarded {
             .layer(Extension(Agent::Account(AccountId::from("account_ada")))),
     );
     for (idea, project) in [("idea_ada", READABLE), ("idea_kept", UNREADABLE)] {
-        kept.remember_project(&an_idea(idea), &ProjectLink::from(project))
+        kept.remember_project_committed(&an_idea(idea), &ProjectLink::from(project))
             .await
             .expect("remembering should succeed");
-        kept.remember(&an_idea(idea), &Place::Scene(SceneLink::from("scene_1")), 1)
+        kept.remember_committed(&an_idea(idea), &Place::Scene(SceneLink::from("scene_1")), 1)
             .await
             .expect("remembering should succeed");
     }
@@ -99,7 +104,7 @@ async fn where_an_idea_of_a_project_one_may_read_appears_is_told_and_followed() 
     let listed = guarded.server.get("/appearances?idea=idea_ada").await;
     guarded
         .telling
-        .remember(
+        .remember_committed(
             &an_idea("idea_ada"),
             &Place::Scene(SceneLink::from("scene_2")),
             2,
@@ -143,12 +148,12 @@ async fn an_idea_of_no_project_known_yet_appears_nowhere_and_is_told_only_once_i
     for (idea, project) in [("idea_new", UNREADABLE), ("idea_later", READABLE)] {
         guarded
             .kept
-            .remember_project(&an_idea(idea), &ProjectLink::from(project))
+            .remember_project_committed(&an_idea(idea), &ProjectLink::from(project))
             .await
             .expect("remembering should succeed");
         guarded
             .telling
-            .remember(&an_idea(idea), &Place::Scene(SceneLink::from("scene_9")), 1)
+            .remember_committed(&an_idea(idea), &Place::Scene(SceneLink::from("scene_9")), 1)
             .await
             .expect("remembering should succeed");
     }
@@ -165,7 +170,7 @@ async fn an_idea_of_no_project_known_yet_appears_nowhere_and_is_told_only_once_i
     );
     guarded
         .telling
-        .remember(
+        .remember_committed(
             &an_idea("idea_orphan"),
             &Place::Scene(SceneLink::from("scene_9")),
             1,
@@ -186,7 +191,7 @@ async fn a_followed_idea_ends_once_whom_to_tell_cannot_be_known() {
     *guarded.authorizer.down.lock().expect("never poisoned") = true;
     guarded
         .telling
-        .remember(
+        .remember_committed(
             &an_idea("idea_ada"),
             &Place::Scene(SceneLink::from("scene_2")),
             2,

@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use appearances_core::{AppearanceCatalog, CatalogError, Place, ProjectLink, Subject};
 use async_trait::async_trait;
 use time::OffsetDateTime;
+use transacting::{Failure, Transaction};
 
 #[derive(Debug, Clone, Copy)]
 struct Seen {
@@ -11,7 +12,7 @@ struct Seen {
     present: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 struct Appearances {
     seen: BTreeMap<(Subject, Place), Seen>,
     subject_tombstones: BTreeMap<Subject, OffsetDateTime>,
@@ -21,7 +22,7 @@ struct Appearances {
 
 #[derive(Debug, Default)]
 pub struct InMemoryAppearanceCatalog {
-    appearances: RwLock<Appearances>,
+    appearances: Arc<RwLock<Appearances>>,
 }
 
 impl InMemoryAppearanceCatalog {
@@ -59,6 +60,22 @@ impl InMemoryAppearanceCatalog {
             *held = now;
         }
     }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
+        let appearances = self
+            .appearances
+            .read()
+            .expect("appearance catalog lock poisoned")
+            .clone();
+        let into_appearances = self.appearances.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_appearances
+                .write()
+                .expect("appearance catalog lock poisoned") = appearances;
+        })
+        .map_err(unreachable)
+    }
 }
 
 fn oldest_laid_before<Gone: Clone + Ord>(
@@ -80,14 +97,20 @@ fn oldest_laid_before<Gone: Clone + Ord>(
         .collect()
 }
 
+fn unreachable(failure: Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
 #[async_trait]
 impl AppearanceCatalog for InMemoryAppearanceCatalog {
     async fn remember(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.mark(
             subject,
             place,
@@ -102,10 +125,12 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
 
     async fn forget(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.mark(
             subject,
             place,
@@ -120,9 +145,11 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
 
     async fn forget_subject(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut appearances = self.write();
 
         appearances
@@ -136,9 +163,11 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
 
     async fn forget_place(
         &self,
+        transaction: &mut Transaction,
         place: &Place,
         at: OffsetDateTime,
     ) -> Result<Vec<Subject>, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut appearances = self.write();
         let mut appeared = Vec::new();
 
@@ -162,9 +191,11 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut appearances = self.write();
         let long_gone_subjects =
             oldest_laid_before(&appearances.subject_tombstones, before, at_most);
@@ -196,9 +227,11 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
 
     async fn remember_project(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         project: &ProjectLink,
     ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.write()
             .projects
             .insert(subject.clone(), project.clone());
@@ -214,22 +247,30 @@ impl AppearanceCatalog for InMemoryAppearanceCatalog {
 #[cfg(test)]
 mod tests {
     use async_trait::async_trait;
+    use transacting::{InMemoryTransactions, Transactions};
 
     use super::*;
     use crate::suite::Workbench;
 
-    struct InMemory(InMemoryAppearanceCatalog);
+    struct InMemory(InMemoryAppearanceCatalog, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Catalog = InMemoryAppearanceCatalog;
 
         async fn setup() -> Self {
-            Self(InMemoryAppearanceCatalog::new())
+            Self(
+                InMemoryAppearanceCatalog::new(),
+                InMemoryTransactions::new(),
+            )
         }
 
         fn catalog(&self) -> &Self::Catalog {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

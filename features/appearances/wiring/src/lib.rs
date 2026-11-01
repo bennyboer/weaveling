@@ -10,11 +10,13 @@ use appearances_messaging::{
 use chores::ForgetOldTombstones;
 use live::Broadcaster;
 use outbox::Outbox;
+use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Wired};
 
 use crate::tombstones::AppearanceTombstones;
 
 pub struct Ports {
+    pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn AppearanceCatalog>,
 }
 
@@ -24,7 +26,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         appearances_rest::TellingAppearances::around(ports.catalog.clone(), broadcaster.clone()),
     );
 
-    let appearances = AppearancesCore::new(telling, context.authorizer.clone());
+    let appearances = AppearancesCore::new(
+        ports.transactions.clone(),
+        telling,
+        context.authorizer.clone(),
+    );
 
     Wired::serving(appearances_rest::router(appearances.clone()))
         .followed_live(vec![Arc::new(appearances_rest::AppearancesTopic::new(
@@ -52,6 +58,7 @@ impl Feature for AppearanceFeature {
 
     fn in_memory(_context: &Context) -> Ports {
         Ports {
+            transactions: Arc::new(InMemoryTransactions::new()),
             catalog: Arc::new(InMemoryAppearanceCatalog::new()),
         }
     }
@@ -59,6 +66,7 @@ impl Feature for AppearanceFeature {
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
         Ok(Ports {
+            transactions: Arc::new(transacting::PostgresTransactions::new(pool.clone())),
             catalog: Arc::new(appearances_catalog::PostgresAppearanceCatalog::new(pool)),
         })
     }
@@ -71,6 +79,7 @@ impl Feature for AppearanceFeature {
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
         Ok(Ports {
+            transactions: Arc::new(transacting::SqliteTransactions::new(pool.clone())),
             catalog: Arc::new(appearances_catalog::SqliteAppearanceCatalog::new(pool)),
         })
     }
@@ -121,11 +130,20 @@ mod tests {
             ("idea_long_gone", NOW),
             ("idea_just_gone", NOW + Duration::SECOND),
         ] {
+            let mut transaction = ports
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
             ports
                 .catalog
-                .forget_subject(&Subject::Idea(IdeaLink::from(idea)), laid)
+                .forget_subject(&mut transaction, &Subject::Idea(IdeaLink::from(idea)), laid)
                 .await
                 .expect("forgetting should succeed");
+            transaction
+                .finish()
+                .await
+                .expect("finishing should succeed");
         }
 
         let [chore] = wired.chores.as_slice() else {
@@ -144,19 +162,22 @@ mod tests {
 
     #[tokio::test]
     async fn the_tombstones_handed_to_the_chore_forget_no_more_than_a_batch() {
-        let catalog: Arc<dyn AppearanceCatalog> = Arc::new(InMemoryAppearanceCatalog::new());
+        let appearances = AppearancesCore::new(
+            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryAppearanceCatalog::new()),
+            Arc::new(AllowingEverything),
+        );
         for idea in ["idea_1", "idea_2"] {
-            catalog
-                .forget_subject(&Subject::Idea(IdeaLink::from(idea)), NOW)
+            appearances
+                .idea_discarded(idea, NOW)
                 .await
                 .expect("forgetting should succeed");
         }
 
-        let forgotten =
-            AppearanceTombstones::of(AppearancesCore::new(catalog, Arc::new(AllowingEverything)))
-                .forget_laid_before(NOW + Duration::SECOND, 1)
-                .await
-                .expect("forgetting tombstones should succeed");
+        let forgotten = AppearanceTombstones::of(appearances)
+            .forget_laid_before(NOW + Duration::SECOND, 1)
+            .await
+            .expect("forgetting tombstones should succeed");
 
         assert_eq!(forgotten, 1);
     }

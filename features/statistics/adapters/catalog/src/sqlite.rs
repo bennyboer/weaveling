@@ -4,6 +4,8 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 use statistics_core::{CatalogError, ProjectLink, SceneLink, WordCount, WordCountCatalog};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::sqlite::connection;
 
 const KEEP: &str = "
     INSERT INTO word_counts (scene, project, words, counted_at)
@@ -29,8 +31,6 @@ const FORGET_OLD_TOMBSTONES: &str = "
 const COUNT_OF: &str = "SELECT words FROM word_counts WHERE scene = ?1";
 
 const FORGET: &str = "DELETE FROM word_counts WHERE scene = ?1";
-
-const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
 
 const IN_PROJECT: &str = "SELECT scene, words FROM word_counts WHERE project = ?1 ORDER BY scene";
 
@@ -62,7 +62,7 @@ fn count_from(row: &SqliteRow) -> Result<WordCount, CatalogError> {
     })
 }
 
-fn unreachable(failure: sqlx::Error) -> CatalogError {
+fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> CatalogError {
     CatalogError::Backend(Box::new(failure))
 }
 
@@ -70,6 +70,7 @@ fn unreachable(failure: sqlx::Error) -> CatalogError {
 impl WordCountCatalog for SqliteWordCountCatalog {
     async fn keep(
         &self,
+        transaction: &mut Transaction,
         scene: &SceneLink,
         project: &ProjectLink,
         words: u64,
@@ -80,12 +81,12 @@ impl WordCountCatalog for SqliteWordCountCatalog {
             .bind(project.as_str())
             .bind(i64::try_from(words).expect("a word count fits a signed 64-bit column"))
             .bind(in_microseconds(counted_at))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         let kept: Option<i64> = sqlx::query_scalar(COUNT_OF)
             .bind(scene.as_str())
-            .fetch_optional(&self.pool)
+            .fetch_optional(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -95,39 +96,35 @@ impl WordCountCatalog for SqliteWordCountCatalog {
 
     async fn forget_scene(
         &self,
+        transaction: &mut Transaction,
         scene: &SceneLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        let mut transaction = self
-            .pool
-            .begin_with(BEGIN_WRITING)
-            .await
-            .map_err(unreachable)?;
-
         sqlx::query(LAY_TOMBSTONE)
             .bind(scene.as_str())
             .bind(in_microseconds(at))
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(scene.as_str())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(in_microseconds(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected())

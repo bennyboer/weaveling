@@ -3737,6 +3737,7 @@ dependencies = [
  "weaveling-appearances-core",
  "weaveling-clock",
  "weaveling-test-harness",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -3755,6 +3756,7 @@ dependencies = [
  "time",
  "weaveling-authorizing",
  "weaveling-eventsourcing",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -3785,6 +3787,7 @@ dependencies = [
  "weaveling-live",
  "weaveling-live-contract",
  "weaveling-serving",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -3809,6 +3812,7 @@ dependencies = [
  "weaveling-messaging",
  "weaveling-outline-contract",
  "weaveling-scenes-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -3829,6 +3833,7 @@ dependencies = [
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 
@@ -5233,6 +5238,7 @@ dependencies = [
  "tokio",
  "weaveling-statistics-core",
  "weaveling-test-harness",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5251,6 +5257,7 @@ dependencies = [
  "time",
  "weaveling-authorizing",
  "weaveling-eventsourcing",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5276,6 +5283,7 @@ dependencies = [
  "weaveling-serving",
  "weaveling-statistics-contract",
  "weaveling-statistics-core",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5299,6 +5307,7 @@ dependencies = [
  "weaveling-statistics-core",
  "weaveling-statistics-messaging",
  "weaveling-statistics-rest",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5319,6 +5328,7 @@ dependencies = [
  "weaveling-statistics-core",
  "weaveling-statistics-messaging",
  "weaveling-statistics-rest",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 

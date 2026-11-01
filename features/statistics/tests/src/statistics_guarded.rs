@@ -10,8 +10,9 @@ use live::Broadcaster;
 use live::testing::Subscriber;
 use serde_json::Value;
 use statistics_catalog::InMemoryWordCountCatalog;
-use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCountCatalog};
+use statistics_core::StatisticsCore;
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 const PROJECT: &str = "project_1";
 
@@ -56,17 +57,15 @@ struct Guarded {
 
 async fn guarded() -> Guarded {
     let authorizer = Arc::new(OnlyAda::default());
-    let catalog = Arc::new(InMemoryWordCountCatalog::new());
-    catalog
-        .keep(
-            &SceneLink::from("scene_1"),
-            &ProjectLink::from(PROJECT),
-            42,
-            OffsetDateTime::UNIX_EPOCH,
-        )
+    let statistics = StatisticsCore::new(
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(InMemoryWordCountCatalog::new()),
+        authorizer.clone(),
+    );
+    statistics
+        .counted("scene_1", PROJECT, 42, OffsetDateTime::UNIX_EPOCH)
         .await
         .expect("keeping should succeed");
-    let statistics = StatisticsCore::new(catalog, authorizer.clone());
     let routes = statistics_rest::router(statistics.clone()).merge(live::live_socket(
         live::Topics::of(vec![statistics_rest::topic(statistics, Broadcaster::new())]),
     ));

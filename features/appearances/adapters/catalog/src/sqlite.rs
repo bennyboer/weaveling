@@ -6,6 +6,8 @@ use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::sqlite::connection;
 
 const IDEA: &str = "idea";
 
@@ -44,8 +46,6 @@ const FORGET_PLACE: &str = "
     DELETE FROM appearances WHERE place_type = ?1 AND place_id = ?2
     RETURNING subject_type, subject_id, present
 ";
-
-const BEGIN_WRITING: &str = "BEGIN IMMEDIATE";
 
 const REMEMBER_PROJECT: &str = "
     INSERT INTO subject_projects (subject_type, subject_id, project)
@@ -104,6 +104,7 @@ impl SqliteAppearanceCatalog {
     }
     async fn mark(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
@@ -119,7 +120,7 @@ impl SqliteAppearanceCatalog {
             .bind(place_id)
             .bind(i64::try_from(version).expect("a version fits a signed 64-bit column"))
             .bind(present)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -167,7 +168,7 @@ fn place_from(row: &SqliteRow) -> Result<Place, CatalogError> {
     }
 }
 
-fn unreachable(failure: sqlx::Error) -> CatalogError {
+fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> CatalogError {
     CatalogError::Backend(Box::new(failure))
 }
 
@@ -175,77 +176,70 @@ fn unreachable(failure: sqlx::Error) -> CatalogError {
 impl AppearanceCatalog for SqliteAppearanceCatalog {
     async fn remember(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
     ) -> Result<(), CatalogError> {
-        self.mark(subject, place, version, true).await
+        self.mark(transaction, subject, place, version, true).await
     }
 
     async fn forget(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         place: &Place,
         version: u64,
     ) -> Result<(), CatalogError> {
-        self.mark(subject, place, version, false).await
+        self.mark(transaction, subject, place, version, false).await
     }
 
     async fn forget_subject(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
         let (subject_type, subject_id) = subject_type_and_id(subject);
-        let mut transaction = self
-            .pool
-            .begin_with(BEGIN_WRITING)
-            .await
-            .map_err(unreachable)?;
 
         sqlx::query(LAY_SUBJECT_TOMBSTONE)
             .bind(subject_type)
             .bind(subject_id)
             .bind(clock::text::written(at))
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET_SUBJECT)
             .bind(subject_type)
             .bind(subject_id)
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn forget_place(
         &self,
+        transaction: &mut Transaction,
         place: &Place,
         at: OffsetDateTime,
     ) -> Result<Vec<Subject>, CatalogError> {
         let (place_type, place_id) = place_type_and_id(place);
-        let mut transaction = self
-            .pool
-            .begin_with(BEGIN_WRITING)
-            .await
-            .map_err(unreachable)?;
 
         sqlx::query(LAY_PLACE_TOMBSTONE)
             .bind(place_type)
             .bind(place_id)
             .bind(clock::text::written(at))
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         let forgotten = sqlx::query(FORGET_PLACE)
             .bind(place_type)
             .bind(place_id)
-            .fetch_all(&mut *transaction)
+            .fetch_all(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
-        transaction.commit().await.map_err(unreachable)?;
 
         let mut appeared = Vec::new();
         for row in &forgotten {
@@ -258,34 +252,29 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         let before = clock::text::written(before);
         let at_most = i64::try_from(at_most).unwrap_or(i64::MAX);
-        let mut transaction = self
-            .pool
-            .begin_with(BEGIN_WRITING)
-            .await
-            .map_err(unreachable)?;
         let mut forgotten = 0;
 
         sqlx::query(FORGET_PROJECTS_OF_OLD_TOMBSTONES)
             .bind(&before)
             .bind(at_most)
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         for long_gone in [FORGET_OLD_SUBJECT_TOMBSTONES, FORGET_OLD_PLACE_TOMBSTONES] {
             forgotten += sqlx::query(long_gone)
                 .bind(&before)
                 .bind(at_most)
-                .execute(&mut *transaction)
+                .execute(connection(transaction).map_err(unreachable)?)
                 .await
                 .map_err(unreachable)?
                 .rows_affected();
         }
-        transaction.commit().await.map_err(unreachable)?;
 
         Ok(forgotten)
     }
@@ -306,6 +295,7 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
 
     async fn remember_project(
         &self,
+        transaction: &mut Transaction,
         subject: &Subject,
         project: &ProjectLink,
     ) -> Result<(), CatalogError> {
@@ -315,7 +305,7 @@ impl AppearanceCatalog for SqliteAppearanceCatalog {
             .bind(subject_type)
             .bind(subject_id)
             .bind(project.as_str())
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
