@@ -3,11 +3,13 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use ideas_core::{CatalogError, IdeaCatalog, IdeaId, IdeaSummary, ProjectLink};
+use time::OffsetDateTime;
 
 type Listed = HashMap<IdeaId, IdeaSummary>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryIdeaCatalog {
+    forgotten: RwLock<HashMap<IdeaId, OffsetDateTime>>,
     listed: RwLock<Listed>,
 }
 
@@ -28,15 +30,50 @@ impl InMemoryIdeaCatalog {
 #[async_trait]
 impl IdeaCatalog for InMemoryIdeaCatalog {
     async fn remember(&self, summary: &IdeaSummary) -> Result<(), CatalogError> {
-        self.write().insert(summary.id, summary.clone());
+        let forgotten = self.forgotten.read().expect("the catalog is not poisoned");
+        if forgotten.contains_key(&summary.id) {
+            return Ok(());
+        }
+        let mut listed = self.write();
+        if listed
+            .get(&summary.id)
+            .is_none_or(|known| known.version < summary.version)
+        {
+            listed.insert(summary.id, summary.clone());
+        }
 
         Ok(())
     }
 
-    async fn forget(&self, id: &IdeaId) -> Result<(), CatalogError> {
+    async fn forget(&self, id: &IdeaId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        self.forgotten
+            .write()
+            .expect("the catalog is not poisoned")
+            .entry(*id)
+            .or_insert(at);
         self.write().remove(id);
 
         Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut forgotten = self.forgotten.write().expect("the catalog is not poisoned");
+        let mut long_gone: Vec<(OffsetDateTime, IdeaId)> = forgotten
+            .iter()
+            .filter(|(_, laid)| **laid < before)
+            .map(|(id, laid)| (*laid, *id))
+            .collect();
+        long_gone.sort();
+        long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+        for (_, id) in &long_gone {
+            forgotten.remove(id);
+        }
+
+        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
     }
 
     async fn in_project_after(

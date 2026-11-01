@@ -28,7 +28,13 @@ pub enum CatalogError {
 pub trait ProjectCatalog: Send + Sync {
     async fn remember(&self, summary: &ProjectSummary) -> Result<(), CatalogError>;
 
-    async fn forget(&self, id: &ProjectId) -> Result<(), CatalogError>;
+    async fn forget(&self, id: &ProjectId, at: OffsetDateTime) -> Result<(), CatalogError>;
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     async fn all(&self) -> Result<Vec<ProjectSummary>, CatalogError>;
 

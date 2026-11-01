@@ -38,7 +38,7 @@ function described(page: Page): () => number {
 
 async function anOpenProjectFollowedLive(page: Page, named: string) {
   const asks = described(page);
-  const followed = subscribing(page, "projects");
+  const followed = subscribing(page, "projects", (about) => "project" in about);
   const title = await aNewProject(page, named);
   await followed;
   await expect(masthead(page)).toHaveText(title);
@@ -128,7 +128,9 @@ test("a change missed on the way asks for the project again, and it comes out ri
     },
   });
   const asks = described(page);
+  const followed = subscribing(page, "projects", (about) => "project" in about);
   const title = await aNewProject(page, "OpenMissed");
+  await followed;
   await expect(masthead(page)).toHaveText(title);
   await expect.poll(asks).toBe(1);
   const project = projectOf(page);

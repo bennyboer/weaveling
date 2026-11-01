@@ -6,11 +6,24 @@ use time::OffsetDateTime;
 
 const REMEMBER: &str = "
     INSERT INTO board_summaries (board, project)
-    VALUES (?1, ?2)
+    SELECT ?1, ?2
+    WHERE NOT EXISTS (SELECT 1 FROM board_tombstones WHERE board = ?1)
     ON CONFLICT (board) DO UPDATE SET project = excluded.project
 ";
 
 const FORGET: &str = "DELETE FROM board_summaries WHERE board = ?1";
+
+const LAY_SUMMARY_TOMBSTONE: &str =
+    "INSERT INTO board_tombstones (board, laid_at) VALUES (?1, ?2) ON CONFLICT DO NOTHING";
+
+const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
+    DELETE FROM board_tombstones WHERE board IN (
+        SELECT board FROM board_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, board
+        LIMIT ?2
+    )
+";
 
 const IN_PROJECT: &str = "
     SELECT board, project
@@ -80,8 +93,14 @@ impl BoardCatalog for SqliteBoardCatalog {
         Ok(())
     }
 
-    async fn forget(&self, board: &BoardId) -> Result<(), CatalogError> {
+    async fn forget(&self, board: &BoardId, at: OffsetDateTime) -> Result<(), CatalogError> {
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(LAY_SUMMARY_TOMBSTONE)
+            .bind(board.to_string())
+            .bind(clock::text::written(at))
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
 
         sqlx::query(FORGET)
             .bind(board.to_string())
@@ -173,13 +192,22 @@ impl BoardCatalog for SqliteBoardCatalog {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
+        let pieces = sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(clock::text::written(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?
-            .rows_affected())
+            .rows_affected();
+        let summaries = sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
+            .bind(clock::text::written(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected();
+
+        Ok(pieces + summaries)
     }
 
     async fn held_though_tombstoned(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {

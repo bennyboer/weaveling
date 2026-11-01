@@ -260,7 +260,7 @@ pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &impl BoardCatalo
         .expect("indexing should succeed");
 
     catalog
-        .forget(&board)
+        .forget(&board, at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -284,7 +284,7 @@ pub async fn a_forgotten_board_takes_its_pins_with_it(catalog: &impl BoardCatalo
 
 pub async fn forgetting_a_board_nobody_opened_is_harmless(catalog: &impl BoardCatalog) {
     catalog
-        .forget(&BoardId::generate(at(1_000)))
+        .forget(&BoardId::generate(at(1_000)), at(5_000))
         .await
         .expect("forgetting an unknown board should not fail");
 }
@@ -436,6 +436,69 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
+async fn listed(catalog: &impl BoardCatalog) -> Vec<BoardSummary> {
+    catalog
+        .in_project(&ProjectLink::from("project_1"))
+        .await
+        .expect("listing should succeed")
+}
+
+pub async fn a_forgotten_board_heard_of_late_is_not_remembered_again(catalog: &impl BoardCatalog) {
+    let gone = a_summary(BoardId::generate(at(1_000)), "project_1");
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .forget(&gone.id, at(5_000))
+        .await
+        .expect("forgetting should succeed");
+
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        listed(catalog).await.is_empty(),
+        "what was forgotten stays forgotten, however late or new a summary of it comes"
+    );
+}
+
+pub async fn board_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl BoardCatalog,
+) {
+    let (older, newer, latest) = (
+        a_summary(BoardId::generate(at(1_000)), "project_1"),
+        a_summary(BoardId::generate(at(2_000)), "project_1"),
+        a_summary(BoardId::generate(at(3_000)), "project_1"),
+    );
+    for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
+        catalog
+            .forget(&summary.id, at(laid))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    let forgotten = catalog
+        .forget_tombstones_laid_before(at(8_000), 1)
+        .await
+        .expect("forgetting tombstones should succeed");
+    for summary in [&older, &newer, &latest] {
+        catalog
+            .remember(summary)
+            .await
+            .expect("remembering should succeed");
+    }
+
+    assert_eq!(forgotten, 1);
+    assert_eq!(
+        listed(catalog).await,
+        vec![older],
+        "only the oldest tombstone is gone, so only it can be remembered again"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -453,6 +516,14 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_forgotten_board_heard_of_late_is_not_remembered_again
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            board_tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
         $crate::catalog_conformance_case!($workbench, a_remembered_board_is_listed_in_its_project);
         $crate::catalog_conformance_case!(
             $workbench,

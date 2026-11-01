@@ -79,7 +79,7 @@ pub async fn a_forgotten_project_is_no_longer_listed(catalog: &impl ProjectCatal
         .expect("remembering should succeed");
 
     catalog
-        .forget(&id)
+        .forget(&id, at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -94,7 +94,7 @@ pub async fn a_forgotten_project_is_no_longer_listed(catalog: &impl ProjectCatal
 
 pub async fn forgetting_something_never_remembered_is_harmless(catalog: &impl ProjectCatalog) {
     catalog
-        .forget(&ProjectId::generate(at(1_000)))
+        .forget(&ProjectId::generate(at(1_000)), at(5_000))
         .await
         .expect("forgetting an unknown project should not fail");
 }
@@ -184,6 +184,91 @@ pub async fn among_no_ids_nothing_is_listed(catalog: &impl ProjectCatalog) {
     );
 }
 
+async fn listed(catalog: &impl ProjectCatalog) -> Vec<ProjectSummary> {
+    catalog.all().await.expect("listing should succeed")
+}
+
+pub async fn a_forgotten_project_heard_of_late_is_not_remembered_again(
+    catalog: &impl ProjectCatalog,
+) {
+    let gone = a_summary(ProjectId::generate(at(1_000)), "Working Title");
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .forget(&gone.id, at(5_000))
+        .await
+        .expect("forgetting should succeed");
+
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+    let mut newer = gone.clone();
+    newer.version = Version::of(newer.version.count() + 1);
+    catalog
+        .remember(&newer)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        listed(catalog).await.is_empty(),
+        "what was forgotten stays forgotten, however late or new a summary of it comes"
+    );
+}
+
+pub async fn project_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl ProjectCatalog,
+) {
+    let (older, newer, latest) = (
+        a_summary(ProjectId::generate(at(1_000)), "Working Title"),
+        a_summary(ProjectId::generate(at(2_000)), "Working Title"),
+        a_summary(ProjectId::generate(at(3_000)), "Working Title"),
+    );
+    for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
+        catalog
+            .forget(&summary.id, at(laid))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    let forgotten = catalog
+        .forget_tombstones_laid_before(at(8_000), 1)
+        .await
+        .expect("forgetting tombstones should succeed");
+    for summary in [&older, &newer, &latest] {
+        catalog
+            .remember(summary)
+            .await
+            .expect("remembering should succeed");
+    }
+
+    assert_eq!(forgotten, 1);
+    assert_eq!(
+        listed(catalog).await,
+        vec![older],
+        "only the oldest tombstone is gone, so only it can be remembered again"
+    );
+}
+
+pub async fn an_older_project_summary_heard_late_changes_nothing(catalog: &impl ProjectCatalog) {
+    let summary = a_summary(ProjectId::generate(at(1_000)), "Working Title");
+    let mut newer = summary.clone();
+    newer.version = Version::of(2);
+    catalog
+        .remember(&newer)
+        .await
+        .expect("remembering should succeed");
+
+    catalog
+        .remember(&summary)
+        .await
+        .expect("remembering should succeed");
+
+    assert_eq!(listed(catalog).await, vec![newer]);
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -201,6 +286,18 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_forgotten_project_heard_of_late_is_not_remembered_again
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            project_tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_older_project_summary_heard_late_changes_nothing
+        );
         $crate::catalog_conformance_case!($workbench, a_remembered_project_is_listed);
         $crate::catalog_conformance_case!($workbench, an_empty_catalog_lists_nothing);
         $crate::catalog_conformance_case!(

@@ -1,7 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 
 import { aNewProject, API, sceneCatalogued } from "./support/shell";
-import { routingLive } from "./support/live";
+import { routingLive, subscribing } from "./support/live";
 
 const projectSegment = (page: Page) =>
   new URL(page.url()).pathname.split("/")[2];
@@ -72,6 +72,12 @@ async function inspect(page: Page, idea: string) {
   await page.goto(`/projects/${projectSegment(page)}/ideas/${idea}`);
 }
 
+async function inspectedFollowingLive(page: Page, idea: string) {
+  const followed = subscribing(page, "appearances");
+  await inspect(page, idea);
+  await followed;
+}
+
 function askedWhere(page: Page): () => number {
   let times = 0;
   page.on("request", (request) => {
@@ -85,7 +91,9 @@ function askedWhere(page: Page): () => number {
 
 async function inspectedLive(page: Page, idea: string) {
   const asks = askedWhere(page);
+  const followed = subscribing(page, "appearances");
   await inspect(page, idea);
+  await followed;
   await expect(page.getByRole("heading", { name: "A girl in a wood" })).toBeVisible();
   await expect.poll(asks, { message: "asked once, as it connects" }).toBe(1);
 
@@ -116,6 +124,8 @@ test("a scene that no longer draws on the idea leaves its inspector", async ({ p
       timeout: 1_000,
     });
   }).toPass();
+  await inspectedFollowingLive(page, idea);
+  await expect(appearances(page).getByRole("link", { name: "The clearing" })).toBeVisible();
 
   const unlinked = await page.request.delete(`${API}/scenes/${scene}/ideas/${idea}`);
   expect(unlinked.ok()).toBe(true);
@@ -132,6 +142,8 @@ test("a scene deleted leaves the inspector of every idea it drew on", async ({ p
     await inspect(page, idea);
     await expect(appearances(page).getByRole("listitem")).toHaveCount(2, { timeout: 1_000 });
   }).toPass();
+  await inspectedFollowingLive(page, idea);
+  await expect(appearances(page).getByRole("listitem")).toHaveCount(2);
 
   const deleted = await page.request.delete(`${API}/scenes/${scene}`);
   expect(deleted.ok()).toBe(true);

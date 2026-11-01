@@ -82,12 +82,20 @@ export function heardOn(page: Page, topic: string, heard: () => void, about: Abo
   );
 }
 
-export function subscribing(page: Page, topic: string): Promise<void> {
+export function subscribing(
+  page: Page,
+  topic: string,
+  about: (asked: About) => boolean = () => true,
+): Promise<void> {
   return new Promise((resolve) =>
     onLive(
       page,
       (asked) => {
-        if (asked.do === "subscribe" && asked.topic === topic) {
+        if (
+          asked.do === "subscribe" &&
+          asked.topic === topic &&
+          about(asked.about as About)
+        ) {
           resolve();
         }
       },

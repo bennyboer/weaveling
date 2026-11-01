@@ -17,7 +17,8 @@ use crate::{outcome, scope};
 const REMEMBER: &str = "
     INSERT INTO invitation_summaries
         (invitation, version, email, issued_at, until, outcome, declined_for, retire_after, project, project_role, issued_by, digest)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+    SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
+    WHERE NOT EXISTS (SELECT 1 FROM invitation_tombstones WHERE invitation = $1)
     ON CONFLICT (invitation) DO UPDATE
     SET version      = EXCLUDED.version,
         email        = EXCLUDED.email,
@@ -73,6 +74,19 @@ const DUE_FOR_RETIRING: &str = "
 ";
 
 const FORGET: &str = "DELETE FROM invitation_summaries WHERE invitation = $1";
+
+const LAY_INVITATION_TOMBSTONE: &str = "INSERT INTO invitation_tombstones (invitation, laid_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+
+const FORGET_OLD_INVITATION_TOMBSTONES: &str = "
+    DELETE FROM invitation_tombstones WHERE invitation IN (
+        SELECT invitation FROM invitation_tombstones
+        WHERE laid_at < $1
+        ORDER BY laid_at, invitation
+        LIMIT $2
+    )
+";
+
+const HOLD_INVITATION: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
 
 const REMEMBER_PERSON: &str = "
     INSERT INTO people (account, name, email)
@@ -178,6 +192,12 @@ impl InvitationCatalog for PostgresInvitationCatalog {
         let (kept, declined_for) = outcome::written(summary.outcome);
         let (project, project_role) = scope::written(&summary.scope);
 
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(HOLD_INVITATION)
+            .bind(summary.id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(i64::try_from(summary.version.count()).map_err(unreachable)?)
@@ -191,11 +211,11 @@ impl InvitationCatalog for PostgresInvitationCatalog {
             .bind(project_role)
             .bind(summary.issued_by.as_ref().map(AccountId::as_str))
             .bind(summary.digest.as_str())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        transaction.commit().await.map_err(unreachable)
     }
 
     async fn listed_after(
@@ -271,14 +291,44 @@ impl InvitationCatalog for PostgresInvitationCatalog {
             .collect()
     }
 
-    async fn forget(&self, invitation: &InvitationId) -> Result<(), CatalogError> {
+    async fn forget(
+        &self,
+        invitation: &InvitationId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(HOLD_INVITATION)
+            .bind(invitation.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(LAY_INVITATION_TOMBSTONE)
+            .bind(invitation.to_string())
+            .bind(at)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(invitation.to_string())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn forget_invitation_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_OLD_INVITATION_TOMBSTONES)
+            .bind(before)
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {

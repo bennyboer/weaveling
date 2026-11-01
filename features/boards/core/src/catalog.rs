@@ -23,7 +23,7 @@ pub enum CatalogError {
 pub trait BoardCatalog: Send + Sync {
     async fn remember(&self, summary: &BoardSummary) -> Result<(), CatalogError>;
 
-    async fn forget(&self, board: &BoardId) -> Result<(), CatalogError>;
+    async fn forget(&self, board: &BoardId, at: OffsetDateTime) -> Result<(), CatalogError>;
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<BoardSummary>, CatalogError>;
 

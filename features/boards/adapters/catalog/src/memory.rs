@@ -16,6 +16,7 @@ struct Pins {
 
 #[derive(Debug, Default)]
 pub struct InMemoryBoardCatalog {
+    forgotten: RwLock<HashMap<BoardId, OffsetDateTime>>,
     listed: RwLock<Listed>,
     pins: RwLock<Pins>,
 }
@@ -45,12 +46,21 @@ impl InMemoryBoardCatalog {
 #[async_trait]
 impl BoardCatalog for InMemoryBoardCatalog {
     async fn remember(&self, summary: &BoardSummary) -> Result<(), CatalogError> {
+        let forgotten = self.forgotten.read().expect("the catalog is not poisoned");
+        if forgotten.contains_key(&summary.id) {
+            return Ok(());
+        }
         self.write().insert(summary.id, summary.clone());
 
         Ok(())
     }
 
-    async fn forget(&self, board: &BoardId) -> Result<(), CatalogError> {
+    async fn forget(&self, board: &BoardId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        self.forgotten
+            .write()
+            .expect("the catalog is not poisoned")
+            .entry(*board)
+            .or_insert(at);
         self.write().remove(board);
         self.holds(*board, &[]).await?;
 
@@ -136,7 +146,25 @@ impl BoardCatalog for InMemoryBoardCatalog {
             pins.tombstones.remove(idea);
         }
 
-        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
+        let pieces = u64::try_from(long_gone.len()).expect("a count of tombstones fits");
+        drop(pins);
+
+        let summaries = {
+            let mut forgotten = self.forgotten.write().expect("the catalog is not poisoned");
+            let mut summaries_gone: Vec<(OffsetDateTime, BoardId)> = forgotten
+                .iter()
+                .filter(|(_, laid)| **laid < before)
+                .map(|(id, laid)| (*laid, *id))
+                .collect();
+            summaries_gone.sort();
+            summaries_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+            for (_, id) in &summaries_gone {
+                forgotten.remove(id);
+            }
+            u64::try_from(summaries_gone.len()).expect("a count of tombstones fits")
+        };
+
+        Ok(pieces + summaries)
     }
 
     async fn held_though_tombstoned(&self, board: BoardId) -> Result<Vec<IdeaLink>, CatalogError> {

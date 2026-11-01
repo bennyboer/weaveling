@@ -98,7 +98,17 @@ pub trait InvitationCatalog: Send + Sync {
         at_most: usize,
     ) -> Result<Vec<InvitationId>, CatalogError>;
 
-    async fn forget(&self, invitation: &InvitationId) -> Result<(), CatalogError>;
+    async fn forget(
+        &self,
+        invitation: &InvitationId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
+
+    async fn forget_invitation_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError>;
 
     async fn remember_person(&self, person: &Person) -> Result<(), CatalogError>;
 

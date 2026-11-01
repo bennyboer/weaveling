@@ -127,7 +127,9 @@ test("a change missed on the way asks for the ideas again, and the pool comes ou
   });
   await aNewProject(page, "PoolLiveMissed");
   const asks = asked(page);
+  const followed = subscribing(page, "ideas");
   await openThePool(page);
+  await followed;
   await expect.poll(asks).toBe(1);
 
   const shuttle = await anIdea(page, "The shuttle");

@@ -141,6 +141,22 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
         listed(&wired).await.is_empty(),
         "the projector reads the project rather than trusting the message, so order cannot bite"
     );
+    assert_eq!(
+        (
+            wired
+                .projects
+                .forget_tombstones_laid_before(at(1_000), 10)
+                .await
+                .expect("forgetting should succeed"),
+            wired
+                .projects
+                .forget_tombstones_laid_before(at(1_001), 10)
+                .await
+                .expect("forgetting should succeed"),
+        ),
+        (0, 1),
+        "its tombstone was laid as it was catalogued gone, by the clock"
+    );
 }
 
 #[tokio::test]

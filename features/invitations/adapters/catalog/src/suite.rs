@@ -187,7 +187,7 @@ pub async fn an_invitation_is_found_by_its_token_s_digest_however_it_stands_unti
         None
     );
     catalog
-        .forget(&open.id)
+        .forget(&open.id, at(5_000))
         .await
         .expect("forgetting should succeed");
     assert_eq!(
@@ -379,15 +379,76 @@ pub async fn a_forgotten_invitation_leaves_the_list_and_the_others_stay(
     remembered(catalog, &stays).await;
 
     catalog
-        .forget(&gone.id)
+        .forget(&gone.id, at(5_000))
         .await
         .expect("forgetting should succeed");
     catalog
-        .forget(&issued(9_000))
+        .forget(&issued(9_000), at(5_000))
         .await
         .expect("forgetting what was never listed is harmless");
 
     assert_eq!(listed(catalog).await, vec![stays]);
+}
+
+pub async fn a_forgotten_invitation_heard_of_late_is_not_remembered_again(
+    catalog: &impl InvitationCatalog,
+) {
+    let gone = a_summary(issued(1_000), "gone@example.com");
+    remembered(catalog, &gone).await;
+    catalog
+        .forget(&gone.id, at(5_000))
+        .await
+        .expect("forgetting should succeed");
+
+    remembered(catalog, &gone).await;
+    let newer = InvitationSummary {
+        version: Version::of(gone.version.count() + 1),
+        ..gone.clone()
+    };
+    remembered(catalog, &newer).await;
+
+    assert!(
+        listed(catalog).await.is_empty(),
+        "a retired invitation brought back would be due for retiring again every round, for good"
+    );
+    assert!(
+        catalog
+            .due_for_retiring(at(1_000_000_000), 10)
+            .await
+            .expect("asking should succeed")
+            .is_empty()
+    );
+}
+
+pub async fn an_invitation_s_tombstone_is_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl InvitationCatalog,
+) {
+    let (older, newer, latest) = (
+        a_summary(issued(1_000), "older@example.com"),
+        a_summary(issued(2_000), "newer@example.com"),
+        a_summary(issued(3_000), "latest@example.com"),
+    );
+    for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
+        catalog
+            .forget(&summary.id, at(laid))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    let forgotten = catalog
+        .forget_invitation_tombstones_laid_before(at(8_000), 1)
+        .await
+        .expect("forgetting tombstones should succeed");
+    for summary in [&older, &newer, &latest] {
+        remembered(catalog, summary).await;
+    }
+
+    assert_eq!(forgotten, 1);
+    assert_eq!(
+        listed(catalog).await,
+        vec![older],
+        "only the oldest tombstone is gone, so only its invitation can be remembered again"
+    );
 }
 
 fn person(account: &str, name: &str, email: &str) -> Person {
@@ -659,6 +720,14 @@ macro_rules! catalog_conformance_case {
 macro_rules! conformance_tests {
     ($workbench:ty) => {
         $crate::catalog_conformance_case!($workbench, a_remembered_invitation_is_listed_as_it_was);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_forgotten_invitation_heard_of_late_is_not_remembered_again
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_invitation_s_tombstone_is_forgotten_oldest_first_and_at_most_so_many
+        );
         $crate::catalog_conformance_case!($workbench, an_empty_list_lists_nothing);
         $crate::catalog_conformance_case!(
             $workbench,

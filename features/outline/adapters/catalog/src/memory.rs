@@ -18,6 +18,7 @@ struct Attachments {
 
 #[derive(Debug, Default)]
 pub struct InMemoryOutlineCatalog {
+    forgotten: RwLock<HashMap<OutlineId, OffsetDateTime>>,
     listed: RwLock<Listed>,
     attached: RwLock<Attachments>,
 }
@@ -49,12 +50,21 @@ impl InMemoryOutlineCatalog {
 #[async_trait]
 impl OutlineCatalog for InMemoryOutlineCatalog {
     async fn remember(&self, summary: &OutlineSummary) -> Result<(), CatalogError> {
+        let forgotten = self.forgotten.read().expect("the catalog is not poisoned");
+        if forgotten.contains_key(&summary.id) {
+            return Ok(());
+        }
         self.write().insert(summary.id, summary.clone());
 
         Ok(())
     }
 
-    async fn forget(&self, outline: &OutlineId) -> Result<(), CatalogError> {
+    async fn forget(&self, outline: &OutlineId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        self.forgotten
+            .write()
+            .expect("the catalog is not poisoned")
+            .entry(*outline)
+            .or_insert(at);
         self.write().remove(outline);
         self.holds(*outline, &[]).await?;
 
@@ -158,7 +168,25 @@ impl OutlineCatalog for InMemoryOutlineCatalog {
             attached.tombstones.remove(attachment);
         }
 
-        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
+        let pieces = u64::try_from(long_gone.len()).expect("a count of tombstones fits");
+        drop(attached);
+
+        let summaries = {
+            let mut forgotten = self.forgotten.write().expect("the catalog is not poisoned");
+            let mut summaries_gone: Vec<(OffsetDateTime, OutlineId)> = forgotten
+                .iter()
+                .filter(|(_, laid)| **laid < before)
+                .map(|(id, laid)| (*laid, *id))
+                .collect();
+            summaries_gone.sort();
+            summaries_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+            for (_, id) in &summaries_gone {
+                forgotten.remove(id);
+            }
+            u64::try_from(summaries_gone.len()).expect("a count of tombstones fits")
+        };
+
+        Ok(pieces + summaries)
     }
 
     async fn held_though_tombstoned(

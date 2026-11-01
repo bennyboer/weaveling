@@ -78,8 +78,22 @@ impl InvitationCatalog for TellingInvitations {
         self.kept.due_for_retiring(now, at_most).await
     }
 
-    async fn forget(&self, invitation: &InvitationId) -> Result<(), CatalogError> {
-        self.kept.forget(invitation).await
+    async fn forget(
+        &self,
+        invitation: &InvitationId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.kept.forget(invitation, at).await
+    }
+
+    async fn forget_invitation_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        self.kept
+            .forget_invitation_tombstones_laid_before(before, at_most)
+            .await
     }
 
     async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {

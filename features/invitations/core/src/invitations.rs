@@ -290,10 +290,16 @@ impl InvitationsCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, InvitationsError> {
-        Ok(self
+        let projects = self
             .catalog
             .forget_project_tombstones_laid_before(before, at_most)
-            .await?)
+            .await?;
+        let invitations = self
+            .catalog
+            .forget_invitation_tombstones_laid_before(before, at_most)
+            .await?;
+
+        Ok(projects + invitations)
     }
 
     pub async fn remember_person(&self, person: &Person) -> Result<(), InvitationsError> {
@@ -303,7 +309,7 @@ impl InvitationsCore {
     pub async fn catalogue(&self, invitation: &InvitationId) -> Result<(), InvitationsError> {
         let standing = self.service.latest(invitation).await?;
         if standing.state.is_retired() {
-            return Ok(self.catalog.forget(invitation).await?);
+            return Ok(self.catalog.forget(invitation, self.clock.now()).await?);
         }
 
         let summary = InvitationSummary::of(*invitation, standing.version, &standing.state);

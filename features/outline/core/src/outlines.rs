@@ -18,6 +18,7 @@ use crate::title::SectionTitle;
 
 #[derive(Clone)]
 pub struct OutlinesCore {
+    clock: Arc<dyn Clock>,
     service: OutlineService,
     catalog: Arc<dyn OutlineCatalog>,
     authorizer: Arc<dyn Authorizer>,
@@ -33,7 +34,8 @@ impl OutlinesCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: OutlineService::new(store, transactions, registry, clock),
+            service: OutlineService::new(store, transactions, registry, clock.clone()),
+            clock,
             catalog,
             authorizer,
         }
@@ -223,7 +225,7 @@ impl OutlinesCore {
         let standing = self.service.latest(outline).await?;
 
         if standing.state.is_discarded() {
-            self.catalog.forget(outline).await?;
+            self.catalog.forget(outline, self.clock.now()).await?;
         } else {
             self.catalog
                 .remember(&OutlineSummary::of(*outline, &standing.state))

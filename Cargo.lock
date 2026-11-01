@@ -4074,6 +4074,7 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-core",
  "weaveling-test-harness",
@@ -4175,7 +4176,10 @@ dependencies = [
 name = "weaveling-ideas-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
+ "time",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-catalog",
@@ -4959,7 +4963,10 @@ dependencies = [
 name = "weaveling-projects-wiring"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "sqlx",
+ "time",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-live",

@@ -1,12 +1,18 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use invitations_core::{InvitationCatalog, InvitationId};
+use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
 
 use crate::sqlite;
 use crate::sqlite::SqliteInvitationCatalog;
+use crate::suite;
 use crate::suite::Workbench;
 
 struct OnSqlite {
     fixture: SqliteFixture,
+    pool: SqlitePool,
     store: SqliteInvitationCatalog,
 }
 
@@ -24,7 +30,8 @@ impl Workbench for OnSqlite {
 
         Self {
             fixture,
-            store: SqliteInvitationCatalog::new(pool),
+            store: SqliteInvitationCatalog::new(pool.clone()),
+            pool,
         }
     }
 
@@ -38,3 +45,38 @@ impl Workbench for OnSqlite {
 }
 
 crate::conformance_tests!(OnSqlite);
+
+#[tokio::test(flavor = "multi_thread")]
+async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_invitation_standing() {
+    let bench = OnSqlite::setup().await;
+    let catalog = Arc::new(SqliteInvitationCatalog::new(bench.pool.clone()));
+
+    for nth in 0..40 {
+        let summary = suite::a_summary(
+            InvitationId::generate(suite::at(1_000 + nth)),
+            "ada@example.com",
+        );
+        let (remembering, forgetting) = (catalog.clone(), catalog.clone());
+        let id = summary.id;
+        let (remembered, forgotten) = tokio::join!(
+            tokio::spawn(async move { remembering.remember(&summary).await }),
+            tokio::spawn(async move { forgetting.forget(&id, suite::at(5_000)).await }),
+        );
+        remembered
+            .expect("remembering should not panic")
+            .expect("remembering should succeed");
+        forgotten
+            .expect("forgetting should not panic")
+            .expect("forgetting should succeed");
+    }
+
+    assert!(
+        catalog
+            .listed_after(None, 100)
+            .await
+            .expect("listing should succeed")
+            .is_empty(),
+        "a remember racing a forget must never bring the forgotten invitation back"
+    );
+    bench.cleanup().await;
+}

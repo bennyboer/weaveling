@@ -5,18 +5,33 @@ use projects_core::{CatalogError, ProjectCatalog, ProjectId, ProjectName, Projec
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
+use time::OffsetDateTime;
 
 const REMEMBER: &str = "
     INSERT INTO project_summaries (project, version, name, created_at, updated_at)
-    VALUES (?1, ?2, ?3, ?4, ?5)
+    SELECT ?1, ?2, ?3, ?4, ?5
+    WHERE NOT EXISTS (SELECT 1 FROM project_tombstones WHERE project = ?1)
     ON CONFLICT (project) DO UPDATE
     SET version    = excluded.version,
         name       = excluded.name,
         created_at = excluded.created_at,
         updated_at = excluded.updated_at
+    WHERE project_summaries.version < excluded.version
 ";
 
 const FORGET: &str = "DELETE FROM project_summaries WHERE project = ?1";
+
+const LAY_TOMBSTONE: &str =
+    "INSERT INTO project_tombstones (project, laid_at) VALUES (?1, ?2) ON CONFLICT DO NOTHING";
+
+const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
+    DELETE FROM project_tombstones WHERE project IN (
+        SELECT project FROM project_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, project
+        LIMIT ?2
+    )
+";
 
 const ALL: &str = "
     SELECT project, version, name, created_at, updated_at
@@ -85,14 +100,35 @@ impl ProjectCatalog for SqliteProjectCatalog {
         Ok(())
     }
 
-    async fn forget(&self, id: &ProjectId) -> Result<(), CatalogError> {
+    async fn forget(&self, id: &ProjectId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(LAY_TOMBSTONE)
+            .bind(id.to_string())
+            .bind(clock::text::written(at))
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(id.to_string())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
+            .bind(clock::text::written(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn all(&self) -> Result<Vec<ProjectSummary>, CatalogError> {

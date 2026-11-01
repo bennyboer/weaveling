@@ -1,5 +1,8 @@
+mod tombstones;
+
 use std::sync::Arc;
 
+use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaCatalog, IdeaEvent, IdeasCore};
@@ -10,6 +13,8 @@ use live::Broadcaster;
 use outbox::Outbox;
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
+
+use crate::tombstones::IdeaTombstones;
 
 pub struct Ports {
     pub events: Arc<dyn EventStore<IdeaEvent>>,
@@ -45,12 +50,17 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     );
 
     Wired::serving(ideas_rest::router(ideas.clone()))
-        .followed_live(vec![ideas_rest::topic(ideas, broadcaster)])
+        .followed_live(vec![ideas_rest::topic(ideas.clone(), broadcaster)])
         .listening(vec![
             Arc::new(broadcast),
             Arc::new(projector),
             Arc::new(sweep),
         ])
+        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+            "forget-old-idea-tombstones",
+            Arc::new(IdeaTombstones::of(ideas)),
+            context.clock.clone(),
+        ))])
 }
 
 pub struct IdeaFeature;

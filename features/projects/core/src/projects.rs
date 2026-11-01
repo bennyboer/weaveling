@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::{AccessWatch, Act, Authorizer, Readable};
 use clock::Clock;
 use eventsourcing::{Agent, EventStore, Standing, Version};
+use time::OffsetDateTime;
 use transacting::Transactions;
 
 use crate::catalog::{ProjectCatalog, ProjectSummary};
@@ -13,6 +14,7 @@ use crate::service::{self, ProjectService, RawDetails};
 
 #[derive(Clone)]
 pub struct ProjectsCore {
+    clock: Arc<dyn Clock>,
     service: ProjectService,
     catalog: Arc<dyn ProjectCatalog>,
     authorizer: Arc<dyn Authorizer>,
@@ -27,7 +29,8 @@ impl ProjectsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: ProjectService::new(store, transactions, clock),
+            service: ProjectService::new(store, transactions, clock.clone()),
+            clock,
             catalog,
             authorizer,
         }
@@ -112,11 +115,22 @@ impl ProjectsCore {
         self.authorizer.watch_access(project)
     }
 
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, ProjectsError> {
+        Ok(self
+            .catalog
+            .forget_tombstones_laid_before(before, at_most)
+            .await?)
+    }
+
     pub async fn catalogue(&self, id: &ProjectId) -> Result<(), ProjectsError> {
         let standing = self.service.latest_even_deleted(id).await?;
 
         if standing.state.is_deleted() {
-            self.catalog.forget(id).await?;
+            self.catalog.forget(id, self.clock.now()).await?;
         } else {
             self.catalog
                 .remember(&ProjectSummary::of(*id, standing.version, &standing.state))

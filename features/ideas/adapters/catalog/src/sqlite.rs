@@ -4,17 +4,32 @@ use ideas_core::{CatalogError, IdeaCatalog, IdeaId, IdeaSummary, IdeaTitle, Proj
 use sqlx::migrate::Migrator;
 use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
+use time::OffsetDateTime;
 
 const REMEMBER: &str = "
     INSERT INTO idea_summaries (idea, version, project, title)
-    VALUES (?1, ?2, ?3, ?4)
+    SELECT ?1, ?2, ?3, ?4
+    WHERE NOT EXISTS (SELECT 1 FROM idea_tombstones WHERE idea = ?1)
     ON CONFLICT (idea) DO UPDATE
     SET version = excluded.version,
         project = excluded.project,
         title   = excluded.title
+    WHERE idea_summaries.version < excluded.version
 ";
 
 const FORGET: &str = "DELETE FROM idea_summaries WHERE idea = ?1";
+
+const LAY_TOMBSTONE: &str =
+    "INSERT INTO idea_tombstones (idea, laid_at) VALUES (?1, ?2) ON CONFLICT DO NOTHING";
+
+const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
+    DELETE FROM idea_tombstones WHERE idea IN (
+        SELECT idea FROM idea_tombstones
+        WHERE laid_at < ?1
+        ORDER BY laid_at, idea
+        LIMIT ?2
+    )
+";
 
 const IN_PROJECT_AFTER: &str = "
     SELECT idea, version, project, title
@@ -78,14 +93,35 @@ impl IdeaCatalog for SqliteIdeaCatalog {
         Ok(())
     }
 
-    async fn forget(&self, id: &IdeaId) -> Result<(), CatalogError> {
+    async fn forget(&self, id: &IdeaId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(LAY_TOMBSTONE)
+            .bind(id.to_string())
+            .bind(clock::text::written(at))
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(id.to_string())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        transaction.commit().await.map_err(unreachable)
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        Ok(sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
+            .bind(clock::text::written(before))
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected())
     }
 
     async fn in_project_after(

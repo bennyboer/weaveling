@@ -20,3 +20,10 @@ CREATE TABLE idea_tombstones (
 );
 
 CREATE INDEX gone_ideas_by_laid_at ON idea_tombstones (laid_at);
+
+CREATE TABLE board_tombstones (
+    board            TEXT PRIMARY KEY,
+    laid_at          TEXT NOT NULL
+);
+
+CREATE INDEX board_tombstones_by_laid_at ON board_tombstones (laid_at);

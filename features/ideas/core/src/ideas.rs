@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventStore, ServiceError, Standing, Version};
+use time::OffsetDateTime;
 use transacting::Transactions;
 
 use crate::catalog::{IdeaCatalog, IdeaSummary};
@@ -13,6 +14,7 @@ use crate::service::IdeaService;
 
 #[derive(Clone)]
 pub struct IdeasCore {
+    clock: Arc<dyn Clock>,
     service: IdeaService,
     catalog: Arc<dyn IdeaCatalog>,
     authorizer: Arc<dyn Authorizer>,
@@ -27,7 +29,8 @@ impl IdeasCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: IdeaService::new(store, transactions, clock),
+            service: IdeaService::new(store, transactions, clock.clone()),
+            clock,
             catalog,
             authorizer,
         }
@@ -104,11 +107,22 @@ impl IdeasCore {
         Ok(self.service.latest(&id).await?.state.project().clone())
     }
 
+    pub async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, IdeasError> {
+        Ok(self
+            .catalog
+            .forget_tombstones_laid_before(before, at_most)
+            .await?)
+    }
+
     pub async fn catalogue(&self, id: &IdeaId) -> Result<(), IdeasError> {
         let standing = self.service.latest(id).await?;
 
         if standing.state.is_discarded() {
-            self.catalog.forget(id).await?;
+            self.catalog.forget(id, self.clock.now()).await?;
         } else {
             self.catalog
                 .remember(&IdeaSummary::of(*id, standing.version, &standing.state))

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use authorizing::AllowingEverything;
+use clock::Clock;
 use eventsourcing::Agent;
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
@@ -215,8 +216,27 @@ async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_
             .await
             .expect("cataloguing should succeed");
     }
+    let retired_at = listing.wired.clock.now();
 
     assert!(listing.listed().await.is_empty());
+    assert_eq!(
+        listing
+            .invitations
+            .forget_tombstones_laid_before(retired_at, 10)
+            .await
+            .expect("forgetting should succeed"),
+        0,
+        "the retired invitation's tombstone was laid as it was catalogued"
+    );
+    assert_eq!(
+        listing
+            .invitations
+            .forget_tombstones_laid_before(retired_at + Duration::SECOND, 10)
+            .await
+            .expect("forgetting should succeed"),
+        1,
+        "the chore is told of every tombstone it forgot, or it stops before the backlog is gone"
+    );
 }
 
 #[tokio::test]

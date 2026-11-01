@@ -108,7 +108,7 @@ pub async fn a_forgotten_idea_is_no_longer_listed(catalog: &impl IdeaCatalog) {
         .expect("remembering should succeed");
 
     catalog
-        .forget(&id)
+        .forget(&id, at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -123,7 +123,7 @@ pub async fn a_forgotten_idea_is_no_longer_listed(catalog: &impl IdeaCatalog) {
 
 pub async fn forgetting_something_never_remembered_is_harmless(catalog: &impl IdeaCatalog) {
     catalog
-        .forget(&IdeaId::generate(at(1_000)))
+        .forget(&IdeaId::generate(at(1_000)), at(5_000))
         .await
         .expect("forgetting an unknown idea should not fail");
 }
@@ -239,6 +239,92 @@ pub async fn a_batch_stays_inside_its_project(catalog: &impl IdeaCatalog) {
     );
 }
 
+async fn listed(catalog: &impl IdeaCatalog) -> Vec<IdeaSummary> {
+    catalog
+        .in_project(&ProjectLink::from("project_1"))
+        .await
+        .expect("listing should succeed")
+}
+
+pub async fn a_forgotten_idea_heard_of_late_is_not_remembered_again(catalog: &impl IdeaCatalog) {
+    let gone = a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom");
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .forget(&gone.id, at(5_000))
+        .await
+        .expect("forgetting should succeed");
+
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+    let mut newer = gone.clone();
+    newer.version = Version::of(newer.version.count() + 1);
+    catalog
+        .remember(&newer)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        listed(catalog).await.is_empty(),
+        "what was forgotten stays forgotten, however late or new a summary of it comes"
+    );
+}
+
+pub async fn idea_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl IdeaCatalog,
+) {
+    let (older, newer, latest) = (
+        a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom"),
+        a_summary(IdeaId::generate(at(2_000)), "project_1", "The Loom"),
+        a_summary(IdeaId::generate(at(3_000)), "project_1", "The Loom"),
+    );
+    for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
+        catalog
+            .forget(&summary.id, at(laid))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    let forgotten = catalog
+        .forget_tombstones_laid_before(at(8_000), 1)
+        .await
+        .expect("forgetting tombstones should succeed");
+    for summary in [&older, &newer, &latest] {
+        catalog
+            .remember(summary)
+            .await
+            .expect("remembering should succeed");
+    }
+
+    assert_eq!(forgotten, 1);
+    assert_eq!(
+        listed(catalog).await,
+        vec![older],
+        "only the oldest tombstone is gone, so only it can be remembered again"
+    );
+}
+
+pub async fn an_older_idea_summary_heard_late_changes_nothing(catalog: &impl IdeaCatalog) {
+    let summary = a_summary(IdeaId::generate(at(1_000)), "project_1", "The Loom");
+    let mut newer = summary.clone();
+    newer.version = Version::of(2);
+    catalog
+        .remember(&newer)
+        .await
+        .expect("remembering should succeed");
+
+    catalog
+        .remember(&summary)
+        .await
+        .expect("remembering should succeed");
+
+    assert_eq!(listed(catalog).await, vec![newer]);
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -256,6 +342,18 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_forgotten_idea_heard_of_late_is_not_remembered_again
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            idea_tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_older_idea_summary_heard_late_changes_nothing
+        );
         $crate::catalog_conformance_case!($workbench, a_batch_starts_at_the_oldest_idea);
         $crate::catalog_conformance_case!($workbench, a_batch_after_a_cursor_takes_what_comes_next);
         $crate::catalog_conformance_case!($workbench, a_batch_past_the_end_is_empty);

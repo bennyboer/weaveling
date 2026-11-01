@@ -14,6 +14,7 @@ type Kept = BTreeMap<InvitationId, InvitationSummary>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryInvitationCatalog {
+    tombstones: RwLock<BTreeMap<InvitationId, OffsetDateTime>>,
     kept: RwLock<Kept>,
     people: RwLock<BTreeMap<String, Person>>,
     projects: RwLock<KnownProjects>,
@@ -59,6 +60,13 @@ impl InMemoryInvitationCatalog {
 #[async_trait]
 impl InvitationCatalog for InMemoryInvitationCatalog {
     async fn remember(&self, summary: &InvitationSummary) -> Result<(), CatalogError> {
+        let tombstones = self
+            .tombstones
+            .read()
+            .expect("invitation catalog lock poisoned");
+        if tombstones.contains_key(&summary.id) {
+            return Ok(());
+        }
         let mut kept = self.write();
         if kept
             .get(&summary.id)
@@ -127,10 +135,43 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
             .collect())
     }
 
-    async fn forget(&self, invitation: &InvitationId) -> Result<(), CatalogError> {
+    async fn forget(
+        &self,
+        invitation: &InvitationId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut tombstones = self
+            .tombstones
+            .write()
+            .expect("invitation catalog lock poisoned");
+        tombstones.entry(*invitation).or_insert(at);
         self.write().remove(invitation);
 
         Ok(())
+    }
+
+    async fn forget_invitation_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut tombstones = self
+            .tombstones
+            .write()
+            .expect("invitation catalog lock poisoned");
+        let mut long_gone: Vec<(OffsetDateTime, InvitationId)> = tombstones
+            .iter()
+            .filter(|(_, laid)| **laid < before)
+            .map(|(invitation, laid)| (*laid, *invitation))
+            .collect();
+        long_gone.sort();
+        long_gone.truncate(usize::try_from(at_most).unwrap_or(usize::MAX));
+
+        for (_, invitation) in &long_gone {
+            tombstones.remove(invitation);
+        }
+
+        Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
     }
 
     async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {

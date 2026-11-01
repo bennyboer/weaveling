@@ -150,7 +150,7 @@ impl Wired {
 
             if standing.state.is_discarded() {
                 self.catalog
-                    .forget(&summary.id)
+                    .forget(&summary.id, at(5_000))
                     .await
                     .expect("forgetting should succeed");
             }

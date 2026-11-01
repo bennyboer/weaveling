@@ -17,6 +17,7 @@ use crate::spot::Spot;
 
 #[derive(Clone)]
 pub struct BoardsCore {
+    clock: Arc<dyn Clock>,
     service: BoardService,
     catalog: Arc<dyn BoardCatalog>,
     authorizer: Arc<dyn Authorizer>,
@@ -32,7 +33,8 @@ impl BoardsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: BoardService::new(store, transactions, registry, clock),
+            service: BoardService::new(store, transactions, registry, clock.clone()),
+            clock,
             catalog,
             authorizer,
         }
@@ -112,7 +114,7 @@ impl BoardsCore {
         let standing = self.service.latest(board).await?;
 
         if standing.state.is_discarded() {
-            self.catalog.forget(board).await?;
+            self.catalog.forget(board, self.clock.now()).await?;
         } else {
             self.catalog
                 .remember(&BoardSummary::of(*board, &standing.state))

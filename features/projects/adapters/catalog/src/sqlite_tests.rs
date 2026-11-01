@@ -89,3 +89,30 @@ async fn a_time_nothing_can_read_is_refused_rather_than_guessed() {
 
     bench.cleanup().await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_project_standing() {
+    let bench = OnSqlite::setup().await;
+    let catalog = bench.store();
+
+    for nth in 0..40 {
+        let summary =
+            suite::a_summary(ProjectId::generate(suite::at(1_000 + nth)), "Working Title");
+        let (remembered, forgotten) = tokio::join!(
+            catalog.remember(&summary),
+            catalog.forget(&summary.id, suite::at(5_000)),
+        );
+        remembered.expect("remembering should succeed");
+        forgotten.expect("forgetting should succeed");
+    }
+
+    assert!(
+        catalog
+            .all()
+            .await
+            .expect("listing should succeed")
+            .is_empty(),
+        "a remember racing a forget must never bring the forgotten project back"
+    );
+    bench.cleanup().await;
+}

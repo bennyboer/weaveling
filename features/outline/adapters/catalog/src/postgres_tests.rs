@@ -2,10 +2,11 @@ use async_trait::async_trait;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 
-use outline_core::{Attachment, OutlineCatalog, OutlineId};
+use outline_core::{Attachment, OutlineCatalog, OutlineId, ProjectLink};
 
 use crate::postgres;
 use crate::postgres::PostgresOutlineCatalog;
+use crate::suite;
 use crate::suite::Workbench;
 
 struct OnPostgres {
@@ -61,7 +62,7 @@ async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
 
     bench
         .store()
-        .forget(&outline)
+        .forget(&outline, suite::at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -81,5 +82,31 @@ async fn forgetting_an_outline_leaves_no_half_of_it_behind() {
          index naming a outline that is gone"
     );
 
+    bench.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_outline_standing() {
+    let bench = OnPostgres::setup().await;
+    let catalog = bench.store();
+
+    for nth in 0..40 {
+        let summary = suite::a_summary(OutlineId::generate(suite::at(1_000 + nth)), "project_1");
+        let (remembered, forgotten) = tokio::join!(
+            catalog.remember(&summary),
+            catalog.forget(&summary.id, suite::at(5_000)),
+        );
+        remembered.expect("remembering should succeed");
+        forgotten.expect("forgetting should succeed");
+    }
+
+    assert!(
+        catalog
+            .in_project(&ProjectLink::from("project_1"))
+            .await
+            .expect("listing should succeed")
+            .is_empty(),
+        "a remember racing a forget must never bring the forgotten outline back"
+    );
     bench.cleanup().await;
 }

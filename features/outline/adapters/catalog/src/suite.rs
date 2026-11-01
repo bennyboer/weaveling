@@ -313,7 +313,7 @@ pub async fn a_forgotten_outline_takes_its_scenes_with_it(catalog: &impl Outline
         .expect("indexing should succeed");
 
     catalog
-        .forget(&outline)
+        .forget(&outline, at(5_000))
         .await
         .expect("forgetting should succeed");
 
@@ -337,7 +337,7 @@ pub async fn a_forgotten_outline_takes_its_scenes_with_it(catalog: &impl Outline
 
 pub async fn forgetting_an_outline_nobody_opened_is_harmless(catalog: &impl OutlineCatalog) {
     catalog
-        .forget(&OutlineId::generate(at(1_000)))
+        .forget(&OutlineId::generate(at(1_000)), at(5_000))
         .await
         .expect("forgetting an unknown outline should not fail");
 }
@@ -528,6 +528,71 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
+async fn listed(catalog: &impl OutlineCatalog) -> Vec<OutlineSummary> {
+    catalog
+        .in_project(&ProjectLink::from("project_1"))
+        .await
+        .expect("listing should succeed")
+}
+
+pub async fn a_forgotten_outline_heard_of_late_is_not_remembered_again(
+    catalog: &impl OutlineCatalog,
+) {
+    let gone = a_summary(OutlineId::generate(at(1_000)), "project_1");
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .forget(&gone.id, at(5_000))
+        .await
+        .expect("forgetting should succeed");
+
+    catalog
+        .remember(&gone)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        listed(catalog).await.is_empty(),
+        "what was forgotten stays forgotten, however late or new a summary of it comes"
+    );
+}
+
+pub async fn outline_tombstones_are_forgotten_oldest_first_and_at_most_so_many(
+    catalog: &impl OutlineCatalog,
+) {
+    let (older, newer, latest) = (
+        a_summary(OutlineId::generate(at(1_000)), "project_1"),
+        a_summary(OutlineId::generate(at(2_000)), "project_1"),
+        a_summary(OutlineId::generate(at(3_000)), "project_1"),
+    );
+    for (summary, laid) in [(&newer, 6_000), (&older, 5_000), (&latest, 9_000)] {
+        catalog
+            .forget(&summary.id, at(laid))
+            .await
+            .expect("forgetting should succeed");
+    }
+
+    let forgotten = catalog
+        .forget_tombstones_laid_before(at(8_000), 1)
+        .await
+        .expect("forgetting tombstones should succeed");
+    for summary in [&older, &newer, &latest] {
+        catalog
+            .remember(summary)
+            .await
+            .expect("remembering should succeed");
+    }
+
+    assert_eq!(forgotten, 1);
+    assert_eq!(
+        listed(catalog).await,
+        vec![older],
+        "only the oldest tombstone is gone, so only it can be remembered again"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -545,6 +610,14 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_forgotten_outline_heard_of_late_is_not_remembered_again
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            outline_tombstones_are_forgotten_oldest_first_and_at_most_so_many
+        );
         $crate::catalog_conformance_case!($workbench, a_forgotten_outline_takes_its_scenes_with_it);
         $crate::catalog_conformance_case!(
             $workbench,

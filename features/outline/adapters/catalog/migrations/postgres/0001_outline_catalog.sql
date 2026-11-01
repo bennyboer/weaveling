@@ -24,3 +24,10 @@ CREATE TABLE attachment_tombstones (
 );
 
 CREATE INDEX gone_attachments_by_laid_at ON attachment_tombstones (laid_at);
+
+CREATE TABLE outline_tombstones (
+    outline          TEXT COLLATE "C" PRIMARY KEY,
+    laid_at          TIMESTAMPTZ      NOT NULL
+);
+
+CREATE INDEX outline_tombstones_by_laid_at ON outline_tombstones (laid_at);

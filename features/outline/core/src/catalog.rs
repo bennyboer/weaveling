@@ -23,7 +23,7 @@ pub enum CatalogError {
 pub trait OutlineCatalog: Send + Sync {
     async fn remember(&self, summary: &OutlineSummary) -> Result<(), CatalogError>;
 
-    async fn forget(&self, outline: &OutlineId) -> Result<(), CatalogError>;
+    async fn forget(&self, outline: &OutlineId, at: OffsetDateTime) -> Result<(), CatalogError>;
 
     async fn in_project(&self, project: &ProjectLink) -> Result<Vec<OutlineSummary>, CatalogError>;
 

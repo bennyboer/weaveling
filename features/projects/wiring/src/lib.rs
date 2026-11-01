@@ -1,5 +1,8 @@
+mod tombstones;
+
 use std::sync::Arc;
 
+use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
@@ -9,6 +12,8 @@ use projects_core::{ProjectCatalog, ProjectEvent, ProjectsCore};
 use projects_messaging::CatalogueProjectsListener;
 use transacting::Transactions;
 use wiring::{Context, EventSourced, Feature, Wired};
+
+use crate::tombstones::ProjectTombstones;
 
 pub const LIVE: &str = "broadcast-project-changes";
 
@@ -48,6 +53,11 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             broadcaster,
         ))])
         .listening(vec![Arc::new(broadcast), Arc::new(projector)])
+        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+            "forget-old-project-tombstones",
+            Arc::new(ProjectTombstones::of(projects.clone())),
+            context.clock.clone(),
+        ))])
 }
 
 pub struct ProjectFeature;

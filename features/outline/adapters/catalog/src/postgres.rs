@@ -10,11 +10,26 @@ use crate::rows;
 
 const REMEMBER: &str = "
     INSERT INTO outline_summaries (outline, project)
-    VALUES ($1, $2)
+    SELECT $1, $2
+    WHERE NOT EXISTS (SELECT 1 FROM outline_tombstones WHERE outline = $1)
     ON CONFLICT (outline) DO UPDATE SET project = EXCLUDED.project
 ";
 
 const FORGET: &str = "DELETE FROM outline_summaries WHERE outline = $1";
+
+const LAY_SUMMARY_TOMBSTONE: &str =
+    "INSERT INTO outline_tombstones (outline, laid_at) VALUES ($1, $2) ON CONFLICT DO NOTHING";
+
+const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
+    DELETE FROM outline_tombstones WHERE outline IN (
+        SELECT outline FROM outline_tombstones
+        WHERE laid_at < $1
+        ORDER BY laid_at, outline
+        LIMIT $2
+    )
+";
+
+const HOLD_SUMMARY: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
 
 const IN_PROJECT: &str = "
     SELECT outline, project
@@ -85,18 +100,35 @@ fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> Catal
 #[async_trait]
 impl OutlineCatalog for PostgresOutlineCatalog {
     async fn remember(&self, summary: &OutlineSummary) -> Result<(), CatalogError> {
+        let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(HOLD_SUMMARY)
+            .bind(summary.id.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(summary.project.to_string())
-            .execute(&self.pool)
+            .execute(&mut *transaction)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        transaction.commit().await.map_err(unreachable)
     }
 
-    async fn forget(&self, outline: &OutlineId) -> Result<(), CatalogError> {
+    async fn forget(&self, outline: &OutlineId, at: OffsetDateTime) -> Result<(), CatalogError> {
         let mut transaction = self.pool.begin().await.map_err(unreachable)?;
+        sqlx::query(HOLD_SUMMARY)
+            .bind(outline.to_string())
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
+        sqlx::query(LAY_SUMMARY_TOMBSTONE)
+            .bind(outline.to_string())
+            .bind(at)
+            .execute(&mut *transaction)
+            .await
+            .map_err(unreachable)?;
 
         sqlx::query(FORGET)
             .bind(outline.to_string())
@@ -203,13 +235,22 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
-        Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
+        let pieces = sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(before)
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
             .execute(&self.pool)
             .await
             .map_err(unreachable)?
-            .rows_affected())
+            .rows_affected();
+        let summaries = sqlx::query(FORGET_OLD_SUMMARY_TOMBSTONES)
+            .bind(before)
+            .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
+            .execute(&self.pool)
+            .await
+            .map_err(unreachable)?
+            .rows_affected();
+
+        Ok(pieces + summaries)
     }
 
     async fn held_though_tombstoned(
