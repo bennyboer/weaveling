@@ -14,7 +14,7 @@ time = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros", "sync", "time"] }
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
-eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
 outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 wiring = { version = "0.1.0", path = "../../../libraries/wiring", package = "weaveling-wiring" }

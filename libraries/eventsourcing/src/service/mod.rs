@@ -54,6 +54,13 @@ pub struct EventSourcingService<A: Aggregate> {
     clock: Arc<dyn Clock>,
 }
 
+pub fn tries_for(expected: Option<Version>) -> u8 {
+    match expected {
+        Some(_) => 1,
+        None => transacting::retrying::TRIES,
+    }
+}
+
 type Outcome<A> = Result<Appended<<A as Aggregate>::Event>, ServiceError<<A as Aggregate>::Error>>;
 type Reached<A> = Result<Version, ServiceError<<A as Aggregate>::Error>>;
 

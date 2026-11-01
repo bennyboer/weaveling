@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standing, Version};
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::error::IdeasError;
 use crate::id::IdeaId;
@@ -33,23 +33,19 @@ impl IdeaService {
 
     pub async fn capture(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         title: &str,
         agent: &Agent,
     ) -> Result<IdeaId, IdeasError> {
         let id = IdeaId::generate(self.clock.now());
+        let command = IdeaCommand::Capture {
+            project: project.clone(),
+            title: IdeaTitle::new(title)?,
+        };
 
-        let _landed = self
-            .events
-            .begin(
-                None,
-                &AggregateId::from(&id),
-                IdeaCommand::Capture {
-                    project: project.clone(),
-                    title: IdeaTitle::new(title)?,
-                },
-                agent,
-            )
+        self.events
+            .begin(Some(transaction), &AggregateId::from(&id), command, agent)
             .await?;
 
         Ok(id)
@@ -61,12 +57,14 @@ impl IdeaService {
 
     pub async fn retitle(
         &self,
+        transaction: &mut Transaction,
         id: &IdeaId,
         title: &str,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, IdeasError> {
         self.carry_out(
+            transaction,
             id,
             IdeaCommand::Retitle(IdeaTitle::new(title)?),
             expected,
@@ -77,16 +75,18 @@ impl IdeaService {
 
     pub async fn discard(
         &self,
+        transaction: &mut Transaction,
         id: &IdeaId,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, IdeasError> {
-        self.carry_out(id, IdeaCommand::Discard, expected, agent)
+        self.carry_out(transaction, id, IdeaCommand::Discard, expected, agent)
             .await
     }
 
     async fn carry_out(
         &self,
+        transaction: &mut Transaction,
         id: &IdeaId,
         command: IdeaCommand,
         expected: Option<Version>,
@@ -97,10 +97,14 @@ impl IdeaService {
         let landed = match expected {
             Some(expected) => {
                 self.events
-                    .execute_at(None, &key, expected, command, agent)
+                    .execute_at(Some(transaction), &key, expected, command, agent)
                     .await?
             }
-            None => self.events.execute(None, &key, command, agent).await?,
+            None => {
+                self.events
+                    .execute(Some(transaction), &key, command, agent)
+                    .await?
+            }
         };
 
         Ok(landed.version)

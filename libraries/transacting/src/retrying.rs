@@ -11,8 +11,12 @@ pub trait LostRace {
 
 #[macro_export]
 macro_rules! retrying {
-    ($transactions:expr, |$transaction:ident| $work:block) => {{
+    ($transactions:expr, |$transaction:ident| $work:block) => {
+        $crate::retrying!($transactions, $crate::retrying::TRIES, |$transaction| $work)
+    };
+    ($transactions:expr, $tries:expr, |$transaction:ident| $work:block) => {{
         let transactions: &dyn $crate::Transactions = $transactions;
+        let tries: u8 = $tries;
         let mut tried = 1;
         loop {
             let outcome = async {
@@ -30,7 +34,7 @@ macro_rules! retrying {
             }
             .await;
             match outcome {
-                Err(failure) if $crate::retrying::again(&failure, tried) => {
+                Err(failure) if $crate::retrying::again(&failure, tried, tries) => {
                     $crate::retrying::pause(tried).await;
                     tried += 1;
                 }
@@ -41,8 +45,8 @@ macro_rules! retrying {
 }
 
 #[doc(hidden)]
-pub fn again(failure: &impl LostRace, tried: u8) -> bool {
-    failure.lost_race() && tried < TRIES
+pub fn again(failure: &impl LostRace, tried: u8, tries: u8) -> bool {
+    failure.lost_race() && tried < tries
 }
 
 #[doc(hidden)]

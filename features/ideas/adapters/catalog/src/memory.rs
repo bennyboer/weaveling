@@ -1,16 +1,17 @@
 use std::collections::HashMap;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use ideas_core::{CatalogError, IdeaCatalog, IdeaId, IdeaSummary, ProjectLink};
 use time::OffsetDateTime;
+use transacting::{Failure, Transaction};
 
 type Listed = HashMap<IdeaId, IdeaSummary>;
 
 #[derive(Debug, Default)]
 pub struct InMemoryIdeaCatalog {
-    forgotten: RwLock<HashMap<IdeaId, OffsetDateTime>>,
-    listed: RwLock<Listed>,
+    forgotten: Arc<RwLock<HashMap<IdeaId, OffsetDateTime>>>,
+    listed: Arc<RwLock<Listed>>,
 }
 
 impl InMemoryIdeaCatalog {
@@ -25,11 +26,41 @@ impl InMemoryIdeaCatalog {
     fn write(&self) -> RwLockWriteGuard<'_, Listed> {
         self.listed.write().expect("idea catalog lock poisoned")
     }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), CatalogError> {
+        let forgotten = self
+            .forgotten
+            .read()
+            .expect("idea catalog lock poisoned")
+            .clone();
+        let listed = self
+            .listed
+            .read()
+            .expect("idea catalog lock poisoned")
+            .clone();
+        let into_forgotten = self.forgotten.clone();
+        let into_listed = self.listed.clone();
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *into_forgotten.write().expect("idea catalog lock poisoned") = forgotten;
+            *into_listed.write().expect("idea catalog lock poisoned") = listed;
+        })
+        .map_err(unreachable)
+    }
+}
+
+fn unreachable(failure: Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
 }
 
 #[async_trait]
 impl IdeaCatalog for InMemoryIdeaCatalog {
-    async fn remember(&self, summary: &IdeaSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &IdeaSummary,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let forgotten = self.forgotten.read().expect("the catalog is not poisoned");
         if forgotten.contains_key(&summary.id) {
             return Ok(());
@@ -45,7 +76,13 @@ impl IdeaCatalog for InMemoryIdeaCatalog {
         Ok(())
     }
 
-    async fn forget(&self, id: &IdeaId, at: OffsetDateTime) -> Result<(), CatalogError> {
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        id: &IdeaId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
         self.forgotten
             .write()
             .expect("the catalog is not poisoned")
@@ -58,9 +95,11 @@ impl IdeaCatalog for InMemoryIdeaCatalog {
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
+        self.undo_on_rollback(transaction)?;
         let mut forgotten = self.forgotten.write().expect("the catalog is not poisoned");
         let mut long_gone: Vec<(OffsetDateTime, IdeaId)> = forgotten
             .iter()
@@ -112,20 +151,26 @@ impl IdeaCatalog for InMemoryIdeaCatalog {
 mod tests {
     use super::*;
 
+    use transacting::{InMemoryTransactions, Transactions};
+
     use crate::suite::Workbench;
 
-    struct InMemory(InMemoryIdeaCatalog);
+    struct InMemory(InMemoryIdeaCatalog, InMemoryTransactions);
 
     #[async_trait]
     impl Workbench for InMemory {
         type Store = InMemoryIdeaCatalog;
 
         async fn setup() -> Self {
-            Self(InMemoryIdeaCatalog::new())
+            Self(InMemoryIdeaCatalog::new(), InMemoryTransactions::new())
         }
 
         fn store(&self) -> &Self::Store {
             &self.0
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.1
         }
 
         async fn cleanup(self) {}

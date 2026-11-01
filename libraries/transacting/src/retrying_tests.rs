@@ -115,6 +115,41 @@ async fn a_refusal_other_than_a_lost_race_is_answered_without_trying_again() {
     assert!(words.written().is_empty());
 }
 
+#[tokio::test]
+async fn a_write_given_fewer_tries_gives_up_after_them() {
+    let words = Words::default();
+    let mut tried = 0;
+
+    let answered: Result<(), Refusal> =
+        crate::retrying!(&InMemoryTransactions::new(), 2, |transaction| {
+            tried += 1;
+            words.write(transaction, format!("try {tried}"));
+            Err(Refusal::Lost)
+        });
+
+    assert_eq!((answered, tried), (Err(Refusal::Lost), 2));
+}
+
+#[tokio::test]
+async fn a_write_given_one_try_answers_a_lost_race_at_once() {
+    let words = Words::default();
+    let mut tried = 0;
+
+    let answered: Result<(), Refusal> =
+        crate::retrying!(&InMemoryTransactions::new(), 1, |transaction| {
+            tried += 1;
+            words.write(transaction, "warp".to_owned());
+            Err(Refusal::Lost)
+        });
+
+    assert_eq!(
+        (answered, tried),
+        (Err(Refusal::Lost), 1),
+        "a write aimed at a version hears it moved on rather than having it papered over"
+    );
+    assert!(words.written().is_empty());
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn a_retried_write_runs_on_any_task() {
     let transactions = InMemoryTransactions::new();

@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use ideas_core::{IdeaCatalog, IdeaId, ProjectLink};
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
+use transacting::{SqliteTransactions, Transactions};
 
 use crate::sqlite;
 use crate::sqlite::SqliteIdeaCatalog;
@@ -11,6 +12,7 @@ use crate::suite::Workbench;
 struct OnSqlite {
     fixture: SqliteFixture,
     pool: SqlitePool,
+    transactions: SqliteTransactions,
     store: SqliteIdeaCatalog,
 }
 
@@ -28,6 +30,7 @@ impl Workbench for OnSqlite {
 
         Self {
             fixture,
+            transactions: SqliteTransactions::new(pool.clone()),
             store: SqliteIdeaCatalog::new(pool.clone()),
             pool,
         }
@@ -35,6 +38,10 @@ impl Workbench for OnSqlite {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {
@@ -48,7 +55,7 @@ crate::conformance_tests!(OnSqlite);
 async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
     let bench = OnSqlite::setup().await;
     bench
-        .store
+        .committing()
         .remember(&suite::a_summary(
             IdeaId::generate(suite::at(1_000)),
             "project_1",
@@ -74,7 +81,7 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_idea_standing() {
     let bench = OnSqlite::setup().await;
-    let catalog = bench.store();
+    let catalog = bench.committing();
 
     for nth in 0..40 {
         let summary = suite::a_summary(

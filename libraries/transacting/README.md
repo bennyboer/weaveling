@@ -28,7 +28,7 @@ transacting::retrying!(&*self.transactions, |transaction| {
 })
 ```
 
-The block runs in a fresh transaction, finished when it answers `Ok`, dropped and so rolled back when it answers `Err`; `?` and `return` end the try, not the method. An error that is a **`LostRace`** (`lost_race()` true) is tried again, up to `retrying::TRIES`, five, after a pause drawn at random up to 10 ms and twice as long after each try, so writers that collided spread out; any other error, and the fifth lost race, is the answer. The error type takes a `Failure` through `From`. A macro rather than a function taking an async closure, since such a closure borrowing `&self` makes a future that is not `Send` on stable Rust; written out where it is used, the loop borrows what it likes.
+The block runs in a fresh transaction, finished when it answers `Ok`, dropped and so rolled back when it answers `Err`; `?` and `return` end the try, not the method. An error that is a **`LostRace`** (`lost_race()` true) is tried again, up to `retrying::TRIES`, five, after a pause drawn at random up to 10 ms and twice as long after each try, so writers that collided spread out; any other error, and the fifth lost race, is the answer. The error type takes a `Failure` through `From`. `retrying!(transactions, tries, |transaction| { … })` sets how many tries, one being no retry at all: a write aimed at a version is tried once, `eventsourcing::tries_for(expected)` saying so, and its lost race is the answer. A macro rather than a function taking an async closure, since such a closure borrowing `&self` makes a future that is not `Send` on stable Rust; written out where it is used, the loop borrows what it likes.
 
 **Backends.** One `Transactions` per feature, on that feature's own database:
 

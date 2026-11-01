@@ -2,12 +2,19 @@ use std::sync::Arc;
 
 use crate::wiring;
 use crate::wiring::Wired;
+use authorizing::AllowingEverything;
 use clock::FixedClock;
-use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Version};
+use eventsourcing::{
+    AccountId, Agent, AggregateId, EventStore, FailsAppending, InMemoryEventStore, ServiceError,
+    StoreError, Version,
+};
+use ideas_catalog::InMemoryIdeaCatalog;
 use time::{Duration, OffsetDateTime};
 use transacting::{InMemoryTransactions, Transactions};
 
-use ideas_core::{IdeaError, IdeaId, IdeaTitle, IdeasCore, IdeasError, KIND, ProjectLink};
+use ideas_core::{
+    IdeaError, IdeaEvent, IdeaId, IdeaTitle, IdeasCore, IdeasError, KIND, ProjectLink,
+};
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -337,4 +344,113 @@ async fn an_idea_survives_on_its_snapshot_alone() {
     assert_eq!(idea.title().as_str(), "Title 100");
     assert_eq!(idea.project(), &ProjectLink::from("project_1"));
     assert!(!idea.is_discarded());
+}
+
+async fn an_idea_retitled_while_failing(
+    failing: fn(Arc<InMemoryEventStore<IdeaEvent>>) -> FailsAppending<IdeaEvent>,
+    expected: Option<Version>,
+) -> (Result<Version, IdeasError>, String, u8) {
+    let store = Arc::new(InMemoryEventStore::new());
+    let core_over = |store| {
+        IdeasCore::new(
+            store,
+            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryIdeaCatalog::new()),
+            Arc::new(AllowingEverything),
+            Arc::new(FixedClock::new(at(1_000))),
+        )
+    };
+    let id = a_captured_idea(&core_over(store.clone())).await;
+    let failing = Arc::new(failing(store.clone()));
+
+    let retitled = core_over(failing.clone())
+        .retitle(&id.to_string(), "The Shuttle", expected, &an_author())
+        .await
+        .map(|standing| standing.version);
+    let title = core_over(store)
+        .read(&id.to_string(), &an_author())
+        .await
+        .expect("the idea exists")
+        .state
+        .title()
+        .as_str()
+        .to_owned();
+
+    (retitled, title, failing.left())
+}
+
+#[tokio::test]
+async fn a_retitling_that_lost_a_race_is_tried_again_and_lands() {
+    let (retitled, title, _) =
+        an_idea_retitled_while_failing(|store| FailsAppending::losing_races(store, 4), None).await;
+
+    assert_eq!(retitled.expect("the fifth try lands"), Version::of(2));
+    assert_eq!(title, "The Shuttle");
+}
+
+#[tokio::test]
+async fn a_retitling_that_lost_every_race_it_may_try_is_a_conflict() {
+    let (retitled, title, left) =
+        an_idea_retitled_while_failing(|store| FailsAppending::losing_races(store, 6), None).await;
+
+    assert!(matches!(
+        retitled,
+        Err(IdeasError::Events(ServiceError::Store(
+            StoreError::Outdated { .. }
+        )))
+    ));
+    assert_eq!(
+        (title.as_str(), left),
+        ("The Loom", 1),
+        "five tries, no more"
+    );
+}
+
+#[tokio::test]
+async fn a_retitling_aimed_at_a_version_that_lost_a_race_is_not_tried_again() {
+    let (retitled, title, left) = an_idea_retitled_while_failing(
+        |store| FailsAppending::losing_races(store, 2),
+        Some(Version::of(1)),
+    )
+    .await;
+
+    assert!(matches!(
+        retitled,
+        Err(IdeasError::Events(ServiceError::Store(
+            StoreError::Outdated { .. }
+        )))
+    ));
+    assert_eq!(
+        (title.as_str(), left),
+        ("The Loom", 1),
+        "whoever named a version hears that it moved on, a 412, rather than having it papered over"
+    );
+}
+
+#[tokio::test]
+async fn a_retitling_whose_store_broke_is_not_tried_again() {
+    let (retitled, _, left) =
+        an_idea_retitled_while_failing(|store| FailsAppending::broken(store, 2), None).await;
+
+    assert!(matches!(
+        retitled,
+        Err(IdeasError::Events(ServiceError::Store(
+            StoreError::Backend { .. }
+        )))
+    ));
+    assert_eq!(left, 1, "only a lost race is tried again");
+}
+
+#[tokio::test]
+async fn a_retitling_aimed_at_the_version_it_stands_at_lands() {
+    let (retitled, title, _) = an_idea_retitled_while_failing(
+        |store| FailsAppending::losing_races(store, 0),
+        Some(Version::of(1)),
+    )
+    .await;
+
+    assert_eq!(
+        (retitled.expect("retitling should succeed"), title.as_str()),
+        (Version::of(2), "The Shuttle")
+    );
 }

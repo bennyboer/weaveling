@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use ideas_core::{IdeaCatalog, IdeaId, ProjectLink};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
+use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
 use crate::postgres::PostgresIdeaCatalog;
@@ -11,6 +12,7 @@ use crate::suite::Workbench;
 struct OnPostgres {
     fixture: PostgresFixture,
     pool: PgPool,
+    transactions: PostgresTransactions,
     store: PostgresIdeaCatalog,
 }
 
@@ -28,6 +30,7 @@ impl Workbench for OnPostgres {
 
         Self {
             fixture,
+            transactions: PostgresTransactions::new(pool.clone()),
             store: PostgresIdeaCatalog::new(pool.clone()),
             pool,
         }
@@ -35,6 +38,10 @@ impl Workbench for OnPostgres {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {
@@ -137,7 +144,7 @@ async fn a_batch_is_read_straight_out_of_the_index() {
 async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
     let bench = OnPostgres::setup().await;
     bench
-        .store
+        .committing()
         .remember(&suite::a_summary(
             IdeaId::generate(suite::at(1_000)),
             "project_1",
@@ -163,7 +170,7 @@ async fn a_version_below_zero_is_refused_rather_than_read_as_a_huge_one() {
 #[tokio::test(flavor = "multi_thread")]
 async fn remembering_and_forgetting_at_once_never_leaves_a_forgotten_idea_standing() {
     let bench = OnPostgres::setup().await;
-    let catalog = bench.store();
+    let catalog = bench.committing();
 
     for nth in 0..40 {
         let summary = suite::a_summary(

@@ -1,5 +1,6 @@
 use std::error::Error;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use async_trait::async_trait;
 use eventsourcing::Version;
@@ -25,12 +26,22 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait IdeaCatalog: Send + Sync {
-    async fn remember(&self, summary: &IdeaSummary) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &IdeaSummary,
+    ) -> Result<(), CatalogError>;
 
-    async fn forget(&self, id: &IdeaId, at: OffsetDateTime) -> Result<(), CatalogError>;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        id: &IdeaId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;

@@ -36,7 +36,7 @@ pub use metadata::EventMetadata;
 pub use patch::{Patch, Patcher};
 #[cfg(any(test, feature = "testing"))]
 pub use refusing::{FailsAppending, RefusesAppending};
-pub use service::{Appended, EventSourcingService, ServiceError, Standing};
+pub use service::{Appended, EventSourcingService, ServiceError, Standing, tries_for};
 pub use store::{EventStore, StoreError};
 pub use version::Version;
 

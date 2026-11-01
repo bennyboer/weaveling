@@ -58,7 +58,12 @@ impl ProjectsCore {
         details: &RawDetails<'_>,
         agent: &Agent,
     ) -> Result<(ProjectId, Standing<Project>), ProjectsError> {
-        let id = self.service.start(name, details, agent).await?;
+        let mut transaction = self.transactions.begin().await?;
+        let id = self
+            .service
+            .start(&mut transaction, name, details, agent)
+            .await?;
+        transaction.finish().await?;
 
         Ok((id, self.service.latest(&id).await?))
     }
@@ -78,7 +83,15 @@ impl ProjectsCore {
         agent: &Agent,
     ) -> Result<Standing<Project>, ProjectsError> {
         let id = self.authorized_to_manage(id, agent).await?;
-        self.service.rename(&id, name, expected, agent).await?;
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.service
+                    .rename(transaction, &id, name, expected, agent)
+                    .await
+            }
+        )?;
 
         self.service.latest(&id).await
     }
@@ -91,9 +104,15 @@ impl ProjectsCore {
         agent: &Agent,
     ) -> Result<Standing<Project>, ProjectsError> {
         let id = self.authorized_to_manage(id, agent).await?;
-        self.service
-            .change_details(&id, details, expected, agent)
-            .await?;
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.service
+                    .change_details(transaction, &id, details, expected, agent)
+                    .await
+            }
+        )?;
 
         self.service.latest(&id).await
     }
@@ -106,7 +125,11 @@ impl ProjectsCore {
     ) -> Result<Version, ProjectsError> {
         let id = self.authorized_to_manage(id, agent).await?;
 
-        self.service.delete(&id, expected, agent).await
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| { self.service.delete(transaction, &id, expected, agent).await }
+        )
     }
 
     pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, ProjectsError> {

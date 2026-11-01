@@ -4,10 +4,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use async_trait::async_trait;
 use authorizing::{Act, Authorizer, AuthorizerError, Readable};
 use clock::FixedClock;
-use eventsourcing::{Agent, InMemoryEventStore, Version};
+use eventsourcing::{Agent, InMemoryEventStore};
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_contract::{MORE_TO_SWEEP, MoreToSweepDTO};
-use ideas_core::{IdeaCatalog, IdeaId, IdeaSummary, IdeaTitle, IdeasCore, ProjectLink};
+use ideas_core::{IdeaCatalog, IdeaId, IdeasCore, ProjectLink};
 use ideas_messaging::{AT_MOST, DiscardOnProjectDeletedListener};
 use messaging::{FakePublisher, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
@@ -86,15 +86,10 @@ impl Wired {
                 .expect("capturing should succeed")
                 .0;
 
-            self.catalog
-                .remember(&IdeaSummary {
-                    id,
-                    version: Version::of(1),
-                    project: ProjectLink::from(A_PROJECT),
-                    title: IdeaTitle::new(&format!("Idea {nth}")).expect("a plain title is fine"),
-                })
+            self.ideas
+                .catalogue(&id)
                 .await
-                .expect("remembering should succeed");
+                .expect("cataloguing should succeed");
             captured.push(id);
         }
         captured.sort();
@@ -142,18 +137,10 @@ impl Wired {
             .await
             .expect("listing should succeed")
         {
-            let standing = self
-                .ideas
-                .read(&summary.id.to_string(), &Agent::System)
+            self.ideas
+                .catalogue(&summary.id)
                 .await
-                .expect("reading should succeed");
-
-            if standing.state.is_discarded() {
-                self.catalog
-                    .forget(&summary.id, at(5_000))
-                    .await
-                    .expect("forgetting should succeed");
-            }
+                .expect("cataloguing should succeed");
         }
     }
 }

@@ -1658,3 +1658,12 @@ async fn a_snapshot_carries_the_context_of_what_it_holds_and_what_follows_it_kee
         "grown from the snapshot, the sample still knows its shelf"
     );
 }
+
+#[test]
+fn a_write_aimed_at_a_version_is_tried_once_and_one_aimed_at_none_until_it_stops_losing_races() {
+    assert_eq!(
+        (tries_for(Some(Version::of(3))), tries_for(None)),
+        (1, transacting::retrying::TRIES),
+        "a conflict with the version named is the answer, a 412, never papered over"
+    );
+}

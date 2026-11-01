@@ -16,6 +16,7 @@ use crate::service::IdeaService;
 pub struct IdeasCore {
     clock: Arc<dyn Clock>,
     service: IdeaService,
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn IdeaCatalog>,
     authorizer: Arc<dyn Authorizer>,
 }
@@ -29,7 +30,8 @@ impl IdeasCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: IdeaService::new(store, transactions, clock.clone()),
+            service: IdeaService::new(store, transactions.clone(), clock.clone()),
+            transactions,
             clock,
             catalog,
             authorizer,
@@ -53,7 +55,12 @@ impl IdeasCore {
         let project = ProjectLink::from(project);
         self.authorized(agent, Act::Write, &project, || IdeasError::ProjectNotThere)
             .await?;
-        let id = self.service.capture(&project, title, agent).await?;
+        let mut transaction = self.transactions.begin().await?;
+        let id = self
+            .service
+            .capture(&mut transaction, &project, title, agent)
+            .await?;
+        transaction.finish().await?;
 
         Ok((id, self.service.latest(&id).await?))
     }
@@ -77,7 +84,15 @@ impl IdeasCore {
         agent: &Agent,
     ) -> Result<Standing<Idea>, IdeasError> {
         let id = self.authorized_to_write(id, agent).await?;
-        self.service.retitle(&id, title, expected, agent).await?;
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.service
+                    .retitle(transaction, &id, title, expected, agent)
+                    .await
+            }
+        )?;
 
         self.service.latest(&id).await
     }
@@ -90,7 +105,15 @@ impl IdeasCore {
     ) -> Result<Version, IdeasError> {
         let id = self.authorized_to_write(id, agent).await?;
 
-        self.service.discard(&id, expected, agent).await
+        transacting::retrying!(
+            &*self.transactions,
+            eventsourcing::tries_for(expected),
+            |transaction| {
+                self.service
+                    .discard(transaction, &id, expected, agent)
+                    .await
+            }
+        )
     }
 
     pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, IdeasError> {
@@ -112,22 +135,33 @@ impl IdeasCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, IdeasError> {
-        Ok(self
+        let mut transaction = self.transactions.begin().await?;
+        let forgotten = self
             .catalog
-            .forget_tombstones_laid_before(before, at_most)
-            .await?)
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(forgotten)
     }
 
     pub async fn catalogue(&self, id: &IdeaId) -> Result<(), IdeasError> {
         let standing = self.service.latest(id).await?;
 
+        let mut transaction = self.transactions.begin().await?;
         if standing.state.is_discarded() {
-            self.catalog.forget(id, self.clock.now()).await?;
+            self.catalog
+                .forget(&mut transaction, id, self.clock.now())
+                .await?;
         } else {
             self.catalog
-                .remember(&IdeaSummary::of(*id, standing.version, &standing.state))
+                .remember(
+                    &mut transaction,
+                    &IdeaSummary::of(*id, standing.version, &standing.state),
+                )
                 .await?;
         }
+        transaction.finish().await?;
 
         Ok(())
     }

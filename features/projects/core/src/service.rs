@@ -4,7 +4,7 @@ use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
 use crate::error::ProjectsError;
@@ -15,7 +15,6 @@ use crate::project::{KIND, Project, ProjectCommand, ProjectEvent};
 #[derive(Clone)]
 pub struct ProjectService {
     events: Arc<EventSourcingService<Project>>,
-    transactions: Arc<dyn Transactions>,
     clock: Arc<dyn Clock>,
 }
 
@@ -28,33 +27,30 @@ impl ProjectService {
         Self {
             events: Arc::new(EventSourcingService::new(
                 store,
-                transactions.clone(),
+                transactions,
                 clock.clone(),
             )),
-            transactions,
             clock,
         }
     }
 
     pub async fn start(
         &self,
+        transaction: &mut Transaction,
         name: &str,
         details: &RawDetails<'_>,
         agent: &Agent,
     ) -> Result<ProjectId, ProjectsError> {
         let id = ProjectId::generate(self.clock.now());
-        let command = ProjectCommand::Start(ProjectName::new(name)?, details.checked()?);
 
-        let mut transaction = self.transactions.begin().await?;
         self.events
             .begin(
-                Some(&mut transaction),
+                Some(transaction),
                 &AggregateId::from(&id),
-                command,
+                ProjectCommand::Start(ProjectName::new(name)?, details.checked()?),
                 agent,
             )
             .await?;
-        transaction.finish().await?;
 
         Ok(id)
     }
@@ -79,12 +75,14 @@ impl ProjectService {
 
     pub async fn rename(
         &self,
+        transaction: &mut Transaction,
         id: &ProjectId,
         name: &str,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, ProjectsError> {
         self.carry_out(
+            transaction,
             id,
             ProjectCommand::Rename(ProjectName::new(name)?),
             expected,
@@ -95,12 +93,14 @@ impl ProjectService {
 
     pub async fn change_details(
         &self,
+        transaction: &mut Transaction,
         id: &ProjectId,
         details: &RawDetails<'_>,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, ProjectsError> {
         self.carry_out(
+            transaction,
             id,
             ProjectCommand::ChangeDetails(details.checked()?),
             expected,
@@ -111,16 +111,18 @@ impl ProjectService {
 
     pub async fn delete(
         &self,
+        transaction: &mut Transaction,
         id: &ProjectId,
         expected: Option<Version>,
         agent: &Agent,
     ) -> Result<Version, ProjectsError> {
-        self.carry_out(id, ProjectCommand::Delete, expected, agent)
+        self.carry_out(transaction, id, ProjectCommand::Delete, expected, agent)
             .await
     }
 
     async fn carry_out(
         &self,
+        transaction: &mut Transaction,
         id: &ProjectId,
         command: ProjectCommand,
         expected: Option<Version>,
@@ -128,22 +130,18 @@ impl ProjectService {
     ) -> Result<Version, ProjectsError> {
         let key = AggregateId::from(id);
 
-        let Some(expected) = expected else {
-            return transacting::retrying!(&*self.transactions, |transaction| {
-                Ok(self
-                    .events
-                    .execute(Some(transaction), &key, command.clone(), agent)
+        let landed = match expected {
+            Some(expected) => {
+                self.events
+                    .execute_at(Some(transaction), &key, expected, command, agent)
                     .await?
-                    .version)
-            });
+            }
+            None => {
+                self.events
+                    .execute(Some(transaction), &key, command, agent)
+                    .await?
+            }
         };
-
-        let mut transaction = self.transactions.begin().await?;
-        let landed = self
-            .events
-            .execute_at(Some(&mut transaction), &key, expected, command, agent)
-            .await?;
-        transaction.finish().await?;
 
         Ok(landed.version)
     }
