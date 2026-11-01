@@ -438,3 +438,39 @@ async fn a_sign_up_whose_account_cannot_be_kept_frees_its_address_again() {
     );
     assert!(wired.mailbox.sent_to(ADA).is_empty());
 }
+
+#[tokio::test]
+async fn a_verification_whose_event_cannot_be_kept_leaves_the_code_open() {
+    let wired = wiring::wired();
+    let id = ada_signed_up(&wired).await;
+    let code = wired.last_code_sent_to(ADA);
+
+    let refused = wired.refusing_appends().verify(ADA, &code).await;
+
+    assert!(refused.is_err());
+    assert!(!is_verified(&wired, &id).await);
+    wired
+        .accounts
+        .verify(ADA, &code)
+        .await
+        .expect("the code is closed only with the event, so it is still open");
+    assert!(is_verified(&wired, &id).await);
+}
+
+#[tokio::test]
+async fn a_try_is_counted_even_when_the_verification_cannot_be_kept() {
+    let wired = wiring::wired();
+    ada_signed_up(&wired).await;
+    let code = wired.last_code_sent_to(ADA);
+    let _refused = wired.refusing_appends().verify(ADA, &code).await;
+
+    let right = guessed_wrong(&wired, PendingVerification::MAX_TRIES - 1).await;
+
+    assert!(
+        matches!(
+            wired.accounts.verify(ADA, &right).await,
+            Err(AccountsError::CodeExhausted)
+        ),
+        "a try is counted in a transaction of its own, so a failure after it cannot give it back"
+    );
+}

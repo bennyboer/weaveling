@@ -107,17 +107,27 @@ pub trait Passwords: Send + Sync {
 
 #[async_trait]
 pub trait Sessions: Send + Sync {
-    async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError>;
+    async fn open(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        session: &Session,
+    ) -> Result<(), SecretsError>;
 
     async fn find(&self, digest: &TokenDigest) -> Result<Option<Session>, SecretsError>;
 
-    async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError>;
+    async fn end(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError>;
 }
 
 #[async_trait]
 pub trait Verifications: Send + Sync {
     async fn issue(
         &self,
+        transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
         pending: &PendingVerification,
@@ -125,25 +135,47 @@ pub trait Verifications: Send + Sync {
 
     async fn attempt(
         &self,
+        transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
         within: u32,
     ) -> Result<Attempt, SecretsError>;
 
-    async fn close(&self, account: &AccountId, purpose: CodePurpose) -> Result<(), SecretsError>;
+    async fn close(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        purpose: CodePurpose,
+    ) -> Result<(), SecretsError>;
 }
 
 #[async_trait]
 pub trait Operators: Send + Sync {
-    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError>;
+    async fn keep_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError>;
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError>;
 
-    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError>;
+    async fn take_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<bool, SecretsError>;
 
-    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError>;
+    async fn appoint(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError>;
 
-    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError>;
+    async fn dismiss(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<Dismissal, SecretsError>;
 
     async fn any_appointed(&self) -> Result<bool, SecretsError>;
 }

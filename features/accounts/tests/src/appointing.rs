@@ -1,5 +1,5 @@
 use accounts_core::{
-    AccountError, AccountId, AccountsError, Dismissal, EmailAddress, EmailAddresses, Operators,
+    AccountError, AccountId, AccountsError, Dismissal, EmailAddress, EmailAddresses,
 };
 use eventsourcing::ServiceError;
 
@@ -77,7 +77,6 @@ async fn an_operator_makes_another_account_an_operator_who_may_then_act_as_one()
         .expect("a new operator may list the accounts");
     assert_eq!(
         wired
-            .secrets
             .dismiss(&grace)
             .await
             .expect("dismissing should succeed"),
@@ -166,7 +165,6 @@ async fn an_account_refusing_the_role_is_not_appointed() {
     ));
     assert_eq!(
         wired
-            .secrets
             .dismiss(&grace)
             .await
             .expect("dismissing should succeed"),
@@ -192,4 +190,52 @@ async fn a_locked_account_is_not_made_an_operator() {
         )))
     ));
     assert!(!is_operator(&wired, &ada).await);
+}
+
+#[tokio::test]
+async fn a_dismissal_whose_event_cannot_be_kept_leaves_the_operator_appointed() {
+    let wired = wiring::wired();
+    let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
+    wired
+        .accounts
+        .appoint_operator(&grace, &ada)
+        .await
+        .expect("an operator may make another");
+
+    let refused = wired
+        .refusing_appends()
+        .dismiss_operator(&grace, &ada)
+        .await;
+
+    assert!(refused.is_err());
+    assert!(is_operator(&wired, &ada).await);
+    assert_eq!(
+        wired
+            .dismiss(&grace)
+            .await
+            .expect("dismissing should succeed"),
+        Dismissal::Dismissed,
+        "Ada is still appointed beside Grace, so Grace is not the last"
+    );
+}
+
+#[tokio::test]
+async fn an_appointment_whose_event_cannot_be_kept_appoints_nobody() {
+    let wired = wiring::wired();
+    let (ada, grace) = grace_the_operator_and_ada(&wired, true).await;
+
+    let refused = wired
+        .refusing_appends()
+        .appoint_operator(&grace, &ada)
+        .await;
+
+    assert!(refused.is_err());
+    assert_eq!(
+        wired
+            .dismiss(&grace)
+            .await
+            .expect("dismissing should succeed"),
+        Dismissal::LastOne,
+        "Ada was never appointed, so Grace is still the only one"
+    );
 }

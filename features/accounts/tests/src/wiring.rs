@@ -2,8 +2,9 @@ use std::sync::Arc;
 
 use accounts_catalog::InMemoryAccountCatalog;
 use accounts_core::{
-    Account, AccountError, AccountEvent, AccountId, AccountsCore, EmailAddress, EmailAddresses,
-    InvitationTicket, InvitationTickets, SecretStores, SecretsError, TokenDigest,
+    Account, AccountError, AccountEvent, AccountId, AccountsCore, Dismissal, EmailAddress,
+    EmailAddresses, InvitationTicket, InvitationTickets, Operators, SecretStores, SecretsError,
+    Session, Sessions, TokenDigest,
 };
 use accounts_secrets::InMemorySecrets;
 use accounts_wiring::Ports;
@@ -166,6 +167,22 @@ impl Wired {
         finished(transaction).await;
 
         Ok(taken)
+    }
+
+    pub async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
+        let mut transaction = begun().await;
+        let dismissal = self.secrets.dismiss(&mut transaction, account).await?;
+        finished(transaction).await;
+
+        Ok(dismissal)
+    }
+
+    pub async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
+        let mut transaction = begun().await;
+        self.secrets.open(&mut transaction, digest, session).await?;
+        finished(transaction).await;
+
+        Ok(())
     }
 
     pub async fn forget_ticket(&self, invitation: &str) -> Result<(), SecretsError> {

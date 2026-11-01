@@ -10,7 +10,7 @@ use acting::SessionEnd;
 use async_trait::async_trait;
 use clock::Clock;
 use tokio::task::JoinHandle;
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transaction};
 
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
@@ -128,8 +128,13 @@ struct Unreachable {
 
 #[async_trait]
 impl Sessions for Unreachable {
-    async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
-        self.kept.open(digest, session).await
+    async fn open(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        session: &Session,
+    ) -> Result<(), SecretsError> {
+        self.kept.open(transaction, digest, session).await
     }
 
     async fn find(&self, digest: &TokenDigest) -> Result<Option<Session>, SecretsError> {
@@ -142,8 +147,12 @@ impl Sessions for Unreachable {
         self.kept.find(digest).await
     }
 
-    async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
-        self.kept.end(digest).await
+    async fn end(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
+        self.kept.end(transaction, digest).await
     }
 }
 

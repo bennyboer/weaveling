@@ -317,14 +317,19 @@ impl Passwords for SqliteSecrets {
 
 #[async_trait]
 impl Sessions for SqliteSecrets {
-    async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
+    async fn open(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        session: &Session,
+    ) -> Result<(), SecretsError> {
         sqlx::query(OPEN)
             .bind(digest.as_str())
             .bind(session.account.to_string())
             .bind(written(session.stage))
             .bind(text::written(session.begun))
             .bind(text::written(session.until))
-            .execute(&self.pool)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -342,10 +347,14 @@ impl Sessions for SqliteSecrets {
             .transpose()
     }
 
-    async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+    async fn end(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
         sqlx::query(END_SESSION)
             .bind(digest.as_str())
-            .execute(&self.pool)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -357,6 +366,7 @@ impl Sessions for SqliteSecrets {
 impl Verifications for SqliteSecrets {
     async fn issue(
         &self,
+        transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
         pending: &PendingVerification,
@@ -367,7 +377,7 @@ impl Verifications for SqliteSecrets {
             .bind(pending.code.as_str())
             .bind(text::written(pending.until))
             .bind(i64::from(pending.tried))
-            .execute(&self.pool)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -376,6 +386,7 @@ impl Verifications for SqliteSecrets {
 
     async fn attempt(
         &self,
+        transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
         within: u32,
@@ -384,7 +395,7 @@ impl Verifications for SqliteSecrets {
             .bind(account.to_string())
             .bind(purpose.as_str())
             .bind(i64::from(within))
-            .fetch_optional(&self.pool)
+            .fetch_optional(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         if let Some(counted) = counted {
@@ -394,7 +405,7 @@ impl Verifications for SqliteSecrets {
         let issued: i64 = sqlx::query_scalar(ISSUED)
             .bind(account.to_string())
             .bind(purpose.as_str())
-            .fetch_one(&self.pool)
+            .fetch_one(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -404,11 +415,16 @@ impl Verifications for SqliteSecrets {
         })
     }
 
-    async fn close(&self, account: &AccountId, purpose: CodePurpose) -> Result<(), SecretsError> {
+    async fn close(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        purpose: CodePurpose,
+    ) -> Result<(), SecretsError> {
         sqlx::query(CLOSE)
             .bind(account.to_string())
             .bind(purpose.as_str())
-            .execute(&self.pool)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -418,10 +434,14 @@ impl Verifications for SqliteSecrets {
 
 #[async_trait]
 impl Operators for SqliteSecrets {
-    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+    async fn keep_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
         sqlx::query(KEEP_CODE)
             .bind(digest.as_str())
-            .execute(&self.pool)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -436,30 +456,42 @@ impl Operators for SqliteSecrets {
             .map_err(unreachable)
     }
 
-    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+    async fn take_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<bool, SecretsError> {
         let done = sqlx::query(TAKE_CODE)
             .bind(digest.as_str())
-            .execute(&self.pool)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(done.rows_affected() == 1)
     }
 
-    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
+    async fn appoint(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
         sqlx::query(APPOINT)
             .bind(account.to_string())
-            .execute(&self.pool)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
     }
 
-    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
+    async fn dismiss(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<Dismissal, SecretsError> {
         let done = sqlx::query(DISMISS_UNLESS_LAST)
             .bind(account.to_string())
-            .execute(&self.pool)
+            .execute(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         if done.rows_affected() == 1 {
@@ -467,7 +499,7 @@ impl Operators for SqliteSecrets {
         }
         let appointed: bool = sqlx::query_scalar(APPOINTED)
             .bind(account.to_string())
-            .fetch_one(&self.pool)
+            .fetch_one(transacting::sqlite::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 

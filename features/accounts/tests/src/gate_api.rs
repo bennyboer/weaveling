@@ -1,5 +1,5 @@
 use accounts_contract::{SESSION_COOKIE, SignInRequest, refused};
-use accounts_core::{AccountId, Session, SessionToken, Sessions, Stage};
+use accounts_core::{AccountId, Session, SessionToken, Stage};
 use acting::Acting;
 use axum::http::StatusCode;
 use axum::http::header::{COOKIE, SET_COOKIE};
@@ -113,7 +113,6 @@ async fn a_session_still_owing_its_second_factor_does_not_pass() {
         .await
         .expect("the right pair should sign in");
     wired
-        .secrets
         .open(
             &token.digest(),
             &Session::begun(id, Stage::SecondFactorOwed, wired.clock.now()),

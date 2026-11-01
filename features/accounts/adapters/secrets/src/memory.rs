@@ -155,20 +155,40 @@ impl Passwords for InMemorySecrets {
 
 #[async_trait]
 impl Sessions for InMemorySecrets {
-    async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
-        self.kept().sessions.insert(digest.clone(), session.clone());
-
-        Ok(())
+    async fn open(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        session: &Session,
+    ) -> Result<(), SecretsError> {
+        let replaced = self.kept().sessions.insert(digest.clone(), session.clone());
+        let opened = digest.clone();
+        self.undo_on_rollback(transaction, move |kept| match replaced {
+            Some(before) => {
+                kept.sessions.insert(opened, before);
+            }
+            None => {
+                kept.sessions.remove(&opened);
+            }
+        })
     }
 
     async fn find(&self, digest: &TokenDigest) -> Result<Option<Session>, SecretsError> {
         Ok(self.kept().sessions.get(digest).cloned())
     }
 
-    async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
-        self.kept().sessions.remove(digest);
-
-        Ok(())
+    async fn end(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
+        let ended = self.kept().sessions.remove(digest);
+        let digest = digest.clone();
+        self.undo_on_rollback(transaction, move |kept| {
+            if let Some(session) = ended {
+                kept.sessions.insert(digest, session);
+            }
+        })
     }
 }
 
@@ -176,69 +196,123 @@ impl Sessions for InMemorySecrets {
 impl Verifications for InMemorySecrets {
     async fn issue(
         &self,
+        transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
         pending: &PendingVerification,
     ) -> Result<(), SecretsError> {
-        self.kept()
+        let replaced = self
+            .kept()
             .pending
             .insert((*account, purpose), pending.clone());
-
-        Ok(())
+        let issued = (*account, purpose);
+        self.undo_on_rollback(transaction, move |kept| match replaced {
+            Some(before) => {
+                kept.pending.insert(issued, before);
+            }
+            None => {
+                kept.pending.remove(&issued);
+            }
+        })
     }
 
     async fn attempt(
         &self,
+        transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
         within: u32,
     ) -> Result<Attempt, SecretsError> {
-        Ok(match self.kept().pending.get_mut(&(*account, purpose)) {
+        let attempt = match self.kept().pending.get_mut(&(*account, purpose)) {
             None => Attempt::Nothing,
             Some(pending) if pending.tried >= within => Attempt::Exhausted,
             Some(pending) => {
                 pending.tried += 1;
                 Attempt::Counted(pending.clone())
             }
-        })
+        };
+        if let Attempt::Counted(_) = attempt {
+            let attempted = (*account, purpose);
+            self.undo_on_rollback(transaction, move |kept| {
+                if let Some(pending) = kept.pending.get_mut(&attempted) {
+                    pending.tried -= 1;
+                }
+            })?;
+        }
+
+        Ok(attempt)
     }
 
-    async fn close(&self, account: &AccountId, purpose: CodePurpose) -> Result<(), SecretsError> {
-        self.kept().pending.remove(&(*account, purpose));
-
-        Ok(())
+    async fn close(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        purpose: CodePurpose,
+    ) -> Result<(), SecretsError> {
+        let closed = self.kept().pending.remove(&(*account, purpose));
+        let key = (*account, purpose);
+        self.undo_on_rollback(transaction, move |kept| {
+            if let Some(pending) = closed {
+                kept.pending.insert(key, pending);
+            }
+        })
     }
 }
 
 #[async_trait]
 impl Operators for InMemorySecrets {
-    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
-        self.kept().operator_code = Some(digest.clone());
-
-        Ok(())
+    async fn keep_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
+        let replaced = self.kept().operator_code.replace(digest.clone());
+        self.undo_on_rollback(transaction, move |kept| {
+            kept.operator_code = replaced;
+        })
     }
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
         Ok(self.kept().operator_code.as_ref() == Some(digest))
     }
 
-    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+    async fn take_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<bool, SecretsError> {
         let mut kept = self.kept();
         if kept.operator_code.as_ref() != Some(digest) {
             return Ok(false);
         }
         kept.operator_code = None;
+        let taken = digest.clone();
+        self.undo_on_rollback(transaction, move |kept| {
+            kept.operator_code = Some(taken);
+        })?;
 
         Ok(true)
     }
 
-    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
-        self.kept().operators.insert(*account);
-
-        Ok(())
+    async fn appoint(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
+        let appointed = self.kept().operators.insert(*account);
+        let account = *account;
+        self.undo_on_rollback(transaction, move |kept| {
+            if appointed {
+                kept.operators.remove(&account);
+            }
+        })
     }
 
-    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
+    async fn dismiss(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<Dismissal, SecretsError> {
         let mut kept = self.kept();
         if !kept.operators.contains(account) {
             return Ok(Dismissal::NotAppointed);
@@ -247,6 +321,10 @@ impl Operators for InMemorySecrets {
             return Ok(Dismissal::LastOne);
         }
         kept.operators.remove(account);
+        let dismissed = *account;
+        self.undo_on_rollback(transaction, move |kept| {
+            kept.operators.insert(dismissed);
+        })?;
 
         Ok(Dismissal::Dismissed)
     }

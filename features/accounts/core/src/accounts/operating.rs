@@ -13,7 +13,11 @@ impl AccountsCore {
             return Ok(None);
         }
         let code = OperatorCode::drawn();
-        self.operators.keep_code(&code.digest()).await?;
+        let mut transaction = self.transactions.begin().await?;
+        self.operators
+            .keep_code(&mut transaction, &code.digest())
+            .await?;
+        transaction.finish().await?;
 
         Ok(Some(code))
     }
@@ -22,19 +26,21 @@ impl AccountsCore {
         if !self.get(id).await?.state.is_verified() {
             return Err(AccountsError::NotVerifiedYet);
         }
-        if !self
-            .operators
-            .take_code(&OperatorCode::presented(code).digest())
-            .await?
-        {
-            return Err(AccountsError::OperatorCodeWrong);
-        }
+        let digest = OperatorCode::presented(code).digest();
 
-        self.commanded(id, AccountCommand::BecomeOperator, &id.acting())
+        transacting::retrying!(&*self.transactions, |transaction| {
+            if !self.operators.take_code(transaction, &digest).await? {
+                return Err(AccountsError::OperatorCodeWrong);
+            }
+            self.commanded_in(
+                transaction,
+                id,
+                AccountCommand::BecomeOperator,
+                &id.acting(),
+            )
             .await?;
-        self.operators.appoint(id).await?;
-
-        Ok(())
+            Ok(self.operators.appoint(transaction, id).await?)
+        })
     }
 
     pub async fn lock(
@@ -89,11 +95,16 @@ impl AccountsCore {
     ) -> Result<(), AccountsError> {
         self.operating(by).await?;
 
-        self.commanded(account, AccountCommand::BecomeOperator, &by.acting())
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.commanded_in(
+                transaction,
+                account,
+                AccountCommand::BecomeOperator,
+                &by.acting(),
+            )
             .await?;
-        self.operators.appoint(account).await?;
-
-        Ok(())
+            Ok(self.operators.appoint(transaction, account).await?)
+        })
     }
 
     pub async fn dismiss_operator(
@@ -103,14 +114,18 @@ impl AccountsCore {
     ) -> Result<(), AccountsError> {
         self.operating(by).await?;
 
-        if self.operators.dismiss(account).await? == Dismissal::LastOne {
-            return Err(AccountsError::LastOperator);
-        }
-
-        self.commanded(account, AccountCommand::StopBeingOperator, &by.acting())
-            .await?;
-
-        Ok(())
+        transacting::retrying!(&*self.transactions, |transaction| {
+            if self.operators.dismiss(transaction, account).await? == Dismissal::LastOne {
+                return Err(AccountsError::LastOperator);
+            }
+            self.commanded_in(
+                transaction,
+                account,
+                AccountCommand::StopBeingOperator,
+                &by.acting(),
+            )
+            .await
+        })
     }
 
     pub(super) async fn operating(&self, by: &AccountId) -> Result<(), AccountsError> {

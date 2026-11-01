@@ -301,14 +301,19 @@ impl Passwords for PostgresSecrets {
 
 #[async_trait]
 impl Sessions for PostgresSecrets {
-    async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
+    async fn open(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+        session: &Session,
+    ) -> Result<(), SecretsError> {
         sqlx::query(OPEN)
             .bind(digest.as_str())
             .bind(session.account.to_string())
             .bind(written(session.stage))
             .bind(session.begun)
             .bind(session.until)
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -326,10 +331,14 @@ impl Sessions for PostgresSecrets {
             .transpose()
     }
 
-    async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+    async fn end(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
         sqlx::query(END_SESSION)
             .bind(digest.as_str())
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -341,6 +350,7 @@ impl Sessions for PostgresSecrets {
 impl Verifications for PostgresSecrets {
     async fn issue(
         &self,
+        transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
         pending: &PendingVerification,
@@ -351,7 +361,7 @@ impl Verifications for PostgresSecrets {
             .bind(pending.code.as_str())
             .bind(pending.until)
             .bind(i32::try_from(pending.tried).map_err(unreachable)?)
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -360,6 +370,7 @@ impl Verifications for PostgresSecrets {
 
     async fn attempt(
         &self,
+        transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
         within: u32,
@@ -368,7 +379,7 @@ impl Verifications for PostgresSecrets {
             .bind(account.to_string())
             .bind(purpose.as_str())
             .bind(i32::try_from(within).map_err(unreachable)?)
-            .fetch_optional(&self.pool)
+            .fetch_optional(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         if let Some(counted) = counted {
@@ -378,7 +389,7 @@ impl Verifications for PostgresSecrets {
         let issued: i64 = sqlx::query_scalar(ISSUED)
             .bind(account.to_string())
             .bind(purpose.as_str())
-            .fetch_one(&self.pool)
+            .fetch_one(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -388,11 +399,16 @@ impl Verifications for PostgresSecrets {
         })
     }
 
-    async fn close(&self, account: &AccountId, purpose: CodePurpose) -> Result<(), SecretsError> {
+    async fn close(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        purpose: CodePurpose,
+    ) -> Result<(), SecretsError> {
         sqlx::query(CLOSE)
             .bind(account.to_string())
             .bind(purpose.as_str())
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -402,10 +418,14 @@ impl Verifications for PostgresSecrets {
 
 #[async_trait]
 impl Operators for PostgresSecrets {
-    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+    async fn keep_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
         sqlx::query(KEEP_CODE)
             .bind(digest.as_str())
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -420,30 +440,41 @@ impl Operators for PostgresSecrets {
             .map_err(unreachable)
     }
 
-    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+    async fn take_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<bool, SecretsError> {
         let done = sqlx::query(TAKE_CODE)
             .bind(digest.as_str())
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(done.rows_affected() == 1)
     }
 
-    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
+    async fn appoint(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
         sqlx::query(APPOINT)
             .bind(account.to_string())
-            .execute(&self.pool)
+            .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
     }
 
-    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
-        let mut held = self.pool.begin().await.map_err(unreachable)?;
+    async fn dismiss(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<Dismissal, SecretsError> {
         let appointed: Vec<String> = sqlx::query_scalar(EVERY_OPERATOR_HELD)
-            .fetch_all(&mut *held)
+            .fetch_all(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         let dismissal = if !appointed.contains(&account.to_string()) {
@@ -453,12 +484,11 @@ impl Operators for PostgresSecrets {
         } else {
             sqlx::query(DISMISS)
                 .bind(account.to_string())
-                .execute(&mut *held)
+                .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
                 .await
                 .map_err(unreachable)?;
             Dismissal::Dismissed
         };
-        held.commit().await.map_err(unreachable)?;
 
         Ok(dismissal)
     }

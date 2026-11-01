@@ -1,4 +1,3 @@
-use eventsourcing::AggregateId;
 use mailing::Mail;
 
 use super::AccountsCore;
@@ -33,13 +32,14 @@ impl AccountsCore {
         self.checked_code(&id, CodePurpose::ConfirmAddress, code)
             .await?;
 
-        self.commanded(&id, AccountCommand::Verify, &id.acting())
-            .await?;
-        self.verifications
-            .close(&id, CodePurpose::ConfirmAddress)
-            .await?;
-
-        Ok(())
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.commanded_in(transaction, &id, AccountCommand::Verify, &id.acting())
+                .await?;
+            Ok(self
+                .verifications
+                .close(transaction, &id, CodePurpose::ConfirmAddress)
+                .await?)
+        })
     }
 
     pub async fn ask_to_reset_password(&self, email: &str) -> Result<(), AccountsError> {
@@ -69,21 +69,20 @@ impl AccountsCore {
 
         let reset: Result<(), AccountsError> =
             transacting::retrying!(&*self.transactions, |transaction| {
-                self.events
-                    .execute(
-                        Some(&mut *transaction),
-                        &AggregateId::from(&id),
-                        AccountCommand::ResetPassword,
-                        &id.acting(),
-                    )
-                    .await?;
+                self.commanded_in(
+                    transaction,
+                    &id,
+                    AccountCommand::ResetPassword,
+                    &id.acting(),
+                )
+                .await?;
                 self.passwords.keep(transaction, &id, &hashed).await?;
+                self.verifications
+                    .close(transaction, &id, CodePurpose::ResetPassword)
+                    .await?;
                 Ok(())
             });
         reset?;
-        self.verifications
-            .close(&id, CodePurpose::ResetPassword)
-            .await?;
         self.check_sessions();
 
         Ok(())
@@ -95,11 +94,18 @@ impl AccountsCore {
         purpose: CodePurpose,
         code: &str,
     ) -> Result<(), AccountsError> {
-        let pending = match self
+        let mut transaction = self.transactions.begin().await?;
+        let attempt = self
             .verifications
-            .attempt(id, purpose, PendingVerification::MAX_TRIES)
-            .await?
-        {
+            .attempt(
+                &mut transaction,
+                id,
+                purpose,
+                PendingVerification::MAX_TRIES,
+            )
+            .await?;
+        transaction.finish().await?;
+        let pending = match attempt {
             Attempt::Nothing => return Err(AccountsError::CodeWrong),
             Attempt::Exhausted => return Err(AccountsError::CodeExhausted),
             Attempt::Counted(pending) => pending,
@@ -122,7 +128,11 @@ impl AccountsCore {
         purpose: CodePurpose,
     ) -> Result<(), AccountsError> {
         let pending = PendingVerification::issued(self.clock.now());
-        self.verifications.issue(id, purpose, &pending).await?;
+        let mut transaction = self.transactions.begin().await?;
+        self.verifications
+            .issue(&mut transaction, id, purpose, &pending)
+            .await?;
+        transaction.finish().await?;
         let code = pending.code.as_str();
         let (subject, body) = match purpose {
             CodePurpose::ConfirmAddress => (

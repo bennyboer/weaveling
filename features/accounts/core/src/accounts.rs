@@ -113,16 +113,28 @@ impl AccountsCore {
         agent: &Agent,
     ) -> Result<(), AccountsError> {
         transacting::retrying!(&*self.transactions, |transaction| {
-            self.events
-                .execute(
-                    Some(transaction),
-                    &AggregateId::from(account),
-                    command.clone(),
-                    agent,
-                )
-                .await?;
-            Ok(())
+            self.commanded_in(transaction, account, command.clone(), agent)
+                .await
         })
+    }
+
+    pub(super) async fn commanded_in(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        command: AccountCommand,
+        agent: &Agent,
+    ) -> Result<(), AccountsError> {
+        self.events
+            .execute(
+                Some(transaction),
+                &AggregateId::from(account),
+                command,
+                agent,
+            )
+            .await?;
+
+        Ok(())
     }
 
     pub(super) async fn admitted(

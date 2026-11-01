@@ -7,7 +7,7 @@ use crate::account::Account;
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::password::PasswordHash;
-use crate::session::{Session, SessionToken, Stage};
+use crate::session::{Session, SessionToken, Stage, TokenDigest};
 use crate::session_end;
 use crate::throttle::Guarded;
 use email::EmailAddress;
@@ -69,7 +69,11 @@ impl AccountsCore {
         let token = SessionToken::drawn();
         // TODO second factors: a session owes one, Stage::SecondFactorOwed, where the account has one
         let session = Session::begun(id, Stage::SignedIn, self.clock.now());
-        self.sessions.open(&token.digest(), &session).await?;
+        let mut transaction = self.transactions.begin().await?;
+        self.sessions
+            .open(&mut transaction, &token.digest(), &session)
+            .await?;
+        transaction.finish().await?;
 
         Ok((token, SignedIn { session, account }))
     }
@@ -80,12 +84,12 @@ impl AccountsCore {
             return Ok(None);
         };
         if session.is_over(self.clock.now()) {
-            self.sessions.end(&digest).await?;
+            self.ended(&digest).await?;
             return Ok(None);
         }
         let account = self.get(&session.account).await?.state;
         if account.is_locked() || !account.counts_session_begun(session.begun) {
-            self.sessions.end(&digest).await?;
+            self.ended(&digest).await?;
             return Ok(None);
         }
 
@@ -93,7 +97,7 @@ impl AccountsCore {
     }
 
     pub async fn end_session(&self, token: &SessionToken) -> Result<(), AccountsError> {
-        self.sessions.end(&token.digest()).await?;
+        self.ended(&token.digest()).await?;
         self.check_sessions();
 
         Ok(())
@@ -127,6 +131,13 @@ impl AccountsCore {
 
     pub(crate) async fn still_acting(&self, token: &SessionToken) -> bool {
         !matches!(self.signed_in(token).await, Ok(None))
+    }
+
+    async fn ended(&self, digest: &TokenDigest) -> Result<(), AccountsError> {
+        let mut transaction = self.transactions.begin().await?;
+        self.sessions.end(&mut transaction, digest).await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub(super) fn check_sessions(&self) {

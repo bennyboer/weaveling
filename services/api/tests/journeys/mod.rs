@@ -885,13 +885,20 @@ pub async fn an_account_is_told_in_the_application_what_it_is_invited_into_and_j
     assert_eq!(mine[0]["project"], project);
     assert_eq!(mine[0]["role"], "author");
 
-    server
-        .post(&format!(
-            "/api/accounts/current/invitations/{}/accept",
-            mine[0]["id"].as_str().unwrap_or_default()
-        ))
-        .await
-        .assert_status(StatusCode::NO_CONTENT);
+    assert!(
+        until(|| async {
+            server
+                .post(&format!(
+                    "/api/accounts/current/invitations/{}/accept",
+                    mine[0]["id"].as_str().unwrap_or_default()
+                ))
+                .await
+                .status_code()
+                == StatusCode::NO_CONTENT
+        })
+        .await,
+        "taken up once the accounts have kept the invitation's ticket, which they do on a listener of their own, so the list may show it a moment before"
+    );
 
     assert!(
         until(|| async {
@@ -951,13 +958,20 @@ pub async fn an_account_turns_down_in_the_application_what_it_is_invited_into<B:
         "invitations hear of her sign-up"
     );
     let mine: Value = server.get("/api/invitations/mine").await.json();
-    server
-        .post(&format!(
-            "/api/accounts/current/invitations/{}/decline",
-            mine[0]["id"].as_str().unwrap_or_default()
-        ))
-        .await
-        .assert_status(StatusCode::NO_CONTENT);
+    assert!(
+        until(|| async {
+            server
+                .post(&format!(
+                    "/api/accounts/current/invitations/{}/decline",
+                    mine[0]["id"].as_str().unwrap_or_default()
+                ))
+                .await
+                .status_code()
+                == StatusCode::NO_CONTENT
+        })
+        .await,
+        "turned down once the accounts have kept the invitation's ticket, which they do on a listener of their own, so the list may show it a moment before"
+    );
 
     assert!(
         until(|| async {

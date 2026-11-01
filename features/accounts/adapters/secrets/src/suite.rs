@@ -142,6 +142,91 @@ impl<S: Secrets> Committing<'_, S> {
         self.finished(transaction).await
     }
 
+    pub async fn open(&self, digest: &TokenDigest, session: &Session) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.open(&mut transaction, digest, session).await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn end(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.end(&mut transaction, digest).await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn issue(
+        &self,
+        account: &AccountId,
+        purpose: CodePurpose,
+        pending: &PendingVerification,
+    ) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store
+            .issue(&mut transaction, account, purpose, pending)
+            .await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn attempt(
+        &self,
+        account: &AccountId,
+        purpose: CodePurpose,
+        within: u32,
+    ) -> Result<Attempt, SecretsError> {
+        let mut transaction = self.begun().await?;
+        let done = self
+            .store
+            .attempt(&mut transaction, account, purpose, within)
+            .await?;
+        self.finished(transaction).await?;
+
+        Ok(done)
+    }
+
+    pub async fn close(
+        &self,
+        account: &AccountId,
+        purpose: CodePurpose,
+    ) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.close(&mut transaction, account, purpose).await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.keep_code(&mut transaction, digest).await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
+        let mut transaction = self.begun().await?;
+        let done = self.store.take_code(&mut transaction, digest).await?;
+        self.finished(transaction).await?;
+
+        Ok(done)
+    }
+
+    pub async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.appoint(&mut transaction, account).await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
+        let mut transaction = self.begun().await?;
+        let done = self.store.dismiss(&mut transaction, account).await?;
+        self.finished(transaction).await?;
+
+        Ok(done)
+    }
+
     async fn begun(&self) -> Result<Transaction, SecretsError> {
         self.transactions
             .begin()
@@ -839,7 +924,7 @@ pub async fn appointing_twice_is_appointing_once<S: Secrets>(secrets: &Committin
     );
 }
 
-async fn appointed(secrets: &impl Secrets, seconds: i64) -> AccountId {
+async fn appointed<S: Secrets>(secrets: &Committing<'_, S>, seconds: i64) -> AccountId {
     let account = AccountId::generate(at(seconds));
     secrets
         .appoint(&account)
@@ -850,8 +935,8 @@ async fn appointed(secrets: &impl Secrets, seconds: i64) -> AccountId {
 }
 
 pub async fn one_of_two_operators_is_dismissed<S: Secrets>(secrets: &Committing<'_, S>) {
-    let ada = appointed(secrets.store, 1_000).await;
-    let grace = appointed(secrets.store, 2_000).await;
+    let ada = appointed(secrets, 1_000).await;
+    let grace = appointed(secrets, 2_000).await;
 
     assert_eq!(
         secrets
@@ -878,7 +963,7 @@ pub async fn one_of_two_operators_is_dismissed<S: Secrets>(secrets: &Committing<
 }
 
 pub async fn the_last_operator_is_kept<S: Secrets>(secrets: &Committing<'_, S>) {
-    let ada = appointed(secrets.store, 1_000).await;
+    let ada = appointed(secrets, 1_000).await;
 
     assert_eq!(
         secrets
@@ -896,8 +981,8 @@ pub async fn the_last_operator_is_kept<S: Secrets>(secrets: &Committing<'_, S>) 
 }
 
 pub async fn someone_never_appointed_is_not_dismissed<S: Secrets>(secrets: &Committing<'_, S>) {
-    let _ada = appointed(secrets.store, 1_000).await;
-    let _grace = appointed(secrets.store, 2_000).await;
+    let _ada = appointed(secrets, 1_000).await;
+    let _grace = appointed(secrets, 2_000).await;
 
     assert_eq!(
         secrets
@@ -911,7 +996,7 @@ pub async fn someone_never_appointed_is_not_dismissed<S: Secrets>(secrets: &Comm
 pub async fn operators_dismissed_all_at_once_leave_one<S: Secrets>(secrets: &Committing<'_, S>) {
     let mut everyone = Vec::new();
     for seconds in 1..=10 {
-        everyone.push(appointed(secrets.store, seconds * 1_000).await);
+        everyone.push(appointed(secrets, seconds * 1_000).await);
     }
 
     let dismissals =
@@ -1862,6 +1947,132 @@ pub async fn a_first_password_kept_in_a_dropped_transaction_was_never_kept<S: Se
     );
 }
 
+pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropped_are_gone<
+    S: Secrets,
+>(
+    secrets: &Committing<'_, S>,
+) {
+    let ada = AccountId::generate(at(1_000));
+    let grace = appointed(secrets, 2_000).await;
+    appointed(secrets, 3_000).await;
+    secrets
+        .issue(&ada, CodePurpose::ConfirmAddress, &pending("004217", 1_900))
+        .await
+        .expect("issuing should succeed");
+    let kept_session = SessionToken::drawn().digest();
+    secrets
+        .open(&kept_session, &a_session(Stage::SignedIn))
+        .await
+        .expect("opening should succeed");
+    secrets
+        .keep_code(&TokenDigest::kept("kept".to_owned()))
+        .await
+        .expect("keeping a code should succeed");
+    let dropped_session = SessionToken::drawn().digest();
+    let mut transaction = secrets.begun().await.expect("beginning should succeed");
+    let store = secrets.store;
+    store
+        .open(
+            &mut transaction,
+            &dropped_session,
+            &a_session(Stage::SignedIn),
+        )
+        .await
+        .expect("opening should succeed");
+    store
+        .end(&mut transaction, &kept_session)
+        .await
+        .expect("ending should succeed");
+    store
+        .attempt(&mut transaction, &ada, CodePurpose::ConfirmAddress, 5)
+        .await
+        .expect("attempting should succeed");
+    store
+        .issue(
+            &mut transaction,
+            &ada,
+            CodePurpose::ResetPassword,
+            &pending("777777", 1_900),
+        )
+        .await
+        .expect("issuing should succeed");
+    store
+        .close(&mut transaction, &ada, CodePurpose::ConfirmAddress)
+        .await
+        .expect("closing should succeed");
+    store
+        .take_code(&mut transaction, &TokenDigest::kept("kept".to_owned()))
+        .await
+        .expect("taking a code should succeed");
+    store
+        .keep_code(&mut transaction, &TokenDigest::kept("another".to_owned()))
+        .await
+        .expect("keeping a code should succeed");
+    store
+        .appoint(&mut transaction, &ada)
+        .await
+        .expect("appointing should succeed");
+    store
+        .dismiss(&mut transaction, &grace)
+        .await
+        .expect("dismissing should succeed");
+
+    drop(transaction);
+
+    assert!(
+        secrets
+            .find(&dropped_session)
+            .await
+            .expect("finding should succeed")
+            .is_none()
+    );
+    assert!(
+        secrets
+            .find(&kept_session)
+            .await
+            .expect("finding should succeed")
+            .is_some()
+    );
+    assert_eq!(
+        secrets
+            .attempt(&ada, CodePurpose::ConfirmAddress, 5)
+            .await
+            .expect("attempting should succeed"),
+        Attempt::Counted(PendingVerification {
+            tried: 1,
+            ..pending("004217", 1_900)
+        }),
+        "the code is still open and the dropped attempt never counted"
+    );
+    assert_eq!(
+        secrets
+            .attempt(&ada, CodePurpose::ResetPassword, 5)
+            .await
+            .expect("attempting should succeed"),
+        Attempt::Nothing
+    );
+    assert!(
+        secrets
+            .holds_code(&TokenDigest::kept("kept".to_owned()))
+            .await
+            .expect("reading should succeed")
+    );
+    assert_eq!(
+        (
+            secrets
+                .dismiss(&ada)
+                .await
+                .expect("dismissing should succeed"),
+            secrets
+                .dismiss(&grace)
+                .await
+                .expect("dismissing should succeed"),
+        ),
+        (Dismissal::NotAppointed, Dismissal::Dismissed),
+        "Ada was never appointed and Grace never dismissed"
+    );
+}
+
 #[macro_export]
 macro_rules! secrets_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -1879,6 +2090,10 @@ macro_rules! secrets_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::secrets_conformance_case!(
+            $workbench,
+            sessions_codes_and_operators_written_in_a_transaction_that_is_dropped_are_gone
+        );
         $crate::secrets_conformance_case!($workbench, a_kept_ticket_is_taken_once_and_whole);
         $crate::secrets_conformance_case!(
             $workbench,

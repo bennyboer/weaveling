@@ -7,7 +7,7 @@ use accounts_core::{
 };
 use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transaction};
 
 use crate::wiring;
 use crate::wiring::{HER_PASSWORD, Wired};
@@ -180,28 +180,44 @@ struct FailingToAppointOnce {
 
 #[async_trait]
 impl Operators for FailingToAppointOnce {
-    async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
-        self.kept.keep_code(digest).await
+    async fn keep_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<(), SecretsError> {
+        self.kept.keep_code(transaction, digest).await
     }
 
     async fn holds_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
         self.kept.holds_code(digest).await
     }
 
-    async fn take_code(&self, digest: &TokenDigest) -> Result<bool, SecretsError> {
-        self.kept.take_code(digest).await
+    async fn take_code(
+        &self,
+        transaction: &mut Transaction,
+        digest: &TokenDigest,
+    ) -> Result<bool, SecretsError> {
+        self.kept.take_code(transaction, digest).await
     }
 
-    async fn appoint(&self, account: &AccountId) -> Result<(), SecretsError> {
+    async fn appoint(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<(), SecretsError> {
         if self.armed.swap(false, Ordering::SeqCst) {
             return Err(SecretsError::Backend("the server went down".into()));
         }
 
-        self.kept.appoint(account).await
+        self.kept.appoint(transaction, account).await
     }
 
-    async fn dismiss(&self, account: &AccountId) -> Result<Dismissal, SecretsError> {
-        self.kept.dismiss(account).await
+    async fn dismiss(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+    ) -> Result<Dismissal, SecretsError> {
+        self.kept.dismiss(transaction, account).await
     }
 
     async fn any_appointed(&self) -> Result<bool, SecretsError> {
@@ -210,7 +226,7 @@ impl Operators for FailingToAppointOnce {
 }
 
 #[tokio::test]
-async fn an_operator_broken_off_before_being_appointed_is_appointed_by_the_next_code() {
+async fn an_appointment_that_fails_records_nothing_and_leaves_the_code_to_be_used() {
     let wired = wiring::wired();
     let ada = signed_up(&wired, "ada@example.com", true).await;
     let accounts = AccountsCore::new(
@@ -228,27 +244,23 @@ async fn an_operator_broken_off_before_being_appointed_is_appointed_by_the_next_
         wired.clock.clone(),
     );
     let code = drawn(&wired).await;
+
     assert!(accounts.become_operator(&ada, &code).await.is_err());
     assert!(
-        is_operator(&wired, &ada).await,
-        "the event was recorded before the server went down"
+        !is_operator(&wired, &ada).await,
+        "the event, the code's take and the appointment commit together or not at all"
     );
-
-    let next = accounts
-        .draw_operator_code()
-        .await
-        .expect("drawing should succeed")
-        .expect("nobody appointed, so the next start draws a code again");
     accounts
-        .become_operator(&ada, next.as_str())
+        .become_operator(&ada, &code)
         .await
-        .expect("the next code makes her what she already is, and appoints her");
-
+        .expect("the code was never used up, so it still makes her an operator");
+    assert!(is_operator(&wired, &ada).await);
     assert!(
         accounts
             .draw_operator_code()
             .await
             .expect("drawing should succeed")
-            .is_none()
+            .is_none(),
+        "she is appointed as well as recorded"
     );
 }
