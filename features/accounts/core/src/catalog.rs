@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use eventsourcing::Version;
 use thiserror::Error;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::account::Account;
 use crate::id::AccountId;
@@ -32,7 +33,11 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait AccountCatalog: Send + Sync {
-    async fn remember(&self, summary: &AccountSummary) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &AccountSummary,
+    ) -> Result<(), CatalogError>;
 
     async fn listed_after(
         &self,

@@ -3,6 +3,7 @@ use mailing::Unsent;
 use thiserror::Error;
 use throttling::ThrottlesError;
 use time::Duration;
+use transacting::{Failure, LostRace};
 
 use crate::account::AccountError;
 use crate::catalog::CatalogError;
@@ -66,4 +67,12 @@ pub enum AccountsError {
     Throttles(#[from] ThrottlesError),
     #[error(transparent)]
     Unsent(#[from] Unsent),
+    #[error("the transaction around the change failed")]
+    Transaction(#[from] Failure),
+}
+
+impl LostRace for AccountsError {
+    fn lost_race(&self) -> bool {
+        matches!(self, AccountsError::Events(failure) if failure.lost_race())
+    }
 }

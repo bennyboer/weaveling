@@ -9,6 +9,8 @@ use sqlx::migrate::Migrator;
 use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::postgres::connection;
 
 use crate::locks;
 
@@ -80,7 +82,11 @@ fn to_summary(row: &PgRow) -> Result<AccountSummary, CatalogError> {
 
 #[async_trait]
 impl AccountCatalog for PostgresAccountCatalog {
-    async fn remember(&self, summary: &AccountSummary) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        summary: &AccountSummary,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER)
             .bind(summary.id.to_string())
             .bind(i64::try_from(summary.version.count()).map_err(unreachable)?)
@@ -90,7 +96,7 @@ impl AccountCatalog for PostgresAccountCatalog {
             .bind(summary.operator)
             .bind(summary.signed_up_at)
             .bind(locks::written(&summary.locks))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 

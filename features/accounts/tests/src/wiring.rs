@@ -11,7 +11,8 @@ use authorizing::AllowingEverything;
 use axum::Router;
 use clock::FixedClock;
 use eventsourcing::{
-    AggregateId, EventSourcingService, InMemoryEventStore, RefusesAppending, ServiceError, Standing,
+    AggregateId, EventSourcingService, EventStore, FailsAppending, InMemoryEventStore,
+    RefusesAppending, ServiceError, Standing,
 };
 use mailing::FakeMailbox;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
@@ -105,8 +106,19 @@ pub fn wired() -> Wired {
 
 impl Wired {
     pub fn refusing_appends(&self) -> AccountsCore {
+        self.over(Arc::new(RefusesAppending(self.store.clone())))
+    }
+
+    pub fn losing_races(&self, times: u8) -> AccountsCore {
+        self.over(Arc::new(FailsAppending::losing_races(
+            self.store.clone(),
+            times,
+        )))
+    }
+
+    fn over(&self, store: Arc<dyn EventStore<AccountEvent>>) -> AccountsCore {
         AccountsCore::new(
-            Arc::new(RefusesAppending(self.store.clone())),
+            store,
             Arc::new(InMemoryTransactions::new()),
             SecretStores::kept_by(self.secrets.clone(), self.throttles.clone()),
             self.catalog.clone(),

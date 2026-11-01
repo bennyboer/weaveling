@@ -1,8 +1,11 @@
+use std::ops::Deref;
+
 use std::collections::BTreeMap;
+use transacting::{Transaction, Transactions};
 
 use accounts_core::{
-    AccountCatalog, AccountId, AccountName, AccountSummary, EmailAddress, Lock, LockKind,
-    LockReason,
+    AccountCatalog, AccountId, AccountName, AccountSummary, CatalogError, EmailAddress, Lock,
+    LockKind, LockReason,
 };
 use eventsourcing::Version;
 use time::OffsetDateTime;
@@ -15,7 +18,52 @@ pub trait Workbench: Sized {
 
     fn store(&self) -> &Self::Store;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Store> {
+        Committing {
+            catalog: self.store(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, C> {
+    catalog: &'a C,
+    transactions: &'a dyn Transactions,
+}
+
+fn unreachable(failure: transacting::Failure) -> CatalogError {
+    CatalogError::Backend(Box::new(failure))
+}
+
+impl<C: AccountCatalog> Committing<'_, C> {
+    pub async fn begun(&self) -> Transaction {
+        self.transactions
+            .begin()
+            .await
+            .expect("beginning should succeed")
+    }
+
+    pub fn uncommitted(&self) -> &C {
+        self.catalog
+    }
+
+    pub async fn remember(&self, summary: &AccountSummary) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog.remember(&mut transaction, summary).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+}
+
+impl<C> Deref for Committing<'_, C> {
+    type Target = C;
+
+    fn deref(&self) -> &C {
+        self.catalog
+    }
 }
 
 pub fn at(seconds: i64) -> OffsetDateTime {
@@ -39,14 +87,16 @@ fn signed_up(seconds: i64) -> AccountId {
     AccountId::generate(at(seconds))
 }
 
-async fn listed(catalog: &impl AccountCatalog) -> Vec<AccountSummary> {
+async fn listed(catalog: &Committing<'_, impl AccountCatalog>) -> Vec<AccountSummary> {
     catalog
         .listed_after(None, 100)
         .await
         .expect("listing should succeed")
 }
 
-pub async fn a_remembered_account_is_listed_as_it_was(catalog: &impl AccountCatalog) {
+pub async fn a_remembered_account_is_listed_as_it_was(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
     let summary = AccountSummary {
         version: Version::of(4),
         verified: false,
@@ -70,11 +120,11 @@ pub async fn a_remembered_account_is_listed_as_it_was(catalog: &impl AccountCata
     assert_eq!(listed(catalog).await, vec![summary]);
 }
 
-pub async fn an_empty_catalog_lists_nothing(catalog: &impl AccountCatalog) {
+pub async fn an_empty_catalog_lists_nothing(catalog: &Committing<'_, impl AccountCatalog>) {
     assert!(listed(catalog).await.is_empty());
 }
 
-pub async fn a_newer_summary_replaces_the_older(catalog: &impl AccountCatalog) {
+pub async fn a_newer_summary_replaces_the_older(catalog: &Committing<'_, impl AccountCatalog>) {
     let id = signed_up(1_000);
     catalog
         .remember(&a_summary(id, "ada@example.com"))
@@ -94,7 +144,9 @@ pub async fn a_newer_summary_replaces_the_older(catalog: &impl AccountCatalog) {
     assert_eq!(listed(catalog).await, vec![newer]);
 }
 
-pub async fn an_older_summary_arriving_late_changes_nothing(catalog: &impl AccountCatalog) {
+pub async fn an_older_summary_arriving_late_changes_nothing(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
     let id = signed_up(1_000);
     let newer = AccountSummary {
         version: Version::of(3),
@@ -121,7 +173,7 @@ pub async fn an_older_summary_arriving_late_changes_nothing(catalog: &impl Accou
     );
 }
 
-pub async fn the_newest_account_is_listed_first(catalog: &impl AccountCatalog) {
+pub async fn the_newest_account_is_listed_first(catalog: &Committing<'_, impl AccountCatalog>) {
     for (seconds, email) in [
         (2_000, "grace@example.com"),
         (1_000, "ada@example.com"),
@@ -146,7 +198,7 @@ pub async fn the_newest_account_is_listed_first(catalog: &impl AccountCatalog) {
 }
 
 pub async fn a_page_holds_at_most_what_was_asked_and_the_next_goes_on_after_it(
-    catalog: &impl AccountCatalog,
+    catalog: &Committing<'_, impl AccountCatalog>,
 ) {
     for seconds in [1_000, 2_000, 3_000] {
         catalog
@@ -182,6 +234,24 @@ pub async fn a_page_holds_at_most_what_was_asked_and_the_next_goes_on_after_it(
     );
 }
 
+pub async fn what_was_remembered_in_a_transaction_that_is_dropped_is_gone(
+    catalog: &Committing<'_, impl AccountCatalog>,
+) {
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .remember(
+            &mut transaction,
+            &a_summary(signed_up(1_000), "ada@example.com"),
+        )
+        .await
+        .expect("remembering should succeed");
+
+    drop(transaction);
+
+    assert!(listed(catalog).await.is_empty());
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -190,7 +260,7 @@ macro_rules! catalog_conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.store()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -199,6 +269,10 @@ macro_rules! catalog_conformance_case {
 #[macro_export]
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::catalog_conformance_case!(
+            $workbench,
+            what_was_remembered_in_a_transaction_that_is_dropped_is_gone
+        );
         $crate::catalog_conformance_case!($workbench, a_remembered_account_is_listed_as_it_was);
         $crate::catalog_conformance_case!($workbench, an_empty_catalog_lists_nothing);
         $crate::catalog_conformance_case!($workbench, a_newer_summary_replaces_the_older);

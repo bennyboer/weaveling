@@ -10,7 +10,6 @@ mod name;
 mod operator;
 mod password;
 mod secrets;
-mod service;
 mod session;
 mod session_end;
 mod signing_up;
@@ -21,7 +20,7 @@ mod ticket;
 mod account_tests;
 
 pub use account::{Account, AccountCommand, AccountError, AccountEvent, KIND};
-pub use accounts::AccountsCore;
+pub use accounts::{AccountsCore, SignedIn};
 pub use catalog::{AccountCatalog, AccountSummary, CatalogError};
 pub use code::{CodePurpose, PendingVerification, VerificationCode};
 pub use decline::DeclineReason;
@@ -36,7 +35,6 @@ pub use secrets::{
     Attempt, Dismissal, EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores,
     SecretsError, Sessions, Verifications,
 };
-pub use service::SignedIn;
 pub use session::{Session, SessionToken, Stage, TokenDigest};
 pub use signing_up::SigningUp;
 pub use throttle::Guarded;

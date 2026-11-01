@@ -1,7 +1,7 @@
 use accounts_core::{
     AccountError, AccountEvent, AccountId, AccountsError, EmailAddress, EmailAddresses, KIND,
 };
-use eventsourcing::{AggregateId, EventStore, ServiceError, Version};
+use eventsourcing::{AggregateId, EventStore, ServiceError, StoreError, Version};
 
 use crate::session_ends;
 use crate::wiring;
@@ -285,4 +285,34 @@ async fn a_lock_reaches_the_end_of_the_account_s_sessions_at_once() {
         .expect("an operator may lock an account");
 
     assert!(session_ends::reached(waiting).await);
+}
+
+#[tokio::test]
+async fn a_lock_that_lost_a_race_is_tried_again_and_lands() {
+    let wired = wiring::wired();
+    let (ada, grace) = ada_and_grace_the_operator(&wired).await;
+
+    wired
+        .losing_races(4)
+        .lock(&grace, &ada, "Sent spam.")
+        .await
+        .expect("the fifth try lands");
+
+    assert!(is_locked(&wired, &ada).await);
+}
+
+#[tokio::test]
+async fn a_lock_that_lost_every_race_it_may_try_is_a_conflict() {
+    let wired = wiring::wired();
+    let (ada, grace) = ada_and_grace_the_operator(&wired).await;
+
+    let refused = wired.losing_races(5).lock(&grace, &ada, "Sent spam.").await;
+
+    assert!(matches!(
+        refused,
+        Err(AccountsError::Events(ServiceError::Store(
+            StoreError::Outdated { .. }
+        )))
+    ));
+    assert!(!is_locked(&wired, &ada).await);
 }

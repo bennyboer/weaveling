@@ -1,30 +1,50 @@
+mod codes;
+mod invitations;
+mod operating;
+mod sessions;
+mod sign_ups;
+
 use std::sync::Arc;
 
-use acting::SessionEnd;
 use clock::Clock;
-use eventsourcing::EventStore;
+use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing};
 use mailing::Mailer;
-use time::OffsetDateTime;
+use throttling::{Admission, Throttles};
+use time::Duration;
 use tokio::sync::watch;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
-use crate::account::AccountEvent;
+use crate::account::{Account, AccountCommand, AccountEvent};
 use crate::catalog::{AccountCatalog, AccountSummary};
 use crate::error::AccountsError;
 use crate::id::AccountId;
-use crate::operator::OperatorCode;
-use crate::secrets::SecretStores;
-use crate::service::{AccountService, SignedIn};
-use crate::session::{SessionToken, TokenDigest};
-use crate::session_end;
+use crate::secrets::{
+    EmailAddresses, InvitationTickets, Operators, Passwords, SecretStores, SecretsError, Sessions,
+    Verifications,
+};
 use crate::signing_up::SigningUp;
-use crate::ticket::InvitationTicket;
+use crate::throttle::Guarded;
+use email::EmailAddress;
+
+pub use sessions::SignedIn;
+
+const CLAIM_ABANDONED_AFTER: Duration = Duration::minutes(5);
 
 #[derive(Clone)]
 pub struct AccountsCore {
-    service: AccountService,
+    events: Arc<EventSourcingService<Account>>,
+    transactions: Arc<dyn Transactions>,
+    email_addresses: Arc<dyn EmailAddresses>,
+    passwords: Arc<dyn Passwords>,
+    verifications: Arc<dyn Verifications>,
+    sessions: Arc<dyn Sessions>,
+    throttles: Arc<dyn Throttles>,
+    operators: Arc<dyn Operators>,
+    invitation_tickets: Arc<dyn InvitationTickets>,
     catalog: Arc<dyn AccountCatalog>,
+    mailer: Arc<dyn Mailer>,
     clock: Arc<dyn Clock>,
+    signing_up: SigningUp,
     sessions_checked: Arc<watch::Sender<u64>>,
 }
 
@@ -37,256 +57,154 @@ impl AccountsCore {
         mailer: Arc<dyn Mailer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
+        let SecretStores {
+            email_addresses,
+            passwords,
+            verifications,
+            sessions,
+            throttles,
+            operators,
+            invitation_tickets,
+        } = secrets;
+
         Self {
-            service: AccountService::new(
+            events: Arc::new(EventSourcingService::new(
                 store,
-                transactions,
-                secrets,
-                catalog.clone(),
-                mailer,
+                transactions.clone(),
                 clock.clone(),
-            ),
+            )),
+            transactions,
+            email_addresses,
+            passwords,
+            verifications,
+            sessions,
+            throttles,
+            operators,
+            invitation_tickets,
             catalog,
+            mailer,
             clock,
+            signing_up: SigningUp::Open,
             sessions_checked: Arc::new(watch::Sender::new(0)),
         }
     }
 
     pub fn signing_up(self, signing_up: SigningUp) -> Self {
-        Self {
-            service: self.service.signing_up(signing_up),
-            ..self
-        }
-    }
-
-    pub async fn sign_up(
-        &self,
-        email: &str,
-        name: &str,
-        password: &str,
-    ) -> Result<(), AccountsError> {
-        self.service.sign_up(email, name, password).await
-    }
-
-    pub async fn sign_up_to_operate(
-        &self,
-        email: &str,
-        name: &str,
-        password: &str,
-        code: &str,
-    ) -> Result<(), AccountsError> {
-        self.service
-            .sign_up_to_operate(email, name, password, code)
-            .await
-    }
-
-    pub async fn operator_wanted(&self) -> Result<bool, AccountsError> {
-        self.service.operator_wanted().await
-    }
-
-    pub async fn sign_up_by_invitation(
-        &self,
-        token: &str,
-        name: &str,
-        password: &str,
-    ) -> Result<(SessionToken, SignedIn), AccountsError> {
-        self.service
-            .sign_up_by_invitation(token, name, password)
-            .await
-    }
-
-    pub async fn take_up_invitation(
-        &self,
-        account: &AccountId,
-        token: &str,
-    ) -> Result<InvitationTicket, AccountsError> {
-        self.service.take_up_invitation(account, token).await
-    }
-
-    pub async fn take_up_invitation_by_id(
-        &self,
-        account: &AccountId,
-        invitation: &str,
-    ) -> Result<InvitationTicket, AccountsError> {
-        self.service
-            .take_up_invitation_by_id(account, invitation)
-            .await
-    }
-
-    pub async fn decline_invitation(
-        &self,
-        account: &AccountId,
-        token: &str,
-    ) -> Result<(), AccountsError> {
-        self.service.decline_invitation(account, token).await
-    }
-
-    pub async fn decline_invitation_by_id(
-        &self,
-        account: &AccountId,
-        invitation: &str,
-    ) -> Result<(), AccountsError> {
-        self.service
-            .decline_invitation_by_id(account, invitation)
-            .await
-    }
-
-    pub async fn keep_invitation_ticket(
-        &self,
-        digest: &TokenDigest,
-        ticket: &InvitationTicket,
-    ) -> Result<(), AccountsError> {
-        self.service.keep_invitation_ticket(digest, ticket).await
-    }
-
-    pub async fn forget_invitation_ticket(&self, invitation: &str) -> Result<(), AccountsError> {
-        self.service.forget_invitation_ticket(invitation).await
-    }
-
-    pub async fn drop_invitation_ticket(&self, invitation: &str) -> Result<(), AccountsError> {
-        self.service.drop_invitation_ticket(invitation).await
-    }
-
-    pub async fn send_code_again(&self, email: &str) -> Result<(), AccountsError> {
-        self.service.send_code_again(email).await
-    }
-
-    pub async fn verify(&self, email: &str, code: &str) -> Result<(), AccountsError> {
-        self.service.verify(email, code).await
-    }
-
-    pub async fn ask_to_reset_password(&self, email: &str) -> Result<(), AccountsError> {
-        self.service.ask_to_reset_password(email).await
-    }
-
-    pub async fn reset_password(
-        &self,
-        email: &str,
-        code: &str,
-        password: &str,
-    ) -> Result<(), AccountsError> {
-        self.service.reset_password(email, code, password).await?;
-        self.check_sessions();
-
-        Ok(())
-    }
-
-    pub async fn sign_in(&self, email: &str, password: &str) -> Result<AccountId, AccountsError> {
-        self.service.sign_in(email, password).await
-    }
-
-    pub async fn begin_session(
-        &self,
-        email: &str,
-        password: &str,
-    ) -> Result<(SessionToken, SignedIn), AccountsError> {
-        self.service.begin_session(email, password).await
-    }
-
-    pub async fn signed_in(&self, token: &SessionToken) -> Result<Option<SignedIn>, AccountsError> {
-        self.service.signed_in(token).await
-    }
-
-    pub async fn end_session(&self, token: &SessionToken) -> Result<(), AccountsError> {
-        self.service.end_session(token).await?;
-        self.check_sessions();
-
-        Ok(())
-    }
-
-    pub fn session_end(&self, token: &SessionToken, until: OffsetDateTime) -> SessionEnd {
-        session_end::of(self.clone(), SessionToken::presented(token.as_str()), until)
-    }
-
-    pub(crate) fn session_checks(&self) -> watch::Receiver<u64> {
-        self.sessions_checked.subscribe()
-    }
-
-    pub(crate) fn now(&self) -> OffsetDateTime {
-        self.clock.now()
-    }
-
-    pub(crate) async fn still_acting(&self, token: &SessionToken) -> bool {
-        !matches!(self.signed_in(token).await, Ok(None))
-    }
-
-    fn check_sessions(&self) {
-        self.sessions_checked.send_modify(|checked| *checked += 1);
-    }
-
-    pub async fn draw_operator_code(&self) -> Result<Option<OperatorCode>, AccountsError> {
-        self.service.draw_operator_code().await
-    }
-
-    pub async fn become_operator(&self, id: &AccountId, code: &str) -> Result<(), AccountsError> {
-        self.service.become_operator(id, code).await
-    }
-
-    pub async fn lock(
-        &self,
-        by: &AccountId,
-        account: &AccountId,
-        reason: &str,
-    ) -> Result<(), AccountsError> {
-        self.operating(by).await?;
-
-        self.service.lock(by, account, reason).await?;
-        self.check_sessions();
-
-        Ok(())
-    }
-
-    pub async fn unlock(&self, by: &AccountId, account: &AccountId) -> Result<(), AccountsError> {
-        self.operating(by).await?;
-
-        self.service.unlock(by, account).await
-    }
-
-    pub async fn list(
-        &self,
-        by: &AccountId,
-        after: Option<&AccountId>,
-        at_most: usize,
-    ) -> Result<Vec<AccountSummary>, AccountsError> {
-        self.operating(by).await?;
-
-        self.service.list(after, at_most).await
-    }
-
-    pub async fn appoint_operator(
-        &self,
-        by: &AccountId,
-        account: &AccountId,
-    ) -> Result<(), AccountsError> {
-        self.operating(by).await?;
-
-        self.service.appoint_operator(by, account).await
-    }
-
-    pub async fn dismiss_operator(
-        &self,
-        by: &AccountId,
-        account: &AccountId,
-    ) -> Result<(), AccountsError> {
-        self.operating(by).await?;
-
-        self.service.dismiss_operator(by, account).await
+        Self { signing_up, ..self }
     }
 
     pub async fn catalogue(&self, id: &AccountId) -> Result<(), AccountsError> {
-        let standing = self.service.get(id).await?;
+        let standing = self.get(id).await?;
 
-        Ok(self
-            .catalog
-            .remember(&AccountSummary::of(*id, standing.version, &standing.state))
-            .await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .remember(
+                &mut transaction,
+                &AccountSummary::of(*id, standing.version, &standing.state),
+            )
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
-    async fn operating(&self, by: &AccountId) -> Result<(), AccountsError> {
-        if self.service.get(by).await?.state.is_operator() {
+    pub(super) async fn commanded(
+        &self,
+        account: &AccountId,
+        command: AccountCommand,
+        agent: &Agent,
+    ) -> Result<(), AccountsError> {
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.events
+                .execute(
+                    Some(transaction),
+                    &AggregateId::from(account),
+                    command.clone(),
+                    agent,
+                )
+                .await?;
             Ok(())
-        } else {
-            Err(AccountsError::NotAnOperator)
+        })
+    }
+
+    pub(super) async fn admitted(
+        &self,
+        guarded: Guarded,
+        email: &EmailAddress,
+    ) -> Result<(), AccountsError> {
+        match self
+            .throttles
+            .admit(
+                guarded.as_str(),
+                email.as_str(),
+                guarded.rule(),
+                self.clock.now(),
+            )
+            .await?
+        {
+            Admission::Admitted => Ok(()),
+            Admission::Wait(wait) => Err(AccountsError::Throttled { wait }),
         }
+    }
+
+    pub(super) async fn counted_mail_to(&self, email: &EmailAddress) -> Result<(), AccountsError> {
+        self.admitted(Guarded::SendingCodes, email).await
+    }
+
+    pub(super) async fn claimed(
+        &self,
+        transaction: &mut Transaction,
+        email: &EmailAddress,
+        id: &AccountId,
+    ) -> Result<bool, AccountsError> {
+        let now = self.clock.now();
+        match self
+            .email_addresses
+            .claim(transaction, email, id, now)
+            .await
+        {
+            Err(SecretsError::Taken) => {}
+            claimed => {
+                claimed?;
+                return Ok(true);
+            }
+        }
+        let Some(holder) = self.email_addresses.holder(email).await? else {
+            return Ok(false);
+        };
+
+        match self.get(&holder).await {
+            Err(AccountsError::Events(ServiceError::NotFound { .. })) => Ok(self
+                .email_addresses
+                .take_over(
+                    transaction,
+                    email,
+                    &holder,
+                    id,
+                    now - CLAIM_ABANDONED_AFTER,
+                    now,
+                )
+                .await?),
+            Ok(_) => Ok(false),
+            Err(failed) => Err(failed),
+        }
+    }
+
+    pub(super) async fn whose(
+        &self,
+        email: &EmailAddress,
+    ) -> Result<Option<(AccountId, Account)>, AccountsError> {
+        let Some(id) = self.email_addresses.holder(email).await? else {
+            return Ok(None);
+        };
+        let account = match self.get(&id).await {
+            Ok(standing) => standing.state,
+            Err(AccountsError::Events(ServiceError::NotFound { .. })) => return Ok(None),
+            Err(failed) => return Err(failed),
+        };
+
+        Ok((account.email() == email).then_some((id, account)))
+    }
+
+    pub(super) async fn get(&self, id: &AccountId) -> Result<Standing<Account>, AccountsError> {
+        Ok(self.events.latest(&AggregateId::from(id)).await?)
     }
 }

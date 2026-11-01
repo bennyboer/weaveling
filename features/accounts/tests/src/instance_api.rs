@@ -9,6 +9,7 @@ use axum::http::header::{COOKIE, SET_COOKIE};
 use axum_test::{TestResponse, TestServer};
 use eventsourcing::Version;
 use serde_json::Value;
+use transacting::{InMemoryTransactions, Transactions};
 
 use crate::wiring;
 use crate::wiring::{HER_PASSWORD, Wired};
@@ -312,14 +313,30 @@ async fn an_account_that_is_not_there_or_no_account_at_all_is_said_so() {
     );
 }
 
+async fn remembered(instance: &Instance, summary: &AccountSummary) {
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    instance
+        .wired
+        .catalog
+        .remember(&mut transaction, summary)
+        .await
+        .expect("remembering should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+}
+
 #[tokio::test]
 async fn a_long_list_comes_a_page_at_a_time() {
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     for seconds in 0..accounts_rest::PAGE as i64 {
-        instance
-            .wired
-            .catalog
-            .remember(&AccountSummary {
+        remembered(
+            &instance,
+            &AccountSummary {
                 id: AccountId::generate(wiring::at(1_000 + seconds)),
                 version: Version::of(1),
                 name: AccountName::new("Someone").expect("a plain name"),
@@ -329,9 +346,9 @@ async fn a_long_list_comes_a_page_at_a_time() {
                 operator: false,
                 signed_up_at: wiring::at(1_000 + seconds),
                 locks: BTreeMap::new(),
-            })
-            .await
-            .expect("remembering should succeed");
+            },
+        )
+        .await;
     }
 
     let first: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();
@@ -353,10 +370,9 @@ async fn a_long_list_comes_a_page_at_a_time() {
 async fn a_list_that_fills_one_page_exactly_promises_no_next() {
     let instance = an_instance_with_ada_and_grace_its_operator().await;
     for seconds in 0..accounts_rest::PAGE as i64 - 2 {
-        instance
-            .wired
-            .catalog
-            .remember(&AccountSummary {
+        remembered(
+            &instance,
+            &AccountSummary {
                 id: AccountId::generate(wiring::at(1_000 + seconds)),
                 version: Version::of(1),
                 name: AccountName::new("Someone").expect("a plain name"),
@@ -366,9 +382,9 @@ async fn a_list_that_fills_one_page_exactly_promises_no_next() {
                 operator: false,
                 signed_up_at: wiring::at(1_000 + seconds),
                 locks: BTreeMap::new(),
-            })
-            .await
-            .expect("remembering should succeed");
+            },
+        )
+        .await;
     }
 
     let page: AccountPageDTO = instance.listed(&instance.grace_signed_in).await.json();

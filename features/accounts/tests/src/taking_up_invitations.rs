@@ -483,3 +483,24 @@ async fn a_turning_down_whose_account_cannot_be_kept_leaves_the_invitation_to_be
         vec!["invitation_1".to_owned()]
     );
 }
+
+#[tokio::test]
+async fn a_take_up_that_lost_a_race_takes_the_ticket_again_in_a_fresh_transaction_and_lands() {
+    let wired = wiring::wired();
+    let ada = signed_up(&wired, ADA).await;
+    invited(&wired, &into_a_project(ADA)).await;
+
+    wired
+        .losing_races(1)
+        .take_up_invitation(&ada, TOKEN)
+        .await
+        .expect(
+            "the ticket taken in the lost try was given back with it, so the second try takes it",
+        );
+
+    assert_eq!(
+        taken_up(&wired, &ada).await,
+        vec!["invitation_1".to_owned()]
+    );
+    assert_eq!(still_there(&wired).await, None);
+}

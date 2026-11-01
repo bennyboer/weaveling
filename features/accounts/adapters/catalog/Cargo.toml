@@ -13,11 +13,13 @@ time = { workspace = true, features = ["serde-well-known"] }
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
+
 accounts-core = { version = "0.1.0", path = "../../core", package = "weaveling-accounts-core" }
 
 [features]
-postgres = ["dep:sqlx"]
-sqlite = ["dep:sqlx", "sqlx/sqlite"]
+postgres = ["dep:sqlx", "transacting/postgres"]
+sqlite = ["dep:sqlx", "sqlx/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
