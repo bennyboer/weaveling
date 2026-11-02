@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventSourcingService, EventStore, Standing, Version};
-use transacting::{Transaction, Transactions};
+use transacting::Transaction;
 
 use crate::error::IdeasError;
 use crate::id::IdeaId;
@@ -16,17 +16,9 @@ pub struct IdeaService {
 }
 
 impl IdeaService {
-    pub fn new(
-        store: Arc<dyn EventStore<IdeaEvent>>,
-        transactions: Arc<dyn Transactions>,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn EventStore<IdeaEvent>>, clock: Arc<dyn Clock>) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(
-                store,
-                transactions,
-                clock.clone(),
-            )),
+            events: Arc::new(EventSourcingService::new(store, clock.clone())),
             clock,
         }
     }
@@ -45,7 +37,7 @@ impl IdeaService {
         };
 
         self.events
-            .begin(Some(transaction), &AggregateId::from(&id), command, agent)
+            .begin(transaction, &AggregateId::from(&id), command, agent)
             .await?;
 
         Ok(id)
@@ -97,12 +89,12 @@ impl IdeaService {
         let landed = match expected {
             Some(expected) => {
                 self.events
-                    .execute_at(Some(transaction), &key, expected, command, agent)
+                    .execute_at(transaction, &key, expected, command, agent)
                     .await?
             }
             None => {
                 self.events
-                    .execute(Some(transaction), &key, command, agent)
+                    .execute(transaction, &key, command, agent)
                     .await?
             }
         };

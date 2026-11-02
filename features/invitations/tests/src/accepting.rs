@@ -1,8 +1,9 @@
 use accounts_contract::{INVITATION_TAKEN_UP, SIGNED_UP_BY_INVITATION};
 use eventsourcing::{AggregateId, EventStore, Version};
+use inbox::Inboxed;
 use invitations_core::{InvitationEvent, InvitationId, KIND, ProjectLink, Role, Scope};
 use invitations_messaging::AcceptTakenUpInvitationListener;
-use messaging::{Handler, Listener, Message, RoutingKey};
+use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 
@@ -51,8 +52,10 @@ async fn happened(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
         .collect()
 }
 
-fn listener(wired: &Wired) -> AcceptTakenUpInvitationListener {
-    AcceptTakenUpInvitationListener::new(wired.invitations.clone())
+fn listener(wired: &Wired) -> Inboxed<AcceptTakenUpInvitationListener> {
+    wiring::inboxed(AcceptTakenUpInvitationListener::new(
+        wired.invitations.clone(),
+    ))
 }
 
 #[tokio::test]
@@ -61,7 +64,7 @@ async fn an_invitation_an_account_took_up_is_accepted() {
     let id = invited(&wired).await;
 
     listener(&wired)
-        .take_in(&taken_up(&id, wiring::at(1_700_000_100)))
+        .handle(&taken_up(&id, wiring::at(1_700_000_100)))
         .await
         .expect("an open invitation is accepted");
 
@@ -83,7 +86,7 @@ async fn an_invitation_is_accepted_as_of_its_taking_up_however_late_it_is_heard(
         .set(wiring::at(1_700_000_000) + Duration::days(30));
 
     listener(&wired)
-        .take_in(&taken_up(
+        .handle(&taken_up(
             &id,
             wiring::at(1_700_000_000) + Duration::days(7),
         ))
@@ -108,13 +111,13 @@ async fn a_taking_up_told_again_or_after_a_withdrawal_changes_nothing() {
         .expect("an operator may withdraw");
     let listener = listener(&wired);
     listener
-        .take_in(&taken_up(&accepted, wiring::at(1_700_000_100)))
+        .handle(&taken_up(&accepted, wiring::at(1_700_000_100)))
         .await
         .expect("an open invitation is accepted");
 
     for id in [&accepted, &withdrawn] {
         listener
-            .take_in(&taken_up(id, wiring::at(1_700_000_200)))
+            .handle(&taken_up(id, wiring::at(1_700_000_200)))
             .await
             .expect("messages come at least once, and a withdrawal that crossed a taking up is no failure");
     }
@@ -158,7 +161,7 @@ async fn a_taking_up_naming_no_invitation_is_refused() {
         ),
     ] {
         assert!(
-            listener.take_in(&unreadable).await.is_err(),
+            listener.handle(&unreadable).await.is_err(),
             "a message the listener cannot act on belongs in dead letters"
         );
     }
@@ -171,7 +174,7 @@ async fn a_taking_up_told_as_of_after_the_invitation_ran_out_is_refused() {
 
     assert!(
         listener(&wired)
-            .take_in(&taken_up(
+            .handle(&taken_up(
                 &id,
                 wiring::at(1_700_000_000) + Duration::days(7) + Duration::seconds(1),
             ))
@@ -198,7 +201,7 @@ async fn an_invitation_into_a_project_is_accepted_telling_the_project_and_role()
         .id;
 
     listener(&wired)
-        .take_in(&taken_up(&id, wiring::at(1_700_000_100)))
+        .handle(&taken_up(&id, wiring::at(1_700_000_100)))
         .await
         .expect("an open invitation is accepted");
 

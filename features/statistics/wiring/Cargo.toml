@@ -8,6 +8,7 @@ transacting = { version = "0.1.0", path = "../../../libraries/transacting", pack
 async-trait = { workspace = true }
 sqlx = { workspace = true, optional = true }
 time = { workspace = true }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
 
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live" }
@@ -20,8 +21,8 @@ statistics-messaging = { version = "0.1.0", path = "../adapters/messaging", pack
 statistics-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-statistics-rest" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "statistics-catalog/postgres", "transacting/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "statistics-catalog/sqlite", "transacting/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "statistics-catalog/postgres", "transacting/postgres", "inbox/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "statistics-catalog/sqlite", "transacting/sqlite", "inbox/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

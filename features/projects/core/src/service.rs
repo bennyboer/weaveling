@@ -4,7 +4,7 @@ use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
-use transacting::{Transaction, Transactions};
+use transacting::Transaction;
 
 use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
 use crate::error::ProjectsError;
@@ -19,17 +19,9 @@ pub struct ProjectService {
 }
 
 impl ProjectService {
-    pub fn new(
-        store: Arc<dyn EventStore<ProjectEvent>>,
-        transactions: Arc<dyn Transactions>,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn EventStore<ProjectEvent>>, clock: Arc<dyn Clock>) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(
-                store,
-                transactions,
-                clock.clone(),
-            )),
+            events: Arc::new(EventSourcingService::new(store, clock.clone())),
             clock,
         }
     }
@@ -45,7 +37,7 @@ impl ProjectService {
 
         self.events
             .begin(
-                Some(transaction),
+                transaction,
                 &AggregateId::from(&id),
                 ProjectCommand::Start(ProjectName::new(name)?, details.checked()?),
                 agent,
@@ -133,12 +125,12 @@ impl ProjectService {
         let landed = match expected {
             Some(expected) => {
                 self.events
-                    .execute_at(Some(transaction), &key, expected, command, agent)
+                    .execute_at(transaction, &key, expected, command, agent)
                     .await?
             }
             None => {
                 self.events
-                    .execute(Some(transaction), &key, command, agent)
+                    .execute(transaction, &key, command, agent)
                     .await?
             }
         };

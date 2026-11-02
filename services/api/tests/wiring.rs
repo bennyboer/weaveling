@@ -794,6 +794,7 @@ async fn the_server_does_the_invitations_and_notifications_chores_only_where_the
 
         assert_eq!(named.contains(&"retire-due-invitations"), retiring);
         assert_eq!(named.contains(&"forget-old-notices"), retiring);
+        assert_eq!(named.contains(&"forget-old-account-hearings"), retiring);
         assert!(
             named.contains(&"forget-old-appearance-tombstones"),
             "tombstones are laid with or without accounts"

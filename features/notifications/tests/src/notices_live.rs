@@ -66,7 +66,7 @@ impl Told {
             .expect("noting should succeed")
             .expect("its project is not deleted");
         self.notifications
-            .catalogue(&notice)
+            .catalogue(None, &notice)
             .await
             .expect("cataloguing should succeed");
 
@@ -93,7 +93,7 @@ async fn an_account_is_told_each_change_to_its_own_notices_once_they_are_listed(
         .await
         .expect("dismissing should succeed");
     told.notifications
-        .catalogue(&notice)
+        .catalogue(None, &notice)
         .await
         .expect("cataloguing should succeed");
     let dismissed = bo.frame().await;
@@ -112,7 +112,11 @@ async fn a_deleted_project_tells_whoever_had_an_open_notice_about_it() {
     let (_cy_s, mut cy) = told.following(account("account_cy"), MINE).await;
 
     told.notifications
-        .lay_project_tombstone(&ProjectLink::from("project_1"), OffsetDateTime::UNIX_EPOCH)
+        .lay_project_tombstone(
+            None,
+            &ProjectLink::from("project_1"),
+            OffsetDateTime::UNIX_EPOCH,
+        )
         .await
         .expect("laying a tombstone should succeed");
 

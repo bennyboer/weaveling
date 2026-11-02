@@ -79,6 +79,7 @@ mod tests {
     use eventsourcing::{
         AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
     };
+    use inbox::KeptHandler;
     use messaging::{Handler, RoutingKey, Subscription};
     use outline_contract::{
         ATTACHED, DETACHED, EVERY_OUTLINE, SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED,
@@ -239,7 +240,7 @@ mod tests {
     fn restructuring_does_not_wake_the_catalog_projector() {
         for (event, _) in everything_worth_publishing() {
             let woken = heard_by(
-                <crate::CatalogueOutlinesListener as Handler>::LISTENS_TO,
+                <crate::CatalogueOutlinesListener as KeptHandler>::LISTENS_TO,
                 &eventpublishing::routing_for(KIND, event.name()),
             );
 

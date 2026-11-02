@@ -1,16 +1,28 @@
+use std::sync::Arc;
+
 use accounts_core::{
-    AccountEvent, DeclineReason, EmailAddress, EmailAddresses, InvitationScope, InvitationTicket,
-    InvitationToken, KIND, TokenDigest,
+    AccountEvent, AccountsCore, DeclineReason, EmailAddress, EmailAddresses, InvitationScope,
+    InvitationTicket, InvitationToken, KIND, TokenDigest,
 };
 use accounts_messaging::KeepInvitationTicketsListener;
 use eventsourcing::{AggregateId, EventStore, Version};
+use inbox::{InMemoryInbox, Inboxed};
 use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
-use messaging::{Handler, Listener, Message, Publisher, RoutingKey};
+use messaging::{Listener, Message, Publisher, RoutingKey};
 use serde_json::{Value, json};
 use time::Duration;
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::{ADA, HER_PASSWORD, Wired};
+
+fn heard_by(wired: &Wired, accounts: AccountsCore) -> Inboxed<KeepInvitationTicketsListener> {
+    Inboxed::new(
+        KeepInvitationTicketsListener::new(accounts),
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(InMemoryInbox::new(wired.clock.clone())),
+    )
+}
 
 fn told(routing: &str, invitation: &str, event: Value) -> Message {
     Message::opening(
@@ -138,7 +150,8 @@ async fn an_issue_told_again_after_its_withdrawal_leaves_no_ticket() {
 
 #[tokio::test]
 async fn an_accepted_invitation_is_not_heard() {
-    let tickets = KeepInvitationTicketsListener::new(wiring::wired().accounts.clone());
+    let wired = wiring::wired();
+    let tickets = heard_by(&wired, wired.accounts.clone());
 
     for heard in [ISSUED, WITHDRAWN, DECLINED, RETIRED] {
         assert!(tickets.hears(&RoutingKey::parse(heard).expect("a declared key is fine")));
@@ -152,7 +165,7 @@ async fn an_accepted_invitation_is_not_heard() {
 #[tokio::test]
 async fn an_issue_to_no_address_or_until_no_time_is_refused() {
     let wired = wiring::wired();
-    let tickets = KeepInvitationTicketsListener::new(wired.accounts.clone());
+    let tickets = heard_by(&wired, wired.accounts.clone());
     let mut no_time = issued("invitation_ada", ADA, "ab12");
     no_time.payload["event"]["until"] = json!("next week");
 
@@ -162,7 +175,7 @@ async fn an_issue_to_no_address_or_until_no_time_is_refused() {
         told(ISSUED, "invitation_ada", json!({ "nothing": "useful" })),
     ] {
         assert!(
-            tickets.take_in(&unreadable).await.is_err(),
+            tickets.handle(&unreadable).await.is_err(),
             "a message the listener cannot act on belongs in dead letters"
         );
     }
@@ -362,8 +375,8 @@ async fn an_issue_to_an_address_with_an_account_whose_decline_failed_is_declined
         .expect("the address is held");
     let issue = issued("invitation_ada", ADA, "ab12");
 
-    let refused = KeepInvitationTicketsListener::new(wired.refusing_appends())
-        .take_in(&issue)
+    let refused = heard_by(&wired, wired.refusing_appends())
+        .handle(&issue)
         .await;
     tell(&wired, issue).await;
 

@@ -1,7 +1,9 @@
 use async_trait::async_trait;
+use inbox::{KeptHandler, Refused};
 use members_core::MembersCore;
-use messaging::{Failure, Handler, Message};
+use messaging::Message;
 use projects_contract::{ProjectEventDTO, STARTED};
+use transacting::Transaction;
 
 const AN_ACCOUNT: &str = "account";
 
@@ -16,19 +18,26 @@ impl FoundMembersOfStartedProjectListener {
 }
 
 #[async_trait]
-impl Handler for FoundMembersOfStartedProjectListener {
+impl KeptHandler for FoundMembersOfStartedProjectListener {
     const NAME: &'static str = "found-members-of-started-project";
     const LISTENS_TO: &'static [&'static str] = &[STARTED];
     const WHEN_REFUSED: &'static str =
         "Whoever started a project was not made its owner, so it may stay out of their reach.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
         let started = eventpublishing::published_in::<ProjectEventDTO>(message)?;
         let (AN_ACCOUNT, Some(owner)) = (started.agent.kind.as_str(), started.agent.id) else {
             return Ok(());
         };
 
-        Ok(self.members.found(&started.aggregate.id, &owner).await?)
+        self.members
+            .found(Some(transaction), &started.aggregate.id, &owner)
+            .await
+            .map_err(Refused::of)
     }
 }
 
@@ -46,24 +55,32 @@ mod tests {
     use time::OffsetDateTime;
     use transacting::InMemoryTransactions;
 
+    use inbox::{InMemoryInbox, Inboxed};
+
     use super::*;
 
     struct Bench {
         store: Arc<InMemoryEventStore<MembersEvent>>,
-        listener: FoundMembersOfStartedProjectListener,
+        listener: Inboxed<FoundMembersOfStartedProjectListener>,
     }
 
     fn bench() -> Bench {
         let store = Arc::new(InMemoryEventStore::new());
 
         Bench {
-            listener: FoundMembersOfStartedProjectListener::new(MembersCore::new(
-                store.clone(),
+            listener: Inboxed::new(
+                FoundMembersOfStartedProjectListener::new(MembersCore::new(
+                    store.clone(),
+                    Arc::new(InMemoryTransactions::new()),
+                    Arc::new(InMemoryMembershipCatalog::new()),
+                    Arc::new(AllowingEverything),
+                    Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+                )),
                 Arc::new(InMemoryTransactions::new()),
-                Arc::new(InMemoryMembershipCatalog::new()),
-                Arc::new(AllowingEverything),
-                Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
-            )),
+                Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+                    OffsetDateTime::UNIX_EPOCH,
+                )))),
+            ),
             store,
         }
     }
@@ -103,7 +120,7 @@ mod tests {
         for _ in 0..2 {
             bench
                 .listener
-                .take_in(&started_by(
+                .handle(&started_by(
                     json!({ "kind": "account", "id": "account_ada" }),
                 ))
                 .await
@@ -124,7 +141,7 @@ mod tests {
 
         bench
             .listener
-            .take_in(&started_by(
+            .handle(&started_by(
                 json!({ "kind": "account", "id": "account_ada" }),
             ))
             .await
@@ -160,7 +177,7 @@ mod tests {
         ] {
             bench
                 .listener
-                .take_in(&started_by(agent))
+                .handle(&started_by(agent))
                 .await
                 .expect("nobody to found it with is no failure");
         }
@@ -185,7 +202,7 @@ mod tests {
 
         assert!(
             listener
-                .take_in(&Message::opening(
+                .handle(&Message::opening(
                     RoutingKey::parse(STARTED).expect("a declared key"),
                     json!({ "something": "else" }),
                     OffsetDateTime::UNIX_EPOCH,

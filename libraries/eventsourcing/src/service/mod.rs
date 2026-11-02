@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use clock::Clock;
 use thiserror::Error;
-use transacting::{Failure, LostRace, Transaction, Transactions};
+use transacting::{Failure, LostRace, Transaction};
 
 use crate::agent::Agent;
 use crate::aggregate::{Aggregate, AggregateId, AggregateType};
@@ -49,7 +49,6 @@ impl<E> LostRace for ServiceError<E> {
 
 pub struct EventSourcingService<A: Aggregate> {
     store: Arc<dyn EventStore<A::Event>>,
-    transactions: Arc<dyn Transactions>,
     patcher: Patcher<A::Event>,
     clock: Arc<dyn Clock>,
 }
@@ -87,14 +86,9 @@ where
     A: Aggregate,
     A::Event: Clone + Send + Sync + 'static,
 {
-    pub fn new(
-        store: Arc<dyn EventStore<A::Event>>,
-        transactions: Arc<dyn Transactions>,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn EventStore<A::Event>>, clock: Arc<dyn Clock>) -> Self {
         Self {
             store,
-            transactions,
             patcher: Patcher::holding(A::patches()),
             clock,
         }
@@ -121,55 +115,16 @@ where
 
     pub async fn begin(
         &self,
-        within: Option<&mut Transaction>,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        // TODO 2c: within required once every core owns its transaction
-        let Some(transaction) = within else {
-            let mut transaction = self.transactions.begin().await?;
-            let appended = self
-                .appended_within(
-                    &mut transaction,
-                    aggregate,
-                    None,
-                    Version::ZERO,
-                    command,
-                    agent,
-                )
-                .await?;
-            transaction.finish().await?;
-            return Ok(appended);
-        };
-
         self.appended_within(transaction, aggregate, None, Version::ZERO, command, agent)
             .await
     }
 
     pub async fn execute(
-        &self,
-        within: Option<&mut Transaction>,
-        aggregate: &AggregateId,
-        command: A::Command,
-        agent: &Agent,
-    ) -> Outcome<A>
-    where
-        A::Command: Clone,
-    {
-        // TODO 2c: within required and the retry left to core once every core owns its transaction
-        let Some(transaction) = within else {
-            return transacting::retrying!(&*self.transactions, |transaction| {
-                self.executed_within(transaction, aggregate, command.clone(), agent)
-                    .await
-            });
-        };
-
-        self.executed_within(transaction, aggregate, command, agent)
-            .await
-    }
-
-    async fn executed_within(
         &self,
         transaction: &mut Transaction,
         aggregate: &AggregateId,
@@ -194,28 +149,6 @@ where
     }
 
     pub async fn execute_at(
-        &self,
-        within: Option<&mut Transaction>,
-        aggregate: &AggregateId,
-        expected: Version,
-        command: A::Command,
-        agent: &Agent,
-    ) -> Outcome<A> {
-        // TODO 2c: within required once every core owns its transaction
-        let Some(transaction) = within else {
-            let mut transaction = self.transactions.begin().await?;
-            let appended = self
-                .executed_at_within(&mut transaction, aggregate, expected, command, agent)
-                .await?;
-            transaction.finish().await?;
-            return Ok(appended);
-        };
-
-        self.executed_at_within(transaction, aggregate, expected, command, agent)
-            .await
-    }
-
-    async fn executed_at_within(
         &self,
         transaction: &mut Transaction,
         aggregate: &AggregateId,
@@ -317,16 +250,20 @@ where
         }))
     }
 
-    pub async fn compact(&self, aggregate: &AggregateId, agent: &Agent) -> Reached<A> {
+    pub async fn compact(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        agent: &Agent,
+    ) -> Reached<A> {
         let standing = self
             .standing(aggregate, None)
             .await?
             .ok_or_else(|| self.nothing_there(aggregate))?;
 
-        let mut transaction = self.transactions.begin().await?;
         let taken = self
             .snapshot(
-                &mut transaction,
+                transaction,
                 aggregate,
                 &standing.state,
                 standing.version,
@@ -335,10 +272,9 @@ where
             .await?;
         if let Some(replaced) = taken.previous() {
             self.store
-                .prune_through(&mut transaction, aggregate, A::KIND, replaced)
+                .prune_through(transaction, aggregate, A::KIND, replaced)
                 .await?;
         }
-        transaction.finish().await?;
 
         Ok(taken)
     }

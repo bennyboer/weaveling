@@ -6,7 +6,9 @@ edition.workspace = true
 [dependencies]
 async-trait = { workspace = true }
 
+inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
 statistics-core = { version = "0.1.0", path = "../../core", package = "weaveling-statistics-core" }
 

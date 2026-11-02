@@ -4,7 +4,7 @@ use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{Agent, AggregateId, EventStore, ServiceError, Standing, Version};
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::catalog::{IdeaCatalog, IdeaSummary};
 use crate::error::IdeasError;
@@ -30,7 +30,7 @@ impl IdeasCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: IdeaService::new(store, transactions.clone(), clock.clone()),
+            service: IdeaService::new(store, clock.clone()),
             transactions,
             clock,
             catalog,
@@ -145,10 +145,14 @@ impl IdeasCore {
         Ok(forgotten)
     }
 
-    pub async fn catalogue(&self, id: &IdeaId) -> Result<(), IdeasError> {
+    pub async fn catalogue(
+        &self,
+        within: Option<&mut Transaction>,
+        id: &IdeaId,
+    ) -> Result<(), IdeasError> {
         let standing = self.service.latest(id).await?;
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         if standing.state.is_discarded() {
             self.catalog
                 .forget(&mut transaction, id, self.clock.now())

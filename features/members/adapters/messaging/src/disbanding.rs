@@ -1,7 +1,9 @@
 use async_trait::async_trait;
+use inbox::{KeptHandler, Refused};
 use members_core::MembersCore;
-use messaging::{Failure, Handler, Message};
+use messaging::Message;
 use projects_contract::{DELETED, ProjectEventDTO};
+use transacting::Transaction;
 
 pub struct DisbandMembersOfDeletedProjectListener {
     members: MembersCore,
@@ -14,16 +16,23 @@ impl DisbandMembersOfDeletedProjectListener {
 }
 
 #[async_trait]
-impl Handler for DisbandMembersOfDeletedProjectListener {
+impl KeptHandler for DisbandMembersOfDeletedProjectListener {
     const NAME: &'static str = "disband-members-of-deleted-project";
     const LISTENS_TO: &'static [&'static str] = &[DELETED];
     const WHEN_REFUSED: &'static str =
         "The members of a deleted project were not let go, so its owners may still invite into it.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
         let deleted = eventpublishing::published_in::<ProjectEventDTO>(message)?;
 
-        Ok(self.members.disband(&deleted.aggregate.id).await?)
+        self.members
+            .disband(Some(transaction), &deleted.aggregate.id)
+            .await
+            .map_err(Refused::of)
     }
 }
 
@@ -41,12 +50,14 @@ mod tests {
     use time::OffsetDateTime;
     use transacting::InMemoryTransactions;
 
+    use inbox::{InMemoryInbox, Inboxed};
+
     use super::*;
 
     struct Bench {
         store: Arc<InMemoryEventStore<MembersEvent>>,
         members: MembersCore,
-        listener: DisbandMembersOfDeletedProjectListener,
+        listener: Inboxed<DisbandMembersOfDeletedProjectListener>,
     }
 
     fn bench() -> Bench {
@@ -60,7 +71,13 @@ mod tests {
         );
 
         Bench {
-            listener: DisbandMembersOfDeletedProjectListener::new(members.clone()),
+            listener: Inboxed::new(
+                DisbandMembersOfDeletedProjectListener::new(members.clone()),
+                Arc::new(InMemoryTransactions::new()),
+                Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+                    OffsetDateTime::UNIX_EPOCH,
+                )))),
+            ),
             members,
             store,
         }
@@ -105,19 +122,19 @@ mod tests {
         );
         bench
             .members
-            .found("project_1", "account_ada")
+            .found(None, "project_1", "account_ada")
             .await
             .expect("founding should succeed");
         bench
             .members
-            .join("project_1", "account_bo", Role::Reader)
+            .join(None, "project_1", "account_bo", Role::Reader)
             .await
             .expect("joining should succeed");
 
         for _ in 0..2 {
             bench
                 .listener
-                .take_in(&deleted())
+                .handle(&deleted())
                 .await
                 .expect("messages come at least once");
         }
@@ -133,17 +150,17 @@ mod tests {
 
         bench
             .listener
-            .take_in(&deleted())
+            .handle(&deleted())
             .await
             .expect("members never founded are disbanded all the same");
         bench
             .members
-            .found("project_1", "account_ada")
+            .found(None, "project_1", "account_ada")
             .await
             .expect("a founding heard late is no failure");
         bench
             .members
-            .join("project_1", "account_bo", Role::Reader)
+            .join(None, "project_1", "account_bo", Role::Reader)
             .await
             .expect("an invitation taken up into a deleted project is no failure either");
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use authorizing::AllowingEverything;
 use clock::FixedClock;
+use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_contract::{CREATED, DELETED, OPENING_CHANGED, RETITLED};
@@ -32,18 +33,25 @@ fn a_title(saying: &str) -> SceneTitle {
 
 struct Wired {
     catalog: Arc<InMemorySceneCatalog>,
-    catalogue: CatalogueScenesListener,
+    catalogue: Inboxed<CatalogueScenesListener>,
 }
 
-fn catalogued_in(catalog: Arc<dyn SceneCatalog>) -> CatalogueScenesListener {
-    CatalogueScenesListener::new(ScenesCore::new(
-        Arc::new(InMemorySceneStore::new()),
-        Arc::new(InMemoryTransactions::new()),
-        catalog,
-        Arc::new(InMemoryQuotationRestylingTasks::new()),
-        Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
-    ))
+fn catalogued_in(catalog: Arc<dyn SceneCatalog>) -> Inboxed<CatalogueScenesListener> {
+    let transactions = Arc::new(InMemoryTransactions::new());
+    let clock = Arc::new(FixedClock::new(at(1_000)));
+
+    Inboxed::new(
+        CatalogueScenesListener::new(ScenesCore::new(
+            Arc::new(InMemorySceneStore::new()),
+            transactions.clone(),
+            catalog,
+            Arc::new(InMemoryQuotationRestylingTasks::new()),
+            Arc::new(AllowingEverything),
+            clock.clone(),
+        )),
+        transactions,
+        Arc::new(InMemoryInbox::new(clock)),
+    )
 }
 
 fn a_workbench() -> Wired {

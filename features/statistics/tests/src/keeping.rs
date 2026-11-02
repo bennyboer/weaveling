@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
 use authorizing::AllowingEverything;
+use clock::FixedClock;
+use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
 use statistics_catalog::InMemoryWordCountCatalog;
@@ -15,18 +17,24 @@ fn at(seconds: i64) -> OffsetDateTime {
 
 struct Wired {
     catalog: Arc<InMemoryWordCountCatalog>,
-    projector: ProjectWordCountsListener,
+    projector: Inboxed<ProjectWordCountsListener>,
 }
 
 fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemoryWordCountCatalog::new());
 
     Wired {
-        projector: ProjectWordCountsListener::new(StatisticsCore::new(
+        projector: Inboxed::new(
+            ProjectWordCountsListener::new(StatisticsCore::new(
+                Arc::new(InMemoryTransactions::new()),
+                catalog.clone(),
+                Arc::new(AllowingEverything),
+            )),
             Arc::new(InMemoryTransactions::new()),
-            catalog.clone(),
-            Arc::new(AllowingEverything),
-        )),
+            Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+                OffsetDateTime::UNIX_EPOCH,
+            )))),
+        ),
         catalog,
     }
 }

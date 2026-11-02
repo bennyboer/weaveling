@@ -97,6 +97,7 @@ async fn an_invitation_taken_up_or_withdrawn_before_is_left_as_it_was_and_a_swee
     wired
         .invitations
         .taken_up(
+            None,
             &accepted,
             wiring::at(1_700_000_100),
             &Agent::Account("account_ada".into()),
@@ -151,6 +152,7 @@ async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_befo
     wired
         .invitations
         .lay_project_tombstone(
+            None,
             &ProjectLink::from("project_loom"),
             OffsetDateTime::UNIX_EPOCH,
         )
@@ -198,6 +200,7 @@ async fn an_invitation_into_a_deleted_project_taken_up_before_is_listed_as_it_wa
     wired
         .invitations
         .taken_up(
+            None,
             &accepted,
             wiring::at(1_700_000_100),
             &Agent::Account("account_ada".into()),
@@ -207,6 +210,7 @@ async fn an_invitation_into_a_deleted_project_taken_up_before_is_listed_as_it_wa
     wired
         .invitations
         .lay_project_tombstone(
+            None,
             &ProjectLink::from("project_loom"),
             OffsetDateTime::UNIX_EPOCH,
         )

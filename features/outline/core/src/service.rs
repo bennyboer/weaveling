@@ -5,7 +5,7 @@ use eventsourcing::{
     Agent, AggregateId, Appended, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
 use registry::Registry;
-use transacting::{Transaction, Transactions};
+use transacting::Transaction;
 
 use crate::error::OutlinesError;
 use crate::id::{OutlineId, SectionId};
@@ -55,16 +55,11 @@ pub fn attachments_changed_in(landed: &Appended<OutlineEvent>) -> Vec<SectionId>
 impl OutlineService {
     pub fn new(
         store: Arc<dyn EventStore<OutlineEvent>>,
-        transactions: Arc<dyn Transactions>,
         registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(
-                store,
-                transactions,
-                clock.clone(),
-            )),
+            events: Arc::new(EventSourcingService::new(store, clock.clone())),
             registry,
             clock,
         }
@@ -90,7 +85,7 @@ impl OutlineService {
         if id == mine {
             self.events
                 .begin(
-                    Some(transaction),
+                    transaction,
                     &AggregateId::from(&id),
                     OutlineCommand::Start {
                         project: project.clone(),
@@ -124,12 +119,12 @@ impl OutlineService {
         Ok(match expected {
             Some(expected) => {
                 self.events
-                    .execute_at(Some(transaction), &key, expected, command, agent)
+                    .execute_at(transaction, &key, expected, command, agent)
                     .await?
             }
             None => {
                 self.events
-                    .execute(Some(transaction), &key, command, agent)
+                    .execute(transaction, &key, command, agent)
                     .await?
             }
         })

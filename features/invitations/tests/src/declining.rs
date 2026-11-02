@@ -1,8 +1,9 @@
 use accounts_contract::{INVITATION_DECLINED, SIGNED_UP_BY_INVITATION};
 use eventsourcing::{Agent, AggregateId, EventStore, Version};
+use inbox::Inboxed;
 use invitations_core::{DeclineReason, InvitationEvent, InvitationId, KIND};
 use invitations_messaging::DeclineInvitationListener;
-use messaging::{Handler, Listener, Message, RoutingKey};
+use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
 
 use crate::wiring;
@@ -53,8 +54,8 @@ async fn happened(wired: &Wired, id: &InvitationId) -> Vec<InvitationEvent> {
         .collect()
 }
 
-fn listener(wired: &Wired) -> DeclineInvitationListener {
-    DeclineInvitationListener::new(wired.invitations.clone())
+fn listener(wired: &Wired) -> Inboxed<DeclineInvitationListener> {
+    wiring::inboxed(DeclineInvitationListener::new(wired.invitations.clone()))
 }
 
 #[tokio::test]
@@ -63,7 +64,7 @@ async fn an_invitation_is_declined_in_the_system_s_name() {
     let id = invited(&wired).await;
 
     listener(&wired)
-        .take_in(&declined(&id))
+        .handle(&declined(&id))
         .await
         .expect("declining should succeed");
 
@@ -86,7 +87,7 @@ async fn an_invitation_declined_by_an_account_is_declined_once() {
 
     for _ in 0..2 {
         listener
-            .take_in(&declined(&id))
+            .handle(&declined(&id))
             .await
             .expect("messages come at least once");
     }
@@ -108,7 +109,7 @@ async fn an_invitation_turned_down_by_whom_it_was_for_is_declined_so() {
     let id = invited(&wired).await;
 
     listener(&wired)
-        .take_in(&declined_for(&id, "turned-down"))
+        .handle(&declined_for(&id, "turned-down"))
         .await
         .expect("declining should succeed");
 
@@ -136,6 +137,7 @@ async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
     wired
         .invitations
         .taken_up(
+            None,
             &accepted,
             wiring::at(1_700_000_050),
             &Agent::Account("account_ada".into()),
@@ -146,7 +148,7 @@ async fn an_invitation_withdrawn_or_taken_up_before_it_was_declined_stays_so() {
 
     for id in [&withdrawn, &accepted] {
         listener
-            .take_in(&declined(id))
+            .handle(&declined(id))
             .await
             .expect("what is settled already is no failure");
     }
@@ -192,7 +194,7 @@ async fn a_decline_naming_no_invitation_or_no_reason_is_refused() {
         declined(&InvitationId::generate(wiring::at(1_000))),
     ] {
         assert!(
-            listener.take_in(&unreadable).await.is_err(),
+            listener.handle(&unreadable).await.is_err(),
             "a message the listener cannot act on belongs in dead letters"
         );
     }

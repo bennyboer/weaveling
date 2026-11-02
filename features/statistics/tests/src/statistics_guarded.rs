@@ -63,7 +63,7 @@ async fn guarded() -> Guarded {
         authorizer.clone(),
     );
     statistics
-        .counted("scene_1", PROJECT, 42, OffsetDateTime::UNIX_EPOCH)
+        .counted(None, "scene_1", PROJECT, 42, OffsetDateTime::UNIX_EPOCH)
         .await
         .expect("keeping should succeed");
     let routes = statistics_rest::router(statistics.clone()).merge(live::live_socket(

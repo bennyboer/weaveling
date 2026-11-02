@@ -3,7 +3,7 @@ use std::sync::Arc;
 use authorizing::{AccessWatch, Act, Authorizer};
 use eventsourcing::Agent;
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::catalog::WordCountCatalog;
 use crate::error::StatisticsError;
@@ -52,12 +52,13 @@ impl StatisticsCore {
 
     pub async fn counted(
         &self,
+        within: Option<&mut Transaction>,
         scene: &str,
         project: &str,
         words: u64,
         at: OffsetDateTime,
     ) -> Result<(), StatisticsError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .keep(
                 &mut transaction,
@@ -73,10 +74,11 @@ impl StatisticsCore {
 
     pub async fn scene_deleted(
         &self,
+        within: Option<&mut Transaction>,
         scene: &str,
         at: OffsetDateTime,
     ) -> Result<(), StatisticsError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .forget_scene(&mut transaction, &SceneLink::from(scene), at)
             .await?;

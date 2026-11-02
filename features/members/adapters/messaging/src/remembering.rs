@@ -1,8 +1,10 @@
 use accounts_contract::{AccountEventDTO, SIGNED_UP, SIGNED_UP_BY_INVITATION};
 use async_trait::async_trait;
 use eventsourcing::AccountId;
+use inbox::{KeptHandler, Refused};
 use members_core::{MembersCore, Person};
-use messaging::{Failure, Handler, Message};
+use messaging::Message;
+use transacting::Transaction;
 
 pub struct RememberWhoSignedUpListener {
     members: MembersCore,
@@ -15,12 +17,16 @@ impl RememberWhoSignedUpListener {
 }
 
 #[async_trait]
-impl Handler for RememberWhoSignedUpListener {
+impl KeptHandler for RememberWhoSignedUpListener {
     const NAME: &'static str = "remember-who-signed-up";
     const LISTENS_TO: &'static [&'static str] = &[SIGNED_UP, SIGNED_UP_BY_INVITATION];
     const WHEN_REFUSED: &'static str = "Someone who signed up is not known by name, so the projects they join list them without it.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
         let told = eventpublishing::published_in::<AccountEventDTO>(message)?;
         let (AccountEventDTO::SignedUp { personal }
         | AccountEventDTO::SignedUpByInvitation { personal }) = told.event.body
@@ -28,14 +34,17 @@ impl Handler for RememberWhoSignedUpListener {
             return Err("this is no sign-up".into());
         };
 
-        Ok(self
-            .members
-            .remember_person(&Person {
-                account: AccountId::from(told.aggregate.id),
-                name: personal.name,
-                email: personal.email,
-            })
-            .await?)
+        self.members
+            .remember_person(
+                Some(transaction),
+                &Person {
+                    account: AccountId::from(told.aggregate.id),
+                    name: personal.name,
+                    email: personal.email,
+                },
+            )
+            .await
+            .map_err(Refused::of)
     }
 }
 
@@ -53,11 +62,13 @@ mod tests {
     use time::OffsetDateTime;
     use transacting::InMemoryTransactions;
 
+    use inbox::{InMemoryInbox, Inboxed};
+
     use super::*;
 
     struct Bench {
         catalog: Arc<InMemoryMembershipCatalog>,
-        listener: RememberWhoSignedUpListener,
+        listener: Inboxed<RememberWhoSignedUpListener>,
     }
 
     fn bench() -> Bench {
@@ -72,7 +83,13 @@ mod tests {
 
         Bench {
             catalog,
-            listener: RememberWhoSignedUpListener::new(members),
+            listener: Inboxed::new(
+                RememberWhoSignedUpListener::new(members),
+                Arc::new(InMemoryTransactions::new()),
+                Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+                    OffsetDateTime::UNIX_EPOCH,
+                )))),
+            ),
         }
     }
 
@@ -120,7 +137,7 @@ mod tests {
 
             bench
                 .listener
-                .take_in(&told(routing, ada_signed_up(named)))
+                .handle(&told(routing, ada_signed_up(named)))
                 .await
                 .expect("a sign-up is taken in");
 
@@ -144,7 +161,7 @@ mod tests {
             told(SIGNED_UP, json!({ "version": 1, "name": "SIGNED_UP" })),
         ] {
             assert!(
-                bench.listener.take_in(&unreadable).await.is_err(),
+                bench.listener.handle(&unreadable).await.is_err(),
                 "a message the listener cannot act on belongs in dead letters"
             );
         }

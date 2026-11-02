@@ -34,15 +34,15 @@ async fn a_change_to_the_members_is_told_once_the_list_shows_it() {
     );
     let project = ProjectLink::from(PROJECT);
     members
-        .found(PROJECT, "account_ada")
+        .found(None, PROJECT, "account_ada")
         .await
         .expect("founding should succeed");
     members
-        .join(PROJECT, "account_grace", Role::Author)
+        .join(None, PROJECT, "account_grace", Role::Author)
         .await
         .expect("joining should succeed");
     members
-        .catalogue(&project)
+        .catalogue(None, &project)
         .await
         .expect("cataloguing should succeed");
     let mut watch = authorizer.watch_access(PROJECT);
@@ -61,7 +61,7 @@ async fn a_change_to_the_members_is_told_once_the_list_shows_it() {
         "the list is not told yet, so asking again would still let her in"
     );
     members
-        .catalogue(&project)
+        .catalogue(None, &project)
         .await
         .expect("cataloguing should succeed");
 

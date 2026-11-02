@@ -12,6 +12,8 @@ serde_json = { workspace = true }
 time = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }

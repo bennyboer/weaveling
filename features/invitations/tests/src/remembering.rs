@@ -3,7 +3,7 @@ use email::EmailAddress;
 use eventsourcing::AccountId;
 use invitations_core::{InvitationCatalog, Person};
 use invitations_messaging::RememberWhoSignedUpListener;
-use messaging::{Handler, Listener, Message, RoutingKey};
+use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
 use time::OffsetDateTime;
 
@@ -46,11 +46,11 @@ async fn whoever_signed_up_either_way_is_known_by_name_and_address() {
         (SIGNED_UP_BY_INVITATION, "SIGNED_UP_BY_INVITATION"),
     ] {
         let wired = wiring::wired();
-        let listener = RememberWhoSignedUpListener::new(wired.invitations.clone());
+        let listener = wiring::inboxed(RememberWhoSignedUpListener::new(wired.invitations.clone()));
         assert!(listener.hears(&RoutingKey::parse(routing).expect("a declared key")));
 
         listener
-            .take_in(&told(routing, signed_up(named, "ada@example.com")))
+            .handle(&told(routing, signed_up(named, "ada@example.com")))
             .await
             .expect("a sign-up is taken in");
 
@@ -68,7 +68,7 @@ async fn whoever_signed_up_either_way_is_known_by_name_and_address() {
 #[tokio::test]
 async fn what_is_no_sign_up_or_names_no_address_is_refused_and_teaches_nothing() {
     let wired = wiring::wired();
-    let listener = RememberWhoSignedUpListener::new(wired.invitations.clone());
+    let listener = wiring::inboxed(RememberWhoSignedUpListener::new(wired.invitations.clone()));
 
     for unreadable in [
         told(SIGNED_UP, json!({ "version": 1, "name": "EMAIL_VERIFIED" })),
@@ -76,7 +76,7 @@ async fn what_is_no_sign_up_or_names_no_address_is_refused_and_teaches_nothing()
         told(SIGNED_UP, signed_up("SIGNED_UP", "not an address")),
     ] {
         assert!(
-            listener.take_in(&unreadable).await.is_err(),
+            listener.handle(&unreadable).await.is_err(),
             "a message the listener cannot act on belongs in dead letters"
         );
     }

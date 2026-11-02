@@ -88,6 +88,7 @@ async fn a_link_nobody_was_given_or_one_taken_up_or_withdrawn_turns_nothing_down
     wired
         .invitations
         .taken_up(
+            None,
             &accepted,
             wiring::at(1_700_000_100),
             &Agent::Account("account_ada".into()),

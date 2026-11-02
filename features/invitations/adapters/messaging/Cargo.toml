@@ -9,7 +9,9 @@ clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "we
 email = { version = "0.1.0", path = "../../../../libraries/email", package = "weaveling-email" }
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
+inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 async-trait = { workspace = true }
 

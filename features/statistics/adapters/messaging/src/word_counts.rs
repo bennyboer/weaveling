@@ -1,6 +1,8 @@
-use messaging::{Failure, Handler, Message};
+use inbox::{KeptHandler, Refused};
+use messaging::Message;
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
 use statistics_core::StatisticsCore;
+use transacting::Transaction;
 
 pub struct ProjectWordCountsListener {
     statistics: StatisticsCore,
@@ -11,12 +13,13 @@ impl ProjectWordCountsListener {
         Self { statistics }
     }
 
-    async fn keep(&self, message: &Message) -> Result<(), Failure> {
+    async fn keep(&self, transaction: &mut Transaction, message: &Message) -> Result<(), Refused> {
         match message.routing.to_string().as_str() {
             WORDS_COUNTED => {
                 let counted: WordsCountedDTO = message.payload_as()?;
                 self.statistics
                     .counted(
+                        Some(transaction),
                         &counted.scene,
                         &counted.project,
                         counted.words,
@@ -27,7 +30,7 @@ impl ProjectWordCountsListener {
             DELETED => {
                 let deleted: SceneDeletedDTO = message.payload_as()?;
                 self.statistics
-                    .scene_deleted(&deleted.scene, message.occurred_at)
+                    .scene_deleted(Some(transaction), &deleted.scene, message.occurred_at)
                     .await?;
             }
             _ => {}
@@ -38,12 +41,16 @@ impl ProjectWordCountsListener {
 }
 
 #[async_trait::async_trait]
-impl Handler for ProjectWordCountsListener {
+impl KeptHandler for ProjectWordCountsListener {
     const NAME: &'static str = "keep-word-counts";
     const LISTENS_TO: &'static [&'static str] = &[WORDS_COUNTED, DELETED];
     const WHEN_REFUSED: &'static str = "A scene's word count was not updated.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.keep(message).await
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
+        self.keep(transaction, message).await
     }
 }

@@ -59,13 +59,13 @@ async fn a_project_of_two() -> Followed {
         Arc::new(MembersAuthorizer::new(catalog)),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
-    core.found(PROJECT, "account_ada")
+    core.found(None, PROJECT, "account_ada")
         .await
         .expect("founding should succeed");
-    core.join(PROJECT, "account_bo", Role::Reader)
+    core.join(None, PROJECT, "account_bo", Role::Reader)
         .await
         .expect("joining should succeed");
-    core.catalogue(&ProjectLink::from(PROJECT))
+    core.catalogue(None, &ProjectLink::from(PROJECT))
         .await
         .expect("cataloguing should succeed");
 
@@ -132,7 +132,7 @@ async fn a_member_removed_hears_no_more_of_the_project_s_members() {
         .expect("an owner removes a member");
     followed
         .core
-        .catalogue(&ProjectLink::from(PROJECT))
+        .catalogue(None, &ProjectLink::from(PROJECT))
         .await
         .expect("cataloguing should succeed");
 

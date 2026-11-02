@@ -96,11 +96,14 @@ async fn subscribed(server: &TestServer, about: &[(&str, &str)]) -> Subscriber {
 async fn on_the_one_socket_an_account_s_own_invitations_are_told_as_on_their_own() {
     let told = told();
     told.invitations
-        .remember_person(&Person {
-            account: AccountId::from("account_ada"),
-            name: "Ada Lovelace".to_owned(),
-            email: EmailAddress::new("ada@example.com").expect("a plain address"),
-        })
+        .remember_person(
+            None,
+            &Person {
+                account: AccountId::from("account_ada"),
+                name: "Ada Lovelace".to_owned(),
+                email: EmailAddress::new("ada@example.com").expect("a plain address"),
+            },
+        )
         .await
         .expect("remembering should succeed");
     let server = on_one_socket(&told, Agent::Account(AccountId::from("account_ada")));
@@ -120,11 +123,14 @@ async fn on_the_one_socket_an_account_s_own_invitations_are_told_as_on_their_own
 async fn on_the_one_socket_the_unknown_and_the_unscoped_find_nothing_there() {
     let told = told();
     told.invitations
-        .remember_person(&Person {
-            account: AccountId::from("account_ada"),
-            name: "Ada Lovelace".to_owned(),
-            email: EmailAddress::new("ada@example.com").expect("a plain address"),
-        })
+        .remember_person(
+            None,
+            &Person {
+                account: AccountId::from("account_ada"),
+                name: "Ada Lovelace".to_owned(),
+                email: EmailAddress::new("ada@example.com").expect("a plain address"),
+            },
+        )
         .await
         .expect("remembering should succeed");
 
@@ -145,11 +151,14 @@ async fn on_the_one_socket_the_unknown_and_the_unscoped_find_nothing_there() {
 async fn nobody_is_told_of_an_invitation_remembered_in_a_transaction_that_is_dropped() {
     let told = told();
     told.invitations
-        .remember_person(&Person {
-            account: AccountId::from("account_ada"),
-            name: "Ada Lovelace".to_owned(),
-            email: EmailAddress::new("ada@example.com").expect("a plain address"),
-        })
+        .remember_person(
+            None,
+            &Person {
+                account: AccountId::from("account_ada"),
+                name: "Ada Lovelace".to_owned(),
+                email: EmailAddress::new("ada@example.com").expect("a plain address"),
+            },
+        )
         .await
         .expect("remembering should succeed");
     let telling = TellingInvitations::around(

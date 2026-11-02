@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use projects_catalog::InMemoryProjectCatalog;
@@ -21,6 +22,7 @@ pub struct Ports {
     pub events: Arc<dyn EventStore<ProjectEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn ProjectCatalog>,
+    pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -36,7 +38,6 @@ pub fn core(ports: &Ports, context: &Context) -> ProjectsCore {
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let projects = core(ports, context);
-    let projector = CatalogueProjectsListener::new(projects.clone());
 
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -52,12 +53,29 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             projects.clone(),
             broadcaster,
         ))])
-        .listening(vec![Arc::new(broadcast), Arc::new(projector)])
-        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-            "forget-old-project-tombstones",
-            Arc::new(ProjectTombstones::of(projects.clone())),
-            context.clock.clone(),
-        ))])
+        .listening(vec![
+            Arc::new(broadcast),
+            Arc::new(Inboxed::new(
+                CatalogueProjectsListener::new(projects.clone()),
+                ports.transactions.clone(),
+                ports.inbox.clone(),
+            )),
+        ])
+        .doing_chores(vec![
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-project-tombstones",
+                Arc::new(ProjectTombstones::of(projects.clone())),
+                context.clock.clone(),
+            )),
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-project-hearings",
+                Arc::new(HeardMessages::of(
+                    ports.inbox.clone(),
+                    ports.transactions.clone(),
+                )),
+                context.clock.clone(),
+            )),
+        ])
 }
 
 pub struct ProjectFeature;
@@ -78,6 +96,7 @@ impl Feature for ProjectFeature {
             events,
             transactions,
             catalog: Arc::new(InMemoryProjectCatalog::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
     }
@@ -99,6 +118,7 @@ impl Feature for ProjectFeature {
             events,
             transactions,
             catalog: Arc::new(projects_catalog::PostgresProjectCatalog::new(pool)),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -109,6 +129,7 @@ impl Feature for ProjectFeature {
             eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
             projects_catalog::postgres::migrations(),
+            inbox::postgres::migrations(),
         ]
     }
 
@@ -129,6 +150,7 @@ impl Feature for ProjectFeature {
             events,
             transactions,
             catalog: Arc::new(projects_catalog::SqliteProjectCatalog::new(pool)),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -139,6 +161,7 @@ impl Feature for ProjectFeature {
             eventsourcing::sqlite::migrations(),
             outbox::sqlite::migrations(),
             projects_catalog::sqlite::migrations(),
+            inbox::sqlite::migrations(),
         ]
     }
 

@@ -4,6 +4,7 @@ use authorizing::{AllowingEverything, Authorizer};
 use axum::Router;
 use clock::Clock;
 use eventsourcing::InMemoryEventStore;
+use inbox::InMemoryInbox;
 use live::Topic;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
@@ -41,6 +42,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         events: store.clone(),
         transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
+        inbox: Arc::new(InMemoryInbox::new(clock.clone())),
         outbox: outbox.clone(),
     };
     let context = Context {

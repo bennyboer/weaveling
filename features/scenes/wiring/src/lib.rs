@@ -5,6 +5,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 
 use chores::ForgetOldTombstones;
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use live::Broadcaster;
 use outbox::{InMemoryOutbox, Outbox};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
@@ -25,6 +26,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn SceneCatalog>,
     pub quotation_restyling_tasks: Arc<dyn QuotationRestylingTasks>,
+    pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -49,13 +51,21 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         context.clock.clone(),
     );
 
-    let unlink = UnlinkOnDiscardListener::new(core.clone());
+    let unlink = Inboxed::new(
+        UnlinkOnDiscardListener::new(core.clone()),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
     let sweep = DeleteOnProjectDeletedListener::new(
         core.clone(),
         context.publisher.clone(),
         context.clock.clone(),
     );
-    let catalogue = CatalogueScenesListener::new(core.clone());
+    let catalogue = Inboxed::new(
+        CatalogueScenesListener::new(core.clone()),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
     let live = LiveScenes::new(core.clone());
     let restyle = RestyleOnQuotationChangedListener::new(
         core.clone(),
@@ -80,11 +90,21 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         Arc::new(restyle),
     ])
     .settling_before_stopping(vec![Arc::new(SettlingLiveScenes(live))])
-    .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-        "forget-old-scene-tombstones",
-        Arc::new(SceneTombstones::of(core)),
-        context.clock.clone(),
-    ))])
+    .doing_chores(vec![
+        Arc::new(ForgetOldTombstones::new(
+            "forget-old-scene-tombstones",
+            Arc::new(SceneTombstones::of(core)),
+            context.clock.clone(),
+        )),
+        Arc::new(ForgetOldTombstones::new(
+            "forget-old-scene-hearings",
+            Arc::new(HeardMessages::of(
+                ports.inbox.clone(),
+                ports.transactions.clone(),
+            )),
+            context.clock.clone(),
+        )),
+    ])
 }
 
 struct SettlingLiveScenes(LiveScenes);
@@ -118,6 +138,7 @@ impl Feature for SceneFeature {
             )),
             catalog: Arc::new(InMemorySceneCatalog::new()),
             quotation_restyling_tasks: Arc::new(InMemoryQuotationRestylingTasks::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
     }
@@ -134,6 +155,7 @@ impl Feature for SceneFeature {
             quotation_restyling_tasks: Arc::new(
                 scenes_catalog::PostgresQuotationRestylingTasks::new(pool.clone()),
             ),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox: Arc::new(outbox::PostgresOutbox::new(
                 pool,
                 context.publisher.clone(),
@@ -148,6 +170,7 @@ impl Feature for SceneFeature {
             outbox::postgres::migrations(),
             scenes_store::postgres::migrations(),
             scenes_catalog::postgres::migrations(),
+            inbox::postgres::migrations(),
         ]
     }
 
@@ -163,6 +186,7 @@ impl Feature for SceneFeature {
             quotation_restyling_tasks: Arc::new(
                 scenes_catalog::SqliteQuotationRestylingTasks::new(pool.clone()),
             ),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox: Arc::new(outbox::SqliteOutbox::new(
                 pool,
                 context.publisher.clone(),
@@ -177,6 +201,7 @@ impl Feature for SceneFeature {
             outbox::sqlite::migrations(),
             scenes_store::sqlite::migrations(),
             scenes_catalog::sqlite::migrations(),
+            inbox::sqlite::migrations(),
         ]
     }
 
@@ -217,7 +242,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+    async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
         let context = a_context();
         let ports = SceneFeature::in_memory(&context);
         let wired = SceneFeature::wire(&ports, &context);
@@ -242,13 +267,14 @@ mod tests {
                 .expect("finishing should succeed");
         }
 
-        let [chore] = wired.chores.as_slice() else {
-            panic!("the feature hands over one chore");
+        let [tombstones, hearings] = wired.chores.as_slice() else {
+            panic!("the feature hands over two chores");
         };
 
-        assert_eq!(chore.named(), "forget-old-scene-tombstones");
+        assert_eq!(tombstones.named(), "forget-old-scene-tombstones");
+        assert_eq!(hearings.named(), "forget-old-scene-hearings");
         assert_eq!(
-            chore
+            tombstones
                 .carry_out()
                 .await
                 .expect("the chore should be carried out"),

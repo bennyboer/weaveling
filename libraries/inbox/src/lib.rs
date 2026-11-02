@@ -1,4 +1,7 @@
 mod forgetting;
+mod kept;
+#[cfg(test)]
+mod kept_tests;
 mod memory;
 #[cfg(test)]
 mod suite;
@@ -10,6 +13,7 @@ pub mod postgres;
 pub mod sqlite;
 
 pub use forgetting::HeardMessages;
+pub use kept::{Inboxed, KeptHandler, Refused};
 pub use memory::InMemoryInbox;
 
 #[cfg(feature = "postgres")]

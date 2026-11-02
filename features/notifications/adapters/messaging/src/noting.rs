@@ -1,43 +1,35 @@
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use eventsourcing::AccountId;
-use inbox::Inbox;
+use inbox::{KeptHandler, Refused};
 use members_contract::{MembersEventDTO, ROLE_CHANGED, role};
-use messaging::{Failure, Handler, Listener, Message};
+use messaging::Message;
 use notifications_core::{About, NotificationsCore, ProjectLink, Role};
-use transacting::Transactions;
+use transacting::Transaction;
 
 const AN_ACCOUNT: &str = "account";
 
 pub struct NoteRoleChangedListener {
     notifications: NotificationsCore,
-    transactions: Arc<dyn Transactions>,
-    inbox: Arc<dyn Inbox>,
 }
 
 impl NoteRoleChangedListener {
-    pub fn new(
-        notifications: NotificationsCore,
-        transactions: Arc<dyn Transactions>,
-        inbox: Arc<dyn Inbox>,
-    ) -> Self {
-        Self {
-            notifications,
-            transactions,
-            inbox,
-        }
+    pub fn new(notifications: NotificationsCore) -> Self {
+        Self { notifications }
     }
 }
 
 #[async_trait]
-impl Handler for NoteRoleChangedListener {
+impl KeptHandler for NoteRoleChangedListener {
     const NAME: &'static str = "note-role-changed";
     const LISTENS_TO: &'static [&'static str] = &[ROLE_CHANGED];
     const WHEN_REFUSED: &'static str =
         "Someone whose role in a project was changed was not told so in their notifications.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
         let changed = eventpublishing::published_in::<MembersEventDTO>(message)?;
         let MembersEventDTO::RoleChanged { account, to } = changed.event.body else {
             return Err("a changed role tells no account and no role".into());
@@ -48,17 +40,9 @@ impl Handler for NoteRoleChangedListener {
             .flatten()
             .map(AccountId::from);
 
-        let mut transaction = self.transactions.begin().await?;
-        if self
-            .inbox
-            .heard_before(&mut transaction, &self.named(), message.id)
-            .await?
-        {
-            return Ok(());
-        }
         self.notifications
             .note(
-                Some(&mut transaction),
+                Some(transaction),
                 AccountId::from(account),
                 About::RoleChanged {
                     project: ProjectLink::from(changed.aggregate.id.as_str()),
@@ -66,8 +50,8 @@ impl Handler for NoteRoleChangedListener {
                     by,
                 },
             )
-            .await?;
-        transaction.finish().await?;
+            .await
+            .map_err(Refused::of)?;
 
         Ok(())
     }
@@ -89,7 +73,7 @@ mod tests {
     use clock::FixedClock;
     use eventpublishing::published_in;
     use eventsourcing::{Agent, InMemoryEventStore};
-    use inbox::InMemoryInbox;
+    use inbox::{InMemoryInbox, Inboxed};
     use messaging::{FakePublisher, Listener, RoutingKey};
     use notifications_catalog::InMemoryNoticeCatalog;
     use notifications_contract::{NOTED, NoticeEventDTO};
@@ -104,7 +88,7 @@ mod tests {
         told: Arc<InMemoryOutbox>,
         heard: Arc<FakePublisher>,
         notifications: NotificationsCore,
-        listener: NoteRoleChangedListener,
+        listener: Inboxed<NoteRoleChangedListener>,
     }
 
     fn bench() -> Bench {
@@ -123,8 +107,8 @@ mod tests {
         );
 
         Bench {
-            listener: NoteRoleChangedListener::new(
-                notifications.clone(),
+            listener: Inboxed::new(
+                NoteRoleChangedListener::new(notifications.clone()),
                 transactions,
                 Arc::new(InMemoryInbox::new(clock)),
             ),
@@ -194,7 +178,7 @@ mod tests {
             for _ in 0..2 {
                 bench
                     .listener
-                    .take_in(&message)
+                    .handle(&message)
                     .await
                     .expect("messages come at least once");
             }
@@ -217,7 +201,7 @@ mod tests {
 
         bench
             .listener
-            .take_in(&changed(
+            .handle(&changed(
                 to("author"),
                 json!({ "kind": "system", "id": "account_ada" }),
             ))
@@ -250,7 +234,7 @@ mod tests {
                 OffsetDateTime::UNIX_EPOCH,
             ),
         ] {
-            assert!(bench.listener.take_in(&unreadable).await.is_err());
+            assert!(bench.listener.handle(&unreadable).await.is_err());
         }
         assert!(noted(&bench).await.is_empty());
     }

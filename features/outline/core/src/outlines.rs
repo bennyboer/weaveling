@@ -5,7 +5,7 @@ use clock::Clock;
 use eventsourcing::{Agent, EventStore, ServiceError, Standing, Version};
 use registry::Registry;
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::catalog::{OutlineCatalog, OutlineSummary};
 use crate::error::OutlinesError;
@@ -35,7 +35,7 @@ impl OutlinesCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: OutlineService::new(store, transactions.clone(), registry, clock.clone()),
+            service: OutlineService::new(store, registry, clock.clone()),
             transactions,
             clock,
             catalog,
@@ -233,10 +233,14 @@ impl OutlinesCore {
         .await
     }
 
-    pub async fn catalogue(&self, outline: &OutlineId) -> Result<(), OutlinesError> {
+    pub async fn catalogue(
+        &self,
+        within: Option<&mut Transaction>,
+        outline: &OutlineId,
+    ) -> Result<(), OutlinesError> {
         let standing = self.service.latest(outline).await?;
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         if standing.state.is_discarded() {
             self.catalog
                 .forget(&mut transaction, outline, self.clock.now())

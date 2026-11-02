@@ -1,7 +1,8 @@
 use eventsourcing::Version;
+use inbox::Inboxed;
 use invitations_core::{InvitationCatalog, ProjectLink, ProjectName};
 use invitations_messaging::RememberProjectNamesListener;
-use messaging::{Handler, Listener, Message, RoutingKey};
+use messaging::{Listener, Message, RoutingKey};
 use projects_contract::{DELETED, DETAILS_CHANGED, RENAMED, STARTED};
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
@@ -57,10 +58,10 @@ async fn named(wired: &Wired) -> Vec<ProjectName> {
         .expect("asking should succeed")
 }
 
-async fn heard(listener: &RememberProjectNamesListener, messages: &[Message]) {
+async fn heard(listener: &Inboxed<RememberProjectNamesListener>, messages: &[Message]) {
     for message in messages {
         listener
-            .take_in(message)
+            .handle(message)
             .await
             .expect("the listener takes it in");
     }
@@ -69,7 +70,7 @@ async fn heard(listener: &RememberProjectNamesListener, messages: &[Message]) {
 #[tokio::test]
 async fn a_project_is_known_by_the_name_it_was_started_with_and_then_by_its_newest() {
     let wired = wiring::wired();
-    let listener = RememberProjectNamesListener::new(wired.invitations.clone());
+    let listener = wiring::inboxed(RememberProjectNamesListener::new(wired.invitations.clone()));
     for routing in [STARTED, RENAMED, DELETED] {
         assert!(listener.hears(&RoutingKey::parse(routing).expect("a declared key")));
     }
@@ -103,7 +104,7 @@ async fn a_project_is_known_by_the_name_it_was_started_with_and_then_by_its_newe
 #[tokio::test]
 async fn a_deleted_project_is_named_no_more_and_its_tombstone_kept_until_forgotten() {
     let wired = wiring::wired();
-    let listener = RememberProjectNamesListener::new(wired.invitations.clone());
+    let listener = wiring::inboxed(RememberProjectNamesListener::new(wired.invitations.clone()));
     let gone = OffsetDateTime::UNIX_EPOCH + Duration::days(10);
 
     heard(
@@ -135,7 +136,7 @@ async fn a_deleted_project_is_named_no_more_and_its_tombstone_kept_until_forgott
 #[tokio::test]
 async fn what_tells_no_name_nor_a_deletion_is_refused() {
     let wired = wiring::wired();
-    let listener = RememberProjectNamesListener::new(wired.invitations.clone());
+    let listener = wiring::inboxed(RememberProjectNamesListener::new(wired.invitations.clone()));
 
     for unreadable in [
         told(
@@ -152,7 +153,7 @@ async fn what_tells_no_name_nor_a_deletion_is_refused() {
         ),
     ] {
         assert!(
-            listener.take_in(&unreadable).await.is_err(),
+            listener.handle(&unreadable).await.is_err(),
             "a message the listener cannot act on belongs in dead letters"
         );
     }

@@ -4,7 +4,7 @@ use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::Agent;
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::service::SceneService;
 use crate::{
@@ -205,8 +205,12 @@ impl ScenesCore {
         Ok(batch)
     }
 
-    pub async fn unlink_everywhere(&self, idea: &str) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
+    pub async fn unlink_everywhere(
+        &self,
+        within: Option<&mut Transaction>,
+        idea: &str,
+    ) -> Result<(), ScenesError> {
+        let mut transaction = self.transactions.join(within).await?;
         self.service
             .unlink_everywhere(&mut transaction, idea)
             .await?;
@@ -256,8 +260,13 @@ impl ScenesCore {
         })
     }
 
-    pub async fn catalogue_created(&self, scene: &str, project: &str) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
+    pub async fn catalogue_created(
+        &self,
+        within: Option<&mut Transaction>,
+        scene: &str,
+        project: &str,
+    ) -> Result<(), ScenesError> {
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .remember(
                 &mut transaction,
@@ -271,12 +280,13 @@ impl ScenesCore {
 
     pub async fn catalogue_retitled(
         &self,
+        within: Option<&mut Transaction>,
         scene: &str,
         project: &str,
         title: &str,
         version: u64,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .retitle(
                 &mut transaction,
@@ -292,12 +302,13 @@ impl ScenesCore {
 
     pub async fn catalogue_opening(
         &self,
+        within: Option<&mut Transaction>,
         scene: &str,
         project: &str,
         opening: &str,
         at: OffsetDateTime,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .note_opening(
                 &mut transaction,
@@ -313,10 +324,11 @@ impl ScenesCore {
 
     pub async fn catalogue_deleted(
         &self,
+        within: Option<&mut Transaction>,
         scene: &str,
         at: OffsetDateTime,
     ) -> Result<(), ScenesError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .forget(&mut transaction, scene.parse()?, at)
             .await?;

@@ -24,7 +24,8 @@ projects-rest = { version = "0.1.0", path = "../adapters/rest", package = "weave
 projects-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-projects-catalog" }
 projects-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-projects-store" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "projects-catalog/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "projects-catalog/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "projects-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "projects-catalog/sqlite"]

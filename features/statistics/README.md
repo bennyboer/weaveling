@@ -16,4 +16,6 @@ The count itself is [`words::words_in`](../../libraries/words), the same rule th
 
 **Core owns each write's transaction.** The feature keeps no events, yet `Ports` carries its own `Transactions` on its database, and `StatisticsCore` begins one for every write: a count kept, a scene's tombstone laid, old tombstones forgotten; the catalog's writes take it, and `TellingWordCounts` tells a count in an `after_commit`, never for one rolled back. Nothing is retried: no write here aims at a version, and the catalog's own guards settle counts heard out of order.
 
+**Heard once.** `keep-word-counts` is a `KeptHandler` heard through [`inbox::Inboxed`](../../libraries/inbox/README.md), which begins the transaction, asks the feature's inbox whether it has heard the message before and hands the transaction on; `counted` and `scene_deleted` take it as `within` and join it, so a count and the record of having heard it commit together. The chore `forget-old-statistics-hearings` forgets old hearings as tombstones are forgotten.
+
 **Crates:** `core` (`StatisticsCore`, word count, catalog port, links to projects and scenes) · `contract` · `adapters/catalog` (in memory, PostgreSQL and SQLite) · `adapters/messaging` (the listener) · `adapters/rest` · `wiring` · `tests`.

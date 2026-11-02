@@ -5,7 +5,7 @@ use eventsourcing::{
     AccountId, Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing,
     StoreError,
 };
-use transacting::{Transaction, Transactions};
+use transacting::Transaction;
 
 use crate::error::MembersCoreError;
 use crate::members::{Members, MembersCommand, MembersEvent, ProjectLink};
@@ -16,13 +16,9 @@ pub struct MembersService {
 }
 
 impl MembersService {
-    pub fn new(
-        store: Arc<dyn EventStore<MembersEvent>>,
-        transactions: Arc<dyn Transactions>,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
+    pub fn new(store: Arc<dyn EventStore<MembersEvent>>, clock: Arc<dyn Clock>) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(store, transactions, clock)),
+            events: Arc::new(EventSourcingService::new(store, clock)),
         }
     }
 
@@ -36,7 +32,7 @@ impl MembersService {
         match self
             .events
             .begin(
-                Some(transaction),
+                transaction,
                 &AggregateId::from(project),
                 MembersCommand::Found { owner },
                 agent,
@@ -57,12 +53,7 @@ impl MembersService {
     ) -> Result<(), MembersCoreError> {
         let _landed = self
             .events
-            .execute(
-                Some(transaction),
-                &AggregateId::from(project),
-                command,
-                agent,
-            )
+            .execute(transaction, &AggregateId::from(project), command, agent)
             .await?;
 
         Ok(())
@@ -78,12 +69,12 @@ impl MembersService {
 
         match self
             .events
-            .execute(Some(&mut *transaction), &id, MembersCommand::Disband, agent)
+            .execute(&mut *transaction, &id, MembersCommand::Disband, agent)
             .await
         {
             Err(ServiceError::NotFound { .. }) => Ok(self
                 .events
-                .begin(Some(transaction), &id, MembersCommand::Disband, agent)
+                .begin(transaction, &id, MembersCommand::Disband, agent)
                 .await
                 .map(|_| ())?),
             carried_out => Ok(carried_out.map(|_| ())?),
@@ -104,7 +95,7 @@ mod tests {
     use clock::FixedClock;
     use eventsourcing::{AggregateType, InMemoryEventStore, Recorded, Version};
     use time::OffsetDateTime;
-    use transacting::InMemoryTransactions;
+    use transacting::{InMemoryTransactions, Transactions};
 
     use super::*;
 
@@ -117,7 +108,6 @@ mod tests {
         let store: Arc<InMemoryEventStore<MembersEvent>> = Arc::new(InMemoryEventStore::new());
         let members = MembersService::new(
             store.clone(),
-            Arc::new(InMemoryTransactions::new()),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         );
         let project = ProjectLink::from("project_1");
@@ -235,7 +225,6 @@ mod tests {
     async fn a_store_that_is_down_is_a_failure_to_found() {
         let members = MembersService::new(
             Arc::new(DownStore),
-            Arc::new(InMemoryTransactions::new()),
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         );
 

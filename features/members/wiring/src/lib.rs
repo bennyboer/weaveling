@@ -1,8 +1,10 @@
 use std::sync::Arc;
 
 use authorizing::Authorizer;
+use chores::ForgetOldTombstones;
 use clock::Clock;
 use eventsourcing::EventStore;
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use live::{BroadcastChangesListener, Broadcaster};
 use members_catalog::InMemoryMembershipCatalog;
 use members_contract::EVERY_MEMBERS;
@@ -23,6 +25,7 @@ pub struct Ports {
     pub events: Arc<dyn EventStore<MembersEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn MembershipCatalog>,
+    pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -96,6 +99,7 @@ impl Feature for MembersFeature {
             events,
             transactions,
             catalog: Arc::new(InMemoryMembershipCatalog::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
     }
@@ -117,6 +121,7 @@ impl Feature for MembersFeature {
             events,
             transactions,
             catalog: Arc::new(members_catalog::PostgresMembershipCatalog::new(pool)),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -127,6 +132,7 @@ impl Feature for MembersFeature {
             eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
             members_catalog::postgres::migrations(),
+            inbox::postgres::migrations(),
         ]
     }
 
@@ -147,6 +153,7 @@ impl Feature for MembersFeature {
             events,
             transactions,
             catalog: Arc::new(members_catalog::SqliteMembershipCatalog::new(pool)),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -157,6 +164,7 @@ impl Feature for MembersFeature {
             eventsourcing::sqlite::migrations(),
             outbox::sqlite::migrations(),
             members_catalog::sqlite::migrations(),
+            inbox::sqlite::migrations(),
         ]
     }
 
@@ -174,11 +182,31 @@ impl Feature for MembersFeature {
                 broadcaster.clone(),
             ))])
             .listening(vec![
-                Arc::new(FoundMembersOfStartedProjectListener::new(members.clone())),
-                Arc::new(JoinByAcceptedInvitationListener::new(members.clone())),
-                Arc::new(RememberWhoSignedUpListener::new(members.clone())),
-                Arc::new(DisbandMembersOfDeletedProjectListener::new(members.clone())),
-                Arc::new(CatalogueMembersListener::new(members)),
+                Arc::new(Inboxed::new(
+                    FoundMembersOfStartedProjectListener::new(members.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
+                Arc::new(Inboxed::new(
+                    JoinByAcceptedInvitationListener::new(members.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
+                Arc::new(Inboxed::new(
+                    RememberWhoSignedUpListener::new(members.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
+                Arc::new(Inboxed::new(
+                    DisbandMembersOfDeletedProjectListener::new(members.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
+                Arc::new(Inboxed::new(
+                    CatalogueMembersListener::new(members),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
                 Arc::new(BroadcastChangesListener::new(
                     LIVE,
                     EVERY_MEMBERS,
@@ -186,6 +214,14 @@ impl Feature for MembersFeature {
                     |_| vec![members_rest::MembershipChanges],
                 )),
             ])
+            .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
+                "forget-old-member-hearings",
+                Arc::new(HeardMessages::of(
+                    ports.inbox.clone(),
+                    ports.transactions.clone(),
+                )),
+                context.clock.clone(),
+            ))])
     }
 }
 
@@ -249,7 +285,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feature_founds_the_members_of_a_started_project_lets_the_invited_join_remembers_who_signed_up_disbands_a_deleted_project_s_lists_every_change_and_tells_it()
+    fn the_feature_founds_the_members_of_a_started_project_lets_the_invited_join_remembers_who_signed_up_disbands_a_deleted_project_s_lists_every_change_tells_it_and_forgets_old_hearings()
      {
         let context = a_context();
 
@@ -270,6 +306,14 @@ mod tests {
                 "catalogue-members",
                 "broadcast-membership-changes"
             ]
+        );
+        assert_eq!(
+            wired
+                .chores
+                .iter()
+                .map(|chore| chore.named())
+                .collect::<Vec<_>>(),
+            ["forget-old-member-hearings"]
         );
     }
 }

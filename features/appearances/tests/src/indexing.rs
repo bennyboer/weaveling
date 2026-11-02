@@ -9,6 +9,8 @@ use appearances_messaging::{
     ForgetDiscardedIdeaListener, ProjectOutlineAppearancesListener, ProjectSceneAppearancesListener,
 };
 use authorizing::AllowingEverything;
+use clock::FixedClock;
+use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
 use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
@@ -22,23 +24,39 @@ fn at(seconds: i64) -> OffsetDateTime {
 
 struct Wired {
     catalog: Arc<InMemoryAppearanceCatalog>,
-    outline: ProjectOutlineAppearancesListener,
-    scenes: ProjectSceneAppearancesListener,
-    ideas: ForgetDiscardedIdeaListener,
+    outline: Inboxed<ProjectOutlineAppearancesListener>,
+    scenes: Inboxed<ProjectSceneAppearancesListener>,
+    ideas: Inboxed<ForgetDiscardedIdeaListener>,
 }
 
 fn a_workbench() -> Wired {
     let catalog = Arc::new(InMemoryAppearanceCatalog::new());
+    let transactions = Arc::new(InMemoryTransactions::new());
+    let inbox = Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+        OffsetDateTime::UNIX_EPOCH,
+    ))));
     let appearances = AppearancesCore::new(
-        Arc::new(InMemoryTransactions::new()),
+        transactions.clone(),
         catalog.clone(),
         Arc::new(AllowingEverything),
     );
 
     Wired {
-        outline: ProjectOutlineAppearancesListener::new(appearances.clone()),
-        scenes: ProjectSceneAppearancesListener::new(appearances.clone()),
-        ideas: ForgetDiscardedIdeaListener::new(appearances),
+        outline: Inboxed::new(
+            ProjectOutlineAppearancesListener::new(appearances.clone()),
+            transactions.clone(),
+            inbox.clone(),
+        ),
+        scenes: Inboxed::new(
+            ProjectSceneAppearancesListener::new(appearances.clone()),
+            transactions.clone(),
+            inbox.clone(),
+        ),
+        ideas: Inboxed::new(
+            ForgetDiscardedIdeaListener::new(appearances),
+            transactions,
+            inbox,
+        ),
         catalog,
     }
 }

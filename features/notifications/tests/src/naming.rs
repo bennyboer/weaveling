@@ -3,7 +3,8 @@ use std::sync::Arc;
 use accounts_contract::{SIGNED_UP, SIGNED_UP_BY_INVITATION};
 use clock::FixedClock;
 use eventsourcing::{AccountId, InMemoryEventStore, Version};
-use messaging::{Handler, Listener, Message, RoutingKey};
+use inbox::{InMemoryInbox, Inboxed};
+use messaging::{Listener, Message, RoutingKey};
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{
     About, NoticeCatalog, NotificationsCore, Person, ProjectLink, ProjectName, Role,
@@ -17,8 +18,8 @@ use transacting::InMemoryTransactions;
 struct Naming {
     catalog: Arc<InMemoryNoticeCatalog>,
     notifications: NotificationsCore,
-    people: RememberWhoSignedUpListener,
-    projects: RememberProjectNamesListener,
+    people: Inboxed<RememberWhoSignedUpListener>,
+    projects: Inboxed<RememberProjectNamesListener>,
 }
 
 fn naming() -> Naming {
@@ -31,8 +32,20 @@ fn naming() -> Naming {
     );
 
     Naming {
-        people: RememberWhoSignedUpListener::new(notifications.clone()),
-        projects: RememberProjectNamesListener::new(notifications.clone()),
+        people: Inboxed::new(
+            RememberWhoSignedUpListener::new(notifications.clone()),
+            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+                OffsetDateTime::UNIX_EPOCH,
+            )))),
+        ),
+        projects: Inboxed::new(
+            RememberProjectNamesListener::new(notifications.clone()),
+            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+                OffsetDateTime::UNIX_EPOCH,
+            )))),
+        ),
         notifications,
         catalog,
     }
@@ -100,7 +113,7 @@ async fn whoever_signs_up_either_way_is_known_by_their_name_and_no_address() {
 
         naming
             .people
-            .take_in(&signed_up(key, "Ada Lovelace"))
+            .handle(&signed_up(key, "Ada Lovelace"))
             .await
             .expect("remembering should succeed");
 
@@ -125,7 +138,7 @@ async fn a_project_is_known_by_the_name_it_started_with_and_then_by_its_newest()
     ] {
         naming
             .projects
-            .take_in(&message)
+            .handle(&message)
             .await
             .expect("remembering should succeed");
     }
@@ -147,7 +160,7 @@ async fn what_tells_no_name_belongs_in_dead_letters() {
     assert!(
         naming
             .people
-            .take_in(&told(
+            .handle(&told(
                 SIGNED_UP,
                 "account",
                 "account_ada",
@@ -160,7 +173,7 @@ async fn what_tells_no_name_belongs_in_dead_letters() {
     assert!(
         naming
             .projects
-            .take_in(&told(
+            .handle(&told(
                 STARTED,
                 "project",
                 "project_1",
@@ -205,7 +218,7 @@ async fn a_deleted_project_is_named_no_more_and_a_role_changed_in_it_later_notes
     ] {
         naming
             .projects
-            .take_in(&message)
+            .handle(&message)
             .await
             .expect("each is taken in");
     }

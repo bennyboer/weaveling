@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use live::{BroadcastChangesListener, Broadcaster};
 use outbox::Outbox;
 use outline_catalog::InMemoryOutlineCatalog;
@@ -26,6 +27,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn OutlineCatalog>,
     pub registry: Arc<dyn Registry>,
+    pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -42,7 +44,11 @@ pub fn core(ports: &Ports, context: &Context) -> OutlinesCore {
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let outlines = core(ports, context);
-    let catalogue = CatalogueOutlinesListener::new(outlines.clone());
+    let catalogue = Inboxed::new(
+        CatalogueOutlinesListener::new(outlines.clone()),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
     let index = IndexAttachmentsListener::new(outlines.clone());
     let detach_discarded_ideas = DetachOnDiscardListener::new(outlines.clone());
     let detach_deleted_scenes = DetachOnSceneDeletedListener::new(outlines.clone());
@@ -66,11 +72,21 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(detach_deleted_scenes),
             Arc::new(sweep),
         ])
-        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-            "forget-old-outline-tombstones",
-            Arc::new(OutlineTombstones::of(outlines)),
-            context.clock.clone(),
-        ))])
+        .doing_chores(vec![
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-outline-tombstones",
+                Arc::new(OutlineTombstones::of(outlines)),
+                context.clock.clone(),
+            )),
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-outline-hearings",
+                Arc::new(HeardMessages::of(
+                    ports.inbox.clone(),
+                    ports.transactions.clone(),
+                )),
+                context.clock.clone(),
+            )),
+        ])
 }
 
 pub struct OutlineFeature;
@@ -92,6 +108,7 @@ impl Feature for OutlineFeature {
             transactions,
             catalog: Arc::new(InMemoryOutlineCatalog::new()),
             registry: Arc::new(InMemoryRegistry::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
     }
@@ -114,6 +131,7 @@ impl Feature for OutlineFeature {
             transactions,
             catalog: Arc::new(outline_catalog::PostgresOutlineCatalog::new(pool.clone())),
             registry: Arc::new(registry::PostgresRegistry::new(pool)),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -125,6 +143,7 @@ impl Feature for OutlineFeature {
             outbox::postgres::migrations(),
             outline_catalog::postgres::migrations(),
             registry::postgres::migrations(),
+            inbox::postgres::migrations(),
         ]
     }
 
@@ -146,6 +165,7 @@ impl Feature for OutlineFeature {
             transactions,
             catalog: Arc::new(outline_catalog::SqliteOutlineCatalog::new(pool.clone())),
             registry: Arc::new(registry::SqliteRegistry::new(pool)),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -157,6 +177,7 @@ impl Feature for OutlineFeature {
             outbox::sqlite::migrations(),
             outline_catalog::sqlite::migrations(),
             registry::sqlite::migrations(),
+            inbox::sqlite::migrations(),
         ]
     }
 
@@ -197,7 +218,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+    async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
         let context = a_context();
         let ports = OutlineFeature::in_memory(&context);
         let wired = OutlineFeature::wire(&ports, &context);
@@ -211,9 +232,11 @@ mod tests {
                 .expect("laying a tombstone should succeed");
         }
 
-        let [chore] = wired.chores.as_slice() else {
-            panic!("the feature hands over one chore");
+        let [chore, hearings] = wired.chores.as_slice() else {
+            panic!("the feature hands over two chores");
         };
+
+        assert_eq!(hearings.named(), "forget-old-outline-hearings");
 
         assert_eq!(chore.named(), "forget-old-outline-tombstones");
         assert_eq!(

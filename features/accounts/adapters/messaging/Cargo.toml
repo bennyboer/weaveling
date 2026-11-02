@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
+inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 async-trait = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }

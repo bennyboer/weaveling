@@ -3,7 +3,7 @@ use std::sync::Arc;
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::{AccountId, Agent, EventStore, ServiceError};
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::catalog::{Membership, MembershipCatalog, Person, ProjectMembers};
 use crate::error::MembersCoreError;
@@ -35,7 +35,7 @@ impl MembersCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: MembersService::new(store, transactions.clone(), clock),
+            service: MembersService::new(store, clock),
             transactions,
             catalog,
             authorizer,
@@ -128,12 +128,16 @@ impl MembersCore {
 
     pub async fn join(
         &self,
+        within: Option<&mut Transaction>,
         project: &str,
         account: &str,
         role: Role,
     ) -> Result<(), MembersCoreError> {
+        let mut transaction = self.transactions.join(within).await?;
         match self
-            .written(
+            .service
+            .carry_out(
+                &mut transaction,
                 &ProjectLink::from(project),
                 MembersCommand::Join {
                     account: AccountId::from(account),
@@ -145,23 +149,35 @@ impl MembersCore {
         {
             Err(MembersCoreError::Events(ServiceError::Refused(
                 MembersError::AlreadyMember | MembersError::Disbanded,
-            ))) => Ok(()),
-            joined => joined.map(|_| ()),
+            ))) => {}
+            joined => joined?,
         }
+        Ok(transaction.finish().await?)
     }
 
-    pub async fn disband(&self, project: &str) -> Result<(), MembersCoreError> {
-        let project = ProjectLink::from(project);
-
-        transacting::retrying!(&*self.transactions, |transaction| {
-            self.service
-                .disband(transaction, &project, &Agent::System)
-                .await
-        })
+    pub async fn disband(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+    ) -> Result<(), MembersCoreError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.service
+            .disband(
+                &mut transaction,
+                &ProjectLink::from(project),
+                &Agent::System,
+            )
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
-    pub async fn found(&self, project: &str, owner: &str) -> Result<(), MembersCoreError> {
-        let mut transaction = self.transactions.begin().await?;
+    pub async fn found(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        owner: &str,
+    ) -> Result<(), MembersCoreError> {
+        let mut transaction = self.transactions.join(within).await?;
         self.service
             .found(
                 &mut transaction,
@@ -173,28 +189,36 @@ impl MembersCore {
         Ok(transaction.finish().await?)
     }
 
-    pub async fn remember_person(&self, person: &Person) -> Result<(), MembersCoreError> {
-        let mut transaction = self.transactions.begin().await?;
+    pub async fn remember_person(
+        &self,
+        within: Option<&mut Transaction>,
+        person: &Person,
+    ) -> Result<(), MembersCoreError> {
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .remember_person(&mut transaction, person)
             .await?;
         Ok(transaction.finish().await?)
     }
 
-    pub async fn catalogue(&self, project: &ProjectLink) -> Result<(), MembersCoreError> {
+    pub async fn catalogue(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &ProjectLink,
+    ) -> Result<(), MembersCoreError> {
         let standing = self.service.latest(project).await?;
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .remember(
                 &mut transaction,
                 &ProjectMembers::of(project.clone(), standing.version, &standing.state),
             )
             .await?;
-        transaction.finish().await?;
-        self.authorizer.access_changed(project.as_str());
-
-        Ok(())
+        let authorizer = self.authorizer.clone();
+        let changed = project.as_str().to_owned();
+        transaction.after_commit(async move { authorizer.access_changed(&changed) });
+        Ok(transaction.finish().await?)
     }
 
     pub async fn memberships(&self, agent: &Agent) -> Result<Vec<Membership>, MembersCoreError> {

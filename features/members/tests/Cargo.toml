@@ -16,8 +16,12 @@ authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", pack
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing", features = ["testing"] }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
+messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
+projects-contract = { version = "0.1.0", path = "../../projects/contract", package = "weaveling-projects-contract" }
 
 members-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-members-catalog" }
 members-contract = { version = "0.1.0", path = "../contract", package = "weaveling-members-contract" }
 members-core = { version = "0.1.0", path = "../core", package = "weaveling-members-core" }
+members-messaging = { version = "0.1.0", path = "../adapters/messaging", package = "weaveling-members-messaging" }
 members-rest = { version = "0.1.0", path = "../adapters/rest", package = "weaveling-members-rest" }

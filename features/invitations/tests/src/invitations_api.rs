@@ -194,6 +194,7 @@ async fn an_invitation_taken_up_is_not_withdrawn() {
     wired
         .invitations
         .taken_up(
+            None,
             &id,
             wiring::at(1_700_000_100),
             &Agent::Account("account_ada".into()),

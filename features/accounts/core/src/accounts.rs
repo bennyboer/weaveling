@@ -68,11 +68,7 @@ impl AccountsCore {
         } = secrets;
 
         Self {
-            events: Arc::new(EventSourcingService::new(
-                store,
-                transactions.clone(),
-                clock.clone(),
-            )),
+            events: Arc::new(EventSourcingService::new(store, clock.clone())),
             transactions,
             email_addresses,
             passwords,
@@ -93,10 +89,14 @@ impl AccountsCore {
         Self { signing_up, ..self }
     }
 
-    pub async fn catalogue(&self, id: &AccountId) -> Result<(), AccountsError> {
+    pub async fn catalogue(
+        &self,
+        within: Option<&mut Transaction>,
+        id: &AccountId,
+    ) -> Result<(), AccountsError> {
         let standing = self.get(id).await?;
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .remember(
                 &mut transaction,
@@ -126,12 +126,7 @@ impl AccountsCore {
         agent: &Agent,
     ) -> Result<(), AccountsError> {
         self.events
-            .execute(
-                Some(transaction),
-                &AggregateId::from(account),
-                command,
-                agent,
-            )
+            .execute(transaction, &AggregateId::from(account), command, agent)
             .await?;
 
         Ok(())

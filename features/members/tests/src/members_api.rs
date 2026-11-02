@@ -28,7 +28,7 @@ struct Members {
 impl Members {
     async fn told(&self) {
         self.core
-            .catalogue(&ProjectLink::from(PROJECT))
+            .catalogue(None, &ProjectLink::from(PROJECT))
             .await
             .expect("cataloguing should succeed");
     }
@@ -61,24 +61,27 @@ async fn a_project_of_three() -> Members {
         Arc::new(MembersAuthorizer::new(catalog)),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
-    core.found(PROJECT, "account_ada")
+    core.found(None, PROJECT, "account_ada")
         .await
         .expect("founding should succeed");
     for (account, joining) in [
         ("account_grace", Role::Author),
         ("account_bo", Role::Reader),
     ] {
-        core.join(PROJECT, account, joining)
+        core.join(None, PROJECT, account, joining)
             .await
             .expect("joining should succeed");
     }
     for account in ["account_ada", "account_grace"] {
         let (name, email) = person_of(account).expect("ada and grace signed up");
-        core.remember_person(&Person {
-            account: AccountId::from(account),
-            name: name.to_owned(),
-            email: email.to_owned(),
-        })
+        core.remember_person(
+            None,
+            &Person {
+                account: AccountId::from(account),
+                name: name.to_owned(),
+                email: email.to_owned(),
+            },
+        )
         .await
         .expect("remembering should succeed");
     }
@@ -379,7 +382,7 @@ async fn leaving_asks_whether_one_is_a_member_not_whether_one_may_read() {
         Arc::new(AllowingEverything),
         Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
     );
-    core.found(PROJECT, "account_ada")
+    core.found(None, PROJECT, "account_ada")
         .await
         .expect("founding should succeed");
     let cy = Agent::Account(AccountId::from("account_cy"));

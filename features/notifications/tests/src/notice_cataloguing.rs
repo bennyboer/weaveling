@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, InMemoryEventStore, Version};
-use messaging::{Handler, Listener, RoutingKey};
+use inbox::{InMemoryInbox, Inboxed};
+use messaging::{Listener, RoutingKey};
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_contract::{DISMISSED, NOTED};
 use notifications_core::{
@@ -18,7 +19,7 @@ struct Listed {
     store: Arc<InMemoryEventStore<NoticeEvent>>,
     clock: Arc<FixedClock>,
     notifications: NotificationsCore,
-    listener: CatalogueNoticeListener,
+    listener: Inboxed<CatalogueNoticeListener>,
 }
 
 fn listed() -> Listed {
@@ -32,7 +33,11 @@ fn listed() -> Listed {
     );
 
     Listed {
-        listener: CatalogueNoticeListener::new(notifications.clone()),
+        listener: Inboxed::new(
+            CatalogueNoticeListener::new(notifications.clone()),
+            Arc::new(InMemoryTransactions::new()),
+            Arc::new(InMemoryInbox::new(clock.clone())),
+        ),
         notifications,
         clock,
         store,
@@ -64,7 +69,7 @@ async fn heard_through(listed: &Listed, notice: &NoticeId, version: u64) {
 
     listed
         .listener
-        .take_in(&message)
+        .handle(&message)
         .await
         .expect("cataloguing should succeed");
 }

@@ -56,7 +56,8 @@ mod tests {
     use eventsourcing::{
         AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
     };
-    use messaging::{Handler, RoutingKey, Subscription};
+    use inbox::KeptHandler;
+    use messaging::{RoutingKey, Subscription};
     use time::{Duration, OffsetDateTime};
 
     use super::*;
@@ -164,7 +165,7 @@ mod tests {
     #[test]
     fn a_drag_does_not_wake_the_catalog_projector() {
         let listening = |routing: &RoutingKey| {
-            <crate::CatalogueBoardsListener as Handler>::LISTENS_TO
+            <crate::CatalogueBoardsListener as KeptHandler>::LISTENS_TO
                 .iter()
                 .any(|pattern| {
                     Subscription::parse(pattern)

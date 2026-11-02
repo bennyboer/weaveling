@@ -17,6 +17,7 @@ serde_json = { workspace = true }
 yrs = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 scenes-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-scenes-catalog" }
 scenes-contract = { version = "0.1.0", path = "../contract", package = "weaveling-scenes-contract" }

@@ -4,6 +4,7 @@ use authorizing::AllowingEverything;
 use clock::FixedClock;
 use eventsourcing::Agent;
 use ideas_contract::DISCARDED;
+use inbox::{InMemoryInbox, Inboxed};
 use messaging::{Listener, Message, RoutingKey, Subscription};
 use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{IdeaLink, SceneId, ScenesCore};
@@ -21,21 +22,27 @@ fn at(seconds: i64) -> OffsetDateTime {
 
 struct Wired {
     scenes: ScenesCore,
-    unlink: UnlinkOnDiscardListener,
+    unlink: Inboxed<UnlinkOnDiscardListener>,
 }
 
 fn a_workbench() -> Wired {
+    let transactions = Arc::new(InMemoryTransactions::new());
+    let clock = Arc::new(FixedClock::new(at(1_000)));
     let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
-        Arc::new(InMemoryTransactions::new()),
+        transactions.clone(),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
-        Arc::new(FixedClock::new(at(1_000))),
+        clock.clone(),
     );
 
     Wired {
-        unlink: UnlinkOnDiscardListener::new(scenes.clone()),
+        unlink: Inboxed::new(
+            UnlinkOnDiscardListener::new(scenes.clone()),
+            transactions,
+            Arc::new(InMemoryInbox::new(clock)),
+        ),
         scenes,
     }
 }

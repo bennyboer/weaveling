@@ -1,7 +1,9 @@
 use async_trait::async_trait;
+use inbox::{KeptHandler, Refused};
 use members_contract::EVERY_MEMBERS;
 use members_core::{MembersCore, ProjectLink};
-use messaging::{Failure, Handler, Message};
+use messaging::Message;
+use transacting::Transaction;
 
 pub struct CatalogueMembersListener {
     members: MembersCore,
@@ -14,17 +16,24 @@ impl CatalogueMembersListener {
 }
 
 #[async_trait]
-impl Handler for CatalogueMembersListener {
+impl KeptHandler for CatalogueMembersListener {
     const NAME: &'static str = "catalogue-members";
     const LISTENS_TO: &'static [&'static str] = &[EVERY_MEMBERS];
     const WHEN_REFUSED: &'static str =
         "A change to a project's members did not reach the list of who may work where.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        Ok(self
-            .members
-            .catalogue(&eventpublishing::aggregate_in::<ProjectLink>(message)?)
-            .await?)
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
+        self.members
+            .catalogue(
+                Some(transaction),
+                &eventpublishing::aggregate_in::<ProjectLink>(message)?,
+            )
+            .await
+            .map_err(Refused::of)
     }
 }
 
@@ -44,12 +53,21 @@ mod tests {
     use time::OffsetDateTime;
     use transacting::{InMemoryTransactions, Transactions};
 
+    use inbox::{InMemoryInbox, Inboxed};
+
     use super::*;
 
     struct Bench {
         events: EventSourcingService<Members>,
         catalog: Arc<InMemoryMembershipCatalog>,
-        listener: CatalogueMembersListener,
+        listener: Inboxed<CatalogueMembersListener>,
+    }
+
+    async fn begun() -> Transaction {
+        InMemoryTransactions::new()
+            .begin()
+            .await
+            .expect("beginning should succeed")
     }
 
     fn bench() -> Bench {
@@ -60,14 +78,18 @@ mod tests {
         let transactions: Arc<dyn Transactions> = Arc::new(InMemoryTransactions::new());
 
         Bench {
-            events: EventSourcingService::new(store.clone(), transactions.clone(), clock.clone()),
-            listener: CatalogueMembersListener::new(MembersCore::new(
-                store,
+            events: EventSourcingService::new(store.clone(), clock.clone()),
+            listener: Inboxed::new(
+                CatalogueMembersListener::new(MembersCore::new(
+                    store,
+                    transactions.clone(),
+                    catalog.clone(),
+                    Arc::new(AllowingEverything),
+                    clock.clone(),
+                )),
                 transactions,
-                catalog.clone(),
-                Arc::new(AllowingEverything),
-                clock,
-            )),
+                Arc::new(InMemoryInbox::new(clock)),
+            ),
             catalog,
         }
     }
@@ -92,20 +114,26 @@ mod tests {
     async fn whatever_message_comes_the_list_takes_the_project_s_members_as_they_stand_now() {
         let bench = bench();
         let id = AggregateId::from(&project());
+        let mut transaction = begun().await;
         let founded = bench
             .events
             .begin(
-                None,
+                &mut transaction,
                 &id,
                 MembersCommand::Found { owner: ada() },
                 &Agent::System,
             )
             .await
             .expect("founded");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
+        let mut transaction = begun().await;
         bench
             .events
             .execute(
-                None,
+                &mut transaction,
                 &id,
                 MembersCommand::Join {
                     account: grace(),
@@ -115,10 +143,14 @@ mod tests {
             )
             .await
             .expect("joined");
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
 
         bench
             .listener
-            .take_in(&told(&founded.events[0]))
+            .handle(&told(&founded.events[0]))
             .await
             .expect("taken in");
 
@@ -140,19 +172,26 @@ mod tests {
             Some(Role::Owner)
         );
 
+        let mut transaction = begun().await;
+
         let left = bench
             .events
             .execute(
-                None,
+                &mut transaction,
                 &id,
                 MembersCommand::Leave { account: grace() },
                 &Agent::System,
             )
             .await
             .expect("left");
+
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
         bench
             .listener
-            .take_in(&told(&left.events[0]))
+            .handle(&told(&left.events[0]))
             .await
             .expect("taken in");
 
@@ -197,6 +236,6 @@ mod tests {
             OffsetDateTime::UNIX_EPOCH,
         );
 
-        assert!(listener.take_in(&unheard_of).await.is_err());
+        assert!(listener.handle(&unheard_of).await.is_err());
     }
 }

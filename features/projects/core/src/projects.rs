@@ -4,7 +4,7 @@ use authorizing::{AccessWatch, Act, Authorizer, Readable};
 use clock::Clock;
 use eventsourcing::{Agent, EventStore, Standing, Version};
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::catalog::{ProjectCatalog, ProjectSummary};
 use crate::error::ProjectsError;
@@ -30,7 +30,7 @@ impl ProjectsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: ProjectService::new(store, transactions.clone(), clock.clone()),
+            service: ProjectService::new(store, clock.clone()),
             transactions,
             clock,
             catalog,
@@ -155,10 +155,14 @@ impl ProjectsCore {
         Ok(forgotten)
     }
 
-    pub async fn catalogue(&self, id: &ProjectId) -> Result<(), ProjectsError> {
+    pub async fn catalogue(
+        &self,
+        within: Option<&mut Transaction>,
+        id: &ProjectId,
+    ) -> Result<(), ProjectsError> {
         let standing = self.service.latest_even_deleted(id).await?;
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         if standing.state.is_deleted() {
             self.catalog
                 .forget(&mut transaction, id, self.clock.now())

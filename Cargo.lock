@@ -3623,8 +3623,10 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-invitations-contract",
  "weaveling-messaging",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -3689,6 +3691,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-invitations-contract",
  "weaveling-mailing",
  "weaveling-messaging",
@@ -3710,7 +3713,9 @@ dependencies = [
  "weaveling-accounts-rest",
  "weaveling-accounts-secrets",
  "weaveling-accounts-store",
+ "weaveling-chores",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-mailing",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -3768,10 +3773,12 @@ dependencies = [
  "weaveling-appearances-core",
  "weaveling-eventpublishing",
  "weaveling-ideas-contract",
+ "weaveling-inbox",
  "weaveling-messaging",
  "weaveling-outline-contract",
  "weaveling-projects-contract",
  "weaveling-scenes-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -3807,8 +3814,10 @@ dependencies = [
  "weaveling-appearances-messaging",
  "weaveling-appearances-rest",
  "weaveling-authorizing",
+ "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-outline-contract",
@@ -3831,6 +3840,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-chores",
  "weaveling-clock",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -3899,8 +3909,10 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-ids",
+ "weaveling-inbox",
  "weaveling-messaging",
  "weaveling-projects-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -3945,6 +3957,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
@@ -3973,6 +3986,7 @@ dependencies = [
  "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -4124,9 +4138,11 @@ dependencies = [
  "weaveling-ideas-contract",
  "weaveling-ideas-core",
  "weaveling-ids",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-projects-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4171,6 +4187,7 @@ dependencies = [
  "weaveling-ideas-core",
  "weaveling-ideas-messaging",
  "weaveling-ideas-wiring",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
@@ -4195,6 +4212,7 @@ dependencies = [
  "weaveling-ideas-messaging",
  "weaveling-ideas-rest",
  "weaveling-ideas-store",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-outbox",
  "weaveling-transacting",
@@ -4215,6 +4233,7 @@ name = "weaveling-inbox"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "serde_json",
  "sqlx",
  "thiserror",
  "time",
@@ -4280,10 +4299,12 @@ dependencies = [
  "weaveling-email",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-invitations-contract",
  "weaveling-invitations-core",
  "weaveling-messaging",
  "weaveling-projects-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4333,6 +4354,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-invitations-catalog",
  "weaveling-invitations-contract",
  "weaveling-invitations-core",
@@ -4361,6 +4383,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-email",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-invitations-catalog",
  "weaveling-invitations-core",
  "weaveling-invitations-messaging",
@@ -4464,6 +4487,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-invitations-contract",
  "weaveling-members-catalog",
  "weaveling-members-contract",
@@ -4519,11 +4543,15 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-members-catalog",
  "weaveling-members-contract",
  "weaveling-members-core",
+ "weaveling-members-messaging",
  "weaveling-members-rest",
+ "weaveling-messaging",
+ "weaveling-projects-contract",
  "weaveling-transacting",
 ]
 
@@ -4534,8 +4562,10 @@ dependencies = [
  "sqlx",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-members-catalog",
  "weaveling-members-contract",
@@ -4673,6 +4703,7 @@ dependencies = [
  "weaveling-accounts-contract",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-notifications-catalog",
@@ -4779,11 +4810,13 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
  "weaveling-ids",
+ "weaveling-inbox",
  "weaveling-messaging",
  "weaveling-outline-contract",
  "weaveling-outline-core",
  "weaveling-projects-contract",
  "weaveling-scenes-contract",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4825,6 +4858,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
@@ -4854,6 +4888,7 @@ dependencies = [
  "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -4917,9 +4952,11 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-messaging",
  "weaveling-projects-contract",
  "weaveling-projects-core",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -4961,6 +4998,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
@@ -4984,6 +5022,7 @@ dependencies = [
  "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-outbox",
  "weaveling-projects-catalog",
@@ -5064,11 +5103,13 @@ dependencies = [
  "weaveling-eventpublishing",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
+ "weaveling-inbox",
  "weaveling-messaging",
  "weaveling-projects-contract",
  "weaveling-quotation",
  "weaveling-scenes-contract",
  "weaveling-scenes-core",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5141,6 +5182,7 @@ dependencies = [
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-ideas-contract",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
@@ -5168,6 +5210,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-chores",
  "weaveling-clock",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -5276,9 +5319,11 @@ name = "weaveling-statistics-messaging"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "weaveling-inbox",
  "weaveling-messaging",
  "weaveling-scenes-contract",
  "weaveling-statistics-core",
+ "weaveling-transacting",
 ]
 
 [[package]]
@@ -5308,7 +5353,9 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-clock",
  "weaveling-eventsourcing",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-live-contract",
  "weaveling-messaging",
@@ -5332,6 +5379,7 @@ dependencies = [
  "weaveling-authorizing",
  "weaveling-chores",
  "weaveling-clock",
+ "weaveling-inbox",
  "weaveling-live",
  "weaveling-messaging",
  "weaveling-outbox",

@@ -4,6 +4,7 @@ use acting::Acting;
 use authorizing::{AllowingEverything, Authorizer};
 use clock::FixedClock;
 use eventsourcing::{Agent, InMemoryEventStore};
+use inbox::{InMemoryInbox, Inboxed, KeptHandler};
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_core::{InvitationEvent, InvitationToken, InvitationsCore};
 use mailing::FakeMailbox;
@@ -50,6 +51,16 @@ pub fn wired_guarded_by(authorizer: Arc<dyn Authorizer>) -> Wired {
         mailbox,
         clock,
     }
+}
+
+pub fn inboxed<H: KeptHandler>(handler: H) -> Inboxed<H> {
+    Inboxed::new(
+        handler,
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(at(
+            1_700_000_000,
+        ))))),
+    )
 }
 
 pub fn an_operator() -> Acting {

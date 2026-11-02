@@ -19,5 +19,6 @@ postgres = ["dep:sqlx", "transacting/postgres"]
 sqlite = ["dep:sqlx", "sqlx/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
+serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
 test-harness = { version = "0.1.0", path = "../test-harness", package = "weaveling-test-harness" }

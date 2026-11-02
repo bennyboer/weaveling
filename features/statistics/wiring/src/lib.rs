@@ -3,6 +3,7 @@ mod tombstones;
 use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use live::Broadcaster;
 use outbox::Outbox;
 use statistics_catalog::InMemoryWordCountCatalog;
@@ -16,6 +17,7 @@ use crate::tombstones::StatisticsTombstones;
 pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn WordCountCatalog>,
+    pub inbox: Arc<dyn Inbox>,
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
@@ -36,14 +38,26 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             statistics.clone(),
             broadcaster,
         )])
-        .listening(vec![Arc::new(ProjectWordCountsListener::new(
-            statistics.clone(),
+        .listening(vec![Arc::new(Inboxed::new(
+            ProjectWordCountsListener::new(statistics.clone()),
+            ports.transactions.clone(),
+            ports.inbox.clone(),
         ))])
-        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-            "forget-old-statistics-tombstones",
-            Arc::new(StatisticsTombstones::of(statistics)),
-            context.clock.clone(),
-        ))])
+        .doing_chores(vec![
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-statistics-tombstones",
+                Arc::new(StatisticsTombstones::of(statistics)),
+                context.clock.clone(),
+            )),
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-statistics-hearings",
+                Arc::new(HeardMessages::of(
+                    ports.inbox.clone(),
+                    ports.transactions.clone(),
+                )),
+                context.clock.clone(),
+            )),
+        ])
 }
 
 pub struct StatisticsFeature;
@@ -53,37 +67,46 @@ impl Feature for StatisticsFeature {
 
     type Ports = Ports;
 
-    fn in_memory(_context: &Context) -> Ports {
+    fn in_memory(context: &Context) -> Ports {
         Ports {
             transactions: Arc::new(InMemoryTransactions::new()),
             catalog: Arc::new(InMemoryWordCountCatalog::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
         }
     }
 
     #[cfg(feature = "postgres")]
-    fn on_postgres(pool: sqlx::PgPool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
+    fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
         Ok(Ports {
             transactions: Arc::new(transacting::PostgresTransactions::new(pool.clone())),
             catalog: Arc::new(statistics_catalog::PostgresWordCountCatalog::new(pool)),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
         })
     }
 
     #[cfg(feature = "postgres")]
     fn postgres_schema() -> Vec<sqlx::migrate::Migrator> {
-        vec![statistics_catalog::postgres::migrations()]
+        vec![
+            statistics_catalog::postgres::migrations(),
+            inbox::postgres::migrations(),
+        ]
     }
 
     #[cfg(feature = "sqlite")]
-    fn on_sqlite(pool: sqlx::SqlitePool, _context: &Context) -> Result<Ports, wiring::Unprepared> {
+    fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
         Ok(Ports {
             transactions: Arc::new(transacting::SqliteTransactions::new(pool.clone())),
             catalog: Arc::new(statistics_catalog::SqliteWordCountCatalog::new(pool)),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
         })
     }
 
     #[cfg(feature = "sqlite")]
     fn sqlite_schema() -> Vec<sqlx::migrate::Migrator> {
-        vec![statistics_catalog::sqlite::migrations()]
+        vec![
+            statistics_catalog::sqlite::migrations(),
+            inbox::sqlite::migrations(),
+        ]
     }
 
     fn outbox(_ports: &Ports) -> Option<Arc<dyn Outbox>> {
@@ -111,7 +134,7 @@ mod tests {
     const NOW: OffsetDateTime = OffsetDateTime::UNIX_EPOCH;
 
     #[tokio::test]
-    async fn the_feature_forgets_its_old_tombstones_as_a_chore() {
+    async fn the_feature_forgets_its_old_tombstones_and_hearings_as_chores() {
         let context = Context {
             clock: Arc::new(FixedClock::new(
                 NOW + TOMBSTONES_KEPT_FOR + Duration::SECOND,
@@ -143,13 +166,14 @@ mod tests {
                 .expect("finishing should succeed");
         }
 
-        let [chore] = wired.chores.as_slice() else {
-            panic!("the feature hands over one chore");
+        let [tombstones, hearings] = wired.chores.as_slice() else {
+            panic!("the feature hands over two chores");
         };
 
-        assert_eq!(chore.named(), "forget-old-statistics-tombstones");
+        assert_eq!(tombstones.named(), "forget-old-statistics-tombstones");
+        assert_eq!(hearings.named(), "forget-old-statistics-hearings");
         assert_eq!(
-            chore
+            tombstones
                 .carry_out()
                 .await
                 .expect("the chore should be carried out"),
@@ -166,7 +190,7 @@ mod tests {
         );
         for scene in ["scene_1", "scene_2"] {
             statistics
-                .scene_deleted(scene, NOW)
+                .scene_deleted(None, scene, NOW)
                 .await
                 .expect("forgetting should succeed");
         }

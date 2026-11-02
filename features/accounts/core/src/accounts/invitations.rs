@@ -112,7 +112,7 @@ impl AccountsCore {
             let ticket = self.claimed_ticket(transaction, digest).await?;
             self.events
                 .execute(
-                    Some(transaction),
+                    transaction,
                     &AggregateId::from(id),
                     AccountCommand::TakeUpInvitation {
                         invitation: ticket.invitation.clone(),
@@ -129,7 +129,7 @@ impl AccountsCore {
             let ticket = self.claimed_ticket(transaction, digest).await?;
             self.events
                 .execute(
-                    Some(transaction),
+                    transaction,
                     &AggregateId::from(id),
                     AccountCommand::DeclineInvitation {
                         invitation: ticket.invitation,
@@ -144,19 +144,21 @@ impl AccountsCore {
 
     pub async fn keep_invitation_ticket(
         &self,
+        within: Option<&mut Transaction>,
         digest: &TokenDigest,
         ticket: &InvitationTicket,
     ) -> Result<(), AccountsError> {
-        transacting::retrying!(&*self.transactions, |transaction| {
-            let fresh = self
-                .invitation_tickets
-                .keep_ticket(transaction, digest, ticket)
+        let mut transaction = self.transactions.join(within).await?;
+        let fresh = self
+            .invitation_tickets
+            .keep_ticket(&mut transaction, digest, ticket)
+            .await?;
+        if fresh && ticket.scope == InvitationScope::Instance {
+            self.declined_for_an_account(&mut transaction, ticket)
                 .await?;
-            if fresh && ticket.scope == InvitationScope::Instance {
-                self.declined_for_an_account(transaction, ticket).await?;
-            }
-            Ok(())
-        })
+        }
+
+        Ok(transaction.finish().await?)
     }
 
     async fn declined_for_an_account(
@@ -173,7 +175,7 @@ impl AccountsCore {
             .await?;
         self.events
             .execute(
-                Some(transaction),
+                transaction,
                 &AggregateId::from(&id),
                 AccountCommand::DeclineInvitation {
                     invitation: ticket.invitation.clone(),
@@ -186,8 +188,12 @@ impl AccountsCore {
         Ok(())
     }
 
-    pub async fn forget_invitation_ticket(&self, invitation: &str) -> Result<(), AccountsError> {
-        let mut transaction = self.transactions.begin().await?;
+    pub async fn forget_invitation_ticket(
+        &self,
+        within: Option<&mut Transaction>,
+        invitation: &str,
+    ) -> Result<(), AccountsError> {
+        let mut transaction = self.transactions.join(within).await?;
         self.invitation_tickets
             .forget_ticket(&mut transaction, invitation)
             .await?;
@@ -195,8 +201,12 @@ impl AccountsCore {
         Ok(transaction.finish().await?)
     }
 
-    pub async fn drop_invitation_ticket(&self, invitation: &str) -> Result<(), AccountsError> {
-        let mut transaction = self.transactions.begin().await?;
+    pub async fn drop_invitation_ticket(
+        &self,
+        within: Option<&mut Transaction>,
+        invitation: &str,
+    ) -> Result<(), AccountsError> {
+        let mut transaction = self.transactions.join(within).await?;
         self.invitation_tickets
             .drop_ticket(&mut transaction, invitation)
             .await?;

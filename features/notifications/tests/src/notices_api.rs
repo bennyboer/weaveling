@@ -52,7 +52,7 @@ impl Served {
 
     async fn catalogued(&self, notice: &NoticeId) {
         self.notifications
-            .catalogue(notice)
+            .catalogue(None, notice)
             .await
             .expect("cataloguing should succeed");
     }
@@ -84,19 +84,25 @@ async fn one_s_own_open_notices_are_listed_with_what_they_are_about() {
     let notice = served.noted_for_bo(Role::Author, Some("account_ada")).await;
     served
         .notifications
-        .remember_person(&Person {
-            account: AccountId::from("account_ada"),
-            name: "Ada Lovelace".to_owned(),
-        })
+        .remember_person(
+            None,
+            &Person {
+                account: AccountId::from("account_ada"),
+                name: "Ada Lovelace".to_owned(),
+            },
+        )
         .await
         .expect("remembering should succeed");
     served
         .notifications
-        .remember_project_name(&ProjectName {
-            project: ProjectLink::from("project_1"),
-            version: Version::of(1),
-            name: "Shared".to_owned(),
-        })
+        .remember_project_name(
+            None,
+            &ProjectName {
+                project: ProjectLink::from("project_1"),
+                version: Version::of(1),
+                name: "Shared".to_owned(),
+            },
+        )
         .await
         .expect("remembering should succeed");
 

@@ -6,6 +6,7 @@ use clock::Clock;
 use eventsourcing::InMemoryEventStore;
 use ideas_catalog::InMemoryIdeaCatalog;
 use ideas_core::{IdeaEvent, IdeasCore};
+use inbox::InMemoryInbox;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher, Listener};
 use outbox::{InMemoryOutbox, Outbox};
 use transacting::InMemoryTransactions;
@@ -40,6 +41,7 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         events: store.clone(),
         transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
+        inbox: Arc::new(InMemoryInbox::new(clock.clone())),
         outbox: outbox.clone(),
     };
     let context = Context {

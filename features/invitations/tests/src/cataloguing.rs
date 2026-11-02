@@ -9,7 +9,7 @@ use invitations_core::{
     DeclineReason, InvitationCatalog, InvitationId, InvitationSummary, InvitationsCore, Outcome,
 };
 use invitations_messaging::CatalogueInvitationsListener;
-use messaging::{Handler, Listener, Message, RoutingKey};
+use messaging::{Listener, Message, RoutingKey};
 use serde_json::json;
 use throttling::InMemoryThrottles;
 use time::Duration;
@@ -86,7 +86,7 @@ async fn an_invitation_issued_is_listed_as_it_stands() {
 
     listing
         .listener
-        .take_in(&told(ISSUED, &id))
+        .handle(&told(ISSUED, &id))
         .await
         .expect("cataloguing should succeed");
 
@@ -110,6 +110,7 @@ async fn an_issue_heard_after_its_invitation_was_taken_up_lists_nothing() {
         .wired
         .invitations
         .taken_up(
+            None,
             &id,
             wiring::at(1_700_000_100),
             &Agent::Account("account_ada".into()),
@@ -119,7 +120,7 @@ async fn an_issue_heard_after_its_invitation_was_taken_up_lists_nothing() {
 
     listing
         .listener
-        .take_in(&told(ISSUED, &id))
+        .handle(&told(ISSUED, &id))
         .await
         .expect("cataloguing should succeed");
 
@@ -136,13 +137,13 @@ async fn a_declined_invitation_stays_listed_and_says_why() {
     listing
         .wired
         .invitations
-        .declined(&id, DeclineReason::AddressHasAccount)
+        .declined(None, &id, DeclineReason::AddressHasAccount)
         .await
         .expect("an open invitation is declined");
 
     listing
         .listener
-        .take_in(&told(DECLINED, &id))
+        .handle(&told(DECLINED, &id))
         .await
         .expect("cataloguing should succeed");
 
@@ -178,7 +179,7 @@ async fn a_message_about_no_invitation_is_refused() {
     assert!(
         listing
             .listener
-            .take_in(&told(ISSUED, &InvitationId::generate(wiring::at(1_000))))
+            .handle(&told(ISSUED, &InvitationId::generate(wiring::at(1_000))))
             .await
             .is_err(),
         "a message the listener cannot act on belongs in dead letters"
@@ -191,7 +192,7 @@ async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_
     let id = listing.invited(ADA).await;
     listing
         .listener
-        .take_in(&told(ISSUED, &id))
+        .handle(&told(ISSUED, &id))
         .await
         .expect("cataloguing should succeed");
     listing.wired.clock.set(
@@ -212,7 +213,7 @@ async fn a_retired_invitation_leaves_the_list_however_late_any_message_about_it_
     for routing in [RETIRED, ISSUED] {
         listing
             .listener
-            .take_in(&told(routing, &id))
+            .handle(&told(routing, &id))
             .await
             .expect("cataloguing should succeed");
     }

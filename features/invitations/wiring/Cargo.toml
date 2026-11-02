@@ -10,6 +10,7 @@ sqlx = { workspace = true, optional = true }
 
 chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
 clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "weaveling-mailing" }
 throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }
 eventsourcing = { version = "0.1.0", path = "../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
@@ -25,8 +26,8 @@ invitations-store = { version = "0.1.0", path = "../adapters/store", package = "
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 
 [features]
-postgres = ["dep:sqlx", "invitations-catalog/postgres", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "throttling/postgres"]
-sqlite = ["dep:sqlx", "invitations-catalog/sqlite", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "throttling/sqlite"]
+postgres = ["dep:sqlx", "invitations-catalog/postgres", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "throttling/postgres", "inbox/postgres"]
+sqlite = ["dep:sqlx", "invitations-catalog/sqlite", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "throttling/sqlite", "inbox/sqlite"]
 
 [dev-dependencies]
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }

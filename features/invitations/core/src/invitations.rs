@@ -8,7 +8,7 @@ use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError};
 use mailing::Mailer;
 use throttling::Throttles;
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::catalog::{
     InvitationCatalog, InvitationSummary, InvitationToYou, ListedInvitation, Person, ProjectName,
@@ -41,13 +41,7 @@ impl InvitationsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: InvitationService::new(
-                store,
-                transactions.clone(),
-                throttles,
-                mailer,
-                clock.clone(),
-            ),
+            service: InvitationService::new(store, throttles, mailer, clock.clone()),
             transactions,
             catalog,
             authorizer,
@@ -262,25 +256,33 @@ impl InvitationsCore {
 
     pub async fn taken_up(
         &self,
+        within: Option<&mut Transaction>,
         invitation: &InvitationId,
         at: OffsetDateTime,
         by: &Agent,
     ) -> Result<(), InvitationsError> {
-        settled(transacting::retrying!(&*self.transactions, |transaction| {
-            self.service.accept(transaction, invitation, at, by).await
-        }))
+        let mut transaction = self.transactions.join(within).await?;
+        settled(
+            self.service
+                .accept(&mut transaction, invitation, at, by)
+                .await,
+        )?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn declined(
         &self,
+        within: Option<&mut Transaction>,
         invitation: &InvitationId,
         reason: DeclineReason,
     ) -> Result<(), InvitationsError> {
-        settled(transacting::retrying!(&*self.transactions, |transaction| {
+        let mut transaction = self.transactions.join(within).await?;
+        settled(
             self.service
-                .decline(transaction, invitation, reason, &Agent::System)
-                .await
-        }))
+                .decline(&mut transaction, invitation, reason, &Agent::System)
+                .await,
+        )?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn decline_by_token(&self, token: &str) -> Result<(), InvitationsError> {
@@ -312,8 +314,12 @@ impl InvitationsCore {
         }
     }
 
-    pub async fn remember_project_name(&self, named: &ProjectName) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.begin().await?;
+    pub async fn remember_project_name(
+        &self,
+        within: Option<&mut Transaction>,
+        named: &ProjectName,
+    ) -> Result<(), InvitationsError> {
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .remember_project_name(&mut transaction, named)
             .await?;
@@ -322,10 +328,11 @@ impl InvitationsCore {
 
     pub async fn lay_project_tombstone(
         &self,
+        within: Option<&mut Transaction>,
         project: &ProjectLink,
         at: OffsetDateTime,
     ) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .lay_project_tombstone(&mut transaction, project, at)
             .await?;
@@ -351,8 +358,12 @@ impl InvitationsCore {
         Ok(projects + invitations)
     }
 
-    pub async fn remember_person(&self, person: &Person) -> Result<(), InvitationsError> {
-        let mut transaction = self.transactions.begin().await?;
+    pub async fn remember_person(
+        &self,
+        within: Option<&mut Transaction>,
+        person: &Person,
+    ) -> Result<(), InvitationsError> {
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .remember_person(&mut transaction, person)
             .await?;

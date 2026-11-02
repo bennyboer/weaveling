@@ -5,7 +5,7 @@ use clock::Clock;
 use eventsourcing::{Agent, EventStore, ServiceError, Standing, Version};
 use registry::Registry;
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::board::{Board, BoardCommand, BoardError, BoardEvent, IdeaLink, ProjectLink};
 use crate::catalog::{BoardCatalog, BoardSummary};
@@ -34,7 +34,7 @@ impl BoardsCore {
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            service: BoardService::new(store, transactions.clone(), registry, clock.clone()),
+            service: BoardService::new(store, registry, clock.clone()),
             transactions,
             clock,
             catalog,
@@ -122,10 +122,14 @@ impl BoardsCore {
             .await
     }
 
-    pub async fn catalogue(&self, board: &BoardId) -> Result<(), BoardsError> {
+    pub async fn catalogue(
+        &self,
+        within: Option<&mut Transaction>,
+        board: &BoardId,
+    ) -> Result<(), BoardsError> {
         let standing = self.service.latest(board).await?;
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         if standing.state.is_discarded() {
             self.catalog
                 .forget(&mut transaction, board, self.clock.now())

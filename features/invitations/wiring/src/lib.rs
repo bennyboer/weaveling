@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore};
 use invitations_messaging::{
@@ -28,6 +29,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub throttles: Arc<dyn Throttles>,
     pub catalog: Arc<dyn InvitationCatalog>,
+    pub inbox: Arc<dyn Inbox>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -85,6 +87,7 @@ impl Feature for InvitationFeature {
             transactions,
             throttles: Arc::new(InMemoryThrottles::default()),
             catalog: Arc::new(InMemoryInvitationCatalog::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
         }
@@ -108,6 +111,7 @@ impl Feature for InvitationFeature {
             transactions,
             throttles: Arc::new(throttling::PostgresThrottles::new(pool.clone())),
             catalog: Arc::new(invitations_catalog::PostgresInvitationCatalog::new(pool)),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
         })
@@ -120,6 +124,7 @@ impl Feature for InvitationFeature {
             outbox::postgres::migrations(),
             throttling::postgres::migrations(),
             invitations_catalog::postgres::migrations(),
+            inbox::postgres::migrations(),
         ]
     }
 
@@ -141,6 +146,7 @@ impl Feature for InvitationFeature {
             transactions,
             throttles: Arc::new(throttling::SqliteThrottles::new(pool.clone())),
             catalog: Arc::new(invitations_catalog::SqliteInvitationCatalog::new(pool)),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
         })
@@ -153,6 +159,7 @@ impl Feature for InvitationFeature {
             outbox::sqlite::migrations(),
             throttling::sqlite::migrations(),
             invitations_catalog::sqlite::migrations(),
+            inbox::sqlite::migrations(),
         ]
     }
 
@@ -182,11 +189,27 @@ impl Feature for InvitationFeature {
                 broadcaster,
             ))])
             .listening(vec![
-                Arc::new(AcceptTakenUpInvitationListener::new(invitations.clone())),
-                Arc::new(DeclineInvitationListener::new(invitations.clone())),
+                Arc::new(Inboxed::new(
+                    AcceptTakenUpInvitationListener::new(invitations.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
+                Arc::new(Inboxed::new(
+                    DeclineInvitationListener::new(invitations.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
                 Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
-                Arc::new(RememberWhoSignedUpListener::new(invitations.clone())),
-                Arc::new(RememberProjectNamesListener::new(invitations.clone())),
+                Arc::new(Inboxed::new(
+                    RememberWhoSignedUpListener::new(invitations.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
+                Arc::new(Inboxed::new(
+                    RememberProjectNamesListener::new(invitations.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
                 Arc::new(WithdrawInvitationsOfDeletedProjectListener::new(
                     invitations.clone(),
                 )),
@@ -196,6 +219,14 @@ impl Feature for InvitationFeature {
                 Arc::new(ForgetOldTombstones::new(
                     "forget-old-invitation-tombstones",
                     Arc::new(InvitationTombstones::of(invitations)),
+                    context.clock.clone(),
+                )),
+                Arc::new(ForgetOldTombstones::new(
+                    "forget-old-invitation-hearings",
+                    Arc::new(HeardMessages::of(
+                        ports.inbox.clone(),
+                        ports.transactions.clone(),
+                    )),
                     context.clock.clone(),
                 )),
             ])
@@ -274,6 +305,7 @@ mod tests {
         let wired = InvitationFeature::wire(&ports, &context);
         core(&ports, &context)
             .lay_project_tombstone(
+                None,
                 &ProjectLink::from("project_long_gone"),
                 OffsetDateTime::UNIX_EPOCH,
             )
@@ -292,6 +324,26 @@ mod tests {
                 .await
                 .expect("the chore should be carried out"),
             1
+        );
+    }
+
+    #[test]
+    fn the_feature_retires_forgets_its_tombstones_and_forgets_old_hearings_as_chores() {
+        let context = a_context();
+
+        let wired = InvitationFeature::wire(&InvitationFeature::in_memory(&context), &context);
+
+        assert_eq!(
+            wired
+                .chores
+                .iter()
+                .map(|chore| chore.named())
+                .collect::<Vec<_>>(),
+            [
+                "retire-due-invitations",
+                "forget-old-invitation-tombstones",
+                "forget-old-invitation-hearings"
+            ]
         );
     }
 

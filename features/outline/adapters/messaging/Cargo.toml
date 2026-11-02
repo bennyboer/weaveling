@@ -11,7 +11,9 @@ clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "we
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 ids = { version = "0.1.0", path = "../../../../libraries/ids", package = "weaveling-ids" }
+inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
 outline-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-outline-contract" }
 outline-core = { version = "0.1.0", path = "../../core", package = "weaveling-outline-core" }

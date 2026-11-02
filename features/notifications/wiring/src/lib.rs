@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
-use inbox::{HeardMessages, InMemoryInbox, Inbox};
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use live::Broadcaster;
 use notifications_catalog::InMemoryNoticeCatalog;
 use notifications_core::{NoticeCatalog, NoticeEvent, NotificationsCore};
@@ -51,14 +51,26 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
     Wired::serving(notifications_rest::router(notifications.clone()))
         .followed_live(vec![Arc::new(NotificationsTopic::new(broadcaster))])
         .listening(vec![
-            Arc::new(NoteRoleChangedListener::new(
-                notifications.clone(),
+            Arc::new(Inboxed::new(
+                NoteRoleChangedListener::new(notifications.clone()),
                 ports.transactions.clone(),
                 ports.inbox.clone(),
             )),
-            Arc::new(CatalogueNoticeListener::new(notifications.clone())),
-            Arc::new(RememberWhoSignedUpListener::new(notifications.clone())),
-            Arc::new(RememberProjectNamesListener::new(notifications.clone())),
+            Arc::new(Inboxed::new(
+                CatalogueNoticeListener::new(notifications.clone()),
+                ports.transactions.clone(),
+                ports.inbox.clone(),
+            )),
+            Arc::new(Inboxed::new(
+                RememberWhoSignedUpListener::new(notifications.clone()),
+                ports.transactions.clone(),
+                ports.inbox.clone(),
+            )),
+            Arc::new(Inboxed::new(
+                RememberProjectNamesListener::new(notifications.clone()),
+                ports.transactions.clone(),
+                ports.inbox.clone(),
+            )),
         ])
         .doing_chores(vec![
             Arc::new(ForgetOldNotices::new(notifications.clone())),
@@ -257,7 +269,7 @@ mod tests {
             .expect("noting should succeed")
             .expect("its project is not deleted");
         notifications
-            .catalogue(&notice)
+            .catalogue(None, &notice)
             .await
             .expect("cataloguing should succeed");
 

@@ -77,7 +77,7 @@ impl AccountsCore {
         }
         self.events
             .begin(
-                Some(&mut transaction),
+                &mut transaction,
                 &AggregateId::from(&id),
                 AccountCommand::SignUp(email.clone(), name),
                 &id.acting(),
@@ -126,7 +126,7 @@ impl AccountsCore {
         }
         self.events
             .begin(
-                Some(&mut transaction),
+                &mut transaction,
                 &AggregateId::from(&id),
                 AccountCommand::SignUpByInvitation {
                     email: ticket.to.clone(),

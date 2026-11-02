@@ -9,6 +9,7 @@ use ideas_core::{IdeaCatalog, IdeaEvent, IdeasCore};
 use ideas_messaging::{
     BroadcastIdeaChangesListener, CatalogueIdeasListener, DiscardOnProjectDeletedListener,
 };
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use live::Broadcaster;
 use outbox::Outbox;
 use transacting::Transactions;
@@ -20,6 +21,7 @@ pub struct Ports {
     pub events: Arc<dyn EventStore<IdeaEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn IdeaCatalog>,
+    pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
 
@@ -35,7 +37,6 @@ pub fn core(ports: &Ports, context: &Context) -> IdeasCore {
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
     let ideas = core(ports, context);
-    let projector = CatalogueIdeasListener::new(ideas.clone());
     let sweep = DiscardOnProjectDeletedListener::new(
         ideas.clone(),
         context.publisher.clone(),
@@ -53,14 +54,28 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         .followed_live(vec![ideas_rest::topic(ideas.clone(), broadcaster)])
         .listening(vec![
             Arc::new(broadcast),
-            Arc::new(projector),
+            Arc::new(Inboxed::new(
+                CatalogueIdeasListener::new(ideas.clone()),
+                ports.transactions.clone(),
+                ports.inbox.clone(),
+            )),
             Arc::new(sweep),
         ])
-        .doing_chores(vec![Arc::new(ForgetOldTombstones::new(
-            "forget-old-idea-tombstones",
-            Arc::new(IdeaTombstones::of(ideas)),
-            context.clock.clone(),
-        ))])
+        .doing_chores(vec![
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-idea-tombstones",
+                Arc::new(IdeaTombstones::of(ideas)),
+                context.clock.clone(),
+            )),
+            Arc::new(ForgetOldTombstones::new(
+                "forget-old-idea-hearings",
+                Arc::new(HeardMessages::of(
+                    ports.inbox.clone(),
+                    ports.transactions.clone(),
+                )),
+                context.clock.clone(),
+            )),
+        ])
 }
 
 pub struct IdeaFeature;
@@ -81,6 +96,7 @@ impl Feature for IdeaFeature {
             events,
             transactions,
             catalog: Arc::new(InMemoryIdeaCatalog::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
     }
@@ -102,6 +118,7 @@ impl Feature for IdeaFeature {
             events,
             transactions,
             catalog: Arc::new(ideas_catalog::PostgresIdeaCatalog::new(pool)),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -112,6 +129,7 @@ impl Feature for IdeaFeature {
             eventsourcing::postgres::migrations(),
             outbox::postgres::migrations(),
             ideas_catalog::postgres::migrations(),
+            inbox::postgres::migrations(),
         ]
     }
 
@@ -132,6 +150,7 @@ impl Feature for IdeaFeature {
             events,
             transactions,
             catalog: Arc::new(ideas_catalog::SqliteIdeaCatalog::new(pool)),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
     }
@@ -142,6 +161,7 @@ impl Feature for IdeaFeature {
             eventsourcing::sqlite::migrations(),
             outbox::sqlite::migrations(),
             ideas_catalog::sqlite::migrations(),
+            inbox::sqlite::migrations(),
         ]
     }
 

@@ -1,8 +1,10 @@
 use appearances_core::{AppearancesCore, Place, SceneLink};
 
 use crate::projects::project_of;
-use messaging::{Failure, Handler, Message};
+use inbox::{KeptHandler, Refused};
+use messaging::Message;
 use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
+use transacting::Transaction;
 
 pub struct ProjectSceneAppearancesListener {
     appearances: AppearancesCore,
@@ -13,12 +15,13 @@ impl ProjectSceneAppearancesListener {
         Self { appearances }
     }
 
-    async fn index(&self, message: &Message) -> Result<(), Failure> {
+    async fn index(&self, transaction: &mut Transaction, message: &Message) -> Result<(), Refused> {
         match message.routing.to_string().as_str() {
             IDEA_LINKED => {
                 let link: IdeaLinkDTO = message.payload_as()?;
                 self.appearances
                     .appeared(
+                        Some(transaction),
                         &link.idea,
                         &a_scene(link.scene),
                         link.version,
@@ -29,13 +32,22 @@ impl ProjectSceneAppearancesListener {
             IDEA_UNLINKED => {
                 let link: IdeaLinkDTO = message.payload_as()?;
                 self.appearances
-                    .disappeared(&link.idea, &a_scene(link.scene), link.version)
+                    .disappeared(
+                        Some(transaction),
+                        &link.idea,
+                        &a_scene(link.scene),
+                        link.version,
+                    )
                     .await?;
             }
             DELETED => {
                 let deleted: SceneDeletedDTO = message.payload_as()?;
                 self.appearances
-                    .place_gone(&a_scene(deleted.scene), message.occurred_at)
+                    .place_gone(
+                        Some(transaction),
+                        &a_scene(deleted.scene),
+                        message.occurred_at,
+                    )
                     .await?;
             }
             _ => {}
@@ -50,12 +62,16 @@ fn a_scene(id: String) -> Place {
 }
 
 #[async_trait::async_trait]
-impl Handler for ProjectSceneAppearancesListener {
+impl KeptHandler for ProjectSceneAppearancesListener {
     const NAME: &'static str = "index-scene-appearances";
     const LISTENS_TO: &'static [&'static str] = &[IDEA_LINKED, IDEA_UNLINKED, DELETED];
     const WHEN_REFUSED: &'static str = "Where an idea appears in your scenes was not updated.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        self.index(message).await
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
+        self.index(transaction, message).await
     }
 }

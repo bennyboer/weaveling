@@ -15,6 +15,7 @@ use eventsourcing::{
     AggregateId, EventSourcingService, EventStore, FailsAppending, InMemoryEventStore,
     RefusesAppending, ServiceError, Standing,
 };
+use inbox::InMemoryInbox;
 use mailing::FakeMailbox;
 use messaging::{DeliveryConsumer, InMemoryDeliveries, InProcessDispatcher};
 use outbox::{InMemoryOutbox, Outbox};
@@ -49,13 +50,9 @@ impl Wired {
         &self,
         id: &AccountId,
     ) -> Result<Standing<Account>, ServiceError<AccountError>> {
-        EventSourcingService::new(
-            self.store.clone(),
-            Arc::new(InMemoryTransactions::new()),
-            self.clock.clone(),
-        )
-        .latest(&AggregateId::from(id))
-        .await
+        EventSourcingService::new(self.store.clone(), self.clock.clone())
+            .latest(&AggregateId::from(id))
+            .await
     }
 }
 
@@ -77,6 +74,7 @@ pub fn wired() -> Wired {
         transactions: Arc::new(InMemoryTransactions::new()),
         secrets: SecretStores::kept_by(secrets.clone(), throttles.clone()),
         catalog: catalog.clone(),
+        inbox: Arc::new(InMemoryInbox::new(clock.clone())),
         mailer: mailbox.clone(),
         outbox: told.clone(),
     };

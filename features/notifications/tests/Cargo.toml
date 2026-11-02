@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dev-dependencies]
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 axum = { workspace = true }
 axum-test = { workspace = true, features = ["ws"] }

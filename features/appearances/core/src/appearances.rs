@@ -3,7 +3,7 @@ use std::sync::Arc;
 use authorizing::{Act, Authorizer};
 use eventsourcing::Agent;
 use time::OffsetDateTime;
-use transacting::Transactions;
+use transacting::{Transaction, Transactions};
 
 use crate::appearance::{Place, Subject};
 use crate::catalog::AppearanceCatalog;
@@ -52,6 +52,7 @@ impl AppearancesCore {
 
     pub async fn appeared(
         &self,
+        within: Option<&mut Transaction>,
         idea: &str,
         place: &Place,
         version: u64,
@@ -59,7 +60,7 @@ impl AppearancesCore {
     ) -> Result<(), AppearancesError> {
         let idea = an_idea(idea);
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         if let Some(project) = project {
             self.catalog
                 .remember_project(&mut transaction, &idea, &ProjectLink::from(project))
@@ -74,11 +75,12 @@ impl AppearancesCore {
 
     pub async fn disappeared(
         &self,
+        within: Option<&mut Transaction>,
         idea: &str,
         place: &Place,
         version: u64,
     ) -> Result<(), AppearancesError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .forget(&mut transaction, &an_idea(idea), place, version)
             .await?;
@@ -88,10 +90,11 @@ impl AppearancesCore {
 
     pub async fn place_gone(
         &self,
+        within: Option<&mut Transaction>,
         place: &Place,
         at: OffsetDateTime,
     ) -> Result<(), AppearancesError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .forget_place(&mut transaction, place, at)
             .await?;
@@ -101,10 +104,11 @@ impl AppearancesCore {
 
     pub async fn idea_discarded(
         &self,
+        within: Option<&mut Transaction>,
         idea: &str,
         at: OffsetDateTime,
     ) -> Result<(), AppearancesError> {
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .forget_subject(&mut transaction, &an_idea(idea), at)
             .await?;

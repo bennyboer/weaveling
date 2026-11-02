@@ -16,6 +16,8 @@ tokio = { workspace = true, features = ["macros", "rt", "time"] }
 
 live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveling-live", features = ["testing"] }
 live-contract = { version = "0.1.0", path = "../../../libraries/live-contract", package = "weaveling-live-contract" }
+clock = { version = "0.1.0", path = "../../../libraries/clock", package = "weaveling-clock" }
+inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../libraries/messaging", package = "weaveling-messaging" }
 
 statistics-catalog = { version = "0.1.0", path = "../adapters/catalog", package = "weaveling-statistics-catalog" }

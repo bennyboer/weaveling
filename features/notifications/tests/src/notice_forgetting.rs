@@ -66,7 +66,7 @@ impl Kept {
 
     async fn catalogued(&self, notice: &NoticeId) {
         self.notifications
-            .catalogue(notice)
+            .catalogue(None, notice)
             .await
             .expect("cataloguing should succeed");
     }
@@ -165,7 +165,7 @@ async fn a_notice_of_a_deleted_project_is_forgotten_at_once() {
     let kept = kept();
     let notice = kept.noted().await;
     kept.notifications
-        .lay_project_tombstone(&ProjectLink::from("project_1"), NOTED_AT)
+        .lay_project_tombstone(None, &ProjectLink::from("project_1"), NOTED_AT)
         .await
         .expect("laying a tombstone should succeed");
 
@@ -183,7 +183,7 @@ fn notices_are_kept_thirty_days_dismissed_and_ninety_not() {
 async fn a_project_tombstone_forgotten_is_forgotten_for_good() {
     let kept = kept();
     kept.notifications
-        .lay_project_tombstone(&ProjectLink::from("project_1"), NOTED_AT)
+        .lay_project_tombstone(None, &ProjectLink::from("project_1"), NOTED_AT)
         .await
         .expect("laying a tombstone should succeed");
 

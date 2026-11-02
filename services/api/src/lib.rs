@@ -171,6 +171,11 @@ impl Adapters {
         self.features
             .iter()
             .flat_map(|feature| feature.chores.clone())
+            .chain(
+                self.accounts
+                    .iter()
+                    .flat_map(|accounts| accounts.chores.clone()),
+            )
             .collect()
     }
 

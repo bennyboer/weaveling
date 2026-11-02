@@ -5,7 +5,9 @@ use accounts_core::{AccountCatalog, AccountEvent, AccountsCore, SecretStores, Si
 use accounts_messaging::{CatalogueAccountsListener, KeepInvitationTicketsListener};
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
+use chores::{Chore, ForgetOldTombstones};
 use eventsourcing::EventStore;
+use inbox::{HeardMessages, InMemoryInbox, Inbox, Inboxed};
 use mailing::{LoggingMailer, Mailer};
 use messaging::Listener;
 use outbox::Outbox;
@@ -18,6 +20,7 @@ pub struct Ports {
     pub transactions: Arc<dyn Transactions>,
     pub secrets: SecretStores,
     pub catalog: Arc<dyn AccountCatalog>,
+    pub inbox: Arc<dyn Inbox>,
     pub mailer: Arc<dyn Mailer>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -34,14 +37,35 @@ pub fn core(ports: &Ports, context: &Context) -> AccountsCore {
 }
 
 pub fn wire(ports: &Ports, context: &Context) -> Wired {
-    Wired::serving(accounts_rest::router(core(ports, context))).listening(listeners(ports, context))
+    Wired::serving(accounts_rest::router(core(ports, context)))
+        .listening(listeners(ports, context))
+        .doing_chores(chores(ports, context))
 }
 
 fn listeners(ports: &Ports, context: &Context) -> Vec<Arc<dyn Listener>> {
     vec![
-        Arc::new(CatalogueAccountsListener::new(core(ports, context))),
-        Arc::new(KeepInvitationTicketsListener::new(core(ports, context))),
+        Arc::new(Inboxed::new(
+            CatalogueAccountsListener::new(core(ports, context)),
+            ports.transactions.clone(),
+            ports.inbox.clone(),
+        )),
+        Arc::new(Inboxed::new(
+            KeepInvitationTicketsListener::new(core(ports, context)),
+            ports.transactions.clone(),
+            ports.inbox.clone(),
+        )),
     ]
+}
+
+fn chores(ports: &Ports, context: &Context) -> Vec<Arc<dyn Chore>> {
+    vec![Arc::new(ForgetOldTombstones::new(
+        "forget-old-account-hearings",
+        Arc::new(HeardMessages::of(
+            ports.inbox.clone(),
+            ports.transactions.clone(),
+        )),
+        context.clock.clone(),
+    ))]
 }
 
 pub struct AssembledAccounts {
@@ -50,6 +74,7 @@ pub struct AssembledAccounts {
     pub core: AccountsCore,
     pub outbox: Arc<dyn Outbox>,
     pub listeners: Vec<Arc<dyn Listener>>,
+    pub chores: Vec<Arc<dyn Chore>>,
 }
 
 pub async fn assembled_accounts(
@@ -66,6 +91,7 @@ pub async fn assembled_accounts(
         core(&ports, context),
         ports.outbox.clone(),
         listeners(&ports, context),
+        chores(&ports, context),
     ))
 }
 
@@ -74,6 +100,7 @@ impl AssembledAccounts {
         core: AccountsCore,
         outbox: Arc<dyn Outbox>,
         listeners: Vec<Arc<dyn Listener>>,
+        chores: Vec<Arc<dyn Chore>>,
     ) -> Self {
         Self {
             open_routes: accounts_rest::router(core.clone()),
@@ -81,6 +108,7 @@ impl AssembledAccounts {
             core,
             outbox,
             listeners,
+            chores,
         }
     }
 
@@ -89,6 +117,7 @@ impl AssembledAccounts {
             self.core.signing_up(signing_up),
             self.outbox,
             self.listeners,
+            self.chores,
         )
     }
 }
@@ -113,6 +142,7 @@ impl Feature for AccountFeature {
             transactions,
             secrets: SecretStores::kept_by(secrets, Arc::new(InMemoryThrottles::default())),
             catalog: Arc::new(InMemoryAccountCatalog::new()),
+            inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
         }
@@ -138,6 +168,7 @@ impl Feature for AccountFeature {
             transactions,
             secrets: SecretStores::kept_by(secrets, throttles),
             catalog: Arc::new(accounts_catalog::PostgresAccountCatalog::new(pool)),
+            inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
         })
@@ -151,6 +182,7 @@ impl Feature for AccountFeature {
             accounts_secrets::postgres::migrations(),
             accounts_catalog::postgres::migrations(),
             throttling::postgres::migrations(),
+            inbox::postgres::migrations(),
         ]
     }
 
@@ -174,6 +206,7 @@ impl Feature for AccountFeature {
             transactions,
             secrets: SecretStores::kept_by(secrets, throttles),
             catalog: Arc::new(accounts_catalog::SqliteAccountCatalog::new(pool)),
+            inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             mailer: Arc::new(LoggingMailer),
             outbox,
         })
@@ -187,6 +220,7 @@ impl Feature for AccountFeature {
             accounts_secrets::sqlite::migrations(),
             accounts_catalog::sqlite::migrations(),
             throttling::sqlite::migrations(),
+            inbox::sqlite::migrations(),
         ]
     }
 

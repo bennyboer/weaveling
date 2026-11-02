@@ -7,7 +7,9 @@ pub use ticketing::KeepInvitationTicketsListener;
 use accounts_contract::EVERY_ACCOUNT;
 use accounts_core::{AccountId, AccountsCore};
 use async_trait::async_trait;
-use messaging::{Failure, Handler, Message};
+use inbox::{KeptHandler, Refused};
+use messaging::Message;
+use transacting::Transaction;
 
 pub struct CatalogueAccountsListener {
     accounts: AccountsCore,
@@ -20,15 +22,22 @@ impl CatalogueAccountsListener {
 }
 
 #[async_trait]
-impl Handler for CatalogueAccountsListener {
+impl KeptHandler for CatalogueAccountsListener {
     const NAME: &'static str = "catalogue-account";
     const LISTENS_TO: &'static [&'static str] = &[EVERY_ACCOUNT];
     const WHEN_REFUSED: &'static str = "A change to an account did not reach the list of accounts.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
-        Ok(self
-            .accounts
-            .catalogue(&eventpublishing::aggregate_in::<AccountId>(message)?)
-            .await?)
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
+        self.accounts
+            .catalogue(
+                Some(transaction),
+                &eventpublishing::aggregate_in::<AccountId>(message)?,
+            )
+            .await
+            .map_err(Refused::of)
     }
 }

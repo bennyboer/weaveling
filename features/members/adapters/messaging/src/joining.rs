@@ -1,7 +1,9 @@
 use async_trait::async_trait;
+use inbox::{KeptHandler, Refused};
 use invitations_contract::{ACCEPTED, InvitationEventDTO, ScopeDTO, role};
 use members_core::{MembersCore, Role};
-use messaging::{Failure, Handler, Message};
+use messaging::Message;
+use transacting::Transaction;
 
 const AN_ACCOUNT: &str = "account";
 
@@ -16,12 +18,16 @@ impl JoinByAcceptedInvitationListener {
 }
 
 #[async_trait]
-impl Handler for JoinByAcceptedInvitationListener {
+impl KeptHandler for JoinByAcceptedInvitationListener {
     const NAME: &'static str = "join-by-accepted-invitation";
     const LISTENS_TO: &'static [&'static str] = &[ACCEPTED];
     const WHEN_REFUSED: &'static str = "Someone who took up an invitation into a project did not join it, so it stays out of their reach.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
         let accepted = eventpublishing::published_in::<InvitationEventDTO>(message)?;
         let InvitationEventDTO::Accepted { scope } = accepted.event.body else {
             return Err("an acceptance tells no scope".into());
@@ -34,7 +40,10 @@ impl Handler for JoinByAcceptedInvitationListener {
         };
         let role = to_role(&role).ok_or_else(|| format!("{role:?} is no role"))?;
 
-        Ok(self.members.join(&project, &account, role).await?)
+        self.members
+            .join(Some(transaction), &project, &account, role)
+            .await
+            .map_err(Refused::of)
     }
 }
 
@@ -61,12 +70,14 @@ mod tests {
     use time::OffsetDateTime;
     use transacting::InMemoryTransactions;
 
+    use inbox::{InMemoryInbox, Inboxed};
+
     use super::*;
 
     struct Bench {
         store: Arc<InMemoryEventStore<MembersEvent>>,
         members: MembersCore,
-        listener: JoinByAcceptedInvitationListener,
+        listener: Inboxed<JoinByAcceptedInvitationListener>,
     }
 
     async fn founded() -> Bench {
@@ -79,12 +90,18 @@ mod tests {
             Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
         );
         members
-            .found("project_1", "account_ada")
+            .found(None, "project_1", "account_ada")
             .await
             .expect("founding should succeed");
 
         Bench {
-            listener: JoinByAcceptedInvitationListener::new(members.clone()),
+            listener: Inboxed::new(
+                JoinByAcceptedInvitationListener::new(members.clone()),
+                Arc::new(InMemoryTransactions::new()),
+                Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
+                    OffsetDateTime::UNIX_EPOCH,
+                )))),
+            ),
             members,
             store,
         }
@@ -138,7 +155,7 @@ mod tests {
             for _ in 0..2 {
                 bench
                     .listener
-                    .take_in(&accepted(into_the_project_as(named), bo()))
+                    .handle(&accepted(into_the_project_as(named), bo()))
                     .await
                     .expect("messages come at least once");
             }
@@ -158,13 +175,13 @@ mod tests {
         let bench = founded().await;
         bench
             .members
-            .join("project_1", "account_bo", Role::Reader)
+            .join(None, "project_1", "account_bo", Role::Reader)
             .await
             .expect("joining should succeed");
 
         bench
             .listener
-            .take_in(&accepted(into_the_project_as("author"), bo()))
+            .handle(&accepted(into_the_project_as("author"), bo()))
             .await
             .expect("an owner changes a member's role; an invitation is no way around that");
 
@@ -183,7 +200,7 @@ mod tests {
 
         bench
             .listener
-            .take_in(&accepted(json!({ "kind": "instance" }), bo()))
+            .handle(&accepted(json!({ "kind": "instance" }), bo()))
             .await
             .expect("there is nothing to join");
 
@@ -214,7 +231,7 @@ mod tests {
                 OffsetDateTime::UNIX_EPOCH,
             ),
         ] {
-            assert!(bench.listener.take_in(&unreadable).await.is_err());
+            assert!(bench.listener.handle(&unreadable).await.is_err());
         }
         assert!(joined(&bench).await.is_empty());
     }

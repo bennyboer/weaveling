@@ -5,7 +5,7 @@ use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
 use registry::Registry;
-use transacting::{Transaction, Transactions};
+use transacting::Transaction;
 
 use crate::board::{Board, BoardCommand, BoardEvent, KIND, ProjectLink};
 use crate::error::BoardsError;
@@ -26,16 +26,11 @@ pub struct Open {
 impl BoardService {
     pub fn new(
         store: Arc<dyn EventStore<BoardEvent>>,
-        transactions: Arc<dyn Transactions>,
         registry: Arc<dyn Registry>,
         clock: Arc<dyn Clock>,
     ) -> Self {
         Self {
-            events: Arc::new(EventSourcingService::new(
-                store,
-                transactions,
-                clock.clone(),
-            )),
+            events: Arc::new(EventSourcingService::new(store, clock.clone())),
             registry,
             clock,
         }
@@ -61,7 +56,7 @@ impl BoardService {
         if id == mine {
             self.events
                 .begin(
-                    Some(transaction),
+                    transaction,
                     &AggregateId::from(&id),
                     BoardCommand::Start {
                         project: project.clone(),
@@ -91,12 +86,12 @@ impl BoardService {
         let landed = match expected {
             Some(expected) => {
                 self.events
-                    .execute_at(Some(transaction), &key, expected, command, agent)
+                    .execute_at(transaction, &key, expected, command, agent)
                     .await?
             }
             None => {
                 self.events
-                    .execute(Some(transaction), &key, command, agent)
+                    .execute(transaction, &key, command, agent)
                     .await?
             }
         };

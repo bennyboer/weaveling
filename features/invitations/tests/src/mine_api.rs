@@ -28,11 +28,14 @@ fn grace() -> Acting {
 async fn known(wired: &Wired, account: &str, name: &str, email: &str) {
     wired
         .invitations
-        .remember_person(&Person {
-            account: AccountId::from(account),
-            name: name.to_owned(),
-            email: EmailAddress::new(email).expect("a plain address"),
-        })
+        .remember_person(
+            None,
+            &Person {
+                account: AccountId::from(account),
+                name: name.to_owned(),
+                email: EmailAddress::new(email).expect("a plain address"),
+            },
+        )
         .await
         .expect("remembering should succeed");
 }
@@ -80,11 +83,14 @@ async fn an_account_is_told_the_open_invitations_into_projects_to_its_address_ne
     known(&wired, "account_grace", "Grace Hopper", "grace@example.com").await;
     wired
         .invitations
-        .remember_project_name(&ProjectName {
-            project: ProjectLink::from("project_loom"),
-            version: Version::of(1),
-            name: "The Loom".to_owned(),
-        })
+        .remember_project_name(
+            None,
+            &ProjectName {
+                project: ProjectLink::from("project_loom"),
+                version: Version::of(1),
+                name: "The Loom".to_owned(),
+            },
+        )
         .await
         .expect("remembering should succeed");
 

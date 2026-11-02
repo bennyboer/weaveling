@@ -87,7 +87,7 @@ impl Wired {
                 .0;
 
             self.ideas
-                .catalogue(&id)
+                .catalogue(None, &id)
                 .await
                 .expect("cataloguing should succeed");
             captured.push(id);
@@ -138,7 +138,7 @@ impl Wired {
             .expect("listing should succeed")
         {
             self.ideas
-                .catalogue(&summary.id)
+                .catalogue(None, &summary.id)
                 .await
                 .expect("cataloguing should succeed");
         }

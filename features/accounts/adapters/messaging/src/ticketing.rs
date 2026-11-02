@@ -1,8 +1,10 @@
 use accounts_core::{AccountsCore, EmailAddress, InvitationScope, InvitationTicket, TokenDigest};
 use async_trait::async_trait;
 use clock::text;
+use inbox::{KeptHandler, Refused};
 use invitations_contract::{DECLINED, ISSUED, InvitationEventDTO, RETIRED, ScopeDTO, WITHDRAWN};
-use messaging::{Failure, Handler, Message};
+use messaging::Message;
+use transacting::Transaction;
 
 pub struct KeepInvitationTicketsListener {
     accounts: AccountsCore,
@@ -15,12 +17,16 @@ impl KeepInvitationTicketsListener {
 }
 
 #[async_trait]
-impl Handler for KeepInvitationTicketsListener {
+impl KeptHandler for KeepInvitationTicketsListener {
     const NAME: &'static str = "keep-invitation-tickets";
     const LISTENS_TO: &'static [&'static str] = &[ISSUED, WITHDRAWN, DECLINED, RETIRED];
     const WHEN_REFUSED: &'static str = "An invitation did not reach accounts, so its link may not let its address sign up, or still may after being withdrawn or turned down.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Refused> {
         let told = eventpublishing::published_in::<InvitationEventDTO>(message)?;
         let invitation = told.aggregate.id;
 
@@ -43,17 +49,21 @@ impl Handler for KeepInvitationTicketsListener {
                     by_an_operator,
                 };
 
-                Ok(self
-                    .accounts
-                    .keep_invitation_ticket(&TokenDigest::kept(digest), &ticket)
-                    .await?)
+                self.accounts
+                    .keep_invitation_ticket(Some(transaction), &TokenDigest::kept(digest), &ticket)
+                    .await
+                    .map_err(Refused::of)
             }
-            InvitationEventDTO::Withdrawn | InvitationEventDTO::Declined { .. } => {
-                Ok(self.accounts.forget_invitation_ticket(&invitation).await?)
-            }
-            InvitationEventDTO::Retired => {
-                Ok(self.accounts.drop_invitation_ticket(&invitation).await?)
-            }
+            InvitationEventDTO::Withdrawn | InvitationEventDTO::Declined { .. } => self
+                .accounts
+                .forget_invitation_ticket(Some(transaction), &invitation)
+                .await
+                .map_err(Refused::of),
+            InvitationEventDTO::Retired => self
+                .accounts
+                .drop_invitation_ticket(Some(transaction), &invitation)
+                .await
+                .map_err(Refused::of),
             InvitationEventDTO::Accepted { .. } => Ok(()),
         }
     }
