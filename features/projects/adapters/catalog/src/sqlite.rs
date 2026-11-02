@@ -10,14 +10,15 @@ use transacting::Transaction;
 use transacting::sqlite::connection;
 
 const REMEMBER: &str = "
-    INSERT INTO project_summaries (project, version, name, created_at, updated_at)
-    SELECT ?1, ?2, ?3, ?4, ?5
+    INSERT INTO project_summaries (project, version, name, created_at, updated_at, trashed_until)
+    SELECT ?1, ?2, ?3, ?4, ?5, ?6
     WHERE NOT EXISTS (SELECT 1 FROM project_tombstones WHERE project = ?1)
     ON CONFLICT (project) DO UPDATE
     SET version    = excluded.version,
         name       = excluded.name,
         created_at = excluded.created_at,
-        updated_at = excluded.updated_at
+        updated_at = excluded.updated_at,
+        trashed_until = excluded.trashed_until
     WHERE project_summaries.version < excluded.version
 ";
 
@@ -36,15 +37,23 @@ const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
 ";
 
 const ALL: &str = "
-    SELECT project, version, name, created_at, updated_at
+    SELECT project, version, name, created_at, updated_at, trashed_until
     FROM project_summaries
+    WHERE trashed_until IS NULL
     ORDER BY project DESC
 ";
 
-const AMONG: &str = "
-    SELECT project, version, name, created_at, updated_at
+const IN_THE_TRASH: &str = "
+    SELECT project, version, name, created_at, updated_at, trashed_until
     FROM project_summaries
-    WHERE project IN (SELECT value FROM json_each(?1))
+    WHERE trashed_until IS NOT NULL
+    ORDER BY trashed_until, project
+";
+
+const AMONG: &str = "
+    SELECT project, version, name, created_at, updated_at, trashed_until
+    FROM project_summaries
+    WHERE project IN (SELECT value FROM json_each(?1)) AND trashed_until IS NULL
     ORDER BY project DESC
 ";
 
@@ -76,6 +85,7 @@ fn to_summary(row: &SqliteRow) -> Result<ProjectSummary, CatalogError> {
     let name: String = row.try_get("name").map_err(unreachable)?;
     let created_at: String = row.try_get("created_at").map_err(unreachable)?;
     let updated_at: String = row.try_get("updated_at").map_err(unreachable)?;
+    let trashed_until: Option<String> = row.try_get("trashed_until").map_err(unreachable)?;
 
     Ok(ProjectSummary {
         id: project.parse().map_err(unreachable)?,
@@ -83,6 +93,9 @@ fn to_summary(row: &SqliteRow) -> Result<ProjectSummary, CatalogError> {
         name: ProjectName::new(&name).map_err(unreachable)?,
         created_at: text::read(&created_at).ok_or_else(|| unreadable("created_at", &created_at))?,
         updated_at: text::read(&updated_at).ok_or_else(|| unreadable("updated_at", &updated_at))?,
+        trashed_until: trashed_until
+            .map(|until| text::read(&until).ok_or_else(|| unreadable("trashed_until", &until)))
+            .transpose()?,
     })
 }
 
@@ -99,6 +112,7 @@ impl ProjectCatalog for SqliteProjectCatalog {
             .bind(summary.name.as_str())
             .bind(text::written(summary.created_at))
             .bind(text::written(summary.updated_at))
+            .bind(summary.trashed_until.map(text::written))
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
@@ -144,6 +158,15 @@ impl ProjectCatalog for SqliteProjectCatalog {
 
     async fn all(&self) -> Result<Vec<ProjectSummary>, CatalogError> {
         let found = sqlx::query(ALL)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        found.iter().map(to_summary).collect()
+    }
+
+    async fn in_the_trash(&self) -> Result<Vec<ProjectSummary>, CatalogError> {
+        let found = sqlx::query(IN_THE_TRASH)
             .fetch_all(&self.pool)
             .await
             .map_err(unreachable)?;

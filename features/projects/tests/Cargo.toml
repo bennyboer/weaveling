@@ -5,6 +5,8 @@ edition.workspace = true
 
 [dev-dependencies]
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
+chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
+trash = { version = "0.1.0", path = "../../../libraries/trash", package = "weaveling-trash" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 async-trait = { workspace = true }
 authorizing = { version = "0.1.0", path = "../../../libraries/authorizing", package = "weaveling-authorizing" }

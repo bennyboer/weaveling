@@ -4952,6 +4952,7 @@ dependencies = [
  "weaveling-projects-contract",
  "weaveling-quotation",
  "weaveling-transacting",
+ "weaveling-trash",
  "weaveling-words",
 ]
 
@@ -5008,6 +5009,7 @@ dependencies = [
  "time",
  "tokio",
  "weaveling-authorizing",
+ "weaveling-chores",
  "weaveling-clock",
  "weaveling-eventsourcing",
  "weaveling-inbox",
@@ -5021,6 +5023,7 @@ dependencies = [
  "weaveling-projects-messaging",
  "weaveling-projects-wiring",
  "weaveling-transacting",
+ "weaveling-trash",
  "weaveling-wiring",
 ]
 
@@ -5044,6 +5047,7 @@ dependencies = [
  "weaveling-projects-rest",
  "weaveling-projects-store",
  "weaveling-transacting",
+ "weaveling-trash",
  "weaveling-wiring",
 ]
 

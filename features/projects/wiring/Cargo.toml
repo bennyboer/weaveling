@@ -25,7 +25,8 @@ projects-catalog = { version = "0.1.0", path = "../adapters/catalog", package = 
 projects-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-projects-store" }
 transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
+trash = { version = "0.1.0", path = "../../../libraries/trash", package = "weaveling-trash" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "projects-catalog/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "projects-catalog/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "eventsourcing/postgres", "outbox/postgres", "inbox/postgres", "trash/postgres", "projects-catalog/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "eventsourcing/sqlite", "outbox/sqlite", "inbox/sqlite", "trash/sqlite", "projects-catalog/sqlite"]

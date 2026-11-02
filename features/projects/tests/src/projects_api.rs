@@ -339,7 +339,7 @@ async fn deleting_a_project_answers_204_and_it_is_gone() {
 }
 
 #[tokio::test]
-async fn a_deleted_project_refuses_to_be_renamed() {
+async fn a_project_in_the_trash_refuses_to_be_renamed() {
     let server = a_server();
     let created = a_project_named(&server, "Abandoned").await;
     server
@@ -352,7 +352,7 @@ async fn a_deleted_project_refuses_to_be_renamed() {
         .json(&renamed("Too late"))
         .await;
 
-    refused_as(&response, StatusCode::CONFLICT, refused::DELETED);
+    refused_as(&response, StatusCode::CONFLICT, refused::TRASHED);
 }
 
 #[tokio::test]

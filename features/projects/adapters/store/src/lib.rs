@@ -23,6 +23,11 @@ enum StoredProjectEvent {
     QuotationChanged {
         quotation: String,
     },
+    Trashed {
+        #[serde(with = "time::serde::rfc3339")]
+        until: OffsetDateTime,
+    },
+    Restored,
     Deleted,
     Snapshotted {
         name: String,
@@ -34,6 +39,8 @@ enum StoredProjectEvent {
         created_at: OffsetDateTime,
         #[serde(with = "time::serde::rfc3339")]
         updated_at: OffsetDateTime,
+        #[serde(default, with = "time::serde::rfc3339::option")]
+        trashed_until: Option<OffsetDateTime>,
         deleted: bool,
     },
 }
@@ -69,12 +76,15 @@ impl From<&ProjectEvent> for StoredProjectEvent {
             ProjectEvent::QuotationChanged(style) => Self::QuotationChanged {
                 quotation: style.name().to_owned(),
             },
+            ProjectEvent::Trashed { until } => Self::Trashed { until: *until },
+            ProjectEvent::Restored => Self::Restored,
             ProjectEvent::Deleted => Self::Deleted,
             ProjectEvent::Snapshotted {
                 name,
                 details,
                 created_at,
                 updated_at,
+                trashed_until,
                 deleted,
             } => Self::Snapshotted {
                 name: name.as_str().to_owned(),
@@ -83,6 +93,7 @@ impl From<&ProjectEvent> for StoredProjectEvent {
                 description: details.description.to_string(),
                 created_at: *created_at,
                 updated_at: *updated_at,
+                trashed_until: *trashed_until,
                 deleted: *deleted,
             },
         }
@@ -143,6 +154,8 @@ impl TryFrom<StoredProjectEvent> for ProjectEvent {
             StoredProjectEvent::QuotationChanged { quotation } => {
                 Self::QuotationChanged(QuotationMarks::new(&quotation)?)
             }
+            StoredProjectEvent::Trashed { until } => Self::Trashed { until },
+            StoredProjectEvent::Restored => Self::Restored,
             StoredProjectEvent::Deleted => Self::Deleted,
             StoredProjectEvent::Snapshotted {
                 name,
@@ -151,12 +164,14 @@ impl TryFrom<StoredProjectEvent> for ProjectEvent {
                 description,
                 created_at,
                 updated_at,
+                trashed_until,
                 deleted,
             } => Self::Snapshotted {
                 name: ProjectName::new(&name)?,
                 details: details_of(language, quotation, &description)?,
                 created_at,
                 updated_at,
+                trashed_until,
                 deleted,
             },
         })
@@ -203,12 +218,23 @@ A war.",
             ProjectEvent::DetailsChanged(a_description()),
             ProjectEvent::DetailsChanged(ProjectDetails::default()),
             ProjectEvent::QuotationChanged(QuotationMarks::SpacedOut),
+            ProjectEvent::Trashed { until: at(3_000) },
+            ProjectEvent::Restored,
             ProjectEvent::Deleted,
             ProjectEvent::Snapshotted {
                 name: a_name("The Weaver's Apprentice"),
                 details: a_description(),
                 created_at: at(1_000),
                 updated_at: at(2_000),
+                trashed_until: None,
+                deleted: false,
+            },
+            ProjectEvent::Snapshotted {
+                name: a_name("In the trash"),
+                details: ProjectDetails::default(),
+                created_at: at(1_000),
+                updated_at: at(2_000),
+                trashed_until: Some(at(3_000)),
                 deleted: false,
             },
             ProjectEvent::Snapshotted {
@@ -216,6 +242,7 @@ A war.",
                 details: ProjectDetails::default(),
                 created_at: at(1_000),
                 updated_at: at(2_000),
+                trashed_until: Some(at(3_000)),
                 deleted: true,
             },
         ] {
@@ -230,6 +257,7 @@ A war.",
             details: ProjectDetails::default(),
             created_at: at(1_000),
             updated_at: at(2_000),
+            trashed_until: None,
             deleted: false,
         });
 
@@ -238,6 +266,30 @@ A war.",
             serde_json::json!("1970-01-01T00:16:40Z"),
             "a jsonb body is read by people debugging, so the moments are RFC 3339 rather than \
              a count of seconds nobody can decode by eye"
+        );
+    }
+
+    #[test]
+    fn a_snapshot_written_before_the_trash_reads_as_not_in_it() {
+        let written = serde_json::json!({ "Snapshotted": {
+            "name": "Older",
+            "language": null,
+            "description": "",
+            "created_at": "1970-01-01T00:16:40Z",
+            "updated_at": "1970-01-01T00:33:20Z",
+            "deleted": false,
+        } });
+
+        assert_eq!(
+            (codec().event)(written),
+            Some(ProjectEvent::Snapshotted {
+                name: a_name("Older"),
+                details: ProjectDetails::default(),
+                created_at: at(1_000),
+                updated_at: at(2_000),
+                trashed_until: None,
+                deleted: false,
+            })
         );
     }
 

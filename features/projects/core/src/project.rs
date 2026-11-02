@@ -24,6 +24,8 @@ const STARTED: EventName = EventName::of("STARTED");
 const RENAMED: EventName = EventName::of("RENAMED");
 const DETAILS_CHANGED: EventName = EventName::of("DETAILS_CHANGED");
 const QUOTATION_CHANGED: EventName = EventName::of("QUOTATION_CHANGED");
+const TRASHED: EventName = EventName::of("TRASHED");
+const RESTORED: EventName = EventName::of("RESTORED");
 const DELETED: EventName = EventName::of("DELETED");
 const SNAPSHOTTED: EventName = EventName::of("SNAPSHOTTED");
 
@@ -32,6 +34,8 @@ pub enum ProjectCommand {
     Start(ProjectName, ProjectDetails),
     Rename(ProjectName),
     ChangeDetails(ProjectDetails),
+    Trash { until: OffsetDateTime },
+    Restore,
     Delete,
 }
 
@@ -41,12 +45,17 @@ pub enum ProjectEvent {
     Renamed(ProjectName),
     DetailsChanged(ProjectDetails),
     QuotationChanged(QuotationMarks),
+    Trashed {
+        until: OffsetDateTime,
+    },
+    Restored,
     Deleted,
     Snapshotted {
         name: ProjectName,
         details: ProjectDetails,
         created_at: OffsetDateTime,
         updated_at: OffsetDateTime,
+        trashed_until: Option<OffsetDateTime>,
         deleted: bool,
     },
 }
@@ -58,6 +67,7 @@ pub struct Project {
     details: ProjectDetails,
     created_at: OffsetDateTime,
     updated_at: OffsetDateTime,
+    trashed_until: Option<OffsetDateTime>,
     deleted: bool,
 }
 
@@ -69,6 +79,12 @@ pub enum ProjectError {
     AlreadyStarted,
     #[error("a deleted project accepts no changes")]
     Deleted,
+    #[error("a project in the trash accepts no changes but being restored")]
+    Trashed,
+    #[error("a project not in the trash cannot be restored or purged")]
+    NotTrashed,
+    #[error("a project in the trash cannot be put there again")]
+    AlreadyTrashed,
 }
 
 impl Project {
@@ -91,6 +107,14 @@ impl Project {
     pub fn is_deleted(&self) -> bool {
         self.deleted
     }
+
+    pub fn trashed_until(&self) -> Option<OffsetDateTime> {
+        self.trashed_until
+    }
+
+    pub fn is_trashed(&self) -> bool {
+        self.trashed_until.is_some()
+    }
 }
 
 impl Event for ProjectEvent {
@@ -100,6 +124,8 @@ impl Event for ProjectEvent {
             Self::Renamed(..) => RENAMED,
             Self::DetailsChanged(..) => DETAILS_CHANGED,
             Self::QuotationChanged(..) => QUOTATION_CHANGED,
+            Self::Trashed { .. } => TRASHED,
+            Self::Restored => RESTORED,
             Self::Deleted => DELETED,
             Self::Snapshotted { .. } => SNAPSHOTTED,
         }
@@ -147,6 +173,7 @@ impl Aggregate for Project {
                 details: ProjectDetails::default(),
                 created_at: metadata.occurred_at,
                 updated_at: metadata.occurred_at,
+                trashed_until: None,
                 deleted: false,
             }),
             ProjectEvent::Snapshotted {
@@ -154,6 +181,7 @@ impl Aggregate for Project {
                 details,
                 created_at,
                 updated_at,
+                trashed_until,
                 deleted,
             } => Some(Self {
                 id: metadata.aggregate.to_string(),
@@ -161,6 +189,7 @@ impl Aggregate for Project {
                 details: details.clone(),
                 created_at: *created_at,
                 updated_at: *updated_at,
+                trashed_until: *trashed_until,
                 deleted: *deleted,
             }),
             _ => None,
@@ -178,6 +207,14 @@ impl Aggregate for Project {
 
         match command {
             ProjectCommand::Start(..) => Err(ProjectError::AlreadyStarted),
+            ProjectCommand::Trash { .. } if self.is_trashed() => Err(ProjectError::AlreadyTrashed),
+            ProjectCommand::Trash { until } => Ok(vec![ProjectEvent::Trashed { until }]),
+            ProjectCommand::Restore | ProjectCommand::Delete if !self.is_trashed() => {
+                Err(ProjectError::NotTrashed)
+            }
+            ProjectCommand::Restore => Ok(vec![ProjectEvent::Restored]),
+            ProjectCommand::Delete => Ok(vec![ProjectEvent::Deleted]),
+            _ if self.is_trashed() => Err(ProjectError::Trashed),
             ProjectCommand::Rename(to) => {
                 if to == self.name {
                     return Ok(vec![]);
@@ -197,7 +234,6 @@ impl Aggregate for Project {
                     .chain(restyled)
                     .collect())
             }
-            ProjectCommand::Delete => Ok(vec![ProjectEvent::Deleted]),
         }
     }
 
@@ -213,6 +249,14 @@ impl Aggregate for Project {
                 self.updated_at = metadata.occurred_at;
             }
             ProjectEvent::QuotationChanged(..) => {}
+            ProjectEvent::Trashed { until } => {
+                self.trashed_until = Some(*until);
+                self.updated_at = metadata.occurred_at;
+            }
+            ProjectEvent::Restored => {
+                self.trashed_until = None;
+                self.updated_at = metadata.occurred_at;
+            }
             ProjectEvent::Deleted => {
                 self.deleted = true;
                 self.updated_at = metadata.occurred_at;
@@ -222,12 +266,14 @@ impl Aggregate for Project {
                 details,
                 created_at,
                 updated_at,
+                trashed_until,
                 deleted,
             } => {
                 self.name = name.clone();
                 self.details = details.clone();
                 self.created_at = *created_at;
                 self.updated_at = *updated_at;
+                self.trashed_until = *trashed_until;
                 self.deleted = *deleted;
             }
         }
@@ -239,6 +285,7 @@ impl Aggregate for Project {
             details: self.details.clone(),
             created_at: self.created_at,
             updated_at: self.updated_at,
+            trashed_until: self.trashed_until,
             deleted: self.deleted,
         }
     }

@@ -70,7 +70,10 @@ impl KeptHandler for RememberProjectNamesListener {
 
                 Ok(())
             }
-            ProjectEventDTO::DetailsChanged { .. } | ProjectEventDTO::QuotationChanged { .. } => {
+            ProjectEventDTO::DetailsChanged { .. }
+            | ProjectEventDTO::QuotationChanged { .. }
+            | ProjectEventDTO::Trashed { .. }
+            | ProjectEventDTO::Restored => {
                 Err("this tells neither a project's name nor that it was deleted".into())
             }
         }

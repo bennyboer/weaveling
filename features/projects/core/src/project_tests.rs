@@ -118,16 +118,26 @@ fn a_project_cannot_be_started_twice() {
     );
 }
 
+fn a_trashed_project() -> Project {
+    let mut project = a_started_project();
+    project.apply(
+        &ProjectEvent::Trashed { until: at(9_000) },
+        &stamped(2, at(2_000)),
+    );
+
+    project
+}
+
 #[test]
 fn deleting_marks_the_project_without_erasing_what_it_was() {
-    let mut project = a_started_project();
+    let mut project = a_trashed_project();
 
     let events = project
         .decide(ProjectCommand::Delete, &an_author())
         .expect("deleting should succeed");
     assert_eq!(events, vec![ProjectEvent::Deleted]);
 
-    project.apply(&events[0], &stamped(2, at(2_000)));
+    project.apply(&events[0], &stamped(3, at(3_000)));
 
     assert!(project.is_deleted());
     assert_eq!(
@@ -182,6 +192,8 @@ fn every_event_says_its_own_name() {
             ProjectEvent::QuotationChanged(QuotationMarks::Curly),
             "QUOTATION_CHANGED",
         ),
+        (ProjectEvent::Trashed { until: at(9_000) }, "TRASHED"),
+        (ProjectEvent::Restored, "RESTORED"),
         (ProjectEvent::Deleted, "DELETED"),
         (a_started_project().snapshot(), "SNAPSHOTTED"),
     ] {
@@ -354,4 +366,83 @@ fn a_project_is_its_own_context_and_stays_so_through_a_snapshot() {
 
     assert_eq!(project.context().get(PROJECT), Some("project_1"));
     assert_eq!(rebuilt.context().get(PROJECT), Some("project_1"));
+}
+
+#[test]
+fn trashing_keeps_the_project_until_the_moment_it_is_told() {
+    let mut project = a_started_project();
+
+    let events = project
+        .decide(ProjectCommand::Trash { until: at(9_000) }, &an_author())
+        .expect("trashing should succeed");
+    assert_eq!(events, vec![ProjectEvent::Trashed { until: at(9_000) }]);
+    project.apply(&events[0], &stamped(2, at(2_000)));
+
+    assert!(project.is_trashed());
+    assert_eq!(project.trashed_until(), Some(at(9_000)));
+    assert!(!project.is_deleted(), "in the trash is not deleted yet");
+}
+
+#[test]
+fn a_project_in_the_trash_takes_no_change_and_is_not_trashed_twice() {
+    let project = a_trashed_project();
+
+    for command in [
+        ProjectCommand::Rename(a_name("Renamed")),
+        ProjectCommand::ChangeDetails(some_details()),
+    ] {
+        assert_eq!(
+            project.decide(command, &an_author()),
+            Err(ProjectError::Trashed)
+        );
+    }
+    assert_eq!(
+        project.decide(ProjectCommand::Trash { until: at(99_000) }, &an_author()),
+        Err(ProjectError::AlreadyTrashed),
+        "trashing again would move when it is purged"
+    );
+}
+
+#[test]
+fn restoring_takes_the_project_out_of_the_trash_as_it_was() {
+    let mut project = a_trashed_project();
+
+    let events = project
+        .decide(ProjectCommand::Restore, &an_author())
+        .expect("restoring should succeed");
+    assert_eq!(events, vec![ProjectEvent::Restored]);
+    project.apply(&events[0], &stamped(3, at(3_000)));
+
+    assert!(!project.is_trashed());
+    assert_eq!(project.trashed_until(), None);
+    assert_eq!(
+        project.decide(ProjectCommand::Rename(a_name("Renamed")), &an_author()),
+        Ok(vec![ProjectEvent::Renamed(a_name("Renamed"))]),
+        "a project restored takes changes again"
+    );
+}
+
+#[test]
+fn only_a_project_in_the_trash_is_restored_or_deleted() {
+    let project = a_started_project();
+
+    for command in [ProjectCommand::Restore, ProjectCommand::Delete] {
+        assert_eq!(
+            project.decide(command, &an_author()),
+            Err(ProjectError::NotTrashed),
+            "a project is deleted only once its time in the trash is over"
+        );
+    }
+}
+
+#[test]
+fn a_snapshot_of_a_project_in_the_trash_keeps_until_when() {
+    let project = a_trashed_project();
+
+    assert_eq!(
+        Project::from_first(&project.snapshot(), &stamped(3, at(9_999)))
+            .expect("a snapshot gives birth")
+            .trashed_until(),
+        Some(at(9_000))
+    );
 }

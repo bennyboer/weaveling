@@ -89,7 +89,118 @@ pub fn a_summary(id: ProjectId, name: &str) -> ProjectSummary {
         name: ProjectName::new(name).expect("a plain name is fine"),
         created_at: at(1_000),
         updated_at: at(1_000),
+        trashed_until: None,
     }
+}
+
+fn in_the_trash_until(summary: ProjectSummary, until: OffsetDateTime) -> ProjectSummary {
+    ProjectSummary {
+        version: summary.version.next(),
+        trashed_until: Some(until),
+        ..summary
+    }
+}
+
+pub async fn a_project_in_the_trash_is_listed_there_and_nowhere_else(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
+    let kept = a_summary(ProjectId::generate(at(1_000)), "Kept");
+    let trashed = a_summary(ProjectId::generate(at(2_000)), "Trashed");
+    catalog
+        .remember(&kept)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember(&trashed)
+        .await
+        .expect("remembering should succeed");
+
+    let trashed = in_the_trash_until(trashed, at(9_000));
+    catalog
+        .remember(&trashed)
+        .await
+        .expect("remembering should succeed");
+
+    assert_eq!(
+        catalog.all().await.expect("listing should succeed"),
+        vec![kept.clone()]
+    );
+    assert_eq!(
+        catalog
+            .among(&[kept.id, trashed.id])
+            .await
+            .expect("listing should succeed"),
+        vec![kept]
+    );
+    assert_eq!(
+        catalog
+            .in_the_trash()
+            .await
+            .expect("listing the trash should succeed"),
+        vec![trashed]
+    );
+}
+
+pub async fn the_trash_lists_what_is_purged_soonest_first(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
+    let later = in_the_trash_until(
+        a_summary(ProjectId::generate(at(1_000)), "Later"),
+        at(9_000),
+    );
+    let sooner = in_the_trash_until(
+        a_summary(ProjectId::generate(at(2_000)), "Sooner"),
+        at(8_000),
+    );
+    catalog
+        .remember(&later)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember(&sooner)
+        .await
+        .expect("remembering should succeed");
+
+    assert_eq!(
+        catalog
+            .in_the_trash()
+            .await
+            .expect("listing the trash should succeed"),
+        vec![sooner, later]
+    );
+}
+
+pub async fn a_project_restored_is_listed_again_and_not_in_the_trash(
+    catalog: &Committing<'_, impl ProjectCatalog>,
+) {
+    let summary = a_summary(ProjectId::generate(at(1_000)), "Restored");
+    let trashed = in_the_trash_until(summary, at(9_000));
+    catalog
+        .remember(&trashed)
+        .await
+        .expect("remembering should succeed");
+
+    let restored = ProjectSummary {
+        version: trashed.version.next(),
+        trashed_until: None,
+        ..trashed
+    };
+    catalog
+        .remember(&restored)
+        .await
+        .expect("remembering should succeed");
+
+    assert_eq!(
+        catalog.all().await.expect("listing should succeed"),
+        vec![restored]
+    );
+    assert!(
+        catalog
+            .in_the_trash()
+            .await
+            .expect("listing the trash should succeed")
+            .is_empty()
+    );
 }
 
 pub async fn a_remembered_project_is_listed(catalog: &Committing<'_, impl ProjectCatalog>) {
@@ -446,6 +557,15 @@ macro_rules! conformance_tests {
             an_older_project_summary_heard_late_changes_nothing
         );
         $crate::catalog_conformance_case!($workbench, a_remembered_project_is_listed);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_in_the_trash_is_listed_there_and_nowhere_else
+        );
+        $crate::catalog_conformance_case!($workbench, the_trash_lists_what_is_purged_soonest_first);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_restored_is_listed_again_and_not_in_the_trash
+        );
         $crate::catalog_conformance_case!($workbench, an_empty_catalog_lists_nothing);
         $crate::catalog_conformance_case!(
             $workbench,

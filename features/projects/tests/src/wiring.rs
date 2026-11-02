@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use authorizing::{AllowingEverything, Authorizer};
 use axum::Router;
+use chores::Chore;
 use clock::Clock;
 use eventsourcing::InMemoryEventStore;
 use inbox::InMemoryInbox;
@@ -11,9 +12,11 @@ use outbox::{InMemoryOutbox, Outbox};
 use projects_catalog::InMemoryProjectCatalog;
 use projects_core::ProjectsCore;
 use transacting::InMemoryTransactions;
+use trash::InMemoryTrash;
 use wiring::Context;
 
 const CATALOGUING: &str = "catalogue-project";
+const PURGING: &str = "purge-the-projects-trash";
 
 pub struct Wired {
     pub projects: ProjectsCore,
@@ -22,7 +25,9 @@ pub struct Wired {
     pub outbox: Arc<InMemoryOutbox>,
     pub consuming: DeliveryConsumer,
     pub catalog: Arc<InMemoryProjectCatalog>,
+    pub trash: Arc<InMemoryTrash>,
     pub projector: Arc<dyn Listener>,
+    pub purging: Arc<dyn Chore>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
@@ -38,10 +43,12 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         projects_messaging::message_for,
     ));
     let catalog = Arc::new(InMemoryProjectCatalog::new());
+    let trash = Arc::new(InMemoryTrash::new());
     let ports = projects_wiring::Ports {
         events: store.clone(),
         transactions: Arc::new(InMemoryTransactions::new()),
         catalog: catalog.clone(),
+        trash: trash.clone(),
         inbox: Arc::new(InMemoryInbox::new(clock.clone())),
         outbox: outbox.clone(),
     };
@@ -62,6 +69,12 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         .find(|listener| listener.named().as_str() == CATALOGUING)
         .cloned()
         .expect("the feature should wire a catalog projector");
+    let purging = wired
+        .chores
+        .iter()
+        .find(|chore| chore.named() == PURGING)
+        .cloned()
+        .expect("the feature should wire a chore that purges its trash");
 
     Wired {
         projects: projects_wiring::core(&ports, &context),
@@ -72,11 +85,24 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         outbox,
         consuming: DeliveryConsumer::new(dispatcher.clone(), deliveries, context.clock.clone()),
         catalog,
+        trash,
         projector,
+        purging,
     }
 }
 
 impl Wired {
+    pub async fn purged(&self) -> u64 {
+        let purged = self
+            .purging
+            .carry_out()
+            .await
+            .expect("purging should succeed");
+        self.settle().await;
+
+        purged
+    }
+
     pub async fn settle(&self) {
         loop {
             let published = self

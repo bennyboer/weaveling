@@ -10,7 +10,7 @@ use clock::text;
 use eventsourcing::{Agent, Standing};
 use projects_contract::{
     ChangeDetailsRequest, CreateProjectRequest, ProjectDTO, ProjectDetailsDTO,
-    RenameProjectRequest, refused,
+    RenameProjectRequest, TrashedProjectDTO, refused,
 };
 use projects_core::{
     InvalidBookLanguage, InvalidProjectDescription, InvalidProjectName, InvalidQuotationMarks,
@@ -25,6 +25,8 @@ pub use following::{ProjectChanges, ProjectsTopic};
 pub fn router(projects: ProjectsCore) -> Router {
     Router::new()
         .route("/projects", routing::get(list).post(create))
+        .route("/projects/trash", routing::get(trash_list))
+        .route("/projects/{id}/restore", routing::post(restore))
         .route(
             "/projects/{id}",
             routing::get(find).patch(rename).delete(remove),
@@ -129,11 +131,39 @@ async fn remove(
     headers: HeaderMap,
 ) -> Result<StatusCode, Problem> {
     projects
-        .delete(&id, serving::demanded(&headers)?, &acting)
+        .trash(&id, serving::demanded(&headers)?, &acting)
         .await
         .map_err(problem_of)?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn restore(
+    State(projects): State<ProjectsCore>,
+    Extension(acting): Extension<Agent>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, Problem> {
+    projects.restore(&id, &acting).await.map_err(problem_of)?;
+
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn trash_list(
+    State(projects): State<ProjectsCore>,
+    Extension(acting): Extension<Agent>,
+) -> Result<Json<Vec<TrashedProjectDTO>>, Problem> {
+    let found = projects.trash_list(&acting).await.map_err(problem_of)?;
+
+    Ok(Json(found.iter().filter_map(to_trashed_dto).collect()))
+}
+
+fn to_trashed_dto(summary: &ProjectSummary) -> Option<TrashedProjectDTO> {
+    Some(TrashedProjectDTO {
+        id: summary.id.to_string(),
+        version: summary.version.count(),
+        name: summary.name.to_string(),
+        until: text::serialize(summary.trashed_until?),
+    })
 }
 
 fn to_response(status: StatusCode, id: &str, standing: &Standing<Project>) -> Response {
@@ -193,6 +223,8 @@ fn problem_of(refusal: ProjectsError) -> Problem {
         },
         ProjectsError::Events(events) => Problem::of(&events, |refusal| match refusal {
             ProjectError::Deleted => Problem::refused(refused::DELETED, refusal),
+            ProjectError::Trashed => Problem::refused(refused::TRASHED, refusal),
+            ProjectError::NotTrashed => Problem::refused(refused::NOT_TRASHED, refusal),
             beyond_reach => Problem::unexpected(beyond_reach),
         }),
         ProjectsError::NotAnOwner => {

@@ -3,7 +3,8 @@ CREATE TABLE project_summaries (
     version     INTEGER NOT NULL,
     name        TEXT    NOT NULL,
     created_at  TEXT    NOT NULL,
-    updated_at  TEXT    NOT NULL
+    updated_at  TEXT    NOT NULL,
+    trashed_until TEXT
 );
 
 CREATE TABLE project_tombstones (

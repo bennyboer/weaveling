@@ -17,6 +17,7 @@ pub struct ProjectSummary {
     pub name: ProjectName,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
+    pub trashed_until: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Error)]
@@ -50,6 +51,8 @@ pub trait ProjectCatalog: Send + Sync {
     async fn all(&self) -> Result<Vec<ProjectSummary>, CatalogError>;
 
     async fn among(&self, ids: &[ProjectId]) -> Result<Vec<ProjectSummary>, CatalogError>;
+
+    async fn in_the_trash(&self) -> Result<Vec<ProjectSummary>, CatalogError>;
 }
 
 impl ProjectSummary {
@@ -60,6 +63,7 @@ impl ProjectSummary {
             name: project.name().clone(),
             created_at: project.created_at(),
             updated_at: project.updated_at(),
+            trashed_until: project.trashed_until(),
         }
     }
 }

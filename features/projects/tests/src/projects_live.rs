@@ -85,7 +85,7 @@ async fn whoever_follows_the_projects_is_told_each_change_to_any_of_them_by_the_
         json!([loom.id, 1, "STARTED"]),
         json!([loom.id, 2, "RENAMED"]),
         json!([weft.id, 1, "STARTED"]),
-        json!([weft.id, 2, "DELETED"]),
+        json!([weft.id, 2, "TRASHED"]),
     ];
     expected.sort_by_key(|frame| frame.to_string());
     assert_eq!(frames, expected);

@@ -114,8 +114,25 @@ impl ProjectCatalog for InMemoryProjectCatalog {
     }
 
     async fn all(&self) -> Result<Vec<ProjectSummary>, CatalogError> {
-        let mut found: Vec<ProjectSummary> = self.read().values().cloned().collect();
+        let mut found: Vec<ProjectSummary> = self
+            .read()
+            .values()
+            .filter(|summary| summary.trashed_until.is_none())
+            .cloned()
+            .collect();
         found.sort_by_key(|summary| std::cmp::Reverse(summary.id));
+
+        Ok(found)
+    }
+
+    async fn in_the_trash(&self) -> Result<Vec<ProjectSummary>, CatalogError> {
+        let mut found: Vec<ProjectSummary> = self
+            .read()
+            .values()
+            .filter(|summary| summary.trashed_until.is_some())
+            .cloned()
+            .collect();
+        found.sort_by_key(|summary| (summary.trashed_until, summary.id));
 
         Ok(found)
     }
@@ -125,6 +142,7 @@ impl ProjectCatalog for InMemoryProjectCatalog {
         let mut found: Vec<ProjectSummary> = ids
             .iter()
             .filter_map(|id| listed.get(id))
+            .filter(|summary| summary.trashed_until.is_none())
             .cloned()
             .collect();
         found.sort_by_key(|summary| std::cmp::Reverse(summary.id));

@@ -49,6 +49,8 @@ pub const STARTED: &str = "project.started";
 pub const RENAMED: &str = "project.renamed";
 pub const DETAILS_CHANGED: &str = "project.details.changed";
 pub const QUOTATION_CHANGED: &str = "project.quotation.changed";
+pub const TRASHED: &str = "project.trashed";
+pub const RESTORED: &str = "project.restored";
 pub const DELETED: &str = "project.deleted";
 pub const EVERY_PROJECT: &str = "project.#";
 
@@ -73,8 +75,20 @@ pub enum ProjectEventDTO {
     },
     #[serde(rename = "QUOTATION_CHANGED")]
     QuotationChanged { quotation: String },
+    #[serde(rename = "TRASHED")]
+    Trashed { until: String },
+    #[serde(rename = "RESTORED")]
+    Restored,
     #[serde(rename = "DELETED")]
     Deleted,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TrashedProjectDTO {
+    pub id: String,
+    pub version: u64,
+    pub name: String,
+    pub until: String,
 }
 
 pub mod context {
@@ -91,9 +105,11 @@ pub mod refused {
     pub const DESCRIPTION_CONTROL_CHARACTER: &str = "project-description-control-character";
     pub const DESCRIPTION_TOO_LONG: &str = "project-description-too-long";
     pub const DELETED: &str = "project-deleted";
+    pub const TRASHED: &str = "project-trashed";
+    pub const NOT_TRASHED: &str = "project-not-trashed";
     pub const NOT_AN_OWNER: &str = "not-an-owner";
 
-    pub const EVERY: [&str; 10] = [
+    pub const EVERY: [&str; 12] = [
         ID_INVALID,
         NAME_BLANK,
         NAME_CONTROL_CHARACTER,
@@ -103,6 +119,8 @@ pub mod refused {
         DESCRIPTION_CONTROL_CHARACTER,
         DESCRIPTION_TOO_LONG,
         DELETED,
+        TRASHED,
+        NOT_TRASHED,
         NOT_AN_OWNER,
     ];
 }

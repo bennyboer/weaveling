@@ -1,3 +1,4 @@
+mod purging;
 mod tombstones;
 
 use std::sync::Arc;
@@ -12,8 +13,10 @@ use projects_contract::EVERY_PROJECT;
 use projects_core::{ProjectCatalog, ProjectEvent, ProjectsCore};
 use projects_messaging::CatalogueProjectsListener;
 use transacting::Transactions;
+use trash::{InMemoryTrash, PurgeTheTrash, Trash};
 use wiring::{Context, EventSourced, Feature, Wired};
 
+use crate::purging::ProjectsPurge;
 use crate::tombstones::ProjectTombstones;
 
 pub const LIVE: &str = "broadcast-project-changes";
@@ -22,6 +25,7 @@ pub struct Ports {
     pub events: Arc<dyn EventStore<ProjectEvent>>,
     pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn ProjectCatalog>,
+    pub trash: Arc<dyn Trash>,
     pub inbox: Arc<dyn Inbox>,
     pub outbox: Arc<dyn Outbox>,
 }
@@ -31,6 +35,7 @@ pub fn core(ports: &Ports, context: &Context) -> ProjectsCore {
         ports.events.clone(),
         ports.transactions.clone(),
         ports.catalog.clone(),
+        ports.trash.clone(),
         context.authorizer.clone(),
         context.clock.clone(),
     )
@@ -62,6 +67,12 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             )),
         ])
         .doing_chores(vec![
+            Arc::new(PurgeTheTrash::new(
+                "purge-the-projects-trash",
+                ports.trash.clone(),
+                Arc::new(ProjectsPurge::of(projects.clone())),
+                context.clock.clone(),
+            )),
             Arc::new(ForgetOldTombstones::new(
                 "forget-old-project-tombstones",
                 Arc::new(ProjectTombstones::of(projects.clone())),
@@ -96,6 +107,7 @@ impl Feature for ProjectFeature {
             events,
             transactions,
             catalog: Arc::new(InMemoryProjectCatalog::new()),
+            trash: Arc::new(InMemoryTrash::new()),
             inbox: Arc::new(InMemoryInbox::new(context.clock.clone())),
             outbox,
         }
@@ -117,7 +129,8 @@ impl Feature for ProjectFeature {
         Ok(Ports {
             events,
             transactions,
-            catalog: Arc::new(projects_catalog::PostgresProjectCatalog::new(pool)),
+            catalog: Arc::new(projects_catalog::PostgresProjectCatalog::new(pool.clone())),
+            trash: Arc::new(trash::PostgresTrash::new(pool)),
             inbox: Arc::new(inbox::PostgresInbox::new(context.clock.clone())),
             outbox,
         })
@@ -130,6 +143,7 @@ impl Feature for ProjectFeature {
             outbox::postgres::migrations(),
             projects_catalog::postgres::migrations(),
             inbox::postgres::migrations(),
+            trash::postgres::migrations(),
         ]
     }
 
@@ -149,7 +163,8 @@ impl Feature for ProjectFeature {
         Ok(Ports {
             events,
             transactions,
-            catalog: Arc::new(projects_catalog::SqliteProjectCatalog::new(pool)),
+            catalog: Arc::new(projects_catalog::SqliteProjectCatalog::new(pool.clone())),
+            trash: Arc::new(trash::SqliteTrash::new(pool)),
             inbox: Arc::new(inbox::SqliteInbox::new(context.clock.clone())),
             outbox,
         })
@@ -162,6 +177,7 @@ impl Feature for ProjectFeature {
             outbox::sqlite::migrations(),
             projects_catalog::sqlite::migrations(),
             inbox::sqlite::migrations(),
+            trash::sqlite::migrations(),
         ]
     }
 

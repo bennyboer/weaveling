@@ -10,6 +10,7 @@ use projects_core::{
 };
 use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
+use trash::InMemoryTrash;
 
 use crate::wiring;
 use crate::wiring::Wired;
@@ -205,15 +206,15 @@ async fn renaming_a_project_nobody_started_is_not_found() {
 }
 
 #[tokio::test]
-async fn a_deleted_project_is_gone_from_the_authors_point_of_view() {
+async fn a_trashed_project_is_gone_from_the_authors_point_of_view() {
     let wired = a_service();
     let id = a_project(&wired, "Abandoned").await;
 
     wired
         .projects
-        .delete(&id, None, &nobody())
+        .trash(&id, None, &nobody())
         .await
-        .expect("deleting should succeed");
+        .expect("trashing should succeed");
 
     assert!(
         matches!(
@@ -224,20 +225,50 @@ async fn a_deleted_project_is_gone_from_the_authors_point_of_view() {
                 .expect_err("it should be gone"),
             projects_core::ProjectsError::Events(ServiceError::NotFound { .. })
         ),
-        "the stream survives as the audit log, but the project itself is no longer served"
+        "in the trash, the project is no longer served"
     );
     assert!(listed(&wired).await.is_empty());
 }
 
 #[tokio::test]
-async fn a_deleted_project_cannot_be_renamed_afterwards() {
+async fn a_trashed_project_cannot_be_renamed() {
     let wired = a_service();
     let id = a_project(&wired, "Abandoned").await;
     wired
         .projects
-        .delete(&id, None, &nobody())
+        .trash(&id, None, &nobody())
         .await
-        .expect("deleting should succeed");
+        .expect("trashing should succeed");
+
+    let refused = wired
+        .projects
+        .rename(&id, "Too late", None, &nobody())
+        .await
+        .expect_err("a trashed project should accept nothing");
+
+    assert!(
+        matches!(
+            &refused,
+            projects_core::ProjectsError::Events(ServiceError::Refused(ProjectError::Trashed))
+        ),
+        "expected a refusal that says the project is in the trash, got {refused:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_purged_project_cannot_be_renamed_afterwards() {
+    let wired = a_service();
+    let id = a_project(&wired, "Abandoned").await;
+    wired
+        .projects
+        .trash(&id, None, &nobody())
+        .await
+        .expect("trashing should succeed");
+    wired
+        .projects
+        .purge(&id)
+        .await
+        .expect("purging should succeed");
 
     let refused = wired
         .projects
@@ -255,15 +286,15 @@ async fn a_deleted_project_cannot_be_renamed_afterwards() {
 }
 
 #[tokio::test]
-async fn deleting_a_project_nobody_started_is_not_found() {
+async fn trashing_a_project_nobody_started_is_not_found() {
     let wired = a_service();
     let missing = ProjectId::generate(at(1_000));
 
     let refused = wired
         .projects
-        .delete(&missing.to_string(), None, &nobody())
+        .trash(&missing.to_string(), None, &nobody())
         .await
-        .expect_err("an unknown project should not be deleteable");
+        .expect_err("an unknown project should not be trashable");
 
     assert!(
         matches!(
@@ -331,6 +362,7 @@ async fn a_project_renamed_while_failing(
             store,
             Arc::new(InMemoryTransactions::new()),
             Arc::new(InMemoryProjectCatalog::new()),
+            Arc::new(InMemoryTrash::new()),
             Arc::new(AllowingEverything),
             Arc::new(FixedClock::new(at(1_000))),
         )

@@ -3,6 +3,7 @@ use eventsourcing::ServiceError;
 use ids::InvalidId;
 use thiserror::Error;
 use transacting::{Failure, LostRace};
+use trash::TrashError;
 
 use crate::catalog::CatalogError;
 use crate::details::{InvalidBookLanguage, InvalidProjectDescription, InvalidQuotationMarks};
@@ -31,6 +32,8 @@ pub enum ProjectsError {
     NotAnOwner,
     #[error("the transaction around the change failed")]
     Transaction(#[from] Failure),
+    #[error(transparent)]
+    Trash(#[from] TrashError),
 }
 
 impl LostRace for ProjectsError {

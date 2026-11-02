@@ -62,7 +62,10 @@ impl DescribedProject {
             ProjectEventDTO::QuotationChanged { quotation } => {
                 self.details.quotation = QuotationMarks::named(&quotation)
             }
-            ProjectEventDTO::Started { .. } | ProjectEventDTO::Deleted => return None,
+            ProjectEventDTO::Started { .. }
+            | ProjectEventDTO::Trashed { .. }
+            | ProjectEventDTO::Restored
+            | ProjectEventDTO::Deleted => return None,
         }
         self.version = Version::from(told.version);
 
@@ -94,7 +97,7 @@ pub fn taken_in(mut held: Vec<Project>, told: FrameDTO) -> Option<Vec<Project>> 
                 name,
                 updated_at: at()?,
             }),
-            ProjectEventDTO::Deleted => {}
+            ProjectEventDTO::Trashed { .. } | ProjectEventDTO::Deleted => {}
             _ => return None,
         }
         held.sort_by(|one, other| other.id.cmp(&one.id));
@@ -111,11 +114,11 @@ pub fn taken_in(mut held: Vec<Project>, told: FrameDTO) -> Option<Vec<Project>> 
     match event {
         ProjectEventDTO::Renamed { name } => known.name = name,
         ProjectEventDTO::DetailsChanged { .. } | ProjectEventDTO::QuotationChanged { .. } => {}
-        ProjectEventDTO::Deleted => {
+        ProjectEventDTO::Trashed { .. } | ProjectEventDTO::Deleted => {
             held.remove(index);
             return Some(held);
         }
-        ProjectEventDTO::Started { .. } => return None,
+        ProjectEventDTO::Started { .. } | ProjectEventDTO::Restored => return None,
     }
     known.version = version;
     known.updated_at = at()?;

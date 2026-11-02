@@ -89,7 +89,10 @@ impl KeptHandler for RememberProjectNamesListener {
                 .notifications
                 .lay_project_tombstone(Some(transaction), &project, message.occurred_at)
                 .await?),
-            ProjectEventDTO::DetailsChanged { .. } | ProjectEventDTO::QuotationChanged { .. } => {
+            ProjectEventDTO::DetailsChanged { .. }
+            | ProjectEventDTO::QuotationChanged { .. }
+            | ProjectEventDTO::Trashed { .. }
+            | ProjectEventDTO::Restored => {
                 Err("this tells neither a project's name nor that it was deleted".into())
             }
         }

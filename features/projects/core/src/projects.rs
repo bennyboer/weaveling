@@ -2,15 +2,18 @@ use std::sync::Arc;
 
 use authorizing::{AccessWatch, Act, Authorizer, Readable};
 use clock::Clock;
-use eventsourcing::{Agent, EventStore, Standing, Version};
-use time::OffsetDateTime;
+use eventsourcing::{Agent, EventStore, ServiceError, Standing, Version};
+use time::{Duration, OffsetDateTime};
 use transacting::{Transaction, Transactions};
+use trash::Trash;
 
 use crate::catalog::{ProjectCatalog, ProjectSummary};
 use crate::error::ProjectsError;
 use crate::id::ProjectId;
-use crate::project::{Project, ProjectEvent};
+use crate::project::{KIND, Project, ProjectError, ProjectEvent};
 use crate::service::{self, ProjectService, RawDetails};
+
+pub const KEPT_IN_THE_TRASH_FOR: Duration = Duration::days(30);
 
 #[derive(Clone)]
 pub struct ProjectsCore {
@@ -18,6 +21,7 @@ pub struct ProjectsCore {
     service: ProjectService,
     transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn ProjectCatalog>,
+    trash: Arc<dyn Trash>,
     authorizer: Arc<dyn Authorizer>,
 }
 
@@ -26,6 +30,7 @@ impl ProjectsCore {
         store: Arc<dyn EventStore<ProjectEvent>>,
         transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn ProjectCatalog>,
+        trash: Arc<dyn Trash>,
         authorizer: Arc<dyn Authorizer>,
         clock: Arc<dyn Clock>,
     ) -> Self {
@@ -34,6 +39,7 @@ impl ProjectsCore {
             transactions,
             clock,
             catalog,
+            trash,
             authorizer,
         }
     }
@@ -117,19 +123,86 @@ impl ProjectsCore {
         self.service.latest(&id).await
     }
 
-    pub async fn delete(
+    pub async fn trash(
         &self,
         id: &str,
         expected: Option<Version>,
         agent: &Agent,
-    ) -> Result<Version, ProjectsError> {
+    ) -> Result<(), ProjectsError> {
         let id = self.authorized_to_manage(id, agent).await?;
+        let until = self.clock.now() + KEPT_IN_THE_TRASH_FOR;
 
         transacting::retrying!(
             &*self.transactions,
             eventsourcing::tries_for(expected),
-            |transaction| { self.service.delete(transaction, &id, expected, agent).await }
+            |transaction| {
+                match self
+                    .service
+                    .trash(transaction, &id, until, expected, agent)
+                    .await
+                {
+                    Err(ProjectsError::Events(ServiceError::Refused(
+                        ProjectError::AlreadyTrashed,
+                    ))) => Ok(()),
+                    Err(failure) => Err(failure),
+                    Ok(_) => Ok(self
+                        .trash
+                        .put_into(transaction, KIND.as_str(), &id.to_string(), until)
+                        .await?),
+                }
+            }
         )
+    }
+
+    pub async fn restore(&self, id: &str, agent: &Agent) -> Result<(), ProjectsError> {
+        let id = self.authorized_to_manage(id, agent).await?;
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            self.service.restore(transaction, &id, agent).await?;
+            self.trash
+                .take_out(transaction, KIND.as_str(), &id.to_string())
+                .await?;
+
+            Ok(())
+        })
+    }
+
+    pub async fn trash_list(&self, agent: &Agent) -> Result<Vec<ProjectSummary>, ProjectsError> {
+        let mut theirs = Vec::new();
+        for trashed in self.catalog.in_the_trash().await? {
+            if self
+                .authorizer
+                .may(agent, Act::Manage, &trashed.id.to_string())
+                .await?
+            {
+                theirs.push(trashed);
+            }
+        }
+
+        Ok(theirs)
+    }
+
+    pub async fn purge(&self, project: &str) -> Result<(), ProjectsError> {
+        let id: ProjectId = project.parse()?;
+
+        transacting::retrying!(&*self.transactions, |transaction| {
+            match self
+                .service
+                .delete(transaction, &id, None, &Agent::System)
+                .await
+            {
+                Ok(_)
+                | Err(ProjectsError::Events(ServiceError::Refused(
+                    ProjectError::NotTrashed | ProjectError::Deleted,
+                ))) => {}
+                Err(failure) => return Err(failure),
+            }
+            self.trash
+                .take_out(transaction, KIND.as_str(), &id.to_string())
+                .await?;
+
+            Ok(())
+        })
     }
 
     pub async fn may_follow(&self, project: &str, agent: &Agent) -> Result<bool, ProjectsError> {

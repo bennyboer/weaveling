@@ -19,5 +19,5 @@ pub use error::ProjectsError;
 pub use id::ProjectId;
 pub use name::{InvalidProjectName, ProjectName};
 pub use project::{KIND, Project, ProjectCommand, ProjectError, ProjectEvent};
-pub use projects::ProjectsCore;
+pub use projects::{KEPT_IN_THE_TRASH_FOR, ProjectsCore};
 pub use service::RawDetails;

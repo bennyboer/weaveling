@@ -1,17 +1,19 @@
 use std::fs;
 use std::future::Future;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::http::StatusCode;
 use axum::http::header::ORIGIN;
 use axum_test::TestServer;
-use clock::SystemClock;
+use chores::Chore;
+use clock::Clock;
 use mailing::LoggingMailer;
 use outbox::Cadence;
 use serde_json::{Value, json};
+use time::OffsetDateTime;
 use weaveling_service_api::{Accounts, Adapters, Mailing, Relays, Storage};
 
 pub const DATABASES: [&str; 12] = [
@@ -47,23 +49,35 @@ pub struct Journey<B: Backend> {
     pub server: TestServer,
     relays: Option<Relays>,
     drop: Option<PathBuf>,
+    clock: Arc<Later>,
+    chores: Vec<Arc<dyn Chore>>,
 }
+
+#[derive(Default)]
+struct Later {
+    ahead: Mutex<time::Duration>,
+}
+
+impl Clock for Later {
+    fn now(&self) -> OffsetDateTime {
+        OffsetDateTime::now_utc() + *self.ahead.lock().expect("nothing panics holding it")
+    }
+}
+
+const PURGING_PROJECTS: &str = "purge-the-projects-trash";
+
+const PAST_THE_TRASH: time::Duration = time::Duration::days(31);
 
 pub async fn a_server_on<B: Backend>(backend: &B) -> TestServer {
     TestServer::new(weaveling_service_api::app(
-        adapters_on(backend, Accounts::Off).await,
+        adapters_on(backend, Accounts::Off, Arc::new(Later::default())).await,
     ))
 }
 
-async fn adapters_on<B: Backend>(backend: &B, accounts: Accounts) -> Adapters {
-    Adapters::assembled(
-        backend.storage(),
-        accounts,
-        Arc::new(LoggingMailer),
-        Arc::new(SystemClock),
-    )
-    .await
-    .expect("every feature's schema should lay down")
+async fn adapters_on<B: Backend>(backend: &B, accounts: Accounts, clock: Arc<Later>) -> Adapters {
+    Adapters::assembled(backend.storage(), accounts, Arc::new(LoggingMailer), clock)
+        .await
+        .expect("every feature's schema should lay down")
 }
 
 impl<B: Backend> Journey<B> {
@@ -77,21 +91,25 @@ impl<B: Backend> Journey<B> {
 
     async fn unrelayed_with(accounts: Accounts) -> Self {
         let backend = B::setup().await;
-        let server = TestServer::new(weaveling_service_api::app(
-            adapters_on(&backend, accounts).await,
-        ));
+        let clock = Arc::new(Later::default());
+        let adapters = adapters_on(&backend, accounts, clock.clone()).await;
+        let chores = adapters.chores();
 
         Self {
             backend,
-            server,
+            server: TestServer::new(weaveling_service_api::app(adapters)),
             relays: None,
             drop: None,
+            clock,
+            chores,
         }
     }
 
     pub async fn relayed() -> Self {
         let backend = B::setup().await;
-        let adapters = adapters_on(&backend, Accounts::Off).await;
+        let clock = Arc::new(Later::default());
+        let adapters = adapters_on(&backend, Accounts::Off, clock.clone()).await;
+        let chores = adapters.chores();
         let relays = Relays::started(
             adapters.outboxes(),
             adapters.consuming(),
@@ -106,6 +124,8 @@ impl<B: Backend> Journey<B> {
             server: TestServer::new(weaveling_service_api::app(adapters)),
             relays: Some(relays),
             drop: None,
+            clock,
+            chores,
         }
     }
 
@@ -116,14 +136,16 @@ impl<B: Backend> Journey<B> {
             std::process::id()
         ));
         let _gone = fs::remove_dir_all(&drop);
+        let clock = Arc::new(Later::default());
         let adapters = Adapters::assembled(
             backend.storage(),
             Accounts::On,
             Mailing::Dropped { into: drop.clone() }.mailer(),
-            Arc::new(SystemClock),
+            clock.clone(),
         )
         .await
         .expect("every feature's schema should lay down");
+        let chores = adapters.chores();
         let relays = Relays::started(
             adapters.outboxes(),
             adapters.consuming(),
@@ -155,7 +177,25 @@ impl<B: Backend> Journey<B> {
             server,
             relays: Some(relays),
             drop: Some(drop),
+            clock,
+            chores,
         }
+    }
+
+    pub async fn deleted_long_ago(&self, path: &str) {
+        *self.clock.ahead.lock().expect("nothing panics holding it") = -PAST_THE_TRASH;
+        self.delete(path).await;
+        *self.clock.ahead.lock().expect("nothing panics holding it") = time::Duration::ZERO;
+    }
+
+    pub async fn purge_the_trash(&self) {
+        self.chores
+            .iter()
+            .find(|chore| chore.named() == PURGING_PROJECTS)
+            .expect("the projects purge their trash")
+            .carry_out()
+            .await
+            .expect("purging the trash should succeed");
     }
 
     pub async fn end(self) {
@@ -461,7 +501,10 @@ pub async fn deleting_a_project_sweeps_away_everything_it_held<B: Backend>() {
         "the idea has to be catalogued before deleting can be shown to sweep it away"
     );
 
-    journey.delete(&format!("/api/projects/{project}")).await;
+    journey
+        .deleted_long_ago(&format!("/api/projects/{project}"))
+        .await;
+    journey.purge_the_trash().await;
 
     assert!(
         until(|| async { journey.listed(&ideas).await.is_empty() }).await,
@@ -832,7 +875,10 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
         "its owner may list the members once they have heard of her"
     );
 
-    journey.delete(&format!("/api/projects/{project}")).await;
+    journey
+        .deleted_long_ago(&format!("/api/projects/{project}"))
+        .await;
+    journey.purge_the_trash().await;
 
     assert!(
         until(|| async { server.get(&at).await.status_code() == StatusCode::NOT_FOUND }).await,

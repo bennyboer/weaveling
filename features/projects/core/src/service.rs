@@ -4,6 +4,7 @@ use clock::Clock;
 use eventsourcing::{
     Agent, AggregateId, EventSourcingService, EventStore, ServiceError, Standing, Version,
 };
+use time::OffsetDateTime;
 use transacting::Transaction;
 
 use crate::details::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
@@ -51,7 +52,7 @@ impl ProjectService {
         let key = AggregateId::from(id);
         let standing = self.events.latest(&key).await?;
 
-        if standing.state.is_deleted() {
+        if standing.state.is_deleted() || standing.state.is_trashed() {
             return Err(not_found(id));
         }
 
@@ -99,6 +100,34 @@ impl ProjectService {
             agent,
         )
         .await
+    }
+
+    pub async fn trash(
+        &self,
+        transaction: &mut Transaction,
+        id: &ProjectId,
+        until: OffsetDateTime,
+        expected: Option<Version>,
+        agent: &Agent,
+    ) -> Result<Version, ProjectsError> {
+        self.carry_out(
+            transaction,
+            id,
+            ProjectCommand::Trash { until },
+            expected,
+            agent,
+        )
+        .await
+    }
+
+    pub async fn restore(
+        &self,
+        transaction: &mut Transaction,
+        id: &ProjectId,
+        agent: &Agent,
+    ) -> Result<Version, ProjectsError> {
+        self.carry_out(transaction, id, ProjectCommand::Restore, None, agent)
+            .await
     }
 
     pub async fn delete(

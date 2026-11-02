@@ -1,3 +1,4 @@
+use clock::text;
 use eventsourcing::Recorded;
 use messaging::Message;
 use projects_contract::ProjectEventDTO;
@@ -23,6 +24,10 @@ fn body(event: &ProjectEvent) -> Option<ProjectEventDTO> {
         ProjectEvent::QuotationChanged(style) => ProjectEventDTO::QuotationChanged {
             quotation: style.to_string(),
         },
+        ProjectEvent::Trashed { until } => ProjectEventDTO::Trashed {
+            until: text::serialize(*until),
+        },
+        ProjectEvent::Restored => ProjectEventDTO::Restored,
         ProjectEvent::Deleted => ProjectEventDTO::Deleted,
         ProjectEvent::Snapshotted { .. } => return None,
     })
@@ -35,7 +40,8 @@ mod tests {
     };
     use messaging::Subscription;
     use projects_contract::{
-        DELETED, DETAILS_CHANGED, EVERY_PROJECT, QUOTATION_CHANGED, RENAMED, STARTED,
+        DELETED, DETAILS_CHANGED, EVERY_PROJECT, QUOTATION_CHANGED, RENAMED, RESTORED, STARTED,
+        TRASHED,
     };
     use projects_core::{BookLanguage, ProjectDescription, ProjectDetails, QuotationMarks};
     use projects_core::{KIND, ProjectId, ProjectName};
@@ -86,6 +92,8 @@ mod tests {
                 ProjectEvent::QuotationChanged(QuotationMarks::Curly),
                 QUOTATION_CHANGED,
             ),
+            (ProjectEvent::Trashed { until: at(3_000) }, TRASHED),
+            (ProjectEvent::Restored, RESTORED),
             (ProjectEvent::Deleted, DELETED),
         ]
     }
@@ -204,6 +212,7 @@ mod tests {
             details: ProjectDetails::default(),
             created_at: at(1_000),
             updated_at: at(2_000),
+            trashed_until: None,
             deleted: false,
         };
 

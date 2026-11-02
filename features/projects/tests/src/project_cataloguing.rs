@@ -122,9 +122,14 @@ async fn a_stale_message_cannot_resurrect_a_deleted_project() {
     let id = a_started_project(&wired).await;
     wired
         .projects
-        .delete(&id.to_string(), None, &an_author())
+        .trash(&id.to_string(), None, &an_author())
         .await
-        .expect("deleting should succeed");
+        .expect("trashing should succeed");
+    wired
+        .projects
+        .purge(&id.to_string())
+        .await
+        .expect("purging should succeed");
     wired.settle().await;
     assert!(
         listed(&wired).await.is_empty(),

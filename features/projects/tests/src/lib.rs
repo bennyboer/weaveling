@@ -20,4 +20,6 @@ mod projects_live;
 mod projects_live_guarded;
 
 #[cfg(test)]
+mod trashing;
+#[cfg(test)]
 mod wiring;
