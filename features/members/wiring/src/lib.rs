@@ -12,7 +12,7 @@ use members_core::{MembersAuthorizer, MembersCore, MembersEvent, MembershipCatal
 use members_messaging::{
     CatalogueMembersListener, DisbandMembersOfDeletedProjectListener,
     FoundMembersOfStartedProjectListener, JoinByAcceptedInvitationListener,
-    RememberWhoSignedUpListener,
+    RememberTrashedProjectsListener, RememberWhoSignedUpListener,
 };
 use messaging::Publisher;
 use outbox::Outbox;
@@ -203,6 +203,11 @@ impl Feature for MembersFeature {
                     ports.inbox.clone(),
                 )),
                 Arc::new(Inboxed::new(
+                    RememberTrashedProjectsListener::new(members.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
+                Arc::new(Inboxed::new(
                     CatalogueMembersListener::new(members),
                     ports.transactions.clone(),
                     ports.inbox.clone(),
@@ -303,6 +308,7 @@ mod tests {
                 "join-by-accepted-invitation",
                 "remember-who-signed-up",
                 "disband-members-of-deleted-project",
+                "members-remember-trashed-projects",
                 "catalogue-members",
                 "broadcast-membership-changes"
             ]

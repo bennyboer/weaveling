@@ -53,6 +53,32 @@ impl<C: MembershipCatalog> Committing<'_, C> {
         transaction.finish().await.map_err(unreachable)
     }
 
+    pub async fn remember_trash(
+        &self,
+        project: &str,
+        version: u64,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .remember_trash(
+                &mut transaction,
+                &ProjectLink::from(project),
+                Version::of(version),
+                in_the_trash,
+            )
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn forget_trash(&self, project: &str) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .forget_trash(&mut transaction, &ProjectLink::from(project))
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
     pub async fn remember_person(&self, person: &Person) -> Result<(), CatalogError> {
         let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
         self.catalog
@@ -381,6 +407,110 @@ pub async fn what_was_remembered_in_a_transaction_that_is_dropped_is_gone(
     );
 }
 
+async fn in_the_trash(catalog: &impl MembershipCatalog, project: &str) -> bool {
+    catalog
+        .is_in_the_trash(&ProjectLink::from(project))
+        .await
+        .expect("asking should succeed")
+}
+
+pub async fn a_project_is_in_the_trash_once_told_so_and_out_once_told_restored(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    assert!(
+        !in_the_trash(catalog.uncommitted(), "project_1").await,
+        "nothing told, nothing trashed"
+    );
+
+    catalog
+        .remember_trash("project_1", 5, true)
+        .await
+        .expect("remembering should succeed");
+    let trashed = in_the_trash(catalog.uncommitted(), "project_1").await;
+    catalog
+        .remember_trash("project_1", 6, false)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(trashed);
+    assert!(!in_the_trash(catalog.uncommitted(), "project_1").await);
+    assert!(
+        !in_the_trash(catalog.uncommitted(), "project_2").await,
+        "each project for itself"
+    );
+}
+
+pub async fn an_older_trashing_heard_after_a_newer_restoring_changes_nothing(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    catalog
+        .remember_trash("project_1", 6, false)
+        .await
+        .expect("remembering should succeed");
+
+    catalog
+        .remember_trash("project_1", 5, true)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        !in_the_trash(catalog.uncommitted(), "project_1").await,
+        "a restore heard before the trashing it undoes must not leave the project trashed"
+    );
+}
+
+pub async fn a_trashing_in_a_dropped_transaction_was_never_heard(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    let mut transaction = catalog.begun().await;
+    catalog
+        .uncommitted()
+        .remember_trash(
+            &mut transaction,
+            &ProjectLink::from("project_1"),
+            Version::of(5),
+            true,
+        )
+        .await
+        .expect("remembering should succeed");
+
+    drop(transaction);
+
+    assert!(!in_the_trash(catalog.uncommitted(), "project_1").await);
+}
+
+pub async fn a_deleted_project_s_trash_is_forgotten_whole(
+    catalog: &Committing<'_, impl MembershipCatalog>,
+) {
+    catalog
+        .remember_trash("project_1", 5, true)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_trash("project_2", 5, true)
+        .await
+        .expect("remembering should succeed");
+
+    catalog
+        .forget_trash("project_1")
+        .await
+        .expect("forgetting should succeed");
+
+    assert!(!in_the_trash(catalog.uncommitted(), "project_1").await);
+    assert!(
+        in_the_trash(catalog.uncommitted(), "project_2").await,
+        "each project for itself"
+    );
+    catalog
+        .remember_trash("project_1", 1, true)
+        .await
+        .expect("remembering should succeed");
+    assert!(
+        in_the_trash(catalog.uncommitted(), "project_1").await,
+        "nothing of it is left, not even the version it reached"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -421,5 +551,18 @@ macro_rules! conformance_tests {
             the_people_asked_for_are_told_by_account_and_no_others
         );
         $crate::catalog_conformance_case!($workbench, a_person_told_again_is_known_as_last_told);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_is_in_the_trash_once_told_so_and_out_once_told_restored
+        );
+        $crate::catalog_conformance_case!($workbench, a_deleted_project_s_trash_is_forgotten_whole);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            an_older_trashing_heard_after_a_newer_restoring_changes_nothing
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_trashing_in_a_dropped_transaction_was_never_heard
+        );
     };
 }

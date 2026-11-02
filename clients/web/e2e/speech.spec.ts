@@ -13,7 +13,6 @@ import {
 } from "./support/shell";
 import { flow, openTheWritingView, projectOf, scene } from "./support/writing";
 import { routingLive } from "./support/live";
-import { withAccounts } from "./support/signed-in";
 
 const spoken = (page: Page) =>
   page.evaluate(() => document.documentElement.getAttribute("lang"));
@@ -181,7 +180,7 @@ test.describe("a browser asking for German, about a project's details", () => {
     );
   });
 
-  test("renaming a project deleted meanwhile is told in German", async ({
+  test("renaming a project moved to the trash meanwhile is told in German", async ({
     page,
   }) => {
     const title = `Gelöscht ${crypto.randomUUID().slice(0, 8)}`;
@@ -199,12 +198,8 @@ test.describe("a browser asking for German, about a project's details", () => {
 
     await expect(
       page.getByRole("alert"),
-      "with accounts its members are disbanded with it, so it is not there for anyone",
-    ).toHaveText(
-      withAccounts
-        ? "Dieses Projekt gibt es nicht mehr."
-        : "Dieses Projekt wurde inzwischen gelöscht.",
-    );
+      "a project in the trash is kept for its owners to restore, so renaming it is refused, not unknown",
+    ).toHaveText("Dieses Projekt wurde inzwischen in den Papierkorb verschoben.");
   });
 
   test("an idea's title the server refuses is told in German, with its numbers", async ({

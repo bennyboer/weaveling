@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use authorizing::{AccessChanges, AccessWatch, Act, Authorizer, AuthorizerError, Readable};
 use eventsourcing::Agent;
 
-use crate::catalog::MembershipCatalog;
+use crate::catalog::{CatalogError, MembershipCatalog};
 use crate::members::{ProjectLink, Role};
 
 pub struct MembersAuthorizer {
@@ -32,18 +32,34 @@ impl Role {
     }
 }
 
+fn unreachable(failure: CatalogError) -> AuthorizerError {
+    AuthorizerError::Unreachable(Box::new(failure))
+}
+
 #[async_trait]
 impl Authorizer for MembersAuthorizer {
     async fn may(&self, agent: &Agent, act: Act, project: &str) -> Result<bool, AuthorizerError> {
         match agent {
             Agent::System => Ok(true),
             Agent::Local => Ok(false),
-            Agent::Account(account) => Ok(self
-                .catalog
-                .role_of(&ProjectLink::from(project), account)
-                .await
-                .map_err(|failure| AuthorizerError::Unreachable(Box::new(failure)))?
-                .is_some_and(|role| role.permits(act))),
+            Agent::Account(account) => {
+                let project = ProjectLink::from(project);
+                let permitted = self
+                    .catalog
+                    .role_of(&project, account)
+                    .await
+                    .map_err(unreachable)?
+                    .is_some_and(|role| role.permits(act));
+                if !permitted || act == Act::Manage {
+                    return Ok(permitted);
+                }
+
+                Ok(!self
+                    .catalog
+                    .is_in_the_trash(&project)
+                    .await
+                    .map_err(unreachable)?)
+            }
         }
     }
 
@@ -51,15 +67,26 @@ impl Authorizer for MembersAuthorizer {
         match agent {
             Agent::System => Ok(Readable::Everything),
             Agent::Local => Ok(Readable::Only(BTreeSet::new())),
-            Agent::Account(account) => Ok(Readable::Only(
-                self.catalog
+            Agent::Account(account) => {
+                let mut readable = BTreeSet::new();
+                for membership in self
+                    .catalog
                     .memberships_of(account)
                     .await
-                    .map_err(|failure| AuthorizerError::Unreachable(Box::new(failure)))?
-                    .into_iter()
-                    .map(|membership| membership.project.to_string())
-                    .collect(),
-            )),
+                    .map_err(unreachable)?
+                {
+                    if !self
+                        .catalog
+                        .is_in_the_trash(&membership.project)
+                        .await
+                        .map_err(unreachable)?
+                    {
+                        readable.insert(membership.project.to_string());
+                    }
+                }
+
+                Ok(Readable::Only(readable))
+            }
         }
     }
 
@@ -76,15 +103,16 @@ impl Authorizer for MembersAuthorizer {
 mod tests {
     use std::sync::Mutex;
 
-    use eventsourcing::AccountId;
+    use eventsourcing::{AccountId, Version};
 
     use super::*;
     use transacting::Transaction;
 
-    use crate::catalog::{CatalogError, Membership, Person, ProjectMembers};
+    use crate::catalog::{Membership, Person, ProjectMembers};
 
     struct Kept {
         roles: Mutex<Vec<(String, AccountId, Role)>>,
+        trashed: Mutex<Vec<String>>,
         down: bool,
     }
 
@@ -108,6 +136,33 @@ mod tests {
 
         async fn people(&self, _accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError> {
             Ok(Vec::new())
+        }
+
+        async fn remember_trash(
+            &self,
+            _transaction: &mut Transaction,
+            _project: &ProjectLink,
+            _version: Version,
+            _in_the_trash: bool,
+        ) -> Result<(), CatalogError> {
+            Ok(())
+        }
+
+        async fn forget_trash(
+            &self,
+            _transaction: &mut Transaction,
+            _project: &ProjectLink,
+        ) -> Result<(), CatalogError> {
+            Ok(())
+        }
+
+        async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+            Ok(self
+                .trashed
+                .lock()
+                .expect("never poisoned")
+                .iter()
+                .any(|trashed| trashed == project.as_str()))
         }
 
         async fn role_of(
@@ -162,6 +217,28 @@ mod tests {
                     .map(|(project, account, role)| (project.to_owned(), account, role))
                     .collect(),
             ),
+            trashed: Mutex::new(Vec::new()),
+            down: false,
+        }))
+    }
+
+    fn authorizer_with_trashed(
+        roles: Vec<(&str, AccountId, Role)>,
+        trashed: &[&str],
+    ) -> MembersAuthorizer {
+        MembersAuthorizer::new(Arc::new(Kept {
+            roles: Mutex::new(
+                roles
+                    .into_iter()
+                    .map(|(project, account, role)| (project.to_owned(), account, role))
+                    .collect(),
+            ),
+            trashed: Mutex::new(
+                trashed
+                    .iter()
+                    .map(|project| (*project).to_owned())
+                    .collect(),
+            ),
             down: false,
         }))
     }
@@ -195,6 +272,54 @@ mod tests {
                 "{role:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn a_project_in_the_trash_is_read_and_written_by_nobody_and_managed_by_its_owners() {
+        for (role, acts) in [
+            (Role::Owner, vec![Act::Manage]),
+            (Role::Author, vec![]),
+            (Role::Reader, vec![]),
+        ] {
+            let authorizer =
+                authorizer_with_trashed(vec![("project_1", ada(), role)], &["project_1"]);
+
+            assert_eq!(
+                allowed(&authorizer, &Agent::Account(ada()), "project_1").await,
+                acts,
+                "{role:?}: only an owner may restore what is in the trash"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn the_application_still_acts_on_a_project_in_the_trash() {
+        let authorizer = authorizer_with_trashed(vec![], &["project_1"]);
+
+        assert_eq!(
+            allowed(&authorizer, &Agent::System, "project_1").await,
+            vec![Act::Read, Act::Write, Act::Manage],
+            "the purge deletes it as the system"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_project_in_the_trash_is_readable_by_nobody() {
+        let authorizer = authorizer_with_trashed(
+            vec![
+                ("project_1", ada(), Role::Owner),
+                ("project_2", ada(), Role::Owner),
+            ],
+            &["project_1"],
+        );
+
+        assert_eq!(
+            authorizer
+                .readable_by(&Agent::Account(ada()))
+                .await
+                .expect("asking should succeed"),
+            Readable::Only(BTreeSet::from(["project_2".to_owned()]))
+        );
     }
 
     #[tokio::test]
@@ -235,6 +360,7 @@ mod tests {
     async fn a_list_that_cannot_be_asked_is_a_failure_not_a_no() {
         let authorizer = MembersAuthorizer::new(Arc::new(Kept {
             roles: Mutex::new(vec![]),
+            trashed: Mutex::new(Vec::new()),
             down: true,
         }));
 
@@ -290,6 +416,7 @@ mod tests {
     async fn a_list_that_cannot_be_asked_is_a_failure_not_nothing_to_read() {
         let authorizer = MembersAuthorizer::new(Arc::new(Kept {
             roles: Mutex::new(vec![]),
+            trashed: Mutex::new(Vec::new()),
             down: true,
         }));
 

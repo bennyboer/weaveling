@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
-use eventsourcing::AccountId;
+use eventsourcing::{AccountId, Version};
 use members_core::{
     CatalogError, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
@@ -10,10 +10,13 @@ use transacting::{Failure, Transaction};
 
 type Kept = BTreeMap<String, ProjectMembers>;
 
+type Trash = BTreeMap<String, (Version, bool)>;
+
 #[derive(Debug, Default)]
 pub struct InMemoryMembershipCatalog {
     kept: Arc<RwLock<Kept>>,
     people: Arc<RwLock<BTreeMap<String, Person>>>,
+    trash: Arc<RwLock<Trash>>,
 }
 
 impl InMemoryMembershipCatalog {
@@ -40,14 +43,23 @@ impl InMemoryMembershipCatalog {
             .read()
             .expect("membership catalog lock poisoned")
             .clone();
+        let trash = self
+            .trash
+            .read()
+            .expect("membership catalog lock poisoned")
+            .clone();
         let into_kept = self.kept.clone();
         let into_people = self.people.clone();
+        let into_trash = self.trash.clone();
 
         transacting::memory::undo_on_rollback(transaction, move || {
             *into_kept.write().expect("membership catalog lock poisoned") = kept;
             *into_people
                 .write()
                 .expect("membership catalog lock poisoned") = people;
+            *into_trash
+                .write()
+                .expect("membership catalog lock poisoned") = trash;
         })
         .map_err(unreachable)
     }
@@ -133,6 +145,51 @@ impl MembershipCatalog for InMemoryMembershipCatalog {
             .filter(|person| accounts.contains(&person.account))
             .cloned()
             .collect())
+    }
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut trash = self
+            .trash
+            .write()
+            .expect("membership catalog lock poisoned");
+        if trash
+            .get(project.as_str())
+            .is_none_or(|(known, _)| *known < version)
+        {
+            trash.insert(project.to_string(), (version, in_the_trash));
+        }
+
+        Ok(())
+    }
+
+    async fn forget_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        self.trash
+            .write()
+            .expect("membership catalog lock poisoned")
+            .remove(project.as_str());
+
+        Ok(())
+    }
+
+    async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        Ok(self
+            .trash
+            .read()
+            .expect("membership catalog lock poisoned")
+            .get(project.as_str())
+            .is_some_and(|(_, in_the_trash)| *in_the_trash))
     }
 }
 

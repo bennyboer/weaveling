@@ -18,3 +18,9 @@ CREATE TABLE people (
     name             TEXT             NOT NULL,
     email            TEXT             NOT NULL
 );
+
+CREATE TABLE project_trash (
+    project          TEXT COLLATE "C" PRIMARY KEY,
+    version          BIGINT           NOT NULL,
+    in_the_trash     BOOLEAN          NOT NULL
+);

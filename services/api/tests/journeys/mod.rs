@@ -881,18 +881,22 @@ pub async fn a_deleted_project_s_owner_neither_lists_its_members_nor_invites_int
     journey.purge_the_trash().await;
 
     assert!(
-        until(|| async { server.get(&at).await.status_code() == StatusCode::NOT_FOUND }).await,
-        "the members hear the project deleted and let everyone go"
+        until(|| async {
+            server
+                .post("/api/invitations")
+                .add_header(ORIGIN, "https://weaveling.example.com")
+                .json(&json!({
+                    "email": "grace@example.com",
+                    "scope": { "kind": "project", "project": project, "role": "author" },
+                }))
+                .await
+                .status_code()
+                == StatusCode::NOT_FOUND
+        })
+        .await,
+        "the members hear the project deleted and let everyone go, so nobody invites into it"
     );
-    server
-        .post("/api/invitations")
-        .add_header(ORIGIN, "https://weaveling.example.com")
-        .json(&json!({
-            "email": "grace@example.com",
-            "scope": { "kind": "project", "project": project, "role": "author" },
-        }))
-        .await
-        .assert_status(StatusCode::NOT_FOUND);
+    server.get(&at).await.assert_status(StatusCode::NOT_FOUND);
     journey.end().await;
 }
 

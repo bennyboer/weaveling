@@ -74,6 +74,7 @@ async fn the_id_columns_sort_bytewise_whatever_the_database_locale_is() {
                 "project_member_lists.project".to_owned(),
                 Some("C".to_owned())
             ),
+            ("project_trash.project".to_owned(), Some("C".to_owned())),
         ],
         "the project orders an account's memberships, so ids must sort bytewise"
     );

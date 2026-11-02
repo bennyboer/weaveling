@@ -56,6 +56,22 @@ pub trait MembershipCatalog: Send + Sync {
     ) -> Result<(), CatalogError>;
 
     async fn people(&self, accounts: &[AccountId]) -> Result<Vec<Person>, CatalogError>;
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError>;
+
+    async fn forget_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError>;
+
+    async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
 }
 
 impl ProjectMembers {

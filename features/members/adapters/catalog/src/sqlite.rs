@@ -1,7 +1,7 @@
 use std::error::Error;
 
 use async_trait::async_trait;
-use eventsourcing::AccountId;
+use eventsourcing::{AccountId, Version};
 use members_core::{
     CatalogError, Membership, MembershipCatalog, Person, ProjectLink, ProjectMembers, Role,
 };
@@ -42,6 +42,18 @@ const REMEMBER_PERSON: &str = "
 ";
 
 const PERSON: &str = "SELECT account, name, email FROM people WHERE account = ?1";
+
+const REMEMBER_TRASH: &str = "
+    INSERT INTO project_trash (project, version, in_the_trash)
+    VALUES (?1, ?2, ?3)
+    ON CONFLICT (project) DO UPDATE
+    SET version = excluded.version, in_the_trash = excluded.in_the_trash
+    WHERE project_trash.version < excluded.version
+";
+
+const FORGET_TRASH: &str = "DELETE FROM project_trash WHERE project = ?1";
+
+const IN_THE_TRASH: &str = "SELECT in_the_trash FROM project_trash WHERE project = ?1";
 
 const LEDGER: &str = "_sqlx_migrations_memberships";
 
@@ -167,6 +179,48 @@ impl MembershipCatalog for SqliteMembershipCatalog {
         found.sort_by(|one, other| one.account.as_str().cmp(other.account.as_str()));
 
         Ok(found)
+    }
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_TRASH)
+            .bind(project.as_str())
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(in_the_trash)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn forget_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(FORGET_TRASH)
+            .bind(project.as_str())
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        let kept: Option<bool> = sqlx::query_scalar(IN_THE_TRASH)
+            .bind(project.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(kept.unwrap_or(false))
     }
 }
 

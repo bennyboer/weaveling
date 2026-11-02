@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
-use eventsourcing::{AccountId, Agent, EventStore, ServiceError};
+use eventsourcing::{AccountId, Agent, EventStore, ServiceError, Version};
 use transacting::{Transaction, Transactions};
 
 use crate::catalog::{Membership, MembershipCatalog, Person, ProjectMembers};
@@ -218,6 +218,33 @@ impl MembersCore {
         let authorizer = self.authorizer.clone();
         let changed = project.as_str().to_owned();
         transaction.after_commit(async move { authorizer.access_changed(&changed) });
+        Ok(transaction.finish().await?)
+    }
+
+    pub async fn remember_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), MembersCoreError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.catalog
+            .remember_trash(&mut transaction, project, version, in_the_trash)
+            .await?;
+        let authorizer = self.authorizer.clone();
+        let changed = project.as_str().to_owned();
+        transaction.after_commit(async move { authorizer.access_changed(&changed) });
+        Ok(transaction.finish().await?)
+    }
+
+    pub async fn forget_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &ProjectLink,
+    ) -> Result<(), MembersCoreError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.catalog.forget_trash(&mut transaction, project).await?;
         Ok(transaction.finish().await?)
     }
 

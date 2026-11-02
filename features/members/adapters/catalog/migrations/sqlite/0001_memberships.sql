@@ -18,3 +18,9 @@ CREATE TABLE people (
     name             TEXT    NOT NULL,
     email            TEXT    NOT NULL
 );
+
+CREATE TABLE project_trash (
+    project          TEXT    PRIMARY KEY,
+    version          INTEGER NOT NULL,
+    in_the_trash     INTEGER NOT NULL
+);
