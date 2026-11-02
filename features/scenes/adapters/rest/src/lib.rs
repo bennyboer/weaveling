@@ -24,6 +24,7 @@ use scenes_core::{
 use serde::Deserialize;
 use serving::{NOT_FOUND, Problem};
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 struct ScenesGate(ScenesCore);
 
@@ -95,75 +96,96 @@ pub fn restylings_topic(
 
 pub struct TellingScenes {
     kept: Arc<dyn SceneCatalog>,
-    teller: Teller<SceneChanges>,
+    teller: Arc<Teller<SceneChanges>>,
 }
 
 impl TellingScenes {
     pub fn around(kept: Arc<dyn SceneCatalog>, broadcaster: Broadcaster<SceneChanges>) -> Self {
         Self {
             kept,
-            teller: Teller::new(broadcaster),
+            teller: Arc::new(Teller::new(broadcaster)),
         }
     }
 
-    async fn tell(&self, id: SceneId) {
-        let Ok(Some(summary)) = self.kept.summary_of(id).await else {
-            return;
-        };
-        self.teller.tell(
-            SceneChanges(summary.project.clone()),
-            &id.to_string(),
-            to_summary_dto(&summary),
-        );
+    fn tell_after(&self, transaction: &mut Transaction, id: SceneId) {
+        let (kept, teller) = (self.kept.clone(), self.teller.clone());
+
+        transaction.after_commit(async move {
+            let Ok(Some(summary)) = kept.summary_of(id).await else {
+                return;
+            };
+            teller.tell(
+                SceneChanges(summary.project.clone()),
+                &id.to_string(),
+                to_summary_dto(&summary),
+            );
+        });
     }
 }
 
 #[async_trait]
 impl SceneCatalog for TellingScenes {
-    async fn remember(&self, id: SceneId, project: &ProjectLink) -> Result<(), CatalogError> {
-        self.kept.remember(id, project).await?;
-        self.tell(id).await;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
+        self.kept.remember(transaction, id, project).await?;
+        self.tell_after(transaction, id);
 
         Ok(())
     }
 
     async fn retitle(
         &self,
+        transaction: &mut Transaction,
         id: SceneId,
         project: &ProjectLink,
         title: &SceneTitle,
         version: u64,
     ) -> Result<(), CatalogError> {
-        self.kept.retitle(id, project, title, version).await?;
-        self.tell(id).await;
+        self.kept
+            .retitle(transaction, id, project, title, version)
+            .await?;
+        self.tell_after(transaction, id);
 
         Ok(())
     }
 
     async fn note_opening(
         &self,
+        transaction: &mut Transaction,
         id: SceneId,
         project: &ProjectLink,
         opening: &str,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        self.kept.note_opening(id, project, opening, at).await?;
-        self.tell(id).await;
+        self.kept
+            .note_opening(transaction, id, project, opening, at)
+            .await?;
+        self.tell_after(transaction, id);
 
         Ok(())
     }
 
-    async fn forget(&self, id: SceneId, at: OffsetDateTime) -> Result<(), CatalogError> {
-        self.kept.forget(id, at).await
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        self.kept.forget(transaction, id, at).await
     }
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         self.kept
-            .forget_tombstones_laid_before(before, at_most)
+            .forget_tombstones_laid_before(transaction, before, at_most)
             .await
     }
 
@@ -204,7 +226,7 @@ pub fn quotation_restylings(scenes: ScenesCore) -> Router {
 
 pub struct TellingRestylingTasks {
     kept: Arc<dyn QuotationRestylingTasks>,
-    teller: Teller<RestylingChanges>,
+    teller: Arc<Teller<RestylingChanges>>,
 }
 
 impl TellingRestylingTasks {
@@ -214,19 +236,23 @@ impl TellingRestylingTasks {
     ) -> Self {
         Self {
             kept,
-            teller: Teller::new(broadcaster),
+            teller: Arc::new(Teller::new(broadcaster)),
         }
     }
 
-    async fn tell(&self, project: &ProjectLink) {
-        let Ok(Some(progress)) = self.kept.progress(project).await else {
-            return;
-        };
-        self.teller.tell(
-            RestylingChanges(project.clone()),
-            project.as_str(),
-            as_dto(progress),
-        );
+    fn tell_after(&self, transaction: &mut Transaction, project: &ProjectLink) {
+        let (kept, teller, project) = (self.kept.clone(), self.teller.clone(), project.clone());
+
+        transaction.after_commit(async move {
+            let Ok(Some(progress)) = kept.progress(&project).await else {
+                return;
+            };
+            teller.tell(
+                RestylingChanges(project.clone()),
+                project.as_str(),
+                as_dto(progress),
+            );
+        });
     }
 }
 
@@ -234,13 +260,14 @@ impl TellingRestylingTasks {
 impl QuotationRestylingTasks for TellingRestylingTasks {
     async fn begin(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
         total: u64,
     ) -> Result<bool, QuotationRestylingTaskError> {
-        let begun = self.kept.begin(project, change, total).await?;
+        let begun = self.kept.begin(transaction, project, change, total).await?;
         if begun {
-            self.tell(project).await;
+            self.tell_after(transaction, project);
         }
 
         Ok(begun)
@@ -248,23 +275,25 @@ impl QuotationRestylingTasks for TellingRestylingTasks {
 
     async fn claim(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
     ) -> Result<bool, QuotationRestylingTaskError> {
-        self.kept.claim(project, change).await
+        self.kept.claim(transaction, project, change).await
     }
 
     async fn progressed(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
         done: u64,
         finished: bool,
     ) -> Result<(), QuotationRestylingTaskError> {
         self.kept
-            .progressed(project, change, done, finished)
+            .progressed(transaction, project, change, done, finished)
             .await?;
-        self.tell(project).await;
+        self.tell_after(transaction, project);
 
         Ok(())
     }

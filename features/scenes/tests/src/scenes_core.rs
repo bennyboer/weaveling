@@ -247,11 +247,7 @@ async fn an_edit_whose_commit_is_refused_is_not_kept() {
 
     assert!(matches!(refused, Err(ScenesError::Transaction(_))));
     assert_eq!(
-        committing
-            .open(&scene)
-            .await
-            .expect("should open")
-            .text(),
+        committing.open(&scene).await.expect("should open").text(),
         "",
         "an edit is kept only once its transaction commits"
     );

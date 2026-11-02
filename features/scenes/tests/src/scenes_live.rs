@@ -14,7 +14,9 @@ use scenes_rest::TellingScenes;
 use scenes_store::InMemorySceneStore;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transactions};
+
+use crate::committed::Committed;
 
 struct ScenesFollowed {
     catalog: TellingScenes,
@@ -62,7 +64,7 @@ async fn told(socket: &mut Subscriber) -> Value {
 
 async fn retitled(catalog: &TellingScenes, id: SceneId, title: &str, version: u64) {
     catalog
-        .retitle(
+        .retitle_committed(
             id,
             &ProjectLink::from("project_1"),
             &SceneTitle::new(title).expect("a plain title"),
@@ -79,7 +81,7 @@ async fn whoever_follows_a_project_s_scenes_is_told_each_scene_as_it_is_kept() {
 
     followed
         .catalog
-        .remember(id, &ProjectLink::from("project_1"))
+        .remember_committed(id, &ProjectLink::from("project_1"))
         .await
         .expect("remembering should succeed");
     let made = told(&mut followed.socket).await;
@@ -87,7 +89,7 @@ async fn whoever_follows_a_project_s_scenes_is_told_each_scene_as_it_is_kept() {
     let named = told(&mut followed.socket).await;
     followed
         .catalog
-        .note_opening(
+        .note_opening_committed(
             id,
             &ProjectLink::from("project_1"),
             "Once there was",
@@ -128,7 +130,7 @@ async fn a_forgotten_scene_and_another_project_s_tell_nothing() {
     let gone = a_scene(1_000);
     followed
         .catalog
-        .forget(gone, OffsetDateTime::UNIX_EPOCH)
+        .forget_committed(gone, OffsetDateTime::UNIX_EPOCH)
         .await
         .expect("forgetting should succeed");
     let theirs = a_scene(2_000);
@@ -137,7 +139,7 @@ async fn a_forgotten_scene_and_another_project_s_tell_nothing() {
     retitled(&followed.catalog, gone, "Gone", 1).await;
     followed
         .catalog
-        .remember(theirs, &ProjectLink::from("project_2"))
+        .remember_committed(theirs, &ProjectLink::from("project_2"))
         .await
         .expect("remembering should succeed");
     retitled(&followed.catalog, mine, "Mine", 1).await;
@@ -154,13 +156,13 @@ async fn forgetting_old_tombstones_reaches_the_catalog() {
     let followed = scenes_followed("project_1").await;
     followed
         .catalog
-        .forget(a_scene(1_000), OffsetDateTime::UNIX_EPOCH)
+        .forget_committed(a_scene(1_000), OffsetDateTime::UNIX_EPOCH)
         .await
         .expect("forgetting should succeed");
 
     let forgotten = followed
         .catalog
-        .forget_tombstones_laid_before(
+        .forget_tombstones_laid_before_committed(
             OffsetDateTime::UNIX_EPOCH + Duration::from_secs(1),
             u64::MAX,
         )
@@ -168,4 +170,26 @@ async fn forgetting_old_tombstones_reaches_the_catalog() {
         .expect("forgetting tombstones should succeed");
 
     assert_eq!(forgotten, 1);
+}
+
+#[tokio::test]
+async fn a_scene_catalogued_in_a_transaction_that_is_dropped_tells_nobody() {
+    let mut followed = scenes_followed("project_1").await;
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    followed
+        .catalog
+        .remember(
+            &mut transaction,
+            a_scene(1_000),
+            &ProjectLink::from("project_1"),
+        )
+        .await
+        .expect("remembering should succeed");
+
+    drop(transaction);
+
+    assert!(followed.socket.silent().await);
 }

@@ -237,9 +237,17 @@ impl ScenesCore {
         }
 
         let finished = batch.len() < at_most;
+        let mut transaction = self.transactions.begin().await?;
         self.tasks
-            .progressed(&project, restyling.change, in_count(batch.len()), finished)
+            .progressed(
+                &mut transaction,
+                &project,
+                restyling.change,
+                in_count(batch.len()),
+                finished,
+            )
             .await?;
+        transaction.finish().await?;
 
         Ok(if finished {
             None
@@ -249,10 +257,16 @@ impl ScenesCore {
     }
 
     pub async fn catalogue_created(&self, scene: &str, project: &str) -> Result<(), ScenesError> {
-        Ok(self
-            .catalog
-            .remember(scene.parse()?, &ProjectLink::from(project))
-            .await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .remember(
+                &mut transaction,
+                scene.parse()?,
+                &ProjectLink::from(project),
+            )
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn catalogue_retitled(
@@ -262,15 +276,18 @@ impl ScenesCore {
         title: &str,
         version: u64,
     ) -> Result<(), ScenesError> {
-        Ok(self
-            .catalog
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
             .retitle(
+                &mut transaction,
                 scene.parse()?,
                 &ProjectLink::from(project),
                 &SceneTitle::new(title)?,
                 version,
             )
-            .await?)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn catalogue_opening(
@@ -280,10 +297,18 @@ impl ScenesCore {
         opening: &str,
         at: OffsetDateTime,
     ) -> Result<(), ScenesError> {
-        Ok(self
-            .catalog
-            .note_opening(scene.parse()?, &ProjectLink::from(project), opening, at)
-            .await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .note_opening(
+                &mut transaction,
+                scene.parse()?,
+                &ProjectLink::from(project),
+                opening,
+                at,
+            )
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn catalogue_deleted(
@@ -291,7 +316,12 @@ impl ScenesCore {
         scene: &str,
         at: OffsetDateTime,
     ) -> Result<(), ScenesError> {
-        Ok(self.catalog.forget(scene.parse()?, at).await?)
+        let mut transaction = self.transactions.begin().await?;
+        self.catalog
+            .forget(&mut transaction, scene.parse()?, at)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn forget_tombstones_laid_before(
@@ -299,10 +329,14 @@ impl ScenesCore {
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, ScenesError> {
-        Ok(self
+        let mut transaction = self.transactions.begin().await?;
+        let forgotten = self
             .catalog
-            .forget_tombstones_laid_before(before, at_most)
-            .await?)
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        transaction.finish().await?;
+
+        Ok(forgotten)
     }
 
     async fn claimed(
@@ -311,12 +345,27 @@ impl ScenesCore {
         restyling: &QuotationRestyling,
         at_most: usize,
     ) -> Result<bool, ScenesError> {
-        if restyling.after.is_some() {
-            return Ok(self.tasks.claim(project, restyling.change).await?);
-        }
-        let total = self.scenes_in(&restyling.project, at_most).await?;
+        let total = match restyling.after {
+            Some(_) => None,
+            None => Some(self.scenes_in(&restyling.project, at_most).await?),
+        };
 
-        Ok(self.tasks.begin(project, restyling.change, total).await?)
+        let mut transaction = self.transactions.begin().await?;
+        let claimed = match total {
+            Some(total) => {
+                self.tasks
+                    .begin(&mut transaction, project, restyling.change, total)
+                    .await?
+            }
+            None => {
+                self.tasks
+                    .claim(&mut transaction, project, restyling.change)
+                    .await?
+            }
+        };
+        transaction.finish().await?;
+
+        Ok(claimed)
     }
 
     async fn scenes_in(&self, project: &str, at_most: usize) -> Result<u64, ScenesError> {

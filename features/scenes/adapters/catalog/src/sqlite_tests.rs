@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use sqlx::SqlitePool;
 use test_harness::SqliteFixture;
+use transacting::{SqliteTransactions, Transactions};
 
 use crate::sqlite;
 use crate::sqlite::{SqliteQuotationRestylingTasks, SqliteSceneCatalog};
@@ -8,6 +9,7 @@ use crate::suite::Workbench;
 
 struct OnSqlite {
     fixture: SqliteFixture,
+    transactions: SqliteTransactions,
     catalog: SqliteSceneCatalog,
     tasks: SqliteQuotationRestylingTasks,
 }
@@ -27,6 +29,7 @@ impl Workbench for OnSqlite {
 
         Self {
             fixture,
+            transactions: SqliteTransactions::new(pool.clone()),
             catalog: SqliteSceneCatalog::new(pool.clone()),
             tasks: SqliteQuotationRestylingTasks::new(pool),
         }
@@ -38,6 +41,10 @@ impl Workbench for OnSqlite {
 
     fn tasks(&self) -> &Self::Tasks {
         &self.tasks
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn cleanup(self) {

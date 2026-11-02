@@ -3,6 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use thiserror::Error;
 use time::OffsetDateTime;
+use transacting::Transaction;
 
 use crate::{ProjectLink, SceneId, SceneTitle};
 
@@ -22,10 +23,16 @@ pub enum CatalogError {
 
 #[async_trait]
 pub trait SceneCatalog: Send + Sync {
-    async fn remember(&self, id: SceneId, project: &ProjectLink) -> Result<(), CatalogError>;
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError>;
 
     async fn retitle(
         &self,
+        transaction: &mut Transaction,
         id: SceneId,
         project: &ProjectLink,
         title: &SceneTitle,
@@ -34,16 +41,23 @@ pub trait SceneCatalog: Send + Sync {
 
     async fn note_opening(
         &self,
+        transaction: &mut Transaction,
         id: SceneId,
         project: &ProjectLink,
         opening: &str,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError>;
 
-    async fn forget(&self, id: SceneId, at: OffsetDateTime) -> Result<(), CatalogError>;
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError>;
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError>;

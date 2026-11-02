@@ -1,4 +1,7 @@
 #[cfg(test)]
+mod committed;
+
+#[cfg(test)]
 mod live_scene_eviction;
 
 #[cfg(test)]

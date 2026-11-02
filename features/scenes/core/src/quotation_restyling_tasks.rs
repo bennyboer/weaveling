@@ -3,6 +3,7 @@ use std::error::Error;
 use async_trait::async_trait;
 use quotation::QuotationMarks;
 use thiserror::Error;
+use transacting::Transaction;
 
 use crate::ProjectLink;
 
@@ -32,6 +33,7 @@ pub struct QuotationRestylingProgress {
 pub trait QuotationRestylingTasks: Send + Sync {
     async fn begin(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
         total: u64,
@@ -39,12 +41,14 @@ pub trait QuotationRestylingTasks: Send + Sync {
 
     async fn claim(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
     ) -> Result<bool, QuotationRestylingTaskError>;
 
     async fn progressed(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
         done: u64,

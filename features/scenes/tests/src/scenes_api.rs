@@ -24,6 +24,8 @@ use time::{Duration, OffsetDateTime};
 use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
+use crate::committed::{Committed, TasksCommitted};
+
 const UNKNOWN_ID: &str = "scene_031VkO0hnpeQZUiAB7nDma";
 
 fn refused_as(response: TestResponse, status: StatusCode, kind: &str) -> Value {
@@ -255,7 +257,7 @@ async fn a_catalog_holding(count: i64) -> Arc<InMemorySceneCatalog> {
 
     for made in 0..count {
         catalog
-            .remember(SceneId::generate(at(made)), &ProjectLink::from(A_PROJECT))
+            .remember_committed(SceneId::generate(at(made)), &ProjectLink::from(A_PROJECT))
             .await
             .expect("remembering should succeed");
     }
@@ -277,7 +279,7 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
     let catalog = a_catalog_holding(0).await;
     let scene = SceneId::generate(at(1_000));
     catalog
-        .retitle(
+        .retitle_committed(
             scene,
             &ProjectLink::from(A_PROJECT),
             &SceneTitle::new("The loom").expect("a plain title"),
@@ -286,7 +288,7 @@ async fn a_listing_names_each_scene_from_the_catalog_without_its_text() {
         .await
         .expect("retitling should succeed");
     catalog
-        .note_opening(
+        .note_opening_committed(
             scene,
             &ProjectLink::from(A_PROJECT),
             "The loom stood silent.",
@@ -468,13 +470,13 @@ async fn whoever_follows_a_book_s_restyling_is_told_as_it_begins_and_as_it_goes(
 
     followed
         .tasks
-        .begin(&project, 3, 5)
+        .begin_committed(&project, 3, 5)
         .await
         .expect("beginning should succeed");
     let begun = told_progress(&mut followed.socket).await;
     followed
         .tasks
-        .progressed(&project, 3, 5, true)
+        .progressed_committed(&project, 3, 5, true)
         .await
         .expect("counting should succeed");
     let finished = told_progress(&mut followed.socket).await;
@@ -505,19 +507,19 @@ async fn an_older_change_that_cannot_begin_and_another_book_tell_nothing() {
     let project = ProjectLink::from(A_PROJECT);
     followed
         .tasks
-        .begin(&project, 3, 5)
+        .begin_committed(&project, 3, 5)
         .await
         .expect("beginning should succeed");
     told_progress(&mut followed.socket).await;
 
     followed
         .tasks
-        .begin(&project, 2, 9)
+        .begin_committed(&project, 2, 9)
         .await
         .expect("an older change is turned away, not failed");
     followed
         .tasks
-        .begin(&ProjectLink::from("project_other"), 1, 1)
+        .begin_committed(&ProjectLink::from("project_other"), 1, 1)
         .await
         .expect("beginning should succeed");
 
@@ -529,11 +531,11 @@ async fn how_far_a_book_is_restyled_can_be_asked() {
     let tasks = InMemoryQuotationRestylingTasks::new();
     let project = ProjectLink::from(A_PROJECT);
     tasks
-        .begin(&project, 3, 5)
+        .begin_committed(&project, 3, 5)
         .await
         .expect("beginning should succeed");
     tasks
-        .progressed(&project, 3, 2, false)
+        .progressed_committed(&project, 3, 2, false)
         .await
         .expect("counting should succeed");
 
@@ -565,11 +567,11 @@ async fn more_done_than_was_counted_is_told_as_all_of_it() {
     let tasks = InMemoryQuotationRestylingTasks::new();
     let project = ProjectLink::from(A_PROJECT);
     tasks
-        .begin(&project, 3, 2)
+        .begin_committed(&project, 3, 2)
         .await
         .expect("beginning should succeed");
     tasks
-        .progressed(&project, 3, 3, true)
+        .progressed_committed(&project, 3, 3, true)
         .await
         .expect("counting should succeed");
 

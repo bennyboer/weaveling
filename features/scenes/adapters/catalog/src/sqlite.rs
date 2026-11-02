@@ -6,6 +6,8 @@ use scenes_core::{
 use sqlx::migrate::Migrator;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
+use transacting::Transaction;
+use transacting::sqlite::connection;
 
 const LEDGER: &str = "_sqlx_migrations_scene_catalog";
 
@@ -129,11 +131,16 @@ fn summary_from(row: &sqlx::sqlite::SqliteRow) -> Result<SceneSummary, CatalogEr
 
 #[async_trait]
 impl SceneCatalog for SqliteSceneCatalog {
-    async fn remember(&self, id: SceneId, project: &ProjectLink) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
         sqlx::query(REMEMBER)
             .bind(id.to_string())
             .bind(project.to_string())
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -142,6 +149,7 @@ impl SceneCatalog for SqliteSceneCatalog {
 
     async fn retitle(
         &self,
+        transaction: &mut Transaction,
         id: SceneId,
         project: &ProjectLink,
         title: &SceneTitle,
@@ -152,7 +160,7 @@ impl SceneCatalog for SqliteSceneCatalog {
             .bind(project.to_string())
             .bind(title.as_str())
             .bind(i64::try_from(version).expect("a version fits a signed 64-bit column"))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
@@ -161,6 +169,7 @@ impl SceneCatalog for SqliteSceneCatalog {
 
     async fn note_opening(
         &self,
+        transaction: &mut Transaction,
         id: SceneId,
         project: &ProjectLink,
         opening: &str,
@@ -171,44 +180,44 @@ impl SceneCatalog for SqliteSceneCatalog {
             .bind(project.to_string())
             .bind(opening)
             .bind(in_microseconds(at))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
         Ok(())
     }
 
-    async fn forget(&self, id: SceneId, at: OffsetDateTime) -> Result<(), CatalogError> {
-        let mut transaction = self
-            .pool
-            .begin_with("BEGIN IMMEDIATE")
-            .await
-            .map_err(unreachable)?;
-
+    async fn forget(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         sqlx::query(LAY_TOMBSTONE)
             .bind(id.to_string())
             .bind(in_microseconds(at))
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
         sqlx::query(FORGET)
             .bind(id.to_string())
-            .execute(&mut *transaction)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        transaction.commit().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn forget_tombstones_laid_before(
         &self,
+        transaction: &mut Transaction,
         before: OffsetDateTime,
         at_most: u64,
     ) -> Result<u64, CatalogError> {
         Ok(sqlx::query(FORGET_OLD_TOMBSTONES)
             .bind(in_microseconds(before))
             .bind(i64::try_from(at_most).unwrap_or(i64::MAX))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?
             .rows_affected())
@@ -275,6 +284,7 @@ fn counted(
 impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
     async fn begin(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
         total: u64,
@@ -283,7 +293,7 @@ impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
             .bind(project.to_string())
             .bind(in_column(change))
             .bind(in_column(total))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(untold)?)
             .await
             .map_err(untold)?;
 
@@ -292,13 +302,14 @@ impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
 
     async fn claim(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
     ) -> Result<bool, QuotationRestylingTaskError> {
         let written = sqlx::query(CLAIM)
             .bind(project.to_string())
             .bind(in_column(change))
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(untold)?)
             .await
             .map_err(untold)?;
 
@@ -307,6 +318,7 @@ impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
 
     async fn progressed(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
         done: u64,
@@ -317,7 +329,7 @@ impl QuotationRestylingTasks for SqliteQuotationRestylingTasks {
             .bind(in_column(change))
             .bind(in_column(done))
             .bind(finished)
-            .execute(&self.pool)
+            .execute(connection(transaction).map_err(untold)?)
             .await
             .map_err(untold)?;
 

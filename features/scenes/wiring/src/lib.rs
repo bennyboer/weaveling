@@ -222,11 +222,24 @@ mod tests {
         let ports = SceneFeature::in_memory(&context);
         let wired = SceneFeature::wire(&ports, &context);
         for (made, laid) in [(1, NOW), (2, NOW + Duration::SECOND)] {
+            let mut transaction = ports
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
             ports
                 .catalog
-                .forget(SceneId::generate(NOW + Duration::seconds(made)), laid)
+                .forget(
+                    &mut transaction,
+                    SceneId::generate(NOW + Duration::seconds(made)),
+                    laid,
+                )
                 .await
                 .expect("forgetting should succeed");
+            transaction
+                .finish()
+                .await
+                .expect("finishing should succeed");
         }
 
         let [chore] = wired.chores.as_slice() else {
@@ -248,11 +261,24 @@ mod tests {
         let context = a_context();
         let ports = SceneFeature::in_memory(&context);
         for made in [1, 2] {
+            let mut transaction = ports
+                .transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
             ports
                 .catalog
-                .forget(SceneId::generate(NOW + Duration::seconds(made)), NOW)
+                .forget(
+                    &mut transaction,
+                    SceneId::generate(NOW + Duration::seconds(made)),
+                    NOW,
+                )
                 .await
                 .expect("forgetting should succeed");
+            transaction
+                .finish()
+                .await
+                .expect("finishing should succeed");
         }
         let scenes = ScenesCore::new(
             ports.store.clone(),

@@ -14,7 +14,9 @@ use scenes_messaging::CatalogueScenesListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transaction};
+
+use crate::committed::Committed;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -61,12 +63,18 @@ fn out_of_reach() -> CatalogError {
 
 #[async_trait]
 impl SceneCatalog for OutOfReach {
-    async fn remember(&self, _id: SceneId, _project: &ProjectLink) -> Result<(), CatalogError> {
+    async fn remember(
+        &self,
+        _transaction: &mut Transaction,
+        _id: SceneId,
+        _project: &ProjectLink,
+    ) -> Result<(), CatalogError> {
         Err(out_of_reach())
     }
 
     async fn retitle(
         &self,
+        _transaction: &mut Transaction,
         _id: SceneId,
         _project: &ProjectLink,
         _title: &SceneTitle,
@@ -77,6 +85,7 @@ impl SceneCatalog for OutOfReach {
 
     async fn note_opening(
         &self,
+        _transaction: &mut Transaction,
         _id: SceneId,
         _project: &ProjectLink,
         _opening: &str,
@@ -85,12 +94,18 @@ impl SceneCatalog for OutOfReach {
         Err(out_of_reach())
     }
 
-    async fn forget(&self, _id: SceneId, _at: OffsetDateTime) -> Result<(), CatalogError> {
+    async fn forget(
+        &self,
+        _transaction: &mut Transaction,
+        _id: SceneId,
+        _at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
         Err(out_of_reach())
     }
 
     async fn forget_tombstones_laid_before(
         &self,
+        _transaction: &mut Transaction,
         _before: OffsetDateTime,
         _at_most: u64,
     ) -> Result<u64, CatalogError> {
@@ -193,7 +208,7 @@ async fn a_title_heard_again_at_the_version_the_catalog_holds_changes_nothing() 
     bench.hears(created(scene), 1_000).await;
     bench
         .catalog
-        .retitle(scene, &a_project(), &a_title("The loom"), 2)
+        .retitle_committed(scene, &a_project(), &a_title("The loom"), 2)
         .await
         .expect("retitling should succeed");
 
@@ -306,15 +321,22 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
         )
         .await;
 
-    for (before, forgotten) in [(at(5_000), 0), (at(5_001), 1)] {
+    let scenes = ScenesCore::new(
+        Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
+        bench.catalog.clone(),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(AllowingEverything),
+        Arc::new(FixedClock::new(at(1_000))),
+    );
+    for (before, forgotten) in [(at(5_000), 0), (at(5_001), 1), (at(5_001), 0)] {
         assert_eq!(
-            bench
-                .catalog
+            scenes
                 .forget_tombstones_laid_before(before, u64::MAX)
                 .await
                 .expect("forgetting tombstones should succeed"),
             forgotten,
-            "laid when it happened"
+            "laid when it happened, and forgotten for good"
         );
     }
 }

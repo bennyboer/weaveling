@@ -1,8 +1,11 @@
+use std::ops::Deref;
+
 use scenes_core::{
-    ProjectLink, QuotationRestylingProgress, QuotationRestylingTasks, SceneCatalog, SceneId,
-    SceneSummary, SceneTitle,
+    CatalogError, ProjectLink, QuotationRestylingProgress, QuotationRestylingTaskError,
+    QuotationRestylingTasks, SceneCatalog, SceneId, SceneSummary, SceneTitle,
 };
 use time::{Duration, OffsetDateTime};
+use transacting::{Transaction, Transactions};
 
 #[async_trait::async_trait]
 pub trait Workbench: Sized {
@@ -15,7 +18,167 @@ pub trait Workbench: Sized {
 
     fn tasks(&self) -> &Self::Tasks;
 
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing_catalog(&self) -> Committing<'_, Self::Catalog> {
+        Committing {
+            kept: self.catalog(),
+            transactions: self.transactions(),
+        }
+    }
+
+    fn committing_tasks(&self) -> Committing<'_, Self::Tasks> {
+        Committing {
+            kept: self.tasks(),
+            transactions: self.transactions(),
+        }
+    }
+
     async fn cleanup(self);
+}
+
+pub struct Committing<'a, K> {
+    kept: &'a K,
+    transactions: &'a dyn Transactions,
+}
+
+impl<K> Committing<'_, K> {
+    async fn begun(&self) -> Transaction {
+        self.transactions
+            .begin()
+            .await
+            .expect("beginning should succeed")
+    }
+
+    async fn finished(transaction: Transaction) {
+        transaction
+            .finish()
+            .await
+            .expect("finishing should succeed");
+    }
+
+    fn uncommitted(&self) -> &K {
+        self.kept
+    }
+}
+
+impl<K: SceneCatalog> Committing<'_, K> {
+    async fn remember(&self, id: SceneId, project: &ProjectLink) -> Result<(), CatalogError> {
+        let mut transaction = self.begun().await;
+        self.kept.remember(&mut transaction, id, project).await?;
+        Self::finished(transaction).await;
+
+        Ok(())
+    }
+
+    async fn retitle(
+        &self,
+        id: SceneId,
+        project: &ProjectLink,
+        title: &SceneTitle,
+        version: u64,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.begun().await;
+        self.kept
+            .retitle(&mut transaction, id, project, title, version)
+            .await?;
+        Self::finished(transaction).await;
+
+        Ok(())
+    }
+
+    async fn note_opening(
+        &self,
+        id: SceneId,
+        project: &ProjectLink,
+        opening: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.begun().await;
+        self.kept
+            .note_opening(&mut transaction, id, project, opening, at)
+            .await?;
+        Self::finished(transaction).await;
+
+        Ok(())
+    }
+
+    async fn forget(&self, id: SceneId, at: OffsetDateTime) -> Result<(), CatalogError> {
+        let mut transaction = self.begun().await;
+        self.kept.forget(&mut transaction, id, at).await?;
+        Self::finished(transaction).await;
+
+        Ok(())
+    }
+
+    async fn forget_tombstones_laid_before(
+        &self,
+        before: OffsetDateTime,
+        at_most: u64,
+    ) -> Result<u64, CatalogError> {
+        let mut transaction = self.begun().await;
+        let forgotten = self
+            .kept
+            .forget_tombstones_laid_before(&mut transaction, before, at_most)
+            .await?;
+        Self::finished(transaction).await;
+
+        Ok(forgotten)
+    }
+}
+
+impl<K: QuotationRestylingTasks> Committing<'_, K> {
+    async fn begin(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+        total: u64,
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        let mut transaction = self.begun().await;
+        let begun = self
+            .kept
+            .begin(&mut transaction, project, change, total)
+            .await?;
+        Self::finished(transaction).await;
+
+        Ok(begun)
+    }
+
+    async fn claim(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+    ) -> Result<bool, QuotationRestylingTaskError> {
+        let mut transaction = self.begun().await;
+        let claimed = self.kept.claim(&mut transaction, project, change).await?;
+        Self::finished(transaction).await;
+
+        Ok(claimed)
+    }
+
+    async fn progressed(
+        &self,
+        project: &ProjectLink,
+        change: u64,
+        done: u64,
+        finished: bool,
+    ) -> Result<(), QuotationRestylingTaskError> {
+        let mut transaction = self.begun().await;
+        self.kept
+            .progressed(&mut transaction, project, change, done, finished)
+            .await?;
+        Self::finished(transaction).await;
+
+        Ok(())
+    }
+}
+
+impl<K> Deref for Committing<'_, K> {
+    type Target = K;
+
+    fn deref(&self) -> &K {
+        self.kept
+    }
 }
 
 fn at(seconds: i64) -> OffsetDateTime {
@@ -43,58 +206,72 @@ fn summary(id: SceneId, title: &str, opening: &str) -> SceneSummary {
     }
 }
 
-async fn remembered(catalog: &impl SceneCatalog, id: SceneId) {
+async fn remembered(catalog: &Committing<'_, impl SceneCatalog>, id: SceneId) {
     catalog
         .remember(id, &a_project("project_1"))
         .await
         .expect("remembering should succeed");
 }
 
-async fn retitled(catalog: &impl SceneCatalog, id: SceneId, title: &str, version: u64) {
+async fn retitled(
+    catalog: &Committing<'_, impl SceneCatalog>,
+    id: SceneId,
+    title: &str,
+    version: u64,
+) {
     catalog
         .retitle(id, &a_project("project_1"), &a_title(title), version)
         .await
         .expect("retitling should succeed");
 }
 
-async fn opened(catalog: &impl SceneCatalog, id: SceneId, opening: &str, seconds: i64) {
+async fn opened(
+    catalog: &Committing<'_, impl SceneCatalog>,
+    id: SceneId,
+    opening: &str,
+    seconds: i64,
+) {
     catalog
         .note_opening(id, &a_project("project_1"), opening, at(seconds))
         .await
         .expect("noting an opening should succeed");
 }
 
-async fn forgotten(catalog: &impl SceneCatalog, id: SceneId) {
+async fn forgotten(catalog: &Committing<'_, impl SceneCatalog>, id: SceneId) {
     forgotten_at(catalog, id, 10_000).await;
 }
 
-async fn forgotten_at(catalog: &impl SceneCatalog, id: SceneId, seconds: i64) {
+async fn forgotten_at(catalog: &Committing<'_, impl SceneCatalog>, id: SceneId, seconds: i64) {
     catalog
         .forget(id, at(seconds))
         .await
         .expect("forgetting should succeed");
 }
 
-async fn forget_long_gone(catalog: &impl SceneCatalog, before_seconds: i64, at_most: u64) -> u64 {
+async fn forget_long_gone(
+    catalog: &Committing<'_, impl SceneCatalog>,
+    before_seconds: i64,
+    at_most: u64,
+) -> u64 {
     catalog
         .forget_tombstones_laid_before(at(before_seconds), at_most)
         .await
         .expect("forgetting tombstones should succeed")
 }
 
-async fn listed(catalog: &impl SceneCatalog, project: &str) -> Vec<SceneSummary> {
+async fn listed(catalog: &Committing<'_, impl SceneCatalog>, project: &str) -> Vec<SceneSummary> {
     catalog
         .in_project_after(&a_project(project), None, 100)
         .await
         .expect("listing should succeed")
 }
 
-pub async fn a_project_nobody_wrote_in_lists_nothing(catalog: &impl SceneCatalog) {
+pub async fn a_project_nobody_wrote_in_lists_nothing(catalog: &Committing<'_, impl SceneCatalog>) {
     assert!(listed(catalog, "project_1").await.is_empty());
 }
 
 pub async fn a_remembered_scene_is_listed_untitled_and_without_an_opening(
-    catalog: &impl SceneCatalog,
+    catalog: &Committing<'_, impl SceneCatalog>,
 ) {
     let id = a_scene(1_000);
 
@@ -106,13 +283,15 @@ pub async fn a_remembered_scene_is_listed_untitled_and_without_an_opening(
     );
 }
 
-pub async fn another_project_sees_none_of_them(catalog: &impl SceneCatalog) {
+pub async fn another_project_sees_none_of_them(catalog: &Committing<'_, impl SceneCatalog>) {
     remembered(catalog, a_scene(1_000)).await;
 
     assert!(listed(catalog, "project_2").await.is_empty());
 }
 
-pub async fn scenes_are_listed_in_order_a_page_at_a_time(catalog: &impl SceneCatalog) {
+pub async fn scenes_are_listed_in_order_a_page_at_a_time(
+    catalog: &Committing<'_, impl SceneCatalog>,
+) {
     let [first, second, third] = [a_scene(1_000), a_scene(2_000), a_scene(3_000)];
     for id in [third, first, second] {
         remembered(catalog, id).await;
@@ -138,7 +317,7 @@ pub async fn scenes_are_listed_in_order_a_page_at_a_time(catalog: &impl SceneCat
     );
 }
 
-pub async fn a_retitle_names_the_scene(catalog: &impl SceneCatalog) {
+pub async fn a_retitle_names_the_scene(catalog: &Committing<'_, impl SceneCatalog>) {
     let id = a_scene(1_000);
     remembered(catalog, id).await;
 
@@ -150,7 +329,7 @@ pub async fn a_retitle_names_the_scene(catalog: &impl SceneCatalog) {
     );
 }
 
-pub async fn a_late_retitle_does_not_undo_a_newer_one(catalog: &impl SceneCatalog) {
+pub async fn a_late_retitle_does_not_undo_a_newer_one(catalog: &Committing<'_, impl SceneCatalog>) {
     let id = a_scene(1_000);
     remembered(catalog, id).await;
 
@@ -164,7 +343,7 @@ pub async fn a_late_retitle_does_not_undo_a_newer_one(catalog: &impl SceneCatalo
     );
 }
 
-pub async fn an_opening_is_kept_beside_the_title(catalog: &impl SceneCatalog) {
+pub async fn an_opening_is_kept_beside_the_title(catalog: &Committing<'_, impl SceneCatalog>) {
     let id = a_scene(1_000);
     remembered(catalog, id).await;
     retitled(catalog, id, "The loom", 1).await;
@@ -177,7 +356,7 @@ pub async fn an_opening_is_kept_beside_the_title(catalog: &impl SceneCatalog) {
     );
 }
 
-pub async fn a_late_opening_does_not_undo_a_newer_one(catalog: &impl SceneCatalog) {
+pub async fn a_late_opening_does_not_undo_a_newer_one(catalog: &Committing<'_, impl SceneCatalog>) {
     let id = a_scene(1_000);
     remembered(catalog, id).await;
 
@@ -191,7 +370,7 @@ pub async fn a_late_opening_does_not_undo_a_newer_one(catalog: &impl SceneCatalo
 }
 
 pub async fn a_scene_named_before_it_was_remembered_is_listed_and_keeps_its_name(
-    catalog: &impl SceneCatalog,
+    catalog: &Committing<'_, impl SceneCatalog>,
 ) {
     let id = a_scene(1_000);
 
@@ -206,7 +385,7 @@ pub async fn a_scene_named_before_it_was_remembered_is_listed_and_keeps_its_name
     );
 }
 
-pub async fn a_scene_s_summary_is_what_is_kept(catalog: &impl SceneCatalog) {
+pub async fn a_scene_s_summary_is_what_is_kept(catalog: &Committing<'_, impl SceneCatalog>) {
     let id = a_scene(1_000);
     let forgotten_one = a_scene(2_000);
     remembered(catalog, id).await;
@@ -231,7 +410,7 @@ pub async fn a_scene_s_summary_is_what_is_kept(catalog: &impl SceneCatalog) {
     assert_eq!((gone, never), (None, None));
 }
 
-pub async fn a_forgotten_scene_is_not_listed(catalog: &impl SceneCatalog) {
+pub async fn a_forgotten_scene_is_not_listed(catalog: &Committing<'_, impl SceneCatalog>) {
     let [gone, kept] = [a_scene(1_000), a_scene(2_000)];
     remembered(catalog, gone).await;
     remembered(catalog, kept).await;
@@ -245,7 +424,7 @@ pub async fn a_forgotten_scene_is_not_listed(catalog: &impl SceneCatalog) {
 }
 
 pub async fn nothing_arriving_after_a_scene_was_forgotten_brings_it_back(
-    catalog: &impl SceneCatalog,
+    catalog: &Committing<'_, impl SceneCatalog>,
 ) {
     let id = a_scene(1_000);
     forgotten(catalog, id).await;
@@ -260,7 +439,9 @@ pub async fn nothing_arriving_after_a_scene_was_forgotten_brings_it_back(
     );
 }
 
-pub async fn forgetting_what_was_never_remembered_is_harmless(catalog: &impl SceneCatalog) {
+pub async fn forgetting_what_was_never_remembered_is_harmless(
+    catalog: &Committing<'_, impl SceneCatalog>,
+) {
     let id = a_scene(1_000);
 
     forgotten(catalog, id).await;
@@ -269,18 +450,26 @@ pub async fn forgetting_what_was_never_remembered_is_harmless(catalog: &impl Sce
     assert!(listed(catalog, "project_1").await.is_empty());
 }
 
-async fn claimed(tasks: &impl QuotationRestylingTasks, project: &str, change: u64) -> bool {
+async fn claimed(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+    project: &str,
+    change: u64,
+) -> bool {
     tasks
         .claim(&a_project(project), change)
         .await
         .expect("claiming should succeed")
 }
 
-pub async fn the_first_change_claims_the_book(tasks: &impl QuotationRestylingTasks) {
+pub async fn the_first_change_claims_the_book(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     assert!(claimed(tasks, "project_1", 3).await);
 }
 
-pub async fn a_newer_change_takes_the_book_from_an_older_one(tasks: &impl QuotationRestylingTasks) {
+pub async fn a_newer_change_takes_the_book_from_an_older_one(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     claimed(tasks, "project_1", 3).await;
 
     assert!(claimed(tasks, "project_1", 5).await);
@@ -291,7 +480,7 @@ pub async fn a_newer_change_takes_the_book_from_an_older_one(tasks: &impl Quotat
 }
 
 pub async fn an_older_change_is_turned_away_and_leaves_the_newer_one_holding(
-    tasks: &impl QuotationRestylingTasks,
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
     claimed(tasks, "project_1", 5).await;
 
@@ -299,7 +488,9 @@ pub async fn an_older_change_is_turned_away_and_leaves_the_newer_one_holding(
     assert!(claimed(tasks, "project_1", 5).await);
 }
 
-pub async fn the_same_change_claims_the_book_again(tasks: &impl QuotationRestylingTasks) {
+pub async fn the_same_change_claims_the_book_again(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     claimed(tasks, "project_1", 5).await;
 
     assert!(
@@ -308,27 +499,40 @@ pub async fn the_same_change_claims_the_book_again(tasks: &impl QuotationRestyli
     );
 }
 
-pub async fn another_book_is_claimed_on_its_own(tasks: &impl QuotationRestylingTasks) {
+pub async fn another_book_is_claimed_on_its_own(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     claimed(tasks, "project_1", 5).await;
 
     assert!(claimed(tasks, "project_2", 3).await);
 }
 
-async fn begun(tasks: &impl QuotationRestylingTasks, change: u64, total: u64) -> bool {
+async fn begun(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+    change: u64,
+    total: u64,
+) -> bool {
     tasks
         .begin(&a_project("project_1"), change, total)
         .await
         .expect("beginning should succeed")
 }
 
-async fn progressed(tasks: &impl QuotationRestylingTasks, change: u64, done: u64, finished: bool) {
+async fn progressed(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+    change: u64,
+    done: u64,
+    finished: bool,
+) {
     tasks
         .progressed(&a_project("project_1"), change, done, finished)
         .await
         .expect("counting progress should succeed");
 }
 
-async fn progress(tasks: &impl QuotationRestylingTasks) -> Option<QuotationRestylingProgress> {
+async fn progress(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) -> Option<QuotationRestylingProgress> {
     tasks
         .progress(&a_project("project_1"))
         .await
@@ -349,12 +553,14 @@ fn so_far(
     })
 }
 
-pub async fn a_book_never_restyled_has_no_progress(tasks: &impl QuotationRestylingTasks) {
+pub async fn a_book_never_restyled_has_no_progress(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     assert_eq!(progress(tasks).await, None);
 }
 
 pub async fn a_restyling_counts_its_batches_until_it_is_finished(
-    tasks: &impl QuotationRestylingTasks,
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
 ) {
     assert!(begun(tasks, 5, 7).await);
 
@@ -365,7 +571,9 @@ pub async fn a_restyling_counts_its_batches_until_it_is_finished(
     assert_eq!(progress(tasks).await, so_far(5, 7, 7, true));
 }
 
-pub async fn a_newer_change_begins_counting_afresh(tasks: &impl QuotationRestylingTasks) {
+pub async fn a_newer_change_begins_counting_afresh(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     begun(tasks, 5, 7).await;
     progressed(tasks, 5, 7, true).await;
 
@@ -374,7 +582,9 @@ pub async fn a_newer_change_begins_counting_afresh(tasks: &impl QuotationRestyli
     assert_eq!(progress(tasks).await, so_far(6, 2, 0, false));
 }
 
-pub async fn an_older_change_neither_begins_nor_counts(tasks: &impl QuotationRestylingTasks) {
+pub async fn an_older_change_neither_begins_nor_counts(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     begun(tasks, 5, 7).await;
 
     assert!(!begun(tasks, 3, 9).await);
@@ -387,7 +597,9 @@ pub async fn an_older_change_neither_begins_nor_counts(tasks: &impl QuotationRes
     );
 }
 
-pub async fn a_batch_claiming_the_book_keeps_the_count(tasks: &impl QuotationRestylingTasks) {
+pub async fn a_batch_claiming_the_book_keeps_the_count(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     begun(tasks, 5, 7).await;
     progressed(tasks, 5, 2, false).await;
 
@@ -396,14 +608,16 @@ pub async fn a_batch_claiming_the_book_keeps_the_count(tasks: &impl QuotationRes
     assert_eq!(progress(tasks).await, so_far(5, 7, 2, false));
 }
 
-pub async fn a_claim_nobody_began_counts_from_nothing(tasks: &impl QuotationRestylingTasks) {
+pub async fn a_claim_nobody_began_counts_from_nothing(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
     claimed(tasks, "project_1", 5).await;
 
     assert_eq!(progress(tasks).await, so_far(5, 0, 0, false));
 }
 
 pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
-    catalog: &impl SceneCatalog,
+    catalog: &Committing<'_, impl SceneCatalog>,
 ) {
     let long_gone = a_scene(1_000);
     let just_gone = a_scene(1_001);
@@ -426,7 +640,9 @@ pub async fn a_forgotten_tombstone_keeps_nothing_out_and_a_later_one_still_does(
     );
 }
 
-pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl SceneCatalog) {
+pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(
+    catalog: &Committing<'_, impl SceneCatalog>,
+) {
     let scene = a_scene(1_000);
     forgotten_at(catalog, scene, 1_000).await;
     forgotten_at(catalog, scene, 5_000).await;
@@ -439,7 +655,7 @@ pub async fn a_scene_s_tombstone_is_laid_once_when_it_first_went(catalog: &impl 
 }
 
 pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
-    catalog: &impl SceneCatalog,
+    catalog: &Committing<'_, impl SceneCatalog>,
 ) {
     let newest = a_scene(1_000);
     let oldest = a_scene(1_001);
@@ -465,6 +681,69 @@ pub async fn tombstones_are_forgotten_oldest_first_and_at_most_so_many(
     assert_eq!(forget_long_gone(catalog, 9_000, 2).await, 1);
 }
 
+pub async fn what_was_catalogued_in_a_transaction_that_is_dropped_is_gone(
+    catalog: &Committing<'_, impl SceneCatalog>,
+) {
+    let kept = a_scene(1_000);
+    catalog
+        .remember(kept, &a_project("project_1"))
+        .await
+        .expect("remembering should succeed");
+    let mut transaction = catalog.begun().await;
+    let uncommitted = catalog.uncommitted();
+    uncommitted
+        .remember(&mut transaction, a_scene(2_000), &a_project("project_1"))
+        .await
+        .expect("remembering should succeed");
+    uncommitted
+        .retitle(
+            &mut transaction,
+            kept,
+            &a_project("project_1"),
+            &SceneTitle::new("Never titled").expect("a plain title"),
+            1,
+        )
+        .await
+        .expect("retitling should succeed");
+    uncommitted
+        .forget(&mut transaction, kept, at(3_000))
+        .await
+        .expect("forgetting should succeed");
+
+    drop(transaction);
+
+    let listed = catalog
+        .in_project_after(&a_project("project_1"), None, 10)
+        .await
+        .expect("listing should succeed");
+    assert_eq!(
+        listed.iter().map(|summary| summary.id).collect::<Vec<_>>(),
+        vec![kept]
+    );
+    assert_eq!(listed[0].title, SceneTitle::untitled());
+}
+
+pub async fn a_claim_made_in_a_transaction_that_is_dropped_was_never_made(
+    tasks: &Committing<'_, impl QuotationRestylingTasks>,
+) {
+    let mut transaction = tasks.begun().await;
+    tasks
+        .uncommitted()
+        .begin(&mut transaction, &a_project("project_1"), 5, 10)
+        .await
+        .expect("beginning should succeed");
+
+    drop(transaction);
+
+    assert_eq!(
+        tasks
+            .progress(&a_project("project_1"))
+            .await
+            .expect("asking should succeed"),
+        None
+    );
+}
+
 macro_rules! restyling_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -472,7 +751,7 @@ macro_rules! restyling_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.tasks()).await;
+            $crate::suite::$case(&bench.committing_tasks()).await;
             bench.cleanup().await;
         }
     };
@@ -485,7 +764,7 @@ macro_rules! conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.catalog()).await;
+            $crate::suite::$case(&bench.committing_catalog()).await;
             bench.cleanup().await;
         }
     };
@@ -493,6 +772,14 @@ macro_rules! conformance_case {
 
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::suite::conformance_case!(
+            $workbench,
+            what_was_catalogued_in_a_transaction_that_is_dropped_is_gone
+        );
+        $crate::suite::restyling_case!(
+            $workbench,
+            a_claim_made_in_a_transaction_that_is_dropped_was_never_made
+        );
         $crate::suite::conformance_case!($workbench, a_project_nobody_wrote_in_lists_nothing);
         $crate::suite::conformance_case!(
             $workbench,

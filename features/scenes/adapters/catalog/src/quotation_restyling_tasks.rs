@@ -1,14 +1,15 @@
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
 use scenes_core::{
     ProjectLink, QuotationRestylingProgress, QuotationRestylingTaskError, QuotationRestylingTasks,
 };
+use transacting::Transaction;
 
 #[derive(Debug, Default)]
 pub struct InMemoryQuotationRestylingTasks {
-    latest: Mutex<HashMap<ProjectLink, QuotationRestylingProgress>>,
+    latest: Arc<Mutex<HashMap<ProjectLink, QuotationRestylingProgress>>>,
 }
 
 impl InMemoryQuotationRestylingTasks {
@@ -20,6 +21,20 @@ impl InMemoryQuotationRestylingTasks {
         self.latest
             .lock()
             .expect("quotation restyling tasks lock poisoned")
+    }
+
+    fn undo_on_rollback(
+        &self,
+        transaction: &mut Transaction,
+    ) -> Result<(), QuotationRestylingTaskError> {
+        let (before, latest) = (self.latest().clone(), self.latest.clone());
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *latest
+                .lock()
+                .expect("quotation restyling tasks lock poisoned") = before;
+        })
+        .map_err(|failure| QuotationRestylingTaskError::Backend(Box::new(failure)))
     }
 }
 
@@ -36,10 +51,12 @@ fn unbegun(change: u64) -> QuotationRestylingProgress {
 impl QuotationRestylingTasks for InMemoryQuotationRestylingTasks {
     async fn begin(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
         total: u64,
     ) -> Result<bool, QuotationRestylingTaskError> {
+        self.undo_on_rollback(transaction)?;
         let mut latest = self.latest();
         let known = latest.entry(project.clone()).or_insert(unbegun(change));
         if known.change > change {
@@ -55,9 +72,11 @@ impl QuotationRestylingTasks for InMemoryQuotationRestylingTasks {
 
     async fn claim(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
     ) -> Result<bool, QuotationRestylingTaskError> {
+        self.undo_on_rollback(transaction)?;
         let mut latest = self.latest();
         let known = latest.entry(project.clone()).or_insert(unbegun(change));
         if known.change > change {
@@ -70,11 +89,13 @@ impl QuotationRestylingTasks for InMemoryQuotationRestylingTasks {
 
     async fn progressed(
         &self,
+        transaction: &mut Transaction,
         project: &ProjectLink,
         change: u64,
         done: u64,
         finished: bool,
     ) -> Result<(), QuotationRestylingTaskError> {
+        self.undo_on_rollback(transaction)?;
         if let Some(known) = self
             .latest()
             .get_mut(project)
