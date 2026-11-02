@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use thiserror::Error;
+use transacting::Transaction;
 
 use crate::{IdeaLink, ProjectLink, Scene, SceneId, SceneTitle};
 
@@ -17,25 +18,59 @@ pub enum StoreError {
 
 #[async_trait]
 pub trait SceneStore: Send + Sync {
-    async fn create(&self, scene: &Scene) -> Result<(), StoreError>;
+    async fn create(&self, transaction: &mut Transaction, scene: &Scene) -> Result<(), StoreError>;
 
     async fn load(&self, id: SceneId) -> Result<Scene, StoreError>;
 
-    async fn apply(&self, id: SceneId, update: &[u8]) -> Result<(), StoreError>;
+    async fn apply(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        update: &[u8],
+    ) -> Result<(), StoreError>;
 
-    async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError>;
+    async fn retitle(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        title: &SceneTitle,
+    ) -> Result<(), StoreError>;
 
-    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError>;
+    async fn announce_word_count(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        words: usize,
+    ) -> Result<(), StoreError>;
 
-    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError>;
+    async fn announce_opening(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        opening: &str,
+    ) -> Result<(), StoreError>;
 
-    async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError>;
+    async fn link(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError>;
 
-    async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError>;
+    async fn unlink(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError>;
 
-    async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError>;
+    async fn unlink_everywhere(
+        &self,
+        transaction: &mut Transaction,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError>;
 
-    async fn delete(&self, id: SceneId) -> Result<(), StoreError>;
+    async fn delete(&self, transaction: &mut Transaction, id: SceneId) -> Result<(), StoreError>;
 
     async fn in_project(
         &self,

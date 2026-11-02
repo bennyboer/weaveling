@@ -21,6 +21,7 @@ use scenes_rest::{PAGE, TellingRestylingTasks};
 use scenes_store::InMemorySceneStore;
 use serde_json::Value;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const UNKNOWN_ID: &str = "scene_031VkO0hnpeQZUiAB7nDma";
@@ -48,6 +49,7 @@ fn a_core_of(
 ) -> ScenesCore {
     ScenesCore::new(
         store,
+        Arc::new(InMemoryTransactions::new()),
         catalog,
         tasks,
         Arc::new(AllowingEverything),

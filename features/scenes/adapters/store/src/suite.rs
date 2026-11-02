@@ -3,6 +3,8 @@
     allow(dead_code, unused_imports, unused_macros)
 )]
 
+use std::ops::Deref;
+
 use messaging::{Message, RoutingKey};
 use scenes_core::{
     FRAGMENT, IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle,
@@ -10,6 +12,7 @@ use scenes_core::{
 };
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
+use transacting::{Transaction, Transactions};
 
 use crate::compaction::COMPACT_AFTER;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
@@ -21,6 +24,19 @@ pub trait Workbench: Sized {
     async fn setup() -> Self;
 
     fn store(&self) -> &Self::Store;
+
+    fn transactions(&self) -> &dyn Transactions;
+
+    fn committing(&self) -> Committing<'_, Self::Store> {
+        self.committing_to(self.store())
+    }
+
+    fn committing_to<'a>(&'a self, store: &'a Self::Store) -> Committing<'a, Self::Store> {
+        Committing {
+            store,
+            transactions: self.transactions(),
+        }
+    }
 
     async fn enqueued(&self) -> Vec<Message>;
 
@@ -36,6 +52,91 @@ pub trait Tables: Workbench {
     async fn rows(&self) -> Vec<bool>;
 
     async fn count(&self, query: &'static str) -> i64;
+}
+
+pub struct Committing<'a, S> {
+    store: &'a S,
+    transactions: &'a dyn Transactions,
+}
+
+fn unreachable(failure: transacting::Failure) -> StoreError {
+    StoreError::Backend(Box::new(failure))
+}
+
+impl<S: SceneStore> Committing<'_, S> {
+    pub async fn begun(&self) -> Result<Transaction, StoreError> {
+        self.transactions.begin().await.map_err(unreachable)
+    }
+
+    pub fn uncommitted(&self) -> &S {
+        self.store
+    }
+
+    pub async fn create(&self, scene: &Scene) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store.create(&mut transaction, scene).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn apply(&self, id: SceneId, update: &[u8]) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store.apply(&mut transaction, id, update).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store.retitle(&mut transaction, id, title).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store
+            .announce_word_count(&mut transaction, id, words)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store
+            .announce_opening(&mut transaction, id, opening)
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store.link(&mut transaction, id, idea).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store.unlink(&mut transaction, id, idea).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store.unlink_everywhere(&mut transaction, idea).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn delete(&self, id: SceneId) -> Result<(), StoreError> {
+        let mut transaction = self.begun().await?;
+        self.store.delete(&mut transaction, id).await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+}
+
+impl<S> Deref for Committing<'_, S> {
+    type Target = S;
+
+    fn deref(&self) -> &S {
+        self.store
+    }
 }
 
 pub fn message_for(change: &SceneChange, at: OffsetDateTime) -> Message {
@@ -163,7 +264,7 @@ pub fn a_scene(id: SceneId, saying: &str) -> Scene {
     scene
 }
 
-pub async fn create_then_load_returns_the_prose(store: &impl SceneStore) {
+pub async fn create_then_load_returns_the_prose(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
 
     store
@@ -176,7 +277,7 @@ pub async fn create_then_load_returns_the_prose(store: &impl SceneStore) {
     assert_eq!(found.id(), id);
 }
 
-pub async fn an_empty_scene_can_be_stored(store: &impl SceneStore) {
+pub async fn an_empty_scene_can_be_stored(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
 
     store
@@ -188,7 +289,7 @@ pub async fn an_empty_scene_can_be_stored(store: &impl SceneStore) {
     assert_eq!(found.text(), "");
 }
 
-pub async fn load_missing_scene_is_not_found(store: &impl SceneStore) {
+pub async fn load_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
     let missing = an_id(1_000);
 
     let error = store
@@ -202,7 +303,7 @@ pub async fn load_missing_scene_is_not_found(store: &impl SceneStore) {
     );
 }
 
-pub async fn create_rejects_a_duplicate_id(store: &impl SceneStore) {
+pub async fn create_rejects_a_duplicate_id(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -220,7 +321,9 @@ pub async fn create_rejects_a_duplicate_id(store: &impl SceneStore) {
     );
 }
 
-pub async fn a_rejected_create_leaves_the_stored_scene_untouched(store: &impl SceneStore) {
+pub async fn a_rejected_create_leaves_the_stored_scene_untouched(
+    store: &Committing<'_, impl SceneStore>,
+) {
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -233,7 +336,7 @@ pub async fn a_rejected_create_leaves_the_stored_scene_untouched(store: &impl Sc
     assert_eq!(found.text(), "The loom stood silent.");
 }
 
-pub async fn absorb_missing_scene_is_not_found(store: &impl SceneStore) {
+pub async fn absorb_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
     let missing = an_id(1_000);
 
     let error = store
@@ -247,7 +350,7 @@ pub async fn absorb_missing_scene_is_not_found(store: &impl SceneStore) {
     );
 }
 
-pub async fn absorbed_updates_are_visible_on_load(store: &impl SceneStore) {
+pub async fn absorbed_updates_are_visible_on_load(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
@@ -263,7 +366,9 @@ pub async fn absorbed_updates_are_visible_on_load(store: &impl SceneStore) {
     assert_eq!(found.text(), "The loom stood silent.");
 }
 
-pub async fn absorbing_the_same_update_twice_changes_nothing(store: &impl SceneStore) {
+pub async fn absorbing_the_same_update_twice_changes_nothing(
+    store: &Committing<'_, impl SceneStore>,
+) {
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
@@ -282,7 +387,7 @@ pub async fn absorbing_the_same_update_twice_changes_nothing(store: &impl SceneS
     );
 }
 
-pub async fn updates_absorbed_in_either_order_converge(store: &impl SceneStore) {
+pub async fn updates_absorbed_in_either_order_converge(store: &Committing<'_, impl SceneStore>) {
     let ada = a_paragraph("Ada wrote this.");
     let bo = a_paragraph("Bo wrote this.");
     let one = an_id(1_000);
@@ -306,7 +411,9 @@ pub async fn updates_absorbed_in_either_order_converge(store: &impl SceneStore) 
     assert!(first.contains("Bo wrote this."));
 }
 
-pub async fn an_unusable_update_is_refused_and_changes_nothing(store: &impl SceneStore) {
+pub async fn an_unusable_update_is_refused_and_changes_nothing(
+    store: &Committing<'_, impl SceneStore>,
+) {
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -330,7 +437,7 @@ pub async fn an_unusable_update_is_refused_and_changes_nothing(store: &impl Scen
     );
 }
 
-pub async fn delete_removes_the_scene(store: &impl SceneStore) {
+pub async fn delete_removes_the_scene(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -346,7 +453,7 @@ pub async fn delete_removes_the_scene(store: &impl SceneStore) {
     );
 }
 
-pub async fn delete_missing_scene_is_not_found(store: &impl SceneStore) {
+pub async fn delete_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
     let missing = an_id(1_000);
 
     let error = store
@@ -360,7 +467,7 @@ pub async fn delete_missing_scene_is_not_found(store: &impl SceneStore) {
     );
 }
 
-pub async fn a_loaded_scene_still_knows_its_project(store: &impl SceneStore) {
+pub async fn a_loaded_scene_still_knows_its_project(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -372,7 +479,7 @@ pub async fn a_loaded_scene_still_knows_its_project(store: &impl SceneStore) {
     assert_eq!(found.project(), &a_project());
 }
 
-pub async fn a_project_lists_its_own_scenes_in_order(store: &impl SceneStore) {
+pub async fn a_project_lists_its_own_scenes_in_order(store: &Committing<'_, impl SceneStore>) {
     let first = an_id(1_000);
     let second = an_id(2_000);
     for id in [second, first] {
@@ -390,7 +497,7 @@ pub async fn a_project_lists_its_own_scenes_in_order(store: &impl SceneStore) {
     assert_eq!(found, vec![first, second]);
 }
 
-pub async fn another_project_sees_none_of_them(store: &impl SceneStore) {
+pub async fn another_project_sees_none_of_them(store: &Committing<'_, impl SceneStore>) {
     let mine = an_id(1_000);
     store
         .create(&Scene::empty(mine, a_project()))
@@ -408,7 +515,7 @@ pub async fn another_project_sees_none_of_them(store: &impl SceneStore) {
     );
 }
 
-pub async fn listing_resumes_after_the_cursor(store: &impl SceneStore) {
+pub async fn listing_resumes_after_the_cursor(store: &Committing<'_, impl SceneStore>) {
     let first = an_id(1_000);
     let second = an_id(2_000);
     let third = an_id(3_000);
@@ -436,7 +543,7 @@ pub async fn listing_resumes_after_the_cursor(store: &impl SceneStore) {
     );
 }
 
-pub async fn listing_past_the_last_scene_is_empty(store: &impl SceneStore) {
+pub async fn listing_past_the_last_scene_is_empty(store: &Committing<'_, impl SceneStore>) {
     let only = an_id(1_000);
     store
         .create(&Scene::empty(only, a_project()))
@@ -451,7 +558,7 @@ pub async fn listing_past_the_last_scene_is_empty(store: &impl SceneStore) {
     assert!(found.is_empty(), "expected nothing after the last id");
 }
 
-pub async fn a_deleted_scene_leaves_the_listing(store: &impl SceneStore) {
+pub async fn a_deleted_scene_leaves_the_listing(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
@@ -471,7 +578,7 @@ fn a_title(saying: &str) -> SceneTitle {
     SceneTitle::new(saying).expect("a plain title is fine")
 }
 
-pub async fn a_new_scene_starts_untitled(store: &impl SceneStore) {
+pub async fn a_new_scene_starts_untitled(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
@@ -483,7 +590,7 @@ pub async fn a_new_scene_starts_untitled(store: &impl SceneStore) {
     assert!(found.title().is_untitled());
 }
 
-pub async fn a_retitled_scene_keeps_its_title(store: &impl SceneStore) {
+pub async fn a_retitled_scene_keeps_its_title(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
@@ -499,7 +606,7 @@ pub async fn a_retitled_scene_keeps_its_title(store: &impl SceneStore) {
     assert_eq!(found.title(), &a_title("The loom"));
 }
 
-pub async fn retitling_a_missing_scene_is_not_found(store: &impl SceneStore) {
+pub async fn retitling_a_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
     let missing = an_id(1_000);
 
     let error = store
@@ -513,7 +620,7 @@ pub async fn retitling_a_missing_scene_is_not_found(store: &impl SceneStore) {
     );
 }
 
-pub async fn retitling_leaves_the_text_as_it_was(store: &impl SceneStore) {
+pub async fn retitling_leaves_the_text_as_it_was(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -529,7 +636,7 @@ pub async fn retitling_leaves_the_text_as_it_was(store: &impl SceneStore) {
     assert_eq!(found.text(), "The loom stood silent.");
 }
 
-pub async fn a_title_survives_further_writing(store: &impl SceneStore) {
+pub async fn a_title_survives_further_writing(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&Scene::empty(id, a_project()))
@@ -554,7 +661,9 @@ pub async fn a_title_survives_further_writing(store: &impl SceneStore) {
     );
 }
 
-pub async fn announcing_a_word_count_for_a_missing_scene_is_not_found(store: &impl SceneStore) {
+pub async fn announcing_a_word_count_for_a_missing_scene_is_not_found(
+    store: &Committing<'_, impl SceneStore>,
+) {
     let missing = an_id(1_000);
 
     let error = store
@@ -572,14 +681,14 @@ fn an_idea(named: &str) -> IdeaLink {
     IdeaLink::from(named)
 }
 
-async fn an_empty_scene(store: &impl SceneStore, id: SceneId) {
+async fn an_empty_scene(store: &Committing<'_, impl SceneStore>, id: SceneId) {
     store
         .create(&Scene::empty(id, a_project()))
         .await
         .expect("create should succeed");
 }
 
-pub async fn a_new_scene_has_no_linked_ideas(store: &impl SceneStore) {
+pub async fn a_new_scene_has_no_linked_ideas(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -588,7 +697,9 @@ pub async fn a_new_scene_has_no_linked_ideas(store: &impl SceneStore) {
     assert!(found.ideas().is_empty());
 }
 
-pub async fn linked_ideas_come_back_in_the_order_they_were_linked(store: &impl SceneStore) {
+pub async fn linked_ideas_come_back_in_the_order_they_were_linked(
+    store: &Committing<'_, impl SceneStore>,
+) {
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -608,7 +719,7 @@ pub async fn linked_ideas_come_back_in_the_order_they_were_linked(store: &impl S
     );
 }
 
-pub async fn linking_the_same_idea_twice_is_one_link(store: &impl SceneStore) {
+pub async fn linking_the_same_idea_twice_is_one_link(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -623,7 +734,7 @@ pub async fn linking_the_same_idea_twice_is_one_link(store: &impl SceneStore) {
     assert_eq!(found.ideas(), &[an_idea("idea_1")]);
 }
 
-pub async fn unlinking_takes_away_only_that_idea(store: &impl SceneStore) {
+pub async fn unlinking_takes_away_only_that_idea(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
     for idea in ["idea_1", "idea_2"] {
@@ -642,7 +753,7 @@ pub async fn unlinking_takes_away_only_that_idea(store: &impl SceneStore) {
     assert_eq!(found.ideas(), &[an_idea("idea_2")]);
 }
 
-pub async fn unlinking_an_idea_never_linked_is_harmless(store: &impl SceneStore) {
+pub async fn unlinking_an_idea_never_linked_is_harmless(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -652,7 +763,7 @@ pub async fn unlinking_an_idea_never_linked_is_harmless(store: &impl SceneStore)
         .expect("nothing to unlink is not a failure");
 }
 
-pub async fn linking_to_a_missing_scene_is_not_found(store: &impl SceneStore) {
+pub async fn linking_to_a_missing_scene_is_not_found(store: &Committing<'_, impl SceneStore>) {
     let missing = an_id(1_000);
 
     let linked = store.link(missing, &an_idea("idea_1")).await;
@@ -668,7 +779,9 @@ pub async fn linking_to_a_missing_scene_is_not_found(store: &impl SceneStore) {
     );
 }
 
-pub async fn unlinking_an_idea_everywhere_reaches_every_scene(store: &impl SceneStore) {
+pub async fn unlinking_an_idea_everywhere_reaches_every_scene(
+    store: &Committing<'_, impl SceneStore>,
+) {
     let one = an_id(1_000);
     let other = an_id(2_000);
     for id in [one, other] {
@@ -696,7 +809,7 @@ pub async fn unlinking_an_idea_everywhere_reaches_every_scene(store: &impl Scene
     }
 }
 
-pub async fn links_survive_further_writing(store: &impl SceneStore) {
+pub async fn links_survive_further_writing(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
     store
@@ -717,7 +830,7 @@ pub async fn links_survive_further_writing(store: &impl SceneStore) {
     );
 }
 
-pub async fn linking_leaves_the_title_and_the_text_alone(store: &impl SceneStore) {
+pub async fn linking_leaves_the_title_and_the_text_alone(store: &Committing<'_, impl SceneStore>) {
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -739,7 +852,7 @@ pub async fn linking_leaves_the_title_and_the_text_alone(store: &impl SceneStore
 }
 
 pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -761,7 +874,7 @@ pub async fn linking_an_idea_enqueues_one_message(bench: &impl Workbench) {
 }
 
 pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
     store
@@ -793,7 +906,7 @@ pub async fn unlinking_enqueues_only_for_a_link_that_was_there(bench: &impl Work
 }
 
 pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     let other = an_id(2_000);
     an_empty_scene(store, id).await;
@@ -851,7 +964,7 @@ pub async fn every_change_to_a_scene_counts_up(bench: &impl Workbench) {
 }
 
 pub async fn announcing_a_word_count_enqueues_it_with_the_scene_s_project(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -870,7 +983,7 @@ pub async fn announcing_a_word_count_enqueues_it_with_the_scene_s_project(bench:
 }
 
 pub async fn announcing_a_word_count_is_not_a_change_to_the_scene(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -900,7 +1013,7 @@ pub async fn announcing_a_word_count_is_not_a_change_to_the_scene(bench: &impl W
 }
 
 pub async fn deleting_a_scene_enqueues_a_message(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -917,7 +1030,7 @@ pub async fn deleting_a_scene_enqueues_a_message(bench: &impl Workbench) {
 }
 
 pub async fn a_refused_change_enqueues_nothing(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let missing = an_id(1_000);
 
     let _ = store.link(missing, &an_idea("idea_1")).await;
@@ -931,7 +1044,7 @@ pub async fn a_refused_change_enqueues_nothing(bench: &impl Workbench) {
 }
 
 pub async fn writing_enqueues_nothing(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -951,7 +1064,7 @@ pub async fn writing_enqueues_nothing(bench: &impl Workbench) {
 }
 
 pub async fn creating_a_scene_is_announced_with_its_project(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
 
     an_empty_scene(store, id).await;
@@ -967,7 +1080,7 @@ pub async fn creating_a_scene_is_announced_with_its_project(bench: &impl Workben
 }
 
 pub async fn a_retitle_is_announced_with_its_title_and_version(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -992,7 +1105,7 @@ pub async fn a_retitle_is_announced_with_its_title_and_version(bench: &impl Work
 }
 
 pub async fn announcing_an_opening_enqueues_it_with_the_scene_s_project(bench: &impl Workbench) {
-    let store = bench.store();
+    let store = &bench.committing();
     let id = an_id(1_000);
     an_empty_scene(store, id).await;
 
@@ -1014,7 +1127,9 @@ pub async fn announcing_an_opening_enqueues_it_with_the_scene_s_project(bench: &
     );
 }
 
-pub async fn announcing_an_opening_for_a_missing_scene_is_not_found(store: &impl SceneStore) {
+pub async fn announcing_an_opening_for_a_missing_scene_is_not_found(
+    store: &Committing<'_, impl SceneStore>,
+) {
     let missing = an_id(1_000);
 
     let error = store
@@ -1028,6 +1143,51 @@ pub async fn announcing_an_opening_for_a_missing_scene_is_not_found(store: &impl
     );
 }
 
+pub async fn what_was_written_in_a_transaction_that_is_dropped_is_gone_and_told_to_nobody(
+    bench: &impl Workbench,
+) {
+    let store = &bench.committing();
+    let kept = an_id(1_000);
+    store
+        .create(&a_scene(kept, "The loom stood silent."))
+        .await
+        .expect("creating should succeed");
+    let told_before = bench.enqueued().await.len();
+    let mut transaction = store.begun().await.expect("beginning should succeed");
+    let uncommitted = store.uncommitted();
+    uncommitted
+        .create(&mut transaction, &a_scene(an_id(2_000), "Never was."))
+        .await
+        .expect("creating should succeed");
+    uncommitted
+        .apply(&mut transaction, kept, &a_paragraph("Never said."))
+        .await
+        .expect("applying should succeed");
+    uncommitted
+        .retitle(&mut transaction, kept, &a_title("Never titled"))
+        .await
+        .expect("retitling should succeed");
+    uncommitted
+        .link(&mut transaction, kept, &an_idea("idea_1"))
+        .await
+        .expect("linking should succeed");
+
+    drop(transaction);
+
+    let scene = store.load(kept).await.expect("the kept scene is there");
+    assert_eq!(scene.text(), "The loom stood silent.");
+    assert!(scene.ideas().is_empty());
+    assert!(matches!(
+        store.load(an_id(2_000)).await,
+        Err(StoreError::NotFound(_))
+    ));
+    assert_eq!(
+        bench.enqueued().await.len(),
+        told_before,
+        "nothing written in a dropped transaction is told"
+    );
+}
+
 macro_rules! conformance_case {
     ($workbench:ty, $case:ident) => {
         #[tokio::test]
@@ -1035,7 +1195,7 @@ macro_rules! conformance_case {
             use $crate::suite::Workbench;
 
             let bench = <$workbench>::setup().await;
-            $crate::suite::$case(bench.store()).await;
+            $crate::suite::$case(&bench.committing()).await;
             bench.cleanup().await;
         }
     };
@@ -1056,6 +1216,10 @@ macro_rules! bench_case {
 
 macro_rules! conformance_tests {
     ($workbench:ty) => {
+        $crate::suite::bench_case!(
+            $workbench,
+            what_was_written_in_a_transaction_that_is_dropped_is_gone_and_told_to_nobody
+        );
         $crate::suite::conformance_case!($workbench, create_then_load_returns_the_prose);
         $crate::suite::conformance_case!($workbench, an_empty_scene_can_be_stored);
         $crate::suite::conformance_case!($workbench, load_missing_scene_is_not_found);
@@ -1143,13 +1307,13 @@ macro_rules! conformance_tests {
 pub async fn an_update_is_one_row_and_never_rewrites_the_scene(bench: &impl Tables) {
     let id = an_id(1_000);
     bench
-        .store()
+        .committing()
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
 
     bench
-        .store()
+        .committing()
         .apply(id, &a_paragraph("Then it began."))
         .await
         .expect("apply should succeed");
@@ -1162,7 +1326,8 @@ pub async fn an_update_is_one_row_and_never_rewrites_the_scene(bench: &impl Tabl
 }
 
 pub async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot(bench: &impl Tables) {
-    let store = bench.on_the_same_tables(3);
+    let store_tables = bench.on_the_same_tables(3);
+    let store = &bench.committing_to(&store_tables);
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))
@@ -1199,12 +1364,12 @@ pub async fn a_tail_longer_than_we_keep_is_collapsed_into_a_snapshot(bench: &imp
 pub async fn compacting_a_short_tail_does_nothing(bench: &impl Tables) {
     let id = an_id(1_000);
     bench
-        .store()
+        .committing()
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
     bench
-        .store()
+        .committing()
         .apply(id, &a_paragraph("Then it began."))
         .await
         .expect("apply should succeed");
@@ -1229,12 +1394,12 @@ pub async fn compacting_a_scene_that_was_never_created_is_not_found(bench: &impl
 pub async fn an_update_nothing_can_read_writes_no_row(bench: &impl Tables) {
     let id = an_id(1_000);
     bench
-        .store()
+        .committing()
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
 
-    let refused = bench.store().apply(id, &[255, 255, 255, 255]).await;
+    let refused = bench.committing().apply(id, &[255, 255, 255, 255]).await;
 
     assert!(
         matches!(refused, Err(StoreError::Unusable(_))),
@@ -1249,7 +1414,7 @@ pub async fn an_update_nothing_can_read_writes_no_row(bench: &impl Tables) {
 
 pub async fn an_update_for_a_scene_that_does_not_exist_writes_no_row(bench: &impl Tables) {
     let refused = bench
-        .store()
+        .committing()
         .apply(an_id(1_000), &a_paragraph("Out of nowhere."))
         .await;
 
@@ -1263,18 +1428,18 @@ pub async fn an_update_for_a_scene_that_does_not_exist_writes_no_row(bench: &imp
 pub async fn deleting_a_scene_takes_its_updates_with_it(bench: &impl Tables) {
     let id = an_id(1_000);
     bench
-        .store()
+        .committing()
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
     bench
-        .store()
+        .committing()
         .apply(id, &a_paragraph("Then it began."))
         .await
         .expect("apply should succeed");
 
     bench
-        .store()
+        .committing()
         .delete(id)
         .await
         .expect("delete should succeed");
@@ -1291,17 +1456,18 @@ pub async fn a_scene_survives_being_reloaded_by_a_store_that_never_saw_the_write
 ) {
     let id = an_id(1_000);
     bench
-        .store()
+        .committing()
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
     bench
-        .store()
+        .committing()
         .apply(id, &a_paragraph("Then it began."))
         .await
         .expect("apply should succeed");
 
-    let elsewhere = bench.on_the_same_tables(COMPACT_AFTER);
+    let elsewhere_tables = bench.on_the_same_tables(COMPACT_AFTER);
+    let elsewhere = &bench.committing_to(&elsewhere_tables);
     let found = elsewhere.load(id).await.expect("load should succeed");
 
     assert!(
@@ -1314,18 +1480,18 @@ pub async fn a_scene_survives_being_reloaded_by_a_store_that_never_saw_the_write
 pub async fn deleting_a_scene_takes_its_links_with_it(bench: &impl Tables) {
     let id = an_id(1_000);
     bench
-        .store()
+        .committing()
         .create(&a_scene(id, "The loom stood silent."))
         .await
         .expect("create should succeed");
     bench
-        .store()
+        .committing()
         .link(id, &IdeaLink::from("idea_1"))
         .await
         .expect("link should succeed");
 
     bench
-        .store()
+        .committing()
         .delete(id)
         .await
         .expect("delete should succeed");
@@ -1338,7 +1504,8 @@ pub async fn deleting_a_scene_takes_its_links_with_it(bench: &impl Tables) {
 }
 
 pub async fn a_tail_exactly_as_long_as_we_keep_is_left_as_it_is(bench: &impl Tables) {
-    let store = bench.on_the_same_tables(3);
+    let store_tables = bench.on_the_same_tables(3);
+    let store = &bench.committing_to(&store_tables);
     let id = an_id(1_000);
     store
         .create(&a_scene(id, "The loom stood silent."))

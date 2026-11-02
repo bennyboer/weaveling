@@ -7,6 +7,7 @@ use scenes_catalog::{InMemoryQuotationRestylingTasks, InMemorySceneCatalog};
 use scenes_core::{FRAGMENT, ScenesCore, ScenesError, StoreError};
 use scenes_store::InMemorySceneStore;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const A_PROJECT: &str = "project_1";
@@ -22,6 +23,7 @@ fn new_core() -> ScenesCore {
 fn new_core_with(clock: Arc<FixedClock>) -> ScenesCore {
     ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),
@@ -213,4 +215,44 @@ async fn a_scene_written_by_two_authors_holds_both_contributions() {
     let reopened = scenes.open(&id).await.expect("should open");
     assert!(reopened.text().contains("Ada wrote this."));
     assert!(reopened.text().contains("Bo wrote this."));
+}
+
+#[tokio::test]
+async fn an_edit_whose_commit_is_refused_is_not_kept() {
+    let store = Arc::new(InMemorySceneStore::new());
+    let committing = ScenesCore::new(
+        store.clone(),
+        Arc::new(InMemoryTransactions::new()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(AllowingEverything),
+        Arc::new(FixedClock::new(at(1_000))),
+    );
+    let refusing = ScenesCore::new(
+        store,
+        Arc::new(InMemoryTransactions::refusing_commits()),
+        Arc::new(InMemorySceneCatalog::new()),
+        Arc::new(InMemoryQuotationRestylingTasks::new()),
+        Arc::new(AllowingEverything),
+        Arc::new(FixedClock::new(at(1_000))),
+    );
+    let scene = committing
+        .create(A_PROJECT, &Agent::Local)
+        .await
+        .expect("should create")
+        .id()
+        .to_string();
+
+    let refused = refusing.apply(&scene, &a_paragraph("Never kept.")).await;
+
+    assert!(matches!(refused, Err(ScenesError::Transaction(_))));
+    assert_eq!(
+        committing
+            .open(&scene)
+            .await
+            .expect("should open")
+            .text(),
+        "",
+        "an edit is kept only once its transaction commits"
+    );
 }

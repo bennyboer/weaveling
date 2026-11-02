@@ -15,6 +15,7 @@ use scenes_core::ScenesCore;
 use scenes_store::InMemorySceneStore;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 const PROJECT: &str = "project_1";
 const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
@@ -80,6 +81,7 @@ async fn guarded() -> Guarded {
     roles.give("account_ada", &OWNER);
     let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         roles.clone(),

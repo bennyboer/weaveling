@@ -19,6 +19,7 @@ use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 use yrs::types::Attrs;
 use yrs::{
     Any, Doc, ReadTxn, StateVector, Text, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim,
@@ -70,6 +71,7 @@ fn a_workbench(at_most: usize) -> Wired {
     let tasks = Arc::new(InMemoryQuotationRestylingTasks::new());
     let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         tasks.clone(),
         Arc::new(AllowingEverything),

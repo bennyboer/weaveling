@@ -15,12 +15,14 @@ use scenes_messaging::{
 };
 use scenes_store::InMemorySceneStore;
 use scenes_sync::LiveScenes;
+use transacting::{InMemoryTransactions, Transactions};
 use wiring::{Context, Feature, Settling, Wired};
 
 use crate::tombstones::SceneTombstones;
 
 pub struct Ports {
     pub store: Arc<dyn SceneStore>,
+    pub transactions: Arc<dyn Transactions>,
     pub catalog: Arc<dyn SceneCatalog>,
     pub quotation_restyling_tasks: Arc<dyn QuotationRestylingTasks>,
     pub outbox: Arc<dyn Outbox>,
@@ -40,6 +42,7 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ));
     let core = ScenesCore::new(
         ports.store.clone(),
+        ports.transactions.clone(),
         catalog,
         tasks,
         context.authorizer.clone(),
@@ -107,6 +110,7 @@ impl Feature for SceneFeature {
         ));
 
         Ports {
+            transactions: Arc::new(InMemoryTransactions::new()),
             store: Arc::new(InMemorySceneStore::new().enqueuing_to(
                 outbox.clone(),
                 context.clock.clone(),
@@ -121,6 +125,7 @@ impl Feature for SceneFeature {
     #[cfg(feature = "postgres")]
     fn on_postgres(pool: sqlx::PgPool, context: &Context) -> Result<Ports, wiring::Unprepared> {
         Ok(Ports {
+            transactions: Arc::new(transacting::PostgresTransactions::new(pool.clone())),
             store: Arc::new(
                 scenes_store::PostgresSceneStore::new(pool.clone())
                     .enqueuing(context.clock.clone(), scenes_messaging::message_for),
@@ -149,6 +154,7 @@ impl Feature for SceneFeature {
     #[cfg(feature = "sqlite")]
     fn on_sqlite(pool: sqlx::SqlitePool, context: &Context) -> Result<Ports, wiring::Unprepared> {
         Ok(Ports {
+            transactions: Arc::new(transacting::SqliteTransactions::new(pool.clone())),
             store: Arc::new(
                 scenes_store::SqliteSceneStore::new(pool.clone())
                     .enqueuing(context.clock.clone(), scenes_messaging::message_for),
@@ -250,6 +256,7 @@ mod tests {
         }
         let scenes = ScenesCore::new(
             ports.store.clone(),
+            ports.transactions.clone(),
             ports.catalog.clone(),
             ports.quotation_restyling_tasks.clone(),
             context.authorizer.clone(),

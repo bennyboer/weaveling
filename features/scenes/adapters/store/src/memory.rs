@@ -8,6 +8,7 @@ use outbox::InMemoryOutbox;
 use scenes_core::{
     IdeaLink, ProjectLink, Scene, SceneChange, SceneId, SceneStore, SceneTitle, StoreError,
 };
+use transacting::Transaction;
 
 type Scenes = HashMap<SceneId, StoredScene>;
 
@@ -22,7 +23,7 @@ struct StoredScene {
 
 #[derive(Default)]
 pub struct InMemorySceneStore {
-    scenes: RwLock<Scenes>,
+    scenes: Arc<RwLock<Scenes>>,
     enqueuing: Option<(Arc<InMemoryOutbox>, Mapping)>,
 }
 
@@ -43,10 +44,19 @@ impl InMemorySceneStore {
         }
     }
 
-    fn enqueue_change(&self, change: SceneChange) {
+    fn enqueue_change(&self, transaction: &mut Transaction, change: SceneChange) {
         if let Some((outbox, mapping)) = &self.enqueuing {
-            outbox.enqueue(mapping.message(&change));
+            outbox.enqueue_within(transaction, mapping.message(&change));
         }
+    }
+
+    fn undo_on_rollback(&self, transaction: &mut Transaction) -> Result<(), StoreError> {
+        let (before, scenes) = (self.read().clone(), self.scenes.clone());
+
+        transacting::memory::undo_on_rollback(transaction, move || {
+            *scenes.write().expect("scene store lock poisoned") = before;
+        })
+        .map_err(|failure| StoreError::Backend(Box::new(failure)))
     }
 
     fn read(&self) -> RwLockReadGuard<'_, Scenes> {
@@ -70,7 +80,8 @@ fn rehydrate(id: SceneId, stored: &StoredScene) -> Result<Scene, StoreError> {
 
 #[async_trait]
 impl SceneStore for InMemorySceneStore {
-    async fn create(&self, scene: &Scene) -> Result<(), StoreError> {
+    async fn create(&self, transaction: &mut Transaction, scene: &Scene) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         let mut scenes = self.write();
 
         if scenes.contains_key(&scene.id()) {
@@ -87,10 +98,13 @@ impl SceneStore for InMemorySceneStore {
                 state: scene.everything(),
             },
         );
-        self.enqueue_change(SceneChange::Created {
-            scene: scene.id(),
-            project: scene.project().clone(),
-        });
+        self.enqueue_change(
+            transaction,
+            SceneChange::Created {
+                scene: scene.id(),
+                project: scene.project().clone(),
+            },
+        );
 
         Ok(())
     }
@@ -105,7 +119,13 @@ impl SceneStore for InMemorySceneStore {
         rehydrate(id, &stored)
     }
 
-    async fn apply(&self, id: SceneId, update: &[u8]) -> Result<(), StoreError> {
+    async fn apply(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        update: &[u8],
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         let mut scenes = self.write();
 
         let stored = scenes.get(&id).cloned().ok_or(StoreError::NotFound(id))?;
@@ -126,70 +146,112 @@ impl SceneStore for InMemorySceneStore {
         Ok(())
     }
 
-    async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError> {
+    async fn retitle(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        title: &SceneTitle,
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         let mut scenes = self.write();
         let stored = scenes.get_mut(&id).ok_or(StoreError::NotFound(id))?;
         stored.title = title.clone();
         stored.version += 1;
-        self.enqueue_change(SceneChange::Retitled {
-            scene: id,
-            project: stored.project.clone(),
-            title: title.clone(),
-            version: stored.version,
-        });
+        self.enqueue_change(
+            transaction,
+            SceneChange::Retitled {
+                scene: id,
+                project: stored.project.clone(),
+                title: title.clone(),
+                version: stored.version,
+            },
+        );
 
         Ok(())
     }
 
-    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
+    async fn announce_opening(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        opening: &str,
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         let project = self
             .read()
             .get(&id)
             .map(|stored| stored.project.clone())
             .ok_or(StoreError::NotFound(id))?;
-        self.enqueue_change(SceneChange::OpeningChanged {
-            scene: id,
-            project,
-            opening: opening.to_owned(),
-        });
+        self.enqueue_change(
+            transaction,
+            SceneChange::OpeningChanged {
+                scene: id,
+                project,
+                opening: opening.to_owned(),
+            },
+        );
 
         Ok(())
     }
 
-    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+    async fn announce_word_count(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        words: usize,
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         let project = self
             .read()
             .get(&id)
             .map(|stored| stored.project.clone())
             .ok_or(StoreError::NotFound(id))?;
-        self.enqueue_change(SceneChange::WordsCounted {
-            scene: id,
-            project,
-            words,
-        });
+        self.enqueue_change(
+            transaction,
+            SceneChange::WordsCounted {
+                scene: id,
+                project,
+                words,
+            },
+        );
 
         Ok(())
     }
 
-    async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
+    async fn link(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         let mut scenes = self.write();
         let stored = scenes.get_mut(&id).ok_or(StoreError::NotFound(id))?;
 
         if !stored.ideas.contains(idea) {
             stored.ideas.push(idea.clone());
             stored.version += 1;
-            self.enqueue_change(SceneChange::IdeaLinked {
-                scene: id,
-                project: stored.project.clone(),
-                idea: idea.clone(),
-                version: stored.version,
-            });
+            self.enqueue_change(
+                transaction,
+                SceneChange::IdeaLinked {
+                    scene: id,
+                    project: stored.project.clone(),
+                    idea: idea.clone(),
+                    version: stored.version,
+                },
+            );
         }
 
         Ok(())
     }
 
-    async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
+    async fn unlink(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         let mut scenes = self.write();
         let stored = scenes.get_mut(&id).ok_or(StoreError::NotFound(id))?;
         let before = stored.ideas.len();
@@ -197,18 +259,26 @@ impl SceneStore for InMemorySceneStore {
 
         if stored.ideas.len() < before {
             stored.version += 1;
-            self.enqueue_change(SceneChange::IdeaUnlinked {
-                scene: id,
-                project: stored.project.clone(),
-                idea: idea.clone(),
-                version: stored.version,
-            });
+            self.enqueue_change(
+                transaction,
+                SceneChange::IdeaUnlinked {
+                    scene: id,
+                    project: stored.project.clone(),
+                    idea: idea.clone(),
+                    version: stored.version,
+                },
+            );
         }
 
         Ok(())
     }
 
-    async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
+    async fn unlink_everywhere(
+        &self,
+        transaction: &mut Transaction,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         for stored in self.write().values_mut() {
             stored.ideas.retain(|held| held != idea);
         }
@@ -235,13 +305,17 @@ impl SceneStore for InMemorySceneStore {
         Ok(found)
     }
 
-    async fn delete(&self, id: SceneId) -> Result<(), StoreError> {
+    async fn delete(&self, transaction: &mut Transaction, id: SceneId) -> Result<(), StoreError> {
+        self.undo_on_rollback(transaction)?;
         let mut scenes = self.write();
         let gone = scenes.remove(&id).ok_or(StoreError::NotFound(id))?;
-        self.enqueue_change(SceneChange::Deleted {
-            scene: id,
-            project: gone.project,
-        });
+        self.enqueue_change(
+            transaction,
+            SceneChange::Deleted {
+                scene: id,
+                project: gone.project,
+            },
+        );
 
         Ok(())
     }
@@ -252,6 +326,7 @@ mod tests {
     use clock::FixedClock;
     use messaging::{FakePublisher, Message};
     use outbox::Outbox;
+    use transacting::{InMemoryTransactions, Transactions};
 
     use super::*;
     use crate::suite;
@@ -259,6 +334,7 @@ mod tests {
 
     struct InMemory {
         store: InMemorySceneStore,
+        transactions: InMemoryTransactions,
         outbox: Arc<InMemoryOutbox>,
         heard: Arc<FakePublisher>,
     }
@@ -273,6 +349,7 @@ mod tests {
             let outbox = Arc::new(InMemoryOutbox::new(heard.clone(), clock.clone()));
 
             Self {
+                transactions: InMemoryTransactions::new(),
                 store: InMemorySceneStore::new().enqueuing_to(
                     outbox.clone(),
                     clock,
@@ -285,6 +362,10 @@ mod tests {
 
         fn store(&self) -> &Self::Store {
             &self.store
+        }
+
+        fn transactions(&self) -> &dyn Transactions {
+            &self.transactions
         }
 
         async fn enqueued(&self) -> Vec<Message> {

@@ -17,6 +17,7 @@ use scenes_sync::{Connection, Envelope, LiveScenes, Message};
 use time::OffsetDateTime;
 use tokio::sync::Notify;
 use tokio::sync::mpsc::{self, UnboundedReceiver};
+use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const PROJECT: &str = "project_1";
@@ -93,6 +94,7 @@ async fn guarded() -> Guarded {
     roles.give("account_bo", &READER);
     let service = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         roles.clone(),

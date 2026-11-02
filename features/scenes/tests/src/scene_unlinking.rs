@@ -11,6 +11,7 @@ use scenes_messaging::UnlinkOnDiscardListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 
 const A_PROJECT: &str = "project_1";
 
@@ -26,6 +27,7 @@ struct Wired {
 fn a_workbench() -> Wired {
     let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),

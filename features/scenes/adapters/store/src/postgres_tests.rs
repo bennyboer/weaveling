@@ -8,6 +8,7 @@ use scenes_core::{Scene, SceneId, SceneStore, StoreError};
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
 use tokio::task::JoinSet;
+use transacting::{PostgresTransactions, Transactions};
 
 use crate::postgres;
 use crate::postgres::PostgresSceneStore;
@@ -17,6 +18,7 @@ use crate::suite::{Tables, Workbench};
 struct OnPostgres {
     fixture: PostgresFixture,
     pool: PgPool,
+    transactions: PostgresTransactions,
     store: PostgresSceneStore,
     heard: Arc<FakePublisher>,
 }
@@ -64,6 +66,7 @@ impl Workbench for OnPostgres {
 
         Self {
             fixture,
+            transactions: PostgresTransactions::new(pool.clone()),
             store: enqueuing(PostgresSceneStore::new(pool.clone())),
             pool,
             heard: Arc::new(FakePublisher::default()),
@@ -72,6 +75,10 @@ impl Workbench for OnPostgres {
 
     fn store(&self) -> &Self::Store {
         &self.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.transactions
     }
 
     async fn enqueued(&self) -> Vec<Message> {
@@ -92,6 +99,7 @@ impl Workbench for Compacting {
 
         Self(OnPostgres {
             fixture,
+            transactions: PostgresTransactions::new(pool.clone()),
             store: enqueuing(PostgresSceneStore::compacting_after(pool.clone(), 1)),
             pool,
             heard: Arc::new(FakePublisher::default()),
@@ -100,6 +108,10 @@ impl Workbench for Compacting {
 
     fn store(&self) -> &Self::Store {
         &self.0.store
+    }
+
+    fn transactions(&self) -> &dyn Transactions {
+        &self.0.transactions
     }
 
     async fn enqueued(&self) -> Vec<Message> {
@@ -207,20 +219,42 @@ async fn walking_a_project_comes_out_of_the_index() {
 #[tokio::test(flavor = "multi_thread")]
 async fn an_edit_written_while_its_scene_is_compacted_is_never_lost() {
     let (fixture, pool) = a_migrated_schema().await;
+    let transactions = Arc::new(PostgresTransactions::new(pool.clone()));
     let store = Arc::new(PostgresSceneStore::compacting_after(pool, 2));
     let id = suite::an_id(1_000);
+    let mut transaction = transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
     store
-        .create(&Scene::empty(id, suite::a_project()))
+        .create(&mut transaction, &Scene::empty(id, suite::a_project()))
         .await
         .expect("creating should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
 
     let mut writing = JoinSet::new();
     for nth in 0..200 {
-        let store = store.clone();
+        let (store, transactions) = (store.clone(), transactions.clone());
         writing.spawn(async move {
-            store
-                .apply(id, &suite::a_paragraph(&format!("[{nth}]")))
+            let mut transaction = transactions
+                .begin()
                 .await
+                .expect("beginning should succeed");
+            store
+                .apply(
+                    &mut transaction,
+                    id,
+                    &suite::a_paragraph(&format!("[{nth}]")),
+                )
+                .await?;
+            transaction
+                .finish()
+                .await
+                .expect("finishing should succeed");
+            Ok(())
         });
     }
     for _ in 0..50 {

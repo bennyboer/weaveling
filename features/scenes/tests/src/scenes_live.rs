@@ -14,6 +14,7 @@ use scenes_rest::TellingScenes;
 use scenes_store::InMemorySceneStore;
 use serde_json::{Value, json};
 use time::OffsetDateTime;
+use transacting::InMemoryTransactions;
 
 struct ScenesFollowed {
     catalog: TellingScenes,
@@ -26,6 +27,7 @@ async fn scenes_followed(project: &str) -> ScenesFollowed {
     let catalog = TellingScenes::around(Arc::new(InMemorySceneCatalog::new()), broadcaster.clone());
     let scenes = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),

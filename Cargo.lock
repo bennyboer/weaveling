@@ -5046,6 +5046,7 @@ dependencies = [
  "weaveling-eventsourcing",
  "weaveling-ids",
  "weaveling-quotation",
+ "weaveling-transacting",
  "weaveling-words",
  "yrs",
 ]
@@ -5093,6 +5094,7 @@ dependencies = [
  "sqlx",
  "time",
  "tokio",
+ "tracing",
  "weaveling-clock",
  "weaveling-messaging",
  "weaveling-outbox",
@@ -5149,6 +5151,7 @@ dependencies = [
  "weaveling-scenes-rest",
  "weaveling-scenes-store",
  "weaveling-scenes-sync",
+ "weaveling-transacting",
  "yrs",
 ]
 
@@ -5172,6 +5175,7 @@ dependencies = [
  "weaveling-scenes-rest",
  "weaveling-scenes-store",
  "weaveling-scenes-sync",
+ "weaveling-transacting",
  "weaveling-wiring",
 ]
 

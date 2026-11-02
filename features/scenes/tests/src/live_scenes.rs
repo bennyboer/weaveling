@@ -10,6 +10,7 @@ use scenes_core::{FRAGMENT, ProjectLink, Scene, SceneId, SceneRestyler, ScenesCo
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message};
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 use yrs::types::Attrs;
 use yrs::{
     Any, Doc, ReadTxn, StateVector, Text, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim,
@@ -24,6 +25,7 @@ fn at(seconds: i64) -> OffsetDateTime {
 fn a_workbench() -> (ScenesCore, LiveScenes) {
     let service = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),

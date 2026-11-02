@@ -4,6 +4,7 @@ use authorizing::{AccessWatch, Act, Authorizer};
 use clock::Clock;
 use eventsourcing::Agent;
 use time::OffsetDateTime;
+use transacting::Transactions;
 
 use crate::service::SceneService;
 use crate::{
@@ -22,6 +23,7 @@ pub enum Access {
 #[derive(Clone)]
 pub struct ScenesCore {
     service: SceneService,
+    transactions: Arc<dyn Transactions>,
     catalog: Arc<dyn SceneCatalog>,
     tasks: Arc<dyn QuotationRestylingTasks>,
     authorizer: Arc<dyn Authorizer>,
@@ -30,6 +32,7 @@ pub struct ScenesCore {
 impl ScenesCore {
     pub fn new(
         store: Arc<dyn SceneStore>,
+        transactions: Arc<dyn Transactions>,
         catalog: Arc<dyn SceneCatalog>,
         tasks: Arc<dyn QuotationRestylingTasks>,
         authorizer: Arc<dyn Authorizer>,
@@ -37,6 +40,7 @@ impl ScenesCore {
     ) -> Self {
         Self {
             service: SceneService::new(store, clock),
+            transactions,
             catalog,
             tasks,
             authorizer,
@@ -49,7 +53,11 @@ impl ScenesCore {
         })
         .await?;
 
-        self.service.create(project).await
+        let mut transaction = self.transactions.begin().await?;
+        let scene = self.service.create(&mut transaction, project).await?;
+        transaction.finish().await?;
+
+        Ok(scene)
     }
 
     pub async fn read(&self, id: &str, agent: &Agent) -> Result<Scene, ScenesError> {
@@ -68,25 +76,40 @@ impl ScenesCore {
     ) -> Result<Scene, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        self.service.retitle(id, title).await
+        let mut transaction = self.transactions.begin().await?;
+        self.service.retitle(&mut transaction, id, title).await?;
+        transaction.finish().await?;
+
+        self.service.open(id).await
     }
 
     pub async fn link(&self, id: &str, idea: &str, agent: &Agent) -> Result<Scene, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        self.service.link(id, idea).await
+        let mut transaction = self.transactions.begin().await?;
+        self.service.link(&mut transaction, id, idea).await?;
+        transaction.finish().await?;
+
+        self.service.open(id).await
     }
 
     pub async fn unlink(&self, id: &str, idea: &str, agent: &Agent) -> Result<Scene, ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        self.service.unlink(id, idea).await
+        let mut transaction = self.transactions.begin().await?;
+        self.service.unlink(&mut transaction, id, idea).await?;
+        transaction.finish().await?;
+
+        self.service.open(id).await
     }
 
     pub async fn delete(&self, id: &str, agent: &Agent) -> Result<(), ScenesError> {
         self.authorized_to_write(id, agent).await?;
 
-        self.service.delete(id).await
+        let mut transaction = self.transactions.begin().await?;
+        self.service.delete(&mut transaction, id).await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn list(
@@ -140,15 +163,28 @@ impl ScenesCore {
     }
 
     pub async fn apply(&self, id: &str, update: &[u8]) -> Result<(), ScenesError> {
-        self.service.apply(id, update).await
+        let mut transaction = self.transactions.begin().await?;
+        self.service.apply(&mut transaction, id, update).await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn announce_word_count(&self, id: &str, words: usize) -> Result<(), ScenesError> {
-        self.service.announce_word_count(id, words).await
+        let mut transaction = self.transactions.begin().await?;
+        self.service
+            .announce_word_count(&mut transaction, id, words)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn announce_opening(&self, id: &str, opening: &str) -> Result<(), ScenesError> {
-        self.service.announce_opening(id, opening).await
+        let mut transaction = self.transactions.begin().await?;
+        self.service
+            .announce_opening(&mut transaction, id, opening)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn sweep(
@@ -170,7 +206,12 @@ impl ScenesCore {
     }
 
     pub async fn unlink_everywhere(&self, idea: &str) -> Result<(), ScenesError> {
-        self.service.unlink_everywhere(idea).await
+        let mut transaction = self.transactions.begin().await?;
+        self.service
+            .unlink_everywhere(&mut transaction, idea)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn restyle(

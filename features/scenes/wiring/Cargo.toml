@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+transacting = { version = "0.1.0", path = "../../../libraries/transacting", package = "weaveling-transacting" }
 async-trait = { workspace = true }
 time = { workspace = true }
 chores = { version = "0.1.0", path = "../../../libraries/chores", package = "weaveling-chores" }
@@ -24,8 +25,8 @@ scenes-sync = { version = "0.1.0", path = "../adapters/sync", package = "weaveli
 scenes-store = { version = "0.1.0", path = "../adapters/store", package = "weaveling-scenes-store" }
 
 [features]
-postgres = ["dep:sqlx", "wiring/postgres", "outbox/postgres", "scenes-store/postgres", "scenes-catalog/postgres"]
-sqlite = ["dep:sqlx", "wiring/sqlite", "outbox/sqlite", "scenes-store/sqlite", "scenes-catalog/sqlite"]
+postgres = ["dep:sqlx", "wiring/postgres", "outbox/postgres", "scenes-store/postgres", "scenes-catalog/postgres", "transacting/postgres"]
+sqlite = ["dep:sqlx", "wiring/sqlite", "outbox/sqlite", "scenes-store/sqlite", "scenes-catalog/sqlite", "transacting/sqlite"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }

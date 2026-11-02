@@ -89,6 +89,7 @@ pub fn migrations() -> Migrator {
 
 const KIND: &str = "scene";
 
+#[derive(Clone)]
 pub struct SqliteSceneStore {
     pool: SqlitePool,
     compact_after: i64,
@@ -117,24 +118,23 @@ impl SqliteSceneStore {
 
     async fn announce(
         &self,
+        transaction: &mut Transaction,
         id: SceneId,
         change: impl FnOnce(ProjectLink) -> SceneChange,
     ) -> Result<(), StoreError> {
-        let mut transaction = self.begin_writing().await?;
-
         let project: Option<String> = sqlx::query_scalar(PROJECT_OF)
             .bind(id.to_string())
-            .fetch_optional(connection(&mut transaction)?)
+            .fetch_optional(connection(transaction)?)
             .await
             .map_err(unreachable)?;
         let Some(project) = project else {
             return Err(StoreError::NotFound(id));
         };
 
-        self.enqueue_change(&mut transaction, change(ProjectLink::from(project)))
+        self.enqueue_change(transaction, change(ProjectLink::from(project)))
             .await?;
 
-        transaction.finish().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn enqueue_change(
@@ -194,7 +194,6 @@ impl SqliteSceneStore {
         Ok(true)
     }
 
-    // TODO sweep: the store's writes take the transaction core begins, not one begun here
     async fn begin_writing(&self) -> Result<Transaction, StoreError> {
         SqliteTransactions::new(self.pool.clone())
             .begin()
@@ -266,15 +265,14 @@ fn is_unknown(failure: &sqlx::Error) -> bool {
 
 #[async_trait]
 impl SceneStore for SqliteSceneStore {
-    async fn create(&self, scene: &Scene) -> Result<(), StoreError> {
+    async fn create(&self, transaction: &mut Transaction, scene: &Scene) -> Result<(), StoreError> {
         let id = scene.id();
-        let mut transaction = self.begin_writing().await?;
 
         sqlx::query(REMEMBER)
             .bind(id.to_string())
             .bind(scene.project().to_string())
             .bind(scene.title().as_str())
-            .execute(connection(&mut transaction)?)
+            .execute(connection(transaction)?)
             .await
             .map_err(|failure| match is_taken(&failure) {
                 true => StoreError::Conflict(id),
@@ -284,12 +282,12 @@ impl SceneStore for SqliteSceneStore {
         sqlx::query(WRITE_SNAPSHOT)
             .bind(id.to_string())
             .bind(scene.everything())
-            .fetch_one(connection(&mut transaction)?)
+            .fetch_one(connection(transaction)?)
             .await
             .map_err(unreachable)?;
 
         self.enqueue_change(
-            &mut transaction,
+            transaction,
             SceneChange::Created {
                 scene: id,
                 project: scene.project().clone(),
@@ -297,7 +295,7 @@ impl SceneStore for SqliteSceneStore {
         )
         .await?;
 
-        transaction.finish().await.map_err(unreachable)
+        Ok(())
     }
 
     async fn load(&self, id: SceneId) -> Result<Scene, StoreError> {
@@ -334,41 +332,56 @@ impl SceneStore for SqliteSceneStore {
             .linked_to(ideas.into_iter().map(IdeaLink::from).collect()))
     }
 
-    async fn apply(&self, id: SceneId, update: &[u8]) -> Result<(), StoreError> {
+    async fn apply(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        update: &[u8],
+    ) -> Result<(), StoreError> {
         Scene::readable(update).map_err(|_| StoreError::Unusable(id))?;
 
-        let mut transaction = self.begin_writing().await?;
         sqlx::query(WRITE_UPDATE)
             .bind(id.to_string())
             .bind(update)
-            .execute(connection(&mut transaction)?)
+            .execute(connection(transaction)?)
             .await
             .map_err(|failure| match is_unknown(&failure) {
                 true => StoreError::NotFound(id),
                 false => unreachable(failure),
             })?;
-        bumped(&mut transaction, id).await?;
+        bumped(transaction, id).await?;
         let tail: i64 = sqlx::query_scalar(TAIL)
             .bind(id.to_string())
-            .fetch_one(connection(&mut transaction)?)
+            .fetch_one(connection(transaction)?)
             .await
             .map_err(unreachable)?;
-        transaction.finish().await.map_err(unreachable)?;
 
         if tail > self.compact_after {
-            self.compact(id).await?;
+            let store = self.clone();
+            transaction.after_commit(async move {
+                if let Err(why) = store.compact(id).await {
+                    tracing::warn!(
+                        scene = %id,
+                        %why,
+                        "compacting a scene failed; it is compacted again after its next update"
+                    );
+                }
+            });
         }
 
         Ok(())
     }
 
-    async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError> {
-        let mut transaction = self.begin_writing().await?;
-
+    async fn retitle(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        title: &SceneTitle,
+    ) -> Result<(), StoreError> {
         let retitled: Option<(String, i64)> = sqlx::query_as(RETITLE)
             .bind(id.to_string())
             .bind(title.as_str())
-            .fetch_optional(connection(&mut transaction)?)
+            .fetch_optional(connection(transaction)?)
             .await
             .map_err(unreachable)?;
         let Some((project, version)) = retitled else {
@@ -376,7 +389,7 @@ impl SceneStore for SqliteSceneStore {
         };
 
         self.enqueue_change(
-            &mut transaction,
+            transaction,
             SceneChange::Retitled {
                 scene: id,
                 project: ProjectLink::from(project),
@@ -386,11 +399,16 @@ impl SceneStore for SqliteSceneStore {
         )
         .await?;
 
-        transaction.finish().await.map_err(unreachable)
+        Ok(())
     }
 
-    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
-        self.announce(id, |project| SceneChange::WordsCounted {
+    async fn announce_word_count(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        words: usize,
+    ) -> Result<(), StoreError> {
+        self.announce(transaction, id, |project| SceneChange::WordsCounted {
             scene: id,
             project,
             words,
@@ -398,8 +416,13 @@ impl SceneStore for SqliteSceneStore {
         .await
     }
 
-    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
-        self.announce(id, |project| SceneChange::OpeningChanged {
+    async fn announce_opening(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        opening: &str,
+    ) -> Result<(), StoreError> {
+        self.announce(transaction, id, |project| SceneChange::OpeningChanged {
             scene: id,
             project,
             opening: opening.to_owned(),
@@ -407,13 +430,16 @@ impl SceneStore for SqliteSceneStore {
         .await
     }
 
-    async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
-        let mut transaction = self.begin_writing().await?;
-
+    async fn link(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
         let linked = sqlx::query(LINK)
             .bind(id.to_string())
             .bind(idea.as_str())
-            .execute(connection(&mut transaction)?)
+            .execute(connection(transaction)?)
             .await
             .map_err(|failure| match is_unknown(&failure) {
                 true => StoreError::NotFound(id),
@@ -421,9 +447,9 @@ impl SceneStore for SqliteSceneStore {
             })?;
 
         if linked.rows_affected() > 0 {
-            let (version, project) = bumped(&mut transaction, id).await?;
+            let (version, project) = bumped(transaction, id).await?;
             self.enqueue_change(
-                &mut transaction,
+                transaction,
                 SceneChange::IdeaLinked {
                     scene: id,
                     project,
@@ -434,15 +460,18 @@ impl SceneStore for SqliteSceneStore {
             .await?;
         }
 
-        transaction.finish().await.map_err(unreachable)
+        Ok(())
     }
 
-    async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
-        let mut transaction = self.begin_writing().await?;
-
+    async fn unlink(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
         let known: Option<String> = sqlx::query_scalar(EXISTS)
             .bind(id.to_string())
-            .fetch_optional(connection(&mut transaction)?)
+            .fetch_optional(connection(transaction)?)
             .await
             .map_err(unreachable)?;
         if known.is_none() {
@@ -452,14 +481,14 @@ impl SceneStore for SqliteSceneStore {
         let unlinked = sqlx::query(UNLINK)
             .bind(id.to_string())
             .bind(idea.as_str())
-            .execute(connection(&mut transaction)?)
+            .execute(connection(transaction)?)
             .await
             .map_err(unreachable)?;
 
         if unlinked.rows_affected() > 0 {
-            let (version, project) = bumped(&mut transaction, id).await?;
+            let (version, project) = bumped(transaction, id).await?;
             self.enqueue_change(
-                &mut transaction,
+                transaction,
                 SceneChange::IdeaUnlinked {
                     scene: id,
                     project,
@@ -470,13 +499,17 @@ impl SceneStore for SqliteSceneStore {
             .await?;
         }
 
-        transaction.finish().await.map_err(unreachable)
+        Ok(())
     }
 
-    async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
+    async fn unlink_everywhere(
+        &self,
+        transaction: &mut Transaction,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
         sqlx::query(UNLINK_EVERYWHERE)
             .bind(idea.as_str())
-            .execute(&self.pool)
+            .execute(connection(transaction)?)
             .await
             .map_err(unreachable)?;
 
@@ -507,12 +540,10 @@ impl SceneStore for SqliteSceneStore {
             .collect()
     }
 
-    async fn delete(&self, id: SceneId) -> Result<(), StoreError> {
-        let mut transaction = self.begin_writing().await?;
-
+    async fn delete(&self, transaction: &mut Transaction, id: SceneId) -> Result<(), StoreError> {
         let gone: Option<String> = sqlx::query_scalar(FORGET)
             .bind(id.to_string())
-            .fetch_optional(connection(&mut transaction)?)
+            .fetch_optional(connection(transaction)?)
             .await
             .map_err(unreachable)?;
         let Some(project) = gone else {
@@ -520,7 +551,7 @@ impl SceneStore for SqliteSceneStore {
         };
 
         self.enqueue_change(
-            &mut transaction,
+            transaction,
             SceneChange::Deleted {
                 scene: id,
                 project: ProjectLink::from(project),
@@ -528,6 +559,6 @@ impl SceneStore for SqliteSceneStore {
         )
         .await?;
 
-        transaction.finish().await.map_err(unreachable)
+        Ok(())
     }
 }

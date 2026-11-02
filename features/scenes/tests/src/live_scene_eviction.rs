@@ -13,6 +13,7 @@ use scenes_core::{
 use scenes_store::InMemorySceneStore;
 use scenes_sync::{LiveScenes, Message, Presence};
 use time::{Duration, OffsetDateTime};
+use transacting::{InMemoryTransactions, Transaction};
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const A_PROJECT: &str = "project_1";
@@ -32,32 +33,49 @@ impl FalteringStore {
 
 #[async_trait]
 impl SceneStore for FalteringStore {
-    async fn create(&self, scene: &Scene) -> Result<(), StoreError> {
-        self.held.create(scene).await
+    async fn create(&self, transaction: &mut Transaction, scene: &Scene) -> Result<(), StoreError> {
+        self.held.create(transaction, scene).await
     }
 
     async fn load(&self, id: SceneId) -> Result<Scene, StoreError> {
         self.held.load(id).await
     }
 
-    async fn apply(&self, id: SceneId, update: &[u8]) -> Result<(), StoreError> {
+    async fn apply(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        update: &[u8],
+    ) -> Result<(), StoreError> {
         if self.faltering.load(Ordering::SeqCst) {
             return Err(StoreError::Backend("the store is down".into()));
         }
 
-        self.held.apply(id, update).await
+        self.held.apply(transaction, id, update).await
     }
 
-    async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError> {
-        self.held.retitle(id, title).await
+    async fn retitle(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        title: &SceneTitle,
+    ) -> Result<(), StoreError> {
+        self.held.retitle(transaction, id, title).await
     }
 
-    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
+    async fn announce_word_count(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        words: usize,
+    ) -> Result<(), StoreError> {
         if self.faltering.load(Ordering::SeqCst) {
             return Err(StoreError::Backend("the store is down".into()));
         }
 
-        self.held.announce_word_count(id, words).await?;
+        self.held
+            .announce_word_count(transaction, id, words)
+            .await?;
         self.announced
             .lock()
             .expect("the announced counts are never poisoned")
@@ -66,12 +84,17 @@ impl SceneStore for FalteringStore {
         Ok(())
     }
 
-    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
+    async fn announce_opening(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        opening: &str,
+    ) -> Result<(), StoreError> {
         if self.faltering.load(Ordering::SeqCst) {
             return Err(StoreError::Backend("the store is down".into()));
         }
 
-        self.held.announce_opening(id, opening).await?;
+        self.held.announce_opening(transaction, id, opening).await?;
         self.openings
             .lock()
             .expect("the announced openings are never poisoned")
@@ -80,20 +103,34 @@ impl SceneStore for FalteringStore {
         Ok(())
     }
 
-    async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
-        self.held.link(id, idea).await
+    async fn link(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.held.link(transaction, id, idea).await
     }
 
-    async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
-        self.held.unlink(id, idea).await
+    async fn unlink(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.held.unlink(transaction, id, idea).await
     }
 
-    async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
-        self.held.unlink_everywhere(idea).await
+    async fn unlink_everywhere(
+        &self,
+        transaction: &mut Transaction,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.held.unlink_everywhere(transaction, idea).await
     }
 
-    async fn delete(&self, id: SceneId) -> Result<(), StoreError> {
-        self.held.delete(id).await
+    async fn delete(&self, transaction: &mut Transaction, id: SceneId) -> Result<(), StoreError> {
+        self.held.delete(transaction, id).await
     }
 
     async fn in_project(
@@ -121,6 +158,7 @@ fn a_workbench() -> Workbench {
     });
     let service = ScenesCore::new(
         store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),

@@ -14,6 +14,7 @@ use scenes_messaging::CatalogueScenesListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
+use transacting::InMemoryTransactions;
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -35,6 +36,7 @@ struct Wired {
 fn catalogued_in(catalog: Arc<dyn SceneCatalog>) -> CatalogueScenesListener {
     CatalogueScenesListener::new(ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         catalog,
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),

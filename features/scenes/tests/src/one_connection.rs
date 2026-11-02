@@ -10,6 +10,7 @@ use scenes_store::InMemorySceneStore;
 use scenes_sync::{Connection, Envelope, LiveScenes, Message};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::mpsc::{self, UnboundedReceiver};
+use transacting::InMemoryTransactions;
 use yrs::{Doc, ReadTxn, StateVector, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
 const A_PROJECT: &str = "project_1";
@@ -17,6 +18,7 @@ const A_PROJECT: &str = "project_1";
 fn a_workbench() -> (ScenesCore, LiveScenes) {
     let service = ScenesCore::new(
         Arc::new(InMemorySceneStore::new()),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(AllowingEverything),

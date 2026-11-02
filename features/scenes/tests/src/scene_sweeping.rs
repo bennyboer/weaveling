@@ -16,6 +16,7 @@ use scenes_messaging::DeleteOnProjectDeletedListener;
 use scenes_store::InMemorySceneStore;
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
+use transacting::{InMemoryTransactions, Transaction};
 
 const A_PROJECT: &str = "project_1";
 const ANOTHER_PROJECT: &str = "project_2";
@@ -49,48 +50,82 @@ struct Wavering {
 
 #[async_trait]
 impl SceneStore for Wavering {
-    async fn create(&self, scene: &Scene) -> Result<(), StoreError> {
-        self.held.create(scene).await
+    async fn create(&self, transaction: &mut Transaction, scene: &Scene) -> Result<(), StoreError> {
+        self.held.create(transaction, scene).await
     }
 
     async fn load(&self, id: SceneId) -> Result<Scene, StoreError> {
         self.held.load(id).await
     }
 
-    async fn apply(&self, id: SceneId, update: &[u8]) -> Result<(), StoreError> {
-        self.held.apply(id, update).await
+    async fn apply(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        update: &[u8],
+    ) -> Result<(), StoreError> {
+        self.held.apply(transaction, id, update).await
     }
 
-    async fn retitle(&self, id: SceneId, title: &SceneTitle) -> Result<(), StoreError> {
-        self.held.retitle(id, title).await
+    async fn retitle(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        title: &SceneTitle,
+    ) -> Result<(), StoreError> {
+        self.held.retitle(transaction, id, title).await
     }
 
-    async fn announce_word_count(&self, id: SceneId, words: usize) -> Result<(), StoreError> {
-        self.held.announce_word_count(id, words).await
+    async fn announce_word_count(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        words: usize,
+    ) -> Result<(), StoreError> {
+        self.held.announce_word_count(transaction, id, words).await
     }
 
-    async fn announce_opening(&self, id: SceneId, opening: &str) -> Result<(), StoreError> {
-        self.held.announce_opening(id, opening).await
+    async fn announce_opening(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        opening: &str,
+    ) -> Result<(), StoreError> {
+        self.held.announce_opening(transaction, id, opening).await
     }
 
-    async fn link(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
-        self.held.link(id, idea).await
+    async fn link(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.held.link(transaction, id, idea).await
     }
 
-    async fn unlink(&self, id: SceneId, idea: &IdeaLink) -> Result<(), StoreError> {
-        self.held.unlink(id, idea).await
+    async fn unlink(
+        &self,
+        transaction: &mut Transaction,
+        id: SceneId,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.held.unlink(transaction, id, idea).await
     }
 
-    async fn unlink_everywhere(&self, idea: &IdeaLink) -> Result<(), StoreError> {
-        self.held.unlink_everywhere(idea).await
+    async fn unlink_everywhere(
+        &self,
+        transaction: &mut Transaction,
+        idea: &IdeaLink,
+    ) -> Result<(), StoreError> {
+        self.held.unlink_everywhere(transaction, idea).await
     }
 
-    async fn delete(&self, id: SceneId) -> Result<(), StoreError> {
+    async fn delete(&self, transaction: &mut Transaction, id: SceneId) -> Result<(), StoreError> {
         if self.failing.load(Ordering::Acquire) {
             return Err(StoreError::Backend("the store is down".into()));
         }
 
-        self.held.delete(id).await
+        self.held.delete(transaction, id).await
     }
 
     async fn in_project(
@@ -125,6 +160,7 @@ fn a_workbench(at_most: usize) -> Wired {
     });
     let scenes = ScenesCore::new(
         store.clone(),
+        Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemorySceneCatalog::new()),
         Arc::new(InMemoryQuotationRestylingTasks::new()),
         Arc::new(TheSystemAndAda),
