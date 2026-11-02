@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use outline_contract::{DISCARDED, STARTED};
 use outline_core::{OutlineId, OutlinesCore};
 use transacting::Transaction;
@@ -25,13 +25,13 @@ impl KeptHandler for CatalogueOutlinesListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
-        self.outlines
+    ) -> Result<(), Failure> {
+        Ok(self
+            .outlines
             .catalogue(
                 Some(transaction),
                 &eventpublishing::aggregate_in::<OutlineId>(message)?,
             )
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }

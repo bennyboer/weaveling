@@ -1,8 +1,8 @@
 use accounts_contract::{AccountEventDTO, SIGNED_UP, SIGNED_UP_BY_INVITATION};
 use async_trait::async_trait;
 use eventsourcing::{AccountId, Version};
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use notifications_core::{NotificationsCore, Person, ProjectLink, ProjectName};
 use projects_contract::{DELETED, ProjectEventDTO, RENAMED, STARTED};
 use transacting::Transaction;
@@ -28,7 +28,7 @@ impl KeptHandler for RememberWhoSignedUpListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<AccountEventDTO>(message)?;
         let (AccountEventDTO::SignedUp { personal }
         | AccountEventDTO::SignedUpByInvitation { personal }) = told.event.body
@@ -36,7 +36,8 @@ impl KeptHandler for RememberWhoSignedUpListener {
             return Err("this is no sign-up".into());
         };
 
-        self.notifications
+        Ok(self
+            .notifications
             .remember_person(
                 Some(transaction),
                 &Person {
@@ -44,8 +45,7 @@ impl KeptHandler for RememberWhoSignedUpListener {
                     name: personal.name,
                 },
             )
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }
 
@@ -69,12 +69,12 @@ impl KeptHandler for RememberProjectNamesListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<ProjectEventDTO>(message)?;
         let project = ProjectLink::from(told.aggregate.id.as_str());
 
         match told.event.body {
-            ProjectEventDTO::Started { name } | ProjectEventDTO::Renamed { name } => self
+            ProjectEventDTO::Started { name } | ProjectEventDTO::Renamed { name } => Ok(self
                 .notifications
                 .remember_project_name(
                     Some(transaction),
@@ -84,13 +84,11 @@ impl KeptHandler for RememberProjectNamesListener {
                         name,
                     },
                 )
-                .await
-                .map_err(Refused::of),
-            ProjectEventDTO::Deleted => self
+                .await?),
+            ProjectEventDTO::Deleted => Ok(self
                 .notifications
                 .lay_project_tombstone(Some(transaction), &project, message.occurred_at)
-                .await
-                .map_err(Refused::of),
+                .await?),
             ProjectEventDTO::DetailsChanged { .. } | ProjectEventDTO::QuotationChanged { .. } => {
                 Err("this tells neither a project's name nor that it was deleted".into())
             }

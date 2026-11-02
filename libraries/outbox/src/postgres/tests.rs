@@ -8,6 +8,7 @@ use test_harness::PostgresFixture;
 use time::OffsetDateTime;
 use transacting::{PostgresTransactions, Transactions};
 
+use crate::outbox::Outbox;
 use crate::postgres::PostgresOutbox;
 use crate::suite;
 use crate::suite::{Bench, Then, Workbench};
@@ -48,7 +49,8 @@ impl Workbench for OnPostgres {
             .await
             .expect("a transaction opens");
         for message in messages {
-            crate::postgres::enqueue(&mut transaction, suite::from_a_scene(), message)
+            self.outbox
+                .enqueue_within(&mut transaction, suite::from_a_scene(), message)
                 .await
                 .expect("enqueueing should succeed");
         }

@@ -8,9 +8,10 @@ use sqlx::sqlite::SqliteRow;
 use sqlx::{Row, SqlitePool};
 use time::OffsetDateTime;
 use tokio::sync::watch;
+use transacting::Transaction;
 use uuid::Uuid;
 
-use crate::outbox::{CLAIM_FOR, Delivered, Outbox, OutboxError};
+use crate::outbox::{CLAIM_FOR, Delivered, Origin, Outbox, OutboxError};
 use crate::sqlite::enqueuing;
 
 const CLAIM: &str = "
@@ -77,6 +78,15 @@ impl SqliteOutbox {
 
 #[async_trait]
 impl Outbox for SqliteOutbox {
+    async fn enqueue_within(
+        &self,
+        transaction: &mut Transaction,
+        origin: Origin<'_>,
+        message: &Message,
+    ) -> Result<(), OutboxError> {
+        crate::sqlite::enqueue(transaction, origin, message).await
+    }
+
     async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError> {
         let now = self.clock.now();
         let claimed = sqlx::query(CLAIM)

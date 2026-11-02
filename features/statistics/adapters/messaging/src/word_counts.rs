@@ -1,5 +1,5 @@
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use scenes_contract::{DELETED, SceneDeletedDTO, WORDS_COUNTED, WordsCountedDTO};
 use statistics_core::StatisticsCore;
 use transacting::Transaction;
@@ -13,7 +13,7 @@ impl ProjectWordCountsListener {
         Self { statistics }
     }
 
-    async fn keep(&self, transaction: &mut Transaction, message: &Message) -> Result<(), Refused> {
+    async fn keep(&self, transaction: &mut Transaction, message: &Message) -> Result<(), Failure> {
         match message.routing.to_string().as_str() {
             WORDS_COUNTED => {
                 let counted: WordsCountedDTO = message.payload_as()?;
@@ -50,7 +50,7 @@ impl KeptHandler for ProjectWordCountsListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         self.keep(transaction, message).await
     }
 }

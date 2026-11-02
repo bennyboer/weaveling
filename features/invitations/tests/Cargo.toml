@@ -21,6 +21,7 @@ live = { version = "0.1.0", path = "../../../libraries/live", package = "weaveli
 live-contract = { version = "0.1.0", path = "../../../libraries/live-contract", package = "weaveling-live-contract" }
 inbox = { version = "0.1.0", path = "../../../libraries/inbox", package = "weaveling-inbox" }
 mailing = { version = "0.1.0", path = "../../../libraries/mailing", package = "weaveling-mailing" }
+outbox = { version = "0.1.0", path = "../../../libraries/outbox", package = "weaveling-outbox" }
 throttling = { version = "0.1.0", path = "../../../libraries/throttling", package = "weaveling-throttling" }
 
 invitations-contract = { version = "0.1.0", path = "../contract", package = "weaveling-invitations-contract" }

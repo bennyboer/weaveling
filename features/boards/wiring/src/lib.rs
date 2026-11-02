@@ -6,8 +6,8 @@ use boards_catalog::InMemoryBoardCatalog;
 use boards_contract::EVERY_BOARD;
 use boards_core::{BoardCatalog, BoardEvent, BoardsCore};
 use boards_messaging::{
-    CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, ProjectPinnedIdeasListener,
-    UnpinOnDiscardListener,
+    CatalogueBoardsListener, DiscardBoardsOnProjectDeletedListener, LetGoOfDiscardedIdeaListener,
+    LetGoOfGoneIdeasListener, ProjectPinnedIdeasListener, UnpinOnDiscardListener,
 };
 use chores::ForgetOldTombstones;
 use eventsourcing::EventStore;
@@ -49,8 +49,30 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.transactions.clone(),
         ports.inbox.clone(),
     );
-    let index = ProjectPinnedIdeasListener::new(boards.clone());
-    let unpin_discarded_ideas = UnpinOnDiscardListener::new(boards.clone());
+    let index = Inboxed::new(
+        ProjectPinnedIdeasListener::new(
+            boards.clone(),
+            ports.outbox.clone(),
+            context.clock.clone(),
+        ),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
+    let unpin_discarded_ideas = Inboxed::new(
+        UnpinOnDiscardListener::new(boards.clone(), ports.outbox.clone(), context.clock.clone()),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
+    let let_go_everywhere = Inboxed::new(
+        LetGoOfDiscardedIdeaListener::new(boards.clone()),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
+    let let_go_of_the_gone = Inboxed::new(
+        LetGoOfGoneIdeasListener::new(boards.clone()),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
     let sweep = DiscardBoardsOnProjectDeletedListener::new(boards.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -68,6 +90,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(catalogue),
             Arc::new(index),
             Arc::new(unpin_discarded_ideas),
+            Arc::new(let_go_everywhere),
+            Arc::new(let_go_of_the_gone),
             Arc::new(sweep),
         ])
         .doing_chores(vec![
@@ -224,7 +248,7 @@ mod tests {
             ("idea_just_gone", NOW + Duration::SECOND),
         ] {
             core(&ports, &context)
-                .let_go_everywhere(idea, laid)
+                .lay_tombstone(None, idea, laid)
                 .await
                 .expect("laying a tombstone should succeed");
         }
@@ -251,7 +275,7 @@ mod tests {
         let ports = BoardFeature::in_memory(&context);
         for idea in ["idea_1", "idea_2"] {
             core(&ports, &context)
-                .let_go_everywhere(idea, NOW)
+                .lay_tombstone(None, idea, NOW)
                 .await
                 .expect("laying a tombstone should succeed");
         }

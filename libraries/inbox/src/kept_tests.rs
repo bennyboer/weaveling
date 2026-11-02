@@ -2,23 +2,17 @@ use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
 use clock::FixedClock;
-use messaging::{Listener, Message, RoutingKey};
+use messaging::{Failure, Listener, Message, RoutingKey};
 use serde_json::json;
 use thiserror::Error;
 use time::OffsetDateTime;
-use transacting::{InMemoryTransactions, LostRace, Transaction, memory};
+use transacting::{InMemoryTransactions, Transaction, memory};
 
-use crate::{InMemoryInbox, Inboxed, KeptHandler, Refused};
+use crate::{InMemoryInbox, Inboxed, KeptHandler};
 
 #[derive(Debug, Error)]
 #[error("{0}")]
-struct Refusal(&'static str, bool);
-
-impl LostRace for Refusal {
-    fn lost_race(&self) -> bool {
-        self.1
-    }
-}
+struct Refusal(&'static str);
 
 #[derive(Default)]
 struct Noting {
@@ -46,7 +40,7 @@ impl KeptHandler for Noting {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         *self.tried.lock().expect("nothing panics holding it") += 1;
         self.noted
             .lock()
@@ -62,7 +56,7 @@ impl KeptHandler for Noting {
             .expect("nothing panics holding it")
             .pop()
         {
-            return Err(Refused::of(refusal));
+            return Err(Box::new(refusal));
         }
 
         Ok(())
@@ -120,7 +114,7 @@ async fn a_message_handed_over_twice_is_taken_in_once() {
 
 #[tokio::test]
 async fn a_message_whose_handling_failed_is_taken_in_anew_when_it_comes_again() {
-    let listener = inboxed(Noting::refusing(vec![Refusal("the disk is full", false)]));
+    let listener = inboxed(Noting::refusing(vec![Refusal("the disk is full")]));
     let message = a_message();
 
     let refused = listener.handle(&message).await;
@@ -140,23 +134,8 @@ async fn a_message_whose_handling_failed_is_taken_in_anew_when_it_comes_again() 
 }
 
 #[tokio::test]
-async fn a_lost_race_is_tried_again_in_a_fresh_transaction() {
-    let listener = inboxed(Noting::refusing(vec![
-        Refusal("lost again", true),
-        Refusal("lost", true),
-    ]));
-
-    listener
-        .handle(&a_message())
-        .await
-        .expect("the third try lands");
-
-    assert_eq!(noted(&listener), (1, 3));
-}
-
-#[tokio::test]
-async fn a_refusal_other_than_a_lost_race_is_not_tried_again() {
-    let listener = inboxed(Noting::refusing(vec![Refusal("refused", false)]));
+async fn a_refused_handling_is_tried_once_and_left_to_be_offered_again() {
+    let listener = inboxed(Noting::refusing(vec![Refusal("lost a race")]));
 
     let refused = listener.handle(&a_message()).await;
 

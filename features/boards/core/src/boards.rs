@@ -143,52 +143,71 @@ impl BoardsCore {
         Ok(transaction.finish().await?)
     }
 
-    pub async fn index_pins(&self, board: &BoardId) -> Result<(), BoardsError> {
+    pub async fn index_pins(
+        &self,
+        within: Option<&mut Transaction>,
+        board: &BoardId,
+    ) -> Result<(), BoardsError> {
         let standing = self.service.latest(board).await?;
         let holding: Vec<IdeaLink> = if standing.state.is_discarded() {
             Vec::new()
         } else {
-            standing
-                .state
-                .ideas()
-                .into_iter()
-                .map(|positioned| positioned.idea)
-                .collect()
+            pinned(&standing.state)
         };
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .holds(&mut transaction, *board, &holding)
             .await?;
-        transaction.finish().await?;
-        if standing.state.is_discarded() {
-            return Ok(());
-        }
+        Ok(transaction.finish().await?)
+    }
 
-        for gone in self.catalog.held_though_tombstoned(*board).await? {
-            self.let_go(*board, &gone).await?;
-        }
-
-        Ok(())
+    pub async fn lay_tombstone(
+        &self,
+        within: Option<&mut Transaction>,
+        idea: &str,
+        at: OffsetDateTime,
+    ) -> Result<(), BoardsError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.catalog
+            .lay_tombstone(&mut transaction, &IdeaLink::from(idea), at)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn let_go_everywhere(
         &self,
+        within: Option<&mut Transaction>,
         idea: &str,
-        at: OffsetDateTime,
     ) -> Result<(), BoardsError> {
         let gone = IdeaLink::from(idea);
-        let mut transaction = self.transactions.begin().await?;
-        self.catalog
-            .lay_tombstone(&mut transaction, &gone, at)
-            .await?;
-        transaction.finish().await?;
 
+        let mut transaction = self.transactions.join(within).await?;
         for board in self.catalog.boards_holding(&gone).await? {
-            self.let_go(board, &gone).await?;
+            self.let_go(&mut transaction, board, &gone).await?;
         }
+        Ok(transaction.finish().await?)
+    }
 
-        Ok(())
+    pub async fn let_go_of_the_gone(
+        &self,
+        within: Option<&mut Transaction>,
+        board: &BoardId,
+    ) -> Result<(), BoardsError> {
+        let still_pinned = pinned(&self.service.latest(board).await?.state);
+        let Some(gone) = self
+            .catalog
+            .held_though_tombstoned(*board)
+            .await?
+            .into_iter()
+            .find(|idea| still_pinned.contains(idea))
+        else {
+            return Ok(());
+        };
+
+        let mut transaction = self.transactions.join(within).await?;
+        self.let_go(&mut transaction, *board, &gone).await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn sweep(&self, project: &str) -> Result<(), BoardsError> {
@@ -219,12 +238,25 @@ impl BoardsCore {
         Ok(forgotten)
     }
 
-    async fn let_go(&self, board: BoardId, gone: &IdeaLink) -> Result<(), BoardsError> {
+    async fn let_go(
+        &self,
+        transaction: &mut Transaction,
+        board: BoardId,
+        gone: &IdeaLink,
+    ) -> Result<(), BoardsError> {
+        self.authorized_to_write(&board, &Agent::System).await?;
         match self
-            .as_the_system(&board, BoardCommand::Unpin { idea: gone.clone() })
+            .service
+            .carry_out(
+                transaction,
+                &board,
+                BoardCommand::Unpin { idea: gone.clone() },
+                None,
+                &Agent::System,
+            )
             .await
         {
-            Ok(())
+            Ok(_)
             | Err(BoardsError::Events(ServiceError::Refused(
                 BoardError::NotPinned | BoardError::Discarded,
             ))) => Ok(()),
@@ -297,4 +329,12 @@ impl BoardsCore {
             Err(otherwise())
         }
     }
+}
+
+fn pinned(board: &Board) -> Vec<IdeaLink> {
+    board
+        .ideas()
+        .into_iter()
+        .map(|positioned| positioned.idea)
+        .collect()
 }

@@ -46,7 +46,7 @@ impl InMemorySceneStore {
 
     fn enqueue_change(&self, transaction: &mut Transaction, change: SceneChange) {
         if let Some((outbox, mapping)) = &self.enqueuing {
-            outbox.enqueue_within(transaction, mapping.message(&change));
+            outbox.enqueue_after_commit(transaction, mapping.message(&change));
         }
     }
 

@@ -10,7 +10,7 @@ use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_core::{InvitationCatalog, InvitationEvent, InvitationsCore};
 use invitations_messaging::{
     AcceptTakenUpInvitationListener, CatalogueInvitationsListener, DeclineInvitationListener,
-    RememberProjectNamesListener, RememberWhoSignedUpListener,
+    RememberProjectNamesListener, RememberWhoSignedUpListener, WithdrawIfProjectGoneListener,
     WithdrawInvitationsOfDeletedProjectListener,
 };
 use invitations_rest::{InvitationsTopic, TellingInvitations};
@@ -199,14 +199,31 @@ impl Feature for InvitationFeature {
                     ports.transactions.clone(),
                     ports.inbox.clone(),
                 )),
-                Arc::new(CatalogueInvitationsListener::new(invitations.clone())),
+                Arc::new(Inboxed::new(
+                    CatalogueInvitationsListener::new(
+                        invitations.clone(),
+                        ports.outbox.clone(),
+                        context.clock.clone(),
+                    ),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
+                Arc::new(Inboxed::new(
+                    WithdrawIfProjectGoneListener::new(invitations.clone()),
+                    ports.transactions.clone(),
+                    ports.inbox.clone(),
+                )),
                 Arc::new(Inboxed::new(
                     RememberWhoSignedUpListener::new(invitations.clone()),
                     ports.transactions.clone(),
                     ports.inbox.clone(),
                 )),
                 Arc::new(Inboxed::new(
-                    RememberProjectNamesListener::new(invitations.clone()),
+                    RememberProjectNamesListener::new(
+                        invitations.clone(),
+                        ports.outbox.clone(),
+                        context.clock.clone(),
+                    ),
                     ports.transactions.clone(),
                     ports.inbox.clone(),
                 )),
@@ -423,6 +440,7 @@ mod tests {
             "accept-taken-up-invitation",
             "decline-invitation",
             "catalogue-invitation",
+            "withdraw-invitation-if-project-gone",
             "invitations-remember-who-signed-up",
             "remember-project-names",
             "withdraw-invitations-of-deleted-project",

@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use members_contract::EVERY_MEMBERS;
 use members_core::{MembersCore, ProjectLink};
-use messaging::Message;
+use messaging::{Failure, Message};
 use transacting::Transaction;
 
 pub struct CatalogueMembersListener {
@@ -26,14 +26,14 @@ impl KeptHandler for CatalogueMembersListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
-        self.members
+    ) -> Result<(), Failure> {
+        Ok(self
+            .members
             .catalogue(
                 Some(transaction),
                 &eventpublishing::aggregate_in::<ProjectLink>(message)?,
             )
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }
 

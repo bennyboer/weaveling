@@ -1,8 +1,8 @@
 use async_trait::async_trait;
 use eventsourcing::AccountId;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use members_contract::{MembersEventDTO, ROLE_CHANGED, role};
-use messaging::Message;
+use messaging::{Failure, Message};
 use notifications_core::{About, NotificationsCore, ProjectLink, Role};
 use transacting::Transaction;
 
@@ -29,7 +29,7 @@ impl KeptHandler for NoteRoleChangedListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let changed = eventpublishing::published_in::<MembersEventDTO>(message)?;
         let MembersEventDTO::RoleChanged { account, to } = changed.event.body else {
             return Err("a changed role tells no account and no role".into());
@@ -50,8 +50,7 @@ impl KeptHandler for NoteRoleChangedListener {
                     by,
                 },
             )
-            .await
-            .map_err(Refused::of)?;
+            .await?;
 
         Ok(())
     }

@@ -51,7 +51,8 @@ impl Workbench for OnSqlite {
             .await
             .expect("a transaction opens");
         for message in messages {
-            crate::sqlite::enqueue(&mut transaction, suite::from_a_scene(), message)
+            self.outbox
+                .enqueue_within(&mut transaction, suite::from_a_scene(), message)
                 .await
                 .expect("enqueueing should succeed");
         }

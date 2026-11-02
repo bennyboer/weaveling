@@ -370,27 +370,43 @@ impl InvitationsCore {
         Ok(transaction.finish().await?)
     }
 
-    pub async fn catalogue(&self, invitation: &InvitationId) -> Result<(), InvitationsError> {
+    pub async fn catalogue(
+        &self,
+        within: Option<&mut Transaction>,
+        invitation: &InvitationId,
+    ) -> Result<Option<ProjectLink>, InvitationsError> {
         let standing = self.service.latest(invitation).await?;
         let summary = InvitationSummary::of(*invitation, standing.version, &standing.state);
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         if standing.state.is_retired() {
             self.catalog
                 .forget(&mut transaction, invitation, self.clock.now())
                 .await?;
-            return Ok(transaction.finish().await?);
+            transaction.finish().await?;
+            return Ok(None);
         }
         self.catalog.remember(&mut transaction, &summary).await?;
         transaction.finish().await?;
 
-        match &summary.scope {
-            Scope::Project { project, .. }
-                if self.catalog.has_project_tombstone(project).await? =>
-            {
-                settled(self.withdrawn_by_the_system(invitation).await)
-            }
-            _ => Ok(()),
+        Ok(summary.scope.project().cloned())
+    }
+
+    pub async fn withdraw_if_project_gone(
+        &self,
+        within: Option<&mut Transaction>,
+        invitation: &InvitationId,
+        project: &ProjectLink,
+    ) -> Result<(), InvitationsError> {
+        let mut transaction = self.transactions.join(within).await?;
+        if self.catalog.has_project_tombstone(project).await? {
+            settled(
+                self.service
+                    .withdraw(&mut transaction, invitation, &Agent::System)
+                    .await,
+            )?;
         }
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn sweep(&self, project: &str) -> Result<(), InvitationsError> {

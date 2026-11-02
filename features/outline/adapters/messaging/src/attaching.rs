@@ -1,28 +1,110 @@
-use messaging::{Failure, Handler, Message};
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use clock::Clock;
+use inbox::KeptHandler;
+use messaging::{Failure, Message, RoutingKey};
+use outbox::{Origin, Outbox};
 use outline_contract::{ATTACHED, DETACHED, SECTION_REMOVED};
-use outline_core::{OutlineId, OutlinesCore};
+use outline_core::{KIND, OutlineId, OutlinesCore};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use time::OffsetDateTime;
+use transacting::Transaction;
+
+pub const DETACH_THE_GONE: &str = "follow-up.outline.detach-gone";
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct DetachTheGoneDTO {
+    pub outline: String,
+}
 
 pub struct IndexAttachmentsListener {
     outlines: OutlinesCore,
+    outbox: Arc<dyn Outbox>,
+    clock: Arc<dyn Clock>,
 }
 
 impl IndexAttachmentsListener {
-    pub fn new(outlines: OutlinesCore) -> Self {
-        Self { outlines }
+    pub fn new(outlines: OutlinesCore, outbox: Arc<dyn Outbox>, clock: Arc<dyn Clock>) -> Self {
+        Self {
+            outlines,
+            outbox,
+            clock,
+        }
     }
 }
 
-#[async_trait::async_trait]
-impl Handler for IndexAttachmentsListener {
+#[async_trait]
+impl KeptHandler for IndexAttachmentsListener {
     const NAME: &'static str = "index-attachments";
     const LISTENS_TO: &'static [&'static str] = &[ATTACHED, DETACHED, SECTION_REMOVED];
     const WHEN_REFUSED: &'static str =
         "A change to the outline did not reach the record of what it holds.";
 
-    async fn take_in(&self, message: &Message) -> Result<(), Failure> {
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Failure> {
+        let outline = eventpublishing::aggregate_in::<OutlineId>(message)?;
+
+        self.outlines
+            .index_attachments(Some(&mut *transaction), &outline)
+            .await?;
+        self.outbox
+            .enqueue_within(
+                transaction,
+                Origin {
+                    aggregate: &outline.to_string(),
+                    kind: KIND.as_str(),
+                    version: 0,
+                },
+                &detach_the_gone(message, &outline, self.clock.now()),
+            )
+            .await?;
+
+        Ok(())
+    }
+}
+
+fn detach_the_gone(heard: &Message, outline: &OutlineId, now: OffsetDateTime) -> Message {
+    heard.answering(
+        RoutingKey::parse(DETACH_THE_GONE).expect("a follow-up's routing key holds no wildcards"),
+        json!(DetachTheGoneDTO {
+            outline: outline.to_string(),
+        }),
+        now,
+    )
+}
+
+pub struct DetachGoneAttachmentsListener {
+    outlines: OutlinesCore,
+}
+
+impl DetachGoneAttachmentsListener {
+    pub fn new(outlines: OutlinesCore) -> Self {
+        Self { outlines }
+    }
+}
+
+#[async_trait]
+impl KeptHandler for DetachGoneAttachmentsListener {
+    const NAME: &'static str = "detach-gone-attachments";
+    const LISTENS_TO: &'static [&'static str] = &[DETACH_THE_GONE];
+    const WHEN_REFUSED: &'static str =
+        "A discarded idea or a deleted scene could not be taken out of the outline.";
+
+    async fn take_in(
+        &self,
+        transaction: &mut Transaction,
+        message: &Message,
+    ) -> Result<(), Failure> {
+        let asked: DetachTheGoneDTO = message.payload_as()?;
+
         Ok(self
             .outlines
-            .index_attachments(&eventpublishing::aggregate_in::<OutlineId>(message)?)
+            .let_go_of_the_gone(Some(transaction), &asked.outline.parse::<OutlineId>()?)
             .await?)
     }
 }

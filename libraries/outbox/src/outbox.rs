@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use messaging::Notifications;
+use messaging::{Message, Notifications};
 use thiserror::Error;
 use time::{Duration, OffsetDateTime};
-use transacting::Failure;
+use transacting::{Failure, Transaction};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Origin<'a> {
@@ -33,6 +33,13 @@ pub struct Delivered {
 
 #[async_trait]
 pub trait Outbox: Send + Sync {
+    async fn enqueue_within(
+        &self,
+        transaction: &mut Transaction,
+        origin: Origin<'_>,
+        message: &Message,
+    ) -> Result<(), OutboxError>;
+
     async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError>;
 
     async fn delete_published(

@@ -5,6 +5,7 @@ use invitations_core::{DeclineReason, InvitationEvent, InvitationId, KIND};
 use invitations_messaging::DeclineInvitationListener;
 use messaging::{Listener, Message, RoutingKey};
 use serde_json::{Value, json};
+use transacting::InMemoryTransactions;
 
 use crate::wiring;
 use crate::wiring::{ORIGIN, Wired};
@@ -76,6 +77,28 @@ async fn an_invitation_is_declined_in_the_system_s_name() {
     assert_eq!(
         recorded.last().map(|recorded| &recorded.metadata.agent),
         Some(&Agent::System)
+    );
+}
+
+#[tokio::test]
+async fn a_declining_whose_hearing_does_not_commit_is_undone_with_it() {
+    let wired = wiring::wired();
+    let id = invited(&wired).await;
+
+    wiring::inboxed_in(
+        DeclineInvitationListener::new(wired.invitations.clone()),
+        InMemoryTransactions::refusing_commits(),
+    )
+    .handle(&declined(&id))
+    .await
+    .expect_err("a hearing that does not commit is not handled");
+
+    assert!(
+        matches!(
+            happened(&wired, &id).await.as_slice(),
+            [InvitationEvent::Issued { .. }]
+        ),
+        "the declining is written in the hearing's transaction"
     );
 }
 

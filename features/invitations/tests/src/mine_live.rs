@@ -66,7 +66,7 @@ async fn invited_and_listed(told: &Told, to: &str) -> InvitationId {
         .expect("an owner may invite")
         .id;
     told.invitations
-        .catalogue(&id)
+        .catalogue(None, &id)
         .await
         .expect("cataloguing should succeed");
 

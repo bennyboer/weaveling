@@ -1,8 +1,8 @@
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use invitations_contract::{ACCEPTED, InvitationEventDTO, ScopeDTO, role};
 use members_core::{MembersCore, Role};
-use messaging::Message;
+use messaging::{Failure, Message};
 use transacting::Transaction;
 
 const AN_ACCOUNT: &str = "account";
@@ -27,7 +27,7 @@ impl KeptHandler for JoinByAcceptedInvitationListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let accepted = eventpublishing::published_in::<InvitationEventDTO>(message)?;
         let InvitationEventDTO::Accepted { scope } = accepted.event.body else {
             return Err("an acceptance tells no scope".into());
@@ -40,10 +40,10 @@ impl KeptHandler for JoinByAcceptedInvitationListener {
         };
         let role = to_role(&role).ok_or_else(|| format!("{role:?} is no role"))?;
 
-        self.members
+        Ok(self
+            .members
             .join(Some(transaction), &project, &account, role)
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }
 

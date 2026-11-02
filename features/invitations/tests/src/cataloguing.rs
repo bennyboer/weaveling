@@ -3,6 +3,7 @@ use std::sync::Arc;
 use authorizing::AllowingEverything;
 use clock::Clock;
 use eventsourcing::Agent;
+use inbox::Inboxed;
 use invitations_catalog::InMemoryInvitationCatalog;
 use invitations_contract::{ACCEPTED, DECLINED, ISSUED, RETIRED, WITHDRAWN};
 use invitations_core::{
@@ -37,7 +38,7 @@ struct Listing {
     wired: Wired,
     catalog: Arc<InMemoryInvitationCatalog>,
     invitations: InvitationsCore,
-    listener: CatalogueInvitationsListener,
+    listener: Inboxed<CatalogueInvitationsListener>,
 }
 
 fn listing() -> Listing {
@@ -54,7 +55,11 @@ fn listing() -> Listing {
     );
 
     Listing {
-        listener: CatalogueInvitationsListener::new(invitations.clone()),
+        listener: wiring::inboxed(CatalogueInvitationsListener::new(
+            invitations.clone(),
+            wired.outbox.clone(),
+            wired.clock.clone(),
+        )),
         wired,
         catalog,
         invitations,
@@ -250,7 +255,7 @@ async fn a_catalogued_invitation_is_found_by_the_digest_of_the_token_mailed_for_
         .expect("an operator may invite");
     wired
         .invitations
-        .catalogue(&issued.id)
+        .catalogue(None, &issued.id)
         .await
         .expect("cataloguing should succeed");
 

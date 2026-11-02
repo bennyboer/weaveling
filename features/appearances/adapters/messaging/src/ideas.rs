@@ -1,7 +1,7 @@
 use appearances_core::AppearancesCore;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use transacting::Transaction;
 
 pub struct ForgetDiscardedIdeaListener {
@@ -24,7 +24,7 @@ impl KeptHandler for ForgetDiscardedIdeaListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let discarded = eventpublishing::published_in::<IdeaEventDTO>(message)?;
 
         Ok(self

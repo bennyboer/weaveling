@@ -7,9 +7,12 @@ mod remembering;
 mod sweeping;
 
 pub use accepting::AcceptTakenUpInvitationListener;
-pub use cataloguing::CatalogueInvitationsListener;
+pub use cataloguing::{
+    CatalogueInvitationsListener, WITHDRAW_IF_PROJECT_GONE, WithdrawIfProjectGoneDTO,
+    WithdrawIfProjectGoneListener,
+};
 pub use declining::DeclineInvitationListener;
 pub use naming::RememberProjectNamesListener;
 pub use publishing::message_for;
 pub use remembering::RememberWhoSignedUpListener;
-pub use sweeping::WithdrawInvitationsOfDeletedProjectListener;
+pub use sweeping::{SWEEP_PROJECT, SweepProjectDTO, WithdrawInvitationsOfDeletedProjectListener};

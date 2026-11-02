@@ -9,7 +9,7 @@ use statistics_catalog::InMemoryWordCountCatalog;
 use statistics_core::{ProjectLink, SceneLink, StatisticsCore, WordCount, WordCountCatalog};
 use statistics_messaging::ProjectWordCountsListener;
 use time::{Duration, OffsetDateTime};
-use transacting::InMemoryTransactions;
+use transacting::{InMemoryTransactions, Transactions};
 
 fn at(seconds: i64) -> OffsetDateTime {
     OffsetDateTime::UNIX_EPOCH + Duration::seconds(seconds)
@@ -21,6 +21,10 @@ struct Wired {
 }
 
 fn a_workbench() -> Wired {
+    a_workbench_hearing_in(InMemoryTransactions::new())
+}
+
+fn a_workbench_hearing_in(hearings: InMemoryTransactions) -> Wired {
     let catalog = Arc::new(InMemoryWordCountCatalog::new());
 
     Wired {
@@ -30,7 +34,7 @@ fn a_workbench() -> Wired {
                 catalog.clone(),
                 Arc::new(AllowingEverything),
             )),
-            Arc::new(InMemoryTransactions::new()),
+            Arc::new(hearings),
             Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
                 OffsetDateTime::UNIX_EPOCH,
             )))),
@@ -168,5 +172,41 @@ async fn a_deleted_scene_s_tombstone_is_laid_when_it_was_deleted() {
             .expect("forgetting tombstones should succeed"),
         0,
         "forgotten for good"
+    );
+}
+
+#[tokio::test]
+async fn a_deletion_whose_hearing_does_not_commit_is_undone_with_it() {
+    let bench = a_workbench_hearing_in(InMemoryTransactions::refusing_commits());
+    let mut transaction = InMemoryTransactions::new()
+        .begin()
+        .await
+        .expect("an in-memory transaction begins");
+    bench
+        .catalog
+        .keep(
+            &mut transaction,
+            &SceneLink::from("scene_1"),
+            &ProjectLink::from("project_1"),
+            42,
+            at(1_000),
+        )
+        .await
+        .expect("keeping should succeed");
+    transaction
+        .finish()
+        .await
+        .expect("an in-memory transaction commits");
+
+    bench
+        .projector
+        .handle(&deleted("scene_1"))
+        .await
+        .expect_err("a hearing that does not commit is not handled");
+
+    assert_eq!(
+        bench.in_project("project_1").await,
+        vec![a_count("scene_1", 42)],
+        "the deletion is written in the hearing's transaction"
     );
 }

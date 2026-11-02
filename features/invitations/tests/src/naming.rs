@@ -70,7 +70,11 @@ async fn heard(listener: &Inboxed<RememberProjectNamesListener>, messages: &[Mes
 #[tokio::test]
 async fn a_project_is_known_by_the_name_it_was_started_with_and_then_by_its_newest() {
     let wired = wiring::wired();
-    let listener = wiring::inboxed(RememberProjectNamesListener::new(wired.invitations.clone()));
+    let listener = wiring::inboxed(RememberProjectNamesListener::new(
+        wired.invitations.clone(),
+        wired.outbox.clone(),
+        wired.clock.clone(),
+    ));
     for routing in [STARTED, RENAMED, DELETED] {
         assert!(listener.hears(&RoutingKey::parse(routing).expect("a declared key")));
     }
@@ -104,7 +108,11 @@ async fn a_project_is_known_by_the_name_it_was_started_with_and_then_by_its_newe
 #[tokio::test]
 async fn a_deleted_project_is_named_no_more_and_its_tombstone_kept_until_forgotten() {
     let wired = wiring::wired();
-    let listener = wiring::inboxed(RememberProjectNamesListener::new(wired.invitations.clone()));
+    let listener = wiring::inboxed(RememberProjectNamesListener::new(
+        wired.invitations.clone(),
+        wired.outbox.clone(),
+        wired.clock.clone(),
+    ));
     let gone = OffsetDateTime::UNIX_EPOCH + Duration::days(10);
 
     heard(
@@ -136,7 +144,11 @@ async fn a_deleted_project_is_named_no_more_and_its_tombstone_kept_until_forgott
 #[tokio::test]
 async fn what_tells_no_name_nor_a_deletion_is_refused() {
     let wired = wiring::wired();
-    let listener = wiring::inboxed(RememberProjectNamesListener::new(wired.invitations.clone()));
+    let listener = wiring::inboxed(RememberProjectNamesListener::new(
+        wired.invitations.clone(),
+        wired.outbox.clone(),
+        wired.clock.clone(),
+    ));
 
     for unreadable in [
         told(

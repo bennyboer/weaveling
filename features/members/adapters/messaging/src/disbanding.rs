@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use members_core::MembersCore;
-use messaging::Message;
+use messaging::{Failure, Message};
 use projects_contract::{DELETED, ProjectEventDTO};
 use transacting::Transaction;
 
@@ -26,13 +26,13 @@ impl KeptHandler for DisbandMembersOfDeletedProjectListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let deleted = eventpublishing::published_in::<ProjectEventDTO>(message)?;
 
-        self.members
+        Ok(self
+            .members
             .disband(Some(transaction), &deleted.aggregate.id)
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }
 
@@ -61,6 +61,10 @@ mod tests {
     }
 
     fn bench() -> Bench {
+        bench_hearing_in(InMemoryTransactions::new())
+    }
+
+    fn bench_hearing_in(hearings: InMemoryTransactions) -> Bench {
         let store = Arc::new(InMemoryEventStore::new());
         let members = MembersCore::new(
             store.clone(),
@@ -73,7 +77,7 @@ mod tests {
         Bench {
             listener: Inboxed::new(
                 DisbandMembersOfDeletedProjectListener::new(members.clone()),
-                Arc::new(InMemoryTransactions::new()),
+                Arc::new(hearings),
                 Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
                     OffsetDateTime::UNIX_EPOCH,
                 )))),
@@ -167,6 +171,28 @@ mod tests {
         assert_eq!(
             happened(&bench).await,
             vec![(MembersEvent::Disbanded, Agent::System)]
+        );
+    }
+
+    #[tokio::test]
+    async fn a_disbanding_whose_hearing_does_not_commit_is_undone_with_it() {
+        let bench = bench_hearing_in(InMemoryTransactions::refusing_commits());
+        bench
+            .members
+            .found(None, "project_1", "account_ada")
+            .await
+            .expect("founding should succeed");
+
+        bench
+            .listener
+            .handle(&deleted())
+            .await
+            .expect_err("a hearing that does not commit is not handled");
+
+        assert_eq!(
+            happened(&bench).await.len(),
+            1,
+            "the disbanding is written in the hearing's transaction"
         );
     }
 }

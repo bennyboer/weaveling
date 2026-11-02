@@ -7,9 +7,10 @@ use serde_json::Value;
 use sqlx::postgres::PgRow;
 use sqlx::{PgPool, Row};
 use time::OffsetDateTime;
+use transacting::Transaction;
 use uuid::Uuid;
 
-use crate::outbox::{CLAIM_FOR, Delivered, Outbox, OutboxError};
+use crate::outbox::{CLAIM_FOR, Delivered, Origin, Outbox, OutboxError};
 
 const CHANNEL: &str = "outbox_waiting_";
 
@@ -70,6 +71,15 @@ impl PostgresOutbox {
 
 #[async_trait]
 impl Outbox for PostgresOutbox {
+    async fn enqueue_within(
+        &self,
+        transaction: &mut Transaction,
+        origin: Origin<'_>,
+        message: &Message,
+    ) -> Result<(), OutboxError> {
+        crate::postgres::enqueue(transaction, origin, message).await
+    }
+
     async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError> {
         let now = self.clock.now();
         let claimed = sqlx::query(CLAIM)

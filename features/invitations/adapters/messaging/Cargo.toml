@@ -11,12 +11,13 @@ eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublis
 eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing", package = "weaveling-eventsourcing" }
 inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+outbox = { version = "0.1.0", path = "../../../../libraries/outbox", package = "weaveling-outbox" }
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 projects-contract = { version = "0.1.0", path = "../../../projects/contract", package = "weaveling-projects-contract" }
 async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
 
 invitations-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-invitations-contract" }
 invitations-core = { version = "0.1.0", path = "../../core", package = "weaveling-invitations-core" }
-
-[dev-dependencies]
-time = { workspace = true }

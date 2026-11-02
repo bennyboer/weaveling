@@ -1,7 +1,7 @@
 use acting::Acting;
 use eventsourcing::{Agent, AggregateId, EventStore, Version};
 use invitations_core::{InvitationEvent, InvitationId, InvitationsError, KIND, ProjectLink, Role};
-use invitations_messaging::WithdrawInvitationsOfDeletedProjectListener;
+use invitations_messaging::{SWEEP_PROJECT, WithdrawInvitationsOfDeletedProjectListener};
 use messaging::{Handler, Listener, Message, RoutingKey};
 use projects_contract::DELETED;
 use serde_json::json;
@@ -26,7 +26,7 @@ async fn invited_into(wired: &Wired, project: &str, to: &str) -> InvitationId {
         .id;
     wired
         .invitations
-        .catalogue(&id)
+        .catalogue(None, &id)
         .await
         .expect("cataloguing should succeed");
 
@@ -46,13 +46,8 @@ async fn last_of(wired: &Wired, id: &InvitationId) -> (InvitationEvent, Agent) {
 
 fn deleted(project: &str) -> Message {
     Message::opening(
-        RoutingKey::parse(DELETED).expect("a declared routing key is fine"),
-        json!({
-            "event": { "version": 0, "name": "DELETED" },
-            "aggregate": { "id": project, "kind": "project", "version": 4 },
-            "agent": { "kind": "account", "id": "account_ada" },
-            "occurred_at": "2023-11-14T22:13:20Z",
-        }),
+        RoutingKey::parse(SWEEP_PROJECT).expect("a declared routing key is fine"),
+        json!({ "project": project }),
         OffsetDateTime::UNIX_EPOCH,
     )
 }
@@ -61,7 +56,11 @@ fn deleted(project: &str) -> Message {
 async fn a_deleted_project_s_open_invitations_are_withdrawn_by_the_system_page_after_page() {
     let wired = wiring::wired();
     let listener = WithdrawInvitationsOfDeletedProjectListener::new(wired.invitations.clone());
-    assert!(listener.hears(&RoutingKey::parse(DELETED).expect("a declared key")));
+    assert!(listener.hears(&RoutingKey::parse(SWEEP_PROJECT).expect("a declared key")));
+    assert!(
+        !listener.hears(&RoutingKey::parse(DELETED).expect("a declared key")),
+        "the sweep waits for the tombstone, which asks for it once it has committed"
+    );
     let mut into_the_loom = Vec::new();
     for n in 0..101 {
         into_the_loom
@@ -180,11 +179,17 @@ async fn into_a_deleted_project_no_invitation_is_issued_and_one_issued_just_befo
         "the sweep missed it, as the list had not heard of it yet"
     );
 
+    let project = wired
+        .invitations
+        .catalogue(None, &just_before)
+        .await
+        .expect("cataloguing should succeed")
+        .expect("an invitation into a project asks after its project");
     wired
         .invitations
-        .catalogue(&just_before)
+        .withdraw_if_project_gone(None, &just_before, &project)
         .await
-        .expect("cataloguing should succeed");
+        .expect("withdrawing should succeed");
 
     assert_eq!(
         last_of(&wired, &just_before).await,
@@ -219,9 +224,14 @@ async fn an_invitation_into_a_deleted_project_taken_up_before_is_listed_as_it_wa
 
     wired
         .invitations
-        .catalogue(&accepted)
+        .catalogue(None, &accepted)
         .await
         .expect("an invitation taken up is no failure to list");
+    wired
+        .invitations
+        .withdraw_if_project_gone(None, &accepted, &ProjectLink::from("project_loom"))
+        .await
+        .expect("an invitation taken up is no failure to withdraw if its project is gone");
 
     assert!(matches!(
         last_of(&wired, &accepted).await.0,

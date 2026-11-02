@@ -11,8 +11,9 @@ use outline_catalog::InMemoryOutlineCatalog;
 use outline_contract::EVERY_OUTLINE;
 use outline_core::{OutlineCatalog, OutlineEvent, OutlinesCore};
 use outline_messaging::{
-    CatalogueOutlinesListener, DetachOnDiscardListener, DetachOnSceneDeletedListener,
-    DiscardOutlinesOnProjectDeletedListener, IndexAttachmentsListener,
+    CatalogueOutlinesListener, DetachEverywhereListener, DetachGoneAttachmentsListener,
+    DetachOnDiscardListener, DetachOnSceneDeletedListener, DiscardOutlinesOnProjectDeletedListener,
+    IndexAttachmentsListener,
 };
 use registry::{InMemoryRegistry, Registry};
 use transacting::Transactions;
@@ -49,9 +50,43 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
         ports.transactions.clone(),
         ports.inbox.clone(),
     );
-    let index = IndexAttachmentsListener::new(outlines.clone());
-    let detach_discarded_ideas = DetachOnDiscardListener::new(outlines.clone());
-    let detach_deleted_scenes = DetachOnSceneDeletedListener::new(outlines.clone());
+    let index = Inboxed::new(
+        IndexAttachmentsListener::new(
+            outlines.clone(),
+            ports.outbox.clone(),
+            context.clock.clone(),
+        ),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
+    let detach_discarded_ideas = Inboxed::new(
+        DetachOnDiscardListener::new(
+            outlines.clone(),
+            ports.outbox.clone(),
+            context.clock.clone(),
+        ),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
+    let detach_deleted_scenes = Inboxed::new(
+        DetachOnSceneDeletedListener::new(
+            outlines.clone(),
+            ports.outbox.clone(),
+            context.clock.clone(),
+        ),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
+    let detach_everywhere = Inboxed::new(
+        DetachEverywhereListener::new(outlines.clone()),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
+    let detach_gone = Inboxed::new(
+        DetachGoneAttachmentsListener::new(outlines.clone()),
+        ports.transactions.clone(),
+        ports.inbox.clone(),
+    );
     let sweep = DiscardOutlinesOnProjectDeletedListener::new(outlines.clone());
     let broadcaster = Broadcaster::new();
     let broadcast =
@@ -70,6 +105,8 @@ pub fn wire(ports: &Ports, context: &Context) -> Wired {
             Arc::new(index),
             Arc::new(detach_discarded_ideas),
             Arc::new(detach_deleted_scenes),
+            Arc::new(detach_everywhere),
+            Arc::new(detach_gone),
             Arc::new(sweep),
         ])
         .doing_chores(vec![
@@ -227,7 +264,7 @@ mod tests {
             (Attachment::idea("idea_just_gone"), NOW + Duration::SECOND),
         ] {
             core(&ports, &context)
-                .let_go_everywhere(&gone, laid)
+                .lay_tombstone(None, &gone, laid)
                 .await
                 .expect("laying a tombstone should succeed");
         }
@@ -254,7 +291,7 @@ mod tests {
         let ports = OutlineFeature::in_memory(&context);
         for gone in [Attachment::scene("scene_1"), Attachment::idea("idea_1")] {
             core(&ports, &context)
-                .let_go_everywhere(&gone, NOW)
+                .lay_tombstone(None, &gone, NOW)
                 .await
                 .expect("laying a tombstone should succeed");
         }

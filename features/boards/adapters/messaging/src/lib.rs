@@ -3,14 +3,18 @@ mod pinning;
 mod publishing;
 mod sweeping;
 
-pub use discarding::UnpinOnDiscardListener;
-pub use pinning::ProjectPinnedIdeasListener;
+pub use discarding::{
+    LET_GO_EVERYWHERE, LetGoEverywhereDTO, LetGoOfDiscardedIdeaListener, UnpinOnDiscardListener,
+};
+pub use pinning::{
+    LET_GO_OF_THE_GONE, LetGoOfGoneIdeasListener, LetGoOfTheGoneDTO, ProjectPinnedIdeasListener,
+};
 
 use async_trait::async_trait;
 use boards_contract::{DISCARDED, STARTED};
 use boards_core::{BoardId, BoardsCore};
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 pub use publishing::message_for;
 use transacting::Transaction;
 
@@ -34,14 +38,14 @@ impl KeptHandler for CatalogueBoardsListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
-        self.boards
+    ) -> Result<(), Failure> {
+        Ok(self
+            .boards
             .catalogue(
-                None,
+                Some(transaction),
                 &eventpublishing::aggregate_in::<BoardId>(message)?,
             )
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }
 

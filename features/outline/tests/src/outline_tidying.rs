@@ -4,12 +4,17 @@ use std::sync::atomic::Ordering;
 use clock::FixedClock;
 use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 use ideas_contract::DISCARDED as IDEA_DISCARDED;
-use messaging::{Message, RoutingKey};
+use inbox::{InMemoryInbox, Inboxed};
+use messaging::{Listener, Message, RoutingKey};
 use outline_contract::{
-    ATTACHED, DETACHED, SECTION_ADDED, SECTION_MOVED, SECTION_REMOVED, STARTED,
+    ATTACHED, AttachmentDTO, DETACHED, SECTION_ADDED, SECTION_MOVED, SECTION_REMOVED, STARTED,
 };
 use outline_core::{
     Attachment, KIND, OutlineCatalog, OutlineEvent, OutlineId, SectionId, SectionTitle,
+};
+use outline_messaging::{
+    DETACH_EVERYWHERE, DETACH_THE_GONE, DetachEverywhereDTO, DetachOnSceneDeletedListener,
+    DetachTheGoneDTO,
 };
 use scenes_contract::{DELETED as SCENE_DELETED, SceneDeletedDTO};
 use serde_json::json;
@@ -52,6 +57,26 @@ fn discarded(idea: &str) -> Message {
             "agent": { "kind": "system", "id": null },
             "occurred_at": "1970-01-01T00:16:40Z",
         }),
+        at(1_000),
+    )
+}
+
+fn asked_to_detach_everywhere(attachment: AttachmentDTO) -> Message {
+    Message::opening(
+        RoutingKey::parse(DETACH_EVERYWHERE).expect("a follow-up's key holds no wildcards"),
+        serde_json::to_value(DetachEverywhereDTO { attachment })
+            .expect("a follow-up is plain data"),
+        at(1_000),
+    )
+}
+
+fn asked_to_detach_the_gone(outline: &OutlineId) -> Message {
+    Message::opening(
+        RoutingKey::parse(DETACH_THE_GONE).expect("a follow-up's key holds no wildcards"),
+        serde_json::to_value(DetachTheGoneDTO {
+            outline: outline.to_string(),
+        })
+        .expect("a follow-up is plain data"),
         at(1_000),
     )
 }
@@ -258,6 +283,7 @@ async fn a_discarded_idea_leaves_the_book() {
         .handle(&discarded("idea_1"))
         .await
         .expect("tidying should succeed");
+    wired.settle().await;
 
     let standing = wired
         .outlines
@@ -281,6 +307,7 @@ async fn discarding_an_idea_leaves_the_scenes_alone() {
         .handle(&discarded("idea_1"))
         .await
         .expect("tidying should succeed");
+    wired.settle().await;
 
     let standing = wired
         .outlines
@@ -345,6 +372,7 @@ async fn a_deleted_scene_is_let_go_of_in_the_system_s_name() {
         .handle(&scene_deleted("scene_1"))
         .await
         .expect("tidying should succeed");
+    wired.settle().await;
 
     let recorded = wired
         .store
@@ -370,8 +398,10 @@ async fn whom_to_let_in_not_being_known_fails_letting_go_so_it_is_tried_again() 
 
     assert!(
         wired
-            .on_scene_deleted
-            .handle(&scene_deleted("scene_1"))
+            .detaching_everywhere
+            .handle(&asked_to_detach_everywhere(AttachmentDTO::Scene {
+                id: "scene_1".to_owned()
+            }))
             .await
             .is_err(),
         "a deleted scene left in the outline for good is worse than a message tried again"
@@ -435,6 +465,13 @@ async fn discarding_an_idea_still_indexed_in_a_discarded_book_is_harmless() {
         .on_idea_discarded
         .handle(&discarded("idea_1"))
         .await
+        .expect("laying the tombstone should succeed");
+    wired
+        .detaching_everywhere
+        .handle(&asked_to_detach_everywhere(AttachmentDTO::Idea {
+            id: "idea_1".to_owned(),
+        }))
+        .await
         .expect(
             "a discarded book has nothing left to detach, so this must not end in dead letters",
         );
@@ -476,6 +513,7 @@ async fn a_deleted_scene_is_taken_out_of_the_book() {
         .handle(&scene_deleted("scene_1"))
         .await
         .expect("taking it out should succeed");
+    wired.settle().await;
 
     let standing = wired
         .outlines
@@ -639,4 +677,106 @@ async fn a_tombstone_is_laid_when_the_idea_was_discarded_or_the_scene_deleted() 
             "laid when it happened, and forgotten for good"
         );
     }
+}
+
+#[tokio::test]
+async fn a_deletion_lays_the_tombstone_and_leaves_detaching_to_a_follow_up() {
+    let wired = a_workbench();
+    let (outline, chapter) = a_book_holding(&wired, &["scene_1"]).await;
+
+    wired
+        .on_scene_deleted
+        .handle(&scene_deleted("scene_1"))
+        .await
+        .expect("the listener should take this message");
+
+    assert_eq!(
+        wired
+            .outlines
+            .read(&outline.to_string(), &an_author())
+            .await
+            .expect("reading should succeed")
+            .state
+            .attachments_in(&chapter),
+        vec![a_scene("scene_1")],
+        "the scene is detached in a hearing of its own, once the tombstone has committed"
+    );
+    assert_eq!(
+        wired.outbox.waiting_to_be_published(),
+        1,
+        "the follow-up waits in the outbox, written in the deletion's transaction"
+    );
+}
+
+#[tokio::test]
+async fn a_deletion_whose_hearing_does_not_commit_lays_no_tombstone_and_asks_nothing() {
+    let wired = a_workbench();
+    let listener = Inboxed::new(
+        DetachOnSceneDeletedListener::new(
+            wired.outlines.clone(),
+            wired.outbox.clone(),
+            wired.clock.clone(),
+        ),
+        Arc::new(InMemoryTransactions::refusing_commits()),
+        Arc::new(InMemoryInbox::new(wired.clock.clone())),
+    );
+
+    listener
+        .handle(&scene_deleted("scene_1"))
+        .await
+        .expect_err("a hearing that does not commit is not handled");
+
+    assert_eq!(wired.outbox.waiting_to_be_published(), 0);
+    assert_eq!(
+        wired
+            .outlines
+            .forget_tombstones_laid_before(at(1_001), u64::MAX)
+            .await
+            .expect("forgetting tombstones should succeed"),
+        0,
+        "the tombstone is laid in the hearing's transaction"
+    );
+}
+
+#[tokio::test]
+async fn a_book_holding_several_gone_scenes_lets_go_of_them_one_hearing_after_another() {
+    let wired = a_workbench();
+    let (outline, chapter) = a_book_holding(&wired, &["scene_1", "scene_2", "scene_3"]).await;
+    for scene in ["scene_1", "scene_2"] {
+        wired
+            .outlines
+            .lay_tombstone(None, &a_scene(scene), at(1_000))
+            .await
+            .expect("laying a tombstone should succeed");
+    }
+
+    wired
+        .detaching_the_gone
+        .handle(&asked_to_detach_the_gone(&outline))
+        .await
+        .expect("detaching should succeed");
+    let held = |wired: &Wired| {
+        let outlines = wired.outlines.clone();
+        let outline = outline.to_string();
+        async move {
+            outlines
+                .read(&outline, &an_author())
+                .await
+                .expect("reading should succeed")
+                .state
+                .attachments_in(&chapter)
+        }
+    };
+    assert_eq!(
+        held(&wired).await.len(),
+        2,
+        "one scene is detached in a hearing, as two detaches on one book would collide in one transaction"
+    );
+    wired.settle().await;
+
+    assert_eq!(
+        held(&wired).await,
+        vec![a_scene("scene_3")],
+        "the detach's own event asks the book to let go of the next"
+    );
 }

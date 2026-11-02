@@ -1,9 +1,9 @@
 use accounts_core::{AccountsCore, EmailAddress, InvitationScope, InvitationTicket, TokenDigest};
 use async_trait::async_trait;
 use clock::text;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use invitations_contract::{DECLINED, ISSUED, InvitationEventDTO, RETIRED, ScopeDTO, WITHDRAWN};
-use messaging::Message;
+use messaging::{Failure, Message};
 use transacting::Transaction;
 
 pub struct KeepInvitationTicketsListener {
@@ -26,7 +26,7 @@ impl KeptHandler for KeepInvitationTicketsListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<InvitationEventDTO>(message)?;
         let invitation = told.aggregate.id;
 
@@ -49,21 +49,19 @@ impl KeptHandler for KeepInvitationTicketsListener {
                     by_an_operator,
                 };
 
-                self.accounts
+                Ok(self
+                    .accounts
                     .keep_invitation_ticket(Some(transaction), &TokenDigest::kept(digest), &ticket)
-                    .await
-                    .map_err(Refused::of)
+                    .await?)
             }
-            InvitationEventDTO::Withdrawn | InvitationEventDTO::Declined { .. } => self
+            InvitationEventDTO::Withdrawn | InvitationEventDTO::Declined { .. } => Ok(self
                 .accounts
                 .forget_invitation_ticket(Some(transaction), &invitation)
-                .await
-                .map_err(Refused::of),
-            InvitationEventDTO::Retired => self
+                .await?),
+            InvitationEventDTO::Retired => Ok(self
                 .accounts
                 .drop_invitation_ticket(Some(transaction), &invitation)
-                .await
-                .map_err(Refused::of),
+                .await?),
             InvitationEventDTO::Accepted { .. } => Ok(()),
         }
     }

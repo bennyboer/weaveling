@@ -1,9 +1,9 @@
 use accounts_contract::{AccountEventDTO, INVITATION_TAKEN_UP};
 use async_trait::async_trait;
 use eventsourcing::Agent;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use invitations_core::{InvitationId, InvitationsCore};
-use messaging::Message;
+use messaging::{Failure, Message};
 use transacting::Transaction;
 
 pub struct AcceptTakenUpInvitationListener {
@@ -26,21 +26,21 @@ impl KeptHandler for AcceptTakenUpInvitationListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<AccountEventDTO>(message)?;
         let AccountEventDTO::InvitationTakenUp { invitation } = told.event.body else {
             return Err("an invitation taken up names no invitation".into());
         };
         let invitation: InvitationId = invitation.parse()?;
 
-        self.invitations
+        Ok(self
+            .invitations
             .taken_up(
                 Some(transaction),
                 &invitation,
                 message.occurred_at,
                 &Agent::Account(told.aggregate.id.into()),
             )
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }

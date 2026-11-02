@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use members_core::MembersCore;
-use messaging::Message;
+use messaging::{Failure, Message};
 use projects_contract::{ProjectEventDTO, STARTED};
 use transacting::Transaction;
 
@@ -28,16 +28,16 @@ impl KeptHandler for FoundMembersOfStartedProjectListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let started = eventpublishing::published_in::<ProjectEventDTO>(message)?;
         let (AN_ACCOUNT, Some(owner)) = (started.agent.kind.as_str(), started.agent.id) else {
             return Ok(());
         };
 
-        self.members
+        Ok(self
+            .members
             .found(Some(transaction), &started.aggregate.id, &owner)
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }
 

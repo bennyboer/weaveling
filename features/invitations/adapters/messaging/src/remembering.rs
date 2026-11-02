@@ -2,9 +2,9 @@ use accounts_contract::{AccountEventDTO, SIGNED_UP, SIGNED_UP_BY_INVITATION};
 use async_trait::async_trait;
 use email::EmailAddress;
 use eventsourcing::AccountId;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use invitations_core::{InvitationsCore, Person};
-use messaging::Message;
+use messaging::{Failure, Message};
 use transacting::Transaction;
 
 pub struct RememberWhoSignedUpListener {
@@ -27,7 +27,7 @@ impl KeptHandler for RememberWhoSignedUpListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<AccountEventDTO>(message)?;
         let (AccountEventDTO::SignedUp { personal }
         | AccountEventDTO::SignedUpByInvitation { personal }) = told.event.body
@@ -41,9 +41,9 @@ impl KeptHandler for RememberWhoSignedUpListener {
             email: EmailAddress::new(&personal.email)?,
         };
 
-        self.invitations
+        Ok(self
+            .invitations
             .remember_person(Some(transaction), &person)
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }

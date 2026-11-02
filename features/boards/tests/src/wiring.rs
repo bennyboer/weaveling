@@ -19,6 +19,8 @@ use wiring::Context;
 const CATALOGUING: &str = "catalogue-board";
 const INDEXING: &str = "index-pinned-ideas";
 const UNPINNING_DISCARDED_IDEAS: &str = "unpin-discarded-idea";
+const LETTING_GO_EVERYWHERE: &str = "let-go-of-discarded-idea-everywhere";
+const LETTING_GO_OF_THE_GONE: &str = "let-go-of-gone-ideas";
 
 #[derive(Default)]
 pub struct TheSystemAndTheAuthor {
@@ -52,6 +54,9 @@ pub struct Wired {
     pub projector: Arc<dyn Listener>,
     pub indexer: Arc<dyn Listener>,
     pub on_idea_discarded: Arc<dyn Listener>,
+    pub letting_go_everywhere: Arc<dyn Listener>,
+    pub letting_go_of_the_gone: Arc<dyn Listener>,
+    pub clock: Arc<dyn Clock>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
@@ -98,6 +103,8 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let projector = named(CATALOGUING);
     let indexer = named(INDEXING);
     let on_idea_discarded = named(UNPINNING_DISCARDED_IDEAS);
+    let letting_go_everywhere = named(LETTING_GO_EVERYWHERE);
+    let letting_go_of_the_gone = named(LETTING_GO_OF_THE_GONE);
 
     Wired {
         boards: boards_wiring::core(&ports, &context),
@@ -113,6 +120,9 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         projector,
         indexer,
         on_idea_discarded,
+        letting_go_everywhere,
+        letting_go_of_the_gone,
+        clock: context.clock.clone(),
     }
 }
 

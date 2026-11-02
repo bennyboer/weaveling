@@ -1,40 +1,10 @@
-use std::error::Error;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use messaging::{Listener, ListenerName, Message, NotHandled, Subscription};
-use transacting::{LostRace, Transaction, Transactions};
+use messaging::{Failure, Listener, ListenerName, Message, NotHandled, Subscription};
+use transacting::{Transaction, Transactions};
 
 use crate::Inbox;
-
-pub struct Refused {
-    lost_race: bool,
-    because: Box<dyn Error + Send + Sync>,
-}
-
-impl Refused {
-    pub fn of(failure: impl Error + LostRace + Send + Sync + 'static) -> Self {
-        Self {
-            lost_race: failure.lost_race(),
-            because: Box::new(failure),
-        }
-    }
-}
-
-impl<E: Into<Box<dyn Error + Send + Sync>>> From<E> for Refused {
-    fn from(failure: E) -> Self {
-        Self {
-            lost_race: false,
-            because: failure.into(),
-        }
-    }
-}
-
-impl LostRace for Refused {
-    fn lost_race(&self) -> bool {
-        self.lost_race
-    }
-}
 
 #[async_trait]
 pub trait KeptHandler: Send + Sync {
@@ -46,7 +16,7 @@ pub trait KeptHandler: Send + Sync {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused>;
+    ) -> Result<(), Failure>;
 }
 
 pub struct Inboxed<H> {
@@ -62,6 +32,20 @@ impl<H: KeptHandler> Inboxed<H> {
             transactions,
             inbox,
         }
+    }
+
+    async fn hear(&self, listener: &ListenerName, message: &Message) -> Result<(), Failure> {
+        let mut transaction = self.transactions.begin().await?;
+        if self
+            .inbox
+            .heard_before(&mut transaction, listener, message.id)
+            .await?
+        {
+            return Ok(());
+        }
+        self.handler.take_in(&mut transaction, message).await?;
+
+        Ok(transaction.finish().await?)
     }
 }
 
@@ -88,22 +72,12 @@ impl<H: KeptHandler> Listener for Inboxed<H> {
     async fn handle(&self, message: &Message) -> Result<(), NotHandled> {
         let listener = self.named();
 
-        let taken: Result<(), Refused> =
-            transacting::retrying!(&*self.transactions, |transaction| {
-                if self
-                    .inbox
-                    .heard_before(transaction, &listener, message.id)
-                    .await?
-                {
-                    return Ok(());
-                }
-                self.handler.take_in(transaction, message).await
-            });
-
-        taken.map_err(|refused| NotHandled {
-            listener,
-            routing: message.routing.clone(),
-            because: refused.because,
-        })
+        self.hear(&listener, message)
+            .await
+            .map_err(|because| NotHandled {
+                listener,
+                routing: message.routing.clone(),
+                because,
+            })
     }
 }

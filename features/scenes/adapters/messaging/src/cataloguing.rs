@@ -1,5 +1,5 @@
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use scenes_contract::{
     CREATED, DELETED, OPENING_CHANGED, OpeningChangedDTO, RETITLED, SceneCreatedDTO,
     SceneDeletedDTO, SceneRetitledDTO,
@@ -20,7 +20,7 @@ impl CatalogueScenesListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         match message.routing.to_string().as_str() {
             CREATED => {
                 let created: SceneCreatedDTO = message.payload_as()?;
@@ -75,7 +75,7 @@ impl KeptHandler for CatalogueScenesListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         self.catalogue(transaction, message).await
     }
 }

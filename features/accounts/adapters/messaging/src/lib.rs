@@ -7,8 +7,8 @@ pub use ticketing::KeepInvitationTicketsListener;
 use accounts_contract::EVERY_ACCOUNT;
 use accounts_core::{AccountId, AccountsCore};
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use transacting::Transaction;
 
 pub struct CatalogueAccountsListener {
@@ -31,13 +31,13 @@ impl KeptHandler for CatalogueAccountsListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
-        self.accounts
+    ) -> Result<(), Failure> {
+        Ok(self
+            .accounts
             .catalogue(
                 Some(transaction),
                 &eventpublishing::aggregate_in::<AccountId>(message)?,
             )
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }

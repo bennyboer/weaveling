@@ -76,7 +76,7 @@ async fn a_change_of_role_that_lost_every_race_it_may_try_is_a_conflict() {
 }
 
 #[tokio::test]
-async fn a_disbanding_that_lost_a_race_is_tried_again_by_the_inbox_and_lands() {
+async fn a_disbanding_that_lost_a_race_is_refused_and_lands_when_it_is_offered_again() {
     let store = Arc::new(InMemoryEventStore::new());
     let members = core_over(store.clone());
     members
@@ -84,16 +84,16 @@ async fn a_disbanding_that_lost_a_race_is_tried_again_by_the_inbox_and_lands() {
         .await
         .expect("founding should succeed");
 
-    Inboxed::new(
+    let listener = Inboxed::new(
         DisbandMembersOfDeletedProjectListener::new(core_over(Arc::new(
-            FailsAppending::losing_races(store, 4),
+            FailsAppending::losing_races(store, 1),
         ))),
         Arc::new(InMemoryTransactions::new()),
         Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
             OffsetDateTime::UNIX_EPOCH,
         )))),
-    )
-    .handle(&Message::opening(
+    );
+    let deleted = Message::opening(
         RoutingKey::parse(DELETED).expect("a declared key"),
         json!({
             "event": { "version": 0, "name": "DELETED" },
@@ -102,9 +102,16 @@ async fn a_disbanding_that_lost_a_race_is_tried_again_by_the_inbox_and_lands() {
             "occurred_at": "1970-01-01T00:00:00Z",
         }),
         OffsetDateTime::UNIX_EPOCH,
-    ))
-    .await
-    .expect("the fifth try lands");
+    );
+
+    listener
+        .handle(&deleted)
+        .await
+        .expect_err("a lost race is refused, for the message to be offered again");
+    listener
+        .handle(&deleted)
+        .await
+        .expect("offered again, it lands");
 
     assert!(
         members

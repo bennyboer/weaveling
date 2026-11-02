@@ -26,9 +26,10 @@ mod tests {
     use eventsourcing::{
         AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Recorded, Version,
     };
-    use ideas_contract::{CAPTURED, DISCARDED, EVERY_IDEA, RETITLED};
+    use ideas_contract::{CAPTURED, DISCARDED, EVERY_IDEA, MORE_TO_SWEEP, RETITLED};
     use ideas_core::{IdeaId, IdeaTitle, KIND, ProjectLink};
-    use messaging::Subscription;
+    use inbox::KeptHandler;
+    use messaging::{RoutingKey, Subscription};
     use time::{Duration, OffsetDateTime};
 
     use super::*;
@@ -105,6 +106,30 @@ mod tests {
                     .covers(&eventpublishing::routing_for(KIND, event.name()))
             }),
             "a listener asking for every idea must handle all of them"
+        );
+    }
+
+    #[test]
+    fn the_list_hears_every_idea_event_and_not_the_sweep_s_continuation() {
+        let hears = |key: &RoutingKey| {
+            crate::CatalogueIdeasListener::LISTENS_TO
+                .iter()
+                .any(|pattern| {
+                    Subscription::parse(pattern)
+                        .expect("a declared pattern")
+                        .covers(key)
+                })
+        };
+
+        assert!(
+            everything_worth_publishing()
+                .into_iter()
+                .all(|(event, _)| hears(&eventpublishing::routing_for(KIND, event.name()))),
+            "a change the list does not hear never reaches it"
+        );
+        assert!(
+            !hears(&RoutingKey::parse(MORE_TO_SWEEP).expect("a declared key")),
+            "a continuation names no idea, so the list could only refuse it until it is dead"
         );
     }
 

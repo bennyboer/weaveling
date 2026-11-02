@@ -6,6 +6,8 @@ edition.workspace = true
 [dependencies]
 time = { workspace = true }
 async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 clock = { version = "0.1.0", path = "../../../../libraries/clock", package = "weaveling-clock" }
 eventpublishing = { version = "0.1.0", path = "../../../../libraries/eventpublishing", package = "weaveling-eventpublishing" }
@@ -13,6 +15,7 @@ eventsourcing = { version = "0.1.0", path = "../../../../libraries/eventsourcing
 ids = { version = "0.1.0", path = "../../../../libraries/ids", package = "weaveling-ids" }
 inbox = { version = "0.1.0", path = "../../../../libraries/inbox", package = "weaveling-inbox" }
 messaging = { version = "0.1.0", path = "../../../../libraries/messaging", package = "weaveling-messaging" }
+outbox = { version = "0.1.0", path = "../../../../libraries/outbox", package = "weaveling-outbox" }
 transacting = { version = "0.1.0", path = "../../../../libraries/transacting", package = "weaveling-transacting" }
 
 outline-contract = { version = "0.1.0", path = "../../contract", package = "weaveling-outline-contract" }

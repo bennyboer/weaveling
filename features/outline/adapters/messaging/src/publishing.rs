@@ -7,7 +7,7 @@ pub fn message_for(happened: &Recorded<OutlineEvent>) -> Option<Message> {
     eventpublishing::message_for(happened, body)
 }
 
-fn to_dto(attachment: &Attachment) -> AttachmentDTO {
+pub(crate) fn to_dto(attachment: &Attachment) -> AttachmentDTO {
     match attachment {
         Attachment::Scene(scene) => AttachmentDTO::Scene {
             id: scene.to_string(),
@@ -80,7 +80,7 @@ mod tests {
         AccountId, Agent, AggregateContext, AggregateId, Event, EventMetadata, Version,
     };
     use inbox::KeptHandler;
-    use messaging::{Handler, RoutingKey, Subscription};
+    use messaging::{RoutingKey, Subscription};
     use outline_contract::{
         ATTACHED, DETACHED, EVERY_OUTLINE, SECTION_ADDED, SECTION_DEMOTED, SECTION_MOVED,
         SECTION_PROMOTED, SECTION_REMOVED, SECTION_RETITLED, STARTED,
@@ -268,7 +268,7 @@ mod tests {
 
         assert!(
             heard_by(
-                <crate::IndexAttachmentsListener as Handler>::LISTENS_TO,
+                <crate::IndexAttachmentsListener as KeptHandler>::LISTENS_TO,
                 &removal
             ),
             "a removed section returns its scenes to the pool, so the index would go stale without \

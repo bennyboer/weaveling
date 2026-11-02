@@ -5,9 +5,14 @@ use eventsourcing::{AccountId, Agent, AggregateId, EventStore, Version};
 
 use boards_contract::{IDEA_MOVED, IDEA_PINNED, IDEA_UNPINNED, STARTED};
 use boards_core::{BoardCatalog, BoardEvent, BoardId, IdeaLink, KIND, Size, Spot};
+use boards_messaging::{
+    LET_GO_EVERYWHERE, LET_GO_OF_THE_GONE, LetGoEverywhereDTO, LetGoOfTheGoneDTO,
+    UnpinOnDiscardListener,
+};
 use clock::FixedClock;
 use ideas_contract::{DISCARDED, IdeaEventDTO};
-use messaging::{Message, RoutingKey};
+use inbox::{InMemoryInbox, Inboxed};
+use messaging::{Listener, Message, RoutingKey};
 use serde_json::json;
 use time::{Duration, OffsetDateTime};
 use transacting::{InMemoryTransactions, Transactions};
@@ -44,6 +49,28 @@ fn discarded(idea: &str) -> Message {
             "agent": { "kind": "local", "id": null },
             "occurred_at": "1970-01-01T00:16:40Z",
         }),
+        at(1_000),
+    )
+}
+
+fn asked_to_let_go_everywhere(idea: &str) -> Message {
+    Message::opening(
+        RoutingKey::parse(LET_GO_EVERYWHERE).expect("a follow-up's key holds no wildcards"),
+        serde_json::to_value(LetGoEverywhereDTO {
+            idea: idea.to_owned(),
+        })
+        .expect("a follow-up is plain data"),
+        at(1_000),
+    )
+}
+
+fn asked_to_let_go_of_the_gone(board: &BoardId) -> Message {
+    Message::opening(
+        RoutingKey::parse(LET_GO_OF_THE_GONE).expect("a follow-up's key holds no wildcards"),
+        serde_json::to_value(LetGoOfTheGoneDTO {
+            board: board.to_string(),
+        })
+        .expect("a follow-up is plain data"),
         at(1_000),
     )
 }
@@ -237,6 +264,7 @@ async fn a_discarded_idea_is_let_go_of_in_the_system_s_name() {
         .handle(&discarded("idea_1"))
         .await
         .expect("tidying should succeed");
+    wired.settle().await;
 
     let recorded = wired
         .store
@@ -262,8 +290,8 @@ async fn whom_to_let_in_not_being_known_fails_letting_go_so_it_is_tried_again() 
 
     assert!(
         wired
-            .on_idea_discarded
-            .handle(&discarded("idea_1"))
+            .letting_go_everywhere
+            .handle(&asked_to_let_go_everywhere("idea_1"))
             .await
             .is_err(),
         "a discarded idea left pinned for good is worse than a message tried again"
@@ -326,6 +354,11 @@ async fn discarding_an_idea_still_indexed_on_a_discarded_board_is_harmless() {
     wired
         .on_idea_discarded
         .handle(&discarded("idea_1"))
+        .await
+        .expect("laying the tombstone should succeed");
+    wired
+        .letting_go_everywhere
+        .handle(&asked_to_let_go_everywhere("idea_1"))
         .await
         .expect(
             "a discarded board has nothing left to unpin, so this must not end in dead letters",
@@ -418,4 +451,88 @@ async fn a_discarded_idea_s_tombstone_is_laid_when_it_was_discarded() {
             "laid when it happened, and forgotten for good"
         );
     }
+}
+
+#[tokio::test]
+async fn a_discard_lays_the_tombstone_and_leaves_letting_go_to_a_follow_up() {
+    let wired = a_workbench();
+    let board = a_board_holding(&wired, &["idea_1"]).await;
+
+    wired
+        .on_idea_discarded
+        .handle(&discarded("idea_1"))
+        .await
+        .expect("the listener should take this message");
+
+    assert_eq!(
+        pinned_on(&wired, &board).await,
+        ["idea_1"],
+        "the idea is let go of in a hearing of its own, once the tombstone has committed"
+    );
+    assert_eq!(
+        wired.outbox.waiting_to_be_published(),
+        1,
+        "the follow-up waits in the outbox, written in the discard's transaction"
+    );
+}
+
+#[tokio::test]
+async fn a_discard_whose_hearing_does_not_commit_lays_no_tombstone_and_asks_nothing() {
+    let wired = a_workbench();
+    let listener = Inboxed::new(
+        UnpinOnDiscardListener::new(
+            wired.boards.clone(),
+            wired.outbox.clone(),
+            wired.clock.clone(),
+        ),
+        Arc::new(InMemoryTransactions::refusing_commits()),
+        Arc::new(InMemoryInbox::new(wired.clock.clone())),
+    );
+
+    listener
+        .handle(&discarded("idea_1"))
+        .await
+        .expect_err("a hearing that does not commit is not handled");
+
+    assert_eq!(wired.outbox.waiting_to_be_published(), 0);
+    assert_eq!(
+        wired
+            .boards
+            .forget_tombstones_laid_before(at(1_001), u64::MAX)
+            .await
+            .expect("forgetting tombstones should succeed"),
+        0,
+        "the tombstone is laid in the hearing's transaction"
+    );
+}
+
+#[tokio::test]
+async fn a_board_holding_several_gone_ideas_lets_go_of_them_one_hearing_after_another() {
+    let wired = a_workbench();
+    let board = a_board_holding(&wired, &["idea_1", "idea_2", "idea_3"]).await;
+    for idea in ["idea_1", "idea_2"] {
+        wired
+            .boards
+            .lay_tombstone(None, idea, at(1_000))
+            .await
+            .expect("laying a tombstone should succeed");
+    }
+
+    wired
+        .letting_go_of_the_gone
+        .handle(&asked_to_let_go_of_the_gone(&board))
+        .await
+        .expect("letting go should succeed");
+    assert_eq!(
+        pinned_on(&wired, &board).await.len(),
+        2,
+        "one idea is let go of in a hearing, as two unpins on one board would collide in one transaction"
+    );
+    wired.settle().await;
+
+    assert_eq!(
+        pinned_on(&wired, &board).await,
+        ["idea_3"],
+        "the unpin's own event asks the board to let go of the next"
+    );
 }

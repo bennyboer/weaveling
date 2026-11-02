@@ -1,8 +1,8 @@
 use accounts_contract::{AccountEventDTO, INVITATION_DECLINED, decline_reason};
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use invitations_core::{DeclineReason, InvitationId, InvitationsCore};
-use messaging::Message;
+use messaging::{Failure, Message};
 use transacting::Transaction;
 
 pub struct DeclineInvitationListener {
@@ -25,7 +25,7 @@ impl KeptHandler for DeclineInvitationListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<AccountEventDTO>(message)?;
         let AccountEventDTO::InvitationDeclined { invitation, reason } = told.event.body else {
             return Err("a declined invitation names no invitation".into());
@@ -37,9 +37,9 @@ impl KeptHandler for DeclineInvitationListener {
             _ => return Err(format!("{reason} is no reason for declining").into()),
         };
 
-        self.invitations
+        Ok(self
+            .invitations
             .declined(Some(transaction), &invitation, reason)
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }

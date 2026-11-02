@@ -1,8 +1,8 @@
 mod publishing;
 
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use projects_contract::EVERY_PROJECT;
 use projects_core::{ProjectId, ProjectsCore};
 pub use publishing::message_for;
@@ -28,13 +28,13 @@ impl KeptHandler for CatalogueProjectsListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
-        self.projects
+    ) -> Result<(), Failure> {
+        Ok(self
+            .projects
             .catalogue(
                 Some(transaction),
                 &eventpublishing::aggregate_in::<ProjectId>(message)?,
             )
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }

@@ -9,7 +9,7 @@ use transacting::Transaction;
 
 use messaging::Notifications;
 
-use crate::outbox::{CLAIM_FOR, Delivered, Outbox, OutboxError};
+use crate::outbox::{CLAIM_FOR, Delivered, Origin, Outbox, OutboxError};
 
 struct Entry {
     entry: i64,
@@ -19,7 +19,7 @@ struct Entry {
 }
 
 pub struct InMemoryOutbox {
-    entries: Mutex<Vec<Entry>>,
+    entries: Arc<Mutex<Vec<Entry>>>,
     publisher: Arc<dyn Publisher>,
     clock: Arc<dyn Clock>,
     waiting: Arc<Notify>,
@@ -30,7 +30,7 @@ struct Waiting(Arc<Notify>);
 impl InMemoryOutbox {
     pub fn new(publisher: Arc<dyn Publisher>, clock: Arc<dyn Clock>) -> Self {
         Self {
-            entries: Mutex::new(Vec::new()),
+            entries: Arc::new(Mutex::new(Vec::new())),
             publisher,
             clock,
             waiting: Arc::new(Notify::new()),
@@ -38,24 +38,13 @@ impl InMemoryOutbox {
     }
 
     pub fn enqueue(&self, message: Message) {
-        let mut entries = self.held();
-        let entry = entries.len() as i64 + 1;
-
-        entries.push(Entry {
-            entry,
-            message,
-            claimed_until: None,
-            published_at: None,
-        });
-        drop(entries);
-
-        self.waiting.notify_one();
+        put(&self.entries, &self.waiting, message);
     }
 
-    pub fn enqueue_within(self: &Arc<Self>, transaction: &mut Transaction, message: Message) {
-        let outbox = self.clone();
+    pub fn enqueue_after_commit(&self, transaction: &mut Transaction, message: Message) {
+        let (entries, waiting) = (self.entries.clone(), self.waiting.clone());
 
-        transaction.after_commit(async move { outbox.enqueue(message) });
+        transaction.after_commit(async move { put(&entries, &waiting, message) });
     }
 
     pub fn waiting_to_be_published(&self) -> usize {
@@ -90,8 +79,34 @@ impl InMemoryOutbox {
     }
 }
 
+fn put(entries: &Mutex<Vec<Entry>>, waiting: &Notify, message: Message) {
+    let mut entries = entries.lock().expect("outbox lock poisoned");
+    let entry = entries.len() as i64 + 1;
+
+    entries.push(Entry {
+        entry,
+        message,
+        claimed_until: None,
+        published_at: None,
+    });
+    drop(entries);
+
+    waiting.notify_one();
+}
+
 #[async_trait]
 impl Outbox for InMemoryOutbox {
+    async fn enqueue_within(
+        &self,
+        transaction: &mut Transaction,
+        _origin: Origin<'_>,
+        message: &Message,
+    ) -> Result<(), OutboxError> {
+        self.enqueue_after_commit(transaction, message.clone());
+
+        Ok(())
+    }
+
     async fn deliver(&self, at_most: i64) -> Result<Delivered, OutboxError> {
         let claimed = self.claim(at_most, self.clock.now());
 
@@ -163,6 +178,8 @@ mod tests {
     use transacting::{InMemoryTransactions, Transactions};
 
     use super::InMemoryOutbox;
+    use crate::outbox::Outbox;
+    use crate::suite;
     use crate::suite::{Then, Workbench};
 
     struct InMemory(Arc<InMemoryOutbox>);
@@ -185,7 +202,10 @@ mod tests {
                 .await
                 .expect("a transaction opens");
             for message in messages {
-                self.0.enqueue_within(&mut transaction, message.clone());
+                self.0
+                    .enqueue_within(&mut transaction, suite::from_a_scene(), message)
+                    .await
+                    .expect("enqueueing should succeed");
             }
             match then {
                 Then::Commit => transaction.finish().await.expect("the transaction commits"),

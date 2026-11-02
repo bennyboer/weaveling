@@ -1,18 +1,32 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use clock::Clock;
 use eventsourcing::Version;
-use inbox::{KeptHandler, Refused};
+use inbox::KeptHandler;
 use invitations_core::{InvitationsCore, ProjectLink, ProjectName};
-use messaging::Message;
+use messaging::{Failure, Message};
+use outbox::{Origin, Outbox};
 use projects_contract::{DELETED, ProjectEventDTO, RENAMED, STARTED};
 use transacting::Transaction;
 
 pub struct RememberProjectNamesListener {
     invitations: InvitationsCore,
+    outbox: Arc<dyn Outbox>,
+    clock: Arc<dyn Clock>,
 }
 
 impl RememberProjectNamesListener {
-    pub fn new(invitations: InvitationsCore) -> Self {
-        Self { invitations }
+    pub fn new(
+        invitations: InvitationsCore,
+        outbox: Arc<dyn Outbox>,
+        clock: Arc<dyn Clock>,
+    ) -> Self {
+        Self {
+            invitations,
+            outbox,
+            clock,
+        }
     }
 }
 
@@ -26,12 +40,12 @@ impl KeptHandler for RememberProjectNamesListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let told = eventpublishing::published_in::<ProjectEventDTO>(message)?;
         let project = ProjectLink::from(told.aggregate.id);
 
         match told.event.body {
-            ProjectEventDTO::Started { name } | ProjectEventDTO::Renamed { name } => self
+            ProjectEventDTO::Started { name } | ProjectEventDTO::Renamed { name } => Ok(self
                 .invitations
                 .remember_project_name(
                     Some(transaction),
@@ -41,13 +55,25 @@ impl KeptHandler for RememberProjectNamesListener {
                         name,
                     },
                 )
-                .await
-                .map_err(Refused::of),
-            ProjectEventDTO::Deleted => self
-                .invitations
-                .lay_project_tombstone(Some(transaction), &project, message.occurred_at)
-                .await
-                .map_err(Refused::of),
+                .await?),
+            ProjectEventDTO::Deleted => {
+                self.invitations
+                    .lay_project_tombstone(Some(&mut *transaction), &project, message.occurred_at)
+                    .await?;
+                self.outbox
+                    .enqueue_within(
+                        transaction,
+                        Origin {
+                            aggregate: project.as_str(),
+                            kind: "project",
+                            version: 0,
+                        },
+                        &crate::sweeping::sweep_project(message, &project, self.clock.now()),
+                    )
+                    .await?;
+
+                Ok(())
+            }
             ProjectEventDTO::DetailsChanged { .. } | ProjectEventDTO::QuotationChanged { .. } => {
                 Err("this tells neither a project's name nor that it was deleted".into())
             }

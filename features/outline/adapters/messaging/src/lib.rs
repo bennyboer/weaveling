@@ -1,14 +1,17 @@
 mod attaching;
 mod cataloguing;
-mod discarding;
+mod detaching;
 mod publishing;
-mod scene_deleting;
 mod sweeping;
 
-pub use attaching::IndexAttachmentsListener;
+pub use attaching::{
+    DETACH_THE_GONE, DetachGoneAttachmentsListener, DetachTheGoneDTO, IndexAttachmentsListener,
+};
 pub use cataloguing::CatalogueOutlinesListener;
-pub use discarding::DetachOnDiscardListener;
+pub use detaching::{
+    DETACH_EVERYWHERE, DetachEverywhereDTO, DetachEverywhereListener, DetachOnDiscardListener,
+    DetachOnSceneDeletedListener,
+};
 pub use publishing::message_for;
-pub use scene_deleting::DetachOnSceneDeletedListener;
 
 pub use sweeping::DiscardOutlinesOnProjectDeletedListener;

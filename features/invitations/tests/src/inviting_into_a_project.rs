@@ -256,7 +256,7 @@ async fn issued_and_listed(guarded: &Guarded) -> (InvitationId, InvitationId) {
         guarded
             .wired
             .invitations
-            .catalogue(&id)
+            .catalogue(None, &id)
             .await
             .expect("cataloguing should succeed");
     }

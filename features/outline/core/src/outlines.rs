@@ -257,7 +257,11 @@ impl OutlinesCore {
         Ok(transaction.finish().await?)
     }
 
-    pub async fn index_attachments(&self, outline: &OutlineId) -> Result<(), OutlinesError> {
+    pub async fn index_attachments(
+        &self,
+        within: Option<&mut Transaction>,
+        outline: &OutlineId,
+    ) -> Result<(), OutlinesError> {
         let standing = self.service.latest(outline).await?;
         let holding = if standing.state.is_discarded() {
             Vec::new()
@@ -265,38 +269,57 @@ impl OutlinesCore {
             standing.state.attachments()
         };
 
-        let mut transaction = self.transactions.begin().await?;
+        let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .holds(&mut transaction, *outline, &holding)
             .await?;
-        transaction.finish().await?;
-        if standing.state.is_discarded() {
-            return Ok(());
-        }
+        Ok(transaction.finish().await?)
+    }
 
-        for gone in self.catalog.held_though_tombstoned(*outline).await? {
-            self.let_go(*outline, &gone).await?;
-        }
-
-        Ok(())
+    pub async fn lay_tombstone(
+        &self,
+        within: Option<&mut Transaction>,
+        gone: &Attachment,
+        at: OffsetDateTime,
+    ) -> Result<(), OutlinesError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.catalog
+            .lay_tombstone(&mut transaction, gone, at)
+            .await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn let_go_everywhere(
         &self,
+        within: Option<&mut Transaction>,
         gone: &Attachment,
-        at: OffsetDateTime,
     ) -> Result<(), OutlinesError> {
-        let mut transaction = self.transactions.begin().await?;
-        self.catalog
-            .lay_tombstone(&mut transaction, gone, at)
-            .await?;
-        transaction.finish().await?;
-
+        let mut transaction = self.transactions.join(within).await?;
         for outline in self.catalog.outlines_holding(gone).await? {
-            self.let_go(outline, gone).await?;
+            self.let_go(&mut transaction, outline, gone).await?;
         }
+        Ok(transaction.finish().await?)
+    }
 
-        Ok(())
+    pub async fn let_go_of_the_gone(
+        &self,
+        within: Option<&mut Transaction>,
+        outline: &OutlineId,
+    ) -> Result<(), OutlinesError> {
+        let still_attached = self.service.latest(outline).await?.state.attachments();
+        let Some(gone) = self
+            .catalog
+            .held_though_tombstoned(*outline)
+            .await?
+            .into_iter()
+            .find(|attachment| still_attached.contains(attachment))
+        else {
+            return Ok(());
+        };
+
+        let mut transaction = self.transactions.join(within).await?;
+        self.let_go(&mut transaction, *outline, &gone).await?;
+        Ok(transaction.finish().await?)
     }
 
     pub async fn sweep(&self, project: &str) -> Result<(), OutlinesError> {
@@ -327,17 +350,27 @@ impl OutlinesCore {
         Ok(forgotten)
     }
 
-    async fn let_go(&self, outline: OutlineId, gone: &Attachment) -> Result<(), OutlinesError> {
+    async fn let_go(
+        &self,
+        transaction: &mut Transaction,
+        outline: OutlineId,
+        gone: &Attachment,
+    ) -> Result<(), OutlinesError> {
+        self.authorized_to_write(&outline, &Agent::System).await?;
         match self
-            .as_the_system(
+            .service
+            .carry_out(
+                transaction,
                 &outline,
                 OutlineCommand::Detach {
                     attachment: gone.clone(),
                 },
+                None,
+                &Agent::System,
             )
             .await
         {
-            Ok(())
+            Ok(_)
             | Err(OutlinesError::Events(ServiceError::Refused(
                 OutlineError::NotAttached | OutlineError::Discarded,
             ))) => Ok(()),

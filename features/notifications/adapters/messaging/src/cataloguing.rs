@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use notifications_contract::{DISMISSED, NOTED};
 use notifications_core::{NoticeId, NotificationsCore};
 use transacting::Transaction;
@@ -25,13 +25,13 @@ impl KeptHandler for CatalogueNoticeListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
-        self.notifications
+    ) -> Result<(), Failure> {
+        Ok(self
+            .notifications
             .catalogue(
                 Some(transaction),
                 &eventpublishing::aggregate_in::<NoticeId>(message)?,
             )
-            .await
-            .map_err(Refused::of)
+            .await?)
     }
 }

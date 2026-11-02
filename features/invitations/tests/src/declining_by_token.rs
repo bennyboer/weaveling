@@ -26,7 +26,7 @@ async fn invited(wired: &Wired) -> InvitationId {
 async fn catalogued(wired: &Wired, id: &InvitationId) {
     wired
         .invitations
-        .catalogue(id)
+        .catalogue(None, id)
         .await
         .expect("cataloguing should succeed");
 }

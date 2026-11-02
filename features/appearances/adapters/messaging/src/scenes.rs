@@ -1,8 +1,8 @@
 use appearances_core::{AppearancesCore, Place, SceneLink};
 
 use crate::projects::project_of;
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use scenes_contract::{DELETED, IDEA_LINKED, IDEA_UNLINKED, IdeaLinkDTO, SceneDeletedDTO};
 use transacting::Transaction;
 
@@ -15,7 +15,7 @@ impl ProjectSceneAppearancesListener {
         Self { appearances }
     }
 
-    async fn index(&self, transaction: &mut Transaction, message: &Message) -> Result<(), Refused> {
+    async fn index(&self, transaction: &mut Transaction, message: &Message) -> Result<(), Failure> {
         match message.routing.to_string().as_str() {
             IDEA_LINKED => {
                 let link: IdeaLinkDTO = message.payload_as()?;
@@ -71,7 +71,7 @@ impl KeptHandler for ProjectSceneAppearancesListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         self.index(transaction, message).await
     }
 }

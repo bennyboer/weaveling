@@ -1,8 +1,8 @@
 use appearances_core::{AppearancesCore, Place, SectionLink};
 
 use crate::projects::project_of;
-use inbox::{KeptHandler, Refused};
-use messaging::Message;
+use inbox::KeptHandler;
+use messaging::{Failure, Message};
 use outline_contract::{ATTACHED, AttachmentDTO, DETACHED, OutlineEventDTO, SECTION_REMOVED};
 use transacting::Transaction;
 
@@ -30,7 +30,7 @@ impl KeptHandler for ProjectOutlineAppearancesListener {
         &self,
         transaction: &mut Transaction,
         message: &Message,
-    ) -> Result<(), Refused> {
+    ) -> Result<(), Failure> {
         let published = eventpublishing::published_in::<OutlineEventDTO>(message)?;
         let version = published.aggregate.version;
 

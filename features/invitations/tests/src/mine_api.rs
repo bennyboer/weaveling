@@ -43,7 +43,7 @@ async fn known(wired: &Wired, account: &str, name: &str, email: &str) {
 async fn listed(wired: &Wired, id: InvitationId) -> InvitationId {
     wired
         .invitations
-        .catalogue(&id)
+        .catalogue(None, &id)
         .await
         .expect("cataloguing should succeed");
 

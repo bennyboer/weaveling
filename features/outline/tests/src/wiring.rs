@@ -20,6 +20,8 @@ const CATALOGUING: &str = "catalogue-outline";
 const INDEXING: &str = "index-attachments";
 const DETACHING_DISCARDED_IDEAS: &str = "detach-discarded-idea";
 const DETACHING_DELETED_SCENES: &str = "detach-deleted-scene";
+const DETACHING_EVERYWHERE: &str = "detach-everywhere";
+const DETACHING_THE_GONE: &str = "detach-gone-attachments";
 
 #[derive(Default)]
 pub struct TheSystemAndTheAuthor {
@@ -55,6 +57,9 @@ pub struct Wired {
     pub indexer: Arc<dyn Listener>,
     pub on_idea_discarded: Arc<dyn Listener>,
     pub on_scene_deleted: Arc<dyn Listener>,
+    pub detaching_everywhere: Arc<dyn Listener>,
+    pub detaching_the_gone: Arc<dyn Listener>,
+    pub clock: Arc<dyn Clock>,
 }
 
 pub fn wired(clock: Arc<dyn Clock>) -> Wired {
@@ -129,6 +134,8 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
     let indexer = named(INDEXING);
     let on_idea_discarded = named(DETACHING_DISCARDED_IDEAS);
     let on_scene_deleted = named(DETACHING_DELETED_SCENES);
+    let detaching_everywhere = named(DETACHING_EVERYWHERE);
+    let detaching_the_gone = named(DETACHING_THE_GONE);
 
     Wired {
         outlines: outline_wiring::core(&ports, &context),
@@ -146,6 +153,9 @@ pub fn wired_guarded_by(clock: Arc<dyn Clock>, authorizer: Arc<dyn Authorizer>) 
         indexer,
         on_idea_discarded,
         on_scene_deleted,
+        detaching_everywhere,
+        detaching_the_gone,
+        clock: context.clock.clone(),
     }
 }
 

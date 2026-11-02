@@ -13,7 +13,7 @@ pub mod postgres;
 pub mod sqlite;
 
 pub use forgetting::HeardMessages;
-pub use kept::{Inboxed, KeptHandler, Refused};
+pub use kept::{Inboxed, KeptHandler};
 pub use memory::InMemoryInbox;
 
 #[cfg(feature = "postgres")]

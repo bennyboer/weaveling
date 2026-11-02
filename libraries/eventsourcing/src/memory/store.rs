@@ -45,7 +45,7 @@ impl<E> InMemoryEventStore<E> {
 
         for happened in events {
             if let Some(message) = (enqueuing.message_for)(happened) {
-                enqueuing.outbox.enqueue_within(transaction, message);
+                enqueuing.outbox.enqueue_after_commit(transaction, message);
             }
         }
     }
