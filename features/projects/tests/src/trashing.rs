@@ -70,8 +70,9 @@ impl Authorizer for Roles {
     }
 }
 
-const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
+const OWNER: [Act; 4] = [Act::Read, Act::Write, Act::Manage, Act::Restore];
 const AUTHOR: [Act; 2] = [Act::Read, Act::Write];
+const IN_THE_TRASH_AN_OWNER_MAY: [Act; 1] = [Act::Restore];
 
 struct Bench {
     wired: Wired,
@@ -378,6 +379,7 @@ async fn only_an_owner_trashes_restores_and_sees_the_trash() {
         .await
         .expect("an owner trashes");
     wired.settle().await;
+    roles.give(ADA, &id, &IN_THE_TRASH_AN_OWNER_MAY);
 
     let seen_by = |account: &'static str| {
         let projects = wired.projects.clone();

@@ -50,7 +50,7 @@ impl Authorizer for MembersAuthorizer {
                     .await
                     .map_err(unreachable)?
                     .is_some_and(|role| role.permits(act));
-                if !permitted || act == Act::Manage {
+                if !permitted || act == Act::Restore {
                     return Ok(permitted);
                 }
 
@@ -245,7 +245,7 @@ mod tests {
 
     async fn allowed(authorizer: &MembersAuthorizer, agent: &Agent, project: &str) -> Vec<Act> {
         let mut allowed = Vec::new();
-        for act in [Act::Read, Act::Write, Act::Manage] {
+        for act in [Act::Read, Act::Write, Act::Manage, Act::Restore] {
             if authorizer
                 .may(agent, act, project)
                 .await
@@ -260,7 +260,10 @@ mod tests {
     #[tokio::test]
     async fn an_owner_does_everything_an_author_reads_and_writes_a_reader_reads() {
         for (role, acts) in [
-            (Role::Owner, vec![Act::Read, Act::Write, Act::Manage]),
+            (
+                Role::Owner,
+                vec![Act::Read, Act::Write, Act::Manage, Act::Restore],
+            ),
             (Role::Author, vec![Act::Read, Act::Write]),
             (Role::Reader, vec![Act::Read]),
         ] {
@@ -275,9 +278,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_project_in_the_trash_is_read_and_written_by_nobody_and_managed_by_its_owners() {
+    async fn a_project_in_the_trash_is_read_written_and_managed_by_nobody_and_restored_by_its_owners()
+     {
         for (role, acts) in [
-            (Role::Owner, vec![Act::Manage]),
+            (Role::Owner, vec![Act::Restore]),
             (Role::Author, vec![]),
             (Role::Reader, vec![]),
         ] {
@@ -298,7 +302,7 @@ mod tests {
 
         assert_eq!(
             allowed(&authorizer, &Agent::System, "project_1").await,
-            vec![Act::Read, Act::Write, Act::Manage],
+            vec![Act::Read, Act::Write, Act::Manage, Act::Restore],
             "the purge deletes it as the system"
         );
     }
@@ -347,7 +351,7 @@ mod tests {
 
         assert_eq!(
             allowed(&authorizer, &Agent::System, "project_1").await,
-            vec![Act::Read, Act::Write, Act::Manage]
+            vec![Act::Read, Act::Write, Act::Manage, Act::Restore]
         );
         assert!(
             allowed(&authorizer, &Agent::Local, "project_1")

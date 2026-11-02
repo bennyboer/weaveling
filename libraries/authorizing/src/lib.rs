@@ -14,6 +14,7 @@ pub enum Act {
     Read,
     Write,
     Manage,
+    Restore,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,7 +72,7 @@ mod tests {
             Agent::System,
             Agent::Account("account_ada".into()),
         ] {
-            for act in [Act::Read, Act::Write, Act::Manage] {
+            for act in [Act::Read, Act::Write, Act::Manage, Act::Restore] {
                 assert!(
                     AllowingEverything
                         .may(&agent, act, "project_1")

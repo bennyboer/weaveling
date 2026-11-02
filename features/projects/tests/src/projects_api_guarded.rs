@@ -52,7 +52,7 @@ impl Authorizer for Roles {
     }
 }
 
-const OWNER: [Act; 3] = [Act::Read, Act::Write, Act::Manage];
+const OWNER: [Act; 4] = [Act::Read, Act::Write, Act::Manage, Act::Restore];
 const AUTHOR: [Act; 2] = [Act::Read, Act::Write];
 const READER: [Act; 1] = [Act::Read];
 

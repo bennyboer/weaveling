@@ -155,7 +155,8 @@ impl ProjectsCore {
     }
 
     pub async fn restore(&self, id: &str, agent: &Agent) -> Result<(), ProjectsError> {
-        let id = self.authorized_to_manage(id, agent).await?;
+        let id: ProjectId = id.parse()?;
+        self.authorized(agent, Act::Restore, &id).await?;
 
         transacting::retrying!(&*self.transactions, |transaction| {
             self.service.restore(transaction, &id, agent).await?;
@@ -172,7 +173,7 @@ impl ProjectsCore {
         for trashed in self.catalog.in_the_trash().await? {
             if self
                 .authorizer
-                .may(agent, Act::Manage, &trashed.id.to_string())
+                .may(agent, Act::Restore, &trashed.id.to_string())
                 .await?
             {
                 theirs.push(trashed);

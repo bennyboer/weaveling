@@ -106,6 +106,7 @@ mod tests {
     struct Bench {
         catalog: Arc<InMemoryMembershipCatalog>,
         authorizer: Arc<Telling>,
+        members: MembersCore,
         listener: Inboxed<RememberTrashedProjectsListener>,
     }
 
@@ -125,7 +126,7 @@ mod tests {
 
         Bench {
             listener: Inboxed::new(
-                RememberTrashedProjectsListener::new(members),
+                RememberTrashedProjectsListener::new(members.clone()),
                 Arc::new(hearings),
                 Arc::new(InMemoryInbox::new(Arc::new(FixedClock::new(
                     OffsetDateTime::UNIX_EPOCH,
@@ -133,6 +134,7 @@ mod tests {
             ),
             catalog,
             authorizer,
+            members,
         }
     }
 
@@ -276,7 +278,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn an_author_loses_a_project_to_the_trash_and_its_owner_keeps_managing_it() {
+    async fn an_author_loses_a_project_to_the_trash_and_its_owner_may_only_restore_it() {
         let bench = bench();
         let ada = Agent::Account(AccountId::from("account_ada"));
         let mut transaction = InMemoryTransactions::new()
@@ -317,8 +319,31 @@ mod tests {
                 .expect("asking")
         );
         assert!(
-            authorizer
+            !authorizer
                 .may(&ada, Act::Manage, "project_1")
+                .await
+                .expect("asking"),
+            "an owner manages nothing in a project in the trash, its members and invitations as they were"
+        );
+        assert!(
+            bench
+                .members
+                .change_role("project_1", "account_grace", Role::Owner, &ada)
+                .await
+                .is_err(),
+            "no role changes in a project in the trash"
+        );
+        assert!(
+            bench
+                .members
+                .remove("project_1", "account_ada", &ada)
+                .await
+                .is_err(),
+            "nor is anyone removed from it"
+        );
+        assert!(
+            authorizer
+                .may(&ada, Act::Restore, "project_1")
                 .await
                 .expect("asking")
         );

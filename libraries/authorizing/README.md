@@ -19,7 +19,7 @@ let projects = match self.authorizer.readable_by(agent).await? {
 };
 ```
 
-**Three acts.** `Read` a project and all it holds; `Write` in it, its scenes, ideas, boards and outline; `Manage` the project itself, its name and details, its members and invitations, and deleting it. Which role may which is the members feature's to say.
+**Four acts.** `Read` a project and all it holds; `Write` in it, its scenes, ideas, boards and outline; `Manage` the project itself, its name and details, its members and invitations, and deleting it; `Restore` it from the trash, the one act left on a project in it, so a trashed project can be brought back while its members and invitations stay as they were. Which role may which is the members feature's to say.
 
 **What may one read, as a whole:** `readable_by(agent)` answers `Everything` or `Only` these projects, so a list of projects asks once, not once a project.
 
