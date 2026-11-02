@@ -55,11 +55,7 @@ impl KeptHandler for ProjectPinnedIdeasListener {
         self.outbox
             .enqueue_within(
                 transaction,
-                Origin {
-                    aggregate: &board.to_string(),
-                    kind: KIND.as_str(),
-                    version: 0,
-                },
+                Origin::unversioned(&board.to_string(), KIND.as_str()),
                 &let_go_of_the_gone(message, &board, self.clock.now()),
             )
             .await?;

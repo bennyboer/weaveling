@@ -63,11 +63,7 @@ impl KeptHandler for RememberProjectNamesListener {
                 self.outbox
                     .enqueue_within(
                         transaction,
-                        Origin {
-                            aggregate: project.as_str(),
-                            kind: "project",
-                            version: 0,
-                        },
+                        Origin::unversioned(project.as_str(), "project"),
                         &crate::sweeping::sweep_project(message, &project, self.clock.now()),
                     )
                     .await?;

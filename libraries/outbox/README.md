@@ -2,7 +2,7 @@
 
 The transactional outbox and its relay: how a change that commits is always announced, and one that rolls back never is.
 
-**Enqueue inside the writer's transaction.** `postgres::enqueue(transaction, origin, message)` and `sqlite::enqueue(…)` put a message into the outbox table inside *any* writer's [`transacting::Transaction`](../transacting/README.md), and `InMemoryOutbox::enqueue_after_commit(transaction, message)` holds it back until that transaction commits; `Outbox::enqueue_within(transaction, origin, message)` does whichever its outbox's backend does, for a writer that does not know its backend, as a feature's core asking a follow-up of itself — the event store's `append`, or a feature that is not event-sourced at all, like scenes, whose prose is a CRDT. `Origin` records what the message is about (`aggregate`, `kind`, `version`); a writer with no versions passes `0`. The relay wakes when the write commits and not before: PostgreSQL's `NOTIFY` is sent in the same transaction, and SQLite and memory ring once it is committed, through `Transaction::after_commit`. A transaction dropped unfinished takes its messages with it and wakes nobody.
+**Enqueue inside the writer's transaction.** `postgres::enqueue(transaction, origin, message)` and `sqlite::enqueue(…)` put a message into the outbox table inside *any* writer's [`transacting::Transaction`](../transacting/README.md), and `InMemoryOutbox::enqueue_after_commit(transaction, message)` holds it back until that transaction commits; `Outbox::enqueue_within(transaction, origin, message)` does whichever its outbox's backend does, for a writer that does not know its backend, as a feature's core asking a follow-up of itself — the event store's `append`, or a feature that is not event-sourced at all, like scenes, whose prose is a CRDT. `Origin` records what the message is about (`aggregate`, `kind`, `version`), for whoever reads the table, the outbox itself never reading it back; the event store passes its event's version, and a writer with no versions, as the scenes or a follow-up, `Origin::unversioned(aggregate, kind)`, its version none, a null in the table, *not the `0` it was until 2026-11-02, the user asking why a follow-up said version 0, which reads as a version.* The relay wakes when the write commits and not before: PostgreSQL's `NOTIFY` is sent in the same transaction, and SQLite and memory ring once it is committed, through `Transaction::after_commit`. A transaction dropped unfinished takes its messages with it and wakes nobody.
 
 The scenes announce a change in the transaction that stores it, and a relay sends it on:
 
@@ -13,7 +13,7 @@ let mut transaction = transactions.begin().await?;
 store_the_change(&mut transaction).await?;
 
 let scene = change.scene().to_string();
-let origin = Origin { aggregate: &scene, kind: "scene", version: 0 };
+let origin = Origin::unversioned(&scene, "scene");
 outbox::postgres::enqueue(&mut transaction, origin, &mapping.message(&change)).await?;
 
 transaction.finish().await?;

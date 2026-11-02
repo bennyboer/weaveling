@@ -8,7 +8,17 @@ use transacting::{Failure, Transaction};
 pub struct Origin<'a> {
     pub aggregate: &'a str,
     pub kind: &'a str,
-    pub version: u64,
+    pub version: Option<u64>,
+}
+
+impl<'a> Origin<'a> {
+    pub fn unversioned(aggregate: &'a str, kind: &'a str) -> Self {
+        Self {
+            aggregate,
+            kind,
+            version: None,
+        }
+    }
 }
 
 pub const CLAIM_FOR: Duration = Duration::seconds(30);

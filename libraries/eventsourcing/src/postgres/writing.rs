@@ -105,7 +105,7 @@ where
         let origin = Origin {
             aggregate: aggregate.as_str(),
             kind: kind.as_str(),
-            version: happened.metadata.version.count(),
+            version: Some(happened.metadata.version.count()),
         };
 
         outbox::postgres::enqueue(transaction, origin, &message)

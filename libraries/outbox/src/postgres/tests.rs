@@ -8,7 +8,7 @@ use test_harness::PostgresFixture;
 use time::OffsetDateTime;
 use transacting::{PostgresTransactions, Transactions};
 
-use crate::outbox::Outbox;
+use crate::outbox::{Origin, Outbox};
 use crate::postgres::PostgresOutbox;
 use crate::suite;
 use crate::suite::{Bench, Then, Workbench};
@@ -128,6 +128,44 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
             "outbox_published",
             "outbox_waiting",
         ]
+    );
+
+    bench.cleanup().await;
+}
+
+#[tokio::test]
+async fn an_event_s_version_is_kept_beside_its_message_and_an_unversioned_one_keeps_none() {
+    let bench = Bench::<OnPostgres>::setup().await;
+    let mut transaction = PostgresTransactions::new(bench.workbench.pool.clone())
+        .begin()
+        .await
+        .expect("a transaction opens");
+    for origin in [
+        Origin {
+            aggregate: "idea_1",
+            kind: "idea",
+            version: Some(3),
+        },
+        Origin::unversioned("board_1", "board"),
+    ] {
+        bench
+            .workbench
+            .outbox
+            .enqueue_within(&mut transaction, origin, &suite::a_link_message())
+            .await
+            .expect("enqueueing should succeed");
+    }
+    transaction.finish().await.expect("the transaction commits");
+
+    let kept: Vec<Option<i64>> = sqlx::query_scalar("SELECT version FROM outbox ORDER BY entry")
+        .fetch_all(&bench.workbench.pool)
+        .await
+        .expect("reading the outbox should succeed");
+
+    assert_eq!(
+        kept,
+        vec![Some(3), None],
+        "a follow-up is no event and has no version to tell"
     );
 
     bench.cleanup().await;

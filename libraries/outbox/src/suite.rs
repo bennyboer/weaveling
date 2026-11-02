@@ -44,11 +44,7 @@ pub fn a_link_message() -> Message {
 }
 
 pub fn from_a_scene() -> Origin<'static> {
-    Origin {
-        aggregate: "scene_1",
-        kind: "scene",
-        version: 0,
-    }
+    Origin::unversioned("scene_1", "scene")
 }
 
 pub struct Bench<W> {

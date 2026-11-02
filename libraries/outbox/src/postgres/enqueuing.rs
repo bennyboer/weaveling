@@ -22,7 +22,7 @@ pub async fn enqueue(
     sqlx::query(ENQUEUE)
         .bind(origin.aggregate)
         .bind(origin.kind)
-        .bind(postgres::as_bigint(origin.version))
+        .bind(origin.version.map(postgres::as_bigint))
         .bind(message.id.as_uuid())
         .bind(message.conversation.as_message_id().as_uuid())
         .bind(message.caused_by.map(|caused| caused.as_uuid()))

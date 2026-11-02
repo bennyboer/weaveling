@@ -52,6 +52,8 @@ pub trait Tables: Workbench {
     async fn push_versions_below_zero(&self, aggregate: &AggregateId);
 
     async fn columns(&self, aggregate: &AggregateId, version: u64) -> (String, i64, String);
+
+    async fn versions_waiting(&self) -> Vec<Option<i64>>;
 }
 
 pub struct Committing<'a, S> {

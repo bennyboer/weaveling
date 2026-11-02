@@ -64,11 +64,7 @@ impl KeptHandler for CatalogueInvitationsListener {
         self.outbox
             .enqueue_within(
                 transaction,
-                Origin {
-                    aggregate: &invitation.to_string(),
-                    kind: "invitation",
-                    version: 0,
-                },
+                Origin::unversioned(&invitation.to_string(), "invitation"),
                 &withdraw_if_project_gone(message, &invitation, &project, self.clock.now()),
             )
             .await?;

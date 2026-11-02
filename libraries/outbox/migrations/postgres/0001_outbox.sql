@@ -2,7 +2,7 @@ CREATE TABLE outbox (
     entry           BIGSERIAL   PRIMARY KEY,
     aggregate       TEXT        NOT NULL,
     kind            TEXT        NOT NULL,
-    version         BIGINT      NOT NULL,
+    version         BIGINT,
     message_id      UUID        NOT NULL,
     conversation    UUID        NOT NULL,
     caused_by       UUID,

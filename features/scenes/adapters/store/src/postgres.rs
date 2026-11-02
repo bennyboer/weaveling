@@ -150,11 +150,7 @@ impl PostgresSceneStore {
             return Ok(());
         };
         let scene = change.scene().to_string();
-        let origin = Origin {
-            aggregate: &scene,
-            kind: KIND,
-            version: 0,
-        };
+        let origin = Origin::unversioned(&scene, KIND);
 
         postgres::enqueue(transaction, origin, &mapping.message(&change))
             .await

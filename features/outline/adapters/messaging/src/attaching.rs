@@ -55,11 +55,7 @@ impl KeptHandler for IndexAttachmentsListener {
         self.outbox
             .enqueue_within(
                 transaction,
-                Origin {
-                    aggregate: &outline.to_string(),
-                    kind: KIND.as_str(),
-                    version: 0,
-                },
+                Origin::unversioned(&outline.to_string(), KIND.as_str()),
                 &detach_the_gone(message, &outline, self.clock.now()),
             )
             .await?;

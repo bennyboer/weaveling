@@ -2,7 +2,7 @@ CREATE TABLE outbox (
     entry           INTEGER PRIMARY KEY AUTOINCREMENT,
     aggregate       TEXT    NOT NULL,
     kind            TEXT    NOT NULL,
-    version         INTEGER NOT NULL,
+    version         INTEGER,
     message_id      TEXT    NOT NULL,
     conversation    TEXT    NOT NULL,
     caused_by       TEXT,

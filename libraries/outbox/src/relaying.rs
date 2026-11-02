@@ -173,11 +173,7 @@ mod tests {
             .expect("a transaction opens");
         postgres::enqueue(
             &mut transaction,
-            Origin {
-                aggregate: "scene_1",
-                kind: "scene",
-                version: 0,
-            },
+            Origin::unversioned("scene_1", "scene"),
             &Message::opening(
                 RoutingKey::parse("scene.idea.linked").expect("a plain key is fine"),
                 serde_json::json!({ "scene": "scene_1", "idea": "idea_1" }),

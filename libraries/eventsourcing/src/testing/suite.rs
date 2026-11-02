@@ -842,6 +842,19 @@ pub async fn what_the_columns_say_matches_what_the_body_says(bench: &impl Tables
     assert_eq!(agent, "system");
 }
 
+pub async fn a_waiting_message_keeps_the_version_of_the_event_it_tells(bench: &impl Tables) {
+    let aggregate = AggregateId::from("sample_versioned");
+
+    given_a_stream(
+        &bench.committing(),
+        &aggregate,
+        vec![a_creation(), retitled("Second")],
+    )
+    .await;
+
+    assert_eq!(bench.versions_waiting().await, [Some(1), Some(2)]);
+}
+
 pub async fn a_codec_is_all_a_second_kind_of_event_needs(bench: &impl Tables) {
     let store = bench.reading_with(Codec {
         body: |_| serde_json::json!("Deleted"),
@@ -1037,6 +1050,10 @@ macro_rules! table_tests {
             an_event_written_in_a_shape_nothing_can_read_is_a_backend_failure
         );
         $crate::bench_case!($workbench, what_the_columns_say_matches_what_the_body_says);
+        $crate::bench_case!(
+            $workbench,
+            a_waiting_message_keeps_the_version_of_the_event_it_tells
+        );
         $crate::bench_case!($workbench, a_codec_is_all_a_second_kind_of_event_needs);
         $crate::bench_case!($workbench, laying_the_schema_down_twice_changes_nothing);
         $crate::bench_case!(

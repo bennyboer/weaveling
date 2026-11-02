@@ -121,6 +121,13 @@ impl Tables for OnPostgres {
         .await
         .expect("the row just written should be there")
     }
+
+    async fn versions_waiting(&self) -> Vec<Option<i64>> {
+        sqlx::query_scalar("SELECT version FROM outbox WHERE published_at IS NULL ORDER BY entry")
+            .fetch_all(&self.pool)
+            .await
+            .expect("reading the outbox should succeed")
+    }
 }
 
 crate::conformance_tests!(OnPostgres);

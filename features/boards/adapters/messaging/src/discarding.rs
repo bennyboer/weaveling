@@ -55,11 +55,7 @@ impl KeptHandler for UnpinOnDiscardListener {
         self.outbox
             .enqueue_within(
                 transaction,
-                Origin {
-                    aggregate: &idea,
-                    kind: "idea",
-                    version: 0,
-                },
+                Origin::unversioned(&idea, "idea"),
                 &let_go_everywhere(message, &idea, self.clock.now()),
             )
             .await?;

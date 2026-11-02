@@ -59,11 +59,7 @@ impl KeptHandler for DetachOnDiscardListener {
         self.outbox
             .enqueue_within(
                 transaction,
-                Origin {
-                    aggregate: gone.as_str(),
-                    kind: "idea",
-                    version: 0,
-                },
+                Origin::unversioned(gone.as_str(), "idea"),
                 &detach_everywhere(message, &gone, self.clock.now()),
             )
             .await?;
@@ -108,11 +104,7 @@ impl KeptHandler for DetachOnSceneDeletedListener {
         self.outbox
             .enqueue_within(
                 transaction,
-                Origin {
-                    aggregate: gone.as_str(),
-                    kind: "scene",
-                    version: 0,
-                },
+                Origin::unversioned(gone.as_str(), "scene"),
                 &detach_everywhere(message, &gone, self.clock.now()),
             )
             .await?;
