@@ -88,8 +88,6 @@ const FORGET_OLD_INVITATION_TOMBSTONES: &str = "
     )
 ";
 
-const HOLD_INVITATION: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
-
 const REMEMBER_PERSON: &str = "
     INSERT INTO people (account, name, email)
     VALUES ($1, $2, $3)
@@ -240,9 +238,7 @@ impl InvitationCatalog for PostgresInvitationCatalog {
         let (kept, declined_for) = outcome::written(summary.outcome);
         let (project, project_role) = scope::written(&summary.scope);
 
-        sqlx::query(HOLD_INVITATION)
-            .bind(summary.id.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(REMEMBER)
@@ -344,9 +340,7 @@ impl InvitationCatalog for PostgresInvitationCatalog {
         invitation: &InvitationId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD_INVITATION)
-            .bind(invitation.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &invitation.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(LAY_INVITATION_TOMBSTONE)

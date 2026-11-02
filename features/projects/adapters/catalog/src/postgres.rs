@@ -34,8 +34,6 @@ const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
     )
 ";
 
-const HOLD: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
-
 const ALL: &str = "
     SELECT project, version, name, created_at, updated_at
     FROM project_summaries
@@ -90,9 +88,7 @@ impl ProjectCatalog for PostgresProjectCatalog {
         transaction: &mut Transaction,
         summary: &ProjectSummary,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD)
-            .bind(summary.id.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(REMEMBER)
@@ -114,9 +110,7 @@ impl ProjectCatalog for PostgresProjectCatalog {
         id: &ProjectId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD)
-            .bind(id.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &id.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(LAY_TOMBSTONE)

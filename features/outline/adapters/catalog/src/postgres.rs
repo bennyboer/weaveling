@@ -31,8 +31,6 @@ const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
     )
 ";
 
-const HOLD_SUMMARY: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
-
 const IN_PROJECT: &str = "
     SELECT outline, project
     FROM outline_summaries
@@ -121,9 +119,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         transaction: &mut Transaction,
         summary: &OutlineSummary,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD_SUMMARY)
-            .bind(summary.id.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(REMEMBER)
@@ -142,9 +138,7 @@ impl OutlineCatalog for PostgresOutlineCatalog {
         outline: &OutlineId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD_SUMMARY)
-            .bind(outline.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &outline.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(LAY_SUMMARY_TOMBSTONE)

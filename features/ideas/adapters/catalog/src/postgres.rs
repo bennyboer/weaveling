@@ -33,8 +33,6 @@ const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
     )
 ";
 
-const HOLD: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
-
 const IN_PROJECT_AFTER: &str = "
     SELECT idea, version, project, title
     FROM idea_summaries
@@ -89,9 +87,7 @@ impl IdeaCatalog for PostgresIdeaCatalog {
         transaction: &mut Transaction,
         summary: &IdeaSummary,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD)
-            .bind(summary.id.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(REMEMBER)
@@ -112,9 +108,7 @@ impl IdeaCatalog for PostgresIdeaCatalog {
         id: &IdeaId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD)
-            .bind(id.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &id.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(LAY_TOMBSTONE)

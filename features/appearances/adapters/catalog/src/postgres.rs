@@ -28,9 +28,6 @@ const MARK: &str = "
     WHERE appearances.version <= excluded.version
 ";
 
-const HOLD: &str =
-    "SELECT pg_advisory_xact_lock(hashtextextended('appearance:' || $1 || ':' || $2, 0))";
-
 const LAY_SUBJECT_TOMBSTONE: &str = "
     INSERT INTO subject_tombstones (subject_type, subject_id, laid_at)
     VALUES ($1, $2, $3)
@@ -118,8 +115,8 @@ impl PostgresAppearanceCatalog {
         let (subject_type, subject_id) = subject_type_and_id(subject);
         let (place_type, place_id) = place_type_and_id(place);
 
-        hold(transaction, place_type, place_id).await?;
-        hold(transaction, subject_type, subject_id).await?;
+        one_at_a_time(transaction, place_type, place_id).await?;
+        one_at_a_time(transaction, subject_type, subject_id).await?;
         sqlx::query(MARK)
             .bind(subject_type)
             .bind(subject_id)
@@ -135,15 +132,14 @@ impl PostgresAppearanceCatalog {
     }
 }
 
-async fn hold(transaction: &mut Transaction, kind: &str, id: &str) -> Result<(), CatalogError> {
-    sqlx::query(HOLD)
-        .bind(kind)
-        .bind(id)
-        .execute(connection(transaction).map_err(unreachable)?)
+async fn one_at_a_time(
+    transaction: &mut Transaction,
+    kind: &str,
+    id: &str,
+) -> Result<(), CatalogError> {
+    transacting::postgres::one_at_a_time(transaction, &format!("appearance:{kind}:{id}"))
         .await
-        .map_err(unreachable)?;
-
-    Ok(())
+        .map_err(unreachable)
 }
 
 fn subject_type_and_id(subject: &Subject) -> (&'static str, &str) {
@@ -220,7 +216,7 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
     ) -> Result<(), CatalogError> {
         let (subject_type, subject_id) = subject_type_and_id(subject);
 
-        hold(transaction, subject_type, subject_id).await?;
+        one_at_a_time(transaction, subject_type, subject_id).await?;
         sqlx::query(LAY_SUBJECT_TOMBSTONE)
             .bind(subject_type)
             .bind(subject_id)
@@ -246,7 +242,7 @@ impl AppearanceCatalog for PostgresAppearanceCatalog {
     ) -> Result<Vec<Subject>, CatalogError> {
         let (place_type, place_id) = place_type_and_id(place);
 
-        hold(transaction, place_type, place_id).await?;
+        one_at_a_time(transaction, place_type, place_id).await?;
         sqlx::query(LAY_PLACE_TOMBSTONE)
             .bind(place_type)
             .bind(place_id)

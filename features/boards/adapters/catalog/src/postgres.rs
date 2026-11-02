@@ -27,8 +27,6 @@ const FORGET_OLD_SUMMARY_TOMBSTONES: &str = "
     )
 ";
 
-const HOLD_SUMMARY: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
-
 const IN_PROJECT: &str = "
     SELECT board, project
     FROM board_summaries
@@ -107,9 +105,7 @@ impl BoardCatalog for PostgresBoardCatalog {
         transaction: &mut Transaction,
         summary: &BoardSummary,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD_SUMMARY)
-            .bind(summary.id.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &summary.id.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(REMEMBER)
@@ -128,9 +124,7 @@ impl BoardCatalog for PostgresBoardCatalog {
         board: &BoardId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD_SUMMARY)
-            .bind(board.to_string())
-            .execute(connection(transaction).map_err(unreachable)?)
+        transacting::postgres::one_at_a_time(transaction, &board.to_string())
             .await
             .map_err(unreachable)?;
         sqlx::query(LAY_SUMMARY_TOMBSTONE)

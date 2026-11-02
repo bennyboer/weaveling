@@ -92,3 +92,56 @@ async fn a_transaction_begun_on_postgres_takes_no_undo() {
     drop(transaction);
     bench.cleanup().await;
 }
+
+#[tokio::test]
+async fn one_at_a_time_holds_a_second_transaction_on_the_key_until_the_first_is_over() {
+    let bench = OnPostgres::setup().await;
+    let mut first = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    postgres::one_at_a_time(&mut first, "appearance:idea:idea_1")
+        .await
+        .expect("the first takes the key at once");
+
+    let same = tokio::spawn({
+        let transactions = bench.transactions().clone();
+        async move {
+            let mut second = transactions
+                .begin()
+                .await
+                .expect("beginning should succeed");
+            postgres::one_at_a_time(&mut second, "appearance:idea:idea_1")
+                .await
+                .expect("the second takes the key once it is free");
+            second.finish().await.expect("finishing should succeed");
+        }
+    });
+    let mut other = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        postgres::one_at_a_time(&mut other, "appearance:idea:idea_2"),
+    )
+    .await
+    .expect("another key is not held")
+    .expect("taking another key should succeed");
+    other.finish().await.expect("finishing should succeed");
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let waited = !same.is_finished();
+    first.finish().await.expect("finishing should succeed");
+
+    assert!(
+        waited,
+        "the same key waits while the first transaction holds it"
+    );
+    tokio::time::timeout(std::time::Duration::from_secs(2), same)
+        .await
+        .expect("the second goes on once the first has committed")
+        .expect("the second should not panic");
+    bench.cleanup().await;
+}

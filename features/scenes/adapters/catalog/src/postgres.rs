@@ -55,8 +55,6 @@ const SUMMARY_OF: &str = "
 
 const FORGET: &str = "DELETE FROM scene_catalog WHERE scene = $1";
 
-const HOLD_SCENE: &str = "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))";
-
 const IN_PROJECT_AFTER: &str = "
     SELECT scene, project, title, opening
     FROM scene_catalog
@@ -116,16 +114,6 @@ fn unreachable(failure: impl std::error::Error + Send + Sync + 'static) -> Catal
     CatalogError::Backend(Box::new(failure))
 }
 
-async fn hold(transaction: &mut Transaction, id: SceneId) -> Result<(), CatalogError> {
-    sqlx::query(HOLD_SCENE)
-        .bind(id.to_string())
-        .execute(connection(transaction).map_err(unreachable)?)
-        .await
-        .map_err(unreachable)?;
-
-    Ok(())
-}
-
 fn summary_from(row: &sqlx::postgres::PgRow) -> Result<SceneSummary, CatalogError> {
     let scene: String = row.try_get("scene").map_err(unreachable)?;
     let project: String = row.try_get("project").map_err(unreachable)?;
@@ -148,7 +136,9 @@ impl SceneCatalog for PostgresSceneCatalog {
         id: SceneId,
         project: &ProjectLink,
     ) -> Result<(), CatalogError> {
-        hold(transaction, id).await?;
+        transacting::postgres::one_at_a_time(transaction, &id.to_string())
+            .await
+            .map_err(unreachable)?;
         sqlx::query(REMEMBER)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -167,7 +157,9 @@ impl SceneCatalog for PostgresSceneCatalog {
         title: &SceneTitle,
         version: u64,
     ) -> Result<(), CatalogError> {
-        hold(transaction, id).await?;
+        transacting::postgres::one_at_a_time(transaction, &id.to_string())
+            .await
+            .map_err(unreachable)?;
         sqlx::query(RETITLE)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -188,7 +180,9 @@ impl SceneCatalog for PostgresSceneCatalog {
         opening: &str,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        hold(transaction, id).await?;
+        transacting::postgres::one_at_a_time(transaction, &id.to_string())
+            .await
+            .map_err(unreachable)?;
         sqlx::query(NOTE_OPENING)
             .bind(id.to_string())
             .bind(project.to_string())
@@ -207,7 +201,9 @@ impl SceneCatalog for PostgresSceneCatalog {
         id: SceneId,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        hold(transaction, id).await?;
+        transacting::postgres::one_at_a_time(transaction, &id.to_string())
+            .await
+            .map_err(unreachable)?;
         sqlx::query(LAY_TOMBSTONE)
             .bind(id.to_string())
             .bind(in_microseconds(at))

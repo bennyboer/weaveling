@@ -28,8 +28,6 @@ const FORGET_OLD_TOMBSTONES: &str = "
     )
 ";
 
-const HOLD_SCENE: &str = "SELECT pg_advisory_xact_lock(hashtextextended('word-count:' || $1, 0))";
-
 const COUNT_OF: &str = "SELECT words FROM word_counts WHERE scene = $1";
 
 const FORGET: &str = "DELETE FROM word_counts WHERE scene = $1";
@@ -78,11 +76,12 @@ impl WordCountCatalog for PostgresWordCountCatalog {
         words: u64,
         counted_at: OffsetDateTime,
     ) -> Result<Option<u64>, CatalogError> {
-        sqlx::query(HOLD_SCENE)
-            .bind(scene.as_str())
-            .execute(connection(transaction).map_err(unreachable)?)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::one_at_a_time(
+            transaction,
+            &format!("word-count:{}", scene.as_str()),
+        )
+        .await
+        .map_err(unreachable)?;
         sqlx::query(KEEP)
             .bind(scene.as_str())
             .bind(project.as_str())
@@ -107,11 +106,12 @@ impl WordCountCatalog for PostgresWordCountCatalog {
         scene: &SceneLink,
         at: OffsetDateTime,
     ) -> Result<(), CatalogError> {
-        sqlx::query(HOLD_SCENE)
-            .bind(scene.as_str())
-            .execute(connection(transaction).map_err(unreachable)?)
-            .await
-            .map_err(unreachable)?;
+        transacting::postgres::one_at_a_time(
+            transaction,
+            &format!("word-count:{}", scene.as_str()),
+        )
+        .await
+        .map_err(unreachable)?;
         sqlx::query(LAY_TOMBSTONE)
             .bind(scene.as_str())
             .bind(in_microseconds(at))
