@@ -1,13 +1,19 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
+use clock::FixedClock;
 use sqlx::PgPool;
 use test_harness::PostgresFixture;
+use time::OffsetDateTime;
 use transacting::{PostgresTransactions, Transactions};
 
+use crate::agent::Agent;
 use crate::aggregate::AggregateId;
 use crate::codec::Codec;
 use crate::postgres::PostgresEventStore;
+use crate::service::EventSourcingService;
 use crate::testing::sample;
-use crate::testing::sample::{SAMPLE, SampleEvent};
+use crate::testing::sample::{SAMPLE, Sample, SampleCommand, SampleEvent};
 use crate::testing::stored;
 use crate::testing::{Tables, Workbench};
 
@@ -190,4 +196,77 @@ async fn the_schema_carries_the_indexes_the_queries_rely_on() {
     );
 
     fixture.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn commands_on_one_sample_in_one_transaction_need_no_other_connection() {
+    let bench = OnPostgres::setup().await;
+    let service: EventSourcingService<Sample> = EventSourcingService::new(
+        Arc::new(PostgresEventStore::new(
+            bench.pool.clone(),
+            stored::codec(),
+            sample::message_for,
+        )),
+        Arc::new(FixedClock::new(OffsetDateTime::UNIX_EPOCH)),
+    );
+    let aggregate = AggregateId::from("sample_on_one_connection");
+    let mut transaction = bench
+        .transactions
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    let mut taken = Vec::new();
+    for _ in 1..bench.pool.options().get_max_connections() {
+        taken.push(
+            bench
+                .pool
+                .acquire()
+                .await
+                .expect("the rest of the pool should be at hand"),
+        );
+    }
+
+    tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        service
+            .begin(
+                &mut transaction,
+                &aggregate,
+                SampleCommand::Create {
+                    title: "The Loom".to_owned(),
+                    description: "A silent machine.".to_owned(),
+                },
+                &Agent::System,
+            )
+            .await
+            .expect("beginning the sample should succeed");
+        for title in ["Second", "Third"] {
+            service
+                .execute(
+                    &mut transaction,
+                    &aggregate,
+                    SampleCommand::UpdateTitle(title.to_owned()),
+                    &Agent::System,
+                )
+                .await
+                .expect("a command after another in the same transaction reads what it appended");
+        }
+    })
+    .await
+    .expect("a command reads through the transaction it is given, needing no connection beside it");
+    drop(taken);
+    transaction
+        .finish()
+        .await
+        .expect("finishing should succeed");
+
+    assert_eq!(
+        service
+            .latest(&aggregate)
+            .await
+            .expect("the sample should be there")
+            .state
+            .title,
+        "Third"
+    );
+    bench.cleanup().await;
 }

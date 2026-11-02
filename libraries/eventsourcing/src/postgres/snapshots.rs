@@ -33,7 +33,17 @@ impl<E> PostgresEventStore<E> {
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<Option<Recorded<E>>, StoreError> {
-        self.one(NEWEST, aggregate, kind, &[]).await
+        self.one(NEWEST, aggregate, kind, &[], None).await
+    }
+
+    pub(super) async fn newest_snapshot_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<E>>, StoreError> {
+        self.one(NEWEST, aggregate, kind, &[], Some(transaction))
+            .await
     }
 
     pub(super) async fn snapshot_up_to(
@@ -42,7 +52,7 @@ impl<E> PostgresEventStore<E> {
         kind: AggregateType,
         version: Version,
     ) -> Result<Option<Recorded<E>>, StoreError> {
-        self.one(NEWEST_BY, aggregate, kind, &[version]).await
+        self.one(NEWEST_BY, aggregate, kind, &[version], None).await
     }
 
     pub(super) async fn discard_through(

@@ -92,6 +92,8 @@ pub enum MembersError {
     NotMember,
     #[error("a project keeps at least one owner; make someone else an owner first")]
     LastOwner,
+    #[error("only an owner of the project changes its members' roles or removes them")]
+    NotAnOwner,
     #[error("this project was deleted, so it has no members any more")]
     Disbanded,
 }
@@ -147,6 +149,13 @@ impl Members {
 
     pub fn role_of(&self, account: &AccountId) -> Option<Role> {
         self.roles.get(account).copied()
+    }
+
+    fn managed_by(&self, agent: &Agent) -> bool {
+        match agent {
+            Agent::Account(by) => self.role_of(by) == Some(Role::Owner),
+            _ => true,
+        }
     }
 
     fn is_last_owner(&self, account: &AccountId) -> bool {
@@ -241,7 +250,7 @@ impl Aggregate for Members {
     fn decide(
         &self,
         command: MembersCommand,
-        _agent: &Agent,
+        agent: &Agent,
     ) -> Result<Vec<MembersEvent>, MembersError> {
         if self.disbanded {
             return match command {
@@ -251,6 +260,11 @@ impl Aggregate for Members {
         }
 
         match command {
+            MembersCommand::ChangeRole { .. } | MembersCommand::Remove { .. }
+                if !self.managed_by(agent) =>
+            {
+                Err(MembersError::NotAnOwner)
+            }
             MembersCommand::Found { .. } => Err(MembersError::AlreadyFounded),
             MembersCommand::Disband => Ok(vec![MembersEvent::Disbanded]),
             MembersCommand::Join { account, role } => match self.role_of(&account) {

@@ -54,7 +54,18 @@ impl<E> SqliteEventStore<E> {
         kind: AggregateType,
         from: Version,
     ) -> Result<Vec<Recorded<E>>, StoreError> {
-        self.all(SINCE, aggregate, kind, &[from]).await
+        self.all(SINCE, aggregate, kind, &[from], None).await
+    }
+
+    pub(super) async fn since_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<E>>, StoreError> {
+        self.all(SINCE, aggregate, kind, &[from], Some(transaction))
+            .await
     }
 
     pub(super) async fn between(
@@ -64,7 +75,8 @@ impl<E> SqliteEventStore<E> {
         from: Version,
         through: Version,
     ) -> Result<Vec<Recorded<E>>, StoreError> {
-        self.all(BETWEEN, aggregate, kind, &[from, through]).await
+        self.all(BETWEEN, aggregate, kind, &[from, through], None)
+            .await
     }
 
     pub(super) async fn newest_snapshot(
@@ -72,7 +84,17 @@ impl<E> SqliteEventStore<E> {
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<Option<Recorded<E>>, StoreError> {
-        self.one(NEWEST, aggregate, kind, &[]).await
+        self.one(NEWEST, aggregate, kind, &[], None).await
+    }
+
+    pub(super) async fn newest_snapshot_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<E>>, StoreError> {
+        self.one(NEWEST, aggregate, kind, &[], Some(transaction))
+            .await
     }
 
     pub(super) async fn snapshot_up_to(
@@ -81,7 +103,7 @@ impl<E> SqliteEventStore<E> {
         kind: AggregateType,
         version: Version,
     ) -> Result<Option<Recorded<E>>, StoreError> {
-        self.one(NEWEST_BY, aggregate, kind, &[version]).await
+        self.one(NEWEST_BY, aggregate, kind, &[version], None).await
     }
 
     pub(super) async fn discard_through(
@@ -125,10 +147,20 @@ impl<E> SqliteEventStore<E> {
         aggregate: &AggregateId,
         kind: AggregateType,
         versions: &[Version],
+        within: Option<&mut Transaction>,
     ) -> Result<Vec<Recorded<E>>, StoreError> {
-        let found = query_for(statement, aggregate, kind, versions)
-            .fetch_all(&self.pool)
-            .await
+        let query = query_for(statement, aggregate, kind, versions);
+        let found =
+            match within {
+                Some(transaction) => {
+                    query
+                        .fetch_all(transacting::sqlite::connection(transaction).map_err(
+                            |failure| StoreError::backend(aggregate, kind, failure.to_string()),
+                        )?)
+                        .await
+                }
+                None => query.fetch_all(&self.pool).await,
+            }
             .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
         found
@@ -143,11 +175,20 @@ impl<E> SqliteEventStore<E> {
         aggregate: &AggregateId,
         kind: AggregateType,
         versions: &[Version],
+        within: Option<&mut Transaction>,
     ) -> Result<Option<Recorded<E>>, StoreError> {
-        let found = query_for(statement, aggregate, kind, versions)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
+        let query = query_for(statement, aggregate, kind, versions);
+        let found = match within {
+            Some(transaction) => {
+                query
+                    .fetch_optional(transacting::sqlite::connection(transaction).map_err(
+                        |failure| StoreError::backend(aggregate, kind, failure.to_string()),
+                    )?)
+                    .await
+            }
+            None => query.fetch_optional(&self.pool).await,
+        }
+        .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
         found
             .map(|row| self.recorded(&row, aggregate, kind))

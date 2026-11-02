@@ -132,7 +132,7 @@ where
         agent: &Agent,
     ) -> Outcome<A> {
         let standing = self
-            .standing(aggregate, None)
+            .standing_within(transaction, aggregate)
             .await?
             .ok_or_else(|| self.nothing_there(aggregate))?;
         let reached = standing.version;
@@ -156,7 +156,7 @@ where
         command: A::Command,
         agent: &Agent,
     ) -> Outcome<A> {
-        match self.standing(aggregate, None).await? {
+        match self.standing_within(transaction, aggregate).await? {
             None => Err(self.nothing_there(aggregate)),
             Some(standing) if standing.version != expected => Err(ServiceError::Store(
                 StoreError::outdated(aggregate, A::KIND, expected),
@@ -257,7 +257,7 @@ where
         agent: &Agent,
     ) -> Reached<A> {
         let standing = self
-            .standing(aggregate, None)
+            .standing_within(transaction, aggregate)
             .await?
             .ok_or_else(|| self.nothing_there(aggregate))?;
 
@@ -303,6 +303,33 @@ where
             }
             None => self.store.read_from(aggregate, A::KIND, resume).await?,
         };
+        self.grown_from(aggregate, stream)
+    }
+
+    async fn standing_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+    ) -> Result<Option<Standing<A>>, ServiceError<A::Error>> {
+        let resume = self
+            .store
+            .latest_snapshot_within(transaction, aggregate, A::KIND)
+            .await?
+            .map(|snapshot| snapshot.metadata.version)
+            .unwrap_or(Version::ZERO);
+        let stream = self
+            .store
+            .read_from_within(transaction, aggregate, A::KIND, resume)
+            .await?;
+
+        self.grown_from(aggregate, stream)
+    }
+
+    fn grown_from(
+        &self,
+        aggregate: &AggregateId,
+        stream: Vec<Recorded<A::Event>>,
+    ) -> Result<Option<Standing<A>>, ServiceError<A::Error>> {
         let stream: Vec<_> = stream
             .into_iter()
             .map(|entry| Recorded {
@@ -374,7 +401,7 @@ where
 
         let since = self
             .store
-            .latest_snapshot(aggregate, A::KIND)
+            .latest_snapshot_within(transaction, aggregate, A::KIND)
             .await?
             .map(|snapshot| snapshot.metadata.version)
             .unwrap_or(Version::ZERO);

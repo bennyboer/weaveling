@@ -90,7 +90,7 @@ const END_SESSION: &str = "DELETE FROM account_sessions WHERE digest = $1";
 const SIGNED_IN: &str = "signed-in";
 const SECOND_FACTOR_OWED: &str = "second-factor-owed";
 
-const CLOSE: &str = "DELETE FROM account_codes WHERE account = $1 AND purpose = $2";
+const CLOSE: &str = "DELETE FROM account_codes WHERE account = $1 AND purpose = $2 AND code = $3";
 
 const KEEP_TICKET: &str = "
     INSERT INTO account_invitation_tickets (digest, invitation, email, until, project, by_an_operator)
@@ -404,15 +404,17 @@ impl Verifications for PostgresSecrets {
         transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
-    ) -> Result<(), SecretsError> {
-        sqlx::query(CLOSE)
+        code: &VerificationCode,
+    ) -> Result<bool, SecretsError> {
+        let closed = sqlx::query(CLOSE)
             .bind(account.to_string())
             .bind(purpose.as_str())
+            .bind(code.as_str())
             .execute(transacting::postgres::connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
 
-        Ok(())
+        Ok(closed.rows_affected() > 0)
     }
 }
 

@@ -27,9 +27,10 @@ impl AccountsCore {
         &self,
         email: &str,
         password: &str,
-    ) -> Result<(AccountId, Account), AccountsError> {
+    ) -> Result<(AccountId, Account, OffsetDateTime), AccountsError> {
         let email = EmailAddress::new(email)?;
         self.admitted(Guarded::SigningIn, &email).await?;
+        let began = self.clock.now();
 
         let Some((id, account, kept)) = self.signing_in_as(&email).await? else {
             let _same_work = PasswordHash::stand_in().admits(password);
@@ -48,7 +49,7 @@ impl AccountsCore {
             return Err(AccountsError::NotVerifiedYet);
         }
 
-        Ok((id, account))
+        Ok((id, account, began))
     }
 
     pub async fn begin_session(
@@ -56,19 +57,20 @@ impl AccountsCore {
         email: &str,
         password: &str,
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
-        let (id, account) = self.signed_in_as(email, password).await?;
+        let (id, account, began) = self.signed_in_as(email, password).await?;
 
-        self.opened(id, account).await
+        self.opened(id, account, began).await
     }
 
     pub(super) async fn opened(
         &self,
         id: AccountId,
         account: Account,
+        began: OffsetDateTime,
     ) -> Result<(SessionToken, SignedIn), AccountsError> {
         let token = SessionToken::drawn();
         // TODO second factors: a session owes one, Stage::SecondFactorOwed, where the account has one
-        let session = Session::begun(id, Stage::SignedIn, self.clock.now());
+        let session = Session::begun(id, Stage::SignedIn, began);
         let mut transaction = self.transactions.begin().await?;
         self.sessions
             .open(&mut transaction, &token.digest(), &session)

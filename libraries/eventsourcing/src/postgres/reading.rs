@@ -1,3 +1,5 @@
+use transacting::Transaction;
+
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::event::Recorded;
 use crate::postgres::PostgresEventStore;
@@ -25,7 +27,18 @@ impl<E> PostgresEventStore<E> {
         kind: AggregateType,
         from: Version,
     ) -> Result<Vec<Recorded<E>>, StoreError> {
-        self.all(SINCE, aggregate, kind, &[from]).await
+        self.all(SINCE, aggregate, kind, &[from], None).await
+    }
+
+    pub(super) async fn since_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<E>>, StoreError> {
+        self.all(SINCE, aggregate, kind, &[from], Some(transaction))
+            .await
     }
 
     pub(super) async fn between(
@@ -35,6 +48,7 @@ impl<E> PostgresEventStore<E> {
         from: Version,
         through: Version,
     ) -> Result<Vec<Recorded<E>>, StoreError> {
-        self.all(BETWEEN, aggregate, kind, &[from, through]).await
+        self.all(BETWEEN, aggregate, kind, &[from, through], None)
+            .await
     }
 }

@@ -3,6 +3,8 @@ use sqlx::postgres::PgRow;
 use sqlx::{Postgres, Row};
 use time::OffsetDateTime;
 
+use transacting::Transaction;
+
 use crate::aggregate::{AggregateId, AggregateType};
 use crate::context::AggregateContext;
 use crate::event::Recorded;
@@ -68,11 +70,20 @@ impl<E> PostgresEventStore<E> {
         aggregate: &AggregateId,
         kind: AggregateType,
         versions: &[Version],
+        within: Option<&mut Transaction>,
     ) -> Result<Vec<Recorded<E>>, StoreError> {
-        let found = query_for(statement, aggregate, kind, versions)
-            .fetch_all(&self.pool)
-            .await
-            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
+        let query = query_for(statement, aggregate, kind, versions);
+        let found = match within {
+            Some(transaction) => {
+                query
+                    .fetch_all(transacting::postgres::connection(transaction).map_err(
+                        |failure| StoreError::backend(aggregate, kind, failure.to_string()),
+                    )?)
+                    .await
+            }
+            None => query.fetch_all(&self.pool).await,
+        }
+        .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
         found
             .iter()
@@ -86,11 +97,20 @@ impl<E> PostgresEventStore<E> {
         aggregate: &AggregateId,
         kind: AggregateType,
         versions: &[Version],
+        within: Option<&mut Transaction>,
     ) -> Result<Option<Recorded<E>>, StoreError> {
-        let found = query_for(statement, aggregate, kind, versions)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
+        let query = query_for(statement, aggregate, kind, versions);
+        let found = match within {
+            Some(transaction) => {
+                query
+                    .fetch_optional(transacting::postgres::connection(transaction).map_err(
+                        |failure| StoreError::backend(aggregate, kind, failure.to_string()),
+                    )?)
+                    .await
+            }
+            None => query.fetch_optional(&self.pool).await,
+        }
+        .map_err(|failure| StoreError::backend(aggregate, kind, failure.to_string()))?;
 
         found
             .map(|row| self.recorded(&row, aggregate, kind))

@@ -326,6 +326,41 @@ fn an_owner_beside_another_may_leave_be_removed_or_step_down() {
 }
 
 #[test]
+fn only_an_owner_as_the_members_stand_changes_a_role_or_removes() {
+    let members = with(&[(grace(), Role::Author), (hedy(), Role::Reader)]);
+    let grace_acts = Agent::Account(grace());
+
+    assert_eq!(
+        members.decide(
+            MembersCommand::ChangeRole {
+                account: grace(),
+                to: Role::Owner
+            },
+            &grace_acts
+        ),
+        Err(MembersError::NotAnOwner),
+        "an author cannot make themselves owner, whatever a list read earlier said"
+    );
+    assert_eq!(
+        members.decide(MembersCommand::Remove { account: hedy() }, &grace_acts),
+        Err(MembersError::NotAnOwner)
+    );
+    assert_eq!(
+        members.decide(
+            MembersCommand::Remove { account: hedy() },
+            &Agent::Account(ken())
+        ),
+        Err(MembersError::NotAnOwner),
+        "someone removed, or never a member, manages nothing"
+    );
+    assert_eq!(
+        members.decide(MembersCommand::Remove { account: hedy() }, &Agent::System),
+        Ok(vec![MembersEvent::Removed { account: hedy() }]),
+        "the system acts for no member"
+    );
+}
+
+#[test]
 fn a_snapshot_holds_every_member_in_order_with_their_role() {
     let members = with(&[(grace(), Role::Author), (hedy(), Role::Reader)]);
     let snapshot = members.snapshot();

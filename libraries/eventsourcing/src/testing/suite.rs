@@ -512,6 +512,57 @@ async fn titles_in(
         .collect()
 }
 
+pub async fn a_read_within_a_transaction_sees_what_it_appended(bench: &impl Workbench) {
+    let aggregate = AggregateId::from("sample_within");
+    let mut transaction = bench
+        .transactions()
+        .begin()
+        .await
+        .expect("beginning should succeed");
+    bench
+        .store()
+        .append(
+            &mut transaction,
+            &aggregate,
+            SAMPLE,
+            Version::ZERO,
+            &sample::recorded(&aggregate, vec![a_creation(), a_snapshot()]),
+        )
+        .await
+        .expect("appending should succeed");
+
+    let read = bench
+        .store()
+        .read_from_within(&mut transaction, &aggregate, SAMPLE, Version::ZERO)
+        .await
+        .expect("reading within should succeed");
+    let snapshot = bench
+        .store()
+        .latest_snapshot_within(&mut transaction, &aggregate, SAMPLE)
+        .await
+        .expect("reading within should succeed");
+    drop(transaction);
+
+    assert_eq!(
+        read.len(),
+        2,
+        "a command reads what its own transaction appended, or a second command on the aggregate is outdated"
+    );
+    assert_eq!(
+        snapshot.map(|snapshot| snapshot.metadata.version),
+        Some(Version::of(2))
+    );
+    assert!(
+        bench
+            .store()
+            .read_from(&aggregate, SAMPLE, Version::ZERO)
+            .await
+            .expect("reading should succeed")
+            .is_empty(),
+        "what was read within a transaction dropped unfinished is gone with it"
+    );
+}
+
 pub async fn an_append_leaves_a_message_waiting_for_every_publishable_event(
     bench: &impl Workbench,
 ) {
@@ -996,6 +1047,10 @@ macro_rules! conformance_tests {
         $crate::conformance_case!(
             $workbench,
             appending_after_pruning_continues_the_version_count
+        );
+        $crate::bench_case!(
+            $workbench,
+            a_read_within_a_transaction_sees_what_it_appended
         );
         $crate::bench_case!(
             $workbench,

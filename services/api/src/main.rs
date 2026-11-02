@@ -2,6 +2,8 @@ use std::sync::Arc;
 
 use clock::SystemClock;
 use tokio::net::TcpListener;
+#[cfg(unix)]
+use tokio::signal::unix::SignalKind;
 use tracing_subscriber::EnvFilter;
 use weaveling_service_api::{
     Accounts, Adapters, Backend, Chores, Flakiness, Mailing, Relays, Settling, SignUp,
@@ -96,9 +98,29 @@ async fn stop(settling: Vec<Arc<dyn Settling>>, relays: Relays, chores: Chores) 
 }
 
 async fn interrupted() {
+    tokio::select! {
+        () = ctrl_c() => {}
+        () = terminated() => {}
+    }
+
+    tracing::info!("shutting down");
+}
+
+async fn ctrl_c() {
     tokio::signal::ctrl_c()
         .await
         .expect("should listen for ctrl-c");
+}
 
-    tracing::info!("shutting down");
+#[cfg(unix)]
+async fn terminated() {
+    tokio::signal::unix::signal(SignalKind::terminate())
+        .expect("should listen for a request to terminate")
+        .recv()
+        .await;
+}
+
+#[cfg(not(unix))]
+async fn terminated() {
+    std::future::pending::<()>().await;
 }

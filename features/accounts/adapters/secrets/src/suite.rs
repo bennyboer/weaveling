@@ -190,11 +190,21 @@ impl<S: Secrets> Committing<'_, S> {
         &self,
         account: &AccountId,
         purpose: CodePurpose,
-    ) -> Result<(), SecretsError> {
+        code: &str,
+    ) -> Result<bool, SecretsError> {
         let mut transaction = self.begun().await?;
-        self.store.close(&mut transaction, account, purpose).await?;
+        let closed = self
+            .store
+            .close(
+                &mut transaction,
+                account,
+                purpose,
+                &VerificationCode::kept(code.to_owned()),
+            )
+            .await?;
+        self.finished(transaction).await?;
 
-        self.finished(transaction).await
+        Ok(closed)
     }
 
     pub async fn keep_code(&self, digest: &TokenDigest) -> Result<(), SecretsError> {
@@ -469,7 +479,7 @@ pub async fn each_attempt_at_an_issued_code_is_counted_until_it_is_closed<S: Sec
     }
 
     secrets
-        .close(&account, CodePurpose::ConfirmAddress)
+        .close(&account, CodePurpose::ConfirmAddress, "004217")
         .await
         .expect("closing should succeed");
     assert_eq!(
@@ -591,7 +601,7 @@ pub async fn each_account_has_a_code_of_its_own<S: Secrets>(secrets: &Committing
 
     let _counted = secrets.attempt(&ada, CodePurpose::ConfirmAddress, 5).await;
     secrets
-        .close(&ada, CodePurpose::ConfirmAddress)
+        .close(&ada, CodePurpose::ConfirmAddress, "111111")
         .await
         .expect("closing should succeed");
 
@@ -619,10 +629,46 @@ pub async fn attempting_or_closing_where_nothing_was_issued_is_harmless<S: Secre
             .expect("attempting should succeed"),
         Attempt::Nothing
     );
+    assert!(
+        !secrets
+            .close(&account, CodePurpose::ConfirmAddress, "123456")
+            .await
+            .expect("closing nothing is fine"),
+        "nothing was there to close"
+    );
+}
+
+pub async fn a_code_is_closed_only_by_itself_and_only_once<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    let account = AccountId::generate(at(1_000));
     secrets
-        .close(&account, CodePurpose::ConfirmAddress)
+        .issue(
+            &account,
+            CodePurpose::ResetPassword,
+            &pending("314159", 1_900),
+        )
         .await
-        .expect("closing nothing is fine");
+        .expect("issuing should succeed");
+
+    let by_another = secrets
+        .close(&account, CodePurpose::ResetPassword, "271828")
+        .await
+        .expect("closing should succeed");
+    let by_itself = secrets
+        .close(&account, CodePurpose::ResetPassword, "314159")
+        .await
+        .expect("closing should succeed");
+    let again = secrets
+        .close(&account, CodePurpose::ResetPassword, "314159")
+        .await
+        .expect("closing should succeed");
+
+    assert_eq!(
+        (by_another, by_itself, again),
+        (false, true, false),
+        "a code closes only as the code it is, and a second use finds it gone"
+    );
 }
 
 fn a_session(stage: Stage) -> Session {
@@ -750,7 +796,7 @@ pub async fn a_code_for_one_purpose_is_no_code_for_another<S: Secrets>(
         .expect("issuing should succeed");
 
     secrets
-        .close(&account, CodePurpose::ConfirmAddress)
+        .close(&account, CodePurpose::ConfirmAddress, "111111")
         .await
         .expect("closing should succeed");
 
@@ -1997,7 +2043,12 @@ pub async fn sessions_codes_and_operators_written_in_a_transaction_that_is_dropp
         .await
         .expect("issuing should succeed");
     store
-        .close(&mut transaction, &ada, CodePurpose::ConfirmAddress)
+        .close(
+            &mut transaction,
+            &ada,
+            CodePurpose::ConfirmAddress,
+            &VerificationCode::kept("004217".to_owned()),
+        )
         .await
         .expect("closing should succeed");
     store
@@ -2204,6 +2255,10 @@ macro_rules! conformance_tests {
         $crate::secrets_conformance_case!(
             $workbench,
             each_attempt_at_an_issued_code_is_counted_until_it_is_closed
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_code_is_closed_only_by_itself_and_only_once
         );
         $crate::secrets_conformance_case!(
             $workbench,

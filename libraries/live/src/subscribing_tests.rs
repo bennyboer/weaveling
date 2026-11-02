@@ -63,6 +63,7 @@ impl Topic for FromSeven {
 
 struct Losing {
     lost: Mutex<BTreeSet<String>>,
+    slow: Mutex<BTreeSet<String>>,
     changes: AccessChanges,
 }
 
@@ -73,6 +74,14 @@ impl Gate for Losing {
         _agent: &Agent,
         about: &str,
     ) -> Result<bool, Box<dyn Error + Send + Sync>> {
+        let slow = self
+            .slow
+            .lock()
+            .expect("the gate is not poisoned")
+            .contains(about);
+        if slow {
+            tokio::time::sleep(Duration::from_millis(200)).await;
+        }
         match about {
             "broken" => Err("the gate cannot tell".into()),
             about => Ok(!self
@@ -143,6 +152,7 @@ fn served_with(broadcaster: Broadcaster<String>) -> Live {
     let changes = AccessChanges::new();
     let gate = Arc::new(Losing {
         lost: Mutex::new(BTreeSet::new()),
+        slow: Mutex::new(BTreeSet::new()),
         changes: changes.clone(),
     });
     let topics = Topics::of(vec![
@@ -332,6 +342,35 @@ async fn losing_access_ends_that_subscription_alone_and_keeping_it_is_told() {
     live.broadcaster.tell("kept".to_owned(), frame("kept", 1));
     assert_eq!(socket.told().await, framed("b", "kept", 1));
     socket.nothing().await;
+}
+
+#[tokio::test]
+async fn access_lost_while_a_frame_arrives_still_ends_the_subscription() {
+    let live = served();
+    let mut socket = opened(&live).await;
+    subscribe(&mut socket, "a", "watched", "removed").await;
+    settled().await;
+
+    live.gate
+        .slow
+        .lock()
+        .expect("the gate is not poisoned")
+        .insert("removed".to_owned());
+    live.gate
+        .lost
+        .lock()
+        .expect("the gate is not poisoned")
+        .insert("removed".to_owned());
+    live.changes.tell("removed");
+    settled().await;
+    live.broadcaster
+        .tell("removed".to_owned(), frame("removed", 1));
+
+    assert_eq!(
+        socket.told().await,
+        ended_as("a", ended::ACCESS_LOST),
+        "a removal comes mostly with a frame on the same channel, and the frame must not win"
+    );
 }
 
 #[tokio::test]

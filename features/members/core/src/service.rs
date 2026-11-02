@@ -174,6 +174,16 @@ mod tests {
             Err(down(aggregate, kind))
         }
 
+        async fn read_from_within(
+            &self,
+            _transaction: &mut Transaction,
+            aggregate: &AggregateId,
+            kind: AggregateType,
+            _from: Version,
+        ) -> Result<Vec<Recorded<MembersEvent>>, StoreError> {
+            Err(down(aggregate, kind))
+        }
+
         async fn read_through(
             &self,
             aggregate: &AggregateId,
@@ -186,6 +196,15 @@ mod tests {
 
         async fn latest_snapshot(
             &self,
+            aggregate: &AggregateId,
+            kind: AggregateType,
+        ) -> Result<Option<Recorded<MembersEvent>>, StoreError> {
+            Err(down(aggregate, kind))
+        }
+
+        async fn latest_snapshot_within(
+            &self,
+            _transaction: &mut Transaction,
             aggregate: &AggregateId,
             kind: AggregateType,
         ) -> Result<Option<Recorded<MembersEvent>>, StoreError> {

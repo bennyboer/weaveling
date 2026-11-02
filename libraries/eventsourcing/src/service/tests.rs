@@ -923,6 +923,18 @@ impl EventStore<SampleEvent> for BalksOnce {
         self.inner.read_from(aggregate, kind, from).await
     }
 
+    async fn read_from_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .read_from_within(transaction, aggregate, kind, from)
+            .await
+    }
+
     async fn read_through(
         &self,
         aggregate: &AggregateId,
@@ -941,6 +953,17 @@ impl EventStore<SampleEvent> for BalksOnce {
         kind: AggregateType,
     ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
         self.inner.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn latest_snapshot_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .latest_snapshot_within(transaction, aggregate, kind)
+            .await
     }
 
     async fn snapshot_at_or_before(
@@ -1037,6 +1060,18 @@ impl EventStore<SampleEvent> for RefusesSnapshots {
         self.inner.read_from(aggregate, kind, from).await
     }
 
+    async fn read_from_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .read_from_within(transaction, aggregate, kind, from)
+            .await
+    }
+
     async fn read_through(
         &self,
         aggregate: &AggregateId,
@@ -1055,6 +1090,17 @@ impl EventStore<SampleEvent> for RefusesSnapshots {
         kind: AggregateType,
     ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
         self.inner.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn latest_snapshot_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .latest_snapshot_within(transaction, aggregate, kind)
+            .await
     }
 
     async fn snapshot_at_or_before(
@@ -1494,6 +1540,22 @@ impl EventStore<SampleEvent> for Yielding {
         read
     }
 
+    async fn read_from_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<SampleEvent>>, StoreError> {
+        let read = self
+            .inner
+            .read_from_within(transaction, aggregate, kind, from)
+            .await;
+        tokio::task::yield_now().await;
+
+        read
+    }
+
     async fn read_through(
         &self,
         aggregate: &AggregateId,
@@ -1512,6 +1574,17 @@ impl EventStore<SampleEvent> for Yielding {
         kind: AggregateType,
     ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
         self.inner.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn latest_snapshot_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<SampleEvent>>, StoreError> {
+        self.inner
+            .latest_snapshot_within(transaction, aggregate, kind)
+            .await
     }
 
     async fn snapshot_at_or_before(

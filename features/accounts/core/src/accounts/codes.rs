@@ -2,7 +2,7 @@ use mailing::Mail;
 
 use super::AccountsCore;
 use crate::account::AccountCommand;
-use crate::code::{CodePurpose, PendingVerification};
+use crate::code::{CodePurpose, PendingVerification, VerificationCode};
 use crate::error::AccountsError;
 use crate::id::AccountId;
 use crate::password::Password;
@@ -29,16 +29,22 @@ impl AccountsCore {
         let Some(id) = self.email_addresses.holder(&email).await? else {
             return Err(AccountsError::CodeWrong);
         };
-        self.checked_code(&id, CodePurpose::ConfirmAddress, code)
+        let code = self
+            .checked_code(&id, CodePurpose::ConfirmAddress, code)
             .await?;
 
         transacting::retrying!(&*self.transactions, |transaction| {
+            if !self
+                .verifications
+                .close(transaction, &id, CodePurpose::ConfirmAddress, &code)
+                .await?
+            {
+                return Err(AccountsError::CodeWrong);
+            }
             self.commanded_in(transaction, &id, AccountCommand::Verify, &id.acting())
                 .await?;
-            Ok(self
-                .verifications
-                .close(transaction, &id, CodePurpose::ConfirmAddress)
-                .await?)
+
+            Ok(())
         })
     }
 
@@ -64,11 +70,19 @@ impl AccountsCore {
         let Some((id, _account)) = self.whose(&email).await? else {
             return Err(AccountsError::CodeWrong);
         };
-        self.checked_code(&id, CodePurpose::ResetPassword, code)
+        let code = self
+            .checked_code(&id, CodePurpose::ResetPassword, code)
             .await?;
 
         let reset: Result<(), AccountsError> =
             transacting::retrying!(&*self.transactions, |transaction| {
+                if !self
+                    .verifications
+                    .close(transaction, &id, CodePurpose::ResetPassword, &code)
+                    .await?
+                {
+                    return Err(AccountsError::CodeWrong);
+                }
                 self.commanded_in(
                     transaction,
                     &id,
@@ -77,9 +91,6 @@ impl AccountsCore {
                 )
                 .await?;
                 self.passwords.keep(transaction, &id, &hashed).await?;
-                self.verifications
-                    .close(transaction, &id, CodePurpose::ResetPassword)
-                    .await?;
                 Ok(())
             });
         reset?;
@@ -93,7 +104,7 @@ impl AccountsCore {
         id: &AccountId,
         purpose: CodePurpose,
         code: &str,
-    ) -> Result<(), AccountsError> {
+    ) -> Result<VerificationCode, AccountsError> {
         let mut transaction = self.transactions.begin().await?;
         let attempt = self
             .verifications
@@ -118,7 +129,7 @@ impl AccountsCore {
             return Err(AccountsError::CodeWrong);
         }
 
-        Ok(())
+        Ok(pending.code)
     }
 
     pub(super) async fn mail_code(

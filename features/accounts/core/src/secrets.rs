@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use thiserror::Error;
 use time::OffsetDateTime;
 
-use crate::code::{CodePurpose, PendingVerification};
+use crate::code::{CodePurpose, PendingVerification, VerificationCode};
 use crate::id::AccountId;
 use crate::password::PasswordHash;
 use crate::session::{Session, TokenDigest};
@@ -146,7 +146,8 @@ pub trait Verifications: Send + Sync {
         transaction: &mut Transaction,
         account: &AccountId,
         purpose: CodePurpose,
-    ) -> Result<(), SecretsError>;
+        code: &VerificationCode,
+    ) -> Result<bool, SecretsError>;
 }
 
 #[async_trait]

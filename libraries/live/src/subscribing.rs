@@ -225,10 +225,17 @@ async fn subscription(
     _ = sending.send(ended_as(&id, why)).await;
 }
 
-async fn access_rechecked(admission: &mut Option<Admission>) -> Access {
+async fn access_changed(admission: &mut Option<Admission>) {
     match admission {
-        Some(admission) => admission.rechecked().await,
+        Some(admission) => admission.changed().await,
         None => future::pending().await,
+    }
+}
+
+async fn asked_again(admission: &Option<Admission>) -> Access {
+    match admission {
+        Some(admission) => admission.asked_again().await,
+        None => Access::Kept,
     }
 }
 
@@ -260,7 +267,7 @@ async fn follow(id: &str, subscribed: Subscribed, sending: &mpsc::Sender<String>
 
     loop {
         tokio::select! {
-            access = access_rechecked(&mut admission) => match access {
+            () = access_changed(&mut admission) => match asked_again(&admission).await {
                 Access::Kept => {
                     let notice = told(&ToldDTO::Notice {
                         id: id.to_owned(),

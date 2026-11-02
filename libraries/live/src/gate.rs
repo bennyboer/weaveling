@@ -58,8 +58,11 @@ pub async fn admitted(
 }
 
 impl Admission {
-    pub(crate) async fn rechecked(&mut self) -> Access {
+    pub(crate) async fn changed(&mut self) {
         self.watch.changed().await;
+    }
+
+    pub(crate) async fn asked_again(&self) -> Access {
         match self.gate.admits(&self.agent, &self.about).await {
             Ok(true) => Access::Kept,
             _ => Access::Lost,

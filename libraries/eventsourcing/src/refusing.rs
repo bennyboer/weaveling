@@ -36,6 +36,18 @@ impl<E: Send + Sync> EventStore<E> for RefusesAppending<E> {
         self.0.read_from(aggregate, kind, from).await
     }
 
+    async fn read_from_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<E>>, StoreError> {
+        self.0
+            .read_from_within(transaction, aggregate, kind, from)
+            .await
+    }
+
     async fn read_through(
         &self,
         aggregate: &AggregateId,
@@ -52,6 +64,17 @@ impl<E: Send + Sync> EventStore<E> for RefusesAppending<E> {
         kind: AggregateType,
     ) -> Result<Option<Recorded<E>>, StoreError> {
         self.0.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn latest_snapshot_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<E>>, StoreError> {
+        self.0
+            .latest_snapshot_within(transaction, aggregate, kind)
+            .await
     }
 
     async fn snapshot_at_or_before(
@@ -149,6 +172,18 @@ impl<E: Send + Sync> EventStore<E> for FailsAppending<E> {
         self.store.read_from(aggregate, kind, from).await
     }
 
+    async fn read_from_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<E>>, StoreError> {
+        self.store
+            .read_from_within(transaction, aggregate, kind, from)
+            .await
+    }
+
     async fn read_through(
         &self,
         aggregate: &AggregateId,
@@ -167,6 +202,17 @@ impl<E: Send + Sync> EventStore<E> for FailsAppending<E> {
         kind: AggregateType,
     ) -> Result<Option<Recorded<E>>, StoreError> {
         self.store.latest_snapshot(aggregate, kind).await
+    }
+
+    async fn latest_snapshot_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<E>>, StoreError> {
+        self.store
+            .latest_snapshot_within(transaction, aggregate, kind)
+            .await
     }
 
     async fn snapshot_at_or_before(

@@ -7,7 +7,7 @@ use eventsourcing::{
 };
 use inbox::{InMemoryInbox, Inboxed};
 use members_catalog::InMemoryMembershipCatalog;
-use members_core::{MembersCore, MembersCoreError, MembersEvent, Role};
+use members_core::{MembersCore, MembersCoreError, MembersError, MembersEvent, Role};
 use members_messaging::DisbandMembersOfDeletedProjectListener;
 use messaging::{Listener, Message, RoutingKey};
 use projects_contract::DELETED;
@@ -125,4 +125,81 @@ async fn a_disbanding_that_lost_a_race_is_refused_and_lands_when_it_is_offered_a
                 .is_empty(),
         "a disbanded project has no members and takes none"
     );
+}
+
+#[tokio::test]
+async fn an_owner_removed_cannot_make_themselves_owner_again_while_the_list_still_says_they_are() {
+    let members = core_over(Arc::new(InMemoryEventStore::new()));
+    members
+        .found(None, "project_1", "account_ada")
+        .await
+        .expect("founding should succeed");
+    members
+        .join(None, "project_1", "account_grace", Role::Owner)
+        .await
+        .expect("joining should succeed");
+    members
+        .remove(
+            "project_1",
+            "account_grace",
+            &Agent::Account("account_ada".into()),
+        )
+        .await
+        .expect("an owner may remove another");
+
+    let regained = members
+        .change_role(
+            "project_1",
+            "account_grace",
+            Role::Owner,
+            &Agent::Account("account_grace".into()),
+        )
+        .await;
+
+    assert!(
+        matches!(
+            regained,
+            Err(MembersCoreError::Events(ServiceError::Refused(
+                MembersError::NotAnOwner
+            )))
+        ),
+        "an authorizer that still lets them in, as a list behind its events would, is not enough: {regained:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_owner_stepped_down_removes_nobody() {
+    let members = core_over(Arc::new(InMemoryEventStore::new()));
+    members
+        .found(None, "project_1", "account_ada")
+        .await
+        .expect("founding should succeed");
+    members
+        .join(None, "project_1", "account_grace", Role::Owner)
+        .await
+        .expect("joining should succeed");
+    members
+        .change_role(
+            "project_1",
+            "account_grace",
+            Role::Reader,
+            &Agent::Account("account_ada".into()),
+        )
+        .await
+        .expect("an owner may step another down");
+
+    let removing = members
+        .remove(
+            "project_1",
+            "account_ada",
+            &Agent::Account("account_grace".into()),
+        )
+        .await;
+
+    assert!(matches!(
+        removing,
+        Err(MembersCoreError::Events(ServiceError::Refused(
+            MembersError::NotAnOwner
+        )))
+    ));
 }

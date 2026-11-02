@@ -62,6 +62,14 @@ pub trait EventStore<E>: Send + Sync {
         from: Version,
     ) -> Result<Vec<Recorded<E>>, StoreError>;
 
+    async fn read_from_within(
+        &self,
+        transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<E>>, StoreError>;
+
     async fn read_through(
         &self,
         aggregate: &AggregateId,
@@ -72,6 +80,13 @@ pub trait EventStore<E>: Send + Sync {
 
     async fn latest_snapshot(
         &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<E>>, StoreError>;
+
+    async fn latest_snapshot_within(
+        &self,
+        transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<Option<Recorded<E>>, StoreError>;

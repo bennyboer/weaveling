@@ -140,6 +140,9 @@ fn problem_of(refusal: MembersCoreError) -> Problem {
         MembersCoreError::Events(ServiceError::Refused(MembersError::LastOwner)) => {
             Problem::refused(refused::LAST_OWNER, MembersError::LastOwner)
         }
+        MembersCoreError::Events(ServiceError::Refused(MembersError::NotAnOwner)) => {
+            Problem::forbidden(refused::NOT_AN_OWNER, MembersError::NotAnOwner)
+        }
         MembersCoreError::Events(ServiceError::Refused(MembersError::NotMember)) => {
             Problem::not_found(refused::NOT_A_MEMBER, MembersError::NotMember)
         }

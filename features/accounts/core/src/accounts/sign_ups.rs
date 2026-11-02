@@ -140,7 +140,7 @@ impl AccountsCore {
         transaction.finish().await?;
         let account = self.get(&id).await?.state;
 
-        self.opened(id, account).await
+        self.opened(id, account, self.clock.now()).await
     }
 
     pub(super) async fn tell_already_signed_up(

@@ -145,6 +145,17 @@ where
             .await
     }
 
+    async fn read_from_within(
+        &self,
+        _transaction: &mut Transaction,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+        from: Version,
+    ) -> Result<Vec<Recorded<E>>, StoreError> {
+        self.read_through(aggregate, kind, from, Version::of(u64::MAX))
+            .await
+    }
+
     async fn read_through(
         &self,
         aggregate: &AggregateId,
@@ -170,6 +181,16 @@ where
 
     async fn latest_snapshot(
         &self,
+        aggregate: &AggregateId,
+        kind: AggregateType,
+    ) -> Result<Option<Recorded<E>>, StoreError> {
+        self.snapshot_at_or_before(aggregate, kind, Version::of(u64::MAX))
+            .await
+    }
+
+    async fn latest_snapshot_within(
+        &self,
+        _transaction: &mut Transaction,
         aggregate: &AggregateId,
         kind: AggregateType,
     ) -> Result<Option<Recorded<E>>, StoreError> {

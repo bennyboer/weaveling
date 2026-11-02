@@ -9,7 +9,8 @@ use accounts_secrets::InMemorySecrets;
 use async_trait::async_trait;
 
 use time::Duration;
-use transacting::{InMemoryTransactions, Transaction};
+use tokio::sync::{Barrier, Notify};
+use transacting::{Failure, InMemoryTransactions, Transaction, Transactions};
 
 use crate::session_ends;
 use crate::wiring;
@@ -479,4 +480,176 @@ async fn a_reset_reaches_the_end_of_the_sessions_begun_before_it_at_once() {
         .expect("the code sent should reset");
 
     assert!(session_ends::reached(waiting).await);
+}
+
+struct MeetingBeforeEachBegin {
+    kept: InMemoryTransactions,
+    both: Barrier,
+    armed: AtomicBool,
+}
+
+#[async_trait]
+impl Transactions for MeetingBeforeEachBegin {
+    async fn begin(&self) -> Result<Transaction, Failure> {
+        if self.armed.load(Ordering::SeqCst) {
+            self.both.wait().await;
+        }
+
+        self.kept.begin().await
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn one_reset_code_resets_once_however_many_use_it_at_the_same_time() {
+    let wired = wiring::wired();
+    let transactions = Arc::new(MeetingBeforeEachBegin {
+        kept: InMemoryTransactions::new(),
+        both: Barrier::new(2),
+        armed: AtomicBool::new(false),
+    });
+    let accounts = AccountsCore::new(
+        wired.store.clone(),
+        transactions.clone(),
+        SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone()),
+        wired.catalog.clone(),
+        wired.mailbox.clone(),
+        wired.clock.clone(),
+    );
+    accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    accounts
+        .verify(ADA, &wired.last_code_sent_to(ADA))
+        .await
+        .expect("the code sent should verify");
+    accounts
+        .ask_to_reset_password(ADA)
+        .await
+        .expect("asking should succeed");
+    let code = reset_codes_sent_to(&wired, ADA)
+        .pop()
+        .expect("a reset code should have been sent");
+
+    transactions.armed.store(true, Ordering::SeqCst);
+    let resetting = |password: &'static str| {
+        let accounts = accounts.clone();
+        let code = code.clone();
+        tokio::spawn(async move { accounts.reset_password(ADA, &code, password).await })
+    };
+    let (first, second) = (
+        resetting(HER_NEW_PASSWORD),
+        resetting("yet another long password"),
+    );
+    let answers = tokio::time::timeout(Duration::seconds(10).unsigned_abs(), async {
+        [
+            first.await.expect("the first reset should not panic"),
+            second.await.expect("the second reset should not panic"),
+        ]
+    })
+    .await
+    .expect("both resets come to an end");
+
+    assert_eq!(
+        answers.iter().filter(|answer| answer.is_ok()).count(),
+        1,
+        "two resets that both got past the check still use the code once: {answers:?}"
+    );
+    assert!(
+        answers
+            .iter()
+            .any(|answer| matches!(answer, Err(AccountsError::CodeWrong))),
+        "the one that came second finds the code gone: {answers:?}"
+    );
+}
+
+struct ReadWhileReset {
+    kept: Arc<InMemorySecrets>,
+    armed: AtomicBool,
+    read: Notify,
+    go_on: Notify,
+}
+
+#[async_trait]
+impl Passwords for ReadWhileReset {
+    async fn keep(
+        &self,
+        transaction: &mut Transaction,
+        account: &AccountId,
+        password: &PasswordHash,
+    ) -> Result<(), SecretsError> {
+        self.kept.keep(transaction, account, password).await
+    }
+
+    async fn of(&self, account: &AccountId) -> Result<Option<PasswordHash>, SecretsError> {
+        let kept = self.kept.of(account).await;
+        if self.armed.swap(false, Ordering::SeqCst) {
+            self.read.notify_one();
+            self.go_on.notified().await;
+        }
+
+        kept
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_begun_while_the_password_is_reset_does_not_outlive_the_reset() {
+    let wired = wiring::wired();
+    let passwords = Arc::new(ReadWhileReset {
+        kept: wired.secrets.clone(),
+        armed: AtomicBool::new(false),
+        read: Notify::new(),
+        go_on: Notify::new(),
+    });
+    let accounts = AccountsCore::new(
+        wired.store.clone(),
+        Arc::new(InMemoryTransactions::new()),
+        SecretStores {
+            passwords: passwords.clone(),
+            ..SecretStores::kept_by(wired.secrets.clone(), wired.throttles.clone())
+        },
+        wired.catalog.clone(),
+        wired.mailbox.clone(),
+        wired.clock.clone(),
+    );
+    accounts
+        .sign_up(ADA, "Ada", HER_PASSWORD)
+        .await
+        .expect("signing up should succeed");
+    accounts
+        .verify(ADA, &wired.last_code_sent_to(ADA))
+        .await
+        .expect("the code sent should verify");
+    accounts
+        .ask_to_reset_password(ADA)
+        .await
+        .expect("asking should succeed");
+    let code = reset_codes_sent_to(&wired, ADA)
+        .pop()
+        .expect("a reset code should have been sent");
+
+    passwords.armed.store(true, Ordering::SeqCst);
+    let signing_in = tokio::spawn({
+        let accounts = accounts.clone();
+        async move { accounts.begin_session(ADA, HER_PASSWORD).await }
+    });
+    passwords.read.notified().await;
+    wired
+        .clock
+        .set(wiring::at(1_700_000_000) + Duration::minutes(1));
+    accounts
+        .reset_password(ADA, &code, HER_NEW_PASSWORD)
+        .await
+        .expect("the reset lands while the old password is being checked");
+    passwords.go_on.notify_one();
+    let (token, _) = tokio::time::timeout(Duration::seconds(10).unsigned_abs(), signing_in)
+        .await
+        .expect("signing in comes to an end")
+        .expect("signing in should not panic")
+        .expect("the old password was still the one read");
+
+    assert!(
+        !still_signed_in(&accounts, &token).await,
+        "a session begun before the reset landed ends with the others"
+    );
 }

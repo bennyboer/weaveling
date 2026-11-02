@@ -366,6 +366,16 @@ impl EventStore<AccountEvent> for Refusing {
         Ok(Vec::new())
     }
 
+    async fn read_from_within(
+        &self,
+        _transaction: &mut Transaction,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+        _from: Version,
+    ) -> Result<Vec<Recorded<AccountEvent>>, StoreError> {
+        Ok(Vec::new())
+    }
+
     async fn read_through(
         &self,
         _aggregate: &AggregateId,
@@ -378,6 +388,15 @@ impl EventStore<AccountEvent> for Refusing {
 
     async fn latest_snapshot(
         &self,
+        _aggregate: &AggregateId,
+        _kind: AggregateType,
+    ) -> Result<Option<Recorded<AccountEvent>>, StoreError> {
+        Ok(None)
+    }
+
+    async fn latest_snapshot_within(
+        &self,
+        _transaction: &mut Transaction,
         _aggregate: &AggregateId,
         _kind: AggregateType,
     ) -> Result<Option<Recorded<AccountEvent>>, StoreError> {
