@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use accounts_catalog::InMemoryAccountCatalog;
 use accounts_core::{AccountCatalog, AccountEvent, AccountsCore, SecretStores, SigningUp};
-use accounts_messaging::{CatalogueAccountsListener, KeepInvitationTicketsListener};
+use accounts_messaging::{
+    CatalogueAccountsListener, KeepInvitationTicketsListener, RememberTrashedProjectsListener,
+};
 use accounts_secrets::InMemorySecrets;
 use axum::Router;
 use chores::{Chore, ForgetOldTombstones};
@@ -51,6 +53,11 @@ fn listeners(ports: &Ports, context: &Context) -> Vec<Arc<dyn Listener>> {
         )),
         Arc::new(Inboxed::new(
             KeepInvitationTicketsListener::new(core(ports, context)),
+            ports.transactions.clone(),
+            ports.inbox.clone(),
+        )),
+        Arc::new(Inboxed::new(
+            RememberTrashedProjectsListener::new(core(ports, context)),
             ports.transactions.clone(),
             ports.inbox.clone(),
         )),

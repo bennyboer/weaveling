@@ -31,6 +31,12 @@ CREATE TABLE project_names (
     name             TEXT             NOT NULL
 );
 
+CREATE TABLE project_trash (
+    project          TEXT COLLATE "C" PRIMARY KEY,
+    version          BIGINT  NOT NULL,
+    in_the_trash     BOOLEAN NOT NULL
+);
+
 CREATE TABLE project_tombstones (
     project          TEXT COLLATE "C" PRIMARY KEY,
     laid_at          TIMESTAMPTZ      NOT NULL

@@ -552,6 +552,7 @@ refused-locked-cannot-become-operator = Un compte verrouillé ne peut pas deveni
 refused-signing-up-by-invitation-only = Sur cette instance de Weaveling, on ne peut créer un compte que sur invitation.
 refused-invitation-invalid = Le lien de cette invitation ne permet de créer aucun compte, ou plus maintenant.
 refused-invitation-expired = Cette invitation a expiré. Veuillez en demander une nouvelle.
+refused-invitation-paused = Le projet de cette invitation est dans la corbeille. Elle pourra être acceptée dès qu'il sera restauré.
 refused-email-address-has-account = Cette adresse e-mail a déjà un compte. Veuillez plutôt vous connecter.
 refused-invitation-for-another-address = Cette invitation a été envoyée à { $to }. Veuillez vous connecter avec cette adresse pour l'accepter.
 refused-invitation-not-by-an-operator = Sur cette instance de Weaveling, on ne peut créer un compte que sur invitation de son opérateur. Veuillez lui demander de vous inviter.

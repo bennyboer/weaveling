@@ -7,7 +7,7 @@ use inbox::KeptHandler;
 use invitations_core::{InvitationsCore, ProjectLink, ProjectName};
 use messaging::{Failure, Message};
 use outbox::{Origin, Outbox};
-use projects_contract::{DELETED, ProjectEventDTO, RENAMED, STARTED};
+use projects_contract::{DELETED, ProjectEventDTO, RENAMED, RESTORED, STARTED, TRASHED};
 use transacting::Transaction;
 
 pub struct RememberProjectNamesListener {
@@ -33,7 +33,7 @@ impl RememberProjectNamesListener {
 #[async_trait]
 impl KeptHandler for RememberProjectNamesListener {
     const NAME: &'static str = "remember-project-names";
-    const LISTENS_TO: &'static [&'static str] = &[STARTED, RENAMED, DELETED];
+    const LISTENS_TO: &'static [&'static str] = &[STARTED, RENAMED, TRASHED, RESTORED, DELETED];
     const WHEN_REFUSED: &'static str = "A project's name, or that it was deleted, did not reach invitations, so an invitation into it may name it wrongly.";
 
     async fn take_in(
@@ -70,10 +70,16 @@ impl KeptHandler for RememberProjectNamesListener {
 
                 Ok(())
             }
-            ProjectEventDTO::DetailsChanged { .. }
-            | ProjectEventDTO::QuotationChanged { .. }
-            | ProjectEventDTO::Trashed { .. }
-            | ProjectEventDTO::Restored => {
+            ProjectEventDTO::Trashed { .. } | ProjectEventDTO::Restored => Ok(self
+                .invitations
+                .remember_trash(
+                    Some(transaction),
+                    &project,
+                    Version::of(told.aggregate.version),
+                    matches!(told.event.body, ProjectEventDTO::Trashed { .. }),
+                )
+                .await?),
+            ProjectEventDTO::DetailsChanged { .. } | ProjectEventDTO::QuotationChanged { .. } => {
                 Err("this tells neither a project's name nor that it was deleted".into())
             }
         }

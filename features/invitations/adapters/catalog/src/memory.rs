@@ -3,7 +3,7 @@ use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use async_trait::async_trait;
 use email::EmailAddress;
-use eventsourcing::AccountId;
+use eventsourcing::{AccountId, Version};
 use invitations_core::{
     CatalogError, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
     Outcome, Person, ProjectLink, ProjectName,
@@ -25,6 +25,7 @@ pub struct InMemoryInvitationCatalog {
 struct KnownProjects {
     names: BTreeMap<String, ProjectName>,
     tombstones: BTreeMap<String, OffsetDateTime>,
+    trash: BTreeMap<String, (Version, bool)>,
 }
 
 impl InMemoryInvitationCatalog {
@@ -278,6 +279,7 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
             .write()
             .expect("invitation catalog lock poisoned");
         projects.names.remove(project.as_str());
+        projects.trash.remove(project.as_str());
         projects.tombstones.entry(project.to_string()).or_insert(at);
 
         Ok(())
@@ -317,6 +319,44 @@ impl InvitationCatalog for InMemoryInvitationCatalog {
         }
 
         Ok(u64::try_from(long_gone.len()).expect("a count of tombstones fits"))
+    }
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        self.undo_on_rollback(transaction)?;
+        let mut projects = self
+            .projects
+            .write()
+            .expect("invitation catalog lock poisoned");
+        if projects.tombstones.contains_key(project.as_str()) {
+            return Ok(());
+        }
+        if projects
+            .trash
+            .get(project.as_str())
+            .is_none_or(|(known, _)| *known < version)
+        {
+            projects
+                .trash
+                .insert(project.to_string(), (version, in_the_trash));
+        }
+
+        Ok(())
+    }
+
+    async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        Ok(self
+            .projects
+            .read()
+            .expect("invitation catalog lock poisoned")
+            .trash
+            .get(project.as_str())
+            .is_some_and(|(_, in_the_trash)| *in_the_trash))
     }
 
     async fn project_names(

@@ -47,6 +47,10 @@ pub enum AccountsError {
     InvitationInvalid,
     #[error("this invitation has run out; ask for a new one")]
     InvitationExpired,
+    #[error(
+        "the project this invitation is into is in the trash; it can be taken up once it is restored"
+    )]
+    InvitationPaused,
     #[error("this invitation was sent to {to}; sign in with that address to take it up")]
     InvitationForAnotherAddress { to: EmailAddress },
     #[error(

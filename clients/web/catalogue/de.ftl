@@ -552,6 +552,7 @@ refused-locked-cannot-become-operator = Ein gesperrtes Konto kann die Instanz ni
 refused-signing-up-by-invitation-only = Bei dieser Weaveling-Instanz kann man sich nur auf Einladung registrieren.
 refused-invitation-invalid = Mit dem Link dieser Einladung kann sich niemand registrieren, oder nicht mehr.
 refused-invitation-expired = Diese Einladung ist abgelaufen. Bitte um eine neue.
+refused-invitation-paused = Das Projekt dieser Einladung liegt im Papierkorb. Sie lässt sich annehmen, sobald es wiederhergestellt ist.
 refused-email-address-has-account = Zu dieser E-Mail-Adresse gibt es schon ein Konto. Melde dich stattdessen an.
 refused-invitation-for-another-address = Diese Einladung ging an { $to }. Melde dich mit dieser Adresse an, um sie anzunehmen.
 refused-invitation-not-by-an-operator = Bei dieser Weaveling-Instanz kann man sich nur auf Einladung registrieren. Bitte den Betreiber, dich einzuladen.

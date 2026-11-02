@@ -151,6 +151,16 @@ pub trait InvitationCatalog: Send + Sync {
         &self,
         projects: &[ProjectLink],
     ) -> Result<Vec<ProjectName>, CatalogError>;
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError>;
+
+    async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError>;
 }
 
 impl InvitationSummary {

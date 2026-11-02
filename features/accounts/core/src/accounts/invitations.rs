@@ -109,6 +109,7 @@ impl AccountsCore {
             return Err(AccountsError::InvitationInvalid);
         }
         transacting::retrying!(&*self.transactions, |transaction| {
+            self.not_paused(transaction, &found.scope).await?;
             let ticket = self.claimed_ticket(transaction, digest).await?;
             self.events
                 .execute(
@@ -186,6 +187,53 @@ impl AccountsCore {
             .await?;
 
         Ok(())
+    }
+
+    pub(super) async fn not_paused(
+        &self,
+        transaction: &mut Transaction,
+        scope: &InvitationScope,
+    ) -> Result<(), AccountsError> {
+        let InvitationScope::Project { project } = scope else {
+            return Ok(());
+        };
+        if self
+            .invitation_tickets
+            .is_in_the_trash(transaction, project)
+            .await?
+        {
+            return Err(AccountsError::InvitationPaused);
+        }
+
+        Ok(())
+    }
+
+    pub async fn remember_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+        version: u64,
+        in_the_trash: bool,
+    ) -> Result<(), AccountsError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.invitation_tickets
+            .remember_trash(&mut transaction, project, version, in_the_trash)
+            .await?;
+
+        Ok(transaction.finish().await?)
+    }
+
+    pub async fn forget_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &str,
+    ) -> Result<(), AccountsError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.invitation_tickets
+            .forget_trash(&mut transaction, project)
+            .await?;
+
+        Ok(transaction.finish().await?)
     }
 
     pub async fn forget_invitation_ticket(

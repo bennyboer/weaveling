@@ -62,4 +62,7 @@ mod taking_up_invitations_api;
 mod throttling;
 
 #[cfg(test)]
+mod trashed_invitations;
+
+#[cfg(test)]
 mod wiring;

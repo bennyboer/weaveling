@@ -31,6 +31,12 @@ CREATE TABLE project_names (
     name             TEXT    NOT NULL
 );
 
+CREATE TABLE project_trash (
+    project          TEXT PRIMARY KEY,
+    version          INTEGER NOT NULL,
+    in_the_trash     BOOLEAN NOT NULL
+);
+
 CREATE TABLE project_tombstones (
     project          TEXT    PRIMARY KEY,
     laid_at          TEXT    NOT NULL

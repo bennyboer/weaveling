@@ -215,6 +215,26 @@ pub trait InvitationTickets: Send + Sync {
         transaction: &mut Transaction,
         invitation: &str,
     ) -> Result<(), SecretsError>;
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+        version: u64,
+        in_the_trash: bool,
+    ) -> Result<(), SecretsError>;
+
+    async fn forget_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+    ) -> Result<(), SecretsError>;
+
+    async fn is_in_the_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &str,
+    ) -> Result<bool, SecretsError>;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

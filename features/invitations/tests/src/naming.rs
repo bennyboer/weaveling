@@ -3,7 +3,7 @@ use inbox::Inboxed;
 use invitations_core::{InvitationCatalog, ProjectLink, ProjectName};
 use invitations_messaging::RememberProjectNamesListener;
 use messaging::{Listener, Message, RoutingKey};
-use projects_contract::{DELETED, DETAILS_CHANGED, RENAMED, STARTED};
+use projects_contract::{DELETED, DETAILS_CHANGED, RENAMED, RESTORED, STARTED, TRASHED};
 use serde_json::{Value, json};
 use time::{Duration, OffsetDateTime};
 
@@ -48,6 +48,32 @@ fn deleted(version: u64, at: OffsetDateTime) -> Message {
         json!({ "version": 0, "name": "DELETED" }),
         at,
     )
+}
+
+fn trashed(version: u64) -> Message {
+    told(
+        TRASHED,
+        version,
+        json!({ "version": 0, "name": "TRASHED", "until": "2023-12-14T22:13:20Z" }),
+        OffsetDateTime::UNIX_EPOCH,
+    )
+}
+
+fn restored(version: u64) -> Message {
+    told(
+        RESTORED,
+        version,
+        json!({ "version": 0, "name": "RESTORED" }),
+        OffsetDateTime::UNIX_EPOCH,
+    )
+}
+
+async fn in_the_trash(wired: &Wired) -> bool {
+    wired
+        .catalog
+        .is_in_the_trash(&ProjectLink::from("project_loom"))
+        .await
+        .expect("asking should succeed")
 }
 
 async fn named(wired: &Wired) -> Vec<ProjectName> {
@@ -170,4 +196,32 @@ async fn what_tells_no_name_nor_a_deletion_is_refused() {
         );
     }
     assert!(named(&wired).await.is_empty());
+}
+
+#[tokio::test]
+async fn a_project_in_the_trash_is_known_so_until_it_is_restored_and_keeps_its_name() {
+    let wired = wiring::wired();
+    let listener = wiring::inboxed(RememberProjectNamesListener::new(
+        wired.invitations.clone(),
+        wired.outbox.clone(),
+        wired.clock.clone(),
+    ));
+    assert!(listener.hears(&RoutingKey::parse(TRASHED).expect("a declared key")));
+    assert!(listener.hears(&RoutingKey::parse(RESTORED).expect("a declared key")));
+
+    heard(&listener, &[started(1, "The Loom"), trashed(2)]).await;
+    let then = in_the_trash(&wired).await;
+    heard(&listener, &[restored(3)]).await;
+
+    assert!(then);
+    assert!(!in_the_trash(&wired).await);
+    assert_eq!(
+        named(&wired).await,
+        vec![ProjectName {
+            project: ProjectLink::from("project_loom"),
+            version: Version::of(1),
+            name: "The Loom".to_owned(),
+        }],
+        "the trash leaves the name as it was"
+    );
 }

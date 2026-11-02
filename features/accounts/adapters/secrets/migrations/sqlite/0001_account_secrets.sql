@@ -44,3 +44,9 @@ CREATE TABLE account_invitation_tickets (
     by_an_operator BOOLEAN NOT NULL DEFAULT FALSE,
     ended       BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+CREATE TABLE account_trashed_projects (
+    project       TEXT PRIMARY KEY,
+    version       INTEGER NOT NULL,
+    in_the_trash  BOOLEAN NOT NULL
+);

@@ -4,7 +4,7 @@ use acting::Acting;
 use authorizing::{Act, Authorizer};
 use clock::Clock;
 use email::EmailAddress;
-use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError};
+use eventsourcing::{AccountId, Agent, AggregateId, EventStore, ServiceError, Version};
 use mailing::Mailer;
 use throttling::Throttles;
 use time::OffsetDateTime;
@@ -161,6 +161,13 @@ impl InvitationsCore {
                 Scope::Instance => None,
             })
             .collect();
+        let mut waiting = Vec::new();
+        for (summary, project, role) in open {
+            if !self.catalog.is_in_the_trash(&project).await? {
+                waiting.push((summary, project, role));
+            }
+        }
+        let open = waiting;
         let projects: Vec<ProjectLink> =
             open.iter().map(|(_, project, _)| project.clone()).collect();
         let names = self.catalog.project_names(&projects).await?;
@@ -340,6 +347,20 @@ impl InvitationsCore {
         let mut transaction = self.transactions.join(within).await?;
         self.catalog
             .remember_project_name(&mut transaction, named)
+            .await?;
+        Ok(transaction.finish().await?)
+    }
+
+    pub async fn remember_trash(
+        &self,
+        within: Option<&mut Transaction>,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), InvitationsError> {
+        let mut transaction = self.transactions.join(within).await?;
+        self.catalog
+            .remember_trash(&mut transaction, project, version, in_the_trash)
             .await?;
         Ok(transaction.finish().await?)
     }

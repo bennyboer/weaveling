@@ -123,6 +123,19 @@ const LAY_PROJECT_TOMBSTONE: &str =
 
 const FORGET_PROJECT_NAME: &str = "DELETE FROM project_names WHERE project = $1";
 
+const FORGET_PROJECT_TRASH: &str = "DELETE FROM project_trash WHERE project = $1";
+
+const REMEMBER_PROJECT_TRASH: &str = "
+    INSERT INTO project_trash (project, version, in_the_trash)
+    SELECT $1, $2, $3
+    WHERE NOT EXISTS (SELECT 1 FROM project_tombstones WHERE project = $1)
+    ON CONFLICT (project) DO UPDATE
+    SET version = excluded.version, in_the_trash = excluded.in_the_trash
+    WHERE project_trash.version < excluded.version
+";
+
+const IN_THE_TRASH: &str = "SELECT in_the_trash FROM project_trash WHERE project = $1";
+
 const HAS_PROJECT_TOMBSTONE: &str =
     "SELECT EXISTS (SELECT 1 FROM project_tombstones WHERE project = $1)";
 
@@ -433,6 +446,11 @@ impl InvitationCatalog for PostgresInvitationCatalog {
             .execute(connection(transaction).map_err(unreachable)?)
             .await
             .map_err(unreachable)?;
+        sqlx::query(FORGET_PROJECT_TRASH)
+            .bind(project.as_str())
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
 
         Ok(())
     }
@@ -458,6 +476,34 @@ impl InvitationCatalog for PostgresInvitationCatalog {
             .await
             .map_err(unreachable)?
             .rows_affected())
+    }
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        sqlx::query(REMEMBER_PROJECT_TRASH)
+            .bind(project.as_str())
+            .bind(i64::try_from(version.count()).map_err(unreachable)?)
+            .bind(in_the_trash)
+            .execute(connection(transaction).map_err(unreachable)?)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(())
+    }
+
+    async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        let kept: Option<bool> = sqlx::query_scalar(IN_THE_TRASH)
+            .bind(project.as_str())
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unreachable)?;
+
+        Ok(kept.unwrap_or(false))
     }
 
     async fn project_names(

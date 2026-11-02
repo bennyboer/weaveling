@@ -1,8 +1,10 @@
 mod publishing;
 mod ticketing;
+mod trashing;
 
 pub use publishing::message_for;
 pub use ticketing::KeepInvitationTicketsListener;
+pub use trashing::RememberTrashedProjectsListener;
 
 use accounts_contract::EVERY_ACCOUNT;
 use accounts_core::{AccountId, AccountsCore};

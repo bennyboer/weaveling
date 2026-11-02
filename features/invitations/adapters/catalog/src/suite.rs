@@ -99,6 +99,31 @@ impl<C: InvitationCatalog> Committing<'_, C> {
         transaction.finish().await.map_err(unreachable)
     }
 
+    pub async fn remember_trash(
+        &self,
+        project: &str,
+        version: u64,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        let mut transaction = self.transactions.begin().await.map_err(unreachable)?;
+        self.catalog
+            .remember_trash(
+                &mut transaction,
+                &ProjectLink::from(project),
+                Version::of(version),
+                in_the_trash,
+            )
+            .await?;
+        transaction.finish().await.map_err(unreachable)
+    }
+
+    pub async fn in_the_trash(&self, project: &str) -> bool {
+        self.catalog
+            .is_in_the_trash(&ProjectLink::from(project))
+            .await
+            .expect("asking should succeed")
+    }
+
     pub async fn lay_project_tombstone(
         &self,
         project: &ProjectLink,
@@ -908,6 +933,54 @@ pub async fn tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand(
     assert!(has_tombstone(catalog, "project_1").await);
 }
 
+pub async fn a_project_is_in_the_trash_by_its_newest_word_only(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
+    catalog
+        .remember_trash("project_a", 5, true)
+        .await
+        .expect("remembering should succeed");
+    let trashed = catalog.in_the_trash("project_a").await;
+    catalog
+        .remember_trash("project_a", 7, false)
+        .await
+        .expect("remembering should succeed");
+    catalog
+        .remember_trash("project_a", 6, true)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(trashed);
+    assert!(
+        !catalog.in_the_trash("project_a").await,
+        "a trashing older than the restoring changes nothing"
+    );
+    assert!(
+        !catalog.in_the_trash("project_b").await,
+        "each project for itself"
+    );
+}
+
+pub async fn a_deleted_project_is_in_no_trash_and_none_comes_back(
+    catalog: &Committing<'_, impl InvitationCatalog>,
+) {
+    catalog
+        .remember_trash("project_a", 5, true)
+        .await
+        .expect("remembering should succeed");
+
+    tombstoned(catalog, "project_a", 1_000).await;
+    catalog
+        .remember_trash("project_a", 9, true)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(
+        !catalog.in_the_trash("project_a").await,
+        "the tombstone forgets its trash, and no trashing heard late brings it back"
+    );
+}
+
 #[macro_export]
 macro_rules! catalog_conformance_case {
     ($workbench:ty, $case:ident) => {
@@ -934,6 +1007,14 @@ macro_rules! conformance_tests {
             tombstones_forgotten_in_a_transaction_that_is_dropped_still_stand
         );
         $crate::catalog_conformance_case!($workbench, a_remembered_invitation_is_listed_as_it_was);
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_project_is_in_the_trash_by_its_newest_word_only
+        );
+        $crate::catalog_conformance_case!(
+            $workbench,
+            a_deleted_project_is_in_no_trash_and_none_comes_back
+        );
         $crate::catalog_conformance_case!(
             $workbench,
             a_forgotten_invitation_heard_of_late_is_not_remembered_again

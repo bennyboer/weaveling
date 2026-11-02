@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use email::EmailAddress;
 
 use crate::InvitationChanges;
-use eventsourcing::AccountId;
+use eventsourcing::{AccountId, Version};
 use invitations_core::{
     CatalogError, InvitationCatalog, InvitationId, InvitationSummary, InvitationTokenDigest,
     Person, ProjectLink, ProjectName,
@@ -150,6 +150,22 @@ impl InvitationCatalog for TellingInvitations {
         self.kept
             .forget_project_tombstones_laid_before(transaction, before, at_most)
             .await
+    }
+
+    async fn remember_trash(
+        &self,
+        transaction: &mut Transaction,
+        project: &ProjectLink,
+        version: Version,
+        in_the_trash: bool,
+    ) -> Result<(), CatalogError> {
+        self.kept
+            .remember_trash(transaction, project, version, in_the_trash)
+            .await
+    }
+
+    async fn is_in_the_trash(&self, project: &ProjectLink) -> Result<bool, CatalogError> {
+        self.kept.is_in_the_trash(project).await
     }
 
     async fn project_names(

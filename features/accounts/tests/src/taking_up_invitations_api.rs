@@ -315,3 +315,19 @@ async fn nobody_turns_an_invitation_down_without_signing_in_nor_one_to_another_a
     );
     assert!(!turned_down_by(&wired, BOB).await);
 }
+
+#[tokio::test]
+async fn an_invitation_into_a_project_in_the_trash_is_refused_as_waiting() {
+    let (wired, server) = served_with_ada_invited().await;
+    let ada = signed_in(&wired, &server, ADA).await;
+    wired
+        .accounts
+        .remember_trash(None, "project_loom", 5, true)
+        .await
+        .expect("remembering should succeed");
+
+    let response = takes_up(&server, Some(&ada), TOKEN).await;
+
+    refused_as(&response, StatusCode::CONFLICT, refused::INVITATION_PAUSED);
+    assert!(!taken_up_by(&wired, ADA).await);
+}

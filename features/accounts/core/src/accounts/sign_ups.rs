@@ -109,6 +109,7 @@ impl AccountsCore {
             return Err(AccountsError::InvitationNotByAnOperator);
         }
         let mut transaction = self.transactions.begin().await?;
+        self.not_paused(&mut transaction, &found.scope).await?;
         let Some(ticket) = self
             .invitation_tickets
             .take_ticket(&mut transaction, &digest)

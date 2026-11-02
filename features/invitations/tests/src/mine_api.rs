@@ -178,3 +178,41 @@ async fn whoever_invitations_know_nothing_of_or_who_is_no_account_is_told_nothin
         .is_empty()
     );
 }
+
+#[tokio::test]
+async fn an_invitation_into_a_project_in_the_trash_is_not_told_until_it_is_restored() {
+    let wired = wiring::wired();
+    known(&wired, "account_ada", "Ada Lovelace", ADA).await;
+    let into_the_loom = into(&wired, "project_loom", Role::Author, ADA).await;
+    let trash = |version: u64, in_the_trash: bool| {
+        let invitations = wired.invitations.clone();
+        async move {
+            invitations
+                .remember_trash(
+                    None,
+                    &ProjectLink::from("project_loom"),
+                    Version::of(version),
+                    in_the_trash,
+                )
+                .await
+                .expect("remembering should succeed");
+        }
+    };
+
+    trash(5, true).await;
+    let while_trashed = mine(&wired, as_account("account_ada", false)).await;
+    trash(6, false).await;
+    let restored = mine(&wired, as_account("account_ada", false)).await;
+
+    assert!(
+        while_trashed.is_empty(),
+        "an invitation into a project in the trash waits, as it cannot be taken up"
+    );
+    assert_eq!(
+        restored
+            .iter()
+            .map(|told| told.id.clone())
+            .collect::<Vec<_>>(),
+        [into_the_loom.to_string()]
+    );
+}

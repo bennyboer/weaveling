@@ -237,6 +237,41 @@ impl<S: Secrets> Committing<'_, S> {
         Ok(done)
     }
 
+    pub async fn remember_trash(
+        &self,
+        project: &str,
+        version: u64,
+        in_the_trash: bool,
+    ) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store
+            .remember_trash(&mut transaction, project, version, in_the_trash)
+            .await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn forget_trash(&self, project: &str) -> Result<(), SecretsError> {
+        let mut transaction = self.begun().await?;
+        self.store.forget_trash(&mut transaction, project).await?;
+
+        self.finished(transaction).await
+    }
+
+    pub async fn in_the_trash(&self, project: &str) -> bool {
+        let mut transaction = self.begun().await.expect("beginning should succeed");
+        let kept = self
+            .store
+            .is_in_the_trash(&mut transaction, project)
+            .await
+            .expect("asking should succeed");
+        self.finished(transaction)
+            .await
+            .expect("finishing should succeed");
+
+        kept
+    }
+
     async fn begun(&self) -> Result<Transaction, SecretsError> {
         self.transactions
             .begin()
@@ -1444,6 +1479,89 @@ pub async fn a_ticket_taken_is_not_kept_again<S: Secrets>(secrets: &Committing<'
     );
 }
 
+pub async fn a_project_is_in_the_trash_once_told_so_and_out_once_restored<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    assert!(!secrets.in_the_trash("project_loom").await);
+
+    secrets
+        .remember_trash("project_loom", 5, true)
+        .await
+        .expect("remembering should succeed");
+    let trashed = secrets.in_the_trash("project_loom").await;
+    secrets
+        .remember_trash("project_loom", 6, false)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(trashed);
+    assert!(!secrets.in_the_trash("project_loom").await);
+    assert!(
+        !secrets.in_the_trash("project_quilt").await,
+        "each project for itself"
+    );
+}
+
+pub async fn an_older_trashing_heard_after_a_newer_restoring_changes_nothing<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    secrets
+        .remember_trash("project_loom", 6, false)
+        .await
+        .expect("remembering should succeed");
+    secrets
+        .remember_trash("project_loom", 5, true)
+        .await
+        .expect("remembering should succeed");
+
+    assert!(!secrets.in_the_trash("project_loom").await);
+}
+
+pub async fn a_deleted_project_s_trash_is_forgotten_whole<S: Secrets>(secrets: &Committing<'_, S>) {
+    secrets
+        .remember_trash("project_loom", 5, true)
+        .await
+        .expect("remembering should succeed");
+    secrets
+        .remember_trash("project_quilt", 5, true)
+        .await
+        .expect("remembering should succeed");
+
+    secrets
+        .forget_trash("project_loom")
+        .await
+        .expect("forgetting should succeed");
+
+    assert!(!secrets.in_the_trash("project_loom").await);
+    assert!(
+        secrets.in_the_trash("project_quilt").await,
+        "each project for itself"
+    );
+    secrets
+        .remember_trash("project_loom", 1, true)
+        .await
+        .expect("remembering should succeed");
+    assert!(
+        secrets.in_the_trash("project_loom").await,
+        "nothing of it is left, not even the version it reached"
+    );
+}
+
+pub async fn a_trashing_in_a_dropped_transaction_leaves_nothing<S: Secrets>(
+    secrets: &Committing<'_, S>,
+) {
+    let mut transaction = secrets.begun().await.expect("beginning should succeed");
+    secrets
+        .store
+        .remember_trash(&mut transaction, "project_loom", 5, true)
+        .await
+        .expect("remembering should succeed");
+
+    drop(transaction);
+
+    assert!(!secrets.in_the_trash("project_loom").await);
+}
+
 pub async fn a_ticket_forgotten_is_not_kept_again<S: Secrets>(secrets: &Committing<'_, S>) {
     let ticket = a_ticket("invitation_ada", "ada@example.com");
     secrets
@@ -2203,6 +2321,19 @@ macro_rules! conformance_tests {
             a_ticket_still_open_is_found_by_its_invitation_to_take_it_up_signed_in
         );
         $crate::secrets_conformance_case!($workbench, a_ticket_forgotten_is_not_kept_again);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_project_is_in_the_trash_once_told_so_and_out_once_restored
+        );
+        $crate::secrets_conformance_case!(
+            $workbench,
+            an_older_trashing_heard_after_a_newer_restoring_changes_nothing
+        );
+        $crate::secrets_conformance_case!($workbench, a_deleted_project_s_trash_is_forgotten_whole);
+        $crate::secrets_conformance_case!(
+            $workbench,
+            a_trashing_in_a_dropped_transaction_leaves_nothing
+        );
         $crate::secrets_conformance_case!(
             $workbench,
             an_invitation_forgotten_before_its_ticket_came_keeps_none

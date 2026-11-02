@@ -552,6 +552,7 @@ refused-locked-cannot-become-operator = Uma conta bloqueada não pode operar a i
 refused-signing-up-by-invitation-only = Nesta instância do Weaveling só é possível criar uma conta por convite.
 refused-invitation-invalid = O link deste convite não permite criar nenhuma conta, ou não mais.
 refused-invitation-expired = Este convite expirou. Peça um novo.
+refused-invitation-paused = O projeto deste convite está na lixeira. Ele poderá ser aceito assim que o projeto for restaurado.
 refused-email-address-has-account = Este e-mail já tem uma conta. Entre com ela.
 refused-invitation-for-another-address = Este convite foi enviado para { $to }. Entre com esse endereço para aceitá-lo.
 refused-invitation-not-by-an-operator = Nesta instância do Weaveling só é possível criar uma conta com um convite de quem a opera. Peça que convide você.

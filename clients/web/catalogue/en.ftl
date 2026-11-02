@@ -552,6 +552,7 @@ refused-locked-cannot-become-operator = A locked account cannot become an operat
 refused-signing-up-by-invitation-only = Signing up to this Weaveling instance is by invitation only.
 refused-invitation-invalid = This invitation's link lets nobody sign up, or not any more.
 refused-invitation-expired = This invitation has run out. Ask for a new one.
+refused-invitation-paused = The project of this invitation is in the trash. It can be taken up once the project is restored.
 refused-email-address-has-account = This email address already has an account. Sign in instead.
 refused-invitation-for-another-address = This invitation was sent to { $to }. Sign in with that address to take it up.
 refused-invitation-not-by-an-operator = Signing up to this Weaveling instance takes an invitation from its operator. Ask the operator to invite you.
